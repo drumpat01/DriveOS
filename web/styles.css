@@ -1,0 +1,6246 @@
+:root {
+  color-scheme: dark;
+  --bg: #07090d;
+  --panel: rgba(18, 22, 29, 0.92);
+  --panel-2: rgba(13, 17, 23, 0.96);
+  --line: rgba(255,255,255,0.09);
+  --text: #f5f7fb;
+  --muted: #8993a4;
+  --soft: #bbc3cf;
+  --accent: #7be7ff;
+  --accent-2: #89f5bd;
+  --danger: #ff8b8b;
+  --warn: #ffd879;
+  --shadow: 0 24px 70px rgba(0,0,0,0.34);
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(64,121,255,0.14), transparent 30rem),
+    radial-gradient(circle at 88% 12%, rgba(20,222,181,0.08), transparent 28rem),
+    var(--bg);
+  color: var(--text);
+}
+
+body { min-height: 100vh; }
+button { font: inherit; }
+
+.app-shell {
+  width: min(1420px, calc(100% - 38px));
+  margin: 0 auto;
+  padding: 24px 0 34px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: 30px;
+  padding: 7px 4px 24px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.brand-copy {
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  display: block;
+  border-radius: 20px;
+  box-shadow: 0 14px 34px rgba(0,0,0,0.28);
+}
+
+.eyebrow, .section-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  margin: 3px 0 0;
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+}
+
+h1 span { color: var(--accent); font-weight: 400; }
+
+.main-nav {
+  justify-self: center;
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.025);
+  border-radius: 14px;
+}
+
+.nav-button {
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  padding: 9px 13px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.85rem;
+}
+
+.nav-button:hover { color: var(--text); }
+
+.nav-button.active {
+  background: rgba(255,255,255,0.075);
+  color: var(--text);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.date-time { color: var(--muted); font-size: 0.88rem; }
+
+.status-pill, .mini-pill {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: var(--soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--warn);
+  box-shadow: 0 0 12px rgba(255,216,121,0.6);
+}
+
+.status-pill.ok .status-dot {
+  background: var(--accent-2);
+  box-shadow: 0 0 12px rgba(137,245,189,0.68);
+}
+
+.status-pill.bad .status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 12px rgba(255,139,139,0.68);
+}
+
+.view { display: none; }
+.view.active-view { display: block; }
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1.03fr 0.97fr;
+  gap: 18px;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005)), var(--panel);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.vehicle-panel, .spotify-panel {
+  padding: 26px;
+  min-height: 390px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.panel-heading h2, .panel-heading h3 { margin: 5px 0 0; }
+.panel-heading h2 { font-size: clamp(1.45rem, 2.5vw, 2rem); letter-spacing: -0.035em; }
+.panel-heading h3 { font-size: 1.2rem; }
+
+.spotify-label { color: var(--accent-2); }
+
+.music-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: rgba(137,245,189,0.09);
+  border: 1px solid rgba(137,245,189,0.12);
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  font-size: 1.4rem;
+}
+
+.battery-wrap { padding: 34px 0 26px; }
+
+.battery-number {
+  font-size: clamp(4.7rem, 9vw, 7.6rem);
+  line-height: 0.85;
+  font-weight: 300;
+  letter-spacing: -0.08em;
+}
+
+.battery-number small {
+  font-size: 0.25em;
+  color: var(--muted);
+  margin-left: 7px;
+}
+
+.battery-track {
+  width: 100%;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+  margin-top: 30px;
+}
+
+.battery-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 700ms ease;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.metric {
+  padding: 17px 14px;
+  border-right: 1px solid var(--line);
+}
+
+.metric:first-child { padding-left: 0; }
+.metric:last-child { border-right: 0; }
+
+.metric-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 7px;
+}
+
+.metric strong { font-size: 1rem; font-weight: 700; }
+.metric strong small { color: var(--muted); font-size: 0.75em; }
+
+.vehicle-footer, .spotify-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding-top: 18px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.vehicle-footer strong { color: var(--soft); }
+
+.track-list { display: grid; gap: 2px; margin-top: 25px; }
+
+.track-row {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+}
+
+.track-time { color: var(--muted); font-size: 0.78rem; padding-top: 3px; }
+.track-title { font-weight: 700; line-height: 1.25; }
+.track-artist { color: var(--muted); margin-top: 4px; font-size: 0.84rem; }
+
+.skeleton-row {
+  height: 55px;
+  border-radius: 10px;
+  margin-bottom: 3px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+  background-size: 220% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 220% 0; }
+  100% { background-position: -220% 0; }
+}
+
+.drives-panel { margin-top: 18px; padding: 26px; }
+.drives-heading { align-items: center; }
+
+.text-button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.drive-content { margin-top: 20px; }
+
+.empty-state {
+  text-align: center;
+  padding: 52px 20px 44px;
+  border-radius: 18px;
+  background: var(--panel-2);
+  border: 1px dashed rgba(255,255,255,0.09);
+}
+
+.empty-mark {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(123,231,255,0.18);
+  background: rgba(123,231,255,0.07);
+  color: var(--accent);
+  font-size: 1.45rem;
+}
+
+.empty-state h3 { margin: 0; font-size: 1.12rem; }
+.empty-state p { color: var(--muted); margin: 7px 0 0; }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.stat-card {
+  min-height: 100px;
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.025);
+}
+
+.stat-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-bottom: 13px;
+}
+
+.stat-card strong { font-size: 0.95rem; letter-spacing: 0.04em; }
+
+.ok-text { color: var(--accent-2); }
+.bad-text { color: var(--danger); }
+.warn-text { color: var(--warn); }
+
+.page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 25px;
+  margin: 18px 4px 22px;
+}
+
+.page-heading h2 {
+  font-size: clamp(2.2rem, 5vw, 4.5rem);
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  margin: 8px 0 10px;
+}
+
+.page-heading p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 720px;
+}
+
+.primary-button, .secondary-button, .refresh-button {
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.primary-button {
+  color: #071016;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.primary-button:hover { filter: brightness(1.06); }
+.primary-button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.secondary-button {
+  color: var(--text);
+  background: rgba(255,255,255,0.045);
+  border: 1px solid var(--line);
+}
+
+.big-number {
+  font-size: 2.6rem;
+  font-weight: 300;
+  letter-spacing: -0.05em;
+}
+
+.big-number small {
+  color: var(--muted);
+  font-size: 0.35em;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.drive-stack { display: grid; gap: 12px; }
+
+.drive-card {
+  display: grid;
+  grid-template-columns: 1.3fr repeat(5, minmax(90px, 0.72fr)) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.drive-card:hover { border-color: rgba(123,231,255,0.2); }
+
+.drive-main strong { display: block; font-size: 1.02rem; }
+.drive-main span, .drive-stat span { color: var(--muted); font-size: 0.78rem; }
+.drive-stat strong { display: block; margin-top: 4px; }
+
+.view-drive-button {
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.045);
+  color: var(--text);
+  border-radius: 11px;
+  padding: 9px 12px;
+  cursor: pointer;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+
+.analytics-panel, .timeline-panel { padding: 24px; }
+.timeline-panel { margin-top: 18px; }
+
+.rank-list { margin-top: 20px; }
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+}
+
+.rank-number { color: #5f6978; font-weight: 800; }
+.rank-primary { font-weight: 700; }
+.rank-secondary { color: var(--muted); font-size: 0.82rem; margin-top: 3px; }
+.rank-count { color: var(--soft); font-size: 0.83rem; }
+
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(24px, 1fr));
+  align-items: end;
+  gap: 8px;
+  min-height: 220px;
+  margin-top: 25px;
+  padding-top: 10px;
+}
+
+.timeline-day {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  height: 190px;
+}
+
+.timeline-bar-wrap {
+  height: 150px;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.timeline-bar {
+  width: min(24px, 70%);
+  min-height: 3px;
+  border-radius: 8px 8px 3px 3px;
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+}
+
+.timeline-count { color: var(--soft); font-size: 0.72rem; }
+.timeline-label { color: var(--muted); font-size: 0.68rem; }
+
+.big-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.big-stat {
+  min-height: 150px;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.big-stat > span { display: block; color: var(--muted); font-size: 0.78rem; }
+.big-stat strong {
+  display: block;
+  margin-top: 24px;
+  font-size: clamp(2.1rem, 5vw, 4rem);
+  font-weight: 300;
+  letter-spacing: -0.06em;
+}
+
+.big-stat strong small { color: var(--muted); font-size: 0.28em; letter-spacing: 0; }
+
+.big-stat strong > span {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+}
+
+.big-stat strong > small {
+  display: inline;
+  margin-left: 0.12em;
+  vertical-align: baseline;
+}
+
+.future-panel { margin-top: 18px; padding: 26px; }
+.future-panel h3 { font-size: 1.5rem; margin: 8px 0; }
+.future-panel p { color: var(--muted); max-width: 800px; line-height: 1.6; }
+
+.muted { color: var(--muted); font-size: 0.78rem; }
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  z-index: 50;
+}
+
+.modal.open { display: block; }
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2,4,8,0.75);
+  backdrop-filter: blur(10px);
+}
+
+.modal-card {
+  position: relative;
+  width: min(920px, calc(100% - 30px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  margin: 20px auto;
+  padding: 32px;
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: #11161e;
+  box-shadow: 0 30px 100px rgba(0,0,0,0.6);
+}
+
+.modal-close {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modal-card > h2 {
+  margin: 8px 0 3px;
+  font-size: clamp(2rem, 5vw, 3.6rem);
+  letter-spacing: -0.055em;
+}
+
+.modal-subtitle { color: var(--muted); margin: 0; }
+
+.detail-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin: 28px 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.detail-metric { padding: 17px; background: #0e131a; }
+.detail-metric span { color: var(--muted); display: block; font-size: 0.73rem; }
+.detail-metric strong { display: block; margin-top: 6px; }
+
+.soundtrack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  padding-top: 9px;
+}
+
+.soundtrack-header h3 { margin: 5px 0 0; font-size: 1.5rem; }
+
+.action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.soundtrack-list { margin-top: 18px; }
+
+.soundtrack-row {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.soundtrack-time { color: var(--muted); font-size: 0.8rem; padding-top: 3px; }
+.soundtrack-title { font-weight: 750; }
+.soundtrack-artist { color: var(--muted); font-size: 0.84rem; margin-top: 4px; }
+
+.modal-message {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin-top: 14px;
+}
+
+footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 22px 5px 0;
+  color: #5f6877;
+  font-size: 0.74rem;
+}
+
+@media (max-width: 1050px) {
+  .topbar { grid-template-columns: 1fr auto; }
+  .main-nav { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .hero-grid, .analytics-grid { grid-template-columns: 1fr; }
+  .drive-card { grid-template-columns: 1fr 1fr 1fr; }
+  .drive-main { grid-column: 1 / -1; }
+  .big-stats { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 700px) {
+  .app-shell { width: min(100% - 20px, 1420px); }
+  .topbar { display: flex; flex-direction: column; align-items: stretch; }
+  .topbar-right { justify-content: space-between; }
+  .main-nav { overflow-x: auto; justify-self: auto; }
+  .metric-grid { grid-template-columns: 1fr 1fr; }
+  .metric:nth-child(2) { border-right: 0; }
+  .metric:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .stats-grid, .big-stats { grid-template-columns: 1fr 1fr; }
+  .page-heading { align-items: flex-start; flex-direction: column; }
+  .drive-card { grid-template-columns: 1fr 1fr; }
+  .detail-metrics { grid-template-columns: 1fr 1fr; }
+  .soundtrack-header { align-items: flex-start; flex-direction: column; }
+  .action-row { justify-content: flex-start; }
+  .timeline { gap: 3px; }
+}
+
+@media (max-width: 480px) {
+  .vehicle-panel, .spotify-panel, .drives-panel, .analytics-panel, .timeline-panel {
+    padding: 20px;
+    border-radius: 20px;
+  }
+  .metric-grid, .stats-grid, .big-stats, .detail-metrics { grid-template-columns: 1fr; }
+  .metric { border-right: 0; border-bottom: 1px solid var(--line); padding-left: 0; }
+  .track-row { grid-template-columns: 68px 1fr; }
+  .drive-card { grid-template-columns: 1fr; }
+  .drive-main { grid-column: auto; }
+  .timeline-label { display: none; }
+  footer { flex-direction: column; gap: 5px; }
+}
+
+
+/* ------------------------------------------------------------
+   DriveOS v0.4 - OpenFreeMap / MapLibre
+   ------------------------------------------------------------ */
+
+.drive-map-section {
+  margin: 8px 0 30px;
+}
+
+.map-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 13px;
+}
+
+.map-heading h3 {
+  margin: 5px 0 0;
+  font-size: 1.35rem;
+}
+
+.map-label {
+  color: var(--accent);
+}
+
+.map-status {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.drive-map {
+  position: relative;
+  width: 100%;
+  height: 430px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(123,231,255,0.06), transparent 40%),
+    #0b0f15;
+}
+
+.drive-map.map-unavailable {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  padding: 30px;
+  text-align: center;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 25px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+.legend-song {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  background: var(--accent-2);
+  color: #071016;
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.legend-start,
+.legend-end {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.legend-start {
+  background: var(--accent-2);
+  border: 2px solid rgba(255,255,255,0.9);
+}
+
+.legend-end {
+  background: var(--danger);
+  border: 2px solid rgba(255,255,255,0.9);
+}
+
+.map-privacy {
+  color: #657080;
+  font-size: 0.72rem;
+  margin: 9px 0 0;
+}
+
+.map-song-marker {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(5,12,15,0.88);
+  border-radius: 50%;
+  background: var(--accent-2);
+  color: #071016;
+  font-size: 0.76rem;
+  font-weight: 900;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+  cursor: pointer;
+}
+
+.map-song-marker:hover,
+.map-song-marker.active {
+  transform: scale(1.15);
+}
+
+.map-terminal-marker {
+  width: 18px;
+  height: 18px;
+  border: 3px solid rgba(255,255,255,0.94);
+  border-radius: 50%;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.35);
+}
+
+.map-terminal-marker.start {
+  background: var(--accent-2);
+}
+
+.map-terminal-marker.end {
+  background: var(--danger);
+}
+
+.maplibregl-popup-content {
+  background: #111820;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 35px rgba(0,0,0,0.38);
+  min-width: 220px;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #111820 !important;
+  border-bottom-color: #111820 !important;
+}
+
+.maplibregl-popup-close-button {
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.map-popup-track {
+  font-weight: 800;
+  padding-right: 16px;
+}
+
+.map-popup-artist {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 3px;
+}
+
+.map-popup-meta {
+  color: var(--soft);
+  font-size: 0.76rem;
+  margin-top: 9px;
+  line-height: 1.55;
+}
+
+.soundtrack-row[data-song-index] {
+  cursor: pointer;
+  border-radius: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
+  transition: background 150ms ease;
+}
+
+.soundtrack-row[data-song-index]:hover {
+  background: rgba(123,231,255,0.045);
+}
+
+.soundtrack-row.map-active {
+  background: rgba(137,245,189,0.07);
+}
+
+.soundtrack-number {
+  width: 25px;
+  height: 25px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(137,245,189,0.1);
+  border: 1px solid rgba(137,245,189,0.18);
+  color: var(--accent-2);
+  font-size: 0.7rem;
+  font-weight: 900;
+  margin-right: 8px;
+}
+
+.soundtrack-location {
+  color: #677382;
+  font-size: 0.72rem;
+  margin-top: 5px;
+}
+
+@media (max-width: 700px) {
+  .drive-map {
+    height: 340px;
+  }
+
+  .map-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .map-status {
+    text-align: left;
+  }
+}
+
+
+/* ------------------------------------------------------------
+   DriveOS v0.6 - Drive Replay + Spotify Artwork
+   ------------------------------------------------------------ */
+
+.replay-panel {
+  margin: 0 0 30px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #0d1219;
+  overflow: hidden;
+}
+
+.replay-now-playing {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  padding: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.replay-artwork-link {
+  display: block;
+  width: 108px;
+  height: 108px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #090d12;
+  text-decoration: none;
+}
+
+.replay-artwork {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #090d12;
+}
+
+.replay-artwork-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  font-size: 2rem;
+  background: rgba(137,245,189,0.055);
+}
+
+.replay-track-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.replay-track-link {
+  max-width: 100%;
+  margin-top: 6px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.replay-track-link:hover {
+  text-decoration: underline;
+}
+
+.replay-track-link strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.4rem;
+}
+
+.replay-track-info > span {
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.replay-album {
+  font-size: 0.78rem;
+}
+
+.spotify-attribution {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  color: var(--accent-2);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.replay-vehicle-state {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 20px;
+}
+
+.replay-vehicle-state div {
+  min-width: 72px;
+}
+
+.replay-vehicle-state span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.7rem;
+  margin-bottom: 5px;
+}
+
+.replay-vehicle-state strong {
+  white-space: nowrap;
+}
+
+.replay-controls {
+  display: grid;
+  grid-template-columns: auto auto minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 15px 18px;
+}
+
+.replay-icon-button,
+.replay-play-button {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.replay-icon-button {
+  width: 42px;
+  height: 42px;
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+}
+
+.replay-play-button {
+  min-width: 130px;
+  height: 42px;
+  padding: 0 15px;
+  background: var(--accent);
+  color: #071016;
+}
+
+.replay-scrubber-wrap {
+  min-width: 0;
+}
+
+.replay-scrubber {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.replay-time-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.68rem;
+  padding-top: 3px;
+}
+
+.replay-speed-label {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.replay-rate {
+  margin-left: 6px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text);
+  background: #111820;
+}
+
+.replay-car-marker {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #0d151d;
+  border: 2px solid var(--accent);
+  box-shadow: 0 5px 18px rgba(0,0,0,0.4);
+}
+
+.replay-car-arrow {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 15px solid var(--accent);
+  transform-origin: 50% 55%;
+}
+
+@media (max-width: 760px) {
+  .replay-now-playing {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+
+  .replay-artwork-link {
+    width: 86px;
+    height: 86px;
+  }
+
+  .replay-vehicle-state {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, 1fr);
+    padding-top: 4px;
+  }
+
+  .replay-controls {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .replay-scrubber-wrap {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .replay-now-playing {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 13px;
+    padding: 14px;
+  }
+
+  .replay-artwork-link {
+    width: 72px;
+    height: 72px;
+  }
+
+  .replay-track-link strong {
+    font-size: 1.05rem;
+  }
+
+  .replay-controls {
+    padding: 13px;
+  }
+}
+
+
+/* DriveOS 1.1 - Spotify replay actions */
+
+.replay-spotify-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.spotify-play-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: var(--accent-2);
+  color: #07120d;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(137,245,189,0.12);
+}
+
+.spotify-play-button:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.spotify-play-button.disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+.replay-spotify-actions .spotify-attribution {
+  margin-top: 0;
+}
+
+.soundtrack-spotify-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 9px;
+  color: var(--accent-2);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.soundtrack-spotify-link:hover {
+  text-decoration: underline;
+}
+
+
+/* DriveOS 1.2 - album artwork everywhere */
+
+.song-artwork-shell,
+.song-artwork-placeholder {
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0a0f14;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.song-artwork-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.song-artwork-placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--accent-2);
+  background: rgba(137,245,189,0.055);
+  font-weight: 800;
+}
+
+.track-row {
+  grid-template-columns: 48px 68px minmax(0, 1fr);
+  align-items: center;
+}
+
+.track-artwork {
+  width: 48px;
+  height: 48px;
+}
+
+.track-time {
+  padding-top: 0;
+}
+
+.track-copy {
+  min-width: 0;
+}
+
+.track-title,
+.track-artist,
+.rank-primary,
+.rank-secondary,
+.soundtrack-title,
+.soundtrack-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.track-rank-row {
+  grid-template-columns: 34px 48px minmax(0, 1fr) auto;
+}
+
+.rank-artwork {
+  width: 48px;
+  height: 48px;
+}
+
+.soundtrack-row {
+  grid-template-columns: 82px 54px minmax(0, 1fr);
+  align-items: start;
+}
+
+.soundtrack-artwork {
+  width: 54px;
+  height: 54px;
+}
+
+.soundtrack-copy {
+  min-width: 0;
+}
+
+.map-popup-song {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.map-popup-artwork {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .track-row {
+    grid-template-columns: 44px 58px minmax(0, 1fr);
+  }
+
+  .track-artwork {
+    width: 44px;
+    height: 44px;
+  }
+
+  .track-rank-row {
+    grid-template-columns: 28px 42px minmax(0, 1fr) auto;
+  }
+
+  .rank-artwork {
+    width: 42px;
+    height: 42px;
+  }
+
+  .soundtrack-row {
+    grid-template-columns: 68px 48px minmax(0, 1fr);
+  }
+
+  .soundtrack-artwork {
+    width: 48px;
+    height: 48px;
+  }
+}
+
+
+/* DriveOS 1.2.5 - Replay uses the common song artwork component */
+
+.replay-artwork-link {
+  display: block;
+  width: 108px;
+  height: 108px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #090d12;
+  text-decoration: none;
+}
+
+.replay-artwork {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.replay-artwork.song-artwork-shell,
+.replay-artwork.song-artwork-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+.app-version {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.025);
+}
+
+
+/* ------------------------------------------------------------
+   DriveOS 1.3.0 - Drive Library Search
+   ------------------------------------------------------------ */
+
+.drive-search-panel {
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.drive-search-primary {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+}
+
+.drive-search-box {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 50px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(5,8,12,0.48);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.drive-search-box:focus-within {
+  border-color: rgba(123,231,255,0.4);
+  box-shadow: 0 0 0 3px rgba(123,231,255,0.06);
+}
+
+.search-icon {
+  padding-left: 16px;
+  color: var(--accent);
+  font-size: 1.25rem;
+}
+
+.drive-search-box input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.93rem;
+}
+
+.drive-search-box input::placeholder {
+  color: #647084;
+}
+
+.search-clear-button {
+  width: 40px;
+  height: 40px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.search-clear-button:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.drive-search-count {
+  color: var(--soft);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.drive-filter-grid {
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(130px, 0.8fr))
+    repeat(2, minmax(110px, 0.65fr))
+    minmax(140px, 0.8fr)
+    minmax(165px, 1fr)
+    auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 14px;
+}
+
+.drive-filter-field {
+  display: grid;
+  gap: 6px;
+}
+
+.drive-filter-field > span {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.drive-filter-field input,
+.drive-filter-field select {
+  min-width: 0;
+  height: 39px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+  background: rgba(5,8,12,0.55);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  outline: none;
+}
+
+.drive-filter-field input:focus,
+.drive-filter-field select:focus {
+  border-color: rgba(123,231,255,0.4);
+}
+
+.drive-filter-reset {
+  min-height: 39px;
+  white-space: nowrap;
+}
+
+.drive-search-help {
+  margin-top: 12px;
+  color: #657084;
+  font-size: 0.7rem;
+}
+
+.drive-main {
+  min-width: 0;
+}
+
+.drive-route {
+  overflow: hidden;
+  margin-top: 7px;
+  color: var(--soft);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-tag {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 3px 7px;
+  border: 1px solid rgba(137,245,189,0.16);
+  border-radius: 999px;
+  background: rgba(137,245,189,0.05);
+  color: var(--accent-2);
+  font-size: 0.62rem;
+  font-weight: 750;
+}
+
+.drive-search-empty {
+  padding: 44px 20px;
+}
+
+.drive-search-empty .secondary-button {
+  margin-top: 12px;
+}
+
+@media (max-width: 1180px) {
+  .drive-filter-grid {
+    grid-template-columns: repeat(3, minmax(130px, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .drive-search-primary {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-search-count {
+    white-space: normal;
+  }
+
+  .drive-filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .drive-filter-reset {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .drive-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .drive-filter-reset {
+    grid-column: auto;
+  }
+}
+
+
+/* ======================================================================
+   DriveOS 2.0 - Favorite Routes + Music by Location
+   ====================================================================== */
+
+.panel-description {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.route-filter-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+  padding: 10px 12px;
+  border: 1px solid rgba(123,231,255,0.18);
+  border-radius: 11px;
+  background: rgba(123,231,255,0.045);
+  color: var(--soft);
+  font-size: 0.76rem;
+}
+
+.route-filter-banner[hidden] {
+  display: none !important;
+}
+
+.favorite-routes-panel {
+  margin-bottom: 18px;
+}
+
+.favorite-routes-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.favorite-route-card {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(5,8,12,0.34);
+}
+
+.favorite-route-rank {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(123,231,255,0.08);
+  color: var(--accent);
+  font-weight: 850;
+}
+
+.favorite-route-copy {
+  min-width: 0;
+}
+
+.favorite-route-copy > strong {
+  display: inline;
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.favorite-route-arrow {
+  margin: 0 6px;
+  color: var(--accent-2);
+}
+
+.favorite-route-meta,
+.favorite-route-last {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.favorite-route-last {
+  margin-top: 3px;
+  color: #657084;
+}
+
+.favorite-route-button {
+  white-space: nowrap;
+}
+
+.favorite-routes-empty {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 20px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.favorite-routes-empty strong {
+  color: var(--soft);
+}
+
+.music-location-panel {
+  margin-bottom: 20px;
+}
+
+.music-location-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 6px;
+}
+
+.music-location-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(5,8,12,0.45);
+}
+
+.music-location-search:focus-within {
+  border-color: rgba(137,245,189,0.34);
+}
+
+.music-location-search input {
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  outline: 0;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.music-location-window {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.music-location-window select,
+.map-music-nearby-actions select {
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 9px;
+  background: #0a0f15;
+  color: var(--text);
+  font: inherit;
+}
+
+.music-location-status {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.music-location-results {
+  margin-top: 16px;
+}
+
+.location-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.location-summary-grid > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.018);
+}
+
+.location-summary-grid span,
+.location-summary-grid strong {
+  display: block;
+}
+
+.location-summary-grid span {
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.location-summary-grid strong {
+  margin-top: 5px;
+  font-size: 1.35rem;
+}
+
+.location-results-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 18px;
+}
+
+.location-rank-list,
+.location-artist-list,
+.location-recent-list {
+  margin-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.location-rank-row {
+  display: grid;
+  grid-template-columns: 26px 42px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.location-track-artwork,
+.location-play-artwork,
+.map-nearby-artwork {
+  width: 42px;
+  height: 42px;
+}
+
+.location-rank-row > div:not(.song-artwork-shell) {
+  min-width: 0;
+}
+
+.location-rank-row strong,
+.location-rank-row span,
+.location-artist-row strong,
+.location-artist-row span {
+  display: block;
+}
+
+.location-rank-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.location-rank-row span:not(.location-rank-number) {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.location-rank-row b,
+.location-artist-row b {
+  color: var(--accent-2);
+  font-size: 0.72rem;
+}
+
+.location-rank-number {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.location-artist-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.location-artist-row > span:first-child {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.location-artist-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.location-recent-section {
+  margin-top: 20px;
+}
+
+.location-play-row {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.location-play-copy {
+  min-width: 0;
+}
+
+.location-play-copy strong,
+.location-play-copy span,
+.location-play-copy small {
+  display: block;
+}
+
+.location-play-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+}
+
+.location-play-copy span,
+.location-play-copy small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.67rem;
+}
+
+.map-click-hint {
+  margin-left: auto;
+  color: var(--accent-2) !important;
+}
+
+.map-music-nearby {
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid rgba(137,245,189,0.17);
+  border-radius: 12px;
+  background: rgba(8,14,14,0.72);
+}
+
+.map-music-nearby[hidden] {
+  display: none !important;
+}
+
+.map-music-nearby-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.map-music-nearby-heading strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.82rem;
+}
+
+.map-music-nearby-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.map-music-nearby-actions label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.map-music-nearby-songs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.map-nearby-song {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px;
+  background: rgba(255,255,255,0.025);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-nearby-song:hover {
+  border-color: rgba(123,231,255,0.27);
+}
+
+.map-nearby-song span {
+  min-width: 0;
+}
+
+.map-nearby-song strong,
+.map-nearby-song small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-nearby-song strong {
+  font-size: 0.72rem;
+}
+
+.map-nearby-song small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.map-nearby-empty {
+  grid-column: 1 / -1;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.map-music-query-marker {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  background: var(--accent-2);
+  box-shadow: 0 0 0 6px rgba(137,245,189,0.18), 0 4px 14px rgba(0,0,0,0.45);
+}
+
+@media (max-width: 900px) {
+  .favorite-routes-grid,
+  .location-results-grid,
+  .map-music-nearby-songs {
+    grid-template-columns: 1fr;
+  }
+
+  .music-location-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .music-location-form .primary-button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 620px) {
+  .favorite-route-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .favorite-route-button {
+    grid-column: 1 / -1;
+  }
+
+  .music-location-form,
+  .location-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .map-music-nearby-heading,
+  .map-music-nearby-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .location-play-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .location-open-drive {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+
+/* DriveOS 2.0.1 - fix internal spacing on 2.0 feature panels */
+.favorite-routes-panel,
+.music-location-panel {
+  padding: 24px;
+}
+
+.favorite-routes-panel .panel-heading,
+.music-location-panel .panel-heading {
+  min-width: 0;
+}
+
+.favorite-routes-grid {
+  margin-top: 16px;
+}
+
+@media (max-width: 700px) {
+  .favorite-routes-panel,
+  .music-location-panel {
+    padding: 18px;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 2.0.2 - Dark / Light appearance
+   ===================================================================== */
+
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.025);
+}
+
+.theme-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 800;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.theme-choice:hover {
+  color: var(--text);
+}
+
+.theme-choice.active {
+  background: rgba(255,255,255,0.085);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.025);
+}
+
+.theme-choice-icon {
+  font-size: 0.83rem;
+  line-height: 1;
+}
+
+/* The current DriveOS design remains the canonical dark theme. */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* ------------------------------- LIGHT ------------------------------- */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #edf3f7;
+  --panel: rgba(255,255,255,0.94);
+  --panel-2: rgba(247,250,252,0.98);
+  --line: rgba(28,46,63,0.13);
+  --text: #15222e;
+  --muted: #68798a;
+  --soft: #40576b;
+
+  /* Keep the DriveOS cyan/green identity, but deepen it for light surfaces. */
+  --accent: #0089ad;
+  --accent-2: #16895f;
+  --danger: #c94747;
+  --warn: #a66a00;
+
+  --shadow: 0 18px 48px rgba(44,66,84,0.10);
+}
+
+:root[data-theme="light"],
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(0,137,173,0.10), transparent 32rem),
+    radial-gradient(circle at 90% 8%, rgba(22,137,95,0.08), transparent 30rem),
+    var(--bg);
+}
+
+:root[data-theme="light"] .brand-logo {
+  box-shadow: 0 10px 28px rgba(31,51,66,0.15);
+}
+
+:root[data-theme="light"] .main-nav,
+:root[data-theme="light"] .theme-switcher,
+:root[data-theme="light"] .app-version,
+:root[data-theme="light"] .status-pill,
+:root[data-theme="light"] .mini-pill {
+  background: rgba(255,255,255,0.62);
+}
+
+:root[data-theme="light"] .nav-button.active,
+:root[data-theme="light"] .theme-choice.active {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(40,60,75,0.08);
+}
+
+:root[data-theme="light"] .panel {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.74), rgba(244,248,251,0.30)),
+    var(--panel);
+}
+
+:root[data-theme="light"] .music-icon {
+  background: rgba(22,137,95,0.08);
+  border-color: rgba(22,137,95,0.13);
+}
+
+:root[data-theme="light"] .battery-track {
+  background: rgba(22,38,52,0.09);
+}
+
+:root[data-theme="light"] .stat-card,
+:root[data-theme="light"] .location-summary-grid > div {
+  background: rgba(255,255,255,0.70);
+}
+
+:root[data-theme="light"] .empty-state {
+  border-color: rgba(28,46,63,0.13);
+}
+
+:root[data-theme="light"] .empty-mark {
+  border-color: rgba(0,137,173,0.18);
+  background: rgba(0,137,173,0.07);
+}
+
+:root[data-theme="light"] .primary-button {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+:root[data-theme="light"] .secondary-button,
+:root[data-theme="light"] .view-drive-button,
+:root[data-theme="light"] .replay-icon-button {
+  color: var(--text);
+  background: rgba(255,255,255,0.78);
+}
+
+:root[data-theme="light"] .drive-card,
+:root[data-theme="light"] .big-stat {
+  background: rgba(255,255,255,0.90);
+}
+
+:root[data-theme="light"] .drive-card:hover {
+  border-color: rgba(0,137,173,0.30);
+  box-shadow: 0 7px 24px rgba(40,60,75,0.07);
+}
+
+:root[data-theme="light"] .rank-row,
+:root[data-theme="light"] .soundtrack-row {
+  border-bottom-color: rgba(28,46,63,0.09);
+}
+
+:root[data-theme="light"] .rank-number {
+  color: #8492a0;
+}
+
+/* Modal / detail surfaces */
+:root[data-theme="light"] .modal-backdrop {
+  background: rgba(48,64,78,0.42);
+}
+
+:root[data-theme="light"] .modal-card {
+  background: #f8fbfd;
+  box-shadow: 0 30px 90px rgba(31,47,61,0.22);
+}
+
+:root[data-theme="light"] .modal-close {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .detail-metric {
+  background: #ffffff;
+}
+
+/* Search, filters and 2.0 intelligence panels */
+:root[data-theme="light"] .drive-search-box,
+:root[data-theme="light"] .drive-filter-field input,
+:root[data-theme="light"] .drive-filter-field select,
+:root[data-theme="light"] .favorite-route-card,
+:root[data-theme="light"] .music-location-search,
+:root[data-theme="light"] .music-location-window select,
+:root[data-theme="light"] .map-music-nearby-actions select {
+  background: rgba(255,255,255,0.88);
+}
+
+:root[data-theme="light"] .drive-search-box:focus-within {
+  border-color: rgba(0,137,173,0.45);
+  box-shadow: 0 0 0 3px rgba(0,137,173,0.08);
+}
+
+:root[data-theme="light"] .music-location-search:focus-within {
+  border-color: rgba(22,137,95,0.40);
+}
+
+:root[data-theme="light"] .search-clear-button:hover {
+  background: rgba(21,34,46,0.055);
+}
+
+:root[data-theme="light"] .drive-search-box input::placeholder,
+:root[data-theme="light"] .music-location-search input::placeholder {
+  color: #8996a2;
+}
+
+:root[data-theme="light"] .route-filter-banner {
+  border-color: rgba(0,137,173,0.20);
+  background: rgba(0,137,173,0.055);
+}
+
+:root[data-theme="light"] .favorite-route-card {
+  box-shadow: 0 4px 14px rgba(37,59,75,0.035);
+}
+
+:root[data-theme="light"] .favorite-route-rank {
+  background: rgba(0,137,173,0.09);
+}
+
+:root[data-theme="light"] .drive-tag {
+  border-color: rgba(22,137,95,0.18);
+  background: rgba(22,137,95,0.07);
+}
+
+/* Map and MapLibre chrome */
+:root[data-theme="light"] .drive-map {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(0,137,173,0.06), transparent 42%),
+    #e8f0f4;
+}
+
+:root[data-theme="light"] .maplibregl-popup-content {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 12px 34px rgba(37,56,71,0.18);
+}
+
+:root[data-theme="light"] .maplibregl-popup-tip {
+  border-top-color: #ffffff !important;
+  border-bottom-color: #ffffff !important;
+}
+
+:root[data-theme="light"] .maplibregl-ctrl-group {
+  background: #ffffff;
+  box-shadow: 0 1px 5px rgba(37,56,71,0.16);
+}
+
+:root[data-theme="light"] .map-song-marker {
+  border-color: rgba(255,255,255,0.94);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37,56,71,0.22);
+}
+
+:root[data-theme="light"] .map-terminal-marker {
+  border-color: rgba(255,255,255,0.96);
+}
+
+/* Replay */
+:root[data-theme="light"] .replay-panel {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .replay-artwork-link,
+:root[data-theme="light"] .replay-artwork {
+  background: #eef3f6;
+}
+
+:root[data-theme="light"] .replay-artwork-fallback {
+  background: rgba(22,137,95,0.07);
+}
+
+:root[data-theme="light"] .replay-play-button {
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .replay-rate {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .replay-car-marker {
+  background: #ffffff;
+  box-shadow: 0 5px 15px rgba(37,56,71,0.20);
+}
+
+/* Artwork placeholders / supplemental location UI */
+:root[data-theme="light"] .song-artwork-placeholder,
+:root[data-theme="light"] .replay-artwork-fallback {
+  color: var(--accent-2);
+}
+
+:root[data-theme="light"] .map-music-nearby,
+:root[data-theme="light"] .location-results-grid > section {
+  background-color: transparent;
+}
+
+/* Scrollbars - supported by the embedded Chromium renderer. */
+:root[data-theme="light"] * {
+  scrollbar-color: rgba(83,104,121,0.38) rgba(225,233,239,0.55);
+}
+
+@media (max-width: 1120px) {
+  .theme-choice-label {
+    display: none;
+  }
+
+  .theme-choice {
+    min-width: 30px;
+    justify-content: center;
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 2.0.3 - full dashboard origin / destination addresses
+   ===================================================================== */
+
+.dashboard-drive-card {
+  grid-template-columns: repeat(5, minmax(92px, 1fr)) auto;
+  align-items: end;
+}
+
+.dashboard-drive-card .drive-main {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(140px, auto) minmax(0, 1fr);
+  column-gap: 24px;
+  align-items: start;
+}
+
+.dashboard-drive-card .drive-main-heading {
+  padding-top: 2px;
+}
+
+.dashboard-route-addresses {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255,255,255,0.025);
+}
+
+.dashboard-route-address {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.dashboard-route-label {
+  padding-top: 1px;
+  color: var(--accent);
+  font-size: 0.62rem !important;
+  font-weight: 850;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+}
+
+.dashboard-route-value {
+  min-width: 0;
+  color: var(--soft) !important;
+  font-size: 0.76rem !important;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.dashboard-route-connector {
+  width: 42px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  text-align: center;
+}
+
+:root[data-theme="light"] .dashboard-route-addresses {
+  background: rgba(239,245,248,0.72);
+}
+
+/* The dashboard gets the full route; the Drive Library keeps its compact line. */
+.dashboard-drive-card .drive-route {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+@media (max-width: 1050px) {
+  .dashboard-drive-card {
+    grid-template-columns: repeat(3, minmax(100px, 1fr));
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-drive-card .view-drive-button {
+    justify-self: stretch;
+  }
+}
+
+@media (max-width: 700px) {
+  .dashboard-drive-card {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-template-columns: 1fr;
+    row-gap: 12px;
+  }
+
+  .dashboard-route-addresses {
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .dashboard-drive-card {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-column: auto;
+  }
+
+  .dashboard-route-address {
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .dashboard-route-connector {
+    width: 38px;
+  }
+}
+
+
+
+/* =====================================================================
+   DriveOS 3.0 - Ignition logo assembly sequence
+   ===================================================================== */
+
+body.ignition-active {
+  overflow: hidden;
+}
+
+.ignition {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 43%, rgba(255,255,255,0.97) 0 8rem, transparent 29rem),
+    linear-gradient(135deg, #f8fcfe 0%, #eaf5f8 48%, #f4fbf7 100%);
+  color: #142532;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 620ms cubic-bezier(.2,.8,.2,1),
+    visibility 620ms step-end;
+}
+
+.ignition::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(17,90,112,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17,90,112,0.035) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: radial-gradient(circle at 50% 50%, #000 0 28%, transparent 72%);
+  opacity: 0;
+  animation: ignition-grid-in 1500ms 180ms ease forwards;
+}
+
+.ignition::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background:
+    conic-gradient(
+      from 180deg at 50% 50%,
+      transparent 0deg,
+      rgba(0,166,207,0.09) 38deg,
+      transparent 77deg,
+      transparent 185deg,
+      rgba(57,217,190,0.08) 226deg,
+      transparent 270deg
+    );
+  filter: blur(50px);
+  opacity: 0;
+  animation: ignition-aurora 2100ms 180ms ease-out forwards;
+}
+
+.ignition-atmosphere {
+  position: absolute;
+  width: 46vw;
+  max-width: 720px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(22px);
+  opacity: 0;
+  transform: scale(0.72);
+}
+
+.ignition-atmosphere-a {
+  left: -13vw;
+  bottom: -23vw;
+  background: radial-gradient(circle, rgba(0,166,207,0.19), transparent 66%);
+  animation: ignition-atmosphere-in 1850ms 80ms ease-out forwards;
+}
+
+.ignition-atmosphere-b {
+  right: -12vw;
+  top: -25vw;
+  background: radial-gradient(circle, rgba(91,222,170,0.20), transparent 65%);
+  animation: ignition-atmosphere-in 1850ms 260ms ease-out forwards;
+}
+
+.ignition-route-field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.94;
+}
+
+.ignition-route {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1720;
+  stroke-dashoffset: 1720;
+}
+
+.ignition-route-glow {
+  stroke: url(#ignitionRouteGradient);
+  stroke-width: 16;
+  opacity: 0.14;
+  filter: url(#ignitionRouteGlow);
+  animation: ignition-route-draw 1800ms 260ms cubic-bezier(.45,.02,.2,1) forwards;
+}
+
+.ignition-route-core {
+  stroke: url(#ignitionRouteGradient);
+  stroke-width: 3;
+  animation: ignition-route-draw 1700ms 300ms cubic-bezier(.45,.02,.2,1) forwards;
+}
+
+.ignition-route-node {
+  fill: #ffffff;
+  stroke: #22bba8;
+  stroke-width: 3;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.ignition-route-node-a { animation: ignition-node-in 420ms 820ms ease-out forwards; }
+.ignition-route-node-b { animation: ignition-node-in 420ms 1240ms ease-out forwards; }
+.ignition-route-node-c { animation: ignition-node-in 420ms 1570ms ease-out forwards; }
+
+.ignition-lockup {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  justify-items: center;
+  width: min(820px, calc(100vw - 48px));
+  text-align: center;
+}
+
+.ignition-logo-assembly {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto);
+  align-items: center;
+  gap: 28px;
+  min-height: 170px;
+}
+
+.ignition-emblem-shell {
+  position: relative;
+  width: 118px;
+  height: 118px;
+  flex: 0 0 auto;
+}
+
+.ignition-emblem-halo {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255,255,255,0.98) 0 30%, rgba(68,216,195,0.16) 54%, transparent 72%);
+  filter: blur(3px);
+  transform: scale(0.7);
+  opacity: 0;
+  animation: ignition-halo-in 1000ms 620ms ease-out forwards;
+}
+
+.ignition-piece {
+  opacity: 0;
+  will-change: transform, opacity, filter;
+}
+
+.ignition-emblem-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 5px solid rgba(30,48,61,0.90);
+  box-shadow: 0 0 0 2px rgba(70,210,183,0.10), 0 12px 30px rgba(25,73,86,0.10);
+  animation: ignition-piece-ring 800ms 360ms cubic-bezier(.18,.88,.24,1.1) forwards;
+}
+
+.ignition-emblem-arc {
+  position: absolute;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8eefc4, #3ad6bc 52%, #00a6cf);
+  box-shadow: 0 0 18px rgba(33,192,180,0.25);
+}
+
+.ignition-emblem-arc-top {
+  width: 56px;
+  height: 10px;
+  left: 31px;
+  top: 23px;
+  animation: ignition-piece-arc-top 700ms 540ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-emblem-arc-left {
+  width: 42px;
+  height: 9px;
+  left: 23px;
+  top: 42px;
+  transform: rotate(36deg);
+  animation: ignition-piece-arc-left 700ms 610ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-emblem-arc-right {
+  width: 42px;
+  height: 9px;
+  right: 23px;
+  top: 42px;
+  transform: rotate(-36deg);
+  animation: ignition-piece-arc-right 700ms 690ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-emblem-crest {
+  position: absolute;
+  inset: 25px 22px 18px 22px;
+  animation: ignition-piece-crest 780ms 880ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-crest-wing,
+.ignition-crest-stem {
+  position: absolute;
+  display: block;
+  background: linear-gradient(180deg, #ffffff 0%, #dde7ec 100%);
+  box-shadow: 0 10px 20px rgba(25,73,86,0.12);
+}
+
+.ignition-crest-left {
+  width: 34px;
+  height: 10px;
+  left: 0;
+  top: 15px;
+  border-radius: 30px 8px 10px 8px;
+  transform: skewX(18deg);
+}
+
+.ignition-crest-right {
+  width: 34px;
+  height: 10px;
+  right: 0;
+  top: 15px;
+  border-radius: 8px 30px 8px 10px;
+  transform: skewX(-18deg);
+}
+
+.ignition-crest-stem {
+  width: 12px;
+  height: 46px;
+  left: 50%;
+  bottom: 0;
+  margin-left: -6px;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.ignition-emblem-road {
+  position: absolute;
+  left: 38px;
+  right: 38px;
+  bottom: 8px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 0 0 40px 40px;
+  animation: ignition-piece-road 760ms 1040ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-emblem-road::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #203745 0%, #2b4757 100%);
+  clip-path: polygon(36% 100%, 50% 6%, 64% 100%);
+}
+
+.ignition-road-lane {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 4px;
+  height: 28px;
+  margin-left: -2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #95f1c6 0%, #49d8bd 100%);
+  transform: scaleY(0);
+  transform-origin: top;
+  animation: ignition-lane-grow 420ms 1400ms ease-out forwards;
+}
+
+.ignition-wordmark-lockup {
+  display: grid;
+  justify-items: start;
+  align-content: center;
+  text-align: left;
+  min-width: 0;
+}
+
+.ignition-brand-line {
+  color: #3e5566;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  animation: ignition-piece-brandline 640ms 1180ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+
+.ignition-wordmark {
+  margin-top: 8px;
+  font-size: clamp(2.7rem, 7vw, 5.4rem);
+  font-weight: 790;
+  line-height: 0.95;
+  letter-spacing: -0.07em;
+}
+
+.ignition-word-drive {
+  color: #142532;
+  animation: ignition-piece-drive 760ms 920ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-word-os {
+  color: #009abc;
+  font-weight: 420;
+  animation: ignition-piece-os 760ms 1040ms cubic-bezier(.18,.88,.24,1.08) forwards;
+}
+
+.ignition-system-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 18px;
+  margin-top: 26px;
+  color: #63808d;
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: ignition-status-in 500ms 1460ms ease-out forwards;
+}
+
+.ignition-system-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #38cda8;
+  box-shadow: 0 0 0 0 rgba(56,205,168,0.28);
+  animation: ignition-dot-pulse 1100ms 1500ms ease-out infinite;
+}
+
+.ignition-system-text-swap {
+  animation: ignition-status-swap 300ms ease-out;
+}
+
+.ignition-progress {
+  width: min(310px, 66vw);
+  height: 3px;
+  margin-top: 17px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(18,72,91,0.09);
+  opacity: 0;
+  animation: ignition-status-in 450ms 1540ms ease-out forwards;
+}
+
+.ignition-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #00a6cf, #3ad8bd, #91eec4);
+  box-shadow: 0 0 12px rgba(47,202,182,0.35);
+  transform: translateX(-101%);
+  animation: ignition-progress-fill 1380ms 1570ms cubic-bezier(.2,.7,.15,1) forwards;
+}
+
+.ignition-data {
+  position: absolute;
+  bottom: 34px;
+  z-index: 3;
+  display: grid;
+  gap: 3px;
+  color: rgba(36,75,89,0.52);
+  font-size: 0.59rem;
+  font-weight: 760;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0;
+  animation: ignition-data-in 550ms 1500ms ease forwards;
+}
+
+.ignition-data strong {
+  color: rgba(21,70,84,0.80);
+  font-size: 0.67rem;
+}
+
+.ignition-data-left { left: 34px; }
+.ignition-data-right { right: 34px; text-align: right; }
+
+.ignition.ignition-ready .ignition-logo-assembly {
+  animation: ignition-lockup-settle 520ms ease-out;
+}
+
+.ignition.ignition-ready .ignition-system-dot {
+  background: #23bd88;
+  box-shadow: 0 0 17px rgba(35,189,136,0.60);
+}
+
+.ignition.ignition-complete {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+body.ignition-active .app-shell {
+  opacity: 0;
+  transform: scale(0.992) translateY(4px);
+}
+
+.app-shell {
+  transition:
+    opacity 650ms 120ms cubic-bezier(.2,.8,.2,1),
+    transform 650ms 120ms cubic-bezier(.2,.8,.2,1);
+}
+
+body:not(.ignition-active) .app-shell {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes ignition-grid-in {
+  from { opacity: 0; transform: scale(1.04); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ignition-aurora {
+  0% { opacity: 0; transform: scale(0.78) rotate(-8deg); }
+  45% { opacity: 0.9; }
+  100% { opacity: 0.56; transform: scale(1.05) rotate(4deg); }
+}
+
+@keyframes ignition-atmosphere-in {
+  from { opacity: 0; transform: scale(0.72); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ignition-route-draw { to { stroke-dashoffset: 0; } }
+
+@keyframes ignition-node-in {
+  0% { opacity: 0; transform: scale(0); }
+  65% { opacity: 1; transform: scale(1.55); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ignition-piece-ring {
+  0% { opacity: 0; transform: translate(-130px, -80px) scale(0.6) rotate(-130deg); filter: blur(6px); }
+  65% { opacity: 1; transform: translate(5px, 0) scale(1.03) rotate(10deg); filter: blur(0); }
+  100% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0); filter: blur(0); }
+}
+
+@keyframes ignition-piece-arc-top {
+  0% { opacity: 0; transform: translateY(-80px) scaleX(0.3) rotate(-8deg); filter: blur(5px); }
+  100% { opacity: 1; transform: translateY(0) scaleX(1) rotate(0); filter: blur(0); }
+}
+
+@keyframes ignition-piece-arc-left {
+  0% { opacity: 0; transform: translate(-100px, 50px) rotate(110deg) scaleX(0.4); filter: blur(5px); }
+  100% { opacity: 1; transform: translate(0,0) rotate(36deg) scaleX(1); filter: blur(0); }
+}
+
+@keyframes ignition-piece-arc-right {
+  0% { opacity: 0; transform: translate(100px, 50px) rotate(-110deg) scaleX(0.4); filter: blur(5px); }
+  100% { opacity: 1; transform: translate(0,0) rotate(-36deg) scaleX(1); filter: blur(0); }
+}
+
+@keyframes ignition-piece-crest {
+  0% { opacity: 0; transform: translateY(-54px) scale(0.66); filter: blur(6px); }
+  70% { opacity: 1; transform: translateY(2px) scale(1.04); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+
+@keyframes ignition-piece-road {
+  0% { opacity: 0; transform: translateY(72px) scaleY(0.35); filter: blur(6px); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); filter: blur(0); }
+}
+
+@keyframes ignition-lane-grow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes ignition-halo-in {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; transform: scale(1.14); }
+  100% { opacity: 0.75; transform: scale(1); }
+}
+
+@keyframes ignition-piece-drive {
+  0% { opacity: 0; transform: translateX(-170px) translateY(24px); filter: blur(6px); }
+  72% { opacity: 1; transform: translateX(6px) translateY(-2px); filter: blur(0); }
+  100% { opacity: 1; transform: translateX(0) translateY(0); filter: blur(0); }
+}
+
+@keyframes ignition-piece-os {
+  0% { opacity: 0; transform: translateX(150px) translateY(-24px); filter: blur(6px); }
+  72% { opacity: 1; transform: translateX(-5px) translateY(0); filter: blur(0); }
+  100% { opacity: 1; transform: translateX(0) translateY(0); filter: blur(0); }
+}
+
+@keyframes ignition-piece-brandline {
+  0% { opacity: 0; transform: translateY(-18px); filter: blur(5px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes ignition-status-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ignition-status-swap {
+  0% { opacity: 0; transform: translateY(4px); filter: blur(3px); }
+  100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes ignition-dot-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(56,205,168,0.32); }
+  100% { box-shadow: 0 0 0 9px rgba(56,205,168,0); }
+}
+
+@keyframes ignition-progress-fill { to { transform: translateX(0); } }
+
+@keyframes ignition-data-in {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ignition-lockup-settle {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.012); }
+}
+
+@media (max-width: 760px) {
+  .ignition-lockup { width: min(92vw, 92vw); }
+  .ignition-logo-assembly {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    justify-items: center;
+  }
+  .ignition-wordmark-lockup {
+    justify-items: center;
+    text-align: center;
+  }
+  .ignition-wordmark {
+    font-size: clamp(2.4rem, 11vw, 4.3rem);
+  }
+  .ignition-brand-line { font-size: 0.72rem; }
+}
+
+@media (max-width: 600px) {
+  .ignition-route-field { opacity: 0.58; }
+  .ignition-data { bottom: 22px; }
+  .ignition-data-left { left: 20px; }
+  .ignition-data-right { right: 20px; }
+  .ignition-emblem-shell {
+    width: 102px;
+    height: 102px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ignition *,
+  .ignition *::before,
+  .ignition *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .ignition { transition-duration: 260ms; }
+  .app-shell { transition-duration: 260ms; }
+}
+
+
+
+/* =====================================================================
+   DRIVEOS 3.0 - ELECTRIC GLASS / VEHICLE INTELLIGENCE UI
+   ===================================================================== */
+
+:root {
+  --v3-navy: #10283a;
+  --v3-navy-2: #24485b;
+  --v3-teal: #09a9bf;
+  --v3-cyan: #14c9d2;
+  --v3-green: #19c987;
+  --v3-mint: #7cebbd;
+  --v3-ice: #eef7f9;
+  --v3-glass: rgba(255,255,255,.76);
+  --v3-glass-strong: rgba(255,255,255,.90);
+  --v3-border: rgba(33,83,101,.12);
+  --v3-shadow: 0 18px 50px rgba(47,84,99,.10);
+}
+
+:root[data-theme="light"] {
+  --bg: #eef6f8;
+  --panel: rgba(255,255,255,.80);
+  --panel-2: rgba(250,253,254,.94);
+  --line: rgba(33,83,101,.12);
+  --text: var(--v3-navy);
+  --muted: #6d838e;
+  --soft: #385768;
+  --accent: var(--v3-teal);
+  --accent-2: var(--v3-green);
+  --shadow: var(--v3-shadow);
+}
+
+:root[data-theme="light"],
+:root[data-theme="light"] body {
+  background:
+    radial-gradient(circle at 76% -10%, rgba(35,204,193,.16), transparent 32rem),
+    radial-gradient(circle at -8% 22%, rgba(16,163,197,.11), transparent 36rem),
+    linear-gradient(180deg, #f8fbfc 0%, #edf5f7 55%, #eaf2f5 100%);
+}
+
+body {
+  letter-spacing: -.008em;
+}
+
+.app-shell {
+  width: min(1580px, calc(100% - 28px));
+  padding-top: 14px;
+}
+
+.topbar {
+  position: sticky;
+  top: 10px;
+  z-index: 120;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--v3-border);
+  border-radius: 24px;
+  background: rgba(255,255,255,.78);
+  backdrop-filter: blur(24px) saturate(1.2);
+  box-shadow: 0 12px 35px rgba(47,84,99,.08);
+}
+
+.brand {
+  gap: 10px;
+}
+
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(28,108,124,.11);
+}
+
+.brand-copy .eyebrow {
+  display: none;
+}
+
+h1 {
+  margin: 0;
+  color: var(--v3-navy);
+  font-size: 1.8rem;
+  letter-spacing: .12em;
+  font-weight: 760;
+}
+
+h1 span {
+  color: #11aebf;
+  font-weight: 620;
+}
+
+.main-nav {
+  justify-self: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+}
+
+.nav-button {
+  position: relative;
+  padding: 14px 22px;
+  border-radius: 16px;
+  color: #36566a;
+  font-size: .92rem;
+  font-weight: 700;
+}
+
+.nav-button:hover {
+  color: var(--v3-navy);
+  background: rgba(255,255,255,.55);
+}
+
+.nav-button.active {
+  color: var(--v3-navy);
+  background: rgba(255,255,255,.92);
+  box-shadow:
+    inset 0 0 0 1px rgba(34,91,108,.08),
+    0 7px 20px rgba(41,77,91,.09);
+}
+
+.nav-button.active::after {
+  content: "";
+  position: absolute;
+  left: 27%;
+  right: 27%;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--v3-cyan), var(--v3-green));
+}
+
+.topbar-right {
+  gap: 10px;
+  padding: 4px 7px 4px 12px;
+  border: 1px solid rgba(33,83,101,.08);
+  border-radius: 18px;
+  background: rgba(255,255,255,.45);
+}
+
+.app-version {
+  color: #71858f;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 5px 2px !important;
+}
+
+.theme-switcher {
+  border-color: rgba(33,83,101,.09);
+  background: rgba(234,244,247,.65) !important;
+}
+
+.theme-choice.active {
+  color: var(--v3-navy) !important;
+  background: white !important;
+}
+
+.date-time {
+  color: #38586a;
+  font-weight: 650;
+}
+
+.status-pill {
+  border-color: rgba(25,201,135,.16);
+  background: rgba(255,255,255,.72) !important;
+  color: var(--v3-navy-2);
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+}
+
+.status-pill.ok .status-dot {
+  background: var(--v3-green);
+  box-shadow: 0 0 0 5px rgba(25,201,135,.10);
+}
+
+/* Panels */
+.panel,
+.stat-card,
+.big-stat,
+.drive-card,
+.favorite-route-card {
+  border-color: var(--v3-border);
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.92), rgba(245,251,252,.73));
+  backdrop-filter: blur(20px) saturate(1.15);
+  box-shadow: var(--v3-shadow);
+}
+
+.panel {
+  border-radius: 22px;
+}
+
+.hero-grid {
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.vehicle-panel,
+.spotify-panel {
+  min-height: 425px;
+  padding: 25px 28px 24px;
+  position: relative;
+}
+
+.panel-heading h2 {
+  color: var(--v3-navy);
+  font-size: clamp(1.55rem, 2.4vw, 2.1rem);
+  letter-spacing: -.045em;
+}
+
+.section-label {
+  color: #587486;
+  font-size: .65rem;
+  letter-spacing: .14em;
+}
+
+.spotify-label {
+  color: var(--v3-green);
+}
+
+.mini-pill {
+  border-color: rgba(9,169,191,.13);
+  background: rgba(255,255,255,.68) !important;
+  color: #377084;
+}
+
+/* Tesla vehicle presentation */
+.vehicle-panel {
+  overflow: hidden;
+}
+
+.vehicle-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 65% 42%, rgba(35,205,196,.10), transparent 22rem),
+    linear-gradient(120deg, transparent 40%, rgba(255,255,255,.48));
+}
+
+.vehicle-panel .panel-heading,
+.vehicle-panel .battery-wrap,
+.vehicle-panel .metric-grid,
+.vehicle-panel .vehicle-footer {
+  position: relative;
+  z-index: 5;
+}
+
+.vehicle-hero-visual {
+  position: absolute;
+  z-index: 1;
+  top: 46px;
+  right: 0;
+  width: 61%;
+  height: 255px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.vehicle-skyline {
+  position: absolute;
+  right: 10px;
+  top: 5px;
+  width: 52%;
+  height: 44%;
+  opacity: .12;
+  background:
+    linear-gradient(90deg,
+      transparent 0 6%,
+      #517888 6% 10%,
+      transparent 10% 15%,
+      #517888 15% 21%,
+      transparent 21% 25%,
+      #517888 25% 30%,
+      transparent 30% 36%,
+      #517888 36% 43%,
+      transparent 43% 48%,
+      #517888 48% 52%,
+      transparent 52% 58%,
+      #517888 58% 66%,
+      transparent 66%);
+  mask-image: linear-gradient(to top, #000, transparent);
+}
+
+.vehicle-car-art {
+  position: absolute;
+  right: -2%;
+  bottom: 1px;
+  width: 96%;
+  max-height: 220px;
+  filter: drop-shadow(0 18px 18px rgba(44,76,88,.16));
+}
+
+.vehicle-route-beam {
+  position: absolute;
+  left: 12%;
+  right: -10%;
+  bottom: 15px;
+  height: 58px;
+  transform: perspective(400px) rotateX(68deg);
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(23,200,206,.18) 33%,
+      rgba(101,236,189,.75) 48%,
+      rgba(12,184,207,.88) 52%,
+      rgba(101,236,189,.45) 58%,
+      transparent 100%);
+  filter: blur(4px);
+}
+
+.vehicle-route-lines {
+  position: absolute;
+  right: -5%;
+  bottom: 6px;
+  width: 88%;
+  height: 80px;
+  border-top: 2px solid rgba(39,204,204,.28);
+  border-radius: 50%;
+  transform: rotate(-5deg);
+}
+
+.vehicle-route-lines-b {
+  bottom: 22px;
+  opacity: .55;
+  transform: rotate(3deg);
+}
+
+.battery-wrap {
+  width: 36%;
+  padding: 26px 0 24px;
+}
+
+.battery-number {
+  color: #102538;
+  font-size: clamp(4.2rem, 6.6vw, 6.3rem);
+  font-weight: 460;
+}
+
+.battery-number small {
+  color: #4c6b7b;
+}
+
+.battery-track {
+  margin-top: 22px;
+  height: 8px;
+  background: #dbe8ec;
+}
+
+.battery-fill {
+  background: linear-gradient(90deg, #0b9fb8, #16cf98);
+  box-shadow: 0 0 16px rgba(25,201,135,.22);
+}
+
+.metric-grid {
+  grid-template-columns: repeat(4, 1fr);
+  border-color: rgba(33,83,101,.09);
+  background: rgba(255,255,255,.28);
+}
+
+.metric {
+  border-color: rgba(33,83,101,.08);
+}
+
+.metric-label {
+  color: #718791;
+}
+
+.metric strong {
+  color: var(--v3-navy);
+}
+
+.vehicle-footer {
+  color: #66808c;
+}
+
+/* Spotify v3 */
+.spotify-panel {
+  overflow: visible;
+}
+
+.spotify-wave-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: rgba(25,201,135,.07) !important;
+  color: var(--v3-green);
+}
+
+.spotify-wave-icon span {
+  width: 3px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.spotify-wave-icon span:nth-child(1) { height: 12px; }
+.spotify-wave-icon span:nth-child(2) { height: 22px; }
+.spotify-wave-icon span:nth-child(3) { height: 16px; }
+
+.track-list {
+  margin-top: 22px;
+}
+
+.v3-now-playing {
+  display: grid;
+  grid-template-columns: 150px minmax(150px, .9fr) minmax(180px, 1fr);
+  gap: 20px;
+  min-height: 250px;
+  align-items: center;
+}
+
+.v3-featured-art {
+  position: relative;
+  align-self: center;
+}
+
+.v3-featured-artwork,
+.v3-featured-art .track-artwork {
+  width: 150px !important;
+  height: 150px !important;
+  border-radius: 18px !important;
+  object-fit: cover;
+  box-shadow: 0 18px 38px rgba(31,65,76,.16);
+}
+
+.v3-art-glow {
+  position: absolute;
+  inset: 12%;
+  z-index: -1;
+  border-radius: 50%;
+  background: rgba(25,201,135,.22);
+  filter: blur(32px);
+}
+
+.v3-featured-copy {
+  min-width: 0;
+}
+
+.v3-spotify-kicker {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #169b69;
+  font-size: .65rem;
+  font-weight: 820;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.v3-spotify-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #1ed760;
+  box-shadow: 0 0 0 5px rgba(30,215,96,.09);
+}
+
+.v3-featured-title {
+  margin-top: 14px;
+  color: var(--v3-navy);
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.v3-featured-artist {
+  margin-top: 6px;
+  color: #607986;
+  font-size: .9rem;
+}
+
+.v3-featured-time {
+  margin-top: 7px;
+  color: #8798a0;
+  font-size: .72rem;
+}
+
+.v3-waveform {
+  height: 44px;
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.v3-waveform i {
+  width: 3px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(#19c987, #11b7c5);
+  animation: v3-wave 620ms ease-in-out infinite alternate;
+}
+
+.v3-waveform i:nth-child(2n) { height: 24px; animation-delay: 90ms; }
+.v3-waveform i:nth-child(3n) { height: 36px; animation-delay: 160ms; }
+.v3-waveform i:nth-child(5n) { height: 18px; animation-delay: 250ms; }
+
+@keyframes v3-wave {
+  from { transform: scaleY(.48); opacity: .68; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+.v3-recent-list {
+  align-self: stretch;
+  padding-left: 20px;
+  border-left: 1px solid rgba(33,83,101,.10);
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.v3-recent-heading {
+  margin-bottom: 2px;
+  color: #516e7e;
+  font-size: .63rem;
+  font-weight: 840;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.v3-recent-track {
+  display: grid;
+  grid-template-columns: 40px minmax(0,1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 11px;
+}
+
+.v3-recent-track:hover {
+  background: rgba(235,247,248,.78);
+}
+
+.v3-recent-artwork,
+.v3-recent-track .track-artwork {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+}
+
+.v3-recent-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.v3-recent-copy strong,
+.v3-recent-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.v3-recent-copy strong {
+  color: var(--v3-navy);
+  font-size: .75rem;
+}
+
+.v3-recent-copy span,
+.v3-recent-time {
+  color: #758993;
+  font-size: .65rem;
+}
+
+.spotify-footer {
+  position: relative;
+  z-index: 3;
+  border-top: 1px solid rgba(33,83,101,.08);
+  color: #71858f;
+}
+
+/* Recent Drives / Flight Recorder */
+.v3-flight-recorder {
+  margin-top: 16px;
+  padding: 24px 28px 26px;
+}
+
+.drives-heading {
+  margin-bottom: 13px;
+}
+
+.text-button {
+  color: #058aa4;
+}
+
+.dashboard-drive-card {
+  grid-template-columns: minmax(0,1fr) 90px 90px 46px !important;
+  align-items: center !important;
+  padding: 15px 16px;
+  border-radius: 16px;
+  box-shadow: none;
+  background: rgba(255,255,255,.60);
+}
+
+.dashboard-drive-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(12,169,191,.22);
+  box-shadow: 0 8px 20px rgba(47,84,99,.07);
+}
+
+.dashboard-drive-card .drive-main {
+  grid-column: auto !important;
+  grid-template-columns: 125px minmax(0,1fr) !important;
+  gap: 18px !important;
+  align-items: center !important;
+}
+
+.dashboard-drive-card .drive-main-heading strong {
+  color: var(--v3-navy);
+  font-size: .88rem;
+}
+
+.dashboard-drive-card .drive-main-heading span {
+  color: #6c818c;
+  font-size: .72rem;
+}
+
+.dashboard-route-addresses {
+  padding: 0;
+  border: 0;
+  background: transparent !important;
+  gap: 5px;
+}
+
+.dashboard-route-address {
+  grid-template-columns: 42px minmax(0,1fr);
+  gap: 6px;
+}
+
+.dashboard-route-label {
+  color: #0d9daf;
+  font-size: .56rem !important;
+}
+
+.dashboard-route-value {
+  color: #38596a !important;
+  font-size: .68rem !important;
+  line-height: 1.3;
+}
+
+.dashboard-route-connector {
+  display: none;
+}
+
+.dashboard-drive-card .drive-stat {
+  text-align: center;
+}
+
+.dashboard-drive-card .drive-stat span {
+  color: #7a8d96;
+  font-size: .61rem;
+}
+
+.dashboard-drive-card .drive-stat strong {
+  color: var(--v3-navy);
+  font-size: .82rem;
+}
+
+.dashboard-drive-card .dashboard-secondary-stat {
+  display: none;
+}
+
+.v3-drive-play {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px;
+  padding: 0 !important;
+  display: grid;
+  place-items: center;
+  border-radius: 50% !important;
+  border: 1px solid rgba(9,169,191,.18) !important;
+  background: white !important;
+  color: #079db2 !important;
+  font-size: .7rem !important;
+  box-shadow: 0 5px 15px rgba(35,82,99,.08);
+}
+
+/* Intelligence status chips become white system cards */
+.v3-intelligence-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.v3-intelligence-grid .stat-card {
+  position: relative;
+  min-height: 86px;
+  padding: 18px 19px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.v3-intelligence-grid .stat-card::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 68%;
+  height: 2px;
+  background: linear-gradient(90deg, #11b3c5, #1bd191, transparent);
+}
+
+.v3-intelligence-grid .stat-card span {
+  color: #667e89;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .62rem;
+}
+
+.v3-intelligence-grid .stat-card strong {
+  color: var(--v3-navy);
+  margin-top: 7px;
+  font-size: .95rem;
+}
+
+/* All secondary app pages inherit the new visual system */
+.page-heading h2,
+.analytics-panel h2,
+.timeline-panel h2,
+.modal-card h2 {
+  color: var(--v3-navy);
+}
+
+.page-heading p {
+  color: #718791;
+}
+
+.primary-button {
+  border: 0;
+  background: linear-gradient(135deg, #0da6bd, #13c99a) !important;
+  color: white !important;
+  box-shadow: 0 9px 22px rgba(13,166,189,.18);
+}
+
+.secondary-button,
+.view-drive-button,
+.replay-icon-button {
+  background: rgba(255,255,255,.84) !important;
+  border-color: rgba(33,83,101,.12) !important;
+  color: var(--v3-navy) !important;
+}
+
+.drive-search-panel,
+.favorite-routes-panel,
+.music-location-panel,
+.analytics-panel,
+.timeline-panel {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.91), rgba(245,251,252,.74)) !important;
+}
+
+.drive-search-box,
+.drive-filter-field input,
+.drive-filter-field select,
+.music-location-search,
+.music-location-window select,
+.map-music-nearby-actions select {
+  border-color: rgba(33,83,101,.11) !important;
+  background: rgba(255,255,255,.88) !important;
+}
+
+.drive-search-box:focus-within,
+.music-location-search:focus-within {
+  border-color: rgba(9,169,191,.35) !important;
+  box-shadow: 0 0 0 4px rgba(9,169,191,.06) !important;
+}
+
+.modal-backdrop {
+  background: rgba(31,55,66,.32) !important;
+  backdrop-filter: blur(9px);
+}
+
+.modal-card {
+  border-color: rgba(33,83,101,.12);
+  background: rgba(248,252,253,.97) !important;
+}
+
+.drive-map {
+  border-color: rgba(33,83,101,.11);
+  background: #eaf3f5;
+}
+
+/* Dark option: same v3 geometry, darker electric glass palette */
+:root[data-theme="dark"] {
+  --bg: #071219;
+  --panel: rgba(14,28,36,.91);
+  --panel-2: rgba(10,22,30,.96);
+  --line: rgba(131,219,226,.10);
+  --text: #eef8fa;
+  --muted: #7e9aa6;
+  --soft: #b0c8d1;
+  --accent: #24c4d2;
+  --accent-2: #3ed7a1;
+  --v3-navy: #eff9fb;
+  --v3-navy-2: #bed6df;
+  --v3-border: rgba(120,218,224,.11);
+  --v3-glass: rgba(13,30,39,.76);
+  --v3-glass-strong: rgba(12,29,38,.91);
+}
+
+:root[data-theme="dark"],
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(circle at 75% -10%, rgba(26,205,190,.13), transparent 34rem),
+    radial-gradient(circle at -5% 20%, rgba(17,145,190,.14), transparent 35rem),
+    #071219;
+}
+
+:root[data-theme="dark"] .topbar,
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .stat-card,
+:root[data-theme="dark"] .drive-card,
+:root[data-theme="dark"] .favorite-route-card {
+  background:
+    linear-gradient(145deg, rgba(18,38,48,.92), rgba(11,27,36,.84));
+}
+
+:root[data-theme="dark"] .topbar-right,
+:root[data-theme="dark"] .dashboard-drive-card,
+:root[data-theme="dark"] .v3-recent-track:hover {
+  background: rgba(21,42,52,.72) !important;
+}
+
+:root[data-theme="dark"] .nav-button.active,
+:root[data-theme="dark"] .theme-choice.active,
+:root[data-theme="dark"] .v3-drive-play {
+  background: rgba(31,55,66,.96) !important;
+}
+
+:root[data-theme="dark"] .vehicle-car-art {
+  opacity: .88;
+}
+
+:root[data-theme="dark"] .vehicle-panel::before {
+  background: radial-gradient(circle at 65% 42%, rgba(35,205,196,.09), transparent 22rem);
+}
+
+:root[data-theme="dark"] .battery-track {
+  background: rgba(255,255,255,.08);
+}
+
+:root[data-theme="dark"] .dashboard-route-value,
+:root[data-theme="dark"] .v3-featured-artist,
+:root[data-theme="dark"] .v3-recent-copy span,
+:root[data-theme="dark"] .v3-recent-time {
+  color: #8ba5b0 !important;
+}
+
+@media (max-width: 1150px) {
+  .topbar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .topbar-right {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+    justify-content: flex-end;
+  }
+
+  .v3-now-playing {
+    grid-template-columns: 120px minmax(0,1fr);
+  }
+
+  .v3-featured-artwork,
+  .v3-featured-art .track-artwork {
+    width: 120px !important;
+    height: 120px !important;
+  }
+
+  .v3-recent-list {
+    grid-column: 1 / -1;
+    border-left: 0;
+    border-top: 1px solid rgba(33,83,101,.10);
+    padding: 12px 0 0;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .v3-recent-heading {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vehicle-panel,
+  .spotify-panel {
+    min-height: auto;
+  }
+
+  .dashboard-drive-card {
+    grid-template-columns: 1fr 80px 80px 40px !important;
+  }
+
+  .v3-intelligence-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-shell {
+    width: min(100% - 14px, 100%);
+  }
+
+  .topbar {
+    position: relative;
+    top: auto;
+    padding: 10px;
+  }
+
+  .brand-logo {
+    width: 42px;
+    height: 42px;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+  }
+
+  .main-nav {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: space-between;
+    order: 3;
+  }
+
+  .nav-button {
+    flex: 1;
+    padding: 11px 7px;
+    font-size: .75rem;
+  }
+
+  .topbar-right {
+    display: none;
+  }
+
+  .vehicle-hero-visual {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: 100%;
+    height: 190px;
+    margin-top: -8px;
+  }
+
+  .battery-wrap {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .v3-now-playing {
+    grid-template-columns: 90px 1fr;
+  }
+
+  .v3-featured-artwork,
+  .v3-featured-art .track-artwork {
+    width: 90px !important;
+    height: 90px !important;
+  }
+
+  .v3-recent-list {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-drive-card {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px;
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .v3-drive-play {
+    justify-self: end;
+  }
+
+  .v3-intelligence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+.vehicle-car-model3 {
+  width: 102%;
+  right: -4%;
+}
+
+.vehicle-car-model3 text {
+  paint-order: stroke;
+  stroke: rgba(255,255,255,.24);
+  stroke-width: .4px;
+}
+
+
+/* DriveOS 3.0.2 - new-computer Spotify recovery */
+.spotify-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.spotify-archive-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  align-items: center;
+}
+
+.spotify-connect-button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: .75rem;
+}
+
+.spotify-connect-button[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 700px) {
+  .spotify-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .spotify-connect-button {
+    width: 100%;
+  }
+}
+
+
+/* =====================================================================
+   DRIVEOS 3.0.3 - DASHBOARD COMPOSITION + INTERACTION POLISH
+   ===================================================================== */
+
+.drive-card[data-drive-card-id] {
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.drive-card[data-drive-card-id]:hover {
+  transform: translateY(-2px);
+  border-color: rgba(9,169,191,.28);
+  box-shadow: 0 12px 28px rgba(47,84,99,.10);
+  background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(241,250,251,.88));
+}
+
+.drive-card[data-drive-card-id]:focus-visible {
+  outline: 3px solid rgba(10,176,194,.22);
+  outline-offset: 3px;
+  border-color: rgba(9,169,191,.42);
+}
+
+:root[data-theme="dark"] .drive-card[data-drive-card-id]:hover {
+  background: linear-gradient(145deg, rgba(22,47,58,.98), rgba(13,34,43,.94));
+}
+
+.hero-grid {
+  align-items: stretch;
+}
+
+.vehicle-panel,
+.spotify-panel {
+  min-width: 0;
+  min-height: 440px;
+  overflow: hidden;
+}
+
+.vehicle-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.vehicle-panel::before {
+  background:
+    radial-gradient(circle at 74% 35%, rgba(31,205,193,.12), transparent 20rem),
+    linear-gradient(135deg, rgba(255,255,255,.38), transparent 55%);
+}
+
+.vehicle-dashboard-main {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(155px, .72fr) minmax(300px, 1.55fr);
+  gap: 18px;
+  align-items: center;
+  min-height: 245px;
+  margin-top: 5px;
+}
+
+.vehicle-charge-summary {
+  min-width: 0;
+  padding: 10px 0 10px 2px;
+}
+
+.vehicle-model-label {
+  margin-bottom: 9px;
+  color: #66818d;
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.vehicle-charge-summary .battery-wrap {
+  width: 100% !important;
+  padding: 0 !important;
+}
+
+.vehicle-charge-summary .battery-number {
+  font-size: clamp(3.8rem, 6vw, 5.5rem);
+  line-height: .95;
+}
+
+.vehicle-charge-summary .battery-track {
+  margin-top: 19px;
+}
+
+.vehicle-charge-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  color: #748892;
+  font-size: .65rem;
+}
+
+.vehicle-charge-caption strong {
+  color: #315466;
+  font-weight: 700;
+}
+
+.vehicle-hero-visual {
+  position: relative !important;
+  inset: auto !important;
+  width: 100% !important;
+  height: 235px !important;
+  overflow: hidden;
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 58% 78%, rgba(80,223,198,.15), transparent 40%),
+    linear-gradient(180deg, rgba(239,248,250,.18), rgba(224,241,244,.48));
+}
+
+.vehicle-horizon {
+  position: absolute;
+  left: 6%;
+  right: 4%;
+  bottom: 45px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(66,129,143,.17), transparent);
+}
+
+.vehicle-route-sweep {
+  position: absolute;
+  bottom: -30px;
+  height: 92px;
+  width: 70%;
+  border-top: 3px solid rgba(18,198,202,.34);
+  border-radius: 50%;
+  filter: drop-shadow(0 0 9px rgba(20,204,194,.18));
+}
+
+.vehicle-route-sweep-a {
+  left: -3%;
+  transform: rotate(7deg);
+}
+
+.vehicle-route-sweep-b {
+  right: -8%;
+  bottom: -11px;
+  opacity: .62;
+  transform: rotate(-5deg);
+}
+
+.vehicle-car-art.vehicle-car-model3 {
+  position: absolute;
+  left: 50%;
+  right: auto !important;
+  bottom: 2px;
+  width: min(100%, 620px) !important;
+  max-height: 225px;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 19px 18px rgba(41,72,83,.16));
+}
+
+.vehicle-route-lines,
+.vehicle-route-beam,
+.vehicle-skyline {
+  display: none !important;
+}
+
+.vehicle-panel .metric-grid {
+  position: relative;
+  z-index: 4;
+  width: 100%;
+  margin-top: auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255,255,255,.44);
+}
+
+.vehicle-panel .metric {
+  min-width: 0;
+  padding: 13px 12px;
+}
+
+.vehicle-panel .metric strong,
+.vehicle-panel .metric-label {
+  overflow-wrap: anywhere;
+}
+
+.vehicle-panel .vehicle-footer {
+  width: 100%;
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(33,83,101,.08);
+}
+
+.spotify-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.spotify-panel .track-list {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.v3-now-playing {
+  grid-template-columns: minmax(105px, 135px) minmax(135px, .9fr) minmax(165px, 1.05fr) !important;
+  gap: 16px !important;
+  min-width: 0;
+  min-height: 235px;
+}
+
+.v3-featured-art,
+.v3-featured-copy,
+.v3-recent-list {
+  min-width: 0;
+}
+
+.v3-featured-artwork,
+.v3-featured-art .track-artwork {
+  width: 100% !important;
+  max-width: 135px !important;
+  aspect-ratio: 1;
+  height: auto !important;
+}
+
+.v3-featured-title,
+.v3-featured-artist {
+  overflow-wrap: anywhere;
+}
+
+.v3-recent-list {
+  max-height: 235px;
+  overflow: hidden;
+}
+
+.dashboard-drive-card {
+  grid-template-columns: minmax(0,1fr) 82px 82px 38px !important;
+  column-gap: 12px !important;
+  min-height: 88px;
+}
+
+.dashboard-drive-card .drive-main {
+  grid-template-columns: 112px minmax(0,1fr) !important;
+  min-width: 0;
+}
+
+.dashboard-route-value {
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+}
+
+.v3-drive-play {
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.v3-drive-play:hover {
+  transform: scale(1.07);
+}
+
+:root[data-theme="dark"] .vehicle-hero-visual {
+  background:
+    radial-gradient(ellipse at 58% 78%, rgba(45,211,182,.10), transparent 42%),
+    linear-gradient(180deg, rgba(17,37,47,.32), rgba(12,30,38,.65));
+}
+
+:root[data-theme="dark"] .vehicle-charge-caption strong {
+  color: #a9c4ce;
+}
+
+@media (max-width: 1180px) {
+  .vehicle-dashboard-main {
+    grid-template-columns: minmax(145px,.65fr) minmax(250px,1.35fr);
+  }
+
+  .v3-now-playing {
+    grid-template-columns: 110px minmax(0,1fr) !important;
+  }
+
+  .v3-recent-list {
+    grid-column: 1 / -1;
+    max-height: 120px;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+}
+
+@media (max-width: 900px) {
+  .vehicle-panel,
+  .spotify-panel {
+    min-height: auto;
+  }
+
+  .vehicle-dashboard-main {
+    grid-template-columns: 170px minmax(0,1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .vehicle-dashboard-main {
+    grid-template-columns: 1fr;
+  }
+
+  .vehicle-charge-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: end;
+    gap: 12px;
+  }
+
+  .vehicle-model-label {
+    grid-column: 1 / -1;
+  }
+
+  .vehicle-charge-caption {
+    display: grid;
+    align-self: center;
+  }
+
+  .vehicle-hero-visual {
+    height: 205px !important;
+  }
+
+  .vehicle-panel .metric-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .v3-now-playing {
+    grid-template-columns: 86px minmax(0,1fr) !important;
+  }
+
+  .v3-recent-list {
+    grid-template-columns: 1fr;
+    max-height: 145px;
+  }
+
+  .dashboard-drive-card {
+    grid-template-columns: 1fr 1fr 36px !important;
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
+/* DriveOS 3.0.4 HD dashboard hero */
+.vehicle-hero-visual {
+  height: 255px !important;
+  background:
+    radial-gradient(ellipse at 58% 78%, rgba(80,223,198,.15), transparent 40%),
+    linear-gradient(180deg, rgba(247,251,252,.92), rgba(230,241,244,.96));
+}
+
+.vehicle-car-art.vehicle-car-model3.vehicle-car-photo {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(100%, 660px) !important;
+  max-height: none;
+  height: auto;
+  transform: translateX(-50%);
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 20px 24px rgba(41,72,83,.18));
+  image-rendering: auto;
+}
+
+.vehicle-route-sweep {
+  height: 108px;
+  border-top-width: 4px;
+  opacity: .92;
+}
+
+.vehicle-horizon {
+  bottom: 40px;
+}
+
+:root[data-theme="dark"] .vehicle-hero-visual {
+  background:
+    radial-gradient(ellipse at 58% 78%, rgba(80,223,198,.18), transparent 40%),
+    linear-gradient(180deg, rgba(28,43,51,.95), rgba(17,28,35,.96));
+}
+
+:root[data-theme="dark"] .vehicle-car-art.vehicle-car-model3.vehicle-car-photo {
+  filter: drop-shadow(0 24px 28px rgba(0,0,0,.34));
+}
+
+
+/* =====================================================================
+   DriveOS 3.1 - Private Mobile PWA
+   ===================================================================== */
+
+.pwa-install-banner {
+  position: sticky;
+  top: 0;
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+  border-bottom: 1px solid rgba(33,83,101,.10);
+  background: rgba(248,252,253,.94);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  box-shadow: 0 8px 28px rgba(42,76,88,.08);
+}
+
+.pwa-install-banner[hidden],
+.standalone-pwa .pwa-install-banner {
+  display: none !important;
+}
+
+.pwa-install-banner strong,
+.pwa-install-banner span {
+  display: block;
+}
+
+.pwa-install-banner strong {
+  color: var(--v3-navy);
+  font-size: .78rem;
+}
+
+.pwa-install-banner span {
+  margin-top: 2px;
+  color: #6d838e;
+  font-size: .69rem;
+}
+
+.pwa-install-banner button {
+  min-width: 42px;
+  min-height: 42px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(232,243,246,.9);
+  color: #52707f;
+  font-size: 1.25rem;
+}
+
+:root[data-theme="dark"] .pwa-install-banner {
+  border-bottom-color: rgba(120,218,224,.10);
+  background: rgba(9,22,29,.95);
+}
+
+:root[data-theme="dark"] .pwa-install-banner span {
+  color: #8ba5b0;
+}
+
+:root[data-theme="dark"] .pwa-install-banner button {
+  background: rgba(31,55,66,.9);
+  color: #b8cbd3;
+}
+
+@media (max-width: 760px) {
+  html {
+    background: var(--bg);
+  }
+
+  body {
+    min-height: 100dvh;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+  }
+
+  .app-shell {
+    width: 100% !important;
+    margin: 0 !important;
+    padding:
+      max(8px, env(safe-area-inset-top))
+      10px
+      calc(88px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .topbar {
+    position: relative !important;
+    top: auto !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    min-height: 62px !important;
+    padding: 8px 10px !important;
+    margin-bottom: 10px !important;
+    border-radius: 18px !important;
+  }
+
+  .brand {
+    gap: 8px !important;
+    min-width: 0;
+  }
+
+  .brand-logo {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 12px !important;
+  }
+
+  .brand-copy {
+    min-width: 0;
+  }
+
+  .brand-copy .eyebrow {
+    display: none !important;
+  }
+
+  h1 {
+    font-size: 1.35rem !important;
+    letter-spacing: .08em !important;
+    white-space: nowrap;
+  }
+
+  .topbar-right {
+    display: flex !important;
+    margin-left: auto;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  .topbar-right .app-version,
+  .topbar-right .theme-switcher,
+  .topbar-right .date-time {
+    display: none !important;
+  }
+
+  .status-pill {
+    min-height: 38px;
+    padding: 7px 10px !important;
+    font-size: .61rem !important;
+    letter-spacing: .04em !important;
+    background: rgba(255,255,255,.76) !important;
+  }
+
+  :root[data-theme="dark"] .status-pill {
+    background: rgba(24,45,55,.86) !important;
+  }
+
+  .main-nav {
+    position: fixed !important;
+    z-index: 450 !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+    gap: 4px !important;
+    padding: 5px !important;
+    border: 1px solid rgba(33,83,101,.12) !important;
+    border-radius: 19px !important;
+    background: rgba(249,252,253,.90) !important;
+    box-shadow: 0 16px 46px rgba(39,74,88,.16) !important;
+    backdrop-filter: blur(24px) saturate(1.25) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(1.25) !important;
+  }
+
+  :root[data-theme="dark"] .main-nav {
+    border-color: rgba(120,218,224,.12) !important;
+    background: rgba(9,22,29,.92) !important;
+    box-shadow: 0 16px 46px rgba(0,0,0,.38) !important;
+  }
+
+  .nav-button {
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 8px 4px !important;
+    border-radius: 14px !important;
+    font-size: .70rem !important;
+    touch-action: manipulation;
+  }
+
+  .nav-button.active::after {
+    bottom: 4px !important;
+  }
+
+  .hero-grid,
+  .analytics-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .vehicle-panel,
+  .spotify-panel,
+  .drives-panel,
+  .analytics-panel,
+  .timeline-panel,
+  .future-panel,
+  .drive-search-panel,
+  .favorite-routes-panel,
+  .music-location-panel {
+    padding: 17px !important;
+    border-radius: 18px !important;
+  }
+
+  .vehicle-dashboard-main {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+    gap: 8px !important;
+  }
+
+  .vehicle-charge-summary {
+    padding-bottom: 0 !important;
+  }
+
+  .vehicle-charge-summary .battery-number {
+    font-size: 4rem !important;
+  }
+
+  .vehicle-hero-visual {
+    height: 205px !important;
+  }
+
+  .vehicle-car-art.vehicle-car-model3.vehicle-car-photo {
+    width: min(112%, 610px) !important;
+  }
+
+  .vehicle-panel .metric-grid,
+  .metric-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .v3-now-playing {
+    grid-template-columns: 86px minmax(0,1fr) !important;
+    gap: 13px !important;
+  }
+
+  .v3-featured-artwork,
+  .v3-featured-art .track-artwork {
+    width: 86px !important;
+    height: 86px !important;
+  }
+
+  .v3-recent-list {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: 1fr !important;
+    padding: 12px 0 0 !important;
+    border-left: 0 !important;
+    border-top: 1px solid rgba(33,83,101,.10) !important;
+  }
+
+  .stats-grid,
+  .v3-intelligence-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .page-heading {
+    margin-bottom: 14px !important;
+    gap: 10px !important;
+  }
+
+  .page-heading h2 {
+    font-size: 1.8rem !important;
+  }
+
+  .page-heading .primary-button {
+    width: 100%;
+    min-height: 46px;
+  }
+
+  .drive-search-primary,
+  .drive-filter-grid,
+  .music-location-form {
+    grid-template-columns: 1fr !important;
+  }
+
+  .drive-filter-field input,
+  .drive-filter-field select,
+  .music-location-form input,
+  .music-location-form select {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .dashboard-drive-card {
+    grid-template-columns: 1fr 72px 72px 38px !important;
+    gap: 7px !important;
+    padding: 14px !important;
+  }
+
+  .dashboard-drive-card .drive-main {
+    grid-column: 1 / -1 !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .drive-card {
+    gap: 10px !important;
+    padding: 15px !important;
+    border-radius: 16px !important;
+  }
+
+  .view-drive-button,
+  .favorite-route-button,
+  .primary-button,
+  .secondary-button {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .modal {
+    z-index: 600 !important;
+  }
+
+  .modal-backdrop {
+    display: none !important;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    padding:
+      calc(62px + env(safe-area-inset-top))
+      12px
+      calc(24px + env(safe-area-inset-bottom)) !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-close {
+    position: fixed !important;
+    z-index: 650 !important;
+    top: calc(10px + env(safe-area-inset-top)) !important;
+    right: 12px !important;
+    width: 44px !important;
+    height: 44px !important;
+  }
+
+  .detail-metrics {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .drive-map {
+    height: min(50vh, 390px) !important;
+    border-radius: 14px !important;
+  }
+
+  .maplibregl-ctrl-group button {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .replay-now-playing {
+    grid-template-columns: 78px minmax(0,1fr) !important;
+    gap: 12px !important;
+  }
+
+  .replay-panel {
+    padding: 14px !important;
+    border-radius: 15px !important;
+  }
+
+  .replay-controls {
+    gap: 8px !important;
+  }
+
+  .replay-play-button {
+    min-width: 106px !important;
+    min-height: 46px !important;
+  }
+
+  .replay-icon-button {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .replay-scrubber {
+    height: 34px !important;
+  }
+
+  .soundtrack-row {
+    grid-template-columns: 58px minmax(0,1fr) !important;
+  }
+
+  footer {
+    padding-bottom: 6px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .brand-logo {
+    width: 39px !important;
+    height: 39px !important;
+  }
+
+  h1 {
+    font-size: 1.2rem !important;
+  }
+
+  .status-pill {
+    padding-inline: 8px !important;
+  }
+
+  .metric-grid,
+  .stats-grid,
+  .big-stats,
+  .v3-intelligence-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .vehicle-hero-visual {
+    height: 185px !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+  .app-shell {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .main-nav {
+    left: 18% !important;
+    right: 18% !important;
+  }
+
+  .modal-card {
+    padding-top: calc(52px + env(safe-area-inset-top)) !important;
+  }
+
+  .drive-map {
+    height: 72vh !important;
+  }
+}
+
+/* =====================================================================
+   DriveOS 3.1.1 - iPhone layout correction
+   ===================================================================== */
+@media (max-width: 760px) {
+  /* The drive-detail sheet must be opaque. Semi-transparent desktop glass
+     allowed metrics above the replay panel to ghost through while scrolling. */
+  .modal-card {
+    background: #f5fafb !important;
+  }
+
+  :root[data-theme="dark"] .modal-card {
+    background: #09171e !important;
+  }
+
+  .drive-map-section,
+  .replay-panel,
+  .soundtrack-list,
+  .soundtrack-header {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Replay header: artwork + track information on top, telemetry on its own
+     full-width row beneath. */
+  .replay-now-playing {
+    grid-template-columns: 82px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "art track"
+      "state state" !important;
+    gap: 13px 14px !important;
+    padding: 16px !important;
+    align-items: start !important;
+  }
+
+  .replay-artwork-link {
+    grid-area: art !important;
+    width: 82px !important;
+    height: 82px !important;
+  }
+
+  .replay-track-info {
+    grid-area: track !important;
+    min-width: 0 !important;
+  }
+
+  .replay-track-link strong {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.18 !important;
+    font-size: 1.08rem !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .replay-vehicle-state {
+    grid-area: state !important;
+    grid-column: auto !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    padding: 13px 0 0 !important;
+    margin-top: 2px !important;
+    border-top: 1px solid rgba(33,83,101,.10) !important;
+  }
+
+  .replay-vehicle-state div {
+    min-width: 0 !important;
+  }
+
+  .replay-vehicle-state strong {
+    white-space: normal !important;
+    font-size: .98rem !important;
+    line-height: 1.12 !important;
+  }
+
+  .replay-controls {
+    display: grid !important;
+    grid-template-columns: 52px minmax(0,1fr) auto !important;
+    grid-template-areas:
+      "restart play speed"
+      "scrubber scrubber scrubber" !important;
+    gap: 11px !important;
+    padding: 14px 16px 16px !important;
+    align-items: center !important;
+  }
+
+  .replay-icon-button {
+    grid-area: restart !important;
+    width: 52px !important;
+    height: 48px !important;
+  }
+
+  .replay-play-button {
+    grid-area: play !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 48px !important;
+    padding-inline: 10px !important;
+    white-space: nowrap !important;
+    font-size: .95rem !important;
+  }
+
+  .replay-speed-label {
+    grid-area: speed !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+  }
+
+  .replay-rate {
+    margin-left: 0 !important;
+    min-height: 44px !important;
+    font-size: 16px !important;
+  }
+
+  .replay-scrubber-wrap {
+    grid-area: scrubber !important;
+    grid-column: auto !important;
+    grid-row: auto !important;
+    min-width: 0 !important;
+    padding-top: 2px !important;
+  }
+
+  /* Soundtrack rows previously inherited a 3-child desktop grid but were
+     changed to two anonymous columns on mobile. Give every child an explicit
+     area so Safari cannot squeeze the song title into the time column. */
+  .soundtrack-list {
+    margin-top: 14px !important;
+  }
+
+  .soundtrack-row {
+    display: grid !important;
+    grid-template-columns: 64px minmax(0, 1fr) !important;
+    grid-template-areas:
+      "time time"
+      "art copy" !important;
+    column-gap: 14px !important;
+    row-gap: 8px !important;
+    align-items: start !important;
+    padding: 16px 0 !important;
+  }
+
+  .soundtrack-time {
+    grid-area: time !important;
+    padding: 0 !important;
+    font-size: .75rem !important;
+    color: #718792 !important;
+  }
+
+  .soundtrack-artwork {
+    grid-area: art !important;
+    width: 64px !important;
+    height: 64px !important;
+    border-radius: 12px !important;
+  }
+
+  .soundtrack-copy {
+    grid-area: copy !important;
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .soundtrack-title {
+    display: block !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+    line-height: 1.22 !important;
+    font-size: 1rem !important;
+  }
+
+  .soundtrack-number {
+    display: inline-grid !important;
+    vertical-align: 2px !important;
+    margin-right: 6px !important;
+  }
+
+  .soundtrack-artist,
+  .soundtrack-location {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: break-word !important;
+    line-height: 1.3 !important;
+  }
+
+  .soundtrack-location {
+    margin-top: 5px !important;
+    font-size: .73rem !important;
+  }
+
+  .soundtrack-spotify-link {
+    display: inline-flex !important;
+    margin-top: 9px !important;
+    line-height: 1.2 !important;
+  }
+
+  .soundtrack-header {
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .soundtrack-header .action-row {
+    display: grid !important;
+    grid-template-columns: minmax(0,.9fr) minmax(0,1.55fr) !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+
+  .soundtrack-header .action-row button {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-inline: 10px !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+  }
+
+  /* Dashboard Spotify and recent-drive text should wrap naturally rather than
+     inheriting desktop ellipsis behavior at iPhone widths. */
+  .v3-featured-copy,
+  .v3-recent-copy,
+  .dashboard-route-value,
+  .drive-main,
+  .drive-route {
+    min-width: 0 !important;
+  }
+
+  .v3-featured-title {
+    font-size: 1.18rem !important;
+    line-height: 1.18 !important;
+    overflow-wrap: break-word !important;
+  }
+
+  .v3-recent-copy strong,
+  .v3-recent-copy span {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.18 !important;
+  }
+
+  .dashboard-route-value {
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .replay-now-playing {
+    grid-template-columns: 72px minmax(0,1fr) !important;
+  }
+
+  .replay-artwork-link {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .replay-controls {
+    grid-template-columns: 48px minmax(0,1fr) auto !important;
+    gap: 8px !important;
+    padding-inline: 12px !important;
+  }
+
+  .replay-icon-button {
+    width: 48px !important;
+  }
+
+  .replay-play-button {
+    font-size: .88rem !important;
+    padding-inline: 8px !important;
+  }
+
+  .replay-speed-label {
+    font-size: 0 !important;
+    gap: 0 !important;
+  }
+
+  .replay-rate {
+    font-size: 16px !important;
+  }
+
+  .soundtrack-header .action-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.2 - mobile header + compact drive library
+   ===================================================================== */
+
+@media (max-width: 760px) {
+  /* Safari can clip position:fixed descendants of backdrop-filtered
+     containers. app.js portals the nav to <body>; these rules make that
+     independent nav the only mobile navigation surface. */
+  .main-nav.mobile-nav-portal {
+    position: fixed !important;
+    z-index: 900 !important;
+    top: auto !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: calc(8px + env(safe-area-inset-bottom)) !important;
+    width: auto !important;
+    max-width: none !important;
+    margin: 0 !important;
+    transform: none !important;
+    overflow: visible !important;
+  }
+
+  .topbar {
+    overflow: visible !important;
+    contain: none !important;
+    transform: none !important;
+    margin-top: 0 !important;
+  }
+
+  /* With the nav removed from the header, the top bar becomes a compact
+     DriveOS identity/status row instead of wasting vertical space. */
+  .topbar {
+    min-height: 58px !important;
+  }
+
+  .brand-logo {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  /* Compact Drive Library cards.
+     Desktop uses one grid item per metric. On mobile that creates a giant
+     vertical stack. Arrange the metrics in two columns instead. */
+  .drive-stack {
+    gap: 12px !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) {
+    position: relative;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 11px 16px !important;
+    align-items: start !important;
+    min-height: 0 !important;
+    padding: 17px 18px 18px !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) > .drive-main {
+    grid-column: 1 / -1 !important;
+    min-width: 0 !important;
+    padding-bottom: 5px !important;
+    border-bottom: 1px solid rgba(33,83,101,.08);
+  }
+
+  :root[data-theme="dark"] .drive-card:not(.dashboard-drive-card) > .drive-main {
+    border-bottom-color: rgba(120,218,224,.08);
+  }
+
+  .drive-card:not(.dashboard-drive-card) .drive-main-heading {
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) .drive-main-heading strong {
+    font-size: 1.04rem !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) .drive-main-heading span {
+    font-size: .78rem !important;
+    white-space: nowrap !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) .drive-route {
+    margin-top: 8px !important;
+    font-size: .78rem !important;
+    line-height: 1.38 !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) > .drive-stat {
+    min-width: 0 !important;
+    padding: 3px 0 !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) > .drive-stat span {
+    display: block !important;
+    margin-bottom: 3px !important;
+    font-size: .69rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) > .drive-stat strong {
+    margin-top: 0 !important;
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Energy is the fifth metric; let it share the final row cleanly instead
+     of stretching the entire card. */
+  .drive-card:not(.dashboard-drive-card) > .drive-stat:nth-child(6) {
+    grid-column: 1 / 2 !important;
+  }
+
+  /* The entire card is already clickable, so the desktop View drive button
+     is redundant on a phone and consumes a full extra row. */
+  .drive-card:not(.dashboard-drive-card) > .view-drive-button {
+    display: none !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card)::after {
+    content: "Tap for details";
+    grid-column: 2 / 3;
+    align-self: end;
+    justify-self: end;
+    padding: 5px 0 3px;
+    color: #079db2;
+    font-size: .68rem;
+    font-weight: 750;
+    letter-spacing: .01em;
+  }
+
+  :root[data-theme="dark"] .drive-card:not(.dashboard-drive-card)::after {
+    color: #45cad5;
+  }
+
+  /* Filter panel: retain comfortable controls but remove oversized vertical
+     gaps between fields. */
+  .drive-search-panel {
+    padding: 15px !important;
+  }
+
+  .drive-search-panel .drive-filter-grid {
+    gap: 11px !important;
+  }
+
+  .drive-filter-field {
+    gap: 5px !important;
+  }
+
+  .drive-filter-field input,
+  .drive-filter-field select {
+    min-height: 44px !important;
+  }
+
+  .drive-search-footer,
+  .drive-search-help {
+    margin-top: 10px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .drive-card:not(.dashboard-drive-card) {
+    gap: 10px 12px !important;
+    padding: 16px !important;
+  }
+
+  .drive-card:not(.dashboard-drive-card) .drive-main-heading {
+    display: grid !important;
+    justify-content: start !important;
+    gap: 3px !important;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.3 - city routes + Spotify mobile list fix
+   ===================================================================== */
+
+.dashboard-route-cities {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: #3c5e6f;
+  font-size: .73rem;
+  line-height: 1.25;
+}
+
+.dashboard-route-city {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-route-city-arrow {
+  flex: 0 0 auto;
+  color: #17bcae;
+  font-weight: 900;
+}
+
+:root[data-theme="dark"] .dashboard-route-cities {
+  color: #9ab2bc;
+}
+
+@media (max-width: 760px) {
+  /* Dashboard routes are intentionally city-only on mobile. This keeps
+     the route recognizable without forcing street addresses to wrap. */
+  .dashboard-route-cities {
+    margin-top: 8px !important;
+    gap: 7px !important;
+    font-size: .79rem !important;
+    font-weight: 650 !important;
+  }
+
+  .dashboard-route-city {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+  }
+
+  .dashboard-route-city-arrow {
+    font-size: .9rem !important;
+  }
+
+  /* The desktop Spotify list is capped and vertically centered. On an
+     iPhone that can clip the first recent song above the visible region. */
+  .v3-now-playing {
+    align-items: start !important;
+  }
+
+  .v3-recent-list {
+    max-height: none !important;
+    overflow: visible !important;
+    align-content: start !important;
+    align-self: auto !important;
+    margin-top: 18px !important;
+    padding-top: 14px !important;
+  }
+
+  .v3-recent-heading {
+    margin-bottom: 5px !important;
+  }
+
+  .v3-recent-track {
+    min-height: 55px !important;
+  }
+
+  /* Make sure nothing in the featured block visually overlaps the list. */
+  .v3-featured-art,
+  .v3-featured-copy {
+    align-self: start !important;
+  }
+
+  .v3-featured-time {
+    margin-bottom: 0 !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .dashboard-route-cities {
+    flex-wrap: nowrap !important;
+  }
+
+  .dashboard-route-city {
+    max-width: calc(50% - 18px);
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.4 - explicit light/dark surface separation
+   ===================================================================== */
+
+/* ---------- LIGHT THEME SURFACES ---------- */
+:root[data-theme="light"] .panel,
+:root[data-theme="light"] .stat-card,
+:root[data-theme="light"] .big-stat,
+:root[data-theme="light"] .drive-card,
+:root[data-theme="light"] .favorite-route-card,
+:root[data-theme="light"] .drive-search-panel,
+:root[data-theme="light"] .favorite-routes-panel,
+:root[data-theme="light"] .music-location-panel,
+:root[data-theme="light"] .analytics-panel,
+:root[data-theme="light"] .timeline-panel,
+:root[data-theme="light"] .future-panel,
+:root[data-theme="light"] .modal-card {
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.95), rgba(243,249,251,.88)) !important;
+  border-color: rgba(33,83,101,.12) !important;
+  color: #10283a !important;
+}
+
+:root[data-theme="light"] .drive-search-box,
+:root[data-theme="light"] .drive-filter-field input,
+:root[data-theme="light"] .drive-filter-field select,
+:root[data-theme="light"] .music-location-search,
+:root[data-theme="light"] .music-location-window select,
+:root[data-theme="light"] .map-music-nearby-actions select,
+:root[data-theme="light"] .replay-rate {
+  background: rgba(255,255,255,.96) !important;
+  border-color: rgba(33,83,101,.14) !important;
+  color: #10283a !important;
+}
+
+:root[data-theme="light"] .secondary-button,
+:root[data-theme="light"] .view-drive-button,
+:root[data-theme="light"] .favorite-route-button,
+:root[data-theme="light"] .replay-icon-button,
+:root[data-theme="light"] .drive-filter-reset {
+  background: rgba(255,255,255,.92) !important;
+  border-color: rgba(33,83,101,.14) !important;
+  color: #10283a !important;
+}
+
+:root[data-theme="light"] .metric-grid,
+:root[data-theme="light"] .detail-metric,
+:root[data-theme="light"] .replay-vehicle-state > div {
+  background: rgba(255,255,255,.56) !important;
+  border-color: rgba(33,83,101,.09) !important;
+}
+
+/* ---------- DARK THEME SURFACES ---------- */
+:root[data-theme="dark"] {
+  --dark-surface-0: #071219;
+  --dark-surface-1: #0b1c24;
+  --dark-surface-2: #102832;
+  --dark-surface-3: #163440;
+  --dark-border: rgba(105,205,215,.16);
+  --dark-border-strong: rgba(105,205,215,.24);
+  --dark-text: #edf8fa;
+  --dark-muted: #8da7b2;
+  --dark-soft: #bed1d8;
+}
+
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .stat-card,
+:root[data-theme="dark"] .big-stat,
+:root[data-theme="dark"] .drive-card,
+:root[data-theme="dark"] .favorite-route-card,
+:root[data-theme="dark"] .drive-search-panel,
+:root[data-theme="dark"] .favorite-routes-panel,
+:root[data-theme="dark"] .music-location-panel,
+:root[data-theme="dark"] .analytics-panel,
+:root[data-theme="dark"] .timeline-panel,
+:root[data-theme="dark"] .future-panel,
+:root[data-theme="dark"] .modal-card {
+  background:
+    linear-gradient(145deg, rgba(16,40,50,.98), rgba(8,25,33,.98)) !important;
+  border-color: var(--dark-border) !important;
+  color: var(--dark-text) !important;
+  box-shadow: 0 18px 46px rgba(0,0,0,.22) !important;
+}
+
+/* Cards nested inside a dark parent should still have visible separation. */
+:root[data-theme="dark"] .drive-card,
+:root[data-theme="dark"] .favorite-route-card,
+:root[data-theme="dark"] .stat-card,
+:root[data-theme="dark"] .big-stat {
+  background:
+    linear-gradient(145deg, rgba(21,50,61,.96), rgba(12,32,41,.98)) !important;
+}
+
+/* Inputs and filter controls are true dark controls in dark mode. */
+:root[data-theme="dark"] .drive-search-box,
+:root[data-theme="dark"] .drive-filter-field input,
+:root[data-theme="dark"] .drive-filter-field select,
+:root[data-theme="dark"] .music-location-search,
+:root[data-theme="dark"] .music-location-window select,
+:root[data-theme="dark"] .map-music-nearby-actions select,
+:root[data-theme="dark"] .replay-rate {
+  background: #0d222b !important;
+  border-color: var(--dark-border-strong) !important;
+  color: var(--dark-text) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .drive-search-box input,
+:root[data-theme="dark"] .music-location-search input {
+  color: var(--dark-text) !important;
+}
+
+:root[data-theme="dark"] input::placeholder,
+:root[data-theme="dark"] .drive-search-box input::placeholder,
+:root[data-theme="dark"] .music-location-search input::placeholder {
+  color: #6e8b97 !important;
+  opacity: 1 !important;
+}
+
+/* Native selects/options need their own dark palette. */
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] option {
+  background-color: #0d222b !important;
+  color: var(--dark-text) !important;
+}
+
+/* Secondary action surfaces */
+:root[data-theme="dark"] .secondary-button,
+:root[data-theme="dark"] .view-drive-button,
+:root[data-theme="dark"] .favorite-route-button,
+:root[data-theme="dark"] .replay-icon-button,
+:root[data-theme="dark"] .drive-filter-reset {
+  background: #17333e !important;
+  border-color: var(--dark-border-strong) !important;
+  color: var(--dark-text) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="dark"] .secondary-button:hover,
+:root[data-theme="dark"] .view-drive-button:hover,
+:root[data-theme="dark"] .favorite-route-button:hover,
+:root[data-theme="dark"] .replay-icon-button:hover,
+:root[data-theme="dark"] .drive-filter-reset:hover {
+  background: #1d424f !important;
+  border-color: rgba(80,220,213,.32) !important;
+}
+
+/* Vehicle metrics and other inset tiles */
+:root[data-theme="dark"] .metric-grid,
+:root[data-theme="dark"] .detail-metric,
+:root[data-theme="dark"] .replay-vehicle-state > div,
+:root[data-theme="dark"] .location-summary-grid > *,
+:root[data-theme="dark"] .map-music-nearby {
+  background: rgba(8,26,34,.76) !important;
+  border-color: var(--dark-border) !important;
+}
+
+:root[data-theme="dark"] .metric {
+  border-color: rgba(105,205,215,.10) !important;
+}
+
+/* Typography: prevent pale-on-pale inherited colors. */
+:root[data-theme="dark"] h1,
+:root[data-theme="dark"] h2,
+:root[data-theme="dark"] h3,
+:root[data-theme="dark"] .panel-heading h2,
+:root[data-theme="dark"] .page-heading h2,
+:root[data-theme="dark"] .drive-main-heading strong,
+:root[data-theme="dark"] .drive-stat strong,
+:root[data-theme="dark"] .favorite-route-copy strong,
+:root[data-theme="dark"] .rank-primary,
+:root[data-theme="dark"] .big-number,
+:root[data-theme="dark"] .big-stat strong,
+:root[data-theme="dark"] .stat-card strong,
+:root[data-theme="dark"] .track-title,
+:root[data-theme="dark"] .v3-featured-title,
+:root[data-theme="dark"] .v3-recent-copy strong {
+  color: var(--dark-text) !important;
+}
+
+:root[data-theme="dark"] .page-heading p,
+:root[data-theme="dark"] .panel-description,
+:root[data-theme="dark"] .drive-main-heading span,
+:root[data-theme="dark"] .drive-route,
+:root[data-theme="dark"] .drive-stat span,
+:root[data-theme="dark"] .favorite-route-meta,
+:root[data-theme="dark"] .favorite-route-last,
+:root[data-theme="dark"] .rank-secondary,
+:root[data-theme="dark"] .rank-count,
+:root[data-theme="dark"] .metric-label,
+:root[data-theme="dark"] .track-artist,
+:root[data-theme="dark"] .v3-featured-artist,
+:root[data-theme="dark"] .v3-recent-copy span,
+:root[data-theme="dark"] .v3-recent-time,
+:root[data-theme="dark"] .timeline-label,
+:root[data-theme="dark"] .timeline-count,
+:root[data-theme="dark"] .drive-search-help,
+:root[data-theme="dark"] .map-privacy,
+:root[data-theme="dark"] .music-location-status {
+  color: var(--dark-muted) !important;
+}
+
+/* Ranking/list separators */
+:root[data-theme="dark"] .rank-row,
+:root[data-theme="dark"] .track-rank-row,
+:root[data-theme="dark"] .v3-recent-track,
+:root[data-theme="dark"] .location-rank-row,
+:root[data-theme="dark"] .location-play-row {
+  border-color: rgba(105,205,215,.10) !important;
+}
+
+:root[data-theme="dark"] .v3-recent-track:hover,
+:root[data-theme="dark"] .rank-row:hover,
+:root[data-theme="dark"] .track-rank-row:hover {
+  background: rgba(28,62,73,.54) !important;
+}
+
+/* Timeline needs dark chart canvas rather than a light slab. */
+:root[data-theme="dark"] .timeline {
+  background: transparent !important;
+}
+
+:root[data-theme="dark"] .timeline-bar-wrap {
+  background: rgba(255,255,255,.055) !important;
+}
+
+:root[data-theme="dark"] .timeline-bar {
+  background: linear-gradient(180deg, #20d29f, #14b7cc) !important;
+}
+
+/* Favorite-route highlighted card should stay dark, not become a light card. */
+:root[data-theme="dark"] .favorite-route-card {
+  background:
+    linear-gradient(135deg, rgba(20,58,70,.98), rgba(12,38,48,.98)) !important;
+  border-color: rgba(54,202,201,.18) !important;
+}
+
+/* Maps retain their own map tiles; only surrounding controls are themed. */
+:root[data-theme="dark"] .map-music-nearby,
+:root[data-theme="dark"] .map-popup-track {
+  color: var(--dark-text) !important;
+}
+
+/* Mobile/PWA bottom navigation should follow the selected theme. */
+@media (max-width: 760px) {
+  :root[data-theme="light"] .main-nav.mobile-nav-portal {
+    background: rgba(249,252,253,.94) !important;
+    border-color: rgba(33,83,101,.12) !important;
+  }
+
+  :root[data-theme="dark"] .main-nav.mobile-nav-portal {
+    background: rgba(8,25,33,.96) !important;
+    border-color: var(--dark-border) !important;
+  }
+
+  :root[data-theme="dark"] .nav-button {
+    color: #87a4af !important;
+  }
+
+  :root[data-theme="dark"] .nav-button.active {
+    background: #173640 !important;
+    color: var(--dark-text) !important;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.5 - final dark-theme surface fixes
+   ===================================================================== */
+
+/* Theme-specific Model 3 artwork. Never tint the white car with CSS. */
+.vehicle-car-dark {
+  display: none !important;
+}
+
+:root[data-theme="light"] .vehicle-car-light {
+  display: block !important;
+}
+
+:root[data-theme="light"] .vehicle-car-dark {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .vehicle-car-light {
+  display: none !important;
+}
+
+:root[data-theme="dark"] .vehicle-car-dark {
+  display: block !important;
+}
+
+:root[data-theme="dark"] .vehicle-hero-visual {
+  background: #0a2029 !important;
+  border: 1px solid rgba(92,201,210,.10) !important;
+  box-shadow: inset 0 0 34px rgba(0,0,0,.18) !important;
+}
+
+:root[data-theme="dark"] .vehicle-car-art.vehicle-car-model3.vehicle-car-photo.vehicle-car-dark {
+  width: min(100%, 660px) !important;
+  height: 100% !important;
+  max-height: none !important;
+  object-fit: cover !important;
+  object-position: center center !important;
+  filter: none !important;
+  border-radius: inherit !important;
+}
+
+/* CONNECTED / disconnected state pill gets independent light/dark surfaces. */
+:root[data-theme="light"] .status-pill {
+  background: rgba(255,255,255,.88) !important;
+  border-color: rgba(25,201,135,.18) !important;
+  color: #244858 !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.35) !important;
+}
+
+:root[data-theme="dark"] .status-pill {
+  background: #0b232c !important;
+  border: 1px solid rgba(31,213,159,.42) !important;
+  color: #eaf9f7 !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(31,213,159,.06),
+    0 0 18px rgba(24,203,153,.06) !important;
+}
+
+:root[data-theme="dark"] .status-pill.ok {
+  background: linear-gradient(180deg, #0d2932, #0a2028) !important;
+  border-color: rgba(31,213,159,.52) !important;
+  color: #ecfffa !important;
+}
+
+:root[data-theme="dark"] .status-pill.bad {
+  background: linear-gradient(180deg, #332027, #26181e) !important;
+  border-color: rgba(236,91,102,.45) !important;
+  color: #ffecef !important;
+}
+
+:root[data-theme="dark"] .status-pill .status-dot {
+  box-shadow: 0 0 0 5px rgba(25,201,135,.08) !important;
+}
+
+:root[data-theme="dark"] .status-pill.ok .status-dot {
+  background: #20d39f !important;
+  box-shadow: 0 0 12px rgba(32,211,159,.55) !important;
+}
+
+:root[data-theme="dark"] .status-pill.bad .status-dot {
+  background: #ec5b66 !important;
+  box-shadow: 0 0 12px rgba(236,91,102,.4) !important;
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.6 - mobile replay telemetry correction
+   ===================================================================== */
+
+@media (max-width: 760px) {
+  /* Each telemetry cell owns its own horizontal space. Time gets a little
+     extra room because a full 12-hour clock string is the widest value. */
+  .replay-vehicle-state {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    align-items: start !important;
+  }
+
+  .replay-vehicle-state > div {
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Only the direct child span is the field label. The old broad selector
+     also styled #replaySpeed and #replayBattery inside <strong>. */
+  .replay-vehicle-state > div > span {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 0 5px !important;
+    color: var(--muted) !important;
+    font-size: .72rem !important;
+    line-height: 1.15 !important;
+    white-space: nowrap !important;
+  }
+
+  .replay-vehicle-state > div > strong {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    color: var(--text) !important;
+    font-size: 1rem !important;
+    line-height: 1.2 !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+  }
+
+  /* These are value spans, not labels. Keep the numeric value and unit
+     together as normal inline text. */
+  .replay-vehicle-state > div > strong > span {
+    display: inline !important;
+    width: auto !important;
+    margin: 0 !important;
+    color: inherit !important;
+    font: inherit !important;
+    line-height: inherit !important;
+    white-space: inherit !important;
+  }
+
+  #replayClock {
+    font-size: .94rem !important;
+  }
+
+  :root[data-theme="dark"] .replay-vehicle-state > div > strong {
+    color: var(--dark-text) !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .replay-vehicle-state {
+    grid-template-columns: minmax(0, 1.45fr) minmax(0, .9fr) minmax(0, .9fr) !important;
+    gap: 7px !important;
+  }
+
+  .replay-vehicle-state > div > strong {
+    font-size: .92rem !important;
+  }
+
+  #replayClock {
+    font-size: .86rem !important;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.1.7 - verified mobile replay telemetry layout
+   ===================================================================== */
+
+.replay-telemetry-cell {
+  min-width: 0;
+}
+
+.replay-telemetry-label {
+  display: block;
+}
+
+.replay-telemetry-value {
+  display: block;
+}
+
+.replay-telemetry-unit {
+  display: inline;
+}
+
+@media (max-width: 760px) {
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] {
+    display: grid !important;
+    grid-template-columns: minmax(118px, 1.45fr) minmax(72px, .9fr) minmax(66px, .8fr) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    padding: 14px 0 0 !important;
+    margin: 4px 0 0 !important;
+    align-items: start !important;
+    border-top: 1px solid rgba(33,83,101,.10) !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] > .replay-telemetry-cell {
+    display: block !important;
+    min-width: 0 !important;
+    width: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] .replay-telemetry-label {
+    display: block !important;
+    margin: 0 0 6px !important;
+    padding: 0 !important;
+    color: var(--muted) !important;
+    font-size: .72rem !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] .replay-telemetry-value {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: var(--text) !important;
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    line-height: 1.12 !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] .replay-telemetry-value > span {
+    display: inline !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    color: inherit !important;
+    font: inherit !important;
+    line-height: inherit !important;
+    white-space: nowrap !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] #replayClock {
+    font-size: .92rem !important;
+  }
+
+  :root[data-theme="dark"] .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] .replay-telemetry-value {
+    color: var(--dark-text) !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] {
+    grid-template-columns: minmax(110px, 1.5fr) minmax(65px, .85fr) minmax(60px, .75fr) !important;
+    gap: 8px !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] .replay-telemetry-value {
+    font-size: .92rem !important;
+  }
+
+  .replay-vehicle-state[data-replay-telemetry-build="3.1.7"] #replayClock {
+    font-size: .84rem !important;
+  }
+}
+
+
+/* =====================================================================
+   DriveOS 3.2 - Friendly Places, Charging History, Monthly Recap
+   ===================================================================== */
+
+.place-names-panel,
+.charging-panel,
+.monthly-recap-panel {
+  margin-top: 16px;
+}
+
+.place-names-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.place-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr);
+  gap: 18px;
+  align-items: center;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.38);
+}
+
+.place-name-copy,
+.place-name-edit { min-width: 0; }
+.place-name-copy { display: grid; gap: 3px; }
+.place-name-copy strong { color: var(--text); font-size: .9rem; }
+.place-name-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .72rem; }
+.place-name-copy small { color: var(--muted); font-size: .65rem; }
+
+.place-name-edit {
+  display: grid;
+  grid-template-columns: minmax(130px,1fr) auto auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.place-name-edit input,
+.charging-rate-control input,
+.recap-month-control select {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 0 11px;
+  font: inherit;
+}
+
+.charging-heading { align-items: end; }
+.charging-rate-editor { display: grid; grid-template-columns: auto auto auto; gap: 8px; align-items: end; }
+.charging-rate-editor > label { grid-column: 1 / -1; color: var(--muted); font-size: .68rem; }
+.charging-rate-control { display: flex; align-items: center; gap: 5px; color: var(--muted); }
+.charging-rate-control input { width: 105px; }
+
+.charging-summary-grid,
+.recap-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.charging-summary-grid > article,
+.recap-grid > article {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255,255,255,.42);
+}
+
+.charging-summary-grid span,
+.recap-grid > article > span,
+.recap-efficiency span {
+  display: block;
+  color: var(--muted);
+  font-size: .66rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.charging-summary-grid strong,
+.recap-grid strong,
+.recap-efficiency strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 1.1rem;
+}
+
+.charging-summary-grid small,
+.recap-grid small { color: var(--muted); font-size: .66rem; }
+
+.charging-history { display: grid; gap: 9px; margin-top: 14px; }
+.charge-session-card { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.34); }
+.charge-session-main { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
+.charge-session-main > div { min-width: 0; display: grid; gap: 3px; }
+.charge-session-main strong { color: var(--text); font-size: .88rem; }
+.charge-session-main span { color: var(--muted); font-size: .7rem; }
+.charge-kind { flex: 0 0 auto; padding: 5px 8px; border-radius: 999px; background: rgba(13,166,189,.09); color: #079db2 !important; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; font-size: .58rem !important; }
+.charge-kind.supercharger { background: rgba(25,201,135,.10); color: #159f70 !important; }
+.charge-session-metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--line); }
+.charge-session-metrics > div { min-width: 0; }
+.charge-session-metrics span { display: block; color: var(--muted); font-size: .63rem; }
+.charge-session-metrics strong { display: block; margin-top: 3px; color: var(--text); font-size: .8rem; }
+.charge-session-metrics small { color: var(--muted); font-size: .6rem; }
+
+.recap-heading { align-items: end; }
+.recap-month-control { display: grid; gap: 5px; color: var(--muted); font-size: .67rem; }
+.recap-month-control select { min-width: 160px; }
+.monthly-recap-content { margin-top: 16px; }
+.recap-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 20px; align-items: end; padding: 20px; border-radius: 17px; background: linear-gradient(135deg, rgba(11,169,190,.10), rgba(25,201,135,.10)); border: 1px solid rgba(13,166,189,.12); }
+.recap-hero > div:first-child { display: grid; gap: 4px; }
+.recap-hero > div:first-child span { color: var(--muted); font-size: .75rem; }
+.recap-hero > div:first-child strong { color: var(--text); font-size: 2.1rem; letter-spacing: -.05em; }
+.recap-hero > div:first-child small { color: var(--muted); }
+.recap-efficiency { text-align: right; }
+.recap-wide { grid-column: span 2; }
+
+:root[data-theme="dark"] .place-name-row,
+:root[data-theme="dark"] .charging-summary-grid > article,
+:root[data-theme="dark"] .charge-session-card,
+:root[data-theme="dark"] .recap-grid > article {
+  background: rgba(8,26,34,.72) !important;
+  border-color: var(--dark-border) !important;
+}
+:root[data-theme="dark"] .place-name-edit input,
+:root[data-theme="dark"] .charging-rate-control input,
+:root[data-theme="dark"] .recap-month-control select {
+  background: #0d222b !important;
+  border-color: var(--dark-border-strong) !important;
+  color: var(--dark-text) !important;
+}
+:root[data-theme="dark"] .recap-hero { background: linear-gradient(135deg, rgba(11,169,190,.14), rgba(25,201,135,.10)); border-color: var(--dark-border); }
+
+@media (max-width: 760px) {
+  .place-name-row { grid-template-columns: 1fr !important; gap: 10px !important; }
+  .place-name-copy span { white-space: normal !important; line-height: 1.35 !important; }
+  .place-name-edit { grid-template-columns: minmax(0,1fr) auto !important; }
+  .place-name-edit .text-button { grid-column: 1 / -1; justify-self: start; }
+  .place-name-edit input { font-size: 16px; }
+  .charging-heading, .recap-heading { align-items: stretch !important; }
+  .charging-rate-editor { grid-template-columns: minmax(0,1fr) auto !important; margin-top: 12px; }
+  .charging-rate-editor > label { grid-column: 1 / -1; }
+  .charging-rate-control input { width: 100% !important; font-size: 16px; }
+  .charging-summary-grid, .recap-grid { grid-template-columns: 1fr 1fr !important; }
+  .charge-session-metrics { grid-template-columns: 1fr 1fr !important; }
+  .charge-session-main { align-items: start; }
+  .recap-hero { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .recap-efficiency { text-align: left !important; }
+  .recap-wide { grid-column: 1 / -1 !important; }
+  .recap-month-control select { min-width: 0; width: 100%; font-size: 16px; }
+}

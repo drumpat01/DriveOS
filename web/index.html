@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DriveOS</title>
+  <meta name="theme-color" content="#eef6f8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="DriveOS">
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/styles.css?v=3.2.0">
+</head>
+<body>
+  <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
+    <div>
+      <strong>Add DriveOS to your iPhone</strong>
+      <span>In Safari, tap Share, then Add to Home Screen.</span>
+    </div>
+    <button id="pwaInstallDismiss" type="button" aria-label="Dismiss install instructions">&times;</button>
+  </div>
+  <div id="driveosIgnition" class="ignition" aria-hidden="true">
+    <div class="ignition-atmosphere ignition-atmosphere-a"></div>
+    <div class="ignition-atmosphere ignition-atmosphere-b"></div>
+
+    <svg class="ignition-route-field"
+         viewBox="0 0 1200 700"
+         preserveAspectRatio="xMidYMid slice"
+         aria-hidden="true">
+      <defs>
+        <linearGradient id="ignitionRouteGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#00a6cf"/>
+          <stop offset="52%" stop-color="#39d9be"/>
+          <stop offset="100%" stop-color="#93f0c4"/>
+        </linearGradient>
+        <filter id="ignitionRouteGlow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="7" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+
+      <path class="ignition-route ignition-route-glow"
+            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
+      <path class="ignition-route ignition-route-core"
+            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
+
+      <circle class="ignition-route-node ignition-route-node-a" cx="375" cy="395" r="7"/>
+      <circle class="ignition-route-node ignition-route-node-b" cx="705" cy="432" r="7"/>
+      <circle class="ignition-route-node ignition-route-node-c" cx="1010" cy="205" r="7"/>
+    </svg>
+
+    <div class="ignition-lockup">
+      <div class="ignition-logo-assembly" aria-hidden="true">
+        <div class="ignition-emblem-shell">
+          <div class="ignition-emblem-halo"></div>
+          <div class="ignition-piece ignition-emblem-ring"></div>
+
+          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-top"></div>
+          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-left"></div>
+          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-right"></div>
+
+          <div class="ignition-piece ignition-emblem-crest">
+            <span class="ignition-crest-wing ignition-crest-left"></span>
+            <span class="ignition-crest-wing ignition-crest-right"></span>
+            <span class="ignition-crest-stem"></span>
+          </div>
+
+          <div class="ignition-piece ignition-emblem-road">
+            <span class="ignition-road-lane"></span>
+          </div>
+        </div>
+
+        <div class="ignition-wordmark-lockup">
+          <div class="ignition-brand-line ignition-piece">
+            Personal Vehicle Intelligence
+          </div>
+
+          <div class="ignition-wordmark" aria-hidden="true">
+            <span class="ignition-word-drive ignition-piece">DRIVE</span><span class="ignition-word-os ignition-piece">OS</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="ignition-system-line">
+        <span class="ignition-system-dot"></span>
+        <span id="ignitionSystemText">INITIALIZING VEHICLE INTELLIGENCE</span>
+      </div>
+
+      <div class="ignition-progress">
+        <span class="ignition-progress-fill"></span>
+      </div>
+    </div>
+
+    <div class="ignition-data ignition-data-left">
+      <span>ROUTE CORE</span>
+      <strong>ONLINE</strong>
+    </div>
+
+    <div class="ignition-data ignition-data-right">
+      <span>DRIVEOS</span>
+      <strong>3.1</strong>
+    </div>
+  </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="/assets/driveos-logo-v3.png" alt="DriveOS logo">
+        <div class="brand-copy">
+          <div class="eyebrow">PERSONAL VEHICLE INTELLIGENCE</div>
+          <h1>DRIVE<span>OS</span></h1>
+        </div>
+      </div>
+
+      <nav class="main-nav" aria-label="DriveOS">
+        <button class="nav-button active" data-view="dashboard">Dashboard</button>
+        <button class="nav-button" data-view="drives">Drives</button>
+        <button class="nav-button" data-view="music">Music</button>
+        <button class="nav-button" data-view="statistics">Statistics</button>
+      </nav>
+
+      <div class="topbar-right">
+        <div class="app-version" title="Installed DriveOS web build">3.2</div>
+
+        <div class="theme-switcher" role="group" aria-label="Color theme">
+          <button id="themeDarkButton"
+                  class="theme-choice"
+                  type="button"
+                  data-theme-choice="dark"
+                  aria-pressed="false"
+                  title="Use dark theme">
+            <span class="theme-choice-icon" aria-hidden="true">&#x263E;</span>
+            <span class="theme-choice-label">Dark</span>
+          </button>
+          <button id="themeLightButton"
+                  class="theme-choice"
+                  type="button"
+                  data-theme-choice="light"
+                  aria-pressed="true"
+                  title="Use light theme">
+            <span class="theme-choice-icon" aria-hidden="true">&#x2600;</span>
+            <span class="theme-choice-label">Light</span>
+          </button>
+        </div>
+
+        <div id="dateTime" class="date-time"></div>
+        <div id="connectionPill" class="status-pill">
+          <span class="status-dot"></span>
+          <span id="connectionText">Connecting</span>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- DASHBOARD -->
+      <section id="view-dashboard" class="view active-view">
+        <section class="hero-grid">
+          <article class="panel vehicle-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="section-label">TESLA</div>
+                <h2 id="vehicleName">Eloise</h2>
+              </div>
+              <span id="vehicleState" class="mini-pill">--</span>
+            </div>
+
+            <div class="vehicle-dashboard-main">
+              <div class="vehicle-charge-summary">
+                <div class="vehicle-model-label">Model 3 &#xB7; White</div>
+                <div class="battery-wrap">
+                  <div class="battery-number">
+                    <span id="batteryValue">--</span><small>%</small>
+                  </div>
+                  <div class="battery-track"><div id="batteryFill" class="battery-fill"></div></div>
+                </div>
+                <div class="vehicle-charge-caption">
+                  <span>Battery</span>
+                  <strong>Live from Eloise</strong>
+                </div>
+              </div>
+
+              <div class="vehicle-hero-visual" aria-hidden="true">
+                <div class="vehicle-horizon"></div>
+                <div class="vehicle-route-sweep vehicle-route-sweep-a"></div>
+                <div class="vehicle-route-sweep vehicle-route-sweep-b"></div>
+                <img class="vehicle-car-art vehicle-car-model3 vehicle-car-photo vehicle-car-light" src="assets/dashboard-model3-rear-hd.png" alt="White Tesla Model 3 rear three-quarter view" loading="eager" decoding="async"/>
+                <img class="vehicle-car-art vehicle-car-model3 vehicle-car-photo vehicle-car-dark" src="assets/dashboard-model3-rear-dark-hd.jpg" alt="White Tesla Model 3 on a dark roadway" loading="eager" decoding="async"/>
+              </div>
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric">
+                <span class="metric-label">Rated range</span>
+                <strong><span id="rangeMiles">--</span> <small>mi</small></strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Charge limit</span>
+                <strong><span id="chargeLimit">--</span><small>%</small></strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Charging</span>
+                <strong id="chargingState">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Cabin</span>
+                <strong><span id="insideTemp">--</span><small>&#xB0;F</small></strong>
+              </div>
+            </div>
+
+            <div class="vehicle-footer">
+              <span>Outside <strong><span id="outsideTemp">--</span>&#xB0;F</strong></span>
+              <span id="vehicleRefresh">Waiting for Tesla&#x2026;</span>
+            </div>
+          </article>
+
+          <article class="panel spotify-panel">
+            <div class="panel-heading">
+              <div>
+                <div class="section-label spotify-label">SPOTIFY</div>
+                <h2>Now playing</h2>
+              </div>
+              <div class="music-icon spotify-wave-icon" aria-hidden="true"><span></span><span></span><span></span></div>
+            </div>
+
+            <div id="trackList" class="track-list">
+              <div class="skeleton-row"></div>
+              <div class="skeleton-row"></div>
+              <div class="skeleton-row"></div>
+            </div>
+
+            <div class="spotify-footer">
+              <div class="spotify-archive-status">
+                <span><strong id="archiveTotal">--</strong> plays archived</span>
+                <span id="archiveAdded">Checking history&#x2026;</span>
+              </div>
+              <button id="spotifyConnectButton" class="primary-button spotify-connect-button" type="button" hidden>Connect Spotify</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel drives-panel v3-flight-recorder">
+          <div class="panel-heading drives-heading">
+            <div>
+              <div class="section-label">FLIGHT RECORDER</div>
+              <h2>Recent drives</h2>
+            </div>
+            <button type="button" class="text-button" data-go-view="drives">View all drives &#x2192;</button>
+          </div>
+          <div id="dashboardDrives" class="drive-content"></div>
+        </section>
+
+        <section class="stats-grid v3-intelligence-grid">
+          <article class="stat-card"><span>DriveOS</span><strong id="driveOSStatus">ONLINE</strong></article>
+          <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
+          <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
+          <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
+        </section>
+      </section>
+
+      <!-- DRIVES -->
+      <section id="view-drives" class="view">
+        <div class="page-heading">
+          <div>
+            <div class="section-label">FLIGHT RECORDER</div>
+            <h2>Drive library</h2>
+            <p>Search your Tessie drives by date, address, destination, song, artist, distance, and drive metrics.</p>
+          </div>
+          <button id="refreshButton" class="primary-button" type="button">Refresh data</button>
+        </div>
+
+        <section class="drive-search-panel panel" aria-label="Drive library search">
+          <div class="drive-search-primary">
+            <label class="drive-search-box">
+              <span class="search-icon" aria-hidden="true">&#x2315;</span>
+              <input
+                id="driveSearchInput"
+                type="search"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Search date, destination, address, song, artist, album&#x2026;"
+                aria-label="Search drives">
+              <button id="driveSearchClear" class="search-clear-button" type="button" title="Clear search" aria-label="Clear drive search">&#xD7;</button>
+            </label>
+
+            <div id="driveSearchCount" class="drive-search-count">Loading drive library&#x2026;</div>
+          </div>
+
+          <div class="drive-filter-grid">
+            <label class="drive-filter-field">
+              <span>From</span>
+              <input id="driveDateFrom" type="date">
+            </label>
+
+            <label class="drive-filter-field">
+              <span>To</span>
+              <input id="driveDateTo" type="date">
+            </label>
+
+            <label class="drive-filter-field">
+              <span>Min miles</span>
+              <input id="driveMinMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
+            </label>
+
+            <label class="drive-filter-field">
+              <span>Max miles</span>
+              <input id="driveMaxMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
+            </label>
+
+            <label class="drive-filter-field">
+              <span>Soundtrack</span>
+              <select id="driveMusicFilter">
+                <option value="any">Any</option>
+                <option value="with">With music</option>
+                <option value="without">No music</option>
+              </select>
+            </label>
+
+            <label class="drive-filter-field drive-sort-field">
+              <span>Sort</span>
+              <select id="driveSort">
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="distance-desc">Longest distance</option>
+                <option value="distance-asc">Shortest distance</option>
+                <option value="duration-desc">Longest duration</option>
+                <option value="efficiency-asc">Best efficiency</option>
+              </select>
+            </label>
+
+            <button id="driveFiltersClear" class="secondary-button drive-filter-reset" type="button">Reset filters</button>
+          </div>
+
+          <div id="driveRouteFilterBar" class="route-filter-banner" hidden>
+            <span>Favorite route: <strong id="driveRouteFilterLabel"></strong></span>
+            <button id="driveRouteFilterClear" class="text-button" type="button">Clear route filter &#xD7;</button>
+          </div>
+
+          <div class="drive-search-help">
+            Searches full Tessie origin/destination addresses plus every matched Spotify track, artist, and album.
+          </div>
+        </section>
+
+        <section class="panel favorite-routes-panel" aria-labelledby="favoriteRoutesHeading">
+          <div class="panel-heading">
+            <div>
+              <div class="section-label">AUTOMATIC PATTERNS</div>
+              <h3 id="favoriteRoutesHeading">Favorite routes</h3>
+              <p class="panel-description">Repeated origin &#x2192; destination patterns detected from your Drive Library.</p>
+            </div>
+            <span id="favoriteRoutesStatus" class="muted">Analyzing routes&#x2026;</span>
+          </div>
+          <div id="favoriteRoutes" class="favorite-routes-grid"></div>
+        </section>
+
+
+        <section class="panel place-names-panel" aria-labelledby="placeNamesHeading">
+          <div class="panel-heading">
+            <div>
+              <div class="section-label">FRIENDLY PLACES</div>
+              <h3 id="placeNamesHeading">Name the places you drive</h3>
+              <p class="panel-description">Give repeated Tessie locations names such as Home, Work, School, or Gym. DriveOS keeps the original address for search and maps.</p>
+            </div>
+            <span id="placeNamesStatus" class="muted">Loading places&#x2026;</span>
+          </div>
+          <div id="placeNamesList" class="place-names-list"></div>
+        </section>
+
+        <section class="panel charging-panel" aria-labelledby="chargingHeading">
+          <div class="panel-heading charging-heading">
+            <div>
+              <div class="section-label">CHARGING HISTORY</div>
+              <h3 id="chargingHeading">Energy back into Eloise</h3>
+              <p class="panel-description">Tessie charging sessions with energy, battery gain, location and cost.</p>
+            </div>
+            <div class="charging-rate-editor">
+              <label for="electricityRateInput">Home rate</label>
+              <div class="charging-rate-control"><input id="electricityRateInput" type="number" min="0" max="200" step="0.01" inputmode="decimal" placeholder="e.g. 15.2"><span>&#xA2;/kWh</span></div>
+              <button id="saveElectricityRate" class="secondary-button" type="button">Save rate</button>
+            </div>
+          </div>
+          <div class="charging-summary-grid">
+            <article><span>30-day sessions</span><strong id="charge30Sessions">--</strong></article>
+            <article><span>Energy added</span><strong><span id="charge30Energy">--</span><small> kWh</small></strong></article>
+            <article><span>Known / estimated cost</span><strong id="charge30Cost">--</strong></article>
+            <article><span>Supercharger sessions</span><strong id="charge30Superchargers">--</strong></article>
+          </div>
+          <div id="chargingHistory" class="charging-history"></div>
+        </section>
+
+        <div id="allDrives" class="drive-stack"></div>
+      </section>
+
+      <!-- MUSIC -->
+      <section id="view-music" class="view">
+        <div class="page-heading">
+          <div>
+            <div class="section-label spotify-label">SPOTIFY ARCHIVE</div>
+            <h2>Music</h2>
+            <p>Your DriveOS listening archive grows each time the app refreshes Spotify.</p>
+          </div>
+          <div class="big-number"><span id="musicTotalPlays">--</span><small> archived plays</small></div>
+        </div>
+
+        <div class="analytics-grid">
+          <article class="panel analytics-panel">
+            <div class="panel-heading"><h3>Top tracks</h3><span class="muted">local archive</span></div>
+            <div id="topTracks" class="rank-list"></div>
+          </article>
+
+          <article class="panel analytics-panel">
+            <div class="panel-heading"><h3>Top artists</h3><span class="muted">artist credits</span></div>
+            <div id="topArtists" class="rank-list"></div>
+          </article>
+        </div>
+
+        <article class="panel music-location-panel">
+          <div class="panel-heading music-location-heading">
+            <div>
+              <div class="section-label spotify-label">MUSIC BY LOCATION</div>
+              <h3>What do you hear around a place?</h3>
+              <p class="panel-description">Search a city, neighborhood, street, or destination from Tessie drive locations.</p>
+            </div>
+          </div>
+
+          <form id="musicLocationForm" class="music-location-form">
+            <label class="music-location-search">
+              <span class="search-icon" aria-hidden="true">&#x2315;</span>
+              <input id="musicLocationQuery" type="search" autocomplete="off" spellcheck="false" placeholder="Try Arlington, East Lamar, home&#x2026;" aria-label="Search music by location">
+            </label>
+
+            <label class="music-location-window">
+              <span>Near start/end</span>
+              <select id="musicLocationMinutes">
+                <option value="10">10 min</option>
+                <option value="15" selected>15 min</option>
+                <option value="30">30 min</option>
+              </select>
+            </label>
+
+            <button class="primary-button" type="submit">Find music</button>
+          </form>
+
+          <div id="musicLocationStatus" class="music-location-status">
+            DriveOS uses Tessie start/end addresses for text searches. Click a drive map for GPS-precise song locations on that trip.
+          </div>
+
+          <div id="musicLocationResults" class="music-location-results"></div>
+        </article>
+
+        <article class="panel timeline-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="section-label">14 DAYS</div>
+              <h3>Listening timeline</h3>
+            </div>
+          </div>
+          <div id="musicTimeline" class="timeline"></div>
+        </article>
+      </section>
+
+      <!-- STATISTICS -->
+      <section id="view-statistics" class="view">
+        <div class="page-heading">
+          <div>
+            <div class="section-label">30 DAY WINDOW</div>
+            <h2>Statistics</h2>
+            <p>DriveOS will become more useful as Tessie records trips and the Spotify archive grows.</p>
+          </div>
+        </div>
+
+        <div class="big-stats">
+          <article class="big-stat"><span>Drives</span><strong id="statDriveCount">--</strong></article>
+          <article class="big-stat"><span>Miles</span><strong id="statMiles">--</strong></article>
+          <article class="big-stat"><span>Energy</span><strong><span id="statEnergy">--</span><small> kWh</small></strong></article>
+          <article class="big-stat"><span>Avg efficiency</span><strong><span id="statEfficiency">--</span><small> Wh/mi</small></strong></article>
+          <article class="big-stat"><span>Battery used</span><strong><span id="statBattery">--</span><small>%</small></strong></article>
+          <article class="big-stat"><span>Drive soundtrack plays</span><strong id="statSongs">--</strong></article>
+        </div>
+
+
+        <article class="panel monthly-recap-panel">
+          <div class="panel-heading recap-heading">
+            <div>
+              <div class="section-label">MONTHLY RECAP</div>
+              <h3>Your month in DriveOS</h3>
+              <p class="panel-description">Driving, charging and Spotify together in one summary.</p>
+            </div>
+            <label class="recap-month-control"><span>Month</span><select id="recapMonthSelect"></select></label>
+          </div>
+          <div id="monthlyRecap" class="monthly-recap-content"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer>
+      <span id="webBuildFooter">DriveOS Web 3.2.0</span>
+      <span>Local only &#xB7; 127.0.0.1</span>
+    </footer>
+  </div>
+
+  <!-- DRIVE DETAILS -->
+  <div id="driveModal" class="modal" aria-hidden="true">
+    <div class="modal-backdrop" data-close-modal></div>
+    <article class="modal-card">
+      <button class="modal-close" type="button" data-close-modal>&#xD7;</button>
+
+      <div class="section-label">DRIVE DETAILS</div>
+      <h2 id="modalDriveDate">Drive</h2>
+      <p id="modalDriveTime" class="modal-subtitle"></p>
+
+      <div id="modalMetrics" class="detail-metrics"></div>
+
+
+      <section class="drive-map-section">
+        <div class="map-heading">
+          <div>
+            <div class="section-label map-label">DRIVE MAP</div>
+            <h3>Route + song locations</h3>
+          </div>
+          <div id="driveMapStatus" class="map-status">Waiting for GPS&#x2026;</div>
+        </div>
+
+        <div id="driveMap" class="drive-map" aria-label="Interactive map of the selected drive"></div>
+
+        <div class="map-legend">
+          <span><i class="legend-line"></i> Eloise's recorded route</span>
+          <span><i class="legend-song">1</i> Song start</span>
+          <span><i class="legend-start"></i> Start</span>
+          <span><i class="legend-end"></i> End</span>
+          <span class="map-click-hint">Click anywhere on the map for nearby music</span>
+        </div>
+
+        <div id="mapMusicNearby" class="map-music-nearby" hidden>
+          <div class="map-music-nearby-heading">
+            <div>
+              <div class="section-label spotify-label">MUSIC NEAR THIS POINT</div>
+              <strong id="mapMusicNearbySummary">Select a point on the map</strong>
+            </div>
+            <div class="map-music-nearby-actions">
+              <label>Radius
+                <select id="mapMusicRadius">
+                  <option value="0.5">0.5 mi</option>
+                  <option value="1" selected>1 mi</option>
+                  <option value="2">2 mi</option>
+                  <option value="5">5 mi</option>
+                </select>
+              </label>
+              <button id="mapMusicNearbyClose" class="text-button" type="button">Close &#xD7;</button>
+            </div>
+          </div>
+          <div id="mapMusicNearbySongs" class="map-music-nearby-songs"></div>
+        </div>
+
+        <p class="map-privacy">
+          Route and song coordinates stay in your local DriveOS browser session.
+          OpenFreeMap supplies the basemap tiles underneath them.
+        </p>
+      </section>
+
+
+        <section id="driveReplay" class="replay-panel">
+          <div class="replay-now-playing">
+            <a id="replayArtworkLink" class="replay-artwork-link" href="#" target="_blank" rel="noopener noreferrer">
+              <div class="replay-artwork song-artwork-placeholder" aria-hidden="true">&#x266B;</div>
+            </a>
+
+            <div class="replay-track-info">
+              <div class="section-label spotify-label">NOW PLAYING</div>
+              <a id="replayTrackLink" class="replay-track-link" href="#" target="_blank" rel="noopener noreferrer">
+                <strong id="replayTrack">No song at this moment</strong>
+              </a>
+              <span id="replayArtist">&#x2014;</span>
+              <span id="replayAlbum" class="replay-album"></span>
+              <div class="replay-spotify-actions">
+                <a id="replayPlaySpotify" class="spotify-play-button" href="https://open.spotify.com/" target="_blank" rel="noopener noreferrer" aria-disabled="true">
+                  &#x25B6; Play on Spotify
+                </a>
+              </div>
+            </div>
+
+            <div class="replay-vehicle-state" data-replay-telemetry-build="3.1.7">
+              <div class="replay-telemetry-cell replay-telemetry-time">
+                <span class="replay-telemetry-label">Time</span>
+                <strong id="replayClock" class="replay-telemetry-value">--:--:--</strong>
+              </div>
+              <div class="replay-telemetry-cell">
+                <span class="replay-telemetry-label">Speed</span>
+                <strong class="replay-telemetry-value"><span id="replaySpeed">--</span><span class="replay-telemetry-unit"> mph</span></strong>
+              </div>
+              <div class="replay-telemetry-cell">
+                <span class="replay-telemetry-label">Battery</span>
+                <strong class="replay-telemetry-value"><span id="replayBattery">--</span><span class="replay-telemetry-unit">%</span></strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="replay-controls">
+            <button id="replayRestart" class="replay-icon-button" type="button" title="Restart replay">&#x21BA;</button>
+            <button id="replayPlayPause" class="replay-play-button" type="button">&#x25B6; Replay drive</button>
+
+            <div class="replay-scrubber-wrap">
+              <input id="replayScrubber" class="replay-scrubber" type="range" min="0" max="1000" value="0" aria-label="Drive replay position">
+              <div class="replay-time-labels">
+                <span id="replayElapsed">0:00</span>
+                <span id="replayRemaining">-0:00</span>
+              </div>
+            </div>
+
+            <label class="replay-speed-label">
+              Speed
+              <select id="replayRate" class="replay-rate">
+                <option value="1">1&#215;</option>
+                <option value="2">2&#215;</option>
+                <option value="4" selected>4&#215;</option>
+                <option value="8">8&#215;</option>
+                <option value="16">16&#215;</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+
+      <div class="soundtrack-header">
+        <div>
+          <div class="section-label spotify-label">SOUNDTRACK</div>
+          <h3 id="modalSongCount">0 songs</h3>
+        </div>
+        <div class="action-row">
+          <button id="shareXButton" class="secondary-button" type="button">Share on X</button>
+          <button id="playlistButton" class="primary-button" type="button">Create Spotify playlist</button>
+        </div>
+      </div>
+
+      <div id="modalSoundtrack" class="soundtrack-list"></div>
+      <div id="modalMessage" class="modal-message"></div>
+    </article>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+  <script src="/app.js?v=3.2.0"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "name": "DriveOS",
+  "short_name": "DriveOS",
+  "description": "Personal Vehicle Intelligence",
+  "id": "/",
+  "start_url": "/#dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#eef6f8",
+  "theme_color": "#eef6f8",
+  "icons": [
+    {
+      "src": "/assets/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
