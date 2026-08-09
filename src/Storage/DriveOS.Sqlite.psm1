@@ -81,4 +81,18 @@ function Test-DriveOSSqliteIntegrity {
     return ($rows.Count -eq 1 -and $rows[0].integrity_check -eq 'ok')
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Test-DriveOSSqliteIntegrity
+function Import-DriveOSSqliteData {
+    param($Repository,[object[]]$History=@(),[object[]]$Aliases=@(),$Settings)
+    $sql=New-Object System.Collections.Generic.List[string]
+    $sql.Add('BEGIN IMMEDIATE;');$sql.Add('DELETE FROM listening_history;');$sql.Add('DELETE FROM place_aliases;');$sql.Add('DELETE FROM settings;')
+    foreach($record in @($History)){
+        $payload=$record|ConvertTo-Json -Depth 20 -Compress
+        $sql.Add("INSERT OR IGNORE INTO listening_history(id,played_at,payload_json) VALUES($(ConvertTo-SqlLiteral ([string]$record.id)),$(ConvertTo-SqlLiteral ([string]$record.played_at)),$(ConvertTo-SqlLiteral $payload));")
+    }
+    foreach($entry in @($Aliases)){$sql.Add("INSERT INTO place_aliases(location,label) VALUES($(ConvertTo-SqlLiteral ([string]$entry.location)),$(ConvertTo-SqlLiteral ([string]$entry.label)));")}
+    if($Settings){$payload=$Settings|ConvertTo-Json -Depth 20 -Compress;$sql.Add("INSERT INTO settings(key,value_json) VALUES('charging',$(ConvertTo-SqlLiteral $payload));")}
+    $sql.Add('COMMIT;')
+    $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
+}
+
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData

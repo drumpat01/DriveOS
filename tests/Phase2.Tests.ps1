@@ -41,6 +41,21 @@ try {
         Set-DriveOSChargingSettingsRecord -Repository $sqlite -Settings ([pscustomobject]@{electricityRateCents=13.25})
         Assert-Equal (Get-DriveOSChargingSettingsRecord -Repository $sqlite).electricityRateCents 13.25 'SQLite settings changed.'
         if(-not(Test-DriveOSSqliteIntegrity -Repository $sqlite)){throw 'SQLite integrity check failed.'}
+
+        $migrationData=Join-Path $scratch 'migration-data';New-Item -ItemType Directory -Path $migrationData|Out-Null
+        $migrationJson=New-DriveOSRepository -DataDirectory $migrationData -AppRoot $Root -Provider Json
+        Add-DriveOSListeningHistoryRecord -Repository $migrationJson -Record ([pscustomobject]@{id='one';played_at='2026-01-01T00:00:00Z';track='One'})
+        Add-Content -LiteralPath $migrationJson.SpotifyHistoryPath -Value '{malformed' -Encoding UTF8
+        Set-DriveOSPlaceAliases -Repository $migrationJson -Entries @([pscustomobject]@{location='A';label='Home'})
+        $sourceHash=(Get-FileHash -LiteralPath $migrationJson.SpotifyHistoryPath -Algorithm SHA256).Hash
+        & (Join-Path $Root 'tools\Migrate-To-Sqlite.ps1') -AppRoot $Root -DataDirectory $migrationData -NoPause
+        $config=Read-DriveOSJson -Path $migrationJson.ConfigPath
+        Assert-Equal $config.provider 'SQLite' 'Migration provider switch changed.'
+        Assert-Equal (Get-FileHash -LiteralPath $migrationJson.SpotifyHistoryPath -Algorithm SHA256).Hash $sourceHash 'Migration modified the source archive.'
+        $migrated=New-DriveOSRepository -DataDirectory $migrationData -AppRoot $Root -Provider Auto
+        Assert-Equal @(Get-DriveOSListeningHistory -Repository $migrated).Count 1 'Migration tolerant import changed.'
+        & (Join-Path $Root 'tools\Rollback-To-Json.ps1') -AppRoot $Root -DataDirectory $migrationData -NoPause
+        Assert-Equal (Read-DriveOSJson -Path $migrationJson.ConfigPath).provider 'Json' 'Rollback provider switch changed.'
     }else{Write-Warning 'SQLite runtime unavailable; SQLite provider tests skipped.'}
 
     $vehicle = Get-Content (Join-Path $PSScriptRoot 'fixtures\vehicle.json') -Raw | ConvertFrom-Json

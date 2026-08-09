@@ -1,11 +1,11 @@
-param([switch]$NoPause)
+param([switch]$NoPause,[string]$AppRoot,[string]$DataDirectory)
 $ErrorActionPreference='Stop'
-$Root=Split-Path -Parent $PSScriptRoot
-$Data=Join-Path $Root 'data'
+$Root=if($AppRoot){$AppRoot}else{Split-Path -Parent $PSScriptRoot}
+$Data=if($DataDirectory){$DataDirectory}else{Join-Path $Root 'data'}
 Import-Module (Join-Path $Root 'src\Storage\DriveOS.Storage.psm1') -Force
 Import-Module (Join-Path $Root 'src\Storage\DriveOS.Sqlite.psm1') -Force
 Import-Module (Join-Path $Root 'src\Repositories\DriveOS.Repository.psm1') -Force
-$null=& (Join-Path $PSScriptRoot 'Install-Sqlite.ps1')
+$null=& (Join-Path $Root 'tools\Install-Sqlite.ps1')
 if(-not(Test-Path $Data)){New-Item -ItemType Directory -Path $Data|Out-Null}
 $json=New-DriveOSRepository -DataDirectory $Data -AppRoot $Root -Provider Json
 $sqlite=New-DriveOSRepository -DataDirectory $Data -AppRoot $Root -Provider SQLite
@@ -18,11 +18,13 @@ foreach($path in @($json.SpotifyHistoryPath,$json.PlaceAliasesPath,$json.Chargin
 if(Test-Path -LiteralPath $sqlite.DatabasePath){Copy-Item -LiteralPath $sqlite.DatabasePath -Destination (Join-Path $backup 'driveos.db.previous') -Force;Remove-Item -LiteralPath $sqlite.DatabasePath -Force}
 Initialize-DriveOSSqlite -Repository $sqlite
 $history=@(Get-DriveOSListeningHistory -Repository $json)
-foreach($record in $history){Add-DriveOSListeningHistoryRecord -Repository $sqlite -Record $record}
-$aliases=@(Get-DriveOSPlaceAliases -Repository $json);Set-DriveOSPlaceAliases -Repository $sqlite -Entries $aliases
-$settings=Get-DriveOSChargingSettingsRecord -Repository $json;if($settings){Set-DriveOSChargingSettingsRecord -Repository $sqlite -Settings $settings}
+$history=@($history|Where-Object{$_.id})
+$aliases=@(Get-DriveOSPlaceAliases -Repository $json)
+$settings=Get-DriveOSChargingSettingsRecord -Repository $json
+Import-DriveOSSqliteData -Repository $sqlite -History $history -Aliases $aliases -Settings $settings
 $imported=@(Get-DriveOSListeningHistory -Repository $sqlite)
-if($imported.Count -ne $history.Count){throw "History verification failed: expected $($history.Count), imported $($imported.Count)."}
+$expectedHistoryCount=@($history|Group-Object id).Count
+if($imported.Count -ne $expectedHistoryCount){throw "History verification failed: expected $expectedHistoryCount unique records, imported $($imported.Count)."}
 if(@(Get-DriveOSPlaceAliases -Repository $sqlite).Count -ne $aliases.Count){throw 'Alias verification failed.'}
 if(-not(Test-DriveOSSqliteIntegrity -Repository $sqlite)){throw 'SQLite integrity verification failed.'}
 Write-DriveOSJson -Path $json.ConfigPath -Value ([pscustomobject]@{provider='SQLite';schemaVersion=1;migratedAt=(Get-Date).ToString('o');backup=$backup})

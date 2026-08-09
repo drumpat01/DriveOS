@@ -4,7 +4,7 @@
 
 Canonicalize version metadata; add integration and storage boundaries; extract frontend infrastructure; relocate operational scripts behind compatibility shims; document dependencies; add offline validation. Preserve all public behavior and JSON/JSONL persistence.
 
-## Phase 2 — domain modules and SQLite
+## Phase 2 — domain modules and SQLite (complete)
 
 1. Add characterization tests for every API endpoint using recorded, sanitized provider fixtures.
 2. Extract `Vehicle`, `Drives`, `Music`, `Charging`, `Places`, `Recaps`, and `Replay` domain modules from the server.
@@ -21,6 +21,6 @@ Extract one vertical feature at a time (`drives`, `music`, `charging`, `places`,
 
 Separate desktop lifecycle/security policy from WebView composition, automate version/release artifact generation, add clean-machine installer tests, and remove compatibility shims only after a deprecation window.
 
-## SQLite recommendation
+## SQLite implementation
 
-SQLite belongs in Phase 2, not Phase 1. The safe trigger is complete repository interfaces plus fixtures that prove the import preserves history ordering, duplicate handling, timestamps, legacy `track_uri` reconstruction, aliases, and settings. Prefer a single local database with WAL mode, foreign keys enabled, explicit migrations, and a read-only diagnostic/export path.
+SQLite is available behind the repository interface as an explicit, reversible migration. DriveOS uses a single local database with WAL mode, an indexed listening-history table, schema migrations, integrity checks, timestamped source backups, and JSON rollback. Source JSON/JSONL is retained.

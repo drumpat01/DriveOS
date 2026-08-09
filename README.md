@@ -4,6 +4,8 @@
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DriveOS.ps1` for offline architecture and compatibility validation.
 
+After installing the current build, run `tools/Migrate-To-Sqlite.ps1` to migrate local history, aliases, and charging settings. The migration preserves the original JSON/JSONL files and creates a timestamped backup. Run `tools/Rollback-To-Json.ps1` to switch back without deleting the SQLite database.
+
 DriveOS 3.0 adds two major local intelligence features on top of Drive Library Search.
 
 ## Favorite Routes

@@ -1,7 +1,7 @@
-param([switch]$NoPause)
+param([switch]$NoPause,[string]$AppRoot,[string]$DataDirectory)
 $ErrorActionPreference='Stop'
-$Root=Split-Path -Parent $PSScriptRoot
-$Data=Join-Path $Root 'data'
+$Root=if($AppRoot){$AppRoot}else{Split-Path -Parent $PSScriptRoot}
+$Data=if($DataDirectory){$DataDirectory}else{Join-Path $Root 'data'}
 Import-Module (Join-Path $Root 'src\Storage\DriveOS.Storage.psm1') -Force
 $Config=Join-Path $Data 'repository-provider.json'
 Write-DriveOSJson -Path $Config -Value ([pscustomobject]@{provider='Json';rolledBackAt=(Get-Date).ToString('o')})

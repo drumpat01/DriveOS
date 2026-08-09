@@ -8,7 +8,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Integrations/Tessie/`: Tessie client boundary. Backend/domain code consumes adapter functions rather than constructing Tessie HTTP requests.
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
-- `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL is the active provider.
+- `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL and SQLite implementations are available.
 - `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
 - `web/core/`: frontend infrastructure modules loaded before the legacy application.
 - `web/components/`: presentation components extracted without changing their DOM contract or styling.
@@ -30,4 +30,4 @@ Phase 1 does not change URLs, response shapes, file names, JSON/JSONL schemas, c
 
 ## Known remaining monoliths
 
-`DriveOS-Server.ps1` still owns routing, authentication, domain aggregation, response models, replay/map calculations, and some Spotify operations. `web/app.js` still owns most views, state, rendering, maps, replay, and event wiring. These are now composition roots with initial seams, not finished modules.
+`DriveOS-Server.ps1` still owns endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration. `web/app.js` still owns most views, state, rendering, maps, replay, and event wiring. Phase 3 should focus on frontend vertical slices and may continue shrinking these composition roots.
