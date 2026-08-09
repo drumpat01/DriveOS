@@ -578,6 +578,16 @@ function renderDriveLibrary() {
   bindDriveButtons(container);
 }
 
+function setAdvancedSearchOpen(open) {
+  const filters = $("driveAdvancedFilters");
+  const toggle = $("driveAdvancedToggle");
+  if (!filters || !toggle) return;
+
+  filters.hidden = !open;
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.textContent = open ? "Hide advanced search" : "Advanced search";
+}
+
 function resetDriveFilters() {
   clearFavoriteRouteFilter(false);
   if ($("driveSearchInput")) $("driveSearchInput").value = "";
@@ -588,6 +598,7 @@ function resetDriveFilters() {
   if ($("driveMusicFilter")) $("driveMusicFilter").value = "any";
   if ($("driveSort")) $("driveSort").value = "newest";
 
+  setAdvancedSearchOpen(false);
   renderDriveLibrary();
 }
 
@@ -619,6 +630,9 @@ function bindDriveLibrarySearch() {
 
   $("driveFiltersClear")?.addEventListener("click", resetDriveFilters);
   $("driveRouteFilterClear")?.addEventListener("click", () => clearFavoriteRouteFilter());
+  $("driveAdvancedToggle")?.addEventListener("click", () => {
+    setAdvancedSearchOpen(Boolean($("driveAdvancedFilters")?.hidden));
+  });
 }
 
 

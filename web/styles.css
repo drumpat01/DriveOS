@@ -1469,6 +1469,32 @@ footer {
   white-space: nowrap;
 }
 
+.drive-search-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.drive-advanced-toggle {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.drive-advanced-filters[hidden] {
+  display: none !important;
+}
+
+.drive-advanced-filters {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.drive-advanced-filters .drive-filter-grid {
+  margin-top: 0;
+}
+
 .drive-filter-grid {
   display: grid;
   grid-template-columns:
@@ -1571,6 +1597,10 @@ footer {
 
   .drive-search-count {
     white-space: normal;
+  }
+
+  .drive-search-actions {
+    justify-content: space-between;
   }
 
   .drive-filter-grid {
@@ -4673,6 +4703,8 @@ h1 span {
 
   .topbar-right {
     display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
     margin-left: auto;
     padding: 0 !important;
     border: 0 !important;
@@ -4680,9 +4712,21 @@ h1 span {
   }
 
   .topbar-right .app-version,
-  .topbar-right .theme-switcher,
   .topbar-right .date-time {
     display: none !important;
+  }
+
+  .topbar-right .theme-switcher {
+    display: inline-flex !important;
+    flex: 0 0 auto;
+    gap: 2px !important;
+    padding: 2px !important;
+  }
+
+  .topbar-right .theme-choice {
+    min-width: 28px;
+    min-height: 28px;
+    padding: 4px 6px;
   }
 
   .status-pill {
@@ -5443,6 +5487,16 @@ h1 span {
 }
 
 @media (max-width: 430px) {
+  .drive-search-actions {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .drive-advanced-toggle {
+    width: 100%;
+  }
+
   .drive-card:not(.dashboard-drive-card) {
     gap: 10px 12px !important;
     padding: 16px !important;

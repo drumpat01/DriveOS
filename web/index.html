@@ -125,7 +125,7 @@
       </nav>
 
       <div class="topbar-right">
-        <div class="app-version" title="Installed DriveOS web build">4.0.0</div>
+        <div class="app-version" title="Installed DriveOS web build">4.0.1</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -268,7 +268,7 @@
           <div>
             <div class="section-label">FLIGHT RECORDER</div>
             <h2>Drive library</h2>
-            <p>Search your Tessie drives by date, address, destination, song, artist, distance, and drive metrics.</p>
+            <p>Search your Tessie drives by city or state. Open advanced search for dates, mileage, music, and sorting.</p>
           </div>
           <button id="refreshButton" class="primary-button" type="button">Refresh data</button>
         </div>
@@ -282,57 +282,71 @@
                 type="search"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="Search date, destination, address, song, artist, album&#x2026;"
-                aria-label="Search drives">
+                placeholder="Enter a city or state&#x2026;"
+                aria-label="Search drives by city or state">
               <button id="driveSearchClear" class="search-clear-button" type="button" title="Clear search" aria-label="Clear drive search">&#xD7;</button>
             </label>
 
-            <div id="driveSearchCount" class="drive-search-count">Loading drive library&#x2026;</div>
+            <div class="drive-search-actions">
+              <div id="driveSearchCount" class="drive-search-count">Loading drive library&#x2026;</div>
+              <button
+                id="driveAdvancedToggle"
+                class="secondary-button drive-advanced-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="driveAdvancedFilters">Advanced search</button>
+            </div>
           </div>
 
-          <div class="drive-filter-grid">
-            <label class="drive-filter-field">
-              <span>From</span>
-              <input id="driveDateFrom" type="date">
-            </label>
+          <div id="driveAdvancedFilters" class="drive-advanced-filters" hidden>
+            <div class="drive-filter-grid">
+              <label class="drive-filter-field">
+                <span>From</span>
+                <input id="driveDateFrom" type="date">
+              </label>
 
-            <label class="drive-filter-field">
-              <span>To</span>
-              <input id="driveDateTo" type="date">
-            </label>
+              <label class="drive-filter-field">
+                <span>To</span>
+                <input id="driveDateTo" type="date">
+              </label>
 
-            <label class="drive-filter-field">
-              <span>Min miles</span>
-              <input id="driveMinMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
-            </label>
+              <label class="drive-filter-field">
+                <span>Min miles</span>
+                <input id="driveMinMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
+              </label>
 
-            <label class="drive-filter-field">
-              <span>Max miles</span>
-              <input id="driveMaxMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
-            </label>
+              <label class="drive-filter-field">
+                <span>Max miles</span>
+                <input id="driveMaxMiles" type="number" min="0" step="0.1" inputmode="decimal" placeholder="Any">
+              </label>
 
-            <label class="drive-filter-field">
-              <span>Soundtrack</span>
-              <select id="driveMusicFilter">
-                <option value="any">Any</option>
-                <option value="with">With music</option>
-                <option value="without">No music</option>
-              </select>
-            </label>
+              <label class="drive-filter-field">
+                <span>Soundtrack</span>
+                <select id="driveMusicFilter">
+                  <option value="any">Any</option>
+                  <option value="with">With music</option>
+                  <option value="without">No music</option>
+                </select>
+              </label>
 
-            <label class="drive-filter-field drive-sort-field">
-              <span>Sort</span>
-              <select id="driveSort">
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="distance-desc">Longest distance</option>
-                <option value="distance-asc">Shortest distance</option>
-                <option value="duration-desc">Longest duration</option>
-                <option value="efficiency-asc">Best efficiency</option>
-              </select>
-            </label>
+              <label class="drive-filter-field drive-sort-field">
+                <span>Sort</span>
+                <select id="driveSort">
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="distance-desc">Longest distance</option>
+                  <option value="distance-asc">Shortest distance</option>
+                  <option value="duration-desc">Longest duration</option>
+                  <option value="efficiency-asc">Best efficiency</option>
+                </select>
+              </label>
 
-            <button id="driveFiltersClear" class="secondary-button drive-filter-reset" type="button">Reset filters</button>
+              <button id="driveFiltersClear" class="secondary-button drive-filter-reset" type="button">Reset filters</button>
+            </div>
+
+            <div class="drive-search-help">
+              Advanced search includes dates, mileage, soundtrack, sorting, and full address or Spotify details.
+            </div>
           </div>
 
           <div id="driveRouteFilterBar" class="route-filter-banner" hidden>
@@ -340,9 +354,6 @@
             <button id="driveRouteFilterClear" class="text-button" type="button">Clear route filter &#xD7;</button>
           </div>
 
-          <div class="drive-search-help">
-            Searches full Tessie origin/destination addresses plus every matched Spotify track, artist, and album.
-          </div>
         </section>
 
         <section class="panel favorite-routes-panel" aria-labelledby="favoriteRoutesHeading">
@@ -500,7 +511,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">DriveOS Web 4.0.0</span>
+      <span id="webBuildFooter">DriveOS Web 4.0.1</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -658,23 +669,23 @@
   </div>
 
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-  <script src="/core/build.js?v=4.0.0"></script>
-  <script src="/core/dom.js?v=4.0.0"></script>
-  <script src="/core/state.js?v=4.0.0"></script>
-  <script src="/core/platform.js?v=4.0.0"></script>
-  <script src="/core/api.js?v=4.0.0"></script>
-  <script src="/components/song-artwork.js?v=4.0.0"></script>
-  <script src="/features/navigation.js?v=4.0.0"></script>
-  <script src="/features/pwa.js?v=4.0.0"></script>
-  <script src="/features/theme.js?v=4.0.0"></script>
-  <script src="/features/ignition.js?v=4.0.0"></script>
-  <script src="/features/places.js?v=4.0.0"></script>
-  <script src="/features/charging.js?v=4.0.0"></script>
-  <script src="/features/recaps.js?v=4.0.0"></script>
-  <script src="/features/refresh.js?v=4.0.0"></script>
-  <script src="/features/drives.js?v=4.0.0"></script>
-  <script src="/features/replay.js?v=4.0.0"></script>
-  <script src="/features/music.js?v=4.0.0"></script>
-  <script src="/app.js?v=4.0.0"></script>
+  <script src="/core/build.js?v=4.0.1"></script>
+  <script src="/core/dom.js?v=4.0.1"></script>
+  <script src="/core/state.js?v=4.0.1"></script>
+  <script src="/core/platform.js?v=4.0.1"></script>
+  <script src="/core/api.js?v=4.0.1"></script>
+  <script src="/components/song-artwork.js?v=4.0.1"></script>
+  <script src="/features/navigation.js?v=4.0.1"></script>
+  <script src="/features/pwa.js?v=4.0.1"></script>
+  <script src="/features/theme.js?v=4.0.1"></script>
+  <script src="/features/ignition.js?v=4.0.1"></script>
+  <script src="/features/places.js?v=4.0.1"></script>
+  <script src="/features/charging.js?v=4.0.1"></script>
+  <script src="/features/recaps.js?v=4.0.1"></script>
+  <script src="/features/refresh.js?v=4.0.1"></script>
+  <script src="/features/drives.js?v=4.0.1"></script>
+  <script src="/features/replay.js?v=4.0.1"></script>
+  <script src="/features/music.js?v=4.0.1"></script>
+  <script src="/app.js?v=4.0.1"></script>
 </body>
 </html>
