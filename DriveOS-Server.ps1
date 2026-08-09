@@ -564,7 +564,9 @@ function Get-SpotifyArtworkBytes {
 
         try {
             $Response = $Client.GetAsync($ArtworkUri).GetAwaiter().GetResult()
-            $Response.EnsureSuccessStatusCode()
+            # EnsureSuccessStatusCode returns the response object. Suppress it so
+            # this function emits only image bytes to Send-SpotifyArtwork.
+            $null = $Response.EnsureSuccessStatusCode()
 
             $Bytes = $Response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
         }

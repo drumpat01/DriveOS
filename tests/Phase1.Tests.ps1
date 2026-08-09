@@ -28,6 +28,14 @@ try {
     $Play = ConvertTo-DriveOSSpotifyPlay -Item $Item
     if ($Play.id -ne "track1|2026-01-01T00:00:00Z" -or $Play.artist -ne "Artist") { throw "Spotify model mapping failed" }
 
+    $ServerSource = Get-Content (Join-Path $Root "DriveOS-Server.ps1") -Raw
+    if ($ServerSource -match '(?m)^\s*\$Response\.EnsureSuccessStatusCode\(\)\s*$') {
+        throw "Spotify artwork download leaks HttpResponseMessage into the binary response."
+    }
+    if ($ServerSource -notmatch '\$null\s*=\s*\$Response\.EnsureSuccessStatusCode\(\)') {
+        throw "Spotify artwork status validation must suppress its response object."
+    }
+
     & (Join-Path $Root "tools\Sync-Version.ps1") -Check
     Write-Host "Phase 1 offline tests passed."
 }
