@@ -1,12 +1,13 @@
 {
   "product": "DriveOS",
-  "version": "4.0.1",
-  "webBuild": "4.0.1",
+  "version": "4.1.0",
+  "webBuild": "4.1.0",
   "features": [
     "friendly-places",
     "charging-history",
-    "monthly-recap"
+    "monthly-recap",
+    "lastfm-history"
   ],
-  "css": "/styles.css?v=4.0.1",
-  "js": "/app.js?v=4.0.1"
+  "css": "/styles.css?v=4.1.0",
+  "js": "/app.js?v=4.1.0"
 }

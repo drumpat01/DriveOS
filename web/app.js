@@ -71,6 +71,19 @@ async function loadStatus() {
       spotifyConnectButton.hidden = Boolean(status.spotify);
     }
 
+    const lastFmConfigured = Boolean(status.lastfm);
+    setText("lastFmStatus", lastFmConfigured ? "CONNECTED" : "OPTIONAL");
+    $("lastFmStatus").className = lastFmConfigured ? "ok-text" : "warn-text";
+    setText(
+      "lastFmMusicStatus",
+      lastFmConfigured
+        ? `Connected as ${status.lastfmUsername || "Last.fm user"}. New scrobbles sync during startup and Refresh data.`
+        : "Connect a read-only Last.fm API key to preserve listening history beyond Spotify's recent-play limit."
+    );
+    document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
+      button.hidden = lastFmConfigured || isTailnetRemote();
+    });
+
     setText("playlistStatus", status.playlistScope ? "READY" : "REAUTHORIZE");
     $("playlistStatus").className = status.playlistScope ? "ok-text" : "warn-text";
   } catch (error) {
@@ -127,7 +140,7 @@ async function loadSpotify() {
           <div class="v3-featured-copy">
             <div class="v3-spotify-kicker">
               <span class="v3-spotify-dot"></span>
-              Spotify \u00B7 latest archived play
+              ${escapeHtml(featured.source === "lastfm" ? "Last.fm" : "Spotify")} \u00B7 latest archived play
             </div>
             <div class="v3-featured-title">${escapeHtml(featured.track)}</div>
             <div class="v3-featured-artist">${escapeHtml(featured.artist)}</div>
@@ -160,12 +173,23 @@ async function loadSpotify() {
     if (spotifyConnectButton) spotifyConnectButton.hidden = true;
 
     setText("archiveTotal", data.archiveTotal, "0");
+    const recovered = Number(data.newlyArchived) || 0;
+    let archiveMessage = recovered > 0
+      ? `Recovered ${recovered} new play${recovered === 1 ? "" : "s"}`
+      : data.lastFmConfigured
+        ? "Spotify + Last.fm archive up to date"
+        : "Spotify archive up to date \u00B7 Last.fm is optional";
+    if (data.lastFmError) archiveMessage = data.lastFmError;
+    setText("archiveAdded", archiveMessage);
     setText(
-      "archiveAdded",
-      Number(data.newlyArchived) > 0
-        ? `Recovered ${data.newlyArchived} recent play${Number(data.newlyArchived) === 1 ? "" : "s"} from Spotify`
-        : "Spotify archive up to date"
+      "lastFmMusicStatus",
+      data.lastFmConfigured
+        ? `Connected as ${data.lastFmUsername || "Last.fm user"}. New scrobbles sync during startup and Refresh data.`
+        : "Connect a read-only Last.fm API key to preserve listening history beyond Spotify's recent-play limit."
     );
+    document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
+      button.hidden = Boolean(data.lastFmConfigured) || isTailnetRemote();
+    });
 
     return data;
   } catch (error) {
@@ -2356,6 +2380,46 @@ async function refreshAll() {
   }
 }
 
+async function configureLastFmOnThisComputer() {
+  if (state.lastFmConnecting || isTailnetRemote()) return;
+
+  const buttons = [...document.querySelectorAll("[data-lastfm-configure]")];
+  state.lastFmConnecting = true;
+  buttons.forEach(button => {
+    button.disabled = true;
+    button.textContent = "Opening setup\u2026";
+  });
+
+  try {
+    await postJson("/api/lastfm/configure", {});
+    setText("lastFmMusicStatus", "Enter your Last.fm username and API key in the secure Windows setup window.");
+    setText("archiveAdded", "Finish Last.fm setup in the open window\u2026");
+    const deadline = Date.now() + 5 * 60 * 1000;
+
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      const status = await getJson("/api/lastfm/status");
+      if (!status.configured) continue;
+
+      buttons.forEach(button => { button.hidden = true; });
+      setText("lastFmMusicStatus", `Connected as ${status.username || "Last.fm user"}. Syncing scrobbles\u2026`);
+      await recoverSpotifyAndRematch();
+      await loadStatus();
+      return;
+    }
+
+    setText("lastFmMusicStatus", "Setup window expired. Click Connect Last.fm to try again.");
+  } catch (error) {
+    setText("lastFmMusicStatus", error.message || "Could not start Last.fm setup");
+  } finally {
+    state.lastFmConnecting = false;
+    buttons.forEach(button => {
+      button.disabled = false;
+      button.textContent = button.closest(".music-source-panel") ? "Connect Last.fm" : "Add Last.fm";
+    });
+  }
+}
+
 const refreshFeature = window.DriveOSFeatures.refresh.create({
   loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
   loadStatistics, loadPlaces, loadCharging, loadRecaps
@@ -2387,6 +2451,10 @@ window.DriveOSIgnition.setReady(initialRefresh);
 if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
   window.DriveOSIgnition.run();
 }
+
+document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
+  button.addEventListener("click", configureLastFmOnThisComputer);
+});
 
 updateClock();
 setInterval(updateClock, 30_000);

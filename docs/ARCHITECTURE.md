@@ -7,6 +7,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `desktop/`: Windows/WebView2 composition root. `DriveOSBackendHost` owns the child-process lifecycle and readiness probe; `DriveOSSecurityPolicy` owns session credentials, localhost boundaries, browser hardening, and the external-link allowlist.
 - `src/Integrations/Tessie/`: Tessie client boundary. Backend/domain code consumes adapter functions rather than constructing Tessie HTTP requests.
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
+- `src/Integrations/LastFm/`: read-only Last.fm history client and provider-to-internal play model mapping. It does not own persistence or UI behavior.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
 - `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL and SQLite implementations are available.
 - `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
@@ -23,7 +24,13 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 
 `index.html -> web/core -> app.js`
 
-Integration modules must not call UI or HTTP-server helpers. Storage must not know Tessie, Spotify, or domain concepts. New code should enter through these boundaries rather than adding provider or file-format logic to `DriveOS-Server.ps1`.
+Integration modules must not call UI or HTTP-server helpers. Storage must not know Tessie, Spotify, Last.fm, or domain concepts. New code should enter through these boundaries rather than adding provider or file-format logic to `DriveOS-Server.ps1`.
+
+## Listening history providers
+
+Spotify and Last.fm are normalized into one provider-neutral listening record. Spotify remains the source for OAuth playback history, track IDs, album artwork, links, and playlist actions. Last.fm supplies durable scrobbles beyond Spotify's recent-history window. The application service deduplicates matching provider events by normalized track, artist, and timestamp, then uses Spotify search only to enrich a bounded number of new Last.fm-only records. Both JSONL and SQLite repositories preserve the same record shape.
+
+Last.fm configuration is optional. `data/lastfm-config.json` holds the username and a Windows-DPAPI-encrypted API key; `data/lastfm-sync.json` holds only a non-secret incremental cursor. Both are runtime data excluded from source and releases. Provider credentials never cross the backend/browser boundary.
 
 ## Compatibility contract
 

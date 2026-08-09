@@ -25,6 +25,8 @@ Desktop backend lifecycle and WebView security policy are separate internal boun
 
 The four-phase modular-monolith migration is complete. Further work should be normal feature-sized maintenance: shrink the server composition root route by route, remove frontend compatibility renderers only after browser coverage owns them, exercise SQLite migration/rollback against copies of real datasets, and retire public root script shims only in a separately announced breaking release.
 
+DriveOS 4.1.0 is the first post-roadmap provider extension: a Last.fm adapter feeds the existing listening-history repository without changing its storage contract. This is the intended pattern for future Tessie, music, mapping, and place-provider additions.
+
 ## SQLite implementation
 
 SQLite is available behind the repository interface as an explicit, reversible migration. DriveOS uses a single local database with WAL mode, an indexed listening-history table, schema migrations, integrity checks, timestamped source backups, and JSON rollback. Source JSON/JSONL is retained.

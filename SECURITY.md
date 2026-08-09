@@ -48,6 +48,8 @@ The setup script also attempts to restrict the file ACL to:
 
 Spotify OAuth tokens are DPAPI encrypted as well, and the authorization script applies the same file ACL hardening.
 
+The optional Last.fm API key is stored separately in `data\lastfm-config.json`, encrypted with the same Windows DPAPI user binding and restricted-file ACL. The Last.fm username and non-secret incremental cursor remain local runtime data. The API key is never returned to the browser, placed in command-line arguments, committed, or packaged. Backend log redaction also removes `api_key` query values from upstream network errors.
+
 ## Embedded browser restrictions
 
 DriveOS WebView2:

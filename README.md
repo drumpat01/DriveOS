@@ -1,8 +1,19 @@
-# DriveOS 3.0
+# DriveOS 4.1.0
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
 Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DriveOS.ps1` for offline architecture and compatibility validation.
+
+## Last.fm listening history
+
+DriveOS 4.1.0 can combine Spotify's recent-play feed with durable Last.fm scrobbles. Open DriveOS, choose **Add Last.fm** on the Dashboard or **Connect Last.fm** on the Music page, then enter the Last.fm username and API key in the secure Windows setup window.
+
+- the API key is encrypted with Windows DPAPI and remains under `data/`
+- Last.fm is read-only and optional; Spotify behavior continues unchanged without it
+- startup and **Refresh data** incrementally synchronize new scrobbles
+- matching Spotify and Last.fm events are stored only once
+- new Last.fm-only plays are enriched with Spotify IDs and artwork when a confident match is available
+- no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
 
 Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).
 

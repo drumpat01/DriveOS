@@ -3831,7 +3831,7 @@ h1 span {
 
 /* Intelligence status chips become white system cards */
 .v3-intelligence-grid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-top: 14px;
 }
@@ -4181,6 +4181,38 @@ h1 span {
   display: none !important;
 }
 
+.music-source-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lastfm-connect-button {
+  min-height: 36px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: .75rem;
+}
+
+.lastfm-connect-button[hidden] {
+  display: none !important;
+}
+
+.music-source-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 20px;
+  padding: 20px 24px;
+}
+
+.music-source-panel h3,
+.music-source-panel p {
+  margin: 5px 0 0;
+}
+
 @media (max-width: 700px) {
   .spotify-footer {
     align-items: stretch;
@@ -4189,6 +4221,17 @@ h1 span {
 
   .spotify-connect-button {
     width: 100%;
+  }
+
+  .music-source-actions,
+  .music-source-actions .lastfm-connect-button,
+  .music-source-panel .lastfm-connect-button {
+    width: 100%;
+  }
+
+  .music-source-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

@@ -34,12 +34,41 @@ function Get-SpotifyRecentlyPlayed {
     return @($response.items)
 }
 
+function Find-SpotifyTrack {
+    param(
+        [Parameter(Mandatory=$true)]$Client,
+        [Parameter(Mandatory=$true)][string]$Track,
+        [Parameter(Mandatory=$true)][string]$Artist
+    )
+
+    $Query = [Uri]::EscapeDataString("track:$Track artist:$Artist")
+    $Response = Invoke-SpotifyGet -Client $Client -PathAndQuery "search?q=$Query&type=track&limit=5"
+    $Candidates = @($Response.tracks.items)
+    $Normalize = {
+        param([string]$Value)
+        return (($Value -replace '[^\p{L}\p{Nd}]', '').ToLowerInvariant())
+    }
+    $WantedTrack = & $Normalize $Track
+    $WantedArtist = & $Normalize $Artist
+
+    foreach ($Candidate in $Candidates) {
+        $CandidateTrack = & $Normalize ([string]$Candidate.name)
+        $CandidateArtists = @($Candidate.artists | ForEach-Object { & $Normalize ([string]$_.name) })
+
+        if ($CandidateTrack -eq $WantedTrack -and $CandidateArtists -contains $WantedArtist) {
+            return $Candidate
+        }
+    }
+
+    return $null
+}
+
 function ConvertTo-DriveOSSpotifyPlay {
     param([Parameter(Mandatory=$true)]$Item)
     $albumImage = $null
     if ($Item.track.album.images -and $Item.track.album.images.Count -gt 0) { $albumImage = $Item.track.album.images[0].url }
     [PSCustomObject]@{
-        id = "$($Item.track.id)|$($Item.played_at)"; played_at = $Item.played_at
+        id = "$($Item.track.id)|$($Item.played_at)"; source = "spotify"; played_at = $Item.played_at
         track_id = $Item.track.id; track_uri = $Item.track.uri; track = $Item.track.name
         artist = ($Item.track.artists | ForEach-Object { $_.name }) -join ", "
         album = $Item.track.album.name; duration_ms = $Item.track.duration_ms; album_image = $albumImage
@@ -47,4 +76,4 @@ function ConvertTo-DriveOSSpotifyPlay {
     }
 }
 
-Export-ModuleMember -Function New-SpotifyClient,Invoke-SpotifyGet,Invoke-SpotifyPost,Get-SpotifyRecentlyPlayed,ConvertTo-DriveOSSpotifyPlay,New-SpotifyPrivatePlaylist,Add-SpotifyPlaylistItems
+Export-ModuleMember -Function New-SpotifyClient,Invoke-SpotifyGet,Invoke-SpotifyPost,Get-SpotifyRecentlyPlayed,Find-SpotifyTrack,ConvertTo-DriveOSSpotifyPlay,New-SpotifyPrivatePlaylist,Add-SpotifyPlaylistItems
