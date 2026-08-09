@@ -49,7 +49,7 @@ self.addEventListener("fetch", event => {
   // hidden by an old PWA shell cache.
   if (
     url.pathname === "/styles.css" ||
-    url.pathname === "/app.js" ||
+    url.pathname.endsWith(".js") ||
     url.pathname === "/build.json" ||
     url.pathname === "/service-worker.js"
   ) {

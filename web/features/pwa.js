@@ -1,0 +1,6 @@
+(function(){
+  const {byId}=window.DriveOSDom;const platform=window.DriveOSPlatform;
+  async function purgeOldCaches(){if(!('caches'in window))return;try{const names=await caches.keys();await Promise.all(names.filter(name=>name.startsWith('driveos-shell-')&&name!==`driveos-shell-${window.DriveOSBuild.webBuild}`).map(name=>caches.delete(name)));}catch{}}
+  function initialize(){if(platform.isTailnetRemote()&&'serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register(`/service-worker.js?v=${window.DriveOSBuild.webBuild}`,{scope:'/',updateViaCache:'none'}).catch(()=>{}),{once:true});}const banner=byId('pwaInstallBanner');const dismiss=byId('pwaInstallDismiss');const dismissed=localStorage.getItem('driveos-pwa-install-dismissed')==='1';if(banner&&platform.isTailnetRemote()&&platform.isIosDevice()&&!platform.isStandalonePwa()&&!dismissed)banner.hidden=false;dismiss?.addEventListener('click',()=>{localStorage.setItem('driveos-pwa-install-dismissed','1');if(banner)banner.hidden=true;});document.documentElement.classList.toggle('remote-tailnet',platform.isTailnetRemote());document.documentElement.classList.toggle('standalone-pwa',platform.isStandalonePwa());}
+  window.DriveOSPwa=Object.freeze({purgeOldCaches,initialize});
+})();

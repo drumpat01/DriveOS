@@ -1,0 +1,12 @@
+const fs=require('fs');const path=require('path');const vm=require('vm');const assert=require('assert');
+const root=path.resolve(__dirname,'..');
+const elements=new Map([['status',{textContent:''}]]);
+const context={console,Map,Promise,setTimeout,clearTimeout,URL,location:{hostname:'127.0.0.1'},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelectorAll:()=>[]},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
+context.window=context;context.window.navigator=context.navigator;context.window.location=context.location;context.window.matchMedia=()=>({matches:false});
+vm.createContext(context);
+for(const file of ['web/core/dom.js','web/core/state.js','web/core/platform.js','web/core/api.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
+assert.equal(context.DriveOSDom.escapeHtml(`<Driver's & "Song">`),'&lt;Driver&#039;s &amp; &quot;Song&quot;&gt;');
+context.DriveOSDom.setText('status','ONLINE');assert.equal(elements.get('status').textContent,'ONLINE');
+assert.equal(context.DriveOSState.driveLibraryWindowDays,365);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);
+assert.equal(context.DriveOSPlatform.isTailnetRemote(),false);assert.equal(context.DriveOSPlatform.isStandalonePwa(),false);
+context.DriveOSApi.get('/api/status').then(value=>{assert.equal(value.ok,true);console.log('Frontend module characterization tests passed.');}).catch(error=>{console.error(error);process.exitCode=1;});

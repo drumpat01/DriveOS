@@ -1,46 +1,16 @@
-const $ = (id) => document.getElementById(id);
-
-const state = {
-  drives: [],
-  driveLibraryWindowDays: 365,
-  favoriteRoutes: [],
-  routeFilterDriveIds: null,
-  routeFilterLabel: "",
-  selectedDrive: null,
-  playlistScope: false,
-  driveMap: null,
-  driveMapData: null,
-  songMapMarkers: new Map(),
-  replayMarker: null,
-  replayMarkerElement: null,
-  replayPlaying: false,
-  replayAnimationFrame: null,
-  replayStartWallTime: null,
-  replayStartDriveMs: 0,
-  replayCurrentDriveMs: 0,
-  replayLastSongIndex: null,
-  mapMusicPoint: null,
-  mapMusicMarker: null,
-  spotifyAuthorized: false,
-  spotifyConnecting: false,
-  placeCandidates: [],
-  chargingSessions: [],
-  recaps: []
-};
+const $ = window.DriveOSDom.byId;
+const escapeHtml = window.DriveOSDom.escapeHtml;
+const setText = window.DriveOSDom.setText;
+const state = window.DriveOSState;
+const { isTailnetRemote } = window.DriveOSPlatform;
+const { initializeMobileNavigationPortal, showView } = window.DriveOSNavigation;
+const purgeOldDriveOSCaches = window.DriveOSPwa.purgeOldCaches;
+const initializePwa = window.DriveOSPwa.initialize;
 
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
 document.documentElement.dataset.webBuild = DRIVEOS_WEB_BUILD;
 
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
 
 function songArtworkUrl(song) {
   return window.DriveOSComponents.songArtwork.url(song);
@@ -51,11 +21,6 @@ function songArtworkMarkup(song, className = "song-list-artwork") {
 }
 
 
-function setText(id, value, fallback = "--") {
-  const el = $(id);
-  if (el) el.textContent = value ?? fallback;
-}
-
 async function getJson(path) {
   return window.DriveOSApi.get(path);
 }
@@ -64,95 +29,6 @@ async function postJson(path, body) {
   return window.DriveOSApi.post(path, body);
 }
 
-
-
-function isTailnetRemote() {
-  return /\.ts\.net$/i.test(location.hostname);
-}
-
-function isIosDevice() {
-  return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-
-function isStandalonePwa() {
-  return window.matchMedia?.("(display-mode: standalone)")?.matches ||
-    window.navigator.standalone === true;
-}
-
-
-function initializeMobileNavigationPortal() {
-  const nav = document.querySelector(".main-nav");
-  const topbar = document.querySelector(".topbar");
-  const topbarRight = document.querySelector(".topbar-right");
-
-  if (!nav || !topbar) return;
-
-  const updatePlacement = () => {
-    const mobile = window.matchMedia("(max-width: 760px)").matches;
-
-    if (mobile) {
-      if (nav.parentElement !== document.body) {
-        document.body.appendChild(nav);
-      }
-      nav.classList.add("mobile-nav-portal");
-      return;
-    }
-
-    if (nav.parentElement === document.body) {
-      if (topbarRight && topbarRight.parentElement === topbar) {
-        topbar.insertBefore(nav, topbarRight);
-      } else {
-        topbar.appendChild(nav);
-      }
-    }
-
-    nav.classList.remove("mobile-nav-portal");
-  };
-
-  updatePlacement();
-  window.addEventListener("resize", updatePlacement, { passive: true });
-}
-
-
-async function purgeOldDriveOSCaches() {
-  if (!("caches" in window)) return;
-  try {
-    const names = await caches.keys();
-    await Promise.all(
-      names
-        .filter(name => name.startsWith("driveos-shell-") && name !== "driveos-shell-3.2.0")
-        .map(name => caches.delete(name))
-    );
-  } catch {}
-}
-
-function initializePwa() {
-  // Avoid service-worker caching inside the desktop WebView. PWA caching is
-  // only needed when DriveOS is opened through its private Tailscale URL.
-  if (isTailnetRemote() && "serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("/service-worker.js?v=3.2.0", { scope: "/", updateViaCache: "none" })
-        .catch(() => {});
-    }, { once: true });
-  }
-
-  const banner = $("pwaInstallBanner");
-  const dismiss = $("pwaInstallDismiss");
-  const dismissed = localStorage.getItem("driveos-pwa-install-dismissed") === "1";
-
-  if (banner && isTailnetRemote() && isIosDevice() && !isStandalonePwa() && !dismissed) {
-    banner.hidden = false;
-  }
-
-  dismiss?.addEventListener("click", () => {
-    localStorage.setItem("driveos-pwa-install-dismissed", "1");
-    if (banner) banner.hidden = true;
-  });
-
-  document.documentElement.classList.toggle("remote-tailnet", isTailnetRemote());
-  document.documentElement.classList.toggle("standalone-pwa", isStandalonePwa());
-}
 
 
 function updateClock() {
@@ -165,26 +41,7 @@ function updateClock() {
   });
 }
 
-function showView(name) {
-  document.querySelectorAll(".view").forEach(view => {
-    view.classList.toggle("active-view", view.id === `view-${name}`);
-  });
-
-  document.querySelectorAll(".nav-button").forEach(button => {
-    button.classList.toggle("active", button.dataset.view === name);
-  });
-
-  history.replaceState(null, "", `#${name}`);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-document.querySelectorAll(".nav-button").forEach(button => {
-  button.addEventListener("click", () => showView(button.dataset.view));
-});
-
-document.querySelectorAll("[data-go-view]").forEach(button => {
-  button.addEventListener("click", () => showView(button.dataset.goView));
-});
+window.DriveOSNavigation.bind();
 
 bindDriveLibrarySearch();
 bindMusicLocationSearch();
@@ -2416,54 +2273,7 @@ if (spotifyConnectButton) {
 }
 
 
-// ---------------------------------------------------------------------
-// DriveOS 2.0.2 \u2014 persistent Dark / Light theme
-// ---------------------------------------------------------------------
-
-const DRIVEOS_THEME_KEY = "driveos-theme";
-
-function storedDriveOSTheme() {
-  try {
-    const saved = localStorage.getItem(DRIVEOS_THEME_KEY);
-
-    // Light is the DriveOS default. An explicit Dark choice remains respected.
-    return saved === "dark" ? "dark" : "light";
-  } catch {
-    return "light";
-  }
-}
-
-function applyDriveOSTheme(theme, persist = true) {
-  const selected = theme === "light" ? "light" : "dark";
-
-  document.documentElement.dataset.theme = selected;
-
-  document.querySelectorAll("[data-theme-choice]").forEach(button => {
-    const active = button.dataset.themeChoice === selected;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", active ? "true" : "false");
-  });
-
-  if (persist) {
-    try {
-      localStorage.setItem(DRIVEOS_THEME_KEY, selected);
-    } catch {
-      // Theme persistence is non-critical; keep the selected theme for this session.
-    }
-  }
-}
-
-function initializeDriveOSTheme() {
-  applyDriveOSTheme(storedDriveOSTheme(), false);
-
-  document.querySelectorAll("[data-theme-choice]").forEach(button => {
-    button.addEventListener("click", () => {
-      applyDriveOSTheme(button.dataset.themeChoice);
-    });
-  });
-}
-
-initializeDriveOSTheme();
+window.DriveOSTheme.initialize();
 
 
 // ---------------------------------------------------------------------
@@ -2471,67 +2281,12 @@ initializeDriveOSTheme();
 // The native Windows host starts this only after WebView2 is fully ready.
 // ---------------------------------------------------------------------
 
-function runDriveOSIgnition() {
-  const ignition = $("driveosIgnition");
-  if (!ignition) return;
-
-  const status = $("ignitionSystemText");
-  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-
-  // Lock the underlying dashboard only while the launch surface is visible.
-  document.body.classList.add("ignition-active");
-
-  if (reducedMotion) {
-    if (status) status.textContent = "VEHICLE INTELLIGENCE ONLINE";
-
-    window.setTimeout(() => {
-      ignition.classList.add("ignition-complete");
-      document.body.classList.remove("ignition-active");
-    }, 320);
-
-    window.setTimeout(() => ignition.remove(), 720);
-    return;
-  }
-
-  const messages = [
-    [480, "LINKING VEHICLE TELEMETRY"],
-    [920, "MAPPING DRIVE MEMORY"],
-    [1360, "ASSEMBLING DRIVEOS INTERFACE"],
-    [1800, "VEHICLE INTELLIGENCE ONLINE"]
-  ];
-
-  messages.forEach(([delay, message]) => {
-    window.setTimeout(() => {
-      if (!status || !document.body.contains(status)) return;
-
-      status.classList.remove("ignition-system-text-swap");
-      // Force a reflow so each status update gets its own subtle reveal.
-      void status.offsetWidth;
-      status.textContent = message;
-      status.classList.add("ignition-system-text-swap");
-    }, delay);
-  });
-
-  window.setTimeout(() => {
-    ignition.classList.add("ignition-ready");
-  }, 1820);
-
-  window.setTimeout(() => {
-    ignition.classList.add("ignition-complete");
-    document.body.classList.remove("ignition-active");
-  }, 2240);
-
-  window.setTimeout(() => {
-    ignition.remove();
-  }, 2920);
-}
-
 initializeMobileNavigationPortal();
 purgeOldDriveOSCaches();
 initializePwa();
 
 if (isTailnetRemote()) {
-  runDriveOSIgnition();
+  window.DriveOSIgnition.run();
 }
 
 updateClock();
