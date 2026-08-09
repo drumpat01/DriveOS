@@ -6,6 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Sqlite.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
@@ -39,7 +40,7 @@ $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
-$Repository = New-DriveOSRepository -DataDirectory $DataDirectory
+$Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null

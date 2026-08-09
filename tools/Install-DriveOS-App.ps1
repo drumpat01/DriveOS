@@ -22,6 +22,7 @@ $Csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
 & (Join-Path $PSScriptRoot "Sync-Version.ps1")
 $DriveOSVersion = (Get-Content (Join-Path $Root "version.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version
+& (Join-Path $PSScriptRoot "Install-Sqlite.ps1") | Out-Null
 
 function Fail-DriveOSInstall {
     param([string]$Message)
