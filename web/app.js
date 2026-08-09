@@ -1079,6 +1079,10 @@ function musicByLocationData(query, windowMinutes = 15) {
   };
 }
 
+const musicFeature = window.DriveOSFeatures.music.create({ state, compactLocation });
+locationContains = window.DriveOSFeatures.music.locationContains;
+musicByLocationData = musicFeature.byLocation;
+
 function renderMusicLocationResults(data) {
   const container = $("musicLocationResults");
   const status = $("musicLocationStatus");
