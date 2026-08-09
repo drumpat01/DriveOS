@@ -1,13 +1,20 @@
 param(
-    [switch]$NoPause
+    [switch]$NoPause,
+    [switch]$SkipShortcut,
+    [switch]$SkipSqliteInstall,
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
-$DesktopSource = Join-Path $Root "desktop\Program.cs"
+$DesktopSources = @(Get-ChildItem (Join-Path $Root "desktop") -Filter "*.cs" -File |
+    Sort-Object Name |
+    ForEach-Object { $_.FullName })
 $IconPath = Join-Path $Root "DriveOS-v4.ico"
-$OutputExe = Join-Path $Root "DriveOS.exe"
+if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = $Root }
+$OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+$OutputExe = Join-Path $OutputDirectory "DriveOS.exe"
 
 $PackageVersion = "1.0.4129.50"
 $PackageRoot = Join-Path $Root "desktop\packages"
@@ -22,7 +29,9 @@ $Csc = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 
 & (Join-Path $PSScriptRoot "Sync-Version.ps1")
 $DriveOSVersion = (Get-Content (Join-Path $Root "version.json") -Raw -Encoding UTF8 | ConvertFrom-Json).version
-& (Join-Path $PSScriptRoot "Install-Sqlite.ps1") | Out-Null
+if (-not $SkipSqliteInstall) {
+    & (Join-Path $PSScriptRoot "Install-Sqlite.ps1") | Out-Null
+}
 
 function Fail-DriveOSInstall {
     param([string]$Message)
@@ -44,8 +53,8 @@ if (-not (Test-Path $Csc)) {
     Fail-DriveOSInstall "The Windows .NET Framework C# compiler was not found at: $Csc"
 }
 
-if (-not (Test-Path $DesktopSource)) {
-    Fail-DriveOSInstall "desktop\Program.cs is missing."
+if ($DesktopSources.Count -eq 0 -or -not (Test-Path (Join-Path $Root "desktop\Program.cs"))) {
+    Fail-DriveOSInstall "DriveOS desktop sources are missing."
 }
 
 if (-not (Test-Path $IconPath)) {
@@ -123,6 +132,10 @@ if ($LoaderSignature.Status -ne "Valid" -or
 
 Write-Host "Building DriveOS.exe..." -ForegroundColor Cyan
 
+if (-not (Test-Path $OutputDirectory)) {
+    New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
+}
+
 $Arguments = @(
     "/nologo",
     "/target:winexe",
@@ -137,35 +150,34 @@ $Arguments = @(
     "/reference:System.Drawing.dll",
     "/reference:System.Windows.Forms.dll",
     "/reference:`"$CoreDll`"",
-    "/reference:`"$WinFormsDll`"",
-    "`"$DesktopSource`""
+    "/reference:`"$WinFormsDll`""
 )
 
-$Compile = Start-Process `
-    -FilePath $Csc `
-    -ArgumentList $Arguments `
-    -WorkingDirectory $Root `
-    -Wait `
-    -PassThru `
-    -NoNewWindow
+$Arguments += @($DesktopSources | ForEach-Object { "`"$_`"" })
 
-if ($Compile.ExitCode -ne 0 -or -not (Test-Path $OutputExe)) {
-    Fail-DriveOSInstall "The C# compiler returned exit code $($Compile.ExitCode)."
+& $Csc @Arguments
+$CompileExitCode = $LASTEXITCODE
+
+if ($CompileExitCode -ne 0 -or -not (Test-Path $OutputExe)) {
+    Fail-DriveOSInstall "The C# compiler returned exit code $CompileExitCode."
 }
 
-Copy-Item $CoreDll (Join-Path $Root "Microsoft.Web.WebView2.Core.dll") -Force
-Copy-Item $WinFormsDll (Join-Path $Root "Microsoft.Web.WebView2.WinForms.dll") -Force
-Copy-Item $LoaderDll (Join-Path $Root "WebView2Loader.dll") -Force
+Copy-Item $CoreDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.Core.dll") -Force
+Copy-Item $WinFormsDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.WinForms.dll") -Force
+Copy-Item $LoaderDll (Join-Path $OutputDirectory "WebView2Loader.dll") -Force
+Copy-Item $IconPath (Join-Path $OutputDirectory "DriveOS-v4.ico") -Force
 
-Write-Host "Creating DriveOS desktop shortcut..." -ForegroundColor Cyan
+if (-not $SkipShortcut) {
+    Write-Host "Creating DriveOS desktop shortcut..." -ForegroundColor Cyan
 
-$ShortcutUpdater = Join-Path $Root "tools\Update-Desktop-Shortcut.ps1"
+    $ShortcutUpdater = Join-Path $Root "tools\Update-Desktop-Shortcut.ps1"
 
-& powershell.exe `
-    -NoProfile `
-    -ExecutionPolicy Bypass `
-    -File $ShortcutUpdater `
-    -NoPause
+    & powershell.exe `
+        -NoProfile `
+        -ExecutionPolicy Bypass `
+        -File $ShortcutUpdater `
+        -NoPause
+}
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Green

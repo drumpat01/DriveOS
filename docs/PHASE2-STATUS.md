@@ -16,7 +16,7 @@ Phase 2 is complete on `refactor/modular-monolith-phase2`.
 ## Deliberately retained compatibility code
 
 - The backend composition root still contains endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration.
-- The previous recap implementation remains as `Get-MonthlyRecapsLegacy` for one validation/release window. It is not called by production routes.
+- The previous recap implementation completed its validation window and was removed in Phase 4; production routes continue to use the covered recap domain module.
 - JSON/JSONL readers remain supported for rollback and export compatibility.
 - Frontend feature extraction belongs to Phase 3.
 

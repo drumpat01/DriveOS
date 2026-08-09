@@ -4,7 +4,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 
 ## Phase 1 boundaries
 
-- `desktop/`: Windows/WebView2 host.
+- `desktop/`: Windows/WebView2 composition root. `DriveOSBackendHost` owns the child-process lifecycle and readiness probe; `DriveOSSecurityPolicy` owns session credentials, localhost boundaries, browser hardening, and the external-link allowlist.
 - `src/Integrations/Tessie/`: Tessie client boundary. Backend/domain code consumes adapter functions rather than constructing Tessie HTTP requests.
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
@@ -13,7 +13,8 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `web/core/`: frontend infrastructure modules loaded before the legacy application.
 - `web/components/`: presentation components extracted without changing their DOM contract or styling.
 - `web/app.js`: frontend composition root and compatibility layer; active shared and feature behavior is delegated to `web/core`, `web/components`, and `web/features`.
-- `tools/`: installer and administrative implementation scripts. Root scripts remain compatibility shims.
+- `tools/`: installer, administrative, validation, and deterministic release implementation scripts. Root scripts remain compatibility shims.
+- `release-files.json`: allowlisted release inputs plus explicit exclusions for private/runtime-only material.
 - `version.json`: canonical product/build metadata. `tools/Sync-Version.ps1` generates checked-in consumers and runs during installation.
 
 ## Dependency direction
@@ -30,4 +31,4 @@ Phase 1 does not change URLs, response shapes, file names, JSON/JSONL schemas, c
 
 ## Known remaining monoliths
 
-`DriveOS-Server.ps1` still owns endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration. `web/app.js` retains compatibility rendering and map orchestration while shared state, platform behavior, refresh, and feature calculations/actions live in modules. Phase 4 may remove validated compatibility bodies.
+`DriveOS-Server.ps1` still composes endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration. `web/app.js` still contains compatibility rendering and map orchestration while active shared and feature behavior lives in modules. Public root launch/admin shims remain intentionally supported until a documented deprecation release.

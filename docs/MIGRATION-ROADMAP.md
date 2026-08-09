@@ -17,9 +17,13 @@ Canonicalize version metadata; add integration and storage boundaries; extract f
 
 Frontend foundations and feature modules now cover navigation, PWA, theme, ignition, refresh, drives, music, charging, places, recaps, and replay calculations. Route IDs, selectors, markup, styling, keyboard behavior, and PWA behavior remain stable, with deterministic and browser smoke coverage.
 
-## Phase 4 — host and release hardening
+## Phase 4 — host and release hardening (complete)
 
-Separate desktop lifecycle/security policy from WebView composition, automate version/release artifact generation, add clean-machine installer tests, and remove compatibility shims only after a deprecation window.
+Desktop backend lifecycle and WebView security policy are separate internal boundaries. Release inputs are allowlisted, builds have sorted inputs and a checksum manifest, archives have stable entry order/timestamps, and clean staging validates compilation, required files, privacy exclusions, and hashes. The unused legacy recap implementation was removed after Phase 2/3 contract coverage. Public root compatibility shims remain because their deprecation window has not elapsed.
+
+## Post-roadmap maintenance
+
+The four-phase modular-monolith migration is complete. Further work should be normal feature-sized maintenance: shrink the server composition root route by route, remove frontend compatibility renderers only after browser coverage owns them, exercise SQLite migration/rollback against copies of real datasets, and retire public root script shims only in a separately announced breaking release.
 
 ## SQLite implementation
 
