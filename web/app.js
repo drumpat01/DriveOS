@@ -647,6 +647,21 @@ function cityFromLocation(value) {
   return parts[Math.max(0, parts.length - 2)];
 }
 
+const drivesFeature = window.DriveOSFeatures.drives;
+batteryText = drivesFeature.batteryText;
+compactLocation = drivesFeature.compactLocation;
+driveRouteText = drivesFeature.driveRouteText;
+driveSearchHaystack = drivesFeature.driveSearchHaystack;
+degreesToRadians = drivesFeature.degreesToRadians;
+geoDistanceMiles = drivesFeature.geoDistanceMiles;
+normalizedLocationText = drivesFeature.normalizedLocationText;
+routeAddressesMatch = drivesFeature.routeAddressesMatch;
+driveFitsRouteCluster = drivesFeature.driveFitsRouteCluster;
+detectFavoriteRoutes = drivesFeature.detectFavoriteRoutes;
+cityFromLocation = drivesFeature.cityFromLocation;
+money = drivesFeature.money;
+locationDisplay = drivesFeature.locationDisplay;
+
 function driveCard(drive, compact = false) {
   const route = driveRouteText(drive);
   const startLocation = String(drive.startingLocation || "").trim();
@@ -1844,6 +1859,13 @@ function getReplayStateAt(ms) {
     timestampMs: targetMs
   };
 }
+
+const replayFeature = window.DriveOSFeatures.replay.create(state);
+formatReplayDuration = replayFeature.formatDuration;
+routeTimestampMs = replayFeature.routeTimestampMs;
+interpolateNumber = replayFeature.interpolateNumber;
+normalizeHeadingDelta = replayFeature.normalizeHeadingDelta;
+getReplayStateAt = replayFeature.stateAt;
 
 function replaySongAt(ms) {
   const songs = state.driveMapData?.songMarkers || [];
