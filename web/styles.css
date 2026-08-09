@@ -1469,6 +1469,37 @@ footer {
   white-space: nowrap;
 }
 
+/* DriveOS 4.3 - privacy-safe share cards */
+.share-card-modal { z-index: 1200; }
+.share-card-modal-card { width: min(1240px, calc(100% - 30px)); }
+.share-card-loading { margin-top: 24px; padding: 28px; border: 1px solid var(--line); border-radius: 18px; color: var(--muted); }
+.share-card-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 24px; align-items: start; margin-top: 24px; }
+.share-card-preview { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 22px; background: rgba(3, 13, 19, .72); }
+.share-card-preview canvas { display: block; width: 100%; height: auto; border-radius: 14px; box-shadow: 0 22px 60px rgba(0,0,0,.36); }
+.share-card-controls { position: sticky; top: 0; display: grid; gap: 10px; padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel-2); }
+.share-card-controls > label { display: flex; align-items: center; gap: 9px; min-height: 38px; color: var(--text); font-size: .82rem; font-weight: 700; }
+.share-card-controls input { width: 18px; height: 18px; accent-color: var(--accent-2); }
+.share-card-controls button { width: 100%; }
+.share-card-privacy-lock { display: grid; gap: 5px; margin: 8px 0; padding: 13px; border: 1px solid rgba(25,201,135,.2); border-radius: 13px; background: rgba(25,201,135,.08); }
+.share-card-privacy-lock strong { color: var(--text); font-size: .76rem; }
+.share-card-privacy-lock span { color: var(--muted); font-size: .66rem; line-height: 1.45; }
+
+@media (max-width: 820px) {
+  .share-card-modal-card { padding: 24px 18px; }
+  .share-card-workspace { grid-template-columns: 1fr; }
+  .share-card-controls { position: static; grid-template-columns: 1fr 1fr; }
+  .share-card-controls .section-label,
+  .share-card-privacy-lock,
+  .share-card-controls button,
+  .share-card-controls .muted { grid-column: 1 / -1; }
+}
+
+@media (max-width: 460px) {
+  .share-card-modal-card { width: calc(100% - 14px); margin: 7px auto; max-height: calc(100vh - 14px); border-radius: 18px; }
+  .share-card-modal-card > h2 { padding-right: 44px; font-size: 1.8rem; }
+  .share-card-preview { padding: 7px; border-radius: 14px; }
+}
+
 .drive-search-actions {
   display: flex;
   align-items: center;

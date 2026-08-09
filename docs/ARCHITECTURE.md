@@ -10,6 +10,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Integrations/LastFm/`: read-only Last.fm history client and provider-to-internal play model mapping. It does not own persistence or UI behavior.
 - `src/Integrations/Foursquare/`: Foursquare Places API client and provider-to-internal place mapping. It does not decide privacy, budgets, caching, or presentation.
 - `src/Application/DriveOS.PlaceEnrichment.psm1`: provider-neutral candidate selection, stable cache keys, distance matching, and free-tier usage-window rules.
+- `src/Application/DriveOS.ShareCards.psm1`: allowlisted share-card view model, city-level Home substitution, route normalization, and soundtrack summary selection.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
 - `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL and SQLite implementations are available.
 - `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
@@ -33,6 +34,10 @@ Integration modules must not call UI or HTTP-server helpers. Storage must not kn
 Manual aliases are authoritative. Foursquare is consulted only for repeated, unnamed endpoints with coordinates, in descending visit-count order. A match must be within 60 meters. Positive matches are cached permanently; empty results are held for 30 days. Provider calls are registered before the request because unsuccessful provider requests may still count toward usage. Hard stops of 10 calls per day and 250 calls per month leave headroom below the external free allowance. The browser receives names and aggregate counters, never the API key.
 
 Runtime files are `data/foursquare-config.json` (DPAPI-encrypted key), `data/foursquare-place-cache.json`, and `data/foursquare-usage.json`. They remain outside source control and release artifacts.
+
+### Share-card privacy boundary
+
+`POST /api/drive/share-card` is the only source for exported-card data. It returns normalized drawing coordinates (`x`/`y`) and an allowlisted set of labels and statistics. It never returns raw addresses, latitude, or longitude. When a drive starts or ends at the manual alias `Home`, the application service replaces that endpoint with **Saginaw, TX** and synthesizes the entire displayed route from a public city anchor. It deliberately does not clip or reuse the recorded Home route because the approach geometry could still identify the residence. The regular drive map remains local and unchanged.
 
 ## Listening history providers
 

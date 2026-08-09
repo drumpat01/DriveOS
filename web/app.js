@@ -983,6 +983,9 @@ const chargingFeature = window.DriveOSFeatures.charging.create({
   money,
   refreshRecaps: () => loadRecaps()
 });
+
+const shareCardsFeature = window.DriveOSFeatures.shareCards.create({ state, api: window.DriveOSApi });
+shareCardsFeature.bind();
 renderCharging = chargingFeature.render;
 loadCharging = chargingFeature.load;
 saveChargingRate = chargingFeature.saveRate;
@@ -1344,7 +1347,7 @@ function openDriveModal(drive) {
     : `<div class="empty-state"><h3>No archived Spotify matches</h3><p>DriveOS only knows songs it has already captured in the local Spotify archive.</p></div>`;
 
   $("playlistButton").disabled = songs.length === 0;
-  $("shareXButton").disabled = false;
+  $("shareCardButton").disabled = false;
 
   if (!state.playlistScope) {
     $("playlistButton").title = "Run the updated Connect-Spotify.ps1 once to grant playlist access.";
@@ -1440,7 +1443,8 @@ $("mapMusicNearbyClose")?.addEventListener("click", clearMapMusicNearby);
 
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
-  if ($("placeNamesModal")?.classList.contains("open")) hidePlaceNamesDialog();
+  if ($("shareCardModal")?.classList.contains("open")) shareCardsFeature.close();
+  else if ($("placeNamesModal")?.classList.contains("open")) hidePlaceNamesDialog();
   else closeDriveModal();
 });
 
@@ -2235,25 +2239,6 @@ $("replayRate").addEventListener("change", () => {
   // so changing speed doesn't make the replay jump.
   state.replayStartWallTime = performance.now();
   state.replayStartDriveMs = state.replayCurrentDriveMs;
-});
-
-$("shareXButton").addEventListener("click", () => {
-  const d = state.selectedDrive;
-  if (!d) return;
-
-  const soundtrack = d.songCount
-    ? ` Soundtrack: ${d.songCount} Spotify song${d.songCount === 1 ? "" : "s"}.`
-    : "";
-
-  const text =
-    `DriveOS: ${d.miles ?? "--"} miles in ${d.durationMinutes ?? "--"} minutes, ` +
-    `${batteryText(d)} battery.${soundtrack}`;
-
-  window.open(
-    `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`,
-    "_blank",
-    "noopener,noreferrer,width=700,height=600"
-  );
 });
 
 $("playlistButton").addEventListener("click", async () => {

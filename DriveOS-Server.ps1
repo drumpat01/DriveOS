@@ -21,6 +21,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Drives\DriveOS.Drives.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 
 # ============================================================
@@ -1776,6 +1777,35 @@ function Get-DriveMapData {
     }
 }
 
+function Get-DriveShareCardData {
+    param([string]$DriveId)
+    if (-not $DriveId) { throw "driveId is required." }
+
+    $Drive = @(Get-RecentDrives -Days 365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
+    if (-not $Drive) { throw "Drive could not be found." }
+
+    $MapData = $null
+    try { $MapData = Get-DriveMapData -DriveId $DriveId }
+    catch {
+        Write-DriveOSServerLog "Share card route fallback for $DriveId`: $($_.Exception.Message)"
+    }
+
+    $Card = New-DriveOSShareCardModel -Drive $Drive -MapData $MapData
+
+    # Defense in depth: the application model is deliberately allowlisted. A
+    # future edit must never accidentally attach raw addresses or coordinates.
+    if (
+        $Card.PSObject.Properties['rawStartingLocation'] -or
+        $Card.PSObject.Properties['rawEndingLocation'] -or
+        $Card.PSObject.Properties['startingLatitude'] -or
+        $Card.PSObject.Properties['endingLatitude']
+    ) {
+        throw "Share card privacy validation failed."
+    }
+
+    return $Card
+}
+
 # ------------------------------------------------------------
 # Music + aggregate statistics
 # ------------------------------------------------------------
@@ -2050,6 +2080,12 @@ function Handle-Request {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (Get-DriveMapData -DriveId $Body.driveId)
+                    return
+                }
+
+                "/api/drive/share-card" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
+                    Send-Json -Stream $Stream -Object (Get-DriveShareCardData -DriveId $Body.driveId)
                     return
                 }
 

@@ -1,4 +1,4 @@
-# DriveOS 4.2.0
+# DriveOS 4.3.0
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
@@ -23,6 +23,12 @@ DriveOS 4.2.0 can recognize businesses at repeated, unnamed Tessie locations. Op
 - searches stop at 10 per day and 250 per month; the first backfill is limited to 25 candidates
 - setup does not spend an API call, and no details or photo endpoints are used
 - the encrypted key, usage counter, and place cache stay under `data/` and are excluded from releases
+
+## Shareable drive cards
+
+Open a drive and choose **Create share card** to build a 1080×1350 PNG with a graphical route, album artwork, soundtrack moment, and selectable drive statistics. Mobile devices use the native share sheet when supported; DriveOS otherwise saves the PNG locally.
+
+Home privacy is mandatory and enforced by the backend. If either endpoint is named `Home`, the card replaces it with **Saginaw, TX**, discards the recorded route geometry, and generates a city-level route using the Saginaw anchor. Share-card responses and PNGs contain neither raw street addresses nor latitude/longitude values. Normal DriveOS maps are unchanged.
 - no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
 
 Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).

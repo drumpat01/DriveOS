@@ -104,7 +104,7 @@
 
     <div class="ignition-data ignition-data-right">
       <span>DRIVEOS</span>
-      <strong id="ignitionVersion">4.2</strong>
+      <strong id="ignitionVersion">4.3</strong>
     </div>
   </div>
   <div class="app-shell">
@@ -125,7 +125,7 @@
       </nav>
 
       <div class="topbar-right">
-        <div class="app-version" title="Installed DriveOS web build">4.2.0</div>
+        <div class="app-version" title="Installed DriveOS web build">4.3.0</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -524,7 +524,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">DriveOS Web 4.2.0</span>
+      <span id="webBuildFooter">DriveOS Web 4.3.0</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -678,7 +678,7 @@
           <h3 id="modalSongCount">0 songs</h3>
         </div>
         <div class="action-row">
-          <button id="shareXButton" class="secondary-button" type="button">Share on X</button>
+          <button id="shareCardButton" class="secondary-button" type="button">Create share card</button>
           <button id="playlistButton" class="primary-button" type="button">Create Spotify playlist</button>
         </div>
       </div>
@@ -688,24 +688,55 @@
     </article>
   </div>
 
+  <!-- PRIVACY-SAFE SHARE CARD -->
+  <div id="shareCardModal" class="modal share-card-modal" role="dialog" aria-modal="true" aria-labelledby="shareCardHeading" aria-hidden="true">
+    <div class="modal-backdrop" data-close-share-card></div>
+    <article class="modal-card share-card-modal-card">
+      <button class="modal-close" type="button" data-close-share-card aria-label="Close share card">&#xD7;</button>
+      <div class="section-label">DRIVE MEMORY</div>
+      <h2 id="shareCardHeading">Create a shareable drive card</h2>
+      <p class="modal-subtitle">Choose the details to show, then save or share a polished image.</p>
+      <div id="shareCardLoading" class="share-card-loading">Preparing a privacy-safe route&#x2026;</div>
+      <div id="shareCardWorkspace" class="share-card-workspace" hidden>
+        <div class="share-card-preview"><canvas id="shareCardCanvas" width="1080" height="1350" aria-label="Preview of the shareable drive card"></canvas></div>
+        <aside class="share-card-controls">
+          <div class="section-label">SHOW ON CARD</div>
+          <label><input type="checkbox" data-share-stat value="distance" checked> Distance</label>
+          <label><input type="checkbox" data-share-stat value="duration" checked> Duration</label>
+          <label><input type="checkbox" data-share-stat value="efficiency" checked> Efficiency</label>
+          <label><input type="checkbox" data-share-stat value="songs" checked> Song count</label>
+          <label><input type="checkbox" data-share-stat value="artist" checked> Top artist</label>
+          <div class="share-card-privacy-lock">
+            <strong>&#x1F512; Home privacy is locked on</strong>
+            <span id="shareCardPrivacy">Street addresses and coordinates are removed.</span>
+          </div>
+          <button id="shareCardNativeButton" class="primary-button" type="button">Share image</button>
+          <button id="shareCardDownload" class="secondary-button" type="button">Save PNG</button>
+          <p id="shareCardMessage" class="muted" aria-live="polite"></p>
+        </aside>
+      </div>
+    </article>
+  </div>
+
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-  <script src="/core/build.js?v=4.2.0"></script>
-  <script src="/core/dom.js?v=4.2.0"></script>
-  <script src="/core/state.js?v=4.2.0"></script>
-  <script src="/core/platform.js?v=4.2.0"></script>
-  <script src="/core/api.js?v=4.2.0"></script>
-  <script src="/components/song-artwork.js?v=4.2.0"></script>
-  <script src="/features/navigation.js?v=4.2.0"></script>
-  <script src="/features/pwa.js?v=4.2.0"></script>
-  <script src="/features/theme.js?v=4.2.0"></script>
-  <script src="/features/ignition.js?v=4.2.0"></script>
-  <script src="/features/places.js?v=4.2.0"></script>
-  <script src="/features/charging.js?v=4.2.0"></script>
-  <script src="/features/recaps.js?v=4.2.0"></script>
-  <script src="/features/refresh.js?v=4.2.0"></script>
-  <script src="/features/drives.js?v=4.2.0"></script>
-  <script src="/features/replay.js?v=4.2.0"></script>
-  <script src="/features/music.js?v=4.2.0"></script>
-  <script src="/app.js?v=4.2.0"></script>
+  <script src="/core/build.js?v=4.3.0"></script>
+  <script src="/core/dom.js?v=4.3.0"></script>
+  <script src="/core/state.js?v=4.3.0"></script>
+  <script src="/core/platform.js?v=4.3.0"></script>
+  <script src="/core/api.js?v=4.3.0"></script>
+  <script src="/components/song-artwork.js?v=4.3.0"></script>
+  <script src="/features/navigation.js?v=4.3.0"></script>
+  <script src="/features/pwa.js?v=4.3.0"></script>
+  <script src="/features/theme.js?v=4.3.0"></script>
+  <script src="/features/ignition.js?v=4.3.0"></script>
+  <script src="/features/places.js?v=4.3.0"></script>
+  <script src="/features/charging.js?v=4.3.0"></script>
+  <script src="/features/recaps.js?v=4.3.0"></script>
+  <script src="/features/refresh.js?v=4.3.0"></script>
+  <script src="/features/drives.js?v=4.3.0"></script>
+  <script src="/features/replay.js?v=4.3.0"></script>
+  <script src="/features/music.js?v=4.3.0"></script>
+  <script src="/features/share-cards.js?v=4.3.0"></script>
+  <script src="/app.js?v=4.3.0"></script>
 </body>
 </html>

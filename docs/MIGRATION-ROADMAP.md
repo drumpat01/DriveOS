@@ -29,6 +29,8 @@ DriveOS 4.1.0 is the first post-roadmap provider extension: a Last.fm adapter fe
 
 DriveOS 4.2.0 follows that pattern for place enrichment. Foursquare is isolated behind an adapter and provider-neutral application rules, while the existing manual alias and JSON/SQLite drive records remain unchanged. A future place-provider change can preserve the same cache and UI contracts.
 
+DriveOS 4.3.0 adds a backend-enforced share-card projection. Export rendering stays in a dedicated frontend feature, while address removal, Home-to-Saginaw substitution, and route normalization remain testable application rules outside the HTTP/UI layers.
+
 ## SQLite implementation
 
 SQLite is available behind the repository interface as an explicit, reversible migration. DriveOS uses a single local database with WAL mode, an indexed listening-history table, schema migrations, integrity checks, timestamped source backups, and JSON rollback. Source JSON/JSONL is retained.

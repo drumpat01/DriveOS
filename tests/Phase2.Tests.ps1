@@ -11,6 +11,7 @@ Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -F
 Import-Module (Join-Path $Root 'src\Domain\Drives\DriveOS.Drives.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Recaps\DriveOS.Recaps.psm1') -Force
 Import-Module (Join-Path $Root 'src\Application\DriveOS.Playlists.psm1') -Force
+Import-Module (Join-Path $Root 'src\Application\DriveOS.ShareCards.psm1') -Force
 Import-Module (Join-Path $Root 'src\Http\DriveOS.Http.psm1') -Force
 
 function Assert-Equal($Actual, $Expected, [string]$Message) {
@@ -100,6 +101,28 @@ try {
     Assert-Equal $driveModel.durationMinutes 60 'Drive duration changed.'
     Assert-Equal $driveModel.efficiencyWhMi 250 'Drive efficiency mapping changed.'
     Assert-Equal $driveModel.songCount 1 'Drive soundtrack count changed.'
+    $privateDrive=[pscustomobject]@{
+        id='100-3700';startedAt='2026-08-08T22:00:00-05:00';dateLabel='Saturday, August 8'
+        startingLocation='Home';endingLocation='IHOP'
+        rawStartingLocation='SECRET HOME STREET, Saginaw, Texas 76179, United States'
+        rawEndingLocation='100 Restaurant Way, Arlington, Texas 76011, United States'
+        startingLatitude=32.812345;startingLongitude=-97.456789;endingLatitude=32.735;endingLongitude=-97.108
+        miles=18.4;durationMinutes=42;efficiencyWhMi=241
+        soundtrack=@([pscustomobject]@{track='Mr. Brightside';artist='The Killers';album='Hot Fuss';trackId='track123456';playedAt='2026-08-08T22:02:00-05:00'})
+    }
+    $shareCard=New-DriveOSShareCardModel -Drive $privateDrive
+    Assert-Equal $shareCard.title 'Saturday Night Drive' 'Share card title changed.'
+    Assert-Equal $shareCard.startLabel 'Saginaw, TX' 'Home share label must resolve to Saginaw.'
+    Assert-Equal $shareCard.route.mode 'city-private' 'Home route must use private city geometry.'
+    Assert-Equal $shareCard.privacy.homeProtected $true 'Home privacy flag changed.'
+    Assert-Equal $shareCard.privacy.coordinatesIncluded $false 'Share cards must not include coordinates.'
+    $shareJson=$shareCard|ConvertTo-Json -Depth 8
+    foreach($secret in @('SECRET HOME STREET','32.812345','-97.456789','rawStartingLocation','latitude','longitude')){
+        if($shareJson -match [regex]::Escape($secret)){throw "Share card leaked protected data: $secret"}
+    }
+    foreach($point in @($shareCard.route.points)){
+        if($null -eq $point.x -or $null -eq $point.y -or $point.x -lt 0 -or $point.x -gt 1 -or $point.y -lt 0 -or $point.y -gt 1){throw 'Share route contains invalid normalized drawing points.'}
+    }
     $recapDrive=[pscustomobject]@{startedAt='2026-01-10T12:00:00-06:00';miles=10;energyKWh=2.5;batteryUsed=5;songCount=1;startingLocation='Home';endingLocation='Work';shortDateLabel='Sat, Jan 10';soundtrack=@([pscustomobject]@{track='Song';artist='Artist'})}
     $recapCharge=[pscustomobject]@{startedAt='2026-01-11T12:00:00-06:00';energyAddedKWh=20;displayCost=3.5}
     $recaps=New-DriveOSMonthlyRecaps -Drives @($recapDrive) -Charges @($recapCharge) -Settings ([pscustomobject]@{electricityRateCents=12.5}) -Now ([datetime]'2026-01-20')
