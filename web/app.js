@@ -2342,6 +2342,9 @@ initializeMobileNavigationPortal();
 purgeOldDriveOSCaches();
 initializePwa();
 
+const initialRefresh = refreshFeature.start();
+window.DriveOSIgnition.setReady(initialRefresh);
+
 if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
   window.DriveOSIgnition.run();
 }
@@ -2354,4 +2357,3 @@ const initialView = ["dashboard", "drives", "music", "statistics"].includes(loca
   : "dashboard";
 
 showView(initialView);
-refreshFeature.start();

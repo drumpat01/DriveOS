@@ -9,8 +9,11 @@ for($i=1;$i -lt $required.Count;$i++){if([array]::IndexOf($scripts,$required[$i-
 $app=Get-Content (Join-Path $Root 'web\app.js') -Raw
 foreach($legacy in @('function initializePwa','function showView','function applyDriveOSTheme','function runDriveOSIgnition','const state = {')){if($app.Contains($legacy)){throw "Extracted frontend implementation returned to app.js: $legacy"}}
 $desktopHost=Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw;$ignition=Get-Content (Join-Path $Root 'web\features\ignition.js') -Raw
-if($desktopHost -match 'runDriveOSIgnition' -and $ignition -notmatch 'window\.runDriveOSIgnition=run'){throw 'Desktop ignition compatibility shim is missing.'}
+if($desktopHost -match 'runDriveOSIgnition' -and $ignition -notmatch 'window\.runDriveOSIgnition\s*=\s*run'){throw 'Desktop ignition compatibility shim is missing.'}
 $serviceWorker=Get-Content (Join-Path $Root 'web\service-worker.js') -Raw;if($serviceWorker -notmatch 'pathname\.endsWith\("\.js"\)'){throw 'Service worker no longer treats feature modules as network-only.'}
 if(-not $NodePath){$node=Get-Command node.exe -ErrorAction SilentlyContinue;if($node){$NodePath=$node.Source}}
-if($NodePath){& $NodePath (Join-Path $PSScriptRoot 'frontend-modules.test.js');if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}}else{Write-Warning 'Node.js unavailable; runtime module tests skipped.'}
+if($NodePath){
+    & $NodePath (Join-Path $PSScriptRoot 'frontend-modules.test.js');if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+    & $NodePath (Join-Path $PSScriptRoot 'startup-refresh.test.js');if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+}else{Write-Warning 'Node.js unavailable; runtime module tests skipped.'}
 Write-Host 'Phase 3 module and load-order tests passed.'

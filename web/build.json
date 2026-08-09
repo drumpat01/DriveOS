@@ -1,12 +1,12 @@
 {
   "product": "DriveOS",
-  "version": "3.3.0",
-  "webBuild": "3.3.0",
+  "version": "3.3.1",
+  "webBuild": "3.3.1",
   "features": [
     "friendly-places",
     "charging-history",
     "monthly-recap"
   ],
-  "css": "/styles.css?v=3.3.0",
-  "js": "/app.js?v=3.3.0"
+  "css": "/styles.css?v=3.3.1",
+  "js": "/app.js?v=3.3.1"
 }
