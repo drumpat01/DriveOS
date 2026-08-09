@@ -2,6 +2,8 @@
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DriveOS.ps1` for offline architecture and compatibility validation.
+
 DriveOS 3.0 adds two major local intelligence features on top of Drive Library Search.
 
 ## Favorite Routes

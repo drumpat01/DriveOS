@@ -8,6 +8,8 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Integrations/Tessie/`: Tessie client boundary. Backend/domain code consumes adapter functions rather than constructing Tessie HTTP requests.
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
+- `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL is the active provider.
+- `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
 - `web/core/`: frontend infrastructure modules loaded before the legacy application.
 - `web/components/`: presentation components extracted without changing their DOM contract or styling.
 - `web/app.js`: current UI/domain composition root. It remains large in Phase 1.
