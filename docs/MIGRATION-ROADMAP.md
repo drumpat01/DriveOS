@@ -31,6 +31,8 @@ DriveOS 4.2.0 follows that pattern for place enrichment. Foursquare is isolated 
 
 DriveOS 4.3.0 adds a backend-enforced share-card projection. Export rendering stays in a dedicated frontend feature, while address removal, Home-to-Saginaw substitution, and route normalization remain testable application rules outside the HTTP/UI layers.
 
+DriveOS 4.3.1 extends the same projection with safe map geometry: recorded simplified routes for ordinary drives and wholly synthetic city-level geometry for Home drives. X sharing remains credential-free through native file sharing and the official X Web Intent fallback.
+
 ## SQLite implementation
 
 SQLite is available behind the repository interface as an explicit, reversible migration. DriveOS uses a single local database with WAL mode, an indexed listening-history table, schema migrations, integrity checks, timestamped source backups, and JSON rollback. Source JSON/JSONL is retained.

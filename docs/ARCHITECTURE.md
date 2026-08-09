@@ -37,7 +37,7 @@ Runtime files are `data/foursquare-config.json` (DPAPI-encrypted key), `data/fou
 
 ### Share-card privacy boundary
 
-`POST /api/drive/share-card` is the only source for exported-card data. It returns normalized drawing coordinates (`x`/`y`) and an allowlisted set of labels and statistics. It never returns raw addresses, latitude, or longitude. When a drive starts or ends at the manual alias `Home`, the application service replaces that endpoint with **Saginaw, TX** and synthesizes the entire displayed route from a public city anchor. It deliberately does not clip or reuse the recorded Home route because the approach geometry could still identify the residence. The regular drive map remains local and unchanged.
+`POST /api/drive/share-card` is the only source for exported-card data. It returns an allowlisted set of labels and statistics plus map geometry. For ordinary drives the geometry is a bounded simplification of the recorded route. When a drive starts or ends at the manual alias `Home`, the application service replaces that endpoint with **Saginaw, TX** and synthesizes the entire displayed route from a public city anchor. It never returns the Home address, Home coordinates, or recorded Home approach geometry. The frontend renders that safe geometry over OpenFreeMap and exports only pixels to the PNG; it adds no geographic metadata. The regular drive map remains local and unchanged.
 
 ## Listening history providers
 

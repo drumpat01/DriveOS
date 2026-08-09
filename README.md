@@ -1,4 +1,4 @@
-# DriveOS 4.3.0
+# DriveOS 4.3.1
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
@@ -26,9 +26,9 @@ DriveOS 4.2.0 can recognize businesses at repeated, unnamed Tessie locations. Op
 
 ## Shareable drive cards
 
-Open a drive and choose **Create share card** to build a 1080×1350 PNG with a graphical route, album artwork, soundtrack moment, and selectable drive statistics. Mobile devices use the native share sheet when supported; DriveOS otherwise saves the PNG locally.
+Open a drive and choose **Create share card** to build a 1080×1350 PNG with an OpenFreeMap overview, route, album artwork, soundtrack moment, and selectable drive statistics. Non-Home drives show a simplified version of the recorded route. Mobile **Share to X** includes the PNG in the native share sheet; DriveOS otherwise saves the PNG and opens the official X composer with prefilled text.
 
-Home privacy is mandatory and enforced by the backend. If either endpoint is named `Home`, the card replaces it with **Saginaw, TX**, discards the recorded route geometry, and generates a city-level route using the Saginaw anchor. Share-card responses and PNGs contain neither raw street addresses nor latitude/longitude values. Normal DriveOS maps are unchanged.
+Home privacy is mandatory and enforced by the backend. If either endpoint is named `Home`, the card replaces it with **Saginaw, TX**, discards the recorded route geometry, and generates a city-level map route using the public Saginaw anchor. The response never contains the Home address or Home coordinates, and the PNG contains no embedded geographic metadata. Normal DriveOS maps are unchanged.
 - no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
 
 Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).

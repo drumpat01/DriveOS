@@ -11,6 +11,10 @@ foreach($legacy in @('function initializePwa','function showView','function appl
 foreach($modalId in @('openPlaceNamesModal','placeNamesModal','placeNamesList')){if($index -notmatch ('id="'+$modalId+'"')){throw "Friendly places modal control is missing: $modalId"}}
 foreach($shareId in @('shareCardButton','shareCardModal','shareCardCanvas','shareCardDownload')){if($index -notmatch ('id="'+$shareId+'"')){throw "Share card control is missing: $shareId"}}
 if($index -notmatch 'Home privacy is locked on'){throw 'Share-card Home privacy lock is missing.'}
+if($index -notmatch '>Share to X<'){throw 'Share-card X action is missing.'}
+$shareCards=Get-Content (Join-Path $Root 'web\features\share-cards.js') -Raw
+if($shareCards -notmatch 'https://x\.com/intent/tweet'){throw 'Official X Web Intent fallback is missing.'}
+if($shareCards -notmatch 'tiles\.openfreemap\.org/styles/liberty'){throw 'Share-card map overview is missing.'}
 if($index -notmatch 'data-close-place-modal'){throw 'Friendly places modal backdrop/close control is missing.'}
 foreach($searchId in @('driveSearchInput','driveAdvancedToggle','driveAdvancedFilters')){if($index -notmatch ('id="'+$searchId+'"')){throw "Drive search control is missing: $searchId"}}
 if($index -notmatch 'id="driveAdvancedFilters"[^>]*hidden'){throw 'Advanced drive filters must be collapsed initially.'}

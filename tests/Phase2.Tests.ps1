@@ -115,14 +115,21 @@ try {
     Assert-Equal $shareCard.startLabel 'Saginaw, TX' 'Home share label must resolve to Saginaw.'
     Assert-Equal $shareCard.route.mode 'city-private' 'Home route must use private city geometry.'
     Assert-Equal $shareCard.privacy.homeProtected $true 'Home privacy flag changed.'
-    Assert-Equal $shareCard.privacy.coordinatesIncluded $false 'Share cards must not include coordinates.'
+    Assert-Equal $shareCard.privacy.homeCoordinatesIncluded $false 'Share cards must not include Home coordinates.'
     $shareJson=$shareCard|ConvertTo-Json -Depth 8
-    foreach($secret in @('SECRET HOME STREET','32.812345','-97.456789','rawStartingLocation','latitude','longitude')){
+    foreach($secret in @('SECRET HOME STREET','32.812345','-97.456789','rawStartingLocation')){
         if($shareJson -match [regex]::Escape($secret)){throw "Share card leaked protected data: $secret"}
     }
+    Assert-Equal $shareCard.route.mapPoints[0].latitude 32.8601 'Private route must begin at the Saginaw city anchor.'
+    Assert-Equal $shareCard.route.mapPoints[0].longitude -97.3639 'Private route must not begin at the Home longitude.'
     foreach($point in @($shareCard.route.points)){
         if($null -eq $point.x -or $null -eq $point.y -or $point.x -lt 0 -or $point.x -gt 1 -or $point.y -lt 0 -or $point.y -gt 1){throw 'Share route contains invalid normalized drawing points.'}
     }
+    $publicDrive=$privateDrive.PSObject.Copy();$publicDrive.startingLocation='Coffee Shop';$publicDrive.rawStartingLocation='100 Coffee Way, Fort Worth, Texas 76102'
+    $publicMap=[pscustomobject]@{routePoints=@([pscustomobject]@{latitude=32.75;longitude=-97.33},[pscustomobject]@{latitude=32.76;longitude=-97.31})}
+    $publicCard=New-DriveOSShareCardModel -Drive $publicDrive -MapData $publicMap
+    Assert-Equal $publicCard.route.mode 'recorded-simplified' 'Non-Home share card must use its recorded route.'
+    Assert-Equal $publicCard.route.mapPoints[0].latitude 32.75 'Non-Home share route latitude changed.'
     $recapDrive=[pscustomobject]@{startedAt='2026-01-10T12:00:00-06:00';miles=10;energyKWh=2.5;batteryUsed=5;songCount=1;startingLocation='Home';endingLocation='Work';shortDateLabel='Sat, Jan 10';soundtrack=@([pscustomobject]@{track='Song';artist='Artist'})}
     $recapCharge=[pscustomobject]@{startedAt='2026-01-11T12:00:00-06:00';energyAddedKWh=20;displayCost=3.5}
     $recaps=New-DriveOSMonthlyRecaps -Drives @($recapDrive) -Charges @($recapCharge) -Settings ([pscustomobject]@{electricityRateCents=12.5}) -Now ([datetime]'2026-01-20')

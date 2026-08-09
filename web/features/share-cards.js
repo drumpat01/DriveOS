@@ -5,6 +5,7 @@
     const width = 1080;
     const height = 1350;
     let artwork = null;
+    let mapArtwork = null;
 
     function roundRect(ctx, x, y, w, h, radius) {
       const r = Math.min(radius, w / 2, h / 2);
@@ -56,25 +57,30 @@
       ctx.save();
       roundRect(ctx, box.x, box.y, box.w, box.h, 34);
       ctx.clip();
-      const mapGradient = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
-      mapGradient.addColorStop(0, "#102c3a");
-      mapGradient.addColorStop(1, "#071923");
-      ctx.fillStyle = mapGradient;
-      ctx.fillRect(box.x, box.y, box.w, box.h);
-
-      ctx.strokeStyle = "rgba(137, 245, 189, .08)";
-      ctx.lineWidth = 1;
-      for (let gx = box.x + 55; gx < box.x + box.w; gx += 72) {
-        ctx.beginPath(); ctx.moveTo(gx, box.y); ctx.lineTo(gx, box.y + box.h); ctx.stroke();
-      }
-      for (let gy = box.y + 40; gy < box.y + box.h; gy += 72) {
-        ctx.beginPath(); ctx.moveTo(box.x, gy); ctx.lineTo(box.x + box.w, gy); ctx.stroke();
+      if (mapArtwork) {
+        ctx.drawImage(mapArtwork, box.x, box.y, box.w, box.h);
+        ctx.fillStyle = "rgba(2, 14, 21, .22)";
+        ctx.fillRect(box.x, box.y, box.w, box.h);
+      } else {
+        const mapGradient = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
+        mapGradient.addColorStop(0, "#102c3a");
+        mapGradient.addColorStop(1, "#071923");
+        ctx.fillStyle = mapGradient;
+        ctx.fillRect(box.x, box.y, box.w, box.h);
+        ctx.strokeStyle = "rgba(137, 245, 189, .08)";
+        ctx.lineWidth = 1;
+        for (let gx = box.x + 55; gx < box.x + box.w; gx += 72) {
+          ctx.beginPath(); ctx.moveTo(gx, box.y); ctx.lineTo(gx, box.y + box.h); ctx.stroke();
+        }
+        for (let gy = box.y + 40; gy < box.y + box.h; gy += 72) {
+          ctx.beginPath(); ctx.moveTo(box.x, gy); ctx.lineTo(box.x + box.w, gy); ctx.stroke();
+        }
       }
 
       const points = card.route?.points || [];
       const px = point => box.x + 70 + Number(point.x) * (box.w - 140);
       const py = point => box.y + 60 + Number(point.y) * (box.h - 120);
-      if (points.length > 1) {
+      if (!mapArtwork && points.length > 1) {
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.strokeStyle = "rgba(8, 10, 14, .55)";
@@ -137,7 +143,7 @@
       drawWrappedText(ctx, card.title, 72, 155, artwork ? 620 : 920, 72, 2);
       ctx.fillStyle = "#9eb8c5";
       ctx.font = '600 31px "Segoe UI", sans-serif';
-      drawWrappedText(ctx, card.routeLabel, 72, 282, artwork ? 620 : 920, 39, 2);
+      drawWrappedText(ctx, `${card.startLabel} \u2192 ${card.endLabel}`, 72, 282, artwork ? 620 : 920, 39, 2);
 
       if (artwork) {
         ctx.save();
@@ -168,19 +174,19 @@
       });
 
       const featuredY = stats.length > 4 ? 1165 : stats.length > 2 ? 1055 : 945;
-      if (card.featured?.moment) {
+      if (card.featured?.momentContext) {
         ctx.fillStyle = "#86f1c5"; ctx.font = '800 18px "Segoe UI", sans-serif'; ctx.fillText("A MOMENT FROM THE SOUNDTRACK", 72, featuredY);
-        ctx.fillStyle = "#f4fbff"; ctx.font = '700 34px "Segoe UI", sans-serif';
-        drawWrappedText(ctx, card.featured.moment, 72, featuredY + 48, 936, 43, 2);
+        ctx.fillStyle = "#f4fbff"; ctx.font = '700 32px "Segoe UI", sans-serif';
+        drawWrappedText(ctx, `\u201c${card.featured.track}\u201d ${card.featured.momentContext}`, 72, featuredY + 46, 936, 39, 2);
       }
 
       ctx.strokeStyle = "rgba(255,255,255,.11)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(72, 1265); ctx.lineTo(1008, 1265); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(72, 1282); ctx.lineTo(1008, 1282); ctx.stroke();
       ctx.fillStyle = "#7e9ba8"; ctx.font = '600 19px "Segoe UI", sans-serif';
-      ctx.fillText("Made locally with DriveOS", 72, 1310);
+      ctx.fillText("Made locally with DriveOS", 72, 1323);
       ctx.textAlign = "right";
       ctx.fillStyle = card.privacy.homeProtected ? "#86f1c5" : "#7e9ba8";
-      ctx.fillText(card.privacy.homeProtected ? "HOME LOCATION PROTECTED · SAGINAW, TX" : "STREET ADDRESSES HIDDEN", 1008, 1310);
+      ctx.fillText(card.privacy.homeProtected ? "HOME LOCATION PROTECTED · SAGINAW, TX" : "STREET ADDRESSES HIDDEN", 1008, 1323);
       ctx.textAlign = "left";
     }
 
@@ -193,6 +199,64 @@
         image.onload = () => { artwork = image; resolve(); };
         image.onerror = () => resolve();
         image.src = `/api/spotify/artwork/${encodeURIComponent(trackId)}`;
+      });
+    }
+
+    function loadMapArtwork(card) {
+      mapArtwork = null;
+      const points = (card?.route?.mapPoints || []).filter(point =>
+        Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude))
+      );
+      const container = $("shareCardMapRenderer");
+      if (!container || points.length < 2 || typeof maplibregl === "undefined") return Promise.resolve();
+      container.innerHTML = "";
+
+      return new Promise(resolve => {
+        let settled = false;
+        let map = null;
+        const finish = image => {
+          if (settled) return;
+          settled = true;
+          mapArtwork = image || null;
+          try { map?.remove(); } catch {}
+          container.innerHTML = "";
+          resolve();
+        };
+        const timeout = setTimeout(() => finish(null), 9000);
+        try {
+          map = new maplibregl.Map({
+            container,
+            style: "https://tiles.openfreemap.org/styles/liberty",
+            interactive: false,
+            attributionControl: false,
+            preserveDrawingBuffer: true,
+            fadeDuration: 0
+          });
+          map.once("load", () => {
+            const coordinates = points.map(point => [Number(point.longitude), Number(point.latitude)]);
+            map.addSource("share-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } } });
+            map.addLayer({ id: "share-route-shadow", type: "line", source: "share-route", paint: { "line-color": "rgba(2,10,16,.76)", "line-width": 14, "line-blur": 2 } });
+            map.addLayer({ id: "share-route-line", type: "line", source: "share-route", paint: { "line-color": "#16d6b0", "line-width": 7 } });
+            map.addSource("share-terminals", { type: "geojson", data: { type: "FeatureCollection", features: [coordinates[0], coordinates[coordinates.length - 1]].map((coordinate, index) => ({ type: "Feature", properties: { kind: index }, geometry: { type: "Point", coordinates: coordinate } })) } });
+            map.addLayer({ id: "share-terminal-halo", type: "circle", source: "share-terminals", paint: { "circle-radius": 11, "circle-color": "#f7ffff" } });
+            map.addLayer({ id: "share-terminals", type: "circle", source: "share-terminals", paint: { "circle-radius": 7, "circle-color": ["case", ["==", ["get", "kind"], 0], "#09b4c8", "#20d49e"] } });
+            const bounds = coordinates.reduce((value, coordinate) => value.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
+            if (Math.abs(bounds.getEast() - bounds.getWest()) < .01 && Math.abs(bounds.getNorth() - bounds.getSouth()) < .01) {
+              bounds.extend([bounds.getWest() - .02, bounds.getSouth() - .02]);
+              bounds.extend([bounds.getEast() + .02, bounds.getNorth() + .02]);
+            }
+            map.fitBounds(bounds, { padding: 72, duration: 0, maxZoom: 13 });
+            map.once("idle", () => {
+              try {
+                const image = new Image();
+                image.onload = () => { clearTimeout(timeout); finish(image); };
+                image.onerror = () => { clearTimeout(timeout); finish(null); };
+                image.src = map.getCanvas().toDataURL("image/png");
+              } catch { clearTimeout(timeout); finish(null); }
+            });
+          });
+          map.on("error", () => {});
+        } catch { clearTimeout(timeout); finish(null); }
       });
     }
 
@@ -217,16 +281,18 @@
       $("shareCardMessage").textContent = "Image saved. The PNG contains no raw addresses or geographic coordinates.";
     }
 
-    async function share() {
+    async function shareToX() {
       render();
       const blob = await canvasBlob();
       const file = new File([blob], filename(), { type: "image/png" });
+      const postText = `${state.shareCardData.title}\n${state.shareCardData.startLabel} \u2192 ${state.shareCardData.endLabel}\n${state.shareCardData.stats.miles ?? "--"} miles · ${state.shareCardData.stats.durationMinutes ?? "--"} minutes\n#DriveOS`;
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({ files: [file], title: state.shareCardData.title, text: state.shareCardData.routeLabel });
-        $("shareCardMessage").textContent = "Share sheet opened.";
+        await navigator.share({ files: [file], title: state.shareCardData.title, text: postText });
+        $("shareCardMessage").textContent = "Choose X in the share sheet to post the card.";
       } else {
         await download();
-        $("shareCardMessage").textContent = "This device does not offer image sharing here, so DriveOS saved the PNG instead.";
+        window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(postText)}`, "_blank", "noopener,noreferrer,width=700,height=700");
+        $("shareCardMessage").textContent = "The PNG was saved and the X composer opened. Attach the saved card to the post.";
       }
     }
 
@@ -240,7 +306,7 @@
       try {
         const card = await api.post("/api/drive/share-card", { driveId: drive.id });
         state.shareCardData = card;
-        await loadArtwork(card);
+        await Promise.all([loadArtwork(card), loadMapArtwork(card)]);
         $("shareCardPrivacy").textContent = card.privacy.note;
         $("shareCardLoading").hidden = true;
         $("shareCardWorkspace").hidden = false;
@@ -253,7 +319,7 @@
     function close() {
       const modal = $("shareCardModal");
       modal.classList.remove("open"); modal.setAttribute("aria-hidden", "true");
-      state.shareCardData = null; artwork = null;
+      state.shareCardData = null; artwork = null; mapArtwork = null;
     }
 
     function bind() {
@@ -261,12 +327,12 @@
       document.querySelectorAll("[data-close-share-card]").forEach(item => item.addEventListener("click", close));
       document.querySelectorAll("[data-share-stat]").forEach(input => input.addEventListener("change", render));
       $("shareCardDownload")?.addEventListener("click", () => download().catch(error => { $("shareCardMessage").textContent = error.message; }));
-      $("shareCardNativeButton")?.addEventListener("click", () => share().catch(error => {
+      $("shareCardNativeButton")?.addEventListener("click", () => shareToX().catch(error => {
         if (error?.name !== "AbortError") $("shareCardMessage").textContent = error.message || "Sharing was not available.";
       }));
     }
 
-    return Object.freeze({ open, close, render, download, share, bind });
+    return Object.freeze({ open, close, render, download, shareToX, bind });
   }
 
   window.DriveOSFeatures = window.DriveOSFeatures || {};

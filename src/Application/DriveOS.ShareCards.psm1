@@ -76,7 +76,33 @@ function ConvertTo-DriveOSNormalizedRoute {
     })
 }
 
-function New-DriveOSPrivateCityRoute {
+function Select-DriveOSShareGeoRoute {
+    param(
+        [object[]]$Points = @(),
+        [ValidateRange(2,200)][int]$Limit = 120
+    )
+    $Valid = @($Points | Where-Object {
+        $null -ne $_.latitude -and $null -ne $_.longitude -and
+        [double]$_.latitude -ge -90 -and [double]$_.latitude -le 90 -and
+        [double]$_.longitude -ge -180 -and [double]$_.longitude -le 180
+    })
+    if ($Valid.Count -le $Limit) {
+        return @($Valid | ForEach-Object { [PSCustomObject]@{
+            latitude=[Math]::Round([double]$_.latitude,6)
+            longitude=[Math]::Round([double]$_.longitude,6)
+        }})
+    }
+    $Step = [Math]::Ceiling($Valid.Count / [double]$Limit)
+    $Sampled = @()
+    for ($Index = 0; $Index -lt $Valid.Count; $Index += $Step) { $Sampled += $Valid[$Index] }
+    if ($Sampled[-1] -ne $Valid[-1]) { $Sampled += $Valid[-1] }
+    return @($Sampled | ForEach-Object { [PSCustomObject]@{
+        latitude=[Math]::Round([double]$_.latitude,6)
+        longitude=[Math]::Round([double]$_.longitude,6)
+    }})
+}
+
+function New-DriveOSPrivateCityGeoRoute {
     param(
         [double]$StartLatitude,
         [double]$StartLongitude,
@@ -95,7 +121,7 @@ function New-DriveOSPrivateCityRoute {
             longitude = $StartLongitude + ($LonDelta * $T) - ($LatDelta * $Curve)
         }
     }
-    return @(ConvertTo-DriveOSNormalizedRoute -Points $Points)
+    return @(Select-DriveOSShareGeoRoute -Points $Points)
 }
 
 function New-DriveOSShareCardModel {
@@ -118,17 +144,17 @@ function New-DriveOSShareCardModel {
     $EndLat = if ($EndIsHome) { $HomeCityLatitude } else { [double]$Drive.endingLatitude }
     $EndLon = if ($EndIsHome) { $HomeCityLongitude } else { [double]$Drive.endingLongitude }
 
-    $Route = @()
+    $GeoRoute = @()
     $RouteMode = 'recorded-simplified'
     if ($HomeProtected) {
-        $Route = @(New-DriveOSPrivateCityRoute -StartLatitude $StartLat -StartLongitude $StartLon -EndLatitude $EndLat -EndLongitude $EndLon)
+        $GeoRoute = @(New-DriveOSPrivateCityGeoRoute -StartLatitude $StartLat -StartLongitude $StartLon -EndLatitude $EndLat -EndLongitude $EndLon)
         $RouteMode = 'city-private'
     }
     elseif ($MapData -and @($MapData.routePoints).Count -gt 1) {
-        $Route = @(ConvertTo-DriveOSNormalizedRoute -Points @($MapData.routePoints))
+        $GeoRoute = @(Select-DriveOSShareGeoRoute -Points @($MapData.routePoints))
     }
     else {
-        $Route = @(New-DriveOSPrivateCityRoute -StartLatitude $StartLat -StartLongitude $StartLon -EndLatitude $EndLat -EndLongitude $EndLon)
+        $GeoRoute = @(New-DriveOSPrivateCityGeoRoute -StartLatitude $StartLat -StartLongitude $StartLon -EndLatitude $EndLat -EndLongitude $EndLon)
         $RouteMode = 'endpoint-simplified'
     }
 
@@ -146,10 +172,8 @@ function New-DriveOSShareCardModel {
             $NearStart = [Math]::Abs(($SongTime - $DriveTime).TotalMinutes) -le 7
         }
         catch {}
-        $Moment = if ($NearStart) {
-            '“{0}” started near {1}' -f $Featured.track, $StartLabel
-        }
-        else { '“{0}” joined the drive along the way' -f $Featured.track }
+        $Moment = if ($NearStart) { "started near $StartLabel" }
+        else { 'joined the drive along the way' }
     }
 
     return [PSCustomObject]@{
@@ -157,10 +181,14 @@ function New-DriveOSShareCardModel {
         driveId = [string]$Drive.id
         title = Get-DriveOSShareTitle -StartedAt ([string]$Drive.startedAt)
         dateLabel = [string]$Drive.dateLabel
-        routeLabel = "$StartLabel → $EndLabel"
+        routeLabel = "$StartLabel to $EndLabel"
         startLabel = $StartLabel
         endLabel = $EndLabel
-        route = [PSCustomObject]@{ mode=$RouteMode; points=@($Route) }
+        route = [PSCustomObject]@{
+            mode=$RouteMode
+            points=@(ConvertTo-DriveOSNormalizedRoute -Points $GeoRoute)
+            mapPoints=@($GeoRoute)
+        }
         stats = [PSCustomObject]@{
             miles = $Drive.miles
             durationMinutes = $Drive.durationMinutes
@@ -173,18 +201,19 @@ function New-DriveOSShareCardModel {
             artist = [string]$Featured.artist
             album = [string]$Featured.album
             trackId = [string]$Featured.trackId
-            moment = $Moment
+            momentContext = $Moment
         }} else { $null }
         privacy = [PSCustomObject]@{
             homeProtected = $HomeProtected
             homeReplacement = if ($HomeProtected) { $HomeCityLabel } else { $null }
-            coordinatesIncluded = $false
+            homeCoordinatesIncluded = $false
+            routeCoordinates = if ($HomeProtected) { 'city-level-synthetic' } else { 'recorded-simplified' }
             rawAddressesIncluded = $false
             note = if ($HomeProtected) {
                 "Home was replaced with $HomeCityLabel. The real Home route geometry is not included."
-            } else { 'Street addresses and geographic coordinates are not included.' }
+            } else { 'Street addresses are not included. The recorded route is shown on the map.' }
         }
     }
 }
 
-Export-ModuleMember -Function Test-DriveOSHomeEndpoint,Get-DriveOSShareLocationLabel,Get-DriveOSShareTitle,ConvertTo-DriveOSNormalizedRoute,New-DriveOSPrivateCityRoute,New-DriveOSShareCardModel
+Export-ModuleMember -Function Test-DriveOSHomeEndpoint,Get-DriveOSShareLocationLabel,Get-DriveOSShareTitle,ConvertTo-DriveOSNormalizedRoute,Select-DriveOSShareGeoRoute,New-DriveOSPrivateCityGeoRoute,New-DriveOSShareCardModel
