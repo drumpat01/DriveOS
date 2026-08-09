@@ -8,6 +8,7 @@ Import-Module (Join-Path $Root 'src\Domain\Replay\DriveOS.Replay.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -Force
+Import-Module (Join-Path $Root 'src\Application\DriveOS.Playlists.psm1') -Force
 
 function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
@@ -76,6 +77,9 @@ try {
     Assert-Equal $musicStats.daily[-1].count 2 'Daily music grouping changed.'
     $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3})
     Assert-Equal $driveStats.averageWhMi 250 'Drive efficiency changed.'
+    $plan=New-DriveOSPlaylistPlan -Drive ([pscustomobject]@{shortDateLabel='Jan 1';startTime='8:00 AM';soundtrack=@([pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:two'})})
+    Assert-Equal $plan.uris.Count 2 'Playlist URI de-duplication changed.'
+    Assert-Equal $plan.name 'DriveOS - Jan 1 8:00 AM' 'Playlist naming changed.'
 
     $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
     $contracts = Get-Content (Join-Path $PSScriptRoot 'fixtures\endpoint-contracts.json') -Raw | ConvertFrom-Json

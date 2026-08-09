@@ -15,6 +15,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -1451,67 +1452,8 @@ function New-DrivePlaylist {
         throw "Drive could not be found."
     }
 
-    if (-not $Drive.soundtrack -or $Drive.soundtrack.Count -eq 0) {
-        throw "No archived Spotify tracks overlap this drive."
-    }
-
-    $TrackUris = @()
-
-    foreach ($Track in $Drive.soundtrack) {
-        if ($Track.trackUri -and ($TrackUris -notcontains $Track.trackUri)) {
-            $TrackUris += $Track.trackUri
-        }
-    }
-
-    if ($TrackUris.Count -eq 0) {
-        throw "No Spotify track IDs were available for this drive."
-    }
-
     $Token = Get-SpotifyAccessToken
-    $Headers = @{
-        Authorization = "Bearer $Token"
-        "Content-Type" = "application/json"
-    }
-
-    $PlaylistName = "DriveOS - $($Drive.shortDateLabel) $($Drive.startTime)"
-    $Description = "Drive soundtrack captured by DriveOS."
-
-    $CreateBody = @{
-        name        = $PlaylistName
-        public      = $false
-        description = $Description
-    } | ConvertTo-Json -Compress
-
-    $Playlist = Invoke-RestMethod `
-        -Uri "https://api.spotify.com/v1/me/playlists" `
-        -Headers $Headers `
-        -Method Post `
-        -Body $CreateBody
-
-    $PlaylistId = $Playlist.id
-
-    for ($i = 0; $i -lt $TrackUris.Count; $i += 100) {
-        $Last = [math]::Min($i + 99, $TrackUris.Count - 1)
-        $Chunk = @($TrackUris[$i..$Last])
-
-        $ItemsBody = @{
-            uris = $Chunk
-        } | ConvertTo-Json -Depth 5 -Compress
-
-        $null = Invoke-RestMethod `
-            -Uri "https://api.spotify.com/v1/playlists/$PlaylistId/items" `
-            -Headers $Headers `
-            -Method Post `
-            -Body $ItemsBody
-    }
-
-    return [PSCustomObject]@{
-        success      = $true
-        playlistId   = $PlaylistId
-        playlistName = $PlaylistName
-        trackCount   = $TrackUris.Count
-        url          = if ($Playlist.external_urls.spotify) { $Playlist.external_urls.spotify } else { $null }
-    }
+    return New-DriveOSPlaylistFromDrive -Drive $Drive -SpotifyClient (New-SpotifyClient -AccessToken $Token)
 }
 
 # ------------------------------------------------------------
