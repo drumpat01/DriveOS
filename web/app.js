@@ -2291,7 +2291,12 @@ async function refreshAll() {
   }
 }
 
-$("refreshButton").addEventListener("click", refreshAll);
+const refreshFeature = window.DriveOSFeatures.refresh.create({
+  loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
+  loadStatistics, loadPlaces, loadCharging, loadRecaps
+});
+refreshAll = refreshFeature.refresh;
+refreshFeature.bind();
 
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {
@@ -2323,23 +2328,4 @@ const initialView = ["dashboard", "drives", "music", "statistics"].includes(loca
   : "dashboard";
 
 showView(initialView);
-refreshAll();
-
-// Vehicle/status: every 2 minutes.
-// Spotify / drives / analytics: every 5 minutes.
-setInterval(() => {
-  loadVehicle();
-  loadStatus();
-}, 120_000);
-
-setInterval(async () => {
-  await loadSpotify();
-  await Promise.allSettled([
-    loadDrives(),
-    loadMusicStats(),
-    loadStatistics(),
-    loadPlaces(),
-    loadCharging(),
-    loadRecaps()
-  ]);
-}, 300_000);
+refreshFeature.start();
