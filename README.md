@@ -1,4 +1,4 @@
-# DriveOS 4.1.0
+# DriveOS 4.2.0
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
@@ -13,6 +13,16 @@ DriveOS 4.1.0 can combine Spotify's recent-play feed with durable Last.fm scrobb
 - startup and **Refresh data** incrementally synchronize new scrobbles
 - matching Spotify and Last.fm events are stored only once
 - new Last.fm-only plays are enriched with Spotify IDs and artwork when a confident match is available
+
+## Foursquare business names
+
+DriveOS 4.2.0 can recognize businesses at repeated, unnamed Tessie locations. Open **Manage places**, connect a Foursquare Service API key, and DriveOS will check only the most frequently visited unknown locations that have GPS coordinates.
+
+- manual names always win, and named locations such as Home and Work are never sent to Foursquare
+- matched names are cached locally and reused across drives, charging history, search, and recaps
+- searches stop at 10 per day and 250 per month; the first backfill is limited to 25 candidates
+- setup does not spend an API call, and no details or photo endpoints are used
+- the encrypted key, usage counter, and place cache stay under `data/` and are excluded from releases
 - no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
 
 Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).

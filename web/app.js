@@ -83,6 +83,10 @@ async function loadStatus() {
     document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
       button.hidden = lastFmConfigured || isTailnetRemote();
     });
+    document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
+      button.hidden = isTailnetRemote();
+      button.textContent = status.foursquare ? "Change key" : "Connect Foursquare";
+    });
 
     setText("playlistStatus", status.playlistScope ? "READY" : "REAUTHORIZE");
     $("playlistStatus").className = status.playlistScope ? "ok-text" : "warn-text";
@@ -962,7 +966,8 @@ const placesFeature = window.DriveOSFeatures.places.create({
   state,
   api: window.DriveOSApi,
   compactLocation,
-  refresh: () => Promise.allSettled([loadPlaces(), loadDrives(), loadCharging(), loadRecaps()])
+  refresh: () => Promise.allSettled([loadPlaces(), loadDrives(), loadCharging(), loadRecaps()]),
+  refreshResolvedLocations: () => Promise.allSettled([loadDrives(), loadCharging(), loadRecaps()])
 });
 savePlaceAlias = placesFeature.save;
 renderPlaces = placesFeature.render;
@@ -2420,6 +2425,33 @@ async function configureLastFmOnThisComputer() {
   }
 }
 
+async function configureFoursquareOnThisComputer() {
+  if (state.foursquareConnecting || isTailnetRemote()) return;
+  const buttons = [...document.querySelectorAll("[data-foursquare-configure]")];
+  state.foursquareConnecting = true;
+  buttons.forEach(button => { button.disabled = true; button.textContent = "Opening setup…"; });
+  try {
+    await postJson("/api/foursquare/configure", {});
+    setText("foursquarePlaceStatus", "Paste your Service API key into the secure Windows setup window.");
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      const status = await getJson("/api/foursquare/status");
+      if (!status.configured) continue;
+      setText("foursquarePlaceStatus", "Connected. Looking up your most-visited unnamed locations…");
+      await loadPlaces();
+      await loadStatus();
+      return;
+    }
+    setText("foursquarePlaceStatus", "Setup window expired. Click Connect Foursquare to try again.");
+  } catch (error) {
+    setText("foursquarePlaceStatus", error.message || "Could not start Foursquare setup");
+  } finally {
+    state.foursquareConnecting = false;
+    buttons.forEach(button => { button.disabled = false; button.textContent = state.foursquareStatus?.configured ? "Change key" : "Connect Foursquare"; });
+  }
+}
+
 const refreshFeature = window.DriveOSFeatures.refresh.create({
   loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
   loadStatistics, loadPlaces, loadCharging, loadRecaps
@@ -2454,6 +2486,9 @@ if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
 
 document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
   button.addEventListener("click", configureLastFmOnThisComputer);
+});
+document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
+  button.addEventListener("click", configureFoursquareOnThisComputer);
 });
 
 updateClock();

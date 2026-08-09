@@ -11,6 +11,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\LastFm\DriveOS.LastFm.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Integrations\Foursquare\DriveOS.Foursquare.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
@@ -19,6 +20,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.p
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Drives\DriveOS.Drives.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 
 # ============================================================
@@ -46,7 +48,13 @@ $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $LastFmConfigFile = Join-Path $DataDirectory "lastfm-config.json"
 $LastFmSyncStateFile = Join-Path $DataDirectory "lastfm-sync.json"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
+$FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
+$FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
+$FoursquareUsageFile = Join-Path $DataDirectory "foursquare-usage.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
+$FoursquareDailyLimit = 10
+$FoursquareMonthlyLimit = 250
+$script:FoursquareApiKeyForRedaction = $null
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 
 if (-not (Test-Path $DataDirectory)) {
@@ -78,7 +86,8 @@ function Write-DriveOSServerLog {
         foreach ($Secret in @(
             $env:TESSIE_TOKEN,
             $env:SPOTIFY_CLIENT_ID,
-            $SessionToken
+            $SessionToken,
+            $script:FoursquareApiKeyForRedaction
         )) {
             if ($Secret) {
                 $SafeMessage = $SafeMessage.Replace($Secret, "[REDACTED]")
@@ -702,6 +711,201 @@ function Start-LastFmConfiguration {
     return [PSCustomObject]@{ started = $true }
 }
 
+function Get-FoursquareConfiguration {
+    if (-not (Test-Path $FoursquareConfigFile -PathType Leaf)) { return $null }
+
+    $Config = Read-DriveOSJson -Path $FoursquareConfigFile
+    $ApiKey = Unprotect-Token $Config.ApiKey
+    if (-not $ApiKey) {
+        throw "Foursquare configuration is incomplete. Run Connect-Foursquare.ps1 again."
+    }
+
+    $script:FoursquareApiKeyForRedaction = $ApiKey
+    return [PSCustomObject]@{ apiKey = $ApiKey }
+}
+
+function Get-FoursquareUsageRecord {
+    if (-not (Test-Path $FoursquareUsageFile -PathType Leaf)) { return $null }
+    try { return Read-DriveOSJson -Path $FoursquareUsageFile }
+    catch { return $null }
+}
+
+function Get-FoursquareCacheEntries {
+    if (-not (Test-Path $FoursquareCacheFile -PathType Leaf)) { return @() }
+    try {
+        $Record = Read-DriveOSJson -Path $FoursquareCacheFile
+        if ($Record -and $Record.PSObject.Properties['entries']) { return @($Record.entries) }
+    }
+    catch {}
+    return @()
+}
+
+function Save-FoursquareCacheEntries {
+    param([object[]]$Entries)
+    Write-DriveOSJson -Path $FoursquareCacheFile -Value ([PSCustomObject]@{
+        version = 1
+        updatedAt = (Get-Date).ToString('o')
+        entries = @($Entries)
+    })
+}
+
+function Get-FoursquareCacheMap {
+    $Map = @{}
+    foreach ($Entry in @(Get-FoursquareCacheEntries)) {
+        if ($Entry.key) { $Map[[string]$Entry.key] = $Entry }
+    }
+    return $Map
+}
+
+function Get-FoursquareConnectionStatus {
+    $Configured = $false
+    try { $Configured = ($null -ne (Get-FoursquareConfiguration)) } catch {}
+    $UsageRecord = Get-FoursquareUsageRecord
+    $Usage = Get-DriveOSFoursquareUsageWindow -Usage $UsageRecord `
+        -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
+    $Cache = @(Get-FoursquareCacheEntries)
+
+    return [PSCustomObject]@{
+        configured = $Configured
+        cachedCount = @($Cache | Where-Object { $_.status -eq 'matched' }).Count
+        todayUsed = [int]$Usage.dayCount
+        todayLimit = [int]$Usage.dayLimit
+        todayRemaining = [int]$Usage.dayRemaining
+        monthUsed = [int]$Usage.monthCount
+        monthLimit = [int]$Usage.monthLimit
+        monthRemaining = [int]$Usage.monthRemaining
+        canCall = [bool]$Usage.canCall
+        lastError = if ($UsageRecord -and $UsageRecord.PSObject.Properties['lastError']) { [string]$UsageRecord.lastError } else { $null }
+    }
+}
+
+function Set-FoursquareLastError {
+    param([string]$Message)
+    $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
+        -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
+    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+        version = 1
+        day = $Usage.day
+        dayCount = [int]$Usage.dayCount
+        month = $Usage.month
+        monthCount = [int]$Usage.monthCount
+        lastError = if ($Message) { $Message } else { $null }
+        lastErrorAt = if ($Message) { (Get-Date).ToString('o') } else { $null }
+        updatedAt = (Get-Date).ToString('o')
+    })
+}
+
+function Register-FoursquareApiCall {
+    $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
+        -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
+    if (-not $Usage.canCall) { return $false }
+
+    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+        version = 1
+        day = $Usage.day
+        dayCount = ([int]$Usage.dayCount + 1)
+        month = $Usage.month
+        monthCount = ([int]$Usage.monthCount + 1)
+        lastError = $null
+        lastErrorAt = $null
+        updatedAt = (Get-Date).ToString('o')
+    })
+    return $true
+}
+
+function Start-FoursquareConfiguration {
+    $Script = Join-Path $PSScriptRoot "Connect-Foursquare.ps1"
+    if (-not (Test-Path $Script -PathType Leaf)) {
+        throw "Foursquare configuration script is missing."
+    }
+
+    Start-Process `
+        -FilePath "powershell.exe" `
+        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ('"' + $Script + '"')) `
+        -WorkingDirectory $PSScriptRoot `
+        -WindowStyle Normal | Out-Null
+    return [PSCustomObject]@{ started = $true }
+}
+
+function Get-FoursquareCachedPlace {
+    param([string]$Location, $Latitude = $null, $Longitude = $null)
+    $Key = Get-DriveOSPlaceCacheKey -Location $Location -Latitude $Latitude -Longitude $Longitude
+    if (-not $Key) { return $null }
+    $Map = Get-FoursquareCacheMap
+    if ($Map.ContainsKey($Key) -and $Map[$Key].status -eq 'matched') { return $Map[$Key] }
+    return $null
+}
+
+function Resolve-FoursquareCandidatePlaces {
+    param([object[]]$Candidates = @())
+
+    $Configuration = $null
+    try { $Configuration = Get-FoursquareConfiguration } catch {}
+    if (-not $Configuration) { return 0 }
+
+    $Entries = New-Object Collections.ArrayList
+    foreach ($Entry in @(Get-FoursquareCacheEntries)) { [void]$Entries.Add($Entry) }
+    $Map = @{}
+    foreach ($Entry in @($Entries)) { if ($Entry.key) { $Map[[string]$Entry.key] = $Entry } }
+    $NewMatches = 0
+    $Client = New-FoursquareClient -ApiKey $Configuration.apiKey
+
+    foreach ($Candidate in @(Select-DriveOSPlaceLookupCandidates -Candidates $Candidates -Limit 25)) {
+        $Key = Get-DriveOSPlaceCacheKey -Location $Candidate.location -Latitude $Candidate.latitude -Longitude $Candidate.longitude
+        if (-not $Key) { continue }
+
+        if ($Map.ContainsKey($Key)) {
+            $Existing = $Map[$Key]
+            if ($Existing.status -eq 'matched') { continue }
+            if ($Existing.status -eq 'none') {
+                try {
+                    if ([datetime]$Existing.resolvedAt -gt (Get-Date).AddDays(-30)) { continue }
+                }
+                catch {}
+            }
+        }
+
+        if (-not (Register-FoursquareApiCall)) { break }
+
+        try {
+            $Places = @(Search-FoursquarePlaces -Client $Client `
+                -Latitude ([double]$Candidate.latitude) -Longitude ([double]$Candidate.longitude) `
+                -RadiusMeters 100 -Limit 5)
+            $Match = Select-DriveOSFoursquareMatch -Places $Places -MaximumDistanceMeters 60
+            $Entry = [PSCustomObject]@{
+                key = $Key
+                location = [string]$Candidate.location
+                latitude = [double]$Candidate.latitude
+                longitude = [double]$Candidate.longitude
+                status = if ($Match) { 'matched' } else { 'none' }
+                name = if ($Match) { [string]$Match.name } else { $null }
+                fsqPlaceId = if ($Match) { [string]$Match.id } else { $null }
+                category = if ($Match) { [string]$Match.category } else { $null }
+                distanceMeters = if ($Match) { [double]$Match.distanceMeters } else { $null }
+                resolvedAt = (Get-Date).ToString('o')
+            }
+
+            if ($Map.ContainsKey($Key)) {
+                for ($Index = $Entries.Count - 1; $Index -ge 0; $Index--) {
+                    if ($Entries[$Index].key -eq $Key) { $Entries.RemoveAt($Index) }
+                }
+            }
+            [void]$Entries.Add($Entry)
+            $Map[$Key] = $Entry
+            Save-FoursquareCacheEntries -Entries @($Entries)
+            Set-FoursquareLastError -Message $null
+            if ($Match) { $NewMatches++ }
+        }
+        catch {
+            Write-DriveOSServerLog "Foursquare place search failed: $($_.Exception.Message)"
+            Set-FoursquareLastError -Message "Foursquare could not complete a search. Check or replace the Service API key."
+            break
+        }
+    }
+
+    return $NewMatches
+}
+
 function ConvertTo-ListeningIdentityText {
     param([string]$Value)
 
@@ -958,9 +1162,15 @@ function Get-PlaceAliasMap {
 }
 
 function Get-FriendlyLocation {
-    param([string]$Location)
+    param([string]$Location, $Latitude = $null, $Longitude = $null)
 
-    return Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap (Get-PlaceAliasMap)
+    $AliasMap = Get-PlaceAliasMap
+    $Friendly = Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap $AliasMap
+    if ($Friendly -ne $Location) { return $Friendly }
+
+    $Business = Get-FoursquareCachedPlace -Location $Location -Latitude $Latitude -Longitude $Longitude
+    if ($Business -and $Business.name) { return [string]$Business.name }
+    return $Location
 }
 
 function Set-PlaceAlias {
@@ -1021,28 +1231,72 @@ function Set-ChargingSettings {
 
 function Get-PlaceCandidates {
     $Counts = @{}
+    $Coordinates = @{}
     $AliasMap = Get-PlaceAliasMap
 
     foreach ($Drive in @(Get-RawDrives -Days 365)) {
-        foreach ($Location in @($Drive.starting_location, $Drive.ending_location)) {
-            $Value = "$Location".Trim()
+        $Endpoints = @(
+            [PSCustomObject]@{ location=$Drive.starting_location; latitude=$Drive.starting_latitude; longitude=$Drive.starting_longitude },
+            [PSCustomObject]@{ location=$Drive.ending_location; latitude=$Drive.ending_latitude; longitude=$Drive.ending_longitude }
+        )
+        foreach ($Endpoint in $Endpoints) {
+            $Value = "$($Endpoint.location)".Trim()
             if (-not $Value) { continue }
             if (-not $Counts.ContainsKey($Value)) { $Counts[$Value] = 0 }
             $Counts[$Value]++
+            if (-not $Coordinates.ContainsKey($Value) -and $null -ne $Endpoint.latitude -and $null -ne $Endpoint.longitude) {
+                $Coordinates[$Value] = [PSCustomObject]@{
+                    latitude = [double]$Endpoint.latitude
+                    longitude = [double]$Endpoint.longitude
+                }
+            }
         }
     }
 
-    $Places = foreach ($Location in $Counts.Keys) {
+    $Places = @($Counts.Keys | ForEach-Object {
+        $Location = [string]$_
+        $Coordinate = if ($Coordinates.ContainsKey($Location)) { $Coordinates[$Location] } else { $null }
+        $ManualLabel = if ($AliasMap.ContainsKey($Location)) { [string]$AliasMap[$Location] } else { "" }
+        $Business = Get-FoursquareCachedPlace -Location $Location `
+            -Latitude $(if ($Coordinate) { $Coordinate.latitude } else { $null }) `
+            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null })
         [PSCustomObject]@{
             location = $Location
-            label = if ($AliasMap.ContainsKey($Location)) { $AliasMap[$Location] } else { "" }
+            label = $ManualLabel
+            manualLabel = $ManualLabel
+            businessName = if ($Business) { [string]$Business.name } else { $null }
+            businessCategory = if ($Business) { [string]$Business.category } else { $null }
+            businessDistanceMeters = if ($Business) { $Business.distanceMeters } else { $null }
+            displayName = if ($ManualLabel) { $ManualLabel } elseif ($Business) { [string]$Business.name } else { $Location }
+            source = if ($ManualLabel) { 'manual' } elseif ($Business) { 'foursquare' } else { 'tessie' }
             uses = [int]$Counts[$Location]
+            latitude = if ($Coordinate) { $Coordinate.latitude } else { $null }
+            longitude = if ($Coordinate) { $Coordinate.longitude } else { $null }
+        }
+    })
+
+    $NewMatches = Resolve-FoursquareCandidatePlaces -Candidates $Places
+    if ($NewMatches -gt 0) {
+        $CacheMap = Get-FoursquareCacheMap
+        foreach ($Place in $Places) {
+            if ($Place.manualLabel) { continue }
+            $Key = Get-DriveOSPlaceCacheKey -Location $Place.location -Latitude $Place.latitude -Longitude $Place.longitude
+            if ($Key -and $CacheMap.ContainsKey($Key) -and $CacheMap[$Key].status -eq 'matched') {
+                $Business = $CacheMap[$Key]
+                $Place.businessName = [string]$Business.name
+                $Place.businessCategory = [string]$Business.category
+                $Place.businessDistanceMeters = $Business.distanceMeters
+                $Place.displayName = [string]$Business.name
+                $Place.source = 'foursquare'
+            }
         }
     }
 
     return [PSCustomObject]@{
         places = @($Places | Sort-Object @{Expression="uses";Descending=$true}, location)
         savedCount = @($AliasMap.Keys).Count
+        newMatches = [int]$NewMatches
+        foursquare = Get-FoursquareConnectionStatus
     }
 }
 
@@ -1066,7 +1320,8 @@ function Convert-RawCharge {
     param($Charge)
 
     $Settings = Get-ChargingSettings
-    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation (Get-FriendlyLocation -Location $Charge.location)
+    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation `
+        (Get-FriendlyLocation -Location $Charge.location -Latitude $Charge.latitude -Longitude $Charge.longitude)
 }
 
 function Get-ChargingSummary {
@@ -1233,7 +1488,9 @@ function Convert-RawDrive {
 
     $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
     $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
-    return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location) -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location)
+    return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack `
+        -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude) `
+        -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude)
 }
 
 function Get-RecentDrives {
@@ -1578,6 +1835,7 @@ function Get-OverallStatus {
     catch {}
 
     $LastFmStatus = Get-LastFmConnectionStatus
+    $FoursquareStatus = Get-FoursquareConnectionStatus
 
     return [PSCustomObject]@{
         driveOS       = "online"
@@ -1585,6 +1843,8 @@ function Get-OverallStatus {
         spotify       = $SpotifyOk
         lastfm        = [bool]$LastFmStatus.configured
         lastfmUsername = $LastFmStatus.username
+        foursquare    = [bool]$FoursquareStatus.configured
+        foursquareCached = [int]$FoursquareStatus.cachedCount
         playlistScope = $PlaylistScope
         time          = (Get-Date).ToString("o")
     }
@@ -1696,6 +1956,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/foursquare/status" {
+                    Send-Json -Stream $Stream -Object (Get-FoursquareConnectionStatus)
+                    return
+                }
+
                 "/api/music/stats" {
                     Send-Json -Stream $Stream -Object (Get-MusicStats)
                     return
@@ -1761,6 +2026,11 @@ function Handle-Request {
 
                 "/api/lastfm/configure" {
                     Send-Json -Stream $Stream -Object (Start-LastFmConfiguration)
+                    return
+                }
+
+                "/api/foursquare/configure" {
+                    Send-Json -Stream $Stream -Object (Start-FoursquareConfiguration)
                     return
                 }
 

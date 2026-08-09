@@ -8,6 +8,8 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Integrations/Tessie/`: Tessie client boundary. Backend/domain code consumes adapter functions rather than constructing Tessie HTTP requests.
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
 - `src/Integrations/LastFm/`: read-only Last.fm history client and provider-to-internal play model mapping. It does not own persistence or UI behavior.
+- `src/Integrations/Foursquare/`: Foursquare Places API client and provider-to-internal place mapping. It does not decide privacy, budgets, caching, or presentation.
+- `src/Application/DriveOS.PlaceEnrichment.psm1`: provider-neutral candidate selection, stable cache keys, distance matching, and free-tier usage-window rules.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
 - `src/Repositories/`: provider-neutral persistence contract; JSON/JSONL and SQLite implementations are available.
 - `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
@@ -24,7 +26,13 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 
 `index.html -> web/core -> app.js`
 
-Integration modules must not call UI or HTTP-server helpers. Storage must not know Tessie, Spotify, Last.fm, or domain concepts. New code should enter through these boundaries rather than adding provider or file-format logic to `DriveOS-Server.ps1`.
+Integration modules must not call UI or HTTP-server helpers. Storage must not know Tessie, Spotify, Last.fm, Foursquare, or domain concepts. New code should enter through these boundaries rather than adding provider or file-format logic to `DriveOS-Server.ps1`.
+
+### Place enrichment boundary
+
+Manual aliases are authoritative. Foursquare is consulted only for repeated, unnamed endpoints with coordinates, in descending visit-count order. A match must be within 60 meters. Positive matches are cached permanently; empty results are held for 30 days. Provider calls are registered before the request because unsuccessful provider requests may still count toward usage. Hard stops of 10 calls per day and 250 calls per month leave headroom below the external free allowance. The browser receives names and aggregate counters, never the API key.
+
+Runtime files are `data/foursquare-config.json` (DPAPI-encrypted key), `data/foursquare-place-cache.json`, and `data/foursquare-usage.json`. They remain outside source control and release artifacts.
 
 ## Listening history providers
 

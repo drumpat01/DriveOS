@@ -27,6 +27,8 @@ The four-phase modular-monolith migration is complete. Further work should be no
 
 DriveOS 4.1.0 is the first post-roadmap provider extension: a Last.fm adapter feeds the existing listening-history repository without changing its storage contract. This is the intended pattern for future Tessie, music, mapping, and place-provider additions.
 
+DriveOS 4.2.0 follows that pattern for place enrichment. Foursquare is isolated behind an adapter and provider-neutral application rules, while the existing manual alias and JSON/SQLite drive records remain unchanged. A future place-provider change can preserve the same cache and UI contracts.
+
 ## SQLite implementation
 
 SQLite is available behind the repository interface as an explicit, reversible migration. DriveOS uses a single local database with WAL mode, an indexed listening-history table, schema migrations, integrity checks, timestamped source backups, and JSON rollback. Source JSON/JSONL is retained.
