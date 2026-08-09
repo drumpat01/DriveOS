@@ -19,6 +19,7 @@ Assert-True ($Policy -match 'CoreWebView2PermissionState.Deny' -or
 $Installer = Get-Content (Join-Path $Root 'tools\Install-DriveOS-App.ps1') -Raw
 Assert-True ($Installer -match 'Sort-Object Name') 'Desktop source compilation order must be deterministic.'
 Assert-True ($Installer -match 'SkipShortcut') 'Staged installs must be able to avoid desktop mutation.'
+Assert-True ($Installer -match 'OrdinalIgnoreCase') 'In-place installation must not copy the icon onto itself.'
 
 & (Join-Path $Root 'tools\Test-CleanInstall.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

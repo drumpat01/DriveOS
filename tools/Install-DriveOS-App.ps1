@@ -165,7 +165,13 @@ if ($CompileExitCode -ne 0 -or -not (Test-Path $OutputExe)) {
 Copy-Item $CoreDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.Core.dll") -Force
 Copy-Item $WinFormsDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.WinForms.dll") -Force
 Copy-Item $LoaderDll (Join-Path $OutputDirectory "WebView2Loader.dll") -Force
-Copy-Item $IconPath (Join-Path $OutputDirectory "DriveOS-v4.ico") -Force
+$OutputIcon = Join-Path $OutputDirectory "DriveOS-v4.ico"
+if (-not [String]::Equals(
+        [IO.Path]::GetFullPath($IconPath),
+        [IO.Path]::GetFullPath($OutputIcon),
+        [StringComparison]::OrdinalIgnoreCase)) {
+    Copy-Item $IconPath $OutputIcon -Force
+}
 
 if (-not $SkipShortcut) {
     Write-Host "Creating DriveOS desktop shortcut..." -ForegroundColor Cyan
