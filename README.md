@@ -1,5 +1,7 @@
 # DriveOS 3.0
 
+> Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
+
 DriveOS 3.0 adds two major local intelligence features on top of Drive Library Search.
 
 ## Favorite Routes

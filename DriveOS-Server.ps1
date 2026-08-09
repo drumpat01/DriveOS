@@ -5,6 +5,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
+
 # ============================================================
 # DriveOS 3.2
 # Windows PowerShell 5.1 compatible
@@ -219,12 +223,13 @@ function Save-SpotifyTokenCache {
         [string]$Scope
     )
 
-    [PSCustomObject]@{
+    $TokenCache = [PSCustomObject]@{
         AccessToken  = Protect-Token $AccessToken
         RefreshToken = Protect-Token $RefreshToken
         ExpiresAt    = (Get-Date).AddSeconds($ExpiresIn).ToString("o")
         Scope        = $Scope
-    } | ConvertTo-Json | Set-Content $SpotifyTokenFile
+    }
+    Write-DriveOSJson -Path $SpotifyTokenFile -Value $TokenCache
 }
 
 function Get-SpotifyTokenCache {
@@ -232,7 +237,7 @@ function Get-SpotifyTokenCache {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
 
-    return Get-Content $SpotifyTokenFile -Raw | ConvertFrom-Json
+    return Read-DriveOSJson -Path $SpotifyTokenFile
 }
 
 function Test-SpotifyScope {
@@ -292,14 +297,8 @@ function Get-SpotifyRecent {
     param([int]$Limit = 50)
 
     $Token = Get-SpotifyAccessToken
-    $Headers = @{ Authorization = "Bearer $Token" }
-
-    $Response = Invoke-RestMethod `
-        -Uri "https://api.spotify.com/v1/me/player/recently-played?limit=$Limit" `
-        -Headers $Headers `
-        -Method Get
-
-    return $Response.items
+    $Client = New-SpotifyClient -AccessToken $Token
+    return Get-SpotifyRecentlyPlayed -Client $Client -Limit $Limit
 }
 
 function Save-SpotifyHistory {
@@ -309,18 +308,8 @@ function Save-SpotifyHistory {
 
     $ExistingIds = @{}
 
-    if (Test-Path $SpotifyHistoryFile) {
-        Get-Content $SpotifyHistoryFile | ForEach-Object {
-            if ($_ -and $_.Trim()) {
-                try {
-                    $Record = $_ | ConvertFrom-Json
-                    if ($Record.id) {
-                        $ExistingIds[$Record.id] = $true
-                    }
-                }
-                catch {}
-            }
-        }
+    foreach ($Record in @(Read-DriveOSJsonLines -Path $SpotifyHistoryFile)) {
+        if ($Record.id) { $ExistingIds[$Record.id] = $true }
     }
 
     $NewCount = 0
@@ -350,21 +339,8 @@ function Save-SpotifyHistory {
                 $AlbumUrl = $Item.track.album.external_urls.spotify
             }
 
-            [PSCustomObject]@{
-                id                = $RecordId
-                played_at         = $Item.played_at
-                track_id          = $Item.track.id
-                track_uri         = $Item.track.uri
-                track             = $Item.track.name
-                artist            = $Artists
-                album             = $Item.track.album.name
-                duration_ms       = $Item.track.duration_ms
-                album_image       = $AlbumImage
-                spotify_url       = $TrackUrl
-                album_spotify_url = $AlbumUrl
-            } |
-                ConvertTo-Json -Compress |
-                Add-Content $SpotifyHistoryFile
+            $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
+            Add-DriveOSJsonLine -Path $SpotifyHistoryFile -Value $HistoryRecord
 
             $ExistingIds[$RecordId] = $true
             $NewCount++
@@ -381,20 +357,12 @@ function Get-SpotifyHistory {
         return $Records
     }
 
-    Get-Content $SpotifyHistoryFile | ForEach-Object {
-        if ($_ -and $_.Trim()) {
-            try {
-                $Record = $_ | ConvertFrom-Json
-
-                # v0.2 did not store track_uri, but track_id is sufficient.
-                if (-not $Record.track_uri -and $Record.track_id) {
-                    $Record | Add-Member -NotePropertyName track_uri -NotePropertyValue "spotify:track:$($Record.track_id)" -Force
-                }
-
-                $Records += $Record
-            }
-            catch {}
+    foreach ($Record in @(Read-DriveOSJsonLines -Path $SpotifyHistoryFile)) {
+        # v0.2 did not store track_uri, but track_id is sufficient.
+        if (-not $Record.track_uri -and $Record.track_id) {
+            $Record | Add-Member -NotePropertyName track_uri -NotePropertyValue "spotify:track:$($Record.track_id)" -Force
         }
+        $Records += $Record
     }
 
     return $Records
@@ -715,9 +683,7 @@ function Write-JsonFileUtf8NoBom {
         $Object
     )
 
-    $Json = $Object | ConvertTo-Json -Depth 20
-    $Utf8 = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Path, ($Json + "`r`n"), $Utf8)
+    Write-DriveOSJson -Path $Path -Value $Object
 }
 
 function Get-PlaceAliasEntries {
@@ -726,9 +692,7 @@ function Get-PlaceAliasEntries {
     }
 
     try {
-        $Raw = Get-Content $PlaceAliasesFile -Raw -Encoding UTF8
-        if (-not $Raw) { return @() }
-        $Parsed = $Raw | ConvertFrom-Json
+        $Parsed = Read-DriveOSJson -Path $PlaceAliasesFile -Default @()
         return @($Parsed)
     }
     catch {
@@ -822,7 +786,7 @@ function Get-ChargingSettings {
 
     if (Test-Path $ChargingSettingsFile -PathType Leaf) {
         try {
-            $Parsed = Get-Content $ChargingSettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $Parsed = Read-DriveOSJson -Path $ChargingSettingsFile
             if ($null -ne $Parsed.electricityRateCents) {
                 $Rate = [double]$Parsed.electricityRateCents
             }
@@ -892,16 +856,8 @@ function Get-RawCharges {
     $From = [DateTimeOffset]::Now.AddDays(-$Days).ToUnixTimeSeconds()
     $To = [DateTimeOffset]::Now.ToUnixTimeSeconds()
 
-    $Uri = "https://api.tessie.com/$Vin/charges" +
-           "?from=$From" +
-           "&to=$To" +
-           "&limit=1000" +
-           "&distance_format=mi"
-
-    $Response = Invoke-RestMethod `
-        -Uri $Uri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $Response = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource charges -From $From -To $To -ExtraQuery "limit=1000&distance_format=mi"
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
@@ -1070,12 +1026,8 @@ function Get-TessieHeaders {
 }
 
 function Get-VehicleRecord {
-    $Response = Invoke-RestMethod `
-        -Uri "https://api.tessie.com/vehicles" `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
-
-    return $Response.results | Select-Object -First 1
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    return Get-TessieVehicle -Client $Client
 }
 
 function Get-VehicleSummary {
@@ -1132,10 +1084,8 @@ function Get-RawDrives {
            "&distance_format=mi" +
            "&temperature_format=f"
 
-    $Response = Invoke-RestMethod `
-        -Uri $Uri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $Response = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource drives -From $From -To $To -ExtraQuery "limit=1000&distance_format=mi&temperature_format=f"
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
@@ -1426,18 +1376,8 @@ function Get-DriveMapData {
     $StatesFrom = [math]::Max(0, $StatesFrom - 60)
     $StatesTo = $DriveEndEpoch + 60
 
-    $StatesUri = "https://api.tessie.com/$Vin/states" +
-                 "?from=$StatesFrom" +
-                 "&to=$StatesTo" +
-                 "&interval=1" +
-                 "&condense=false" +
-                 "&distance_format=mi" +
-                 "&temperature_format=f"
-
-    $StatesResponse = Invoke-RestMethod `
-        -Uri $StatesUri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $StatesResponse = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource states -From $StatesFrom -To $StatesTo -ExtraQuery "interval=1&condense=false&distance_format=mi&temperature_format=f"
 
     $ValidStates = @(
         $StatesResponse.results |

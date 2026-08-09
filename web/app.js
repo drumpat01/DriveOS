@@ -28,7 +28,7 @@ const state = {
   recaps: []
 };
 
-const DRIVEOS_WEB_BUILD = "3.2.0";
+const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
 document.documentElement.dataset.webBuild = DRIVEOS_WEB_BUILD;
 
@@ -75,30 +75,11 @@ function setText(id, value, fallback = "--") {
 }
 
 async function getJson(path) {
-  const response = await fetch(path, { cache: "no-store" });
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data?.error || `Request failed: ${response.status}`);
-  }
-
-  return data;
+  return window.DriveOSApi.get(path);
 }
 
 async function postJson(path, body) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data?.error || `Request failed: ${response.status}`);
-  }
-
-  return data;
+  return window.DriveOSApi.post(path, body);
 }
 
 
