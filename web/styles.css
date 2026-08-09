@@ -6728,3 +6728,268 @@ h1 span {
     padding-left: 5px !important;
   }
 }
+
+/* =====================================================================
+   DriveOS 4.4 - mobile-first Prepare Commute
+   ===================================================================== */
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.commute-panel {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 18px;
+  padding: 22px;
+  border: 1px solid rgba(13, 166, 189, .18);
+  background:
+    radial-gradient(circle at 100% 0, rgba(25, 201, 135, .15), transparent 42%),
+    linear-gradient(135deg, rgba(11, 169, 190, .10), rgba(255,255,255,.58));
+}
+
+.commute-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.commute-heading h2 {
+  margin: 4px 0 5px;
+  color: var(--text);
+}
+
+.commute-heading p,
+.commute-status {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.42;
+}
+
+.commute-orb {
+  display: grid;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #10b9ce, #16c889);
+  box-shadow: 0 10px 24px rgba(12, 174, 177, .22);
+  color: white;
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.commute-command-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px;
+  margin-top: 17px;
+}
+
+.commute-command-input input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  outline: 0;
+  background: rgba(255,255,255,.72);
+  color: var(--text);
+  padding: 0 13px;
+  font: inherit;
+}
+
+.commute-command-input input:focus {
+  border-color: rgba(13, 166, 189, .7);
+  box-shadow: 0 0 0 3px rgba(13, 166, 189, .12);
+}
+
+.commute-destinations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.commute-destination,
+.commute-mood {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255,255,255,.62);
+  color: var(--text);
+  font: inherit;
+  font-size: .77rem;
+  font-weight: 750;
+}
+
+.commute-destination {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+}
+
+.commute-destination-icon { color: #079db2; font-size: .95rem; }
+
+.commute-destination.active,
+.commute-mood.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, #10b2c8, #18c58b);
+  box-shadow: 0 8px 18px rgba(12, 174, 177, .16);
+  color: white;
+}
+
+.commute-destination.active .commute-destination-icon { color: white; }
+.commute-placeholder { color: var(--muted); font-size: .78rem; }
+
+.commute-mood-row {
+  display: flex;
+  gap: 7px;
+  margin-top: 16px;
+}
+
+.commute-mood {
+  padding: 0 11px;
+  cursor: pointer;
+}
+
+.commute-prepare-button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 14px;
+  border-radius: 14px;
+}
+
+.commute-status {
+  margin-top: 10px;
+  font-size: .72rem;
+}
+
+.commute-status.is-error { color: #c35a45; }
+
+.commute-result {
+  display: grid;
+  gap: 11px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid rgba(25, 201, 135, .23);
+  border-radius: 15px;
+  background: rgba(255,255,255,.55);
+}
+
+.commute-result-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.commute-result-check {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: #18c589;
+  color: white;
+  font-weight: 900;
+}
+
+.commute-result-heading strong,
+.commute-playlist-summary strong { display: block; color: var(--text); }
+.commute-result-heading span,
+.commute-playlist-summary span { display: block; margin-top: 2px; color: var(--muted); font-size: .72rem; }
+
+.commute-result-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(33, 83, 101, .09);
+  color: var(--muted);
+  font-size: .76rem;
+}
+
+.commute-result-actions .done { color: #118968; }
+.commute-result-actions .pending { color: #b36a4e; }
+
+.commute-playlist-summary {
+  display: grid;
+  gap: 3px;
+  padding: 11px;
+  border-radius: 11px;
+  background: rgba(13,166,189,.065);
+}
+
+.commute-playlist-summary .text-button { justify-self: start; margin-top: 4px; }
+.commute-warning { margin: 0; color: #a56249; font-size: .72rem; line-height: 1.4; }
+
+:root[data-theme="dark"] .commute-panel {
+  border-color: rgba(104, 218, 224, .18);
+  background: radial-gradient(circle at 100% 0, rgba(25, 201, 135, .13), transparent 42%), linear-gradient(135deg, rgba(8, 42, 52, .95), rgba(8, 29, 37, .95));
+}
+
+:root[data-theme="dark"] .commute-command-input input,
+:root[data-theme="dark"] .commute-destination,
+:root[data-theme="dark"] .commute-mood,
+:root[data-theme="dark"] .commute-result {
+  border-color: var(--dark-border);
+  background: rgba(8, 26, 34, .72);
+  color: var(--dark-text);
+}
+
+:root[data-theme="dark"] .commute-playlist-summary { background: rgba(22, 157, 174, .10); }
+:root[data-theme="dark"] .commute-result-actions { border-top-color: var(--dark-border); }
+:root[data-theme="dark"] .commute-status.is-error { color: #f39476; }
+
+@media (max-width: 760px) {
+  .commute-panel {
+    margin: 0 0 16px !important;
+    padding: 19px 16px !important;
+    border-radius: 20px !important;
+  }
+
+  .commute-heading h2 { font-size: 1.42rem !important; }
+  .commute-heading p { max-width: 275px; font-size: .82rem; }
+  .commute-orb { width: 38px; height: 38px; }
+
+  .commute-command-row { grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; }
+  .commute-command-input input { min-height: 48px; font-size: 16px; }
+  .commute-command-row .secondary-button { min-height: 48px; padding: 0 10px; }
+
+  .commute-destinations {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .commute-destination {
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 10px;
+  }
+
+  .commute-mood-row {
+    overflow-x: auto;
+    margin-right: -16px;
+    padding-right: 16px;
+    scrollbar-width: none;
+  }
+
+  .commute-mood-row::-webkit-scrollbar { display: none; }
+  .commute-mood { flex: 0 0 auto; min-height: 40px; }
+  .commute-prepare-button { min-height: 52px; font-size: .96rem; }
+  .commute-result { padding: 13px; }
+}

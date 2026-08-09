@@ -1,4 +1,4 @@
-# DriveOS 4.3.2
+# DriveOS 4.4.0
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
@@ -32,6 +32,15 @@ Home privacy is mandatory and enforced by the backend. If either endpoint is nam
 - no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
 
 Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).
+
+## Prepare Commute
+
+DriveOS 4.4.0 adds a mobile-first **Prepare Commute** routine. Choose a named place such as Work, pick a listening mood, then tap **Prepare**. DriveOS starts Tessie climate preconditioning, sends the saved destination to Eloise, and creates a private Spotify mix from local listening history.
+
+- playlist mixes balance favorites, rediscoveries, and less-recent tracks; the routine never starts playback remotely
+- only manually named DriveOS places can be sent to the vehicle; the browser sends a label, while the backend resolves the saved address locally
+- vehicle commands are explicit and user-initiated; DriveOS rejects preparation while the vehicle is in Drive or Reverse
+- Spotify playlist creation requires the existing `playlist-modify-private` permission
 
 After installing the current build, run `tools/Migrate-To-Sqlite.ps1` to migrate local history, aliases, and charging settings. The migration preserves the original JSON/JSONL files and creates a timestamped backup. Run `tools/Rollback-To-Json.ps1` to switch back without deleting the SQLite database.
 

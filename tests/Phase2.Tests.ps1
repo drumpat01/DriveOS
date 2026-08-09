@@ -139,6 +139,20 @@ try {
     $plan=New-DriveOSPlaylistPlan -Drive ([pscustomobject]@{shortDateLabel='Jan 1';startTime='8:00 AM';soundtrack=@([pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:two'})})
     Assert-Equal $plan.uris.Count 2 'Playlist URI de-duplication changed.'
     Assert-Equal $plan.name 'DriveOS - Jan 1 8:00 AM' 'Playlist naming changed.'
+    $commuteHistory=@()
+    foreach($trackNumber in 1..8){
+        $plays=if($trackNumber -le 3){4}elseif($trackNumber -le 6){2}else{1}
+        foreach($play in 1..$plays){
+            $commuteHistory += [pscustomobject]@{
+                track_uri="spotify:track:commute$trackNumber";track_id="commute$trackNumber";track="Song $trackNumber";artist="Artist $trackNumber"
+                duration_ms=180000;played_at=(Get-Date '2026-01-01T12:00:00Z').AddDays($trackNumber).AddHours($play).ToString('o')
+            }
+        }
+    }
+    $commutePlan=New-DriveOSCommutePlaylistPlan -History $commuteHistory -DestinationName Work -Mood focused -ExpectedMinutes 20
+    if($commutePlan.trackCount -lt 4){throw 'Commute playlist generation returned too few tracks.'}
+    Assert-Equal @($commutePlan.uris|Select-Object -Unique).Count $commutePlan.uris.Count 'Commute playlist contains duplicate tracks.'
+    if($commutePlan.breakdown.favorites -lt 1 -or $commutePlan.breakdown.rediscoveries -lt 1){throw 'Commute playlist no longer balances favorites and rediscoveries.'}
     $requestBody=ConvertFrom-DriveOSRequestBody -BodyText '{"driveId":"drive-1"}' -RequiredFields driveId
     Assert-Equal $requestBody.driveId 'drive-1' 'HTTP body parsing changed.'
     $httpError=Get-DriveOSHttpError -Message 'driveId is required.'
@@ -152,6 +166,8 @@ try {
         $needle = if ($contract.path) { [regex]::Escape([string]$contract.path) } else { [regex]::Escape([string]$contract.pathPattern) }
         if ($server -notmatch $needle) { throw "Endpoint contract disappeared: $($contract.method) $($contract.path)$($contract.pathPattern)" }
     }
+    foreach($route in @('/api/commute/places','/api/commute/prepare')){if($server -notmatch [regex]::Escape($route)){throw "Commute API endpoint is missing: $route"}}
+    if($server -notmatch 'Test-CommuteVehicleIsParked'){throw 'Commute vehicle safety gate is missing.'}
     Write-Host 'Phase 2 repository, domain, and endpoint characterization tests passed.'
 }
 finally {

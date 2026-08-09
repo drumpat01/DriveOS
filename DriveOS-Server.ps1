@@ -1843,6 +1843,119 @@ function New-DrivePlaylist {
 }
 
 # ------------------------------------------------------------
+# Mobile commute preparation: explicit, user-initiated Tessie actions
+# ------------------------------------------------------------
+
+function Get-CommutePlaces {
+    $aliases = @(Get-PlaceAliasEntries | Where-Object { $_.label -and $_.location })
+    if (-not $aliases.Count) { return [pscustomobject]@{ places = @() } }
+
+    return [pscustomobject]@{
+        places = @($aliases |
+            Group-Object { ([string]$_.label).Trim().ToLowerInvariant() } |
+            ForEach-Object { [pscustomobject]@{ label=([string]$_.Group[0].label).Trim() } } |
+            Sort-Object label)
+    }
+}
+
+function Resolve-CommuteDestination {
+    param([Parameter(Mandatory=$true)][string]$PlaceLabel)
+
+    $label = $PlaceLabel.Trim()
+    if (-not $label -or $label.Length -gt 64) { throw 'Choose one of your saved places.' }
+
+    $aliases = @(Get-PlaceAliasEntries | Where-Object { ([string]$_.label).Trim() -ieq $label })
+    if (-not $aliases.Count) { throw 'That destination is not one of your saved places.' }
+
+    $rawDrives = @(Get-RawDrives -Days 365)
+    $candidates = @()
+    foreach ($alias in $aliases) {
+        $location = ([string]$alias.location).Trim()
+        $matching = @($rawDrives | Where-Object { ([string]$_.ending_location).Trim() -eq $location })
+        $durations = @($matching | ForEach-Object {
+            try { [Math]::Round(([double]$_.ended_at - [double]$_.started_at) / 60) } catch { $null }
+        } | Where-Object { $_ -gt 0 -and $_ -le 240 })
+        $lastDriven = if ($matching.Count) { [double](($matching | Measure-Object ended_at -Maximum).Maximum) } else { 0 }
+        $candidates += [pscustomobject]@{
+            location = $location
+            uses = $matching.Count
+            lastDriven = $lastDriven
+            expectedMinutes = if ($durations.Count) { [int][Math]::Round((($durations | Measure-Object -Average).Average)) } else { 25 }
+        }
+    }
+
+    $chosen = @($candidates | Sort-Object @{Expression='uses';Descending=$true}, @{Expression='lastDriven';Descending=$true}) | Select-Object -First 1
+    if (-not $chosen) { throw 'DriveOS could not resolve that saved destination.' }
+    return [pscustomobject]@{ label=$label; location=$chosen.location; expectedMinutes=$chosen.expectedMinutes }
+}
+
+function Test-CommuteVehicleIsParked {
+    param($Vehicle)
+    $shift = [string]$Vehicle.last_state.drive_state.shift_state
+    return $shift -notin @('D', 'R')
+}
+
+function Invoke-PrepareCommute {
+    param(
+        [Parameter(Mandatory=$true)][string]$PlaceLabel,
+        [ValidateSet('focused','upbeat','comfort','surprise')][string]$Mood = 'focused'
+    )
+
+    if (-not (Test-SpotifyScope 'playlist-modify-private')) {
+        throw 'Spotify permission playlist-modify-private is missing. Reauthorize Spotify for DriveOS before preparing a commute.'
+    }
+
+    $destination = Resolve-CommuteDestination -PlaceLabel $PlaceLabel
+    $history = @(Get-SpotifyHistory)
+    if (@($history | Where-Object { $_.track_uri -or $_.track_id }).Count -lt 4) {
+        throw 'DriveOS needs more archived Spotify listening before it can build a commute mix.'
+    }
+    # Refresh and validate Spotify before any Tesla command has side effects.
+    $spotifyClient = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+
+    $vehicle = Get-VehicleRecord
+    if (-not $vehicle -or -not $vehicle.vin) { throw 'No Tessie vehicle was found.' }
+    if (-not (Test-CommuteVehicleIsParked -Vehicle $vehicle)) {
+        throw 'For safety, prepare a commute before Eloise is in Drive or Reverse.'
+    }
+
+    $client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $climateStarted = $false
+    $destinationSent = $false
+    $playlist = $null
+    $warnings = New-Object System.Collections.ArrayList
+
+    try {
+        $climateResponse = Start-TessieClimate -Client $client -Vin $vehicle.vin
+        $climateStarted = [bool]$climateResponse.result
+        if (-not $climateStarted) { [void]$warnings.Add('Climate did not confirm. Check Eloise before leaving.') }
+    }
+    catch { [void]$warnings.Add('Climate could not be started. You can still prepare the rest of the commute.') }
+
+    try {
+        $shareResponse = Share-TessieDestination -Client $client -Vin $vehicle.vin -Value $destination.location
+        $destinationSent = [bool]$shareResponse.result
+        if (-not $destinationSent) { [void]$warnings.Add('Tesla navigation did not confirm the destination.') }
+    }
+    catch { [void]$warnings.Add('The destination could not be sent to Eloise.') }
+
+    try {
+        $playlist = New-DriveOSCommutePlaylist -History $history -DestinationName $destination.label -Mood $Mood -ExpectedMinutes $destination.expectedMinutes -SpotifyClient $spotifyClient
+    }
+    catch { [void]$warnings.Add('The commute playlist could not be created.') }
+
+    return [pscustomobject]@{
+        success = [bool]($climateStarted -and $destinationSent -and $playlist)
+        destination = $destination.label
+        expectedMinutes = $destination.expectedMinutes
+        climateStarted = $climateStarted
+        destinationSent = $destinationSent
+        playlist = $playlist
+        warnings = @($warnings)
+    }
+}
+
+# ------------------------------------------------------------
 # Status
 # ------------------------------------------------------------
 
@@ -2024,6 +2137,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/commute/places" {
+                    Send-Json -Stream $Stream -Object (Get-CommutePlaces)
+                    return
+                }
+
                 default {
                     if ($Path -match "^/api/spotify/artwork/([A-Za-z0-9]{10,64})$") {
                         Send-SpotifyArtwork `
@@ -2093,6 +2211,12 @@ function Handle-Request {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (New-DrivePlaylist -DriveId $Body.driveId)
+                    return
+                }
+
+                "/api/commute/prepare" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields placeLabel,mood
+                    Send-Json -Stream $Stream -Object (Invoke-PrepareCommute -PlaceLabel ([string]$Body.placeLabel) -Mood ([string]$Body.mood))
                     return
                 }
 

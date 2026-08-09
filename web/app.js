@@ -29,6 +29,177 @@ async function postJson(path, body) {
   return window.DriveOSApi.post(path, body);
 }
 
+function normalizeCommuteText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function setCommuteStatus(message, isError = false) {
+  const status = $("commuteStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-error", isError);
+}
+
+function updateCommuteControls() {
+  const button = $("prepareCommuteButton");
+  if (!button) return;
+
+  const selected = state.commutePlaces.find(place => place.label === state.commutePlaceLabel);
+  button.disabled = state.commutePreparing || !selected;
+  button.textContent = state.commutePreparing
+    ? "Preparing your drive…"
+    : selected
+      ? `Prepare ${selected.label}`
+      : "Choose a destination";
+
+  document.querySelectorAll("[data-commute-place]").forEach(destination => {
+    const selectedDestination = destination.dataset.commutePlace === state.commutePlaceLabel;
+    destination.classList.toggle("active", selectedDestination);
+    destination.setAttribute("aria-pressed", String(selectedDestination));
+  });
+}
+
+function chooseCommutePlace(label) {
+  const place = state.commutePlaces.find(item => item.label === label);
+  if (!place) return false;
+  state.commutePlaceLabel = place.label;
+  $("commuteResult").hidden = true;
+  setCommuteStatus(`Ready to prep Eloise for ${place.label}. Your Spotify mix will stay private.`, false);
+  updateCommuteControls();
+  return true;
+}
+
+function renderCommutePlaces() {
+  const container = $("commuteDestinations");
+  if (!container) return;
+
+  if (!state.commutePlaces.length) {
+    container.innerHTML = `<span class="commute-placeholder">Name a place such as Work or Home in Drive Library to create a routine.</span>`;
+    updateCommuteControls();
+    return;
+  }
+
+  container.innerHTML = state.commutePlaces.map(place => `
+    <button class="commute-destination" type="button" data-commute-place="${escapeHtml(place.label)}" aria-pressed="false">
+      <span class="commute-destination-icon" aria-hidden="true">&#x2197;</span>
+      ${escapeHtml(place.label)}
+    </button>`).join("");
+
+  container.querySelectorAll("[data-commute-place]").forEach(button => {
+    button.addEventListener("click", () => chooseCommutePlace(button.dataset.commutePlace));
+  });
+
+  const work = state.commutePlaces.find(place => normalizeCommuteText(place.label) === "work");
+  if (!state.commutePlaceLabel && work) chooseCommutePlace(work.label);
+  else updateCommuteControls();
+}
+
+async function loadCommutePlaces() {
+  try {
+    const data = await getJson("/api/commute/places");
+    state.commutePlaces = Array.isArray(data.places) ? data.places : [];
+    if (!state.commutePlaces.some(place => place.label === state.commutePlaceLabel)) {
+      state.commutePlaceLabel = null;
+    }
+    renderCommutePlaces();
+  } catch (error) {
+    setCommuteStatus(error.message || "Saved destinations could not be loaded.", true);
+  }
+}
+
+function handleCommuteCommand() {
+  const input = $("commuteCommand");
+  const command = normalizeCommuteText(input?.value);
+  if (!command) {
+    setCommuteStatus("Try “Let’s go to work,” or choose one of your saved destinations.", true);
+    return;
+  }
+
+  const match = state.commutePlaces.find(place => {
+    const label = normalizeCommuteText(place.label);
+    return command === label || command.includes(` ${label}`) || command.endsWith(label);
+  });
+
+  if (!match) {
+    setCommuteStatus("DriveOS only prepares places you have named. Choose a saved destination below.", true);
+    return;
+  }
+
+  chooseCommutePlace(match.label);
+  if (input) input.value = "";
+}
+
+function renderCommuteResult(result) {
+  const panel = $("commuteResult");
+  if (!panel) return;
+
+  const actions = [
+    { ok: result.climateStarted, label: result.climateStarted ? "Climate and battery preconditioning started" : "Climate was not confirmed" },
+    { ok: result.destinationSent, label: result.destinationSent ? `${result.destination} sent to Eloise` : "Tesla navigation was not confirmed" },
+    { ok: Boolean(result.playlist), label: result.playlist ? `${result.playlist.trackCount} songs · ${result.playlist.playlistMinutes} minutes` : "Playlist was not created" }
+  ];
+  const mix = result.playlist?.breakdown;
+  const mixSummary = mix
+    ? `${mix.favorites} favorites · ${mix.rediscoveries} rediscoveries · ${mix.fresh} fresh picks`
+    : "";
+
+  panel.hidden = false;
+  panel.innerHTML = `
+    <div class="commute-result-heading">
+      <span class="commute-result-check" aria-hidden="true">&#x2713;</span>
+      <div><strong>Your commute is ready</strong><span>${escapeHtml(result.destination)} · about ${escapeHtml(result.expectedMinutes)} minutes</span></div>
+    </div>
+    <div class="commute-result-actions">
+      ${actions.map(action => `<span class="${action.ok ? "done" : "pending"}">${action.ok ? "&#x2713;" : "&#x2022;"} ${escapeHtml(action.label)}</span>`).join("")}
+    </div>
+    ${result.playlist ? `<div class="commute-playlist-summary"><strong>${escapeHtml(result.playlist.playlistName)}</strong><span>${escapeHtml(mixSummary)}</span>${result.playlist.url ? `<a class="text-button" href="${escapeHtml(result.playlist.url)}" target="_blank" rel="noopener noreferrer">Open playlist &#x2192;</a>` : ""}</div>` : ""}
+    ${result.warnings?.length ? `<p class="commute-warning">${escapeHtml(result.warnings.join(" "))}</p>` : ""}`;
+}
+
+async function prepareCommute() {
+  if (state.commutePreparing || !state.commutePlaceLabel) return;
+  state.commutePreparing = true;
+  updateCommuteControls();
+  $("commuteResult").hidden = true;
+  setCommuteStatus("Starting climate, loading Tesla navigation, and building your private mix…");
+
+  try {
+    const result = await postJson("/api/commute/prepare", {
+      placeLabel: state.commutePlaceLabel,
+      mood: state.commuteMood
+    });
+    renderCommuteResult(result);
+    setCommuteStatus(result.success ? "Eloise is getting ready. Your playlist is waiting in Spotify." : "The commute needs attention. See the details below.", !result.success);
+  } catch (error) {
+    setCommuteStatus(error.message || "DriveOS could not prepare this commute.", true);
+  } finally {
+    state.commutePreparing = false;
+    updateCommuteControls();
+  }
+}
+
+function bindCommuteRoutine() {
+  $("commuteCommandButton")?.addEventListener("click", handleCommuteCommand);
+  $("commuteCommand")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); handleCommuteCommand(); }
+  });
+  $("prepareCommuteButton")?.addEventListener("click", prepareCommute);
+  document.querySelectorAll("[data-commute-mood]").forEach(button => {
+    button.addEventListener("click", () => {
+      state.commuteMood = button.dataset.commuteMood;
+      document.querySelectorAll("[data-commute-mood]").forEach(mood => {
+        const active = mood.dataset.commuteMood === state.commuteMood;
+        mood.classList.toggle("active", active);
+        mood.setAttribute("aria-pressed", String(active));
+      });
+      $("commuteResult").hidden = true;
+    });
+  });
+}
+
 
 
 function updateClock() {
@@ -2442,10 +2613,11 @@ async function configureFoursquareOnThisComputer() {
 
 const refreshFeature = window.DriveOSFeatures.refresh.create({
   loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
-  loadStatistics, loadPlaces, loadCharging, loadRecaps
+  loadStatistics, loadPlaces, loadCharging, loadRecaps, loadCommutePlaces
 });
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
+bindCommuteRoutine();
 
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {

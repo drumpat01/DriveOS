@@ -22,7 +22,8 @@
           tasks.loadStatistics(),
           tasks.loadPlaces(),
           tasks.loadCharging(),
-          tasks.loadRecaps()
+          tasks.loadRecaps(),
+          ...(tasks.loadCommutePlaces ? [tasks.loadCommutePlaces()] : [])
         ]);
       } finally {
         if (button) {
@@ -54,7 +55,8 @@
           tasks.loadStatistics(),
           tasks.loadPlaces(),
           tasks.loadCharging(),
-          tasks.loadRecaps()
+          tasks.loadRecaps(),
+          ...(tasks.loadCommutePlaces ? [tasks.loadCommutePlaces()] : [])
         ]);
       }, 300_000);
 

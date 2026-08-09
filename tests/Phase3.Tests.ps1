@@ -19,11 +19,15 @@ if($index -notmatch 'data-close-place-modal'){throw 'Friendly places modal backd
 foreach($searchId in @('driveSearchInput','driveAdvancedToggle','driveAdvancedFilters')){if($index -notmatch ('id="'+$searchId+'"')){throw "Drive search control is missing: $searchId"}}
 if($index -notmatch 'id="driveAdvancedFilters"[^>]*hidden'){throw 'Advanced drive filters must be collapsed initially.'}
 if($index -notmatch 'placeholder="Enter a city or state'){throw 'The primary drive search is not labeled for city/state search.'}
+foreach($commuteId in @('commuteCommand','commuteCommandButton','commuteDestinations','prepareCommuteButton','commuteResult')){if($index -notmatch ('id="'+$commuteId+'"')){throw "Mobile commute control is missing: $commuteId"}}
+if($app -notmatch '/api/commute/prepare'){throw 'Mobile commute preparation client is missing.'}
+if($app -notmatch 'normalizeCommuteText'){throw 'Natural-language commute command parsing is missing.'}
 $styles=Get-Content (Join-Path $Root 'web\styles.css') -Raw
 if($styles -notmatch '(?s)\.topbar-right \.theme-switcher\s*\{[^}]*display:\s*inline-flex\s*!important'){throw 'The theme switcher is not restored in the mobile header.'}
 foreach($metricClass in @('drive-stat-distance','drive-stat-duration','drive-stat-battery','drive-stat-soundtrack','drive-stat-energy')){if($app -notmatch $metricClass){throw "Drive-card metric class is missing: $metricClass"}}
 if($styles -notmatch '(?s)\.dashboard-drive-card\s*>\s*\.v3-drive-play\s*\{[^}]*width:\s*48px\s*!important;[^}]*height:\s*48px\s*!important;[^}]*border-radius:\s*50%\s*!important'){throw 'The mobile dashboard play control is no longer locked to a circle.'}
 if($styles -notmatch '(?s)\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-battery,\s*\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-energy\s*\{[^}]*display:\s*none\s*!important'){throw 'Secondary mobile telemetry is no longer reserved for drive details.'}
+if($styles -notmatch '(?s)@media \(max-width: 760px\)\s*\{[^}]*\.commute-panel'){throw 'Prepare Commute does not have a mobile-first layout rule.'}
 $desktopHost=Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw;$ignition=Get-Content (Join-Path $Root 'web\features\ignition.js') -Raw
 if($desktopHost -match 'runDriveOSIgnition' -and $ignition -notmatch 'window\.runDriveOSIgnition\s*=\s*run'){throw 'Desktop ignition compatibility shim is missing.'}
 $serviceWorker=Get-Content (Join-Path $Root 'web\service-worker.js') -Raw;if($serviceWorker -notmatch 'pathname\.endsWith\("\.js"\)'){throw 'Service worker no longer treats feature modules as network-only.'}
