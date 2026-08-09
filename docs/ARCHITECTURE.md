@@ -9,6 +9,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Integrations/Spotify/`: Spotify client and provider-to-internal play model mapping.
 - `src/Storage/`: persistence boundary. It intentionally preserves JSON and JSONL bytes and tolerant legacy reads.
 - `web/core/`: frontend infrastructure modules loaded before the legacy application.
+- `web/components/`: presentation components extracted without changing their DOM contract or styling.
 - `web/app.js`: current UI/domain composition root. It remains large in Phase 1.
 - `tools/`: installer and administrative implementation scripts. Root scripts remain compatibility shims.
 - `version.json`: canonical product/build metadata. `tools/Sync-Version.ps1` generates checked-in consumers and runs during installation.
