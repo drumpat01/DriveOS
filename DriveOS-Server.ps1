@@ -6,8 +6,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -33,6 +36,7 @@ $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
+$Repository = New-DriveOSRepository -DataDirectory $DataDirectory
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
@@ -308,7 +312,7 @@ function Save-SpotifyHistory {
 
     $ExistingIds = @{}
 
-    foreach ($Record in @(Read-DriveOSJsonLines -Path $SpotifyHistoryFile)) {
+    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
         if ($Record.id) { $ExistingIds[$Record.id] = $true }
     }
 
@@ -340,7 +344,7 @@ function Save-SpotifyHistory {
             }
 
             $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
-            Add-DriveOSJsonLine -Path $SpotifyHistoryFile -Value $HistoryRecord
+            Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
 
             $ExistingIds[$RecordId] = $true
             $NewCount++
@@ -357,7 +361,7 @@ function Get-SpotifyHistory {
         return $Records
     }
 
-    foreach ($Record in @(Read-DriveOSJsonLines -Path $SpotifyHistoryFile)) {
+    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
         # v0.2 did not store track_uri, but track_id is sufficient.
         if (-not $Record.track_uri -and $Record.track_id) {
             $Record | Add-Member -NotePropertyName track_uri -NotePropertyValue "spotify:track:$($Record.track_id)" -Force
@@ -692,7 +696,7 @@ function Get-PlaceAliasEntries {
     }
 
     try {
-        $Parsed = Read-DriveOSJson -Path $PlaceAliasesFile -Default @()
+        $Parsed = Get-DriveOSPlaceAliases -Repository $Repository
         return @($Parsed)
     }
     catch {
@@ -772,7 +776,7 @@ function Set-PlaceAlias {
         })
     }
 
-    Write-JsonFileUtf8NoBom -Path $PlaceAliasesFile -Object @($Entries)
+    Set-DriveOSPlaceAliases -Repository $Repository -Entries @($Entries)
 
     return [PSCustomObject]@{
         location = $Location
@@ -786,7 +790,7 @@ function Get-ChargingSettings {
 
     if (Test-Path $ChargingSettingsFile -PathType Leaf) {
         try {
-            $Parsed = Read-DriveOSJson -Path $ChargingSettingsFile
+            $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
             if ($null -ne $Parsed.electricityRateCents) {
                 $Rate = [double]$Parsed.electricityRateCents
             }
@@ -815,7 +819,7 @@ function Set-ChargingSettings {
         electricityRateCents = $Rate
     }
 
-    Write-JsonFileUtf8NoBom -Path $ChargingSettingsFile -Object $Settings
+    Set-DriveOSChargingSettingsRecord -Repository $Repository -Settings $Settings
     return $Settings
 }
 
@@ -1037,31 +1041,7 @@ function Get-VehicleSummary {
         throw "No Tessie vehicle found."
     }
 
-    $State = $Vehicle.last_state
-    $Charge = $State.charge_state
-    $Climate = $State.climate_state
-
-    $InsideF = $null
-    $OutsideF = $null
-
-    if ($null -ne $Climate.inside_temp) {
-        $InsideF = [math]::Round(($Climate.inside_temp * 9 / 5) + 32)
-    }
-
-    if ($null -ne $Climate.outside_temp) {
-        $OutsideF = [math]::Round(($Climate.outside_temp * 9 / 5) + 32)
-    }
-
-    return [PSCustomObject]@{
-        name         = $State.display_name
-        state        = $State.state
-        battery      = $Charge.battery_level
-        rangeMiles   = if ($null -ne $Charge.battery_range) { [math]::Round($Charge.battery_range) } else { $null }
-        charging     = $Charge.charging_state
-        chargeLimit  = $Charge.charge_limit_soc
-        insideTempF  = $InsideF
-        outsideTempF = $OutsideF
-    }
+    return ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
 }
 
 function Get-RawDrives {
@@ -1264,51 +1244,13 @@ function Get-NearestHistoricalState {
         [long]$TargetTimestamp
     )
 
-    $Best = $null
-    $BestDifference = [double]::PositiveInfinity
-
-    foreach ($State in $States) {
-        if (
-            $null -eq $State.timestamp -or
-            $null -eq $State.latitude -or
-            $null -eq $State.longitude
-        ) {
-            continue
-        }
-
-        $Difference = [math]::Abs(
-            [double]$State.timestamp - [double]$TargetTimestamp
-        )
-
-        if ($Difference -lt $BestDifference) {
-            $Best = $State
-            $BestDifference = $Difference
-        }
-    }
-
-    return $Best
+    return Find-NearestDriveOSHistoricalState -States $States -TargetTimestamp $TargetTimestamp
 }
 
 function Convert-HistoricalStateToMapPoint {
     param($State)
 
-    if (-not $State) {
-        return $null
-    }
-
-    $LocalTime = [DateTimeOffset]::FromUnixTimeSeconds(
-        [long]$State.timestamp
-    ).ToLocalTime()
-
-    return [PSCustomObject]@{
-        timestamp = [long]$State.timestamp
-        time      = $LocalTime.ToString("h:mm:ss tt")
-        latitude  = [double]$State.latitude
-        longitude = [double]$State.longitude
-        speed     = $State.speed
-        heading   = $State.heading
-        battery   = $State.battery_level
-    }
+    return ConvertTo-DriveOSMapPoint -State $State
 }
 
 function Get-DriveMapData {
