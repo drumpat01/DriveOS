@@ -1,0 +1,129 @@
+$ErrorActionPreference = 'Stop'
+$Root = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $Root 'src\Storage\DriveOS.Storage.psm1') -Force
+Import-Module (Join-Path $Root 'src\Storage\DriveOS.Sqlite.psm1') -Force
+Import-Module (Join-Path $Root 'src\Repositories\DriveOS.Repository.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Vehicle\DriveOS.Vehicle.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Replay\DriveOS.Replay.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Drives\DriveOS.Drives.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Recaps\DriveOS.Recaps.psm1') -Force
+Import-Module (Join-Path $Root 'src\Application\DriveOS.Playlists.psm1') -Force
+Import-Module (Join-Path $Root 'src\Http\DriveOS.Http.psm1') -Force
+
+function Assert-Equal($Actual, $Expected, [string]$Message) {
+    if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
+}
+
+$scratch = Join-Path ([IO.Path]::GetTempPath()) ('driveos-phase2-' + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $scratch | Out-Null
+try {
+    $repository = New-DriveOSRepository -DataDirectory $scratch
+    Add-DriveOSListeningHistoryRecord -Repository $repository -Record ([pscustomobject]@{ id='track-1|2026-01-01T00:00:00Z'; played_at='2026-01-01T00:00:00Z' })
+    Assert-Equal @(Get-DriveOSListeningHistory -Repository $repository).Count 1 'Listening repository count changed.'
+    Set-DriveOSPlaceAliases -Repository $repository -Entries @([pscustomobject]@{location='Test';label='Home'})
+    Assert-Equal @(Get-DriveOSPlaceAliases -Repository $repository)[0].label 'Home' 'Alias repository changed.'
+    Set-DriveOSChargingSettingsRecord -Repository $repository -Settings ([pscustomobject]@{electricityRateCents=12.5})
+    Assert-Equal (Get-DriveOSChargingSettingsRecord -Repository $repository).electricityRateCents 12.5 'Settings repository changed.'
+
+    $sqliteExecutable=Join-Path $Root 'tools\sqlite\sqlite3.exe'
+    if(Test-Path -LiteralPath $sqliteExecutable){
+        $sqlite=New-DriveOSRepository -DataDirectory $scratch -AppRoot $Root -Provider SQLite
+        Initialize-DriveOSSqlite -Repository $sqlite
+        $record=[pscustomobject]@{id="track'quoted|2026-01-01T00:00:00Z";played_at='2026-01-01T00:00:00Z';track="Driver's Song"}
+        Add-DriveOSListeningHistoryRecord -Repository $sqlite -Record $record
+        Add-DriveOSListeningHistoryRecord -Repository $sqlite -Record $record
+        Assert-Equal @(Get-DriveOSListeningHistory -Repository $sqlite).Count 1 'SQLite duplicate handling changed.'
+        Set-DriveOSPlaceAliases -Repository $sqlite -Entries @([pscustomobject]@{location="Driver's Way";label='Home'})
+        Assert-Equal @(Get-DriveOSPlaceAliases -Repository $sqlite)[0].location "Driver's Way" 'SQLite alias quoting changed.'
+        Set-DriveOSChargingSettingsRecord -Repository $sqlite -Settings ([pscustomobject]@{electricityRateCents=13.25})
+        Assert-Equal (Get-DriveOSChargingSettingsRecord -Repository $sqlite).electricityRateCents 13.25 'SQLite settings changed.'
+        if(-not(Test-DriveOSSqliteIntegrity -Repository $sqlite)){throw 'SQLite integrity check failed.'}
+
+        $migrationData=Join-Path $scratch 'migration-data';New-Item -ItemType Directory -Path $migrationData|Out-Null
+        $migrationJson=New-DriveOSRepository -DataDirectory $migrationData -AppRoot $Root -Provider Json
+        Add-DriveOSListeningHistoryRecord -Repository $migrationJson -Record ([pscustomobject]@{id='one';played_at='2026-01-01T00:00:00Z';track='One'})
+        Add-Content -LiteralPath $migrationJson.SpotifyHistoryPath -Value '{malformed' -Encoding UTF8
+        Set-DriveOSPlaceAliases -Repository $migrationJson -Entries @([pscustomobject]@{location='A';label='Home'})
+        $sourceHash=(Get-FileHash -LiteralPath $migrationJson.SpotifyHistoryPath -Algorithm SHA256).Hash
+        & (Join-Path $Root 'tools\Migrate-To-Sqlite.ps1') -AppRoot $Root -DataDirectory $migrationData -NoPause
+        $config=Read-DriveOSJson -Path $migrationJson.ConfigPath
+        Assert-Equal $config.provider 'SQLite' 'Migration provider switch changed.'
+        Assert-Equal (Get-FileHash -LiteralPath $migrationJson.SpotifyHistoryPath -Algorithm SHA256).Hash $sourceHash 'Migration modified the source archive.'
+        $migrated=New-DriveOSRepository -DataDirectory $migrationData -AppRoot $Root -Provider Auto
+        Assert-Equal @(Get-DriveOSListeningHistory -Repository $migrated).Count 1 'Migration tolerant import changed.'
+        & (Join-Path $Root 'tools\Rollback-To-Json.ps1') -AppRoot $Root -DataDirectory $migrationData -NoPause
+        Assert-Equal (Read-DriveOSJson -Path $migrationJson.ConfigPath).provider 'Json' 'Rollback provider switch changed.'
+    }else{Write-Warning 'SQLite runtime unavailable; SQLite provider tests skipped.'}
+
+    $vehicle = Get-Content (Join-Path $PSScriptRoot 'fixtures\vehicle.json') -Raw | ConvertFrom-Json
+    $summary = ConvertTo-DriveOSVehicleSummary -Vehicle $vehicle
+    Assert-Equal $summary.name 'Test Vehicle' 'Vehicle name changed.'
+    Assert-Equal $summary.rangeMiles 185 'Vehicle range rounding changed.'
+    Assert-Equal $summary.insideTempF 68 'Vehicle temperature conversion changed.'
+
+    $states = @(
+        [pscustomobject]@{timestamp=100;latitude=32.1;longitude=-97.1;speed=10;heading=90;battery_level=70},
+        [pscustomobject]@{timestamp=110;latitude=32.2;longitude=-97.2;speed=20;heading=95;battery_level=69}
+    )
+    $nearest = Find-NearestDriveOSHistoricalState -States $states -TargetTimestamp 108
+    Assert-Equal $nearest.timestamp 110 'Nearest replay state selection changed.'
+    $point = ConvertTo-DriveOSMapPoint -State $nearest
+    Assert-Equal $point.latitude 32.2 'Replay map projection changed.'
+
+    $aliases = @(Update-DriveOSPlaceAliasEntries -Entries @() -Location '123 Test Street' -Label 'Home')
+    $aliasMap = New-DriveOSPlaceAliasMap -Entries $aliases
+    Assert-Equal (Resolve-DriveOSFriendlyLocation -Location '123 Test Street' -AliasMap $aliasMap) 'Home' 'Friendly location resolution changed.'
+    $aliases = @(Update-DriveOSPlaceAliasEntries -Entries $aliases -Location '123 Test Street' -Label '')
+    Assert-Equal $aliases.Count 0 'Friendly location removal changed.'
+
+    $charge = [pscustomobject]@{id='charge-1';started_at=100;ended_at=3700;energy_added=10;cost=$null;location='123 Test Street';latitude=32;longitude=-97;is_supercharger=$false;odometer=1000;energy_used=11;miles_added=40;starting_battery=20;ending_battery=70}
+    $chargeModel = ConvertTo-DriveOSCharge -Charge $charge -Settings ([pscustomobject]@{electricityRateCents=12.5}) -FriendlyLocation 'Home'
+    Assert-Equal $chargeModel.durationMinutes 60 'Charge duration changed.'
+    Assert-Equal $chargeModel.estimatedCost 1.25 'Charge cost calculation changed.'
+    Assert-Equal $chargeModel.location 'Home' 'Charge friendly location changed.'
+
+    $history = @(
+        [pscustomobject]@{id='track123456|a';track_id='track123456';track='Song';artist='Artist';played_at='2026-01-15T12:00:00Z';album_image='image';spotify_url='url'},
+        [pscustomobject]@{id='track123456|b';track_id='track123456';track='Song';artist='Artist';played_at='2026-01-15T13:00:00Z';album_image='image';spotify_url='url'}
+    )
+    $musicStats = New-DriveOSMusicStats -History $history -Today ([datetime]'2026-01-15')
+    Assert-Equal $musicStats.totalPlays 2 'Music total changed.'
+    Assert-Equal $musicStats.topTracks[0].plays 2 'Top-track grouping changed.'
+    Assert-Equal $musicStats.daily[-1].count 2 'Daily music grouping changed.'
+    $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3})
+    Assert-Equal $driveStats.averageWhMi 250 'Drive efficiency changed.'
+    $rawDrive=[pscustomobject]@{started_at=100;ended_at=3700;starting_battery=80;ending_battery=70;odometer_distance=10;energy_used=2.5;starting_location='A';ending_location='B';starting_latitude=32;starting_longitude=-97;ending_latitude=33;ending_longitude=-98;tag='Test';driver_profile='Driver';average_speed=30;max_speed=60}
+    $driveModel=ConvertTo-DriveOSDrive -Drive $rawDrive -Soundtrack @([pscustomobject]@{track='Song'}) -StartingLocation Home -EndingLocation Work
+    Assert-Equal $driveModel.durationMinutes 60 'Drive duration changed.'
+    Assert-Equal $driveModel.efficiencyWhMi 250 'Drive efficiency mapping changed.'
+    Assert-Equal $driveModel.songCount 1 'Drive soundtrack count changed.'
+    $recapDrive=[pscustomobject]@{startedAt='2026-01-10T12:00:00-06:00';miles=10;energyKWh=2.5;batteryUsed=5;songCount=1;startingLocation='Home';endingLocation='Work';shortDateLabel='Sat, Jan 10';soundtrack=@([pscustomobject]@{track='Song';artist='Artist'})}
+    $recapCharge=[pscustomobject]@{startedAt='2026-01-11T12:00:00-06:00';energyAddedKWh=20;displayCost=3.5}
+    $recaps=New-DriveOSMonthlyRecaps -Drives @($recapDrive) -Charges @($recapCharge) -Settings ([pscustomobject]@{electricityRateCents=12.5}) -Now ([datetime]'2026-01-20')
+    Assert-Equal $recaps.recaps[0].driveCount 1 'Monthly drive count changed.'
+    Assert-Equal $recaps.recaps[0].topTrack 'Song' 'Monthly top track changed.'
+    Assert-Equal $recaps.recaps[0].chargingCost 3.5 'Monthly charging cost changed.'
+    $plan=New-DriveOSPlaylistPlan -Drive ([pscustomobject]@{shortDateLabel='Jan 1';startTime='8:00 AM';soundtrack=@([pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:two'})})
+    Assert-Equal $plan.uris.Count 2 'Playlist URI de-duplication changed.'
+    Assert-Equal $plan.name 'DriveOS - Jan 1 8:00 AM' 'Playlist naming changed.'
+    $requestBody=ConvertFrom-DriveOSRequestBody -BodyText '{"driveId":"drive-1"}' -RequiredFields driveId
+    Assert-Equal $requestBody.driveId 'drive-1' 'HTTP body parsing changed.'
+    $httpError=Get-DriveOSHttpError -Message 'driveId is required.'
+    Assert-Equal $httpError.statusCode 400 'HTTP validation status changed.'
+    $httpError=Get-DriveOSHttpError -Message 'unexpected private failure'
+    Assert-Equal $httpError.publicMessage 'DriveOS request failed.' 'HTTP error redaction changed.'
+
+    $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
+    $contracts = Get-Content (Join-Path $PSScriptRoot 'fixtures\endpoint-contracts.json') -Raw | ConvertFrom-Json
+    foreach ($contract in $contracts) {
+        $needle = if ($contract.path) { [regex]::Escape([string]$contract.path) } else { [regex]::Escape([string]$contract.pathPattern) }
+        if ($server -notmatch $needle) { throw "Endpoint contract disappeared: $($contract.method) $($contract.path)$($contract.pathPattern)" }
+    }
+    Write-Host 'Phase 2 repository, domain, and endpoint characterization tests passed.'
+}
+finally {
+    if (Test-Path -LiteralPath $scratch) { Remove-Item -LiteralPath $scratch -Recurse -Force }
+}

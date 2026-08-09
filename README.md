@@ -1,5 +1,13 @@
 # DriveOS 3.0
 
+> Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
+
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DriveOS.ps1` for offline architecture and compatibility validation.
+
+Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).
+
+After installing the current build, run `tools/Migrate-To-Sqlite.ps1` to migrate local history, aliases, and charging settings. The migration preserves the original JSON/JSONL files and creates a timestamped backup. Run `tools/Rollback-To-Json.ps1` to switch back without deleting the SQLite database.
+
 DriveOS 3.0 adds two major local intelligence features on top of Drive Library Search.
 
 ## Favorite Routes

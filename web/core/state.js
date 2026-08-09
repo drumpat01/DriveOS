@@ -1,0 +1,3 @@
+(function(){
+  window.DriveOSState={drives:[],driveLibraryWindowDays:365,favoriteRoutes:[],routeFilterDriveIds:null,routeFilterLabel:"",selectedDrive:null,playlistScope:false,driveMap:null,driveMapData:null,songMapMarkers:new Map(),replayMarker:null,replayMarkerElement:null,replayPlaying:false,replayAnimationFrame:null,replayStartWallTime:null,replayStartDriveMs:0,replayCurrentDriveMs:0,replayLastSongIndex:null,mapMusicPoint:null,mapMusicMarker:null,spotifyAuthorized:false,spotifyConnecting:false,placeCandidates:[],chargingSessions:[],recaps:[]};
+})();

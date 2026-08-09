@@ -70,21 +70,16 @@ namespace DriveOSDesktop
 
     internal sealed class DriveOSForm : Form
     {
-        private const int Port = 8787;
-        private const string LocalHost = "127.0.0.1";
-        private const string LocalUrl = "http://127.0.0.1:8787/";
-        private const string LocalUrlFilter = "http://127.0.0.1:8787/*";
-
         private readonly WebView2 browser;
         private readonly string sessionToken;
-
-        private Process backendProcess;
+        private readonly DriveOSBackendHost backendHost;
         private bool startupComplete;
         private bool shutdownStarted;
 
         public DriveOSForm()
         {
-            sessionToken = CreateSessionToken();
+            sessionToken = DriveOSSecurityPolicy.CreateSessionToken();
+            backendHost = new DriveOSBackendHost();
 
             Text = "DriveOS 3.2";
             StartPosition = FormStartPosition.CenterScreen;
@@ -115,26 +110,6 @@ namespace DriveOSDesktop
             FormClosing += OnFormClosing;
         }
 
-        private static string CreateSessionToken()
-        {
-            byte[] bytes = new byte[32];
-
-            using (RandomNumberGenerator rng = RandomNumberGenerator.Create())
-            {
-                rng.GetBytes(bytes);
-            }
-
-            StringBuilder builder = new StringBuilder(bytes.Length * 2);
-
-            foreach (byte value in bytes)
-            {
-                builder.Append(value.ToString("x2"));
-            }
-
-            Array.Clear(bytes, 0, bytes.Length);
-            return builder.ToString();
-        }
-
         private async void OnShown(object sender, EventArgs e)
         {
             if (startupComplete)
@@ -146,7 +121,7 @@ namespace DriveOSDesktop
 
             try
             {
-                if (IsPortOpen(LocalHost, Port, 250))
+                if (backendHost.IsPortInUse(250))
                 {
                     MessageBox.Show(
                         this,
@@ -161,17 +136,29 @@ namespace DriveOSDesktop
                     return;
                 }
 
-                if (!StartBackend())
+                string installationError = backendHost.ValidateInstallation();
+
+                if (!String.IsNullOrEmpty(installationError))
+                {
+                    MessageBox.Show(this, installationError, "DriveOS", MessageBoxButtons.OK,
+                        installationError.IndexOf("secrets", StringComparison.OrdinalIgnoreCase) >= 0
+                            ? MessageBoxIcon.Warning
+                            : MessageBoxIcon.Error);
+                    Close();
+                    return;
+                }
+
+                if (!backendHost.Start(sessionToken))
                 {
                     Close();
                     return;
                 }
 
-                bool ready = await WaitForBackendAsync(12000);
+                bool ready = await backendHost.WaitUntilReadyAsync(12000);
 
                 if (!ready)
                 {
-                    string details = ReadBackendLog();
+                    string details = backendHost.ReadLog();
 
                     MessageBox.Show(
                         this,
@@ -198,18 +185,13 @@ namespace DriveOSDesktop
                 await browser.EnsureCoreWebView2Async(environment);
 
                 // Keep the embedded browser surface intentionally narrow.
-                browser.CoreWebView2.Settings.AreDevToolsEnabled = false;
-                browser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-                browser.CoreWebView2.Settings.IsStatusBarEnabled = false;
-                browser.CoreWebView2.Settings.AreBrowserAcceleratorKeysEnabled = false;
-                browser.CoreWebView2.Settings.IsWebMessageEnabled = false;
-                browser.CoreWebView2.Settings.AreHostObjectsAllowed = false;
+                DriveOSSecurityPolicy.Configure(browser.CoreWebView2);
 
                 // Every request to the localhost backend gets an ephemeral
                 // 256-bit session credential. It never appears in the DOM,
                 // JavaScript source, URL, disk cache, or persistent settings.
                 browser.CoreWebView2.AddWebResourceRequestedFilter(
-                    LocalUrlFilter,
+                    DriveOSSecurityPolicy.LocalUrlFilter,
                     CoreWebView2WebResourceContext.All
                 );
 
@@ -221,7 +203,7 @@ namespace DriveOSDesktop
                 browser.CoreWebView2.DownloadStarting += OnDownloadStarting;
                 browser.CoreWebView2.ServerCertificateErrorDetected += OnServerCertificateErrorDetected;
 
-                browser.Source = new Uri(LocalUrl);
+                browser.Source = new Uri(DriveOSSecurityPolicy.LocalUrl);
             }
             catch (WebView2RuntimeNotFoundException)
             {
@@ -250,117 +232,6 @@ namespace DriveOSDesktop
             }
         }
 
-        private bool StartBackend()
-        {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string secretFile = Path.Combine(baseDir, "data", "driveos-secrets.json");
-            string backendScript = Path.Combine(baseDir, "DriveOS-Backend.ps1");
-
-            if (!File.Exists(secretFile))
-            {
-                MessageBox.Show(
-                    this,
-                    "DriveOS encrypted secrets have not been set up yet.\r\n\r\n" +
-                    "Run SETUP-DRIVEOS-SECRETS.bat once, then open DriveOS again.",
-                    "DriveOS",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning
-                );
-
-                return false;
-            }
-
-            if (!File.Exists(backendScript))
-            {
-                MessageBox.Show(
-                    this,
-                    "DriveOS-Backend.ps1 is missing from the DriveOS folder.",
-                    "DriveOS",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error
-                );
-
-                return false;
-            }
-
-            Process current = Process.GetCurrentProcess();
-
-            ProcessStartInfo psi = new ProcessStartInfo();
-            psi.FileName = "powershell.exe";
-            psi.Arguments =
-                "-NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" +
-                backendScript +
-                "\" -ParentPid " +
-                current.Id.ToString();
-            psi.WorkingDirectory = baseDir;
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
-            psi.WindowStyle = ProcessWindowStyle.Hidden;
-
-            // Pass the ephemeral local-session credential through the child
-            // environment rather than through the command line.
-            psi.EnvironmentVariables["DRIVEOS_SESSION_TOKEN"] = sessionToken;
-            psi.EnvironmentVariables["DRIVEOS_PARENT_START_TICKS"] =
-                current.StartTime.ToUniversalTime().Ticks.ToString();
-
-            backendProcess = Process.Start(psi);
-            return backendProcess != null;
-        }
-
-        private async Task<bool> WaitForBackendAsync(int timeoutMilliseconds)
-        {
-            int waited = 0;
-
-            while (waited < timeoutMilliseconds)
-            {
-                if (backendProcess != null && backendProcess.HasExited)
-                {
-                    return false;
-                }
-
-                if (IsPortOpen(LocalHost, Port, 200))
-                {
-                    return true;
-                }
-
-                await Task.Delay(200);
-                waited += 200;
-            }
-
-            return false;
-        }
-
-        private static bool IsPortOpen(string host, int port, int timeoutMilliseconds)
-        {
-            TcpClient client = null;
-
-            try
-            {
-                client = new TcpClient();
-                IAsyncResult result = client.BeginConnect(host, port, null, null);
-                bool success = result.AsyncWaitHandle.WaitOne(timeoutMilliseconds);
-
-                if (!success)
-                {
-                    return false;
-                }
-
-                client.EndConnect(result);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-            finally
-            {
-                if (client != null)
-                {
-                    try { client.Close(); } catch { }
-                }
-            }
-        }
-
         private void OnWebResourceRequested(
             object sender,
             CoreWebView2WebResourceRequestedEventArgs e)
@@ -372,7 +243,7 @@ namespace DriveOSDesktop
                 return;
             }
 
-            if (!IsLocalDriveOSUri(uri))
+            if (!DriveOSSecurityPolicy.IsLocalUri(uri))
             {
                 return;
             }
@@ -393,13 +264,13 @@ namespace DriveOSDesktop
                 return;
             }
 
-            if (IsLocalDriveOSUri(uri))
+            if (DriveOSSecurityPolicy.IsLocalUri(uri))
             {
                 browser.CoreWebView2.Navigate(uri.AbsoluteUri);
                 return;
             }
 
-            if (IsApprovedExternalUri(uri))
+            if (DriveOSSecurityPolicy.IsApprovedExternalUri(uri))
             {
                 OpenExternal(uri.AbsoluteUri);
             }
@@ -425,8 +296,8 @@ namespace DriveOSDesktop
 
                 if (source == null ||
                     !String.Equals(source.Scheme, "http", StringComparison.OrdinalIgnoreCase) ||
-                    !String.Equals(source.Host, LocalHost, StringComparison.OrdinalIgnoreCase) ||
-                    source.Port != Port)
+                    !String.Equals(source.Host, DriveOSSecurityPolicy.LocalHost, StringComparison.OrdinalIgnoreCase) ||
+                    source.Port != DriveOSSecurityPolicy.Port)
                 {
                     return;
                 }
@@ -468,14 +339,14 @@ namespace DriveOSDesktop
                 return;
             }
 
-            if (IsLocalDriveOSUri(uri))
+            if (DriveOSSecurityPolicy.IsLocalUri(uri))
             {
                 return;
             }
 
             e.Cancel = true;
 
-            if (IsApprovedExternalUri(uri))
+            if (DriveOSSecurityPolicy.IsApprovedExternalUri(uri))
             {
                 OpenExternal(uri.AbsoluteUri);
             }
@@ -507,33 +378,6 @@ namespace DriveOSDesktop
             e.Action = CoreWebView2ServerCertificateErrorAction.Cancel;
         }
 
-        private static bool IsLocalDriveOSUri(Uri uri)
-        {
-            return
-                uri != null &&
-                String.Equals(uri.Scheme, "http", StringComparison.OrdinalIgnoreCase) &&
-                String.Equals(uri.Host, LocalHost, StringComparison.OrdinalIgnoreCase) &&
-                uri.Port == Port;
-        }
-
-        private static bool IsApprovedExternalUri(Uri uri)
-        {
-            if (uri == null ||
-                !String.Equals(uri.Scheme, "https", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            string host = uri.Host.ToLowerInvariant();
-
-            return
-                host == "open.spotify.com" ||
-                host == "spotify.com" ||
-                host.EndsWith(".spotify.com", StringComparison.Ordinal) ||
-                host == "x.com" ||
-                host.EndsWith(".x.com", StringComparison.Ordinal);
-        }
-
         private static void OpenExternal(string uri)
         {
             try
@@ -544,36 +388,6 @@ namespace DriveOSDesktop
                 Process.Start(psi);
             }
             catch { }
-        }
-
-        private string ReadBackendLog()
-        {
-            try
-            {
-                string logPath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory,
-                    "data",
-                    "driveos-backend.log"
-                );
-
-                if (!File.Exists(logPath))
-                {
-                    return "";
-                }
-
-                string text = File.ReadAllText(logPath).Trim();
-
-                if (text.Length > 1800)
-                {
-                    text = text.Substring(text.Length - 1800);
-                }
-
-                return text;
-            }
-            catch
-            {
-                return "";
-            }
         }
 
         private void OnFormClosing(object sender, FormClosingEventArgs e)
@@ -599,28 +413,7 @@ namespace DriveOSDesktop
             }
             catch { }
 
-            try
-            {
-                if (backendProcess != null && !backendProcess.HasExited)
-                {
-                    backendProcess.Kill();
-
-                    try
-                    {
-                        backendProcess.WaitForExit(2000);
-                    }
-                    catch { }
-                }
-            }
-            catch { }
-            finally
-            {
-                if (backendProcess != null)
-                {
-                    backendProcess.Dispose();
-                    backendProcess = null;
-                }
-            }
+            backendHost.Dispose();
         }
     }
 }

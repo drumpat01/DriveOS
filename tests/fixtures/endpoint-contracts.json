@@ -1,0 +1,18 @@
+[
+  { "method": "GET", "path": "/api/status" },
+  { "method": "GET", "path": "/api/vehicle" },
+  { "method": "GET", "path": "/api/spotify/recent" },
+  { "method": "GET", "path": "/api/spotify/auth-status" },
+  { "method": "GET", "path": "/api/music/stats" },
+  { "method": "GET", "path": "/api/drives" },
+  { "method": "GET", "path": "/api/statistics" },
+  { "method": "GET", "path": "/api/places" },
+  { "method": "GET", "path": "/api/charging" },
+  { "method": "GET", "path": "/api/recap" },
+  { "method": "GET", "pathPattern": "^/api/spotify/artwork/([A-Za-z0-9]{10,64})$" },
+  { "method": "POST", "path": "/api/spotify/connect" },
+  { "method": "POST", "path": "/api/places/alias" },
+  { "method": "POST", "path": "/api/charging/settings" },
+  { "method": "POST", "path": "/api/drive/map" },
+  { "method": "POST", "path": "/api/playlist/create" }
+]

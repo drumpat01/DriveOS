@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "include": [
+    "*.bat",
+    "*.dll",
+    "*.ico",
+    "*.png",
+    "*.ps1",
+    ".env.example",
+    "README.md",
+    "SECURITY.md",
+    "version.json",
+    "desktop/**",
+    "src/**",
+    "tools/**",
+    "web/**"
+  ],
+  "exclude": [
+    "desktop/packages/**",
+    "tools/sqlite/**",
+    "tools/Test-*.ps1",
+    "tools/Build-Release.ps1",
+    "tools/Test-CleanInstall.ps1"
+  ],
+  "forbidden": [
+    ".env",
+    ".env.*",
+    "data/**",
+    "**/*token*",
+    "**/*secret*.json",
+    "WebView2Profile/**",
+    "webview2profile/**"
+  ]
+}

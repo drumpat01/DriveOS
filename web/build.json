@@ -1,5 +1,6 @@
 {
   "product": "DriveOS",
+  "version": "3.2.0",
   "webBuild": "3.2.0",
   "features": [
     "friendly-places",

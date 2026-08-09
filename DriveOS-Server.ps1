@@ -5,6 +5,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Sqlite.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Drives\DriveOS.Drives.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
+
 # ============================================================
 # DriveOS 3.2
 # Windows PowerShell 5.1 compatible
@@ -29,6 +44,7 @@ $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
+$Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
@@ -219,12 +235,13 @@ function Save-SpotifyTokenCache {
         [string]$Scope
     )
 
-    [PSCustomObject]@{
+    $TokenCache = [PSCustomObject]@{
         AccessToken  = Protect-Token $AccessToken
         RefreshToken = Protect-Token $RefreshToken
         ExpiresAt    = (Get-Date).AddSeconds($ExpiresIn).ToString("o")
         Scope        = $Scope
-    } | ConvertTo-Json | Set-Content $SpotifyTokenFile
+    }
+    Write-DriveOSJson -Path $SpotifyTokenFile -Value $TokenCache
 }
 
 function Get-SpotifyTokenCache {
@@ -232,7 +249,7 @@ function Get-SpotifyTokenCache {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
 
-    return Get-Content $SpotifyTokenFile -Raw | ConvertFrom-Json
+    return Read-DriveOSJson -Path $SpotifyTokenFile
 }
 
 function Test-SpotifyScope {
@@ -292,14 +309,8 @@ function Get-SpotifyRecent {
     param([int]$Limit = 50)
 
     $Token = Get-SpotifyAccessToken
-    $Headers = @{ Authorization = "Bearer $Token" }
-
-    $Response = Invoke-RestMethod `
-        -Uri "https://api.spotify.com/v1/me/player/recently-played?limit=$Limit" `
-        -Headers $Headers `
-        -Method Get
-
-    return $Response.items
+    $Client = New-SpotifyClient -AccessToken $Token
+    return Get-SpotifyRecentlyPlayed -Client $Client -Limit $Limit
 }
 
 function Save-SpotifyHistory {
@@ -309,18 +320,8 @@ function Save-SpotifyHistory {
 
     $ExistingIds = @{}
 
-    if (Test-Path $SpotifyHistoryFile) {
-        Get-Content $SpotifyHistoryFile | ForEach-Object {
-            if ($_ -and $_.Trim()) {
-                try {
-                    $Record = $_ | ConvertFrom-Json
-                    if ($Record.id) {
-                        $ExistingIds[$Record.id] = $true
-                    }
-                }
-                catch {}
-            }
-        }
+    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
+        if ($Record.id) { $ExistingIds[$Record.id] = $true }
     }
 
     $NewCount = 0
@@ -350,21 +351,8 @@ function Save-SpotifyHistory {
                 $AlbumUrl = $Item.track.album.external_urls.spotify
             }
 
-            [PSCustomObject]@{
-                id                = $RecordId
-                played_at         = $Item.played_at
-                track_id          = $Item.track.id
-                track_uri         = $Item.track.uri
-                track             = $Item.track.name
-                artist            = $Artists
-                album             = $Item.track.album.name
-                duration_ms       = $Item.track.duration_ms
-                album_image       = $AlbumImage
-                spotify_url       = $TrackUrl
-                album_spotify_url = $AlbumUrl
-            } |
-                ConvertTo-Json -Compress |
-                Add-Content $SpotifyHistoryFile
+            $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
+            Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
 
             $ExistingIds[$RecordId] = $true
             $NewCount++
@@ -381,20 +369,12 @@ function Get-SpotifyHistory {
         return $Records
     }
 
-    Get-Content $SpotifyHistoryFile | ForEach-Object {
-        if ($_ -and $_.Trim()) {
-            try {
-                $Record = $_ | ConvertFrom-Json
-
-                # v0.2 did not store track_uri, but track_id is sufficient.
-                if (-not $Record.track_uri -and $Record.track_id) {
-                    $Record | Add-Member -NotePropertyName track_uri -NotePropertyValue "spotify:track:$($Record.track_id)" -Force
-                }
-
-                $Records += $Record
-            }
-            catch {}
+    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
+        # v0.2 did not store track_uri, but track_id is sufficient.
+        if (-not $Record.track_uri -and $Record.track_id) {
+            $Record | Add-Member -NotePropertyName track_uri -NotePropertyValue "spotify:track:$($Record.track_id)" -Force
         }
+        $Records += $Record
     }
 
     return $Records
@@ -715,9 +695,7 @@ function Write-JsonFileUtf8NoBom {
         $Object
     )
 
-    $Json = $Object | ConvertTo-Json -Depth 20
-    $Utf8 = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($Path, ($Json + "`r`n"), $Utf8)
+    Write-DriveOSJson -Path $Path -Value $Object
 }
 
 function Get-PlaceAliasEntries {
@@ -726,9 +704,7 @@ function Get-PlaceAliasEntries {
     }
 
     try {
-        $Raw = Get-Content $PlaceAliasesFile -Raw -Encoding UTF8
-        if (-not $Raw) { return @() }
-        $Parsed = $Raw | ConvertFrom-Json
+        $Parsed = Get-DriveOSPlaceAliases -Repository $Repository
         return @($Parsed)
     }
     catch {
@@ -737,30 +713,13 @@ function Get-PlaceAliasEntries {
 }
 
 function Get-PlaceAliasMap {
-    $Map = @{}
-
-    foreach ($Entry in @(Get-PlaceAliasEntries)) {
-        if ($Entry.location -and $Entry.label) {
-            $Map[[string]$Entry.location] = [string]$Entry.label
-        }
-    }
-
-    return $Map
+    return New-DriveOSPlaceAliasMap -Entries @(Get-PlaceAliasEntries)
 }
 
 function Get-FriendlyLocation {
     param([string]$Location)
 
-    if ([string]::IsNullOrWhiteSpace($Location)) {
-        return $Location
-    }
-
-    $Map = Get-PlaceAliasMap
-    if ($Map.ContainsKey($Location)) {
-        return $Map[$Location]
-    }
-
-    return $Location
+    return Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap (Get-PlaceAliasMap)
 }
 
 function Set-PlaceAlias {
@@ -769,46 +728,10 @@ function Set-PlaceAlias {
         [string]$Label
     )
 
-    $Location = "$Location".Trim()
-    $Label = "$Label".Trim()
+    $Location = "$Location".Trim(); $Label = "$Label".Trim()
+    $Entries = @(Update-DriveOSPlaceAliasEntries -Entries @(Get-PlaceAliasEntries) -Location $Location -Label $Label)
 
-    if (-not $Location -or $Location.Length -gt 512) {
-        throw "A valid location is required."
-    }
-
-    if ($Label.Length -gt 64) {
-        throw "Friendly place names must be 64 characters or fewer."
-    }
-
-    $Entries = New-Object System.Collections.ArrayList
-    $Found = $false
-
-    foreach ($Entry in @(Get-PlaceAliasEntries)) {
-        if ([string]$Entry.location -eq $Location) {
-            $Found = $true
-            if ($Label) {
-                [void]$Entries.Add([PSCustomObject]@{
-                    location = $Location
-                    label = $Label
-                })
-            }
-        }
-        else {
-            [void]$Entries.Add([PSCustomObject]@{
-                location = [string]$Entry.location
-                label = [string]$Entry.label
-            })
-        }
-    }
-
-    if (-not $Found -and $Label) {
-        [void]$Entries.Add([PSCustomObject]@{
-            location = $Location
-            label = $Label
-        })
-    }
-
-    Write-JsonFileUtf8NoBom -Path $PlaceAliasesFile -Object @($Entries)
+    Set-DriveOSPlaceAliases -Repository $Repository -Entries @($Entries)
 
     return [PSCustomObject]@{
         location = $Location
@@ -822,7 +745,7 @@ function Get-ChargingSettings {
 
     if (Test-Path $ChargingSettingsFile -PathType Leaf) {
         try {
-            $Parsed = Get-Content $ChargingSettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
             if ($null -ne $Parsed.electricityRateCents) {
                 $Rate = [double]$Parsed.electricityRateCents
             }
@@ -851,7 +774,7 @@ function Set-ChargingSettings {
         electricityRateCents = $Rate
     }
 
-    Write-JsonFileUtf8NoBom -Path $ChargingSettingsFile -Object $Settings
+    Set-DriveOSChargingSettingsRecord -Repository $Repository -Settings $Settings
     return $Settings
 }
 
@@ -892,16 +815,8 @@ function Get-RawCharges {
     $From = [DateTimeOffset]::Now.AddDays(-$Days).ToUnixTimeSeconds()
     $To = [DateTimeOffset]::Now.ToUnixTimeSeconds()
 
-    $Uri = "https://api.tessie.com/$Vin/charges" +
-           "?from=$From" +
-           "&to=$To" +
-           "&limit=1000" +
-           "&distance_format=mi"
-
-    $Response = Invoke-RestMethod `
-        -Uri $Uri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $Response = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource charges -From $From -To $To -ExtraQuery "limit=1000&distance_format=mi"
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
@@ -909,43 +824,8 @@ function Get-RawCharges {
 function Convert-RawCharge {
     param($Charge)
 
-    $Start = [DateTimeOffset]::FromUnixTimeSeconds([long]$Charge.started_at).ToLocalTime()
-    $End = [DateTimeOffset]::FromUnixTimeSeconds([long]$Charge.ended_at).ToLocalTime()
-    $DurationMinutes = [math]::Max(0, [math]::Round(($End - $Start).TotalMinutes))
-    $EnergyAdded = if ($null -ne $Charge.energy_added) { [math]::Round([double]$Charge.energy_added, 2) } else { $null }
-    $RecordedCost = if ($null -ne $Charge.cost -and [double]$Charge.cost -gt 0) { [math]::Round([double]$Charge.cost, 2) } else { $null }
     $Settings = Get-ChargingSettings
-    $EstimatedCost = $null
-
-    if ($null -eq $RecordedCost -and $null -ne $EnergyAdded -and $null -ne $Settings.electricityRateCents) {
-        $EstimatedCost = [math]::Round($EnergyAdded * ([double]$Settings.electricityRateCents / 100), 2)
-    }
-
-    return [PSCustomObject]@{
-        id = [string]$Charge.id
-        startedAt = $Start.ToString("o")
-        endedAt = $End.ToString("o")
-        dateLabel = $Start.ToString("ddd, MMM d")
-        dateIso = $Start.ToString("yyyy-MM-dd")
-        startTime = $Start.ToString("h:mm tt")
-        endTime = $End.ToString("h:mm tt")
-        durationMinutes = $DurationMinutes
-        location = (Get-FriendlyLocation -Location $Charge.location)
-        rawLocation = $Charge.location
-        latitude = $Charge.latitude
-        longitude = $Charge.longitude
-        isSupercharger = [bool]$Charge.is_supercharger
-        odometer = $Charge.odometer
-        energyAddedKWh = $EnergyAdded
-        energyUsedKWh = if ($null -ne $Charge.energy_used) { [math]::Round([double]$Charge.energy_used, 2) } else { $null }
-        milesAdded = if ($null -ne $Charge.miles_added) { [math]::Round([double]$Charge.miles_added, 1) } else { $null }
-        startingBattery = $Charge.starting_battery
-        endingBattery = $Charge.ending_battery
-        recordedCost = $RecordedCost
-        estimatedCost = $EstimatedCost
-        displayCost = if ($null -ne $RecordedCost) { $RecordedCost } else { $EstimatedCost }
-        costType = if ($null -ne $RecordedCost) { "recorded" } elseif ($null -ne $EstimatedCost) { "estimated" } else { "unknown" }
-    }
+    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation (Get-FriendlyLocation -Location $Charge.location)
 }
 
 function Get-ChargingSummary {
@@ -973,96 +853,11 @@ function Get-ChargingSummary {
     }
 }
 
+
 function Get-MonthlyRecaps {
-    $Drives = @(Get-RecentDrives -Days 365)
-    $Charges = @(Get-RawCharges -Days 365 | ForEach-Object { Convert-RawCharge -Charge $_ })
-    $Now = Get-Date
-    $Recaps = @()
-
-    for ($Offset = 0; $Offset -lt 12; $Offset++) {
-        $MonthStart = Get-Date -Year $Now.AddMonths(-$Offset).Year -Month $Now.AddMonths(-$Offset).Month -Day 1
-        $MonthEnd = $MonthStart.AddMonths(1)
-        $MonthDrives = @($Drives | Where-Object {
-            $D = [DateTimeOffset]::Parse($_.startedAt).LocalDateTime
-            $D -ge $MonthStart -and $D -lt $MonthEnd
-        })
-        $MonthCharges = @($Charges | Where-Object {
-            $D = [DateTimeOffset]::Parse($_.startedAt).LocalDateTime
-            $D -ge $MonthStart -and $D -lt $MonthEnd
-        })
-
-        $Miles = [math]::Round((($MonthDrives | Measure-Object miles -Sum).Sum), 1)
-        $Energy = [math]::Round((($MonthDrives | Measure-Object energyKWh -Sum).Sum), 2)
-        $Battery = [math]::Round((($MonthDrives | Measure-Object batteryUsed -Sum).Sum))
-        $Songs = [int](($MonthDrives | Measure-Object songCount -Sum).Sum)
-        $AverageWhMi = if ($Miles -gt 0 -and $Energy -gt 0) { [math]::Round(($Energy * 1000) / $Miles) } else { $null }
-
-        $Routes = @{}
-        $Tracks = @{}
-        $Artists = @{}
-
-        foreach ($Drive in $MonthDrives) {
-            $Route = "$($Drive.startingLocation) -> $($Drive.endingLocation)"
-            if (-not $Routes.ContainsKey($Route)) { $Routes[$Route] = 0 }
-            $Routes[$Route]++
-
-            foreach ($Song in @($Drive.soundtrack)) {
-                $TrackKey = "$($Song.track)`0$($Song.artist)"
-                if (-not $Tracks.ContainsKey($TrackKey)) { $Tracks[$TrackKey] = 0 }
-                $Tracks[$TrackKey]++
-                if ($Song.artist) {
-                    if (-not $Artists.ContainsKey([string]$Song.artist)) { $Artists[[string]$Song.artist] = 0 }
-                    $Artists[[string]$Song.artist]++
-                }
-            }
-        }
-
-        $FavoriteRoute = $Routes.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
-        $TopTrackEntry = $Tracks.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
-        $TopArtistEntry = $Artists.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1
-        $Longest = $MonthDrives | Sort-Object miles -Descending | Select-Object -First 1
-        $ChargeEnergy = [math]::Round((($MonthCharges | Measure-Object energyAddedKWh -Sum).Sum), 2)
-        $KnownChargeCosts = @($MonthCharges | Where-Object { $null -ne $_.displayCost })
-        $ChargeCost = if ($KnownChargeCosts.Count) { [math]::Round((($KnownChargeCosts | Measure-Object displayCost -Sum).Sum), 2) } else { $null }
-        $TrackName = $null
-        $TrackArtist = $null
-
-        if ($TopTrackEntry) {
-            $Parts = [string]$TopTrackEntry.Name -split "`0", 2
-            $TrackName = $Parts[0]
-            if ($Parts.Count -gt 1) { $TrackArtist = $Parts[1] }
-        }
-
-        $Recaps += [PSCustomObject]@{
-            monthKey = $MonthStart.ToString("yyyy-MM")
-            monthLabel = $MonthStart.ToString("MMMM yyyy")
-            driveCount = $MonthDrives.Count
-            miles = $Miles
-            driveEnergyKWh = $Energy
-            averageWhMi = $AverageWhMi
-            batteryUsed = $Battery
-            soundtrackPlays = $Songs
-            uniqueSongs = @($Tracks.Keys).Count
-            favoriteRoute = if ($FavoriteRoute) { $FavoriteRoute.Name } else { $null }
-            favoriteRouteCount = if ($FavoriteRoute) { [int]$FavoriteRoute.Value } else { 0 }
-            longestDriveMiles = if ($Longest) { $Longest.miles } else { $null }
-            longestDriveDate = if ($Longest) { $Longest.shortDateLabel } else { $null }
-            topTrack = $TrackName
-            topTrackArtist = $TrackArtist
-            topTrackPlays = if ($TopTrackEntry) { [int]$TopTrackEntry.Value } else { 0 }
-            topArtist = if ($TopArtistEntry) { $TopArtistEntry.Name } else { $null }
-            topArtistPlays = if ($TopArtistEntry) { [int]$TopArtistEntry.Value } else { 0 }
-            chargingSessions = $MonthCharges.Count
-            chargingEnergyKWh = $ChargeEnergy
-            chargingCost = $ChargeCost
-            chargingKnownCostSessions = $KnownChargeCosts.Count
-        }
-    }
-
-    return [PSCustomObject]@{
-        recaps = $Recaps
-        settings = Get-ChargingSettings
-    }
+    $Drives=@(Get-RecentDrives -Days 365)
+    $Charges=@(Get-RawCharges -Days 365|ForEach-Object{Convert-RawCharge -Charge $_})
+    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings (Get-ChargingSettings)
 }
 
 function Get-TessieHeaders {
@@ -1070,12 +865,8 @@ function Get-TessieHeaders {
 }
 
 function Get-VehicleRecord {
-    $Response = Invoke-RestMethod `
-        -Uri "https://api.tessie.com/vehicles" `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
-
-    return $Response.results | Select-Object -First 1
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    return Get-TessieVehicle -Client $Client
 }
 
 function Get-VehicleSummary {
@@ -1085,31 +876,7 @@ function Get-VehicleSummary {
         throw "No Tessie vehicle found."
     }
 
-    $State = $Vehicle.last_state
-    $Charge = $State.charge_state
-    $Climate = $State.climate_state
-
-    $InsideF = $null
-    $OutsideF = $null
-
-    if ($null -ne $Climate.inside_temp) {
-        $InsideF = [math]::Round(($Climate.inside_temp * 9 / 5) + 32)
-    }
-
-    if ($null -ne $Climate.outside_temp) {
-        $OutsideF = [math]::Round(($Climate.outside_temp * 9 / 5) + 32)
-    }
-
-    return [PSCustomObject]@{
-        name         = $State.display_name
-        state        = $State.state
-        battery      = $Charge.battery_level
-        rangeMiles   = if ($null -ne $Charge.battery_range) { [math]::Round($Charge.battery_range) } else { $null }
-        charging     = $Charge.charging_state
-        chargeLimit  = $Charge.charge_limit_soc
-        insideTempF  = $InsideF
-        outsideTempF = $OutsideF
-    }
+    return ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
 }
 
 function Get-RawDrives {
@@ -1132,10 +899,8 @@ function Get-RawDrives {
            "&distance_format=mi" +
            "&temperature_format=f"
 
-    $Response = Invoke-RestMethod `
-        -Uri $Uri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $Response = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource drives -From $From -To $To -ExtraQuery "limit=1000&distance_format=mi&temperature_format=f"
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
@@ -1225,69 +990,9 @@ function Convert-RawDrive {
         [object[]]$SpotifyHistory = $null
     )
 
-    $Start = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime()
-    $End = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
-
-    $DurationMinutes = [math]::Max(
-        0,
-        [math]::Round(($End - $Start).TotalMinutes)
-    )
-
-    $BatteryUsed = $null
-
-    if ($null -ne $Drive.starting_battery -and $null -ne $Drive.ending_battery) {
-        $BatteryUsed = [int]$Drive.starting_battery - [int]$Drive.ending_battery
-    }
-
-    $Miles = $null
-    if ($null -ne $Drive.odometer_distance) {
-        $Miles = [math]::Round([double]$Drive.odometer_distance, 1)
-    }
-
-    $Energy = $null
-    if ($null -ne $Drive.energy_used) {
-        $Energy = [math]::Round([double]$Drive.energy_used, 2)
-    }
-
-    $Efficiency = $null
-    if ($Miles -and $Miles -gt 0 -and $Energy -ne $null) {
-        $Efficiency = [math]::Round(($Energy * 1000) / $Miles)
-    }
-
-    $Soundtrack = @(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
-
-    return [PSCustomObject]@{
-        id              = "$($Drive.started_at)-$($Drive.ended_at)"
-        startedAt       = $Start.ToString("o")
-        endedAt         = $End.ToString("o")
-        dateLabel       = $Start.ToString("dddd, MMMM d")
-        shortDateLabel  = $Start.ToString("ddd, MMM d")
-        dateIso         = $Start.ToString("yyyy-MM-dd")
-        dateNumeric     = $Start.ToString("M/d/yyyy")
-        startTime       = $Start.ToString("h:mm tt")
-        endTime         = $End.ToString("h:mm tt")
-        startingLocation = (Get-FriendlyLocation -Location $Drive.starting_location)
-        endingLocation   = (Get-FriendlyLocation -Location $Drive.ending_location)
-        rawStartingLocation = $Drive.starting_location
-        rawEndingLocation   = $Drive.ending_location
-        startingLatitude = $Drive.starting_latitude
-        startingLongitude = $Drive.starting_longitude
-        endingLatitude   = $Drive.ending_latitude
-        endingLongitude  = $Drive.ending_longitude
-        tessieTag        = $Drive.tag
-        driverProfile    = $Drive.driver_profile
-        durationMinutes = $DurationMinutes
-        miles           = $Miles
-        startingBattery = $Drive.starting_battery
-        endingBattery   = $Drive.ending_battery
-        batteryUsed     = $BatteryUsed
-        energyKWh       = $Energy
-        efficiencyWhMi  = $Efficiency
-        averageSpeed    = $Drive.average_speed
-        maxSpeed        = $Drive.max_speed
-        soundtrack      = $Soundtrack
-        songCount       = $Soundtrack.Count
-    }
+    $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
+    $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
+    return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location) -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location)
 }
 
 function Get-RecentDrives {
@@ -1314,51 +1019,13 @@ function Get-NearestHistoricalState {
         [long]$TargetTimestamp
     )
 
-    $Best = $null
-    $BestDifference = [double]::PositiveInfinity
-
-    foreach ($State in $States) {
-        if (
-            $null -eq $State.timestamp -or
-            $null -eq $State.latitude -or
-            $null -eq $State.longitude
-        ) {
-            continue
-        }
-
-        $Difference = [math]::Abs(
-            [double]$State.timestamp - [double]$TargetTimestamp
-        )
-
-        if ($Difference -lt $BestDifference) {
-            $Best = $State
-            $BestDifference = $Difference
-        }
-    }
-
-    return $Best
+    return Find-NearestDriveOSHistoricalState -States $States -TargetTimestamp $TargetTimestamp
 }
 
 function Convert-HistoricalStateToMapPoint {
     param($State)
 
-    if (-not $State) {
-        return $null
-    }
-
-    $LocalTime = [DateTimeOffset]::FromUnixTimeSeconds(
-        [long]$State.timestamp
-    ).ToLocalTime()
-
-    return [PSCustomObject]@{
-        timestamp = [long]$State.timestamp
-        time      = $LocalTime.ToString("h:mm:ss tt")
-        latitude  = [double]$State.latitude
-        longitude = [double]$State.longitude
-        speed     = $State.speed
-        heading   = $State.heading
-        battery   = $State.battery_level
-    }
+    return ConvertTo-DriveOSMapPoint -State $State
 }
 
 function Get-DriveMapData {
@@ -1426,18 +1093,8 @@ function Get-DriveMapData {
     $StatesFrom = [math]::Max(0, $StatesFrom - 60)
     $StatesTo = $DriveEndEpoch + 60
 
-    $StatesUri = "https://api.tessie.com/$Vin/states" +
-                 "?from=$StatesFrom" +
-                 "&to=$StatesTo" +
-                 "&interval=1" +
-                 "&condense=false" +
-                 "&distance_format=mi" +
-                 "&temperature_format=f"
-
-    $StatesResponse = Invoke-RestMethod `
-        -Uri $StatesUri `
-        -Headers (Get-TessieHeaders) `
-        -Method Get
+    $Client = New-TessieClient -Token $env:TESSIE_TOKEN
+    $StatesResponse = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource states -From $StatesFrom -To $StatesTo -ExtraQuery "interval=1&condense=false&distance_format=mi&temperature_format=f"
 
     $ValidStates = @(
         $StatesResponse.results |
@@ -1626,104 +1283,12 @@ function Get-DriveMapData {
 # ------------------------------------------------------------
 
 function Get-MusicStats {
-    $History = @(Get-SpotifyHistory)
-
-    $TopTracks = @(
-        $History |
-        Group-Object track, artist |
-        Sort-Object Count -Descending |
-        Select-Object -First 10 |
-        ForEach-Object {
-            $Example = $_.Group | Select-Object -First 1
-
-            $ResolvedTrackId = Get-SpotifyRecordTrackId -Record $Example
-
-            [PSCustomObject]@{
-                track      = $Example.track
-                artist     = $Example.artist
-                plays      = $_.Count
-                trackId    = $ResolvedTrackId
-                albumImage = $Example.album_image
-                spotifyUrl = $Example.spotify_url
-            }
-        }
-    )
-
-    $TopArtists = @(
-        $History |
-        Group-Object artist |
-        Sort-Object Count -Descending |
-        Select-Object -First 10 |
-        ForEach-Object {
-            [PSCustomObject]@{
-                artist = $_.Name
-                plays  = $_.Count
-            }
-        }
-    )
-
-    $Daily = @()
-
-    for ($i = 13; $i -ge 0; $i--) {
-        $Day = (Get-Date).Date.AddDays(-$i)
-        $Next = $Day.AddDays(1)
-        $Count = 0
-
-        foreach ($Record in $History) {
-            try {
-                $Played = [DateTimeOffset]::Parse($Record.played_at).LocalDateTime
-                if ($Played -ge $Day -and $Played -lt $Next) {
-                    $Count++
-                }
-            }
-            catch {}
-        }
-
-        $Daily += [PSCustomObject]@{
-            date  = $Day.ToString("yyyy-MM-dd")
-            label = $Day.ToString("ddd")
-            count = $Count
-        }
-    }
-
-    return [PSCustomObject]@{
-        totalPlays = $History.Count
-        topTracks  = $TopTracks
-        topArtists = $TopArtists
-        daily      = $Daily
-    }
+    return New-DriveOSMusicStats -History @(Get-SpotifyHistory)
 }
 
 function Get-DriveStats {
     $Drives = @(Get-RecentDrives -Days 30)
-
-    $TotalMiles = 0.0
-    $TotalEnergy = 0.0
-    $TotalBattery = 0
-    $SongCount = 0
-
-    foreach ($Drive in $Drives) {
-        if ($Drive.miles -ne $null) { $TotalMiles += [double]$Drive.miles }
-        if ($Drive.energyKWh -ne $null) { $TotalEnergy += [double]$Drive.energyKWh }
-        if ($Drive.batteryUsed -ne $null) { $TotalBattery += [int]$Drive.batteryUsed }
-        $SongCount += [int]$Drive.songCount
-    }
-
-    $AverageEfficiency = $null
-
-    if ($TotalMiles -gt 0 -and $TotalEnergy -gt 0) {
-        $AverageEfficiency = [math]::Round(($TotalEnergy * 1000) / $TotalMiles)
-    }
-
-    return [PSCustomObject]@{
-        periodDays       = 30
-        driveCount       = $Drives.Count
-        totalMiles       = [math]::Round($TotalMiles, 1)
-        totalEnergyKWh   = [math]::Round($TotalEnergy, 2)
-        totalBatteryUsed = $TotalBattery
-        averageWhMi      = $AverageEfficiency
-        soundtrackSongs  = $SongCount
-    }
+    return New-DriveOSDriveStats -Drives $Drives -PeriodDays 30
 }
 
 # ------------------------------------------------------------
@@ -1745,67 +1310,8 @@ function New-DrivePlaylist {
         throw "Drive could not be found."
     }
 
-    if (-not $Drive.soundtrack -or $Drive.soundtrack.Count -eq 0) {
-        throw "No archived Spotify tracks overlap this drive."
-    }
-
-    $TrackUris = @()
-
-    foreach ($Track in $Drive.soundtrack) {
-        if ($Track.trackUri -and ($TrackUris -notcontains $Track.trackUri)) {
-            $TrackUris += $Track.trackUri
-        }
-    }
-
-    if ($TrackUris.Count -eq 0) {
-        throw "No Spotify track IDs were available for this drive."
-    }
-
     $Token = Get-SpotifyAccessToken
-    $Headers = @{
-        Authorization = "Bearer $Token"
-        "Content-Type" = "application/json"
-    }
-
-    $PlaylistName = "DriveOS - $($Drive.shortDateLabel) $($Drive.startTime)"
-    $Description = "Drive soundtrack captured by DriveOS."
-
-    $CreateBody = @{
-        name        = $PlaylistName
-        public      = $false
-        description = $Description
-    } | ConvertTo-Json -Compress
-
-    $Playlist = Invoke-RestMethod `
-        -Uri "https://api.spotify.com/v1/me/playlists" `
-        -Headers $Headers `
-        -Method Post `
-        -Body $CreateBody
-
-    $PlaylistId = $Playlist.id
-
-    for ($i = 0; $i -lt $TrackUris.Count; $i += 100) {
-        $Last = [math]::Min($i + 99, $TrackUris.Count - 1)
-        $Chunk = @($TrackUris[$i..$Last])
-
-        $ItemsBody = @{
-            uris = $Chunk
-        } | ConvertTo-Json -Depth 5 -Compress
-
-        $null = Invoke-RestMethod `
-            -Uri "https://api.spotify.com/v1/playlists/$PlaylistId/items" `
-            -Headers $Headers `
-            -Method Post `
-            -Body $ItemsBody
-    }
-
-    return [PSCustomObject]@{
-        success      = $true
-        playlistId   = $PlaylistId
-        playlistName = $PlaylistName
-        trackCount   = $TrackUris.Count
-        url          = if ($Playlist.external_urls.spotify) { $Playlist.external_urls.spotify } else { $null }
-    }
+    return New-DriveOSPlaylistFromDrive -Drive $Drive -SpotifyClient (New-SpotifyClient -AccessToken $Token)
 }
 
 # ------------------------------------------------------------
@@ -2004,44 +1510,26 @@ function Handle-Request {
                 }
 
                 "/api/places/alias" {
-                    if (-not $BodyText) { throw "Request body was empty." }
-                    $Body = $BodyText | ConvertFrom-Json
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-PlaceAlias -Location $Body.location -Label $Body.label)
                     return
                 }
 
                 "/api/charging/settings" {
-                    if (-not $BodyText) { throw "Request body was empty." }
-                    $Body = $BodyText | ConvertFrom-Json
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-ChargingSettings -ElectricityRateCents $Body.electricityRateCents)
                     return
                 }
 
                 "/api/drive/map" {
-                    if (-not $BodyText) {
-                        throw "Request body was empty."
-                    }
-
-                    $Body = $BodyText | ConvertFrom-Json
-
-                    if (-not $Body.driveId) {
-                        throw "driveId is required."
-                    }
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (Get-DriveMapData -DriveId $Body.driveId)
                     return
                 }
 
                 "/api/playlist/create" {
-                    if (-not $BodyText) {
-                        throw "Request body was empty."
-                    }
-
-                    $Body = $BodyText | ConvertFrom-Json
-
-                    if (-not $Body.driveId) {
-                        throw "driveId is required."
-                    }
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (New-DrivePlaylist -DriveId $Body.driveId)
                     return
@@ -2062,30 +1550,10 @@ function Handle-Request {
     }
     catch {
         $Message = $_.Exception.Message
-        $Code = 500
-        $Text = "Internal Server Error"
-        $PublicMessage = "DriveOS request failed."
-
-        if ($Message -like "*Spotify token file not found*") {
-            $Code = 401
-            $Text = "Unauthorized"
-            $PublicMessage = "Spotify authorization is required on this computer."
-        }
-        elseif ($Message -like "*playlist-modify-private*") {
-            $Code = 403
-            $Text = "Forbidden"
-            $PublicMessage = "Spotify playlist permission is not available. Reauthorize Spotify for DriveOS."
-        }
-        elseif ($Message -like "*driveId is required*") {
-            $Code = 400
-            $Text = "Bad Request"
-            $PublicMessage = "driveId is required."
-        }
-        elseif ($Message -like "*Request body was empty*") {
-            $Code = 400
-            $Text = "Bad Request"
-            $PublicMessage = "Request body was empty."
-        }
+        $ErrorResponse = Get-DriveOSHttpError -Message $Message
+        $Code = $ErrorResponse.statusCode
+        $Text = $ErrorResponse.statusText
+        $PublicMessage = $ErrorResponse.publicMessage
 
         Write-DriveOSServerLog "$Method $Path failed: $Message"
 
