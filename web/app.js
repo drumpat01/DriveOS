@@ -384,7 +384,7 @@ function detectFavoriteRoutes(drives) {
       if (b.count !== a.count) return b.count - a.count;
       return String(b.lastDrivenAt).localeCompare(String(a.lastDrivenAt));
     })
-    .slice(0, 12);
+    .slice(0, 3);
 }
 
 function clearFavoriteRouteFilter(render = true) {
@@ -420,7 +420,7 @@ function renderFavoriteRoutes() {
 
   if (status) {
     status.textContent = state.favoriteRoutes.length
-      ? `${state.favoriteRoutes.length} repeated route${state.favoriteRoutes.length === 1 ? "" : "s"}`
+      ? `Top ${state.favoriteRoutes.length} repeated route${state.favoriteRoutes.length === 1 ? "" : "s"}`
       : "No repeated routes yet";
   }
 
@@ -1365,15 +1365,40 @@ function closeDriveModal() {
   state.selectedDrive = null;
 }
 
+function showPlaceNamesDialog() {
+  const modal = $("placeNamesModal");
+  if (!modal) return;
+  modal.classList.add("open");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  modal.querySelector(".modal-close")?.focus();
+}
+
+function hidePlaceNamesDialog() {
+  const modal = $("placeNamesModal");
+  if (!modal?.classList.contains("open")) return;
+  modal.classList.remove("open");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = $("driveModal")?.classList.contains("open") ? "hidden" : "";
+  $("openPlaceNamesModal")?.focus();
+}
+
 document.querySelectorAll("[data-close-modal]").forEach(el => {
   el.addEventListener("click", closeDriveModal);
+});
+
+$("openPlaceNamesModal")?.addEventListener("click", showPlaceNamesDialog);
+document.addEventListener("click", event => {
+  if (event.target.closest("[data-close-place-modal]")) hidePlaceNamesDialog();
 });
 
 $("mapMusicRadius")?.addEventListener("change", renderMapMusicNearby);
 $("mapMusicNearbyClose")?.addEventListener("click", clearMapMusicNearby);
 
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape") closeDriveModal();
+  if (event.key !== "Escape") return;
+  if ($("placeNamesModal")?.classList.contains("open")) hidePlaceNamesDialog();
+  else closeDriveModal();
 });
 
 

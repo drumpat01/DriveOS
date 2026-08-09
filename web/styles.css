@@ -6094,6 +6094,27 @@ h1 span {
 .charging-panel,
 .monthly-recap-panel {
   margin-top: 16px;
+  padding: 24px;
+}
+
+.place-names-launcher-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.place-names-modal-card {
+  width: min(1180px, calc(100% - 30px));
+}
+
+/* The v3 sticky header uses z-index 120; dialogs must cover it completely. */
+.modal {
+  z-index: 1000;
+}
+
+.place-names-modal-status {
+  margin-top: 14px;
 }
 
 .place-names-list {
@@ -6111,6 +6132,20 @@ h1 span {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(255,255,255,.38);
+}
+
+@media (max-width: 700px) {
+  .place-names-panel,
+  .charging-panel,
+  .monthly-recap-panel {
+    padding: 18px;
+  }
+
+  .place-names-launcher .panel-heading,
+  .place-names-launcher-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .place-name-copy,

@@ -6,6 +6,8 @@ $Metadata = Get-Content (Join-Path $Root "version.json") -Raw -Encoding UTF8 | C
 $Version = [string]$Metadata.version
 $WebBuild = [string]$Metadata.webBuild
 if ($Version -notmatch '^\d+\.\d+\.\d+$' -or $WebBuild -notmatch '^\d+\.\d+\.\d+$') { throw "version.json contains an invalid semantic version." }
+$VersionParts = $Version.Split('.')
+$DisplayVersion = "$($VersionParts[0]).$($VersionParts[1])"
 
 $Expected = @{
     (Join-Path $Root "web\build.json") = "{`n  `"product`": `"DriveOS`",`n  `"version`": `"$Version`",`n  `"webBuild`": `"$WebBuild`",`n  `"features`": [`n    `"friendly-places`",`n    `"charging-history`",`n    `"monthly-recap`"`n  ],`n  `"css`": `"/styles.css?v=$WebBuild`",`n  `"js`": `"/app.js?v=$WebBuild`"`n}`n"
@@ -26,7 +28,8 @@ $Program = Get-Content $ProgramPath -Raw
 $UpdatedProgram = $Program `
     -replace 'AssemblyVersion\("[0-9.]+"\)', "AssemblyVersion(`"$Version.0`")" `
     -replace 'AssemblyFileVersion\("[0-9.]+"\)', "AssemblyFileVersion(`"$Version.0`")" `
-    -replace 'AssemblyInformationalVersion\("[0-9.]+"\)', "AssemblyInformationalVersion(`"$Version`")"
+    -replace 'AssemblyInformationalVersion\("[0-9.]+"\)', "AssemblyInformationalVersion(`"$Version`")" `
+    -replace 'Text = "DriveOS [0-9.]+"', "Text = `"DriveOS $DisplayVersion`""
 if ($Check) {
     if ($UpdatedProgram -ne $Program) { throw "desktop/Program.cs version is stale." }
 } else {
@@ -53,6 +56,11 @@ $UpdatedIndex = [regex]::Replace(
     $Index,
     '(<div class="app-version"[^>]*>)[0-9.]+(</div>)',
     { param($Match) $Match.Groups[1].Value + $Version + $Match.Groups[2].Value }
+)
+$UpdatedIndex = [regex]::Replace(
+    $UpdatedIndex,
+    '(<strong id="ignitionVersion">)[0-9.]+(</strong>)',
+    { param($Match) $Match.Groups[1].Value + $DisplayVersion + $Match.Groups[2].Value }
 )
 $UpdatedIndex = [regex]::Replace(
     $UpdatedIndex,

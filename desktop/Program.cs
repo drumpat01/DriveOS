@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("DriveOS")]
 [assembly: AssemblyProduct("DriveOS")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("3.3.1.0")]
-[assembly: AssemblyFileVersion("3.3.1.0")]
-[assembly: AssemblyInformationalVersion("3.3.1")]
+[assembly: AssemblyVersion("4.0.0.0")]
+[assembly: AssemblyFileVersion("4.0.0.0")]
+[assembly: AssemblyInformationalVersion("4.0.0")]
 
 namespace DriveOSDesktop
 {
@@ -81,7 +81,7 @@ namespace DriveOSDesktop
             sessionToken = DriveOSSecurityPolicy.CreateSessionToken();
             backendHost = new DriveOSBackendHost();
 
-            Text = "DriveOS 3.2";
+            Text = "DriveOS 4.0";
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(980, 680);
             ClientSize = new Size(1420, 900);
