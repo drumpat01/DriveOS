@@ -12,7 +12,7 @@ DriveOS remains a single-user, single-process modular monolith. The desktop host
 - `src/Domain/`: provider- and transport-independent business rules extracted feature by feature.
 - `web/core/`: frontend infrastructure modules loaded before the legacy application.
 - `web/components/`: presentation components extracted without changing their DOM contract or styling.
-- `web/app.js`: current UI/domain composition root. It remains large in Phase 1.
+- `web/app.js`: frontend composition root and compatibility layer; active shared and feature behavior is delegated to `web/core`, `web/components`, and `web/features`.
 - `tools/`: installer and administrative implementation scripts. Root scripts remain compatibility shims.
 - `version.json`: canonical product/build metadata. `tools/Sync-Version.ps1` generates checked-in consumers and runs during installation.
 
@@ -30,4 +30,4 @@ Phase 1 does not change URLs, response shapes, file names, JSON/JSONL schemas, c
 
 ## Known remaining monoliths
 
-`DriveOS-Server.ps1` still owns endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration. `web/app.js` still owns most views, state, rendering, maps, replay, and event wiring. Phase 3 should focus on frontend vertical slices and may continue shrinking these composition roots.
+`DriveOS-Server.ps1` still owns endpoint dispatch, authentication, server lifecycle, soundtrack enrichment, and map orchestration. `web/app.js` retains compatibility rendering and map orchestration while shared state, platform behavior, refresh, and feature calculations/actions live in modules. Phase 4 may remove validated compatibility bodies.

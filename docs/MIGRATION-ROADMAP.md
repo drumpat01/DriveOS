@@ -13,9 +13,9 @@ Canonicalize version metadata; add integration and storage boundaries; extract f
 5. Add schema migrations, integrity checks, and backup/restore commands. Do not place OAuth tokens in SQLite unless the DPAPI protection contract is retained and tested.
 6. Split HTTP routing/security from application services.
 
-## Phase 3 — frontend feature modules
+## Phase 3 — frontend feature modules (complete)
 
-Extract one vertical feature at a time (`drives`, `music`, `charging`, `places`, `recaps`, `replay`) with shared API, formatting, state, and DOM utilities. Keep route IDs, selectors, markup, styling, keyboard behavior, and PWA caching stable. Add browser smoke tests before removing the legacy implementations.
+Frontend foundations and feature modules now cover navigation, PWA, theme, ignition, refresh, drives, music, charging, places, recaps, and replay calculations. Route IDs, selectors, markup, styling, keyboard behavior, and PWA behavior remain stable, with deterministic and browser smoke coverage.
 
 ## Phase 4 — host and release hardening
 

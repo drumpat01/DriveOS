@@ -16,10 +16,11 @@ Get-ChildItem $Root -Recurse -Include *.ps1,*.psm1 | ForEach-Object {
 }
 if ($parseErrors.Count) { $parseErrors | Format-List; exit 1 }
 
-$node = Get-Command node.exe -ErrorAction SilentlyContinue
-if ($node) {
+$nodePath = $env:DRIVEOS_NODE
+if (-not $nodePath) { $node = Get-Command node.exe -ErrorAction SilentlyContinue; if ($node) { $nodePath = $node.Source } }
+if ($nodePath) {
     Get-ChildItem (Join-Path $Root 'web') -Recurse -Filter *.js | ForEach-Object {
-        & $node.Source --check $_.FullName
+        & $nodePath --check $_.FullName
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
 } else {
