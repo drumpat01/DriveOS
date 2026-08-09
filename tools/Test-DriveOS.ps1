@@ -5,7 +5,12 @@ $Root = Split-Path -Parent $PSScriptRoot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase2.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase3.Tests.ps1') -NodePath $env:DRIVEOS_NODE
+$phase3Test = Join-Path $Root 'tests\Phase3.Tests.ps1'
+if ($env:DRIVEOS_NODE) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $phase3Test -NodePath $env:DRIVEOS_NODE
+} else {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $phase3Test
+}
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase4.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
