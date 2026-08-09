@@ -8,6 +8,8 @@ Import-Module (Join-Path $Root 'src\Domain\Replay\DriveOS.Replay.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Drives\DriveOS.Drives.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Recaps\DriveOS.Recaps.psm1') -Force
 Import-Module (Join-Path $Root 'src\Application\DriveOS.Playlists.psm1') -Force
 Import-Module (Join-Path $Root 'src\Http\DriveOS.Http.psm1') -Force
 
@@ -78,6 +80,17 @@ try {
     Assert-Equal $musicStats.daily[-1].count 2 'Daily music grouping changed.'
     $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3})
     Assert-Equal $driveStats.averageWhMi 250 'Drive efficiency changed.'
+    $rawDrive=[pscustomobject]@{started_at=100;ended_at=3700;starting_battery=80;ending_battery=70;odometer_distance=10;energy_used=2.5;starting_location='A';ending_location='B';starting_latitude=32;starting_longitude=-97;ending_latitude=33;ending_longitude=-98;tag='Test';driver_profile='Driver';average_speed=30;max_speed=60}
+    $driveModel=ConvertTo-DriveOSDrive -Drive $rawDrive -Soundtrack @([pscustomobject]@{track='Song'}) -StartingLocation Home -EndingLocation Work
+    Assert-Equal $driveModel.durationMinutes 60 'Drive duration changed.'
+    Assert-Equal $driveModel.efficiencyWhMi 250 'Drive efficiency mapping changed.'
+    Assert-Equal $driveModel.songCount 1 'Drive soundtrack count changed.'
+    $recapDrive=[pscustomobject]@{startedAt='2026-01-10T12:00:00-06:00';miles=10;energyKWh=2.5;batteryUsed=5;songCount=1;startingLocation='Home';endingLocation='Work';shortDateLabel='Sat, Jan 10';soundtrack=@([pscustomobject]@{track='Song';artist='Artist'})}
+    $recapCharge=[pscustomobject]@{startedAt='2026-01-11T12:00:00-06:00';energyAddedKWh=20;displayCost=3.5}
+    $recaps=New-DriveOSMonthlyRecaps -Drives @($recapDrive) -Charges @($recapCharge) -Settings ([pscustomobject]@{electricityRateCents=12.5}) -Now ([datetime]'2026-01-20')
+    Assert-Equal $recaps.recaps[0].driveCount 1 'Monthly drive count changed.'
+    Assert-Equal $recaps.recaps[0].topTrack 'Song' 'Monthly top track changed.'
+    Assert-Equal $recaps.recaps[0].chargingCost 3.5 'Monthly charging cost changed.'
     $plan=New-DriveOSPlaylistPlan -Drive ([pscustomobject]@{shortDateLabel='Jan 1';startTime='8:00 AM';soundtrack=@([pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:two'})})
     Assert-Equal $plan.uris.Count 2 'Playlist URI de-duplication changed.'
     Assert-Equal $plan.name 'DriveOS - Jan 1 8:00 AM' 'Playlist naming changed.'

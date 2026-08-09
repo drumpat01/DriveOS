@@ -15,6 +15,8 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Drives\DriveOS.Drives.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 
@@ -851,7 +853,7 @@ function Get-ChargingSummary {
     }
 }
 
-function Get-MonthlyRecaps {
+function Get-MonthlyRecapsLegacy {
     $Drives = @(Get-RecentDrives -Days 365)
     $Charges = @(Get-RawCharges -Days 365 | ForEach-Object { Convert-RawCharge -Charge $_ })
     $Now = Get-Date
@@ -941,6 +943,12 @@ function Get-MonthlyRecaps {
         recaps = $Recaps
         settings = Get-ChargingSettings
     }
+}
+
+function Get-MonthlyRecaps {
+    $Drives=@(Get-RecentDrives -Days 365)
+    $Charges=@(Get-RawCharges -Days 365|ForEach-Object{Convert-RawCharge -Charge $_})
+    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings (Get-ChargingSettings)
 }
 
 function Get-TessieHeaders {
@@ -1073,69 +1081,9 @@ function Convert-RawDrive {
         [object[]]$SpotifyHistory = $null
     )
 
-    $Start = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime()
-    $End = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
-
-    $DurationMinutes = [math]::Max(
-        0,
-        [math]::Round(($End - $Start).TotalMinutes)
-    )
-
-    $BatteryUsed = $null
-
-    if ($null -ne $Drive.starting_battery -and $null -ne $Drive.ending_battery) {
-        $BatteryUsed = [int]$Drive.starting_battery - [int]$Drive.ending_battery
-    }
-
-    $Miles = $null
-    if ($null -ne $Drive.odometer_distance) {
-        $Miles = [math]::Round([double]$Drive.odometer_distance, 1)
-    }
-
-    $Energy = $null
-    if ($null -ne $Drive.energy_used) {
-        $Energy = [math]::Round([double]$Drive.energy_used, 2)
-    }
-
-    $Efficiency = $null
-    if ($Miles -and $Miles -gt 0 -and $Energy -ne $null) {
-        $Efficiency = [math]::Round(($Energy * 1000) / $Miles)
-    }
-
-    $Soundtrack = @(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
-
-    return [PSCustomObject]@{
-        id              = "$($Drive.started_at)-$($Drive.ended_at)"
-        startedAt       = $Start.ToString("o")
-        endedAt         = $End.ToString("o")
-        dateLabel       = $Start.ToString("dddd, MMMM d")
-        shortDateLabel  = $Start.ToString("ddd, MMM d")
-        dateIso         = $Start.ToString("yyyy-MM-dd")
-        dateNumeric     = $Start.ToString("M/d/yyyy")
-        startTime       = $Start.ToString("h:mm tt")
-        endTime         = $End.ToString("h:mm tt")
-        startingLocation = (Get-FriendlyLocation -Location $Drive.starting_location)
-        endingLocation   = (Get-FriendlyLocation -Location $Drive.ending_location)
-        rawStartingLocation = $Drive.starting_location
-        rawEndingLocation   = $Drive.ending_location
-        startingLatitude = $Drive.starting_latitude
-        startingLongitude = $Drive.starting_longitude
-        endingLatitude   = $Drive.ending_latitude
-        endingLongitude  = $Drive.ending_longitude
-        tessieTag        = $Drive.tag
-        driverProfile    = $Drive.driver_profile
-        durationMinutes = $DurationMinutes
-        miles           = $Miles
-        startingBattery = $Drive.starting_battery
-        endingBattery   = $Drive.ending_battery
-        batteryUsed     = $BatteryUsed
-        energyKWh       = $Energy
-        efficiencyWhMi  = $Efficiency
-        averageSpeed    = $Drive.average_speed
-        maxSpeed        = $Drive.max_speed
-        soundtrack      = $Soundtrack
-        songCount       = $Soundtrack.Count
-    }
+    $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
+    $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
+    return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location) -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location)
 }
 
 function Get-RecentDrives {
