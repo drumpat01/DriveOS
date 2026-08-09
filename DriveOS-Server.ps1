@@ -13,6 +13,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1"
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -1422,104 +1423,12 @@ function Get-DriveMapData {
 # ------------------------------------------------------------
 
 function Get-MusicStats {
-    $History = @(Get-SpotifyHistory)
-
-    $TopTracks = @(
-        $History |
-        Group-Object track, artist |
-        Sort-Object Count -Descending |
-        Select-Object -First 10 |
-        ForEach-Object {
-            $Example = $_.Group | Select-Object -First 1
-
-            $ResolvedTrackId = Get-SpotifyRecordTrackId -Record $Example
-
-            [PSCustomObject]@{
-                track      = $Example.track
-                artist     = $Example.artist
-                plays      = $_.Count
-                trackId    = $ResolvedTrackId
-                albumImage = $Example.album_image
-                spotifyUrl = $Example.spotify_url
-            }
-        }
-    )
-
-    $TopArtists = @(
-        $History |
-        Group-Object artist |
-        Sort-Object Count -Descending |
-        Select-Object -First 10 |
-        ForEach-Object {
-            [PSCustomObject]@{
-                artist = $_.Name
-                plays  = $_.Count
-            }
-        }
-    )
-
-    $Daily = @()
-
-    for ($i = 13; $i -ge 0; $i--) {
-        $Day = (Get-Date).Date.AddDays(-$i)
-        $Next = $Day.AddDays(1)
-        $Count = 0
-
-        foreach ($Record in $History) {
-            try {
-                $Played = [DateTimeOffset]::Parse($Record.played_at).LocalDateTime
-                if ($Played -ge $Day -and $Played -lt $Next) {
-                    $Count++
-                }
-            }
-            catch {}
-        }
-
-        $Daily += [PSCustomObject]@{
-            date  = $Day.ToString("yyyy-MM-dd")
-            label = $Day.ToString("ddd")
-            count = $Count
-        }
-    }
-
-    return [PSCustomObject]@{
-        totalPlays = $History.Count
-        topTracks  = $TopTracks
-        topArtists = $TopArtists
-        daily      = $Daily
-    }
+    return New-DriveOSMusicStats -History @(Get-SpotifyHistory)
 }
 
 function Get-DriveStats {
     $Drives = @(Get-RecentDrives -Days 30)
-
-    $TotalMiles = 0.0
-    $TotalEnergy = 0.0
-    $TotalBattery = 0
-    $SongCount = 0
-
-    foreach ($Drive in $Drives) {
-        if ($Drive.miles -ne $null) { $TotalMiles += [double]$Drive.miles }
-        if ($Drive.energyKWh -ne $null) { $TotalEnergy += [double]$Drive.energyKWh }
-        if ($Drive.batteryUsed -ne $null) { $TotalBattery += [int]$Drive.batteryUsed }
-        $SongCount += [int]$Drive.songCount
-    }
-
-    $AverageEfficiency = $null
-
-    if ($TotalMiles -gt 0 -and $TotalEnergy -gt 0) {
-        $AverageEfficiency = [math]::Round(($TotalEnergy * 1000) / $TotalMiles)
-    }
-
-    return [PSCustomObject]@{
-        periodDays       = 30
-        driveCount       = $Drives.Count
-        totalMiles       = [math]::Round($TotalMiles, 1)
-        totalEnergyKWh   = [math]::Round($TotalEnergy, 2)
-        totalBatteryUsed = $TotalBattery
-        averageWhMi      = $AverageEfficiency
-        soundtrackSongs  = $SongCount
-    }
+    return New-DriveOSDriveStats -Drives $Drives -PeriodDays 30
 }
 
 # ------------------------------------------------------------

@@ -6,6 +6,7 @@ Import-Module (Join-Path $Root 'src\Domain\Vehicle\DriveOS.Vehicle.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Replay\DriveOS.Replay.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -Force
 
 function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
@@ -48,6 +49,17 @@ try {
     Assert-Equal $chargeModel.durationMinutes 60 'Charge duration changed.'
     Assert-Equal $chargeModel.estimatedCost 1.25 'Charge cost calculation changed.'
     Assert-Equal $chargeModel.location 'Home' 'Charge friendly location changed.'
+
+    $history = @(
+        [pscustomobject]@{id='track123456|a';track_id='track123456';track='Song';artist='Artist';played_at='2026-01-15T12:00:00Z';album_image='image';spotify_url='url'},
+        [pscustomobject]@{id='track123456|b';track_id='track123456';track='Song';artist='Artist';played_at='2026-01-15T13:00:00Z';album_image='image';spotify_url='url'}
+    )
+    $musicStats = New-DriveOSMusicStats -History $history -Today ([datetime]'2026-01-15')
+    Assert-Equal $musicStats.totalPlays 2 'Music total changed.'
+    Assert-Equal $musicStats.topTracks[0].plays 2 'Top-track grouping changed.'
+    Assert-Equal $musicStats.daily[-1].count 2 'Daily music grouping changed.'
+    $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3})
+    Assert-Equal $driveStats.averageWhMi 250 'Drive efficiency changed.'
 
     $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
     $contracts = Get-Content (Join-Path $PSScriptRoot 'fixtures\endpoint-contracts.json') -Raw | ConvertFrom-Json
