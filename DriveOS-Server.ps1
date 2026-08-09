@@ -16,6 +16,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Analytics\DriveOS.Analytics.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -1652,44 +1653,26 @@ function Handle-Request {
                 }
 
                 "/api/places/alias" {
-                    if (-not $BodyText) { throw "Request body was empty." }
-                    $Body = $BodyText | ConvertFrom-Json
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-PlaceAlias -Location $Body.location -Label $Body.label)
                     return
                 }
 
                 "/api/charging/settings" {
-                    if (-not $BodyText) { throw "Request body was empty." }
-                    $Body = $BodyText | ConvertFrom-Json
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-ChargingSettings -ElectricityRateCents $Body.electricityRateCents)
                     return
                 }
 
                 "/api/drive/map" {
-                    if (-not $BodyText) {
-                        throw "Request body was empty."
-                    }
-
-                    $Body = $BodyText | ConvertFrom-Json
-
-                    if (-not $Body.driveId) {
-                        throw "driveId is required."
-                    }
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (Get-DriveMapData -DriveId $Body.driveId)
                     return
                 }
 
                 "/api/playlist/create" {
-                    if (-not $BodyText) {
-                        throw "Request body was empty."
-                    }
-
-                    $Body = $BodyText | ConvertFrom-Json
-
-                    if (-not $Body.driveId) {
-                        throw "driveId is required."
-                    }
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (New-DrivePlaylist -DriveId $Body.driveId)
                     return
@@ -1710,30 +1693,10 @@ function Handle-Request {
     }
     catch {
         $Message = $_.Exception.Message
-        $Code = 500
-        $Text = "Internal Server Error"
-        $PublicMessage = "DriveOS request failed."
-
-        if ($Message -like "*Spotify token file not found*") {
-            $Code = 401
-            $Text = "Unauthorized"
-            $PublicMessage = "Spotify authorization is required on this computer."
-        }
-        elseif ($Message -like "*playlist-modify-private*") {
-            $Code = 403
-            $Text = "Forbidden"
-            $PublicMessage = "Spotify playlist permission is not available. Reauthorize Spotify for DriveOS."
-        }
-        elseif ($Message -like "*driveId is required*") {
-            $Code = 400
-            $Text = "Bad Request"
-            $PublicMessage = "driveId is required."
-        }
-        elseif ($Message -like "*Request body was empty*") {
-            $Code = 400
-            $Text = "Bad Request"
-            $PublicMessage = "Request body was empty."
-        }
+        $ErrorResponse = Get-DriveOSHttpError -Message $Message
+        $Code = $ErrorResponse.statusCode
+        $Text = $ErrorResponse.statusText
+        $PublicMessage = $ErrorResponse.publicMessage
 
         Write-DriveOSServerLog "$Method $Path failed: $Message"
 

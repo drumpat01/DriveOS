@@ -9,6 +9,7 @@ Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Analytics\DriveOS.Analytics.psm1') -Force
 Import-Module (Join-Path $Root 'src\Application\DriveOS.Playlists.psm1') -Force
+Import-Module (Join-Path $Root 'src\Http\DriveOS.Http.psm1') -Force
 
 function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
@@ -80,6 +81,12 @@ try {
     $plan=New-DriveOSPlaylistPlan -Drive ([pscustomobject]@{shortDateLabel='Jan 1';startTime='8:00 AM';soundtrack=@([pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:one'},[pscustomobject]@{trackUri='spotify:track:two'})})
     Assert-Equal $plan.uris.Count 2 'Playlist URI de-duplication changed.'
     Assert-Equal $plan.name 'DriveOS - Jan 1 8:00 AM' 'Playlist naming changed.'
+    $requestBody=ConvertFrom-DriveOSRequestBody -BodyText '{"driveId":"drive-1"}' -RequiredFields driveId
+    Assert-Equal $requestBody.driveId 'drive-1' 'HTTP body parsing changed.'
+    $httpError=Get-DriveOSHttpError -Message 'driveId is required.'
+    Assert-Equal $httpError.statusCode 400 'HTTP validation status changed.'
+    $httpError=Get-DriveOSHttpError -Message 'unexpected private failure'
+    Assert-Equal $httpError.publicMessage 'DriveOS request failed.' 'HTTP error redaction changed.'
 
     $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
     $contracts = Get-Content (Join-Path $PSScriptRoot 'fixtures\endpoint-contracts.json') -Raw | ConvertFrom-Json
