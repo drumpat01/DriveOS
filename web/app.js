@@ -725,7 +725,10 @@ function driveCard(drive, compact = false) {
     <article class="drive-card${compact ? " dashboard-drive-card" : ""}" data-drive-card-id="${escapeHtml(drive.id)}" tabindex="0" role="button" aria-label="Open drive details">
       <div class="drive-main">
         <div class="drive-main-heading">
-          <strong>${escapeHtml(compact ? drive.shortDateLabel : drive.dateLabel)}</strong>
+          ${compact
+            ? `<strong>${escapeHtml(drive.shortDateLabel || drive.dateLabel)}</strong>`
+            : `<strong class="drive-date-desktop">${escapeHtml(drive.dateLabel)}</strong>
+               <strong class="drive-date-mobile">${escapeHtml(drive.shortDateLabel || drive.dateLabel)}</strong>`}
           <span>${escapeHtml(drive.startTime)} \u2192 ${escapeHtml(drive.endTime)}</span>
         </div>
 
@@ -739,12 +742,12 @@ function driveCard(drive, compact = false) {
 
         ${drive.tessieTag ? `<div class="drive-tag">${escapeHtml(drive.tessieTag)}</div>` : ""}
       </div>
-      <div class="drive-stat"><span>Distance</span><strong>${drive.miles ?? "--"} mi</strong></div>
-      <div class="drive-stat"><span>Duration</span><strong>${drive.durationMinutes ?? "--"} min</strong></div>
-      <div class="drive-stat dashboard-secondary-stat"><span>Battery</span><strong>${escapeHtml(batteryText(drive))}</strong></div>
-      <div class="drive-stat dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} songs</strong></div>
+      <div class="drive-stat drive-stat-distance"><span>Distance</span><strong>${drive.miles ?? "--"} mi</strong></div>
+      <div class="drive-stat drive-stat-duration"><span>Duration</span><strong>${drive.durationMinutes ?? "--"} min</strong></div>
+      <div class="drive-stat drive-stat-battery dashboard-secondary-stat"><span>Battery</span><strong>${escapeHtml(batteryText(drive))}</strong></div>
+      <div class="drive-stat drive-stat-soundtrack dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} songs</strong></div>
       ${compact ? `<button class="view-drive-button v3-drive-play" type="button" data-drive-id="${escapeHtml(drive.id)}" aria-label="Open drive">\u25B6</button>`
-                : `<div class="drive-stat"><span>Energy</span><strong>${drive.energyKWh ?? "--"} kWh</strong></div>
+                : `<div class="drive-stat drive-stat-energy"><span>Energy</span><strong>${drive.energyKWh ?? "--"} kWh</strong></div>
                    <button class="view-drive-button" type="button" data-drive-id="${escapeHtml(drive.id)}">View drive</button>`}
     </article>`;
 }

@@ -1,4 +1,4 @@
-# DriveOS 4.3.1
+# DriveOS 4.3.2
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 

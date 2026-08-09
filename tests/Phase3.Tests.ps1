@@ -21,6 +21,9 @@ if($index -notmatch 'id="driveAdvancedFilters"[^>]*hidden'){throw 'Advanced driv
 if($index -notmatch 'placeholder="Enter a city or state'){throw 'The primary drive search is not labeled for city/state search.'}
 $styles=Get-Content (Join-Path $Root 'web\styles.css') -Raw
 if($styles -notmatch '(?s)\.topbar-right \.theme-switcher\s*\{[^}]*display:\s*inline-flex\s*!important'){throw 'The theme switcher is not restored in the mobile header.'}
+foreach($metricClass in @('drive-stat-distance','drive-stat-duration','drive-stat-battery','drive-stat-soundtrack','drive-stat-energy')){if($app -notmatch $metricClass){throw "Drive-card metric class is missing: $metricClass"}}
+if($styles -notmatch '(?s)\.dashboard-drive-card\s*>\s*\.v3-drive-play\s*\{[^}]*width:\s*48px\s*!important;[^}]*height:\s*48px\s*!important;[^}]*border-radius:\s*50%\s*!important'){throw 'The mobile dashboard play control is no longer locked to a circle.'}
+if($styles -notmatch '(?s)\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-battery,\s*\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-energy\s*\{[^}]*display:\s*none\s*!important'){throw 'Secondary mobile telemetry is no longer reserved for drive details.'}
 $desktopHost=Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw;$ignition=Get-Content (Join-Path $Root 'web\features\ignition.js') -Raw
 if($desktopHost -match 'runDriveOSIgnition' -and $ignition -notmatch 'window\.runDriveOSIgnition\s*=\s*run'){throw 'Desktop ignition compatibility shim is missing.'}
 $serviceWorker=Get-Content (Join-Path $Root 'web\service-worker.js') -Raw;if($serviceWorker -notmatch 'pathname\.endsWith\("\.js"\)'){throw 'Service worker no longer treats feature modules as network-only.'}
