@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("DriveOS")]
 [assembly: AssemblyProduct("DriveOS")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("3.2.0.0")]
-[assembly: AssemblyFileVersion("3.2.0.0")]
-[assembly: AssemblyInformationalVersion("3.2.0")]
+[assembly: AssemblyVersion("3.3.0.0")]
+[assembly: AssemblyFileVersion("3.3.0.0")]
+[assembly: AssemblyInformationalVersion("3.3.0")]
 
 namespace DriveOSDesktop
 {
