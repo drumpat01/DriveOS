@@ -1,5 +1,3 @@
-Set-StrictMode -Version 2.0
-
 function ConvertTo-DriveOSVehicleSummary {
     param([Parameter(Mandatory=$true)]$Vehicle)
     $state = $Vehicle.last_state

@@ -4,6 +4,8 @@ Import-Module (Join-Path $Root 'src\Storage\DriveOS.Storage.psm1') -Force
 Import-Module (Join-Path $Root 'src\Repositories\DriveOS.Repository.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Vehicle\DriveOS.Vehicle.psm1') -Force
 Import-Module (Join-Path $Root 'src\Domain\Replay\DriveOS.Replay.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Places\DriveOS.Places.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Charging\DriveOS.Charging.psm1') -Force
 
 function Assert-Equal($Actual, $Expected, [string]$Message) {
     if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." }
@@ -34,6 +36,18 @@ try {
     Assert-Equal $nearest.timestamp 110 'Nearest replay state selection changed.'
     $point = ConvertTo-DriveOSMapPoint -State $nearest
     Assert-Equal $point.latitude 32.2 'Replay map projection changed.'
+
+    $aliases = @(Update-DriveOSPlaceAliasEntries -Entries @() -Location '123 Test Street' -Label 'Home')
+    $aliasMap = New-DriveOSPlaceAliasMap -Entries $aliases
+    Assert-Equal (Resolve-DriveOSFriendlyLocation -Location '123 Test Street' -AliasMap $aliasMap) 'Home' 'Friendly location resolution changed.'
+    $aliases = @(Update-DriveOSPlaceAliasEntries -Entries $aliases -Location '123 Test Street' -Label '')
+    Assert-Equal $aliases.Count 0 'Friendly location removal changed.'
+
+    $charge = [pscustomobject]@{id='charge-1';started_at=100;ended_at=3700;energy_added=10;cost=$null;location='123 Test Street';latitude=32;longitude=-97;is_supercharger=$false;odometer=1000;energy_used=11;miles_added=40;starting_battery=20;ending_battery=70}
+    $chargeModel = ConvertTo-DriveOSCharge -Charge $charge -Settings ([pscustomobject]@{electricityRateCents=12.5}) -FriendlyLocation 'Home'
+    Assert-Equal $chargeModel.durationMinutes 60 'Charge duration changed.'
+    Assert-Equal $chargeModel.estimatedCost 1.25 'Charge cost calculation changed.'
+    Assert-Equal $chargeModel.location 'Home' 'Charge friendly location changed.'
 
     $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
     $contracts = Get-Content (Join-Path $PSScriptRoot 'fixtures\endpoint-contracts.json') -Raw | ConvertFrom-Json

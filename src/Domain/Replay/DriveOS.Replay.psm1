@@ -1,5 +1,3 @@
-Set-StrictMode -Version 2.0
-
 function Find-NearestDriveOSHistoricalState {
     param([Parameter(Mandatory=$true)][object[]]$States, [Parameter(Mandatory=$true)][long]$TargetTimestamp)
     $best = $null

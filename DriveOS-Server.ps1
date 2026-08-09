@@ -11,6 +11,8 @@ Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.p
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Places\DriveOS.Places.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Domain\Charging\DriveOS.Charging.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -705,30 +707,13 @@ function Get-PlaceAliasEntries {
 }
 
 function Get-PlaceAliasMap {
-    $Map = @{}
-
-    foreach ($Entry in @(Get-PlaceAliasEntries)) {
-        if ($Entry.location -and $Entry.label) {
-            $Map[[string]$Entry.location] = [string]$Entry.label
-        }
-    }
-
-    return $Map
+    return New-DriveOSPlaceAliasMap -Entries @(Get-PlaceAliasEntries)
 }
 
 function Get-FriendlyLocation {
     param([string]$Location)
 
-    if ([string]::IsNullOrWhiteSpace($Location)) {
-        return $Location
-    }
-
-    $Map = Get-PlaceAliasMap
-    if ($Map.ContainsKey($Location)) {
-        return $Map[$Location]
-    }
-
-    return $Location
+    return Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap (Get-PlaceAliasMap)
 }
 
 function Set-PlaceAlias {
@@ -737,44 +722,8 @@ function Set-PlaceAlias {
         [string]$Label
     )
 
-    $Location = "$Location".Trim()
-    $Label = "$Label".Trim()
-
-    if (-not $Location -or $Location.Length -gt 512) {
-        throw "A valid location is required."
-    }
-
-    if ($Label.Length -gt 64) {
-        throw "Friendly place names must be 64 characters or fewer."
-    }
-
-    $Entries = New-Object System.Collections.ArrayList
-    $Found = $false
-
-    foreach ($Entry in @(Get-PlaceAliasEntries)) {
-        if ([string]$Entry.location -eq $Location) {
-            $Found = $true
-            if ($Label) {
-                [void]$Entries.Add([PSCustomObject]@{
-                    location = $Location
-                    label = $Label
-                })
-            }
-        }
-        else {
-            [void]$Entries.Add([PSCustomObject]@{
-                location = [string]$Entry.location
-                label = [string]$Entry.label
-            })
-        }
-    }
-
-    if (-not $Found -and $Label) {
-        [void]$Entries.Add([PSCustomObject]@{
-            location = $Location
-            label = $Label
-        })
-    }
+    $Location = "$Location".Trim(); $Label = "$Label".Trim()
+    $Entries = @(Update-DriveOSPlaceAliasEntries -Entries @(Get-PlaceAliasEntries) -Location $Location -Label $Label)
 
     Set-DriveOSPlaceAliases -Repository $Repository -Entries @($Entries)
 
@@ -869,43 +818,8 @@ function Get-RawCharges {
 function Convert-RawCharge {
     param($Charge)
 
-    $Start = [DateTimeOffset]::FromUnixTimeSeconds([long]$Charge.started_at).ToLocalTime()
-    $End = [DateTimeOffset]::FromUnixTimeSeconds([long]$Charge.ended_at).ToLocalTime()
-    $DurationMinutes = [math]::Max(0, [math]::Round(($End - $Start).TotalMinutes))
-    $EnergyAdded = if ($null -ne $Charge.energy_added) { [math]::Round([double]$Charge.energy_added, 2) } else { $null }
-    $RecordedCost = if ($null -ne $Charge.cost -and [double]$Charge.cost -gt 0) { [math]::Round([double]$Charge.cost, 2) } else { $null }
     $Settings = Get-ChargingSettings
-    $EstimatedCost = $null
-
-    if ($null -eq $RecordedCost -and $null -ne $EnergyAdded -and $null -ne $Settings.electricityRateCents) {
-        $EstimatedCost = [math]::Round($EnergyAdded * ([double]$Settings.electricityRateCents / 100), 2)
-    }
-
-    return [PSCustomObject]@{
-        id = [string]$Charge.id
-        startedAt = $Start.ToString("o")
-        endedAt = $End.ToString("o")
-        dateLabel = $Start.ToString("ddd, MMM d")
-        dateIso = $Start.ToString("yyyy-MM-dd")
-        startTime = $Start.ToString("h:mm tt")
-        endTime = $End.ToString("h:mm tt")
-        durationMinutes = $DurationMinutes
-        location = (Get-FriendlyLocation -Location $Charge.location)
-        rawLocation = $Charge.location
-        latitude = $Charge.latitude
-        longitude = $Charge.longitude
-        isSupercharger = [bool]$Charge.is_supercharger
-        odometer = $Charge.odometer
-        energyAddedKWh = $EnergyAdded
-        energyUsedKWh = if ($null -ne $Charge.energy_used) { [math]::Round([double]$Charge.energy_used, 2) } else { $null }
-        milesAdded = if ($null -ne $Charge.miles_added) { [math]::Round([double]$Charge.miles_added, 1) } else { $null }
-        startingBattery = $Charge.starting_battery
-        endingBattery = $Charge.ending_battery
-        recordedCost = $RecordedCost
-        estimatedCost = $EstimatedCost
-        displayCost = if ($null -ne $RecordedCost) { $RecordedCost } else { $EstimatedCost }
-        costType = if ($null -ne $RecordedCost) { "recorded" } elseif ($null -ne $EstimatedCost) { "estimated" } else { "unknown" }
-    }
+    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation (Get-FriendlyLocation -Location $Charge.location)
 }
 
 function Get-ChargingSummary {
