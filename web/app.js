@@ -903,6 +903,32 @@ async function loadRecaps() {
   }
 }
 
+// Phase 3 compatibility seam: callers keep their established function names
+// while feature implementations live in isolated modules.
+const placesFeature = window.DriveOSFeatures.places.create({
+  state,
+  api: window.DriveOSApi,
+  compactLocation,
+  refresh: () => Promise.allSettled([loadPlaces(), loadDrives(), loadCharging(), loadRecaps()])
+});
+savePlaceAlias = placesFeature.save;
+renderPlaces = placesFeature.render;
+loadPlaces = placesFeature.load;
+
+const recapsFeature = window.DriveOSFeatures.recaps.create({ state, api: window.DriveOSApi, money });
+renderMonthlyRecap = recapsFeature.render;
+loadRecaps = recapsFeature.load;
+
+const chargingFeature = window.DriveOSFeatures.charging.create({
+  state,
+  api: window.DriveOSApi,
+  money,
+  refreshRecaps: () => loadRecaps()
+});
+renderCharging = chargingFeature.render;
+loadCharging = chargingFeature.load;
+saveChargingRate = chargingFeature.saveRate;
+
 async function loadDrives() {
   try {
     const data = await getJson("/api/drives");
@@ -2285,7 +2311,7 @@ initializeMobileNavigationPortal();
 purgeOldDriveOSCaches();
 initializePwa();
 
-if (isTailnetRemote()) {
+if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
   window.DriveOSIgnition.run();
 }
 
