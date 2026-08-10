@@ -143,7 +143,8 @@ function Test-DriveOSWebPublicRequest {
             "/healthz",
             "/login",
             "/login.html",
-            "/login.js"
+            "/login.js",
+            "/auth/spotify/callback"
         )
     }
 

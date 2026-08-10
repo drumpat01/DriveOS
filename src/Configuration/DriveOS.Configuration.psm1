@@ -72,6 +72,10 @@ function Get-DriveOSPublicUrl {
 
     $Value = "$($env:DRIVEOS_PUBLIC_URL)".Trim()
 
+    if (-not $Value -and $env:RENDER_EXTERNAL_URL) {
+        $Value = "$($env:RENDER_EXTERNAL_URL)".Trim()
+    }
+
     if (-not $Value) {
         return $null
     }

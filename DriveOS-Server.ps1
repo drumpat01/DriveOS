@@ -29,6 +29,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebRequest.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.SecretProtection.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -59,6 +60,7 @@ $ServerLogFile = Join-Path $DataDirectory "driveos-server.log"
 
 $WebRoot = Join-Path $PSScriptRoot "web"
 $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
+$SpotifyOAuthStateFile = Join-Path $DataDirectory "spotify-oauth-state.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
 $LastFmConfigFile = Join-Path $DataDirectory "lastfm-config.json"
@@ -76,6 +78,10 @@ $MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
+}
+
+if ($Repository.Provider -eq "SQLite") {
+    Initialize-DriveOSSqlite -Repository $Repository
 }
 
 if (-not $MaintenanceMode -and -not $env:TESSIE_TOKEN) {
@@ -277,25 +283,31 @@ function Get-MimeType {
 function Unprotect-Token {
     param([string]$EncryptedToken)
 
-    if (-not $EncryptedToken) { return $null }
-
-    $SecureString = ConvertTo-SecureString $EncryptedToken
-    $BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)
-
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    if (-not $EncryptedToken) {
+        return $null
     }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-    }
+
+    return Unprotect-DriveOSSecret `
+        -ProtectedText $EncryptedToken `
+        -Mode $RuntimeConfig.Mode `
+        -EncryptionKey $(if ($WebAuthConfig) {
+            $WebAuthConfig.EncryptionKey
+        } else {
+            $null
+        })
 }
 
 function Protect-Token {
     param([string]$Token)
 
-    return $Token |
-        ConvertTo-SecureString -AsPlainText -Force |
-        ConvertFrom-SecureString
+    return Protect-DriveOSSecret `
+        -PlainText $Token `
+        -Mode $RuntimeConfig.Mode `
+        -EncryptionKey $(if ($WebAuthConfig) {
+            $WebAuthConfig.EncryptionKey
+        } else {
+            $null
+        })
 }
 
 function Save-SpotifyTokenCache {
@@ -688,15 +700,212 @@ function Get-SpotifyAuthorizationStatus {
     }
 }
 
+function ConvertTo-SpotifyBase64Url {
+    param([byte[]]$Bytes)
+
+    return [Convert]::ToBase64String($Bytes).
+        TrimEnd('=').
+        Replace('+', '-').
+        Replace('/', '_')
+}
+
+function Get-DriveOSQueryParameters {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Target
+    )
+
+    $Uri = [Uri]("https://driveos.invalid$Target")
+    $Result = @{}
+
+    foreach ($Pair in $Uri.Query.TrimStart("?").Split("&")) {
+        if (-not $Pair) {
+            continue
+        }
+
+        $Parts = $Pair.Split("=", 2)
+        $Key = [Uri]::UnescapeDataString(
+            $Parts[0].Replace("+", " ")
+        )
+
+        $Value = if ($Parts.Count -gt 1) {
+            [Uri]::UnescapeDataString(
+                $Parts[1].Replace("+", " ")
+            )
+        }
+        else {
+            ""
+        }
+
+        if ($Result.ContainsKey($Key)) {
+            throw "Duplicate query parameter was rejected."
+        }
+
+        $Result[$Key] = $Value
+    }
+
+    return $Result
+}
+
+function Start-SpotifyWebAuthorization {
+    $RedirectUri = "$($RuntimeConfig.PublicUrl)/auth/spotify/callback"
+
+    $Scopes = @(
+        "user-read-recently-played"
+        "user-read-playback-state"
+        "user-read-currently-playing"
+        "playlist-modify-private"
+    ) -join " "
+
+    $VerifierBytes = New-Object byte[] 64
+    $Random = [Security.Cryptography.RandomNumberGenerator]::Create()
+
+    try {
+        $Random.GetBytes($VerifierBytes)
+    }
+    finally {
+        $Random.Dispose()
+    }
+
+    $CodeVerifier = ConvertTo-SpotifyBase64Url -Bytes $VerifierBytes
+
+    $Sha256 = [Security.Cryptography.SHA256]::Create()
+
+    try {
+        $ChallengeBytes = $Sha256.ComputeHash(
+            [Text.Encoding]::ASCII.GetBytes($CodeVerifier)
+        )
+    }
+    finally {
+        $Sha256.Dispose()
+    }
+
+    $CodeChallenge = ConvertTo-SpotifyBase64Url `
+        -Bytes $ChallengeBytes
+
+    $StateBytes = New-Object byte[] 32
+    $Random = [Security.Cryptography.RandomNumberGenerator]::Create()
+
+    try {
+        $Random.GetBytes($StateBytes)
+    }
+    finally {
+        $Random.Dispose()
+    }
+
+    $State = ConvertTo-SpotifyBase64Url -Bytes $StateBytes
+
+    Write-DriveOSJson `
+        -Path $SpotifyOAuthStateFile `
+        -Value ([PSCustomObject]@{
+            state = $State
+            verifier = Protect-Token $CodeVerifier
+            redirectUri = $RedirectUri
+            expiresAt = [DateTimeOffset]::UtcNow.
+                AddMinutes(10).
+                ToString("o")
+        })
+
+    $AuthUrl =
+        "https://accounts.spotify.com/authorize" +
+        "?client_id=$([Uri]::EscapeDataString($env:SPOTIFY_CLIENT_ID))" +
+        "&response_type=code" +
+        "&redirect_uri=$([Uri]::EscapeDataString($RedirectUri))" +
+        "&scope=$([Uri]::EscapeDataString($Scopes))" +
+        "&code_challenge_method=S256" +
+        "&code_challenge=$([Uri]::EscapeDataString($CodeChallenge))" +
+        "&state=$([Uri]::EscapeDataString($State))"
+
+    return [PSCustomObject]@{
+        started = $true
+        authorizationUrl = $AuthUrl
+    }
+}
+
+function Complete-SpotifyWebAuthorization {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Target
+    )
+
+    if (-not (Test-Path $SpotifyOAuthStateFile -PathType Leaf)) {
+        throw "Spotify authorization state was not found or has expired."
+    }
+
+    $Pending = Read-DriveOSJson -Path $SpotifyOAuthStateFile
+
+    $ExpiresAt = [DateTimeOffset]::Parse(
+        "$($Pending.expiresAt)"
+    )
+
+    if ([DateTimeOffset]::UtcNow -ge $ExpiresAt) {
+        Remove-Item $SpotifyOAuthStateFile -Force -ErrorAction SilentlyContinue
+        throw "Spotify authorization state has expired."
+    }
+
+    $Query = Get-DriveOSQueryParameters -Target $Target
+
+    if ($Query["error"]) {
+        throw "Spotify authorization failed: $($Query["error"])"
+    }
+
+    if (-not $Query["code"] -or -not $Query["state"]) {
+        throw "Spotify authorization callback was incomplete."
+    }
+
+    if (-not (
+        Test-FixedTimeStringEquals `
+            "$($Query["state"])" `
+            "$($Pending.state)"
+    )) {
+        throw "Spotify authorization state did not match."
+    }
+
+    $CodeVerifier = Unprotect-Token "$($Pending.verifier)"
+    $RedirectUri = "$($Pending.redirectUri)"
+
+    $TokenResponse = Invoke-RestMethod `
+        -Uri "https://accounts.spotify.com/api/token" `
+        -Method Post `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body @{
+            client_id     = $env:SPOTIFY_CLIENT_ID
+            grant_type    = "authorization_code"
+            code          = $Query["code"]
+            redirect_uri  = $RedirectUri
+            code_verifier = $CodeVerifier
+        }
+
+    if (
+        -not $TokenResponse.access_token -or
+        -not $TokenResponse.refresh_token
+    ) {
+        throw "Spotify token response was incomplete."
+    }
+
+    Save-SpotifyTokenCache `
+        -AccessToken $TokenResponse.access_token `
+        -RefreshToken $TokenResponse.refresh_token `
+        -ExpiresIn ([int]$TokenResponse.expires_in) `
+        -Scope "$($TokenResponse.scope)"
+
+    Remove-Item `
+        $SpotifyOAuthStateFile `
+        -Force `
+        -ErrorAction SilentlyContinue
+}
 function Start-SpotifyAuthorization {
+    if ($RuntimeConfig.IsWeb) {
+        return Start-SpotifyWebAuthorization
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-Spotify.ps1"
 
     if (-not (Test-Path $Script -PathType Leaf)) {
         throw "Spotify authorization script is missing."
     }
 
-    # Avoid exposing secrets in arguments. SPOTIFY_CLIENT_ID is inherited from
-    # the DriveOS backend process environment by the child PowerShell process.
+    # Desktop mode preserves the existing separate Windows authorization flow.
     Start-Process `
         -FilePath "powershell.exe" `
         -ArgumentList @(
@@ -713,6 +922,17 @@ function Start-SpotifyAuthorization {
 }
 
 function Get-LastFmConfiguration {
+    if (
+        $RuntimeConfig.IsWeb -and
+        $env:LASTFM_USERNAME -and
+        $env:LASTFM_API_KEY
+    ) {
+        return [PSCustomObject]@{
+            username = "$($env:LASTFM_USERNAME)".Trim()
+            apiKey = "$($env:LASTFM_API_KEY)".Trim()
+        }
+    }
+
     if (-not (Test-Path $LastFmConfigFile -PathType Leaf)) {
         return $null
     }
@@ -748,6 +968,10 @@ function Get-LastFmConnectionStatus {
 }
 
 function Start-LastFmConfiguration {
+    if ($RuntimeConfig.IsWeb) {
+        throw "Configure LASTFM_USERNAME and LASTFM_API_KEY in the hosting environment."
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-LastFm.ps1"
 
     if (-not (Test-Path $Script -PathType Leaf)) {
@@ -768,6 +992,12 @@ function Start-LastFmConfiguration {
 }
 
 function Get-FoursquareConfiguration {
+    if ($RuntimeConfig.IsWeb -and $env:FOURSQUARE_API_KEY) {
+        $ApiKey = "$($env:FOURSQUARE_API_KEY)".Trim()
+        $script:FoursquareApiKeyForRedaction = $ApiKey
+        return [PSCustomObject]@{ apiKey = $ApiKey }
+    }
+
     if (-not (Test-Path $FoursquareConfigFile -PathType Leaf)) { return $null }
 
     $Config = Read-DriveOSJson -Path $FoursquareConfigFile
@@ -870,6 +1100,10 @@ function Register-FoursquareApiCall {
 }
 
 function Start-FoursquareConfiguration {
+    if ($RuntimeConfig.IsWeb) {
+        throw "Configure FOURSQUARE_API_KEY in the hosting environment."
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-Foursquare.ps1"
     if (-not (Test-Path $Script -PathType Leaf)) {
         throw "Foursquare configuration script is missing."
@@ -2225,6 +2459,7 @@ function Handle-Request {
         [System.Net.Sockets.NetworkStream]$Stream,
         [string]$Method,
         [string]$Path,
+        [string]$Target,
         [string]$BodyText,
         [hashtable]$Headers,
         [string]$ClientKey
@@ -2244,6 +2479,27 @@ function Handle-Request {
                     Send-StaticFile `
                         -Stream $Stream `
                         -RequestPath "/login.html"
+                    return
+                }
+
+                "/auth/spotify/callback" {
+                    if (-not $RuntimeConfig.IsWeb) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 404 `
+                            -StatusText "Not Found" `
+                            -Object @{
+                                error = "Not found."
+                            }
+                        return
+                    }
+
+                    Complete-SpotifyWebAuthorization `
+                        -Target $Target
+
+                    Send-Redirect `
+                        -Stream $Stream `
+                        -Location "/"
                     return
                 }
 
@@ -2977,6 +3233,7 @@ try {
                 -Stream $Stream `
                 -Method $Method `
                 -Path $Path `
+                -Target $Target `
                 -BodyText $BodyText `
                 -Headers $Headers `
                 -ClientKey $Remote.Address.ToString()

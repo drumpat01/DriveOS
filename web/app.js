@@ -2397,10 +2397,17 @@ async function connectSpotifyOnThisComputer() {
   }
 
   try {
-    await postJson("/api/spotify/connect", {});
+    const authorization = await postJson("/api/spotify/connect", {});
+
+    if (authorization?.authorizationUrl) {
+      setText("archiveAdded", "Opening Spotify authorization\u2026");
+      window.location.assign(authorization.authorizationUrl);
+      return;
+    }
+
     setText("archiveAdded", "Finish authorization in your browser\u2026");
 
-    // The authorization script runs separately and writes spotify-token.json.
+    // Desktop authorization runs separately and writes spotify-token.json.
     // Poll only the lightweight Spotify auth endpoint, not Tessie/status.
     const deadline = Date.now() + 5 * 60 * 1000;
 

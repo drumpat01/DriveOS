@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: driveos
+    runtime: docker
+    branch: web-hosting-prep
+    autoDeployTrigger: commit
+    healthCheckPath: /healthz
+    disk:
+      name: driveos-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: DRIVEOS_MODE
+        value: web
+      - key: DRIVEOS_DATA_DIR
+        value: /app/data
+      - key: DRIVEOS_REPOSITORY_PROVIDER
+        value: SQLite
+      - key: DRIVEOS_SESSION_HOURS
+        value: "24"
+      - key: DRIVEOS_OWNER_EMAIL
+        sync: false
+      - key: DRIVEOS_PASSWORD_HASH
+        sync: false
+      - key: DRIVEOS_AUTH_SECRET
+        generateValue: true
+      - key: DRIVEOS_ENCRYPTION_KEY
+        generateValue: true
+      - key: TESSIE_TOKEN
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: LASTFM_USERNAME
+        sync: false
+      - key: LASTFM_API_KEY
+        sync: false
+      - key: FOURSQUARE_API_KEY
+        sync: false

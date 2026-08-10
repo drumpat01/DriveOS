@@ -1,14 +1,66 @@
 Set-StrictMode -Version 2.0
 
 function New-DriveOSRepository {
-    param([Parameter(Mandatory=$true)][string]$DataDirectory,[string]$AppRoot=(Split-Path -Parent $DataDirectory),[ValidateSet('Auto','Json','SQLite')][string]$Provider='Auto')
-    $configPath=Join-Path $DataDirectory 'repository-provider.json'
-    if($Provider -eq 'Auto'){
-        $Provider='Json'
-        if(Test-Path -LiteralPath $configPath){try{$config=Read-DriveOSJson -Path $configPath;if($config.provider -eq 'SQLite'){$Provider='SQLite'}}catch{}}
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$DataDirectory,
+
+        [string]$AppRoot=(Split-Path -Parent $DataDirectory),
+
+        [ValidateSet('Auto','Json','SQLite')]
+        [string]$Provider='Auto'
+    )
+
+    $configPath = Join-Path $DataDirectory 'repository-provider.json'
+
+    if ($Provider -eq 'Auto' -and $env:DRIVEOS_REPOSITORY_PROVIDER) {
+        $RequestedProvider = "$($env:DRIVEOS_REPOSITORY_PROVIDER)".Trim()
+
+        if ($RequestedProvider -notin @('Json', 'SQLite')) {
+            throw 'DRIVEOS_REPOSITORY_PROVIDER must be Json or SQLite.'
+        }
+
+        $Provider = $RequestedProvider
     }
-    $sqliteExecutable=Join-Path $AppRoot 'tools\sqlite\sqlite3.exe'
-    if($Provider -eq 'SQLite' -and -not (Test-Path -LiteralPath $sqliteExecutable)){throw 'SQLite is configured but its runtime is missing. Run the installer or restore repository-provider.json to Json.'}
+
+    if ($Provider -eq 'Auto') {
+        $Provider = 'Json'
+
+        if (Test-Path -LiteralPath $configPath) {
+            try {
+                $config = Read-DriveOSJson -Path $configPath
+
+                if ($config.provider -eq 'SQLite') {
+                    $Provider = 'SQLite'
+                }
+            }
+            catch {}
+        }
+    }
+
+    $sqliteExecutable = $null
+
+    if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+        $sqliteExecutable = Join-Path $AppRoot 'tools\sqlite\sqlite3.exe'
+    }
+    else {
+        $SqliteCommand = Get-Command sqlite3 -ErrorAction SilentlyContinue
+
+        if ($SqliteCommand) {
+            $sqliteExecutable = $SqliteCommand.Source
+        }
+    }
+
+    if (
+        $Provider -eq 'SQLite' -and
+        (
+            -not $sqliteExecutable -or
+            -not (Test-Path -LiteralPath $sqliteExecutable -PathType Leaf)
+        )
+    ) {
+        throw 'SQLite is configured but its runtime is missing.'
+    }
+
     [PSCustomObject]@{
         Provider = $Provider
         DataDirectory = $DataDirectory
