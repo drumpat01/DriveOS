@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop';$Root=Split-Path -Parent $PSScriptRoot
 $index=Get-Content (Join-Path $Root 'web\index.html') -Raw
 $scripts=@([regex]::Matches($index,'<script[^>]+src="(/[^"?]+\.js)')|ForEach-Object{$_.Groups[1].Value})
 foreach($src in $scripts){$file=Join-Path (Join-Path $Root 'web') $src.TrimStart('/').Replace('/','\');if(-not(Test-Path -LiteralPath $file)){throw "Missing frontend module: $src"}}
-$required=@('/core/build.js','/core/dom.js','/core/state.js','/core/platform.js','/core/api.js','/components/song-artwork.js','/features/navigation.js','/features/pwa.js','/features/theme.js','/features/ignition.js','/features/places.js','/features/charging.js','/features/recaps.js','/features/refresh.js','/features/drives.js','/features/replay.js','/features/music.js','/features/share-cards.js','/app.js')
+$required=@('/core/build.js','/core/dom.js','/core/state.js','/core/platform.js','/core/api.js','/components/song-artwork.js','/features/navigation.js','/features/pwa.js','/features/theme.js','/features/ignition.js','/features/places.js','/features/charging.js','/features/recaps.js','/features/refresh.js','/features/drives.js','/features/replay.js','/features/music.js','/features/share-cards.js','/features/siri-shortcuts.js','/app.js')
 foreach($src in $required){if($scripts -notcontains $src){throw "Required frontend module is not loaded: $src"}}
 for($i=1;$i -lt $required.Count;$i++){if([array]::IndexOf($scripts,$required[$i-1]) -ge [array]::IndexOf($scripts,$required[$i])){throw "Frontend module order changed near $($required[$i])."}}
 $app=Get-Content (Join-Path $Root 'web\app.js') -Raw
@@ -22,12 +22,20 @@ if($index -notmatch 'placeholder="Enter a city or state'){throw 'The primary dri
 foreach($commuteId in @('commuteCommand','commuteCommandButton','commuteDestinations','prepareCommuteButton','commuteResult')){if($index -notmatch ('id="'+$commuteId+'"')){throw "Mobile commute control is missing: $commuteId"}}
 if($app -notmatch '/api/commute/prepare'){throw 'Mobile commute preparation client is missing.'}
 if($app -notmatch 'normalizeCommuteText'){throw 'Natural-language commute command parsing is missing.'}
+foreach($siriId in @('openSiriSetup','siriSetupModal','enableSiriShortcuts','siriDestination','siriMood','siriEndpoint','siriAccessKey','siriRequestBody')){if($index -notmatch ('id="'+$siriId+'"')){throw "Siri setup control is missing: $siriId"}}
+$siri=Get-Content (Join-Path $Root 'web\features\siri-shortcuts.js') -Raw
+if($siri -notmatch '/api/shortcuts/setup'){throw 'Siri setup client is missing.'}
+if($index -notmatch 'X-DriveOS-Shortcut'){throw 'Siri setup does not display the private header.'}
+if($index -notmatch 'shortcuts://'){throw 'Apple Shortcuts launch link is missing.'}
 $styles=Get-Content (Join-Path $Root 'web\styles.css') -Raw
 if($styles -notmatch '(?s)\.topbar-right \.theme-switcher\s*\{[^}]*display:\s*inline-flex\s*!important'){throw 'The theme switcher is not restored in the mobile header.'}
 foreach($metricClass in @('drive-stat-distance','drive-stat-duration','drive-stat-battery','drive-stat-soundtrack','drive-stat-energy')){if($app -notmatch $metricClass){throw "Drive-card metric class is missing: $metricClass"}}
 if($styles -notmatch '(?s)\.dashboard-drive-card\s*>\s*\.v3-drive-play\s*\{[^}]*width:\s*48px\s*!important;[^}]*height:\s*48px\s*!important;[^}]*border-radius:\s*50%\s*!important'){throw 'The mobile dashboard play control is no longer locked to a circle.'}
 if($styles -notmatch '(?s)\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-battery,\s*\.drive-card:not\(\.dashboard-drive-card\)\s*>\s*\.drive-stat-energy\s*\{[^}]*display:\s*none\s*!important'){throw 'Secondary mobile telemetry is no longer reserved for drive details.'}
 if($styles -notmatch '(?s)@media \(max-width: 760px\)\s*\{[^}]*\.commute-panel'){throw 'Prepare Commute does not have a mobile-first layout rule.'}
+if($styles -notmatch '(?s)@media \(max-width: 760px\)[\s\S]*?\.siri-setup-card\s*\{'){throw 'Siri setup does not have a mobile-first sheet layout.'}
+if($styles -notmatch '\.siri-setup-workspace\[hidden\]\s*\{\s*display:\s*none\s*!important'){throw 'Disabled Siri setup details are not reliably hidden.'}
+if($styles -notmatch '\.siri-setup-modal\s*\{\s*z-index:\s*1300\s*!important'){throw 'The Siri setup sheet must stay above mobile navigation.'}
 $desktopHost=Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw;$ignition=Get-Content (Join-Path $Root 'web\features\ignition.js') -Raw
 if($desktopHost -match 'runDriveOSIgnition' -and $ignition -notmatch 'window\.runDriveOSIgnition\s*=\s*run'){throw 'Desktop ignition compatibility shim is missing.'}
 $serviceWorker=Get-Content (Join-Path $Root 'web\service-worker.js') -Raw;if($serviceWorker -notmatch 'pathname\.endsWith\("\.js"\)'){throw 'Service worker no longer treats feature modules as network-only.'}

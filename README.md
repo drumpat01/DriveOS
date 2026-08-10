@@ -1,4 +1,4 @@
-# DriveOS 4.4.0
+# DriveOS 4.4.1
 
 > Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
@@ -36,6 +36,8 @@ Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE
 ## Prepare Commute
 
 DriveOS 4.4.0 adds a mobile-first **Prepare Commute** routine. Choose a named place such as Work, pick a listening mood, then tap **Prepare**. DriveOS starts Tessie climate preconditioning, sends the saved destination to Eloise, and creates a private Spotify mix from local listening history.
+
+DriveOS 4.4.1 adds a mobile-first **Siri Shortcuts** bridge for Prepare Commute. The in-app setup screen creates a separate revocable key and walks through building phrases such as “Let's go to work.” Voice requests are accepted only through authenticated Tailscale traffic, only for saved place labels and supported moods, and never receive raw addresses or the Tessie/Spotify credentials. Duplicate commands are suppressed for 90 seconds and a ten-minute safety limit prevents repeated vehicle actions.
 
 - playlist mixes balance favorites, rediscoveries, and less-recent tracks; the routine never starts playback remotely
 - only manually named DriveOS places can be sent to the vehicle; the browser sends a label, while the backend resolves the saved address locally

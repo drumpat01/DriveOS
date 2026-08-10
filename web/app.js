@@ -2618,6 +2618,7 @@ const refreshFeature = window.DriveOSFeatures.refresh.create({
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
 bindCommuteRoutine();
+window.DriveOSFeatures.siriShortcuts.initialize();
 
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {

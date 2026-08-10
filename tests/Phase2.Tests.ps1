@@ -166,7 +166,7 @@ try {
         $needle = if ($contract.path) { [regex]::Escape([string]$contract.path) } else { [regex]::Escape([string]$contract.pathPattern) }
         if ($server -notmatch $needle) { throw "Endpoint contract disappeared: $($contract.method) $($contract.path)$($contract.pathPattern)" }
     }
-    foreach($route in @('/api/commute/places','/api/commute/prepare')){if($server -notmatch [regex]::Escape($route)){throw "Commute API endpoint is missing: $route"}}
+    foreach($route in @('/api/commute/places','/api/commute/prepare','/api/shortcuts/setup','/api/shortcuts/prepare')){if($server -notmatch [regex]::Escape($route)){throw "Commute API endpoint is missing: $route"}}
     if($server -notmatch 'Test-CommuteVehicleIsParked'){throw 'Commute vehicle safety gate is missing.'}
     Write-Host 'Phase 2 repository, domain, and endpoint characterization tests passed.'
 }

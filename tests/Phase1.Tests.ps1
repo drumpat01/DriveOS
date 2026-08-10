@@ -7,6 +7,7 @@ Import-Module (Join-Path $Root "src\Integrations\LastFm\DriveOS.LastFm.psm1") -F
 Import-Module (Join-Path $Root "src\Integrations\Foursquare\DriveOS.Foursquare.psm1") -Force
 Import-Module (Join-Path $Root "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $Root "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
+Import-Module (Join-Path $Root "src\Application\DriveOS.Shortcuts.psm1") -Force
 
 $Scratch = Join-Path ([IO.Path]::GetTempPath()) ("driveos-phase1-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Scratch | Out-Null
@@ -75,6 +76,17 @@ try {
         throw "Foursquare stable address cache key failed"
     }
 
+    $ShortcutConfig = Join-Path $Scratch 'siri-shortcuts.json'
+    $Shortcut = Enable-DriveOSShortcuts -Path $ShortcutConfig
+    if (-not $Shortcut.enabled -or $Shortcut.token -notmatch '^[0-9a-f]{64}$') { throw 'Siri shortcut key generation failed' }
+    if (-not (Test-DriveOSShortcutToken -Path $ShortcutConfig -Token $Shortcut.token)) { throw 'Siri shortcut key validation failed' }
+    if (Test-DriveOSShortcutToken -Path $ShortcutConfig -Token ('0' * 64)) { throw 'Siri shortcut accepted an invalid key' }
+    $OriginalShortcutToken = $Shortcut.token
+    $Shortcut = Enable-DriveOSShortcuts -Path $ShortcutConfig -Rotate
+    if ($Shortcut.token -eq $OriginalShortcutToken) { throw 'Siri shortcut key rotation failed' }
+    $Shortcut = Disable-DriveOSShortcuts -Path $ShortcutConfig
+    if ($Shortcut.enabled -or $Shortcut.token) { throw 'Siri shortcut key revocation failed' }
+
     $ServerSource = Get-Content (Join-Path $Root "DriveOS-Server.ps1") -Raw
     if ($ServerSource -match '(?m)^\s*\$Response\.EnsureSuccessStatusCode\(\)\s*$') {
         throw "Spotify artwork download leaks HttpResponseMessage into the binary response."
@@ -86,6 +98,7 @@ try {
     if ($ServerSource -notmatch 'FoursquareDailyLimit\s*=\s*10' -or $ServerSource -notmatch 'FoursquareMonthlyLimit\s*=\s*250') {
         throw "Foursquare free-tier guardrails are missing"
     }
+    if ($ServerSource -notmatch 'ShortcutTokenForRedaction') { throw 'Siri shortcut log redaction is missing' }
 
     & (Join-Path $Root "tools\Sync-Version.ps1") -Check
     Write-Host "Phase 1 offline tests passed."

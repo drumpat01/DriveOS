@@ -6993,3 +6993,175 @@ h1 span {
   .commute-prepare-button { min-height: 52px; font-size: .96rem; }
   .commute-result { padding: 13px; }
 }
+
+/* =====================================================================
+   DriveOS 4.4.1 - Siri Shortcuts setup
+   ===================================================================== */
+
+.siri-setup-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 13px;
+  border: 1px solid rgba(23, 161, 187, .18);
+  border-radius: 14px;
+  background: rgba(255,255,255,.48);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.siri-setup-button > span:nth-child(2) { display: grid; gap: 1px; }
+.siri-setup-button strong { font-size: .8rem; }
+.siri-setup-button small { color: var(--muted); font-size: .69rem; }
+.siri-setup-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #783ee8, #0aaec2 60%, #1ac989);
+  box-shadow: 0 7px 15px rgba(92, 61, 210, .18);
+  color: white;
+}
+
+.siri-setup-modal { z-index: 1300 !important; }
+body.modal-open { overflow: hidden; }
+.siri-setup-card { width: min(720px, calc(100% - 24px)); }
+.siri-setup-hero { display: flex; align-items: center; gap: 15px; padding-right: 42px; }
+.siri-setup-hero h2 { margin: 3px 0 4px; font-size: clamp(1.75rem, 5vw, 2.6rem); letter-spacing: -.045em; }
+.siri-setup-hero p { margin: 0; color: var(--muted); line-height: 1.45; }
+.siri-hero-orb {
+  display: grid;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #783ee8, #0aaec2 62%, #1ac989);
+  box-shadow: 0 12px 30px rgba(70, 59, 194, .24);
+  color: #fff;
+  font-size: 1.55rem;
+}
+
+.siri-connection-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-top: 22px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.48);
+}
+
+.siri-connection-card > div { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; }
+.siri-connection-card strong { color: var(--text); }
+.siri-connection-card small { grid-column: 2; margin-top: 2px; color: var(--muted); }
+.siri-status-dot { width: 10px; height: 10px; margin-top: 4px; border-radius: 50%; background: #a8b1b7; }
+.siri-connection-card.enabled .siri-status-dot { background: #16c78d; box-shadow: 0 0 0 5px rgba(22,199,141,.11); }
+.siri-connection-card .primary-button { min-height: 42px; padding: 0 20px; }
+
+.siri-setup-workspace { display: grid; gap: 18px; margin-top: 18px; }
+.siri-setup-workspace[hidden] { display: none !important; }
+.siri-security-note {
+  display: grid;
+  gap: 3px;
+  padding: 13px 14px;
+  border: 1px solid rgba(27, 194, 139, .23);
+  border-radius: 14px;
+  background: rgba(27, 194, 139, .08);
+}
+.siri-security-note strong { color: #118968; font-size: .8rem; }
+.siri-security-note span { color: var(--muted); font-size: .74rem; line-height: 1.4; }
+
+.siri-builder,
+.siri-values { display: grid; gap: 12px; padding: 17px; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,255,255,.38); }
+.siri-builder h3,
+.siri-values h3 { margin: 2px 0 0; color: var(--text); font-size: 1rem; }
+.siri-builder-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.siri-builder label,
+.siri-values > label { display: grid; gap: 6px; color: var(--muted); font-size: .72rem; font-weight: 700; }
+.siri-builder select,
+.siri-copy-row input,
+.siri-copy-row textarea {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.72);
+  color: var(--text);
+  padding: 0 11px;
+  font: inherit;
+}
+
+.siri-phrase-preview { display: grid; gap: 3px; padding: 12px 14px; border-radius: 12px; background: linear-gradient(135deg, rgba(112,61,222,.11), rgba(12,178,190,.09)); }
+.siri-phrase-preview span { color: #7250cc; font-size: .62rem; font-weight: 850; letter-spacing: .1em; }
+.siri-phrase-preview strong { color: var(--text); font-size: 1.05rem; }
+
+.siri-copy-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.siri-copy-row:has(#siriAccessKey) { grid-template-columns: minmax(0, 1fr) auto auto; }
+.siri-copy-row button {
+  min-width: 62px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.72);
+  color: var(--text);
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 800;
+}
+.siri-body-row textarea { min-height: 72px; padding: 9px 11px; resize: none; font-family: Consolas, monospace; font-size: .72rem; }
+
+.siri-steps { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.siri-steps li { display: flex; gap: 11px; align-items: flex-start; }
+.siri-steps li > span { display: grid; flex: 0 0 auto; width: 27px; height: 27px; place-items: center; border-radius: 50%; background: rgba(16,174,192,.11); color: #079db2; font-size: .72rem; font-weight: 850; }
+.siri-steps li > div { display: grid; gap: 2px; }
+.siri-steps strong { color: var(--text); font-size: .8rem; }
+.siri-steps small { color: var(--muted); font-size: .72rem; line-height: 1.42; }
+.siri-open-shortcuts { display: flex; align-items: center; justify-content: center; min-height: 49px; border-radius: 14px; text-decoration: none; }
+.siri-setup-message { min-height: 1em; margin: -5px 0 0; color: var(--muted); font-size: .72rem; text-align: center; }
+.siri-setup-message.is-error { color: #c35a45; }
+.siri-danger-actions { display: flex; justify-content: center; gap: 18px; }
+.siri-danger-actions .danger { color: #c45151; }
+
+:root[data-theme="dark"] .siri-setup-button,
+:root[data-theme="dark"] .siri-connection-card,
+:root[data-theme="dark"] .siri-builder,
+:root[data-theme="dark"] .siri-values,
+:root[data-theme="dark"] .siri-copy-row button,
+:root[data-theme="dark"] .siri-builder select,
+:root[data-theme="dark"] .siri-copy-row input,
+:root[data-theme="dark"] .siri-copy-row textarea {
+  border-color: var(--dark-border);
+  background: rgba(8, 26, 34, .75);
+  color: var(--dark-text);
+}
+
+@media (max-width: 760px) {
+  .siri-setup-button { min-height: 58px; }
+  .siri-setup-card {
+    width: 100%;
+    max-height: calc(100dvh - 12px);
+    margin: 12px 0 0;
+    padding: 22px 16px 34px;
+    border-radius: 24px 24px 0 0;
+  }
+  .siri-setup-hero { align-items: flex-start; gap: 12px; }
+  .siri-hero-orb { width: 45px; height: 45px; border-radius: 14px; }
+  .siri-setup-hero h2 { font-size: 1.55rem; }
+  .siri-setup-hero p { font-size: .8rem; }
+  .siri-connection-card { align-items: stretch; }
+  .siri-connection-card .primary-button { flex: 0 0 auto; }
+  .siri-builder-fields { grid-template-columns: 1fr; }
+  .siri-builder select { min-height: 48px; font-size: 16px; }
+  .siri-copy-row { grid-template-columns: minmax(0, 1fr) 68px; }
+  .siri-copy-row:has(#siriAccessKey) { grid-template-columns: minmax(0, 1fr) 58px 62px; }
+  .siri-copy-row input { font-size: 16px; }
+  .siri-open-shortcuts { min-height: 52px; }
+}

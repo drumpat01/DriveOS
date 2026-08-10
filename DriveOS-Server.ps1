@@ -22,6 +22,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Shortcuts.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 
 # ============================================================
@@ -53,9 +54,13 @@ $FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
 $FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
 $FoursquareUsageFile = Join-Path $DataDirectory "foursquare-usage.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
+$ShortcutConfigFile = Join-Path $DataDirectory "siri-shortcuts.json"
+$PhoneAccessFile = Join-Path $DataDirectory "phone-access.txt"
 $FoursquareDailyLimit = 10
 $FoursquareMonthlyLimit = 250
 $script:FoursquareApiKeyForRedaction = $null
+$script:ShortcutTokenForRedaction = $null
+$script:RecentShortcutCommands = @{}
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 
 if (-not (Test-Path $DataDirectory)) {
@@ -88,7 +93,8 @@ function Write-DriveOSServerLog {
             $env:TESSIE_TOKEN,
             $env:SPOTIFY_CLIENT_ID,
             $SessionToken,
-            $script:FoursquareApiKeyForRedaction
+            $script:FoursquareApiKeyForRedaction,
+            $script:ShortcutTokenForRedaction
         )) {
             if ($Secret) {
                 $SafeMessage = $SafeMessage.Replace($Secret, "[REDACTED]")
@@ -1956,6 +1962,115 @@ function Invoke-PrepareCommute {
 }
 
 # ------------------------------------------------------------
+# Siri Shortcuts: Tailscale-only command bridge
+# ------------------------------------------------------------
+
+function Get-DriveOSPhoneUrl {
+    if (-not (Test-Path $PhoneAccessFile -PathType Leaf)) { return $null }
+    $match = Select-String -Path $PhoneAccessFile -Pattern '^URL:\s+(https://[^\s]+\.ts\.net)$' | Select-Object -First 1
+    if (-not $match) { return $null }
+    return [string]$match.Matches[0].Groups[1].Value
+}
+
+function Get-SiriShortcutSetup {
+    $config = Get-DriveOSShortcutConfig -Path $ShortcutConfigFile
+    $phoneUrl = Get-DriveOSPhoneUrl
+    $script:ShortcutTokenForRedaction = if ($config.enabled) { $config.token } else { $null }
+    return [pscustomobject]@{
+        enabled = $config.enabled
+        token = $config.token
+        endpointPath = '/api/shortcuts/prepare'
+        endpointUrl = if ($phoneUrl) { "$phoneUrl/api/shortcuts/prepare" } else { $null }
+        headerName = 'X-DriveOS-Shortcut'
+        savedPlaces = @((Get-CommutePlaces).places)
+        moods = @('focused', 'upbeat', 'comfort', 'surprise')
+        requiresTailscale = $true
+        rotatedAt = $config.rotatedAt
+    }
+}
+
+function Set-SiriShortcutSetup {
+    param([ValidateSet('enable','rotate','disable')][string]$Action)
+
+    switch ($Action) {
+        'enable' { $null = Enable-DriveOSShortcuts -Path $ShortcutConfigFile }
+        'rotate' { $null = Enable-DriveOSShortcuts -Path $ShortcutConfigFile -Rotate }
+        'disable' { $null = Disable-DriveOSShortcuts -Path $ShortcutConfigFile }
+    }
+    return Get-SiriShortcutSetup
+}
+
+function Get-SiriCommuteSummary {
+    param($Result)
+
+    if ($Result.success) {
+        return "Eloise is warming up. $($Result.destination) was sent to the car, and your commute playlist is ready."
+    }
+
+    $ready = New-Object System.Collections.ArrayList
+    $missing = New-Object System.Collections.ArrayList
+    if ($Result.climateStarted) { [void]$ready.Add('climate') } else { [void]$missing.Add('climate') }
+    if ($Result.destinationSent) { [void]$ready.Add('navigation') } else { [void]$missing.Add('navigation') }
+    if ($Result.playlist) { [void]$ready.Add('playlist') } else { [void]$missing.Add('playlist') }
+    $readyText = if ($ready.Count) { "Ready: $($ready -join ', ')." } else { 'No commute actions were confirmed.' }
+    return "$readyText Check DriveOS for $($missing -join ', ')."
+}
+
+function Invoke-SiriPrepareCommute {
+    param(
+        [Parameter(Mandatory=$true)][string]$PlaceLabel,
+        [ValidateSet('focused','upbeat','comfort','surprise')][string]$Mood = 'focused'
+    )
+
+    $now = [DateTime]::UtcNow
+    $recent = @($script:RecentShortcutCommands.Values | Where-Object { $_.timestamp -gt $now.AddMinutes(-10) })
+    $duplicate = @($recent | Where-Object {
+        $_.timestamp -gt $now.AddSeconds(-90) -and
+        $_.placeLabel -ieq $PlaceLabel.Trim() -and
+        $_.mood -eq $Mood
+    } | Sort-Object timestamp -Descending | Select-Object -First 1)
+
+    if ($duplicate.Count) {
+        $previous = $duplicate[0]
+        return [pscustomobject]@{
+            success = [bool]$previous.success
+            duplicate = $true
+            destination = $previous.placeLabel
+            summary = if ($previous.summary) { $previous.summary } else { "DriveOS is already preparing $($previous.placeLabel)." }
+        }
+    }
+    if ($recent.Count -ge 5) { throw 'Siri has reached the DriveOS safety limit. Wait a few minutes before trying again.' }
+
+    $commandId = [Guid]::NewGuid().ToString('n')
+    $script:RecentShortcutCommands = @{}
+    foreach ($command in $recent) { $script:RecentShortcutCommands[$command.id] = $command }
+    $script:RecentShortcutCommands[$commandId] = [pscustomobject]@{
+        id = $commandId
+        timestamp = $now
+        placeLabel = $PlaceLabel.Trim()
+        mood = $Mood
+        success = $false
+        summary = $null
+    }
+
+    $result = Invoke-PrepareCommute -PlaceLabel $PlaceLabel -Mood $Mood
+    $summary = Get-SiriCommuteSummary -Result $result
+    $script:RecentShortcutCommands[$commandId].success = [bool]$result.success
+    $script:RecentShortcutCommands[$commandId].summary = $summary
+    return [pscustomobject]@{
+        success = $result.success
+        duplicate = $false
+        destination = $result.destination
+        expectedMinutes = $result.expectedMinutes
+        climateStarted = $result.climateStarted
+        destinationSent = $result.destinationSent
+        playlist = $result.playlist
+        warnings = @($result.warnings)
+        summary = $summary
+    }
+}
+
+# ------------------------------------------------------------
 # Status
 # ------------------------------------------------------------
 
@@ -2142,6 +2257,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/shortcuts/setup" {
+                    Send-Json -Stream $Stream -Object (Get-SiriShortcutSetup)
+                    return
+                }
+
                 default {
                     if ($Path -match "^/api/spotify/artwork/([A-Za-z0-9]{10,64})$") {
                         Send-SpotifyArtwork `
@@ -2217,6 +2337,18 @@ function Handle-Request {
                 "/api/commute/prepare" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields placeLabel,mood
                     Send-Json -Stream $Stream -Object (Invoke-PrepareCommute -PlaceLabel ([string]$Body.placeLabel) -Mood ([string]$Body.mood))
+                    return
+                }
+
+                "/api/shortcuts/setup" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields action
+                    Send-Json -Stream $Stream -Object (Set-SiriShortcutSetup -Action ([string]$Body.action))
+                    return
+                }
+
+                "/api/shortcuts/prepare" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields placeLabel,mood
+                    Send-Json -Stream $Stream -Object (Invoke-SiriPrepareCommute -PlaceLabel ([string]$Body.placeLabel) -Mood ([string]$Body.mood))
                     return
                 }
 
@@ -2380,6 +2512,7 @@ try {
                         "content-length",
                         "transfer-encoding",
                         "x-driveos-session",
+                        "x-driveos-shortcut",
                         "tailscale-user-login",
                         "tailscale-user-name",
                         "tailscale-user-profile-pic",
@@ -2498,7 +2631,28 @@ try {
                 continue
             }
 
-            if ($IsRemoteTailscaleRequest -and $Method -eq "POST") {
+            $Path = ($Target -split "\?", 2)[0]
+            $IsShortcutCommand = $Method -eq "POST" -and $Path -eq "/api/shortcuts/prepare"
+
+            if ($IsShortcutCommand) {
+                $shortcutConfig = Get-DriveOSShortcutConfig -Path $ShortcutConfigFile
+                $script:ShortcutTokenForRedaction = if ($shortcutConfig.enabled) { $shortcutConfig.token } else { $null }
+                $ShortcutTokenOk =
+                    $IsRemoteTailscaleRequest -and
+                    $Headers.ContainsKey("x-driveos-shortcut") -and
+                    (Test-DriveOSShortcutToken -Path $ShortcutConfigFile -Token $Headers["x-driveos-shortcut"])
+
+                if (-not $ShortcutTokenOk) {
+                    Send-RequestRejected `
+                        -Stream $Stream `
+                        -Code 403 `
+                        -Text "Forbidden" `
+                        -Message "DriveOS Siri Shortcut authentication failed."
+
+                    continue
+                }
+            }
+            elseif ($IsRemoteTailscaleRequest -and $Method -eq "POST") {
                 $RemoteOriginOk = $false
 
                 if ($Headers.ContainsKey("origin")) {
@@ -2535,7 +2689,6 @@ try {
                 }
             }
 
-            $Path = ($Target -split "\?", 2)[0]
             $BodyText = ""
 
             $ContentLength = 0

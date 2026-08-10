@@ -16,6 +16,13 @@ Assert-True ($Policy -match 'AreDevToolsEnabled = false') 'Embedded browser deve
 Assert-True ($Policy -match 'CoreWebView2PermissionState.Deny' -or
     (Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw) -match 'CoreWebView2PermissionState.Deny') 'Browser permissions must remain denied.'
 
+$ShortcutModule = Get-Content (Join-Path $Root 'src\Application\DriveOS.Shortcuts.psm1') -Raw
+$Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
+Assert-True ($ShortcutModule -match 'RandomNumberGenerator') 'Siri shortcut keys must use a cryptographic RNG.'
+Assert-True ($Server -match '\$IsShortcutCommand\s*=\s*\$Method\s+-eq\s+"POST"\s+-and\s+\$Path\s+-eq\s+"/api/shortcuts/prepare"') 'The non-browser exception must be limited to the Siri prepare endpoint.'
+Assert-True ($Server -match '\$IsRemoteTailscaleRequest\s+-and[\s\S]*Test-DriveOSShortcutToken') 'Siri commands must require both Tailscale identity and the shortcut key.'
+Assert-True ($Server -match 'AddSeconds\(-90\)') 'Siri duplicate-command protection is missing.'
+
 $Installer = Get-Content (Join-Path $Root 'tools\Install-DriveOS-App.ps1') -Raw
 Assert-True ($Installer -match 'Sort-Object Name') 'Desktop source compilation order must be deterministic.'
 Assert-True ($Installer -match 'SkipShortcut') 'Staged installs must be able to avoid desktop mutation.'
