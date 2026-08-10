@@ -2137,11 +2137,18 @@ function Handle-Request {
 
     try {
         if ($Method -eq "GET") {
-            switch ($Path) {
-                "/api/status" {
-                    Send-Json -Stream $Stream -Object (Get-OverallStatus)
-                    return
-                }
+    switch ($Path) {
+        "/healthz" {
+            Send-Json -Stream $Stream -Object @{
+                status = "ok"
+            }
+            return
+        }
+
+        "/api/status" {
+            Send-Json -Stream $Stream -Object (Get-OverallStatus)
+            return
+        }
 
                 "/api/vehicle" {
                     Send-Json -Stream $Stream -Object (Get-VehicleSummary)
