@@ -7,6 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot "src\Configuration\DriveOS.Configuration.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Sqlite.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
@@ -34,18 +35,20 @@ Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 # Secrets are never exposed to the browser.
 # ============================================================
 
-$HostAddress = "127.0.0.1"
-$Port = 8787
+$RuntimeConfig = Get-DriveOSRuntimeConfiguration -AppRoot $PSScriptRoot
+
+$HostAddress = $RuntimeConfig.ListenAddress
+$Port = $RuntimeConfig.Port
 $ExpectedHostHeader = "${HostAddress}:$Port"
 $TailscaleHostPattern = "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9-]+)+\.ts\.net(?::443)?$"
 $MaxRequestLineBytes = 8192
 $MaxHeaderBytes = 32768
 $MaxBodyBytes = 65536
 $SessionToken = $env:DRIVEOS_SESSION_TOKEN
-$ServerLogFile = Join-Path $PSScriptRoot "data\driveos-server.log"
+$DataDirectory = $RuntimeConfig.DataDirectory
+$ServerLogFile = Join-Path $DataDirectory "driveos-server.log"
 
 $WebRoot = Join-Path $PSScriptRoot "web"
-$DataDirectory = Join-Path $PSScriptRoot "data"
 $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
