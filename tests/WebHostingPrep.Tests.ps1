@@ -195,9 +195,9 @@ try {
         $InvalidSessionRejected = $true
     }
 
-        Assert-True `
-            $InvalidSessionRejected `
-            "Invalid session duration values must be rejected."
+    Assert-True `
+        $InvalidSessionRejected `
+        "Invalid session duration values must be rejected."
 
     # --------------------------------------------------------
     # Hosted health endpoint contract.
@@ -215,20 +215,20 @@ try {
         "DriveOS /healthz must return a minimal ok status."
 
     $HealthStart = $ServerSource.IndexOf('"/healthz"')
-$NextRoute = $ServerSource.IndexOf('"/api/status"', $HealthStart)
+    $NextRoute = $ServerSource.IndexOf('"/api/status"', $HealthStart)
 
-Assert-True `
-    ($HealthStart -ge 0 -and $NextRoute -gt $HealthStart) `
-    "DriveOS health route boundaries could not be identified."
+    Assert-True `
+        ($HealthStart -ge 0 -and $NextRoute -gt $HealthStart) `
+        "DriveOS health route boundaries could not be identified."
 
-$HealthRouteSource = $ServerSource.Substring(
-    $HealthStart,
-    $NextRoute - $HealthStart
-)
+    $HealthRouteSource = $ServerSource.Substring(
+        $HealthStart,
+        $NextRoute - $HealthStart
+    )
 
-Assert-True `
-    (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
-    "/healthz must not call provider status checks."
+    Assert-True `
+        (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
+        "/healthz must not call provider status checks."
 
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
