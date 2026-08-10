@@ -6,6 +6,10 @@ const { isTailnetRemote } = window.DriveOSPlatform;
 const { initializeMobileNavigationPortal, showView } = window.DriveOSNavigation;
 const purgeOldDriveOSCaches = window.DriveOSPwa.purgeOldCaches;
 const initializePwa = window.DriveOSPwa.initialize;
+let dashboardWidgetsFeature = null;
+let vehicleLocationMap = null;
+let vehicleLocationMarker = null;
+let vehicleLocationResizeObserver = null;
 
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
@@ -99,6 +103,72 @@ async function loadStatus() {
   }
 }
 
+function vehicleHeadingLabel(value) {
+  const heading = Number(value);
+  if (!Number.isFinite(heading)) return "--";
+  const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+  return `${directions[Math.round(heading / 45) % 8]} ${Math.round(heading)}\u00B0`;
+}
+
+function vehicleMotionLabel(vehicle) {
+  const speed = Number(vehicle.speedMph);
+  if (Number.isFinite(speed) && speed > 0) return `${Math.round(speed)} mph`;
+  if (String(vehicle.shiftState || "").toUpperCase() === "P") return "Parked";
+  return "Stationary";
+}
+
+function renderVehicleLocation(vehicle) {
+  const container = $("vehicleLocationMap");
+  if (!container) return;
+  const latitude = Number(vehicle.latitude);
+  const longitude = Number(vehicle.longitude);
+  const hasLocation = Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
+  setText("vehicleOdometer", Number.isFinite(Number(vehicle.odometerMiles)) ? Math.round(Number(vehicle.odometerMiles)).toLocaleString() : "--");
+  setText("vehicleMotion", vehicleMotionLabel(vehicle));
+  setText("vehicleHeading", vehicleHeadingLabel(vehicle.heading));
+  setText("vehicleLocationState", hasLocation ? vehicleMotionLabel(vehicle) : "Location unavailable");
+  const gpsValue = Number(vehicle.gpsAsOf);
+  const gpsDate = Number.isFinite(gpsValue) ? new Date(gpsValue > 1e12 ? gpsValue : gpsValue * 1000) : null;
+  setText("vehicleLocationUpdated", gpsDate && !Number.isNaN(gpsDate.getTime())
+    ? `GPS ${gpsDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : "Latest Tessie position");
+
+  if (!hasLocation || !window.maplibregl) {
+    container.classList.add("vehicle-location-unavailable");
+    if (!container.querySelector(".vehicle-location-message")) container.innerHTML = `<div class="vehicle-location-message">${window.maplibregl ? "No current GPS position" : "Map unavailable"}</div>`;
+    return;
+  }
+
+  container.classList.remove("vehicle-location-unavailable");
+  container.querySelector(".vehicle-location-message")?.remove();
+  const coordinates = [longitude, latitude];
+  if (!vehicleLocationMap) {
+    vehicleLocationMap = new maplibregl.Map({
+      container,
+      style: "https://tiles.openfreemap.org/styles/liberty",
+      center: coordinates,
+      zoom: 13.5,
+      attributionControl: false,
+      scrollZoom: false,
+      pitchWithRotate: false
+    });
+    const marker = document.createElement("div");
+    marker.className = "vehicle-location-marker";
+    marker.innerHTML = '<span class="vehicle-location-arrow">&#x25B2;</span>';
+    vehicleLocationMarker = new maplibregl.Marker({ element: marker, anchor: "center" }).setLngLat(coordinates).addTo(vehicleLocationMap);
+    vehicleLocationResizeObserver = new ResizeObserver(() => {
+      if (container.offsetWidth && container.offsetHeight) vehicleLocationMap?.resize();
+    });
+    vehicleLocationResizeObserver.observe(container);
+  } else {
+    vehicleLocationMarker?.setLngLat(coordinates);
+    vehicleLocationMap.jumpTo({ center: coordinates });
+  }
+  const arrow = vehicleLocationMarker?.getElement()?.querySelector(".vehicle-location-arrow");
+  if (arrow) arrow.style.transform = `rotate(${Number(vehicle.heading) || 0}deg)`;
+  setTimeout(() => vehicleLocationMap?.resize(), 80);
+}
+
 async function loadVehicle() {
   try {
     const v = await getJson("/api/vehicle");
@@ -111,6 +181,7 @@ async function loadVehicle() {
     setText("chargingState", v.charging);
     setText("insideTemp", v.insideTempF);
     setText("outsideTemp", v.outsideTempF);
+    renderVehicleLocation(v);
 
     const battery = Number(v.battery);
     $("batteryFill").style.width =
@@ -132,7 +203,10 @@ async function loadSpotify() {
 
     if (tracks.length) {
       const featured = tracks[0];
-      const recent = tracks.slice(1, 5);
+      // Wide cards show three four-track columns; smaller cards retain the
+      // first column only.
+      const recent = tracks.slice(1, 13);
+      const recentColumns = [recent.slice(0, 4), recent.slice(4, 8), recent.slice(8, 12)];
 
       list.innerHTML = `
         <div class="v3-now-playing">
@@ -156,16 +230,22 @@ async function loadSpotify() {
 
           <div class="v3-recent-list">
             <div class="v3-recent-heading">Recently played</div>
-            ${recent.map(track => `
-              <div class="v3-recent-track">
-                ${songArtworkMarkup(track, "track-artwork v3-recent-artwork")}
-                <div class="v3-recent-copy">
-                  <strong>${escapeHtml(track.track)}</strong>
-                  <span>${escapeHtml(track.artist)}</span>
+            <div class="v3-recent-columns">
+              ${recentColumns.map(column => `
+                <div class="v3-recent-column">
+                  ${column.map(track => `
+                    <div class="v3-recent-track">
+                      ${songArtworkMarkup(track, "track-artwork v3-recent-artwork")}
+                      <div class="v3-recent-copy">
+                        <strong>${escapeHtml(track.track)}</strong>
+                        <span>${escapeHtml(track.artist)}</span>
+                      </div>
+                      <span class="v3-recent-time">${escapeHtml(track.time)}</span>
+                    </div>
+                  `).join("")}
                 </div>
-                <span class="v3-recent-time">${escapeHtml(track.time)}</span>
-              </div>
-            `).join("")}
+              `).join("")}
+            </div>
           </div>
         </div>`;
     } else {
@@ -1011,6 +1091,7 @@ async function loadDrives() {
       all.innerHTML = empty;
       setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
       renderFavoriteRoutes();
+      dashboardWidgetsFeature?.render();
       return;
     }
 
@@ -1019,10 +1100,12 @@ async function loadDrives() {
     bindDriveButtons(dashboard);
     renderFavoriteRoutes();
     renderDriveLibrary();
+    dashboardWidgetsFeature?.render();
   } catch (error) {
     const html = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
     $("dashboardDrives").innerHTML = html;
     $("allDrives").innerHTML = html;
+    dashboardWidgetsFeature?.render();
   }
 }
 
@@ -2466,6 +2549,22 @@ commandPaletteFeature.bind();
 
 const dashboardCustomizationFeature = window.DriveOSFeatures.dashboardCustomization.create();
 dashboardCustomizationFeature.bind();
+
+dashboardWidgetsFeature = window.DriveOSFeatures.dashboardWidgets.create({
+  state,
+  artworkMarkup: songArtworkMarkup,
+  actions: {
+    refresh: () => refreshAll(),
+    openShareCard: drive => shareCardsFeature.open(drive),
+    openSearch: () => $("commandPaletteButton")?.click(),
+    openDrive: openDriveModal,
+    openRecap: () => {
+      showView("statistics");
+      setTimeout(() => document.querySelector(".monthly-recap-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 180);
+    }
+  }
+});
+dashboardWidgetsFeature.bind();
 
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {

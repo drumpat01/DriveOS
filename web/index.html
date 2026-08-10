@@ -104,7 +104,7 @@
 
     <div class="ignition-data ignition-data-right">
       <span>DRIVEOS</span>
-      <strong id="ignitionVersion">4.3</strong>
+      <strong id="ignitionVersion">5.0</strong>
     </div>
   </div>
   <div class="app-shell">
@@ -130,7 +130,7 @@
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed DriveOS web build">4.3.1</div>
+        <div class="app-version" title="Installed DriveOS web build">5.0.0</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -211,6 +211,14 @@
                 <img class="vehicle-car-art vehicle-car-model3 vehicle-car-photo vehicle-car-light" src="assets/dashboard-model3-rear-hd.png" alt="White Tesla Model 3 rear three-quarter view" loading="eager" decoding="async"/>
                 <img class="vehicle-car-art vehicle-car-model3 vehicle-car-photo vehicle-car-dark" src="assets/dashboard-model3-rear-dark-hd.jpg" alt="White Tesla Model 3 on a dark roadway" loading="eager" decoding="async"/>
               </div>
+
+              <div class="vehicle-location-panel">
+                <div class="vehicle-location-heading">
+                  <div><span>LIVE LOCATION</span><strong id="vehicleLocationState">Waiting for GPS</strong></div>
+                  <small id="vehicleLocationUpdated">Tessie</small>
+                </div>
+                <div id="vehicleLocationMap" class="vehicle-location-map" aria-label="Map of the vehicle's current location"></div>
+              </div>
             </div>
 
             <div class="metric-grid">
@@ -229,6 +237,18 @@
               <div class="metric">
                 <span class="metric-label">Cabin</span>
                 <strong><span id="insideTemp">--</span><small>&#xB0;F</small></strong>
+              </div>
+              <div class="metric vehicle-wide-metric">
+                <span class="metric-label">Odometer</span>
+                <strong><span id="vehicleOdometer">--</span> <small>mi</small></strong>
+              </div>
+              <div class="metric vehicle-wide-metric">
+                <span class="metric-label">Motion</span>
+                <strong id="vehicleMotion">--</strong>
+              </div>
+              <div class="metric vehicle-wide-metric">
+                <span class="metric-label">Heading</span>
+                <strong id="vehicleHeading">--</strong>
               </div>
             </div>
 
@@ -262,6 +282,47 @@
                 <button id="spotifyConnectButton" class="primary-button spotify-connect-button" type="button" hidden>Connect Spotify</button>
                 <button class="secondary-button lastfm-connect-button" type="button" data-lastfm-configure hidden>Add Last.fm</button>
               </div>
+            </div>
+          </article>
+
+          <article class="panel dashboard-widget today-driving-widget" data-dashboard-widget="today" data-dashboard-title="Today&#x2019;s driving" data-dashboard-default-size="compact">
+            <div class="panel-heading">
+              <div><div class="section-label">TODAY</div><h2>Today&#x2019;s driving</h2></div>
+              <div class="dashboard-widget-symbol" aria-hidden="true">&#x2197;</div>
+            </div>
+            <div class="today-driving-primary">
+              <strong><span id="todayDrivingMiles">0</span><small> mi</small></strong>
+              <span id="todayDrivingStatus">No trips recorded yet today</span>
+            </div>
+            <div class="today-driving-grid">
+              <div><span>Drive time</span><strong id="todayDrivingTime">0 min</strong></div>
+              <div><span>Efficiency</span><strong id="todayDrivingEfficiency">--</strong></div>
+              <div><span>Trips</span><strong id="todayDrivingTrips">0</strong></div>
+              <div><span>Songs</span><strong id="todayDrivingSongs">0</strong></div>
+            </div>
+          </article>
+
+          <article class="panel dashboard-widget drive-soundtrack-widget" data-dashboard-widget="soundtrack" data-dashboard-title="Drive soundtrack" data-dashboard-default-size="compact">
+            <div class="panel-heading">
+              <div><div class="section-label spotify-label">RECENT DRIVES</div><h2>Drive soundtrack</h2></div>
+              <div class="dashboard-widget-symbol soundtrack-symbol" aria-hidden="true">&#x266B;</div>
+            </div>
+            <div id="dashboardSoundtrack" class="dashboard-soundtrack-content">
+              <div class="skeleton-row"></div><div class="skeleton-row"></div>
+            </div>
+          </article>
+
+          <article class="panel dashboard-widget quick-actions-widget" data-dashboard-widget="actions" data-dashboard-title="Quick actions" data-dashboard-default-size="compact">
+            <div class="panel-heading">
+              <div><div class="section-label">SHORTCUTS</div><h2>Quick actions</h2></div>
+              <div class="dashboard-widget-symbol" aria-hidden="true">&#x2726;</div>
+            </div>
+            <div class="dashboard-quick-actions">
+              <button type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong>Refresh data</strong><small>Sync everything</small></button>
+              <button type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong>Create share card</strong><small>Latest drive</small></button>
+              <button type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong>Open search</strong><small>Find anything</small></button>
+              <button type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x2192;</span><strong>Latest drive</strong><small>Open details</small></button>
+              <button type="button" data-dashboard-action="recap"><span aria-hidden="true">&#x2606;</span><strong>Start a recap</strong><small>Review your month</small></button>
             </div>
           </article>
 
@@ -544,7 +605,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">DriveOS Web 4.3.1</span>
+      <span id="webBuildFooter">DriveOS Web 5.0.0</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -782,26 +843,27 @@
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
   <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
-  <script src="/core/build.js?v=4.3.1"></script>
-  <script src="/core/dom.js?v=4.3.1"></script>
-  <script src="/core/state.js?v=4.3.1"></script>
-  <script src="/core/platform.js?v=4.3.1"></script>
-  <script src="/core/api.js?v=4.3.1"></script>
-  <script src="/components/song-artwork.js?v=4.3.1"></script>
-  <script src="/features/navigation.js?v=4.3.1"></script>
-  <script src="/features/pwa.js?v=4.3.1"></script>
-  <script src="/features/theme.js?v=4.3.1"></script>
-  <script src="/features/ignition.js?v=4.3.1"></script>
-  <script src="/features/places.js?v=4.3.1"></script>
-  <script src="/features/charging.js?v=4.3.1"></script>
-  <script src="/features/recaps.js?v=4.3.1"></script>
-  <script src="/features/refresh.js?v=4.3.1"></script>
-  <script src="/features/drives.js?v=4.3.1"></script>
-  <script src="/features/replay.js?v=4.3.1"></script>
-  <script src="/features/music.js?v=4.3.1"></script>
-  <script src="/features/share-cards.js?v=4.3.1"></script>
-  <script src="/features/command-palette.js?v=4.3.1"></script>
-  <script src="/features/dashboard-customization.js?v=4.3.1"></script>
-  <script src="/app.js?v=4.3.1"></script>
+  <script src="/core/build.js?v=5.0.0"></script>
+  <script src="/core/dom.js?v=5.0.0"></script>
+  <script src="/core/state.js?v=5.0.0"></script>
+  <script src="/core/platform.js?v=5.0.0"></script>
+  <script src="/core/api.js?v=5.0.0"></script>
+  <script src="/components/song-artwork.js?v=5.0.0"></script>
+  <script src="/features/navigation.js?v=5.0.0"></script>
+  <script src="/features/pwa.js?v=5.0.0"></script>
+  <script src="/features/theme.js?v=5.0.0"></script>
+  <script src="/features/ignition.js?v=5.0.0"></script>
+  <script src="/features/places.js?v=5.0.0"></script>
+  <script src="/features/charging.js?v=5.0.0"></script>
+  <script src="/features/recaps.js?v=5.0.0"></script>
+  <script src="/features/refresh.js?v=5.0.0"></script>
+  <script src="/features/drives.js?v=5.0.0"></script>
+  <script src="/features/replay.js?v=5.0.0"></script>
+  <script src="/features/music.js?v=5.0.0"></script>
+  <script src="/features/share-cards.js?v=5.0.0"></script>
+  <script src="/features/command-palette.js?v=5.0.0"></script>
+  <script src="/features/dashboard-customization.js?v=5.0.0"></script>
+  <script src="/features/dashboard-widgets.js?v=5.0.0"></script>
+  <script src="/app.js?v=5.0.0"></script>
 </body>
 </html>

@@ -1109,7 +1109,9 @@ function Get-SpotifySummary {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
         catch { 0 }
     } -Descending)
-    $Recent = @($History | Select-Object -First 10 | ForEach-Object {
+    # The Wide dashboard uses one featured play plus three columns of four
+    # recent plays, while smaller dashboard cards display only the first column.
+    $Recent = @($History | Select-Object -First 13 | ForEach-Object {
         ConvertTo-PublicListeningPlay -Record $_
     })
     $LastFmAdded = [int]$LastFm.added

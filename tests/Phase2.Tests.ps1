@@ -64,6 +64,9 @@ try {
     Assert-Equal $summary.name 'Test Vehicle' 'Vehicle name changed.'
     Assert-Equal $summary.rangeMiles 185 'Vehicle range rounding changed.'
     Assert-Equal $summary.insideTempF 68 'Vehicle temperature conversion changed.'
+    Assert-Equal $summary.latitude 32.75 'Vehicle current latitude mapping changed.'
+    Assert-Equal $summary.heading 194 'Vehicle heading mapping changed.'
+    Assert-Equal $summary.odometerMiles 14096.49 'Vehicle odometer mapping changed.'
 
     $states = @(
         [pscustomobject]@{timestamp=100;latitude=32.1;longitude=-97.1;speed=10;heading=90;battery_level=70},
