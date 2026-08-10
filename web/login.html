@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DriveOS Sign In</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(42, 85, 120, .35), transparent 38rem),
+        #0b0f14;
+      color: #f4f7fb;
+      padding: 24px;
+    }
+    main {
+      width: min(100%, 420px);
+      background: rgba(19, 25, 33, .94);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 22px;
+      padding: 30px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 1.9rem; }
+    p { color: #aeb8c5; margin: 0 0 24px; }
+    label { display: block; margin: 16px 0 7px; font-weight: 600; }
+    input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 12px;
+      background: #0e141b;
+      color: #fff;
+      padding: 13px 14px;
+      font: inherit;
+    }
+    input:focus { outline: 2px solid rgba(130,190,255,.65); outline-offset: 1px; }
+    button {
+      width: 100%;
+      margin-top: 22px;
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: wait; }
+    #message { min-height: 1.4em; margin: 14px 0 0; color: #ffb5b5; }
+  </style>
+  <script src="/login.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>DriveOS</h1>
+    <p>Sign in to your private dashboard.</p>
+
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input
+        id="email"
+        name="email"
+        type="email"
+        autocomplete="username"
+        required>
+
+      <label for="password">Password</label>
+      <input
+        id="password"
+        name="password"
+        type="password"
+        autocomplete="current-password"
+        required>
+
+      <button id="submitButton" type="submit">Sign in</button>
+      <div id="message" role="alert" aria-live="polite"></div>
+    </form>
+  </main>
+</body>
+</html>

@@ -243,8 +243,16 @@ try {
         "DriveOS server must explicitly recognize web startup mode."
 
     Assert-True `
-        ($ServerSource -match 'web runtime is not enabled until web authentication is configured') `
-        "Web mode must remain disabled until web authentication exists."
+        ($ServerSource -match 'Get-DriveOSWebAuthConfiguration') `
+        "Web mode must load validated authentication configuration before serving requests."
+
+    Assert-True `
+        ($ServerSource -match 'DriveOS\.WebSession\.psm1') `
+        "Web mode must load the signed-session module."
+
+    Assert-True `
+        ($ServerSource -match 'DriveOS\.WebRequest\.psm1') `
+        "Web mode must load web request security helpers."
 
     Assert-True `
         ($ServerSource -match 'validated desktop parent process') `
@@ -275,6 +283,38 @@ try {
         ($ServerSource -match '\$ExtraHeaderText') `
         "Additional response headers must be emitted by Send-HttpResponse."
 
+
+    # --------------------------------------------------------
+    # Hosted login/session routing contract.
+    # --------------------------------------------------------
+
+    Assert-True `
+        ($ServerSource -match '"/api/auth/login"') `
+        "DriveOS must expose the hosted login endpoint."
+
+    Assert-True `
+        ($ServerSource -match '"/api/auth/logout"') `
+        "DriveOS must expose the hosted logout endpoint."
+
+    Assert-True `
+        ($ServerSource -match 'Test-DriveOSWebOrigin') `
+        "Hosted POST requests must use origin validation."
+
+    Assert-True `
+        ($ServerSource -match 'Test-DriveOSWebSessionToken') `
+        "Protected hosted requests must validate signed sessions."
+
+    Assert-True `
+        ($ServerSource -match '"Set-Cookie"') `
+        "Hosted login/logout responses must emit a session cookie."
+
+    Assert-True `
+        (Test-Path (Join-Path $Root "web\login.html")) `
+        "Hosted login page is missing."
+
+    Assert-True `
+        (Test-Path (Join-Path $Root "web\login.js")) `
+        "Hosted login script is missing."
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
         -ForegroundColor Green

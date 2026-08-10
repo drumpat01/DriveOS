@@ -26,6 +26,9 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1")
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebRequest.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -36,6 +39,12 @@ Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 # ============================================================
 
 $RuntimeConfig = Get-DriveOSRuntimeConfiguration -AppRoot $PSScriptRoot
+$WebAuthConfig = $null
+
+if ($RuntimeConfig.IsWeb) {
+    $WebAuthConfig = Get-DriveOSWebAuthConfiguration `
+        -PublicUrl $RuntimeConfig.PublicUrl
+}
 
 $HostAddress = $RuntimeConfig.ListenAddress
 $Port = $RuntimeConfig.Port
@@ -77,9 +86,6 @@ if (-not $MaintenanceMode -and -not $env:SPOTIFY_CLIENT_ID) {
     throw "SPOTIFY_CLIENT_ID is not available to DriveOS."
 }
 
-if (-not $MaintenanceMode -and $RuntimeConfig.IsWeb) {
-    throw "DriveOS web runtime is not enabled until web authentication is configured."
-}
 
 if (
     -not $MaintenanceMode -and
@@ -218,11 +224,19 @@ function Send-Json {
         [System.Net.Sockets.NetworkStream]$Stream,
         $Object,
         [int]$StatusCode = 200,
-        [string]$StatusText = "OK"
+        [string]$StatusText = "OK",
+        [hashtable]$AdditionalHeaders = @{}
     )
 
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-JsonSafe $Object))
-    Send-HttpResponse -Stream $Stream -StatusCode $StatusCode -StatusText $StatusText -ContentType "application/json; charset=utf-8" -Body $Bytes
+
+    Send-HttpResponse `
+        -Stream $Stream `
+        -StatusCode $StatusCode `
+        -StatusText $StatusText `
+        -ContentType "application/json; charset=utf-8" `
+        -Body $Bytes `
+        -AdditionalHeaders $AdditionalHeaders
 }
 
 function Send-Text {
@@ -2158,6 +2172,51 @@ function Send-StaticFile {
 }
 
 # ------------------------------------------------------------
+# Hosted web authentication helpers
+# ------------------------------------------------------------
+
+function Send-Redirect {
+    param(
+        [System.Net.Sockets.NetworkStream]$Stream,
+        [Parameter(Mandatory = $true)]
+        [string]$Location
+    )
+
+    Send-HttpResponse `
+        -Stream $Stream `
+        -StatusCode 302 `
+        -StatusText "Found" `
+        -ContentType "text/plain; charset=utf-8" `
+        -Body @() `
+        -AdditionalHeaders @{
+            Location = $Location
+        }
+}
+
+function Test-DriveOSAuthenticatedWebRequest {
+    param(
+        [hashtable]$Headers
+    )
+
+    if (-not $RuntimeConfig.IsWeb -or -not $WebAuthConfig) {
+        return $false
+    }
+
+    $Token = Get-DriveOSCookieValue `
+        -Headers $Headers `
+        -CookieName "DriveOSSession"
+
+    if (-not $Token) {
+        return $false
+    }
+
+    return Test-DriveOSWebSessionToken `
+        -Token $Token `
+        -OwnerEmail $WebAuthConfig.OwnerEmail `
+        -AuthSecret $WebAuthConfig.AuthSecret
+}
+
+# ------------------------------------------------------------
 # Router
 # ------------------------------------------------------------
 
@@ -2166,7 +2225,9 @@ function Handle-Request {
         [System.Net.Sockets.NetworkStream]$Stream,
         [string]$Method,
         [string]$Path,
-        [string]$BodyText
+        [string]$BodyText,
+        [hashtable]$Headers,
+        [string]$ClientKey
     )
 
     try {
@@ -2175,6 +2236,21 @@ function Handle-Request {
                 "/healthz" {
                     Send-Json -Stream $Stream -Object @{
                         status = "ok"
+                    }
+                    return
+                }
+
+                "/login" {
+                    Send-StaticFile `
+                        -Stream $Stream `
+                        -RequestPath "/login.html"
+                    return
+                }
+
+                "/api/auth/session" {
+                    Send-Json -Stream $Stream -Object @{
+                        authenticated = $true
+                        ownerEmail = $WebAuthConfig.OwnerEmail
                     }
                     return
                 }
@@ -2272,6 +2348,89 @@ function Handle-Request {
 
         if ($Method -eq "POST") {
             switch ($Path) {
+                "/api/auth/login" {
+                    if (-not (Test-DriveOSLoginAllowed -ClientKey $ClientKey)) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 429 `
+                            -StatusText "Too Many Requests" `
+                            -AdditionalHeaders @{
+                                "Retry-After" = "30"
+                            } `
+                            -Object @{
+                                error = "Too many login attempts. Please wait and try again."
+                            }
+                        return
+                    }
+
+                    $Body = ConvertFrom-DriveOSRequestBody `
+                        -BodyText $BodyText `
+                        -RequiredFields email,password
+
+                    $Email = "$($Body.email)".Trim().ToLowerInvariant()
+                    $PasswordText = "$($Body.password)"
+                    $SecurePassword = ConvertTo-SecureString `
+                        $PasswordText `
+                        -AsPlainText `
+                        -Force
+
+                    $Body.password = $null
+                    $PasswordText = $null
+
+                    $EmailOk = Test-FixedTimeStringEquals `
+                        $Email `
+                        $WebAuthConfig.OwnerEmail
+
+                    $PasswordOk = Test-DriveOSPassword `
+                        -Password $SecurePassword `
+                        -StoredHash $WebAuthConfig.PasswordHash
+
+                    if (-not $EmailOk -or -not $PasswordOk) {
+                        Register-DriveOSLoginFailure -ClientKey $ClientKey
+
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 401 `
+                            -StatusText "Unauthorized" `
+                            -Object @{
+                                error = "Invalid email or password."
+                            }
+                        return
+                    }
+
+                    Clear-DriveOSLoginFailures -ClientKey $ClientKey
+
+                    $Token = New-DriveOSWebSessionToken `
+                        -OwnerEmail $WebAuthConfig.OwnerEmail `
+                        -AuthSecret $WebAuthConfig.AuthSecret `
+                        -SessionHours $RuntimeConfig.SessionHours
+
+                    $Cookie = New-DriveOSWebSessionCookie `
+                        -Token $Token `
+                        -SessionHours $RuntimeConfig.SessionHours
+
+                    Send-Json `
+                        -Stream $Stream `
+                        -AdditionalHeaders @{
+                            "Set-Cookie" = $Cookie
+                        } `
+                        -Object @{
+                            authenticated = $true
+                        }
+                    return
+                }
+
+                "/api/auth/logout" {
+                    Send-Json `
+                        -Stream $Stream `
+                        -AdditionalHeaders @{
+                            "Set-Cookie" = (New-DriveOSWebSessionClearCookie)
+                        } `
+                        -Object @{
+                            authenticated = $false
+                        }
+                    return
+                }
 
                 "/api/spotify/connect" {
                     Send-Json -Stream $Stream -Object (Start-SpotifyAuthorization)
@@ -2549,40 +2708,60 @@ try {
             }
 
             $RequestHost = $Headers["host"].ToLowerInvariant()
-            $IsLocalDesktopRequest = $RequestHost -eq $ExpectedHostHeader
-            $IsTailscaleHost = $RequestHost -match $TailscaleHostPattern
+            $IsRemoteTailscaleRequest = $false
 
-            $LocalSessionOk =
-                $IsLocalDesktopRequest -and
-                $Headers.ContainsKey("x-driveos-session") -and
-                (Test-FixedTimeStringEquals `
-                    $Headers["x-driveos-session"] `
-                    $SessionToken)
+            if ($RuntimeConfig.IsDesktop) {
+                $IsLocalDesktopRequest = $RequestHost -eq $ExpectedHostHeader
+                $IsTailscaleHost = $RequestHost -match $TailscaleHostPattern
 
-            # Tailscale Serve strips user-supplied identity headers and injects
-            # authenticated identity headers on tailnet traffic. DriveOS still
-            # listens only on localhost, matching Tailscale's recommended setup.
-            $TailscaleIdentityOk =
-                $Headers.ContainsKey("tailscale-user-login") -and
-                -not [String]::IsNullOrWhiteSpace($Headers["tailscale-user-login"]) -and
-                $Headers["tailscale-user-login"].Length -le 512
+                $LocalSessionOk =
+                    $IsLocalDesktopRequest -and
+                    $Headers.ContainsKey("x-driveos-session") -and
+                    (Test-FixedTimeStringEquals `
+                        $Headers["x-driveos-session"] `
+                        $SessionToken)
 
-            # Reverse proxies may preserve the original ts.net Host or rewrite it
-            # to the localhost target. Both are acceptable only when a verified
-            # Tailscale identity header is present.
-            $RemoteHostOk = $IsLocalDesktopRequest -or $IsTailscaleHost
+                # Tailscale Serve strips user-supplied identity headers and injects
+                # authenticated identity headers on tailnet traffic. DriveOS still
+                # listens only on localhost, matching Tailscale's recommended setup.
+                $TailscaleIdentityOk =
+                    $Headers.ContainsKey("tailscale-user-login") -and
+                    -not [String]::IsNullOrWhiteSpace($Headers["tailscale-user-login"]) -and
+                    $Headers["tailscale-user-login"].Length -le 512
 
-            if (-not $LocalSessionOk -and (-not $TailscaleIdentityOk -or -not $RemoteHostOk)) {
+                # Reverse proxies may preserve the original ts.net Host or rewrite it
+                # to the localhost target. Both are acceptable only when a verified
+                # Tailscale identity header is present.
+                $RemoteHostOk = $IsLocalDesktopRequest -or $IsTailscaleHost
+
+                if (
+                    -not $LocalSessionOk -and
+                    (-not $TailscaleIdentityOk -or -not $RemoteHostOk)
+                ) {
+                    Send-RequestRejected `
+                        -Stream $Stream `
+                        -Code 403 `
+                        -Text "Forbidden" `
+                        -Message "DriveOS session authentication failed."
+
+                    continue
+                }
+
+                $IsRemoteTailscaleRequest = $TailscaleIdentityOk
+            }
+            elseif (-not (
+                Test-DriveOSWebHost `
+                    -HostHeader $RequestHost `
+                    -PublicUrl $RuntimeConfig.PublicUrl
+            )) {
                 Send-RequestRejected `
                     -Stream $Stream `
-                    -Code 403 `
-                    -Text "Forbidden" `
-                    -Message "DriveOS session authentication failed."
+                    -Code 400 `
+                    -Text "Bad Request" `
+                    -Message "Invalid host."
 
                 continue
             }
-
-            $IsRemoteTailscaleRequest = $TailscaleIdentityOk
 
             if ($Headers.ContainsKey("transfer-encoding")) {
                 Send-RequestRejected `
@@ -2670,6 +2849,64 @@ try {
             $Path = ($Target -split "\?", 2)[0]
             $BodyText = ""
 
+            if ($RuntimeConfig.IsWeb) {
+                if (
+                    $Method -eq "POST" -and
+                    -not (
+                        Test-DriveOSWebOrigin `
+                            -Headers $Headers `
+                            -PublicUrl $RuntimeConfig.PublicUrl
+                    )
+                ) {
+                    Send-RequestRejected `
+                        -Stream $Stream `
+                        -Code 403 `
+                        -Text "Forbidden" `
+                        -Message "Request origin validation failed."
+
+                    continue
+                }
+
+                $WebSessionOk = Test-DriveOSAuthenticatedWebRequest `
+                    -Headers $Headers
+
+                $IsPublicWebRequest = Test-DriveOSWebPublicRequest `
+                    -Method $Method `
+                    -Path $Path
+
+                if (
+                    -not $IsPublicWebRequest -and
+                    -not $WebSessionOk
+                ) {
+                    if ($Path.StartsWith("/api/")) {
+                        Send-RequestRejected `
+                            -Stream $Stream `
+                            -Code 401 `
+                            -Text "Unauthorized" `
+                            -Message "Authentication required."
+                    }
+                    else {
+                        Send-Redirect `
+                            -Stream $Stream `
+                            -Location "/login"
+                    }
+
+                    continue
+                }
+
+                if (
+                    $WebSessionOk -and
+                    $Method -eq "GET" -and
+                    $Path -in @("/login", "/login.html")
+                ) {
+                    Send-Redirect `
+                        -Stream $Stream `
+                        -Location "/"
+
+                    continue
+                }
+            }
+
             $ContentLength = 0
 
             if ($Headers.ContainsKey("content-length")) {
@@ -2740,7 +2977,9 @@ try {
                 -Stream $Stream `
                 -Method $Method `
                 -Path $Path `
-                -BodyText $BodyText
+                -BodyText $BodyText `
+                -Headers $Headers `
+                -ClientKey $Remote.Address.ToString()
         }
         catch {
             Write-DriveOSServerLog "HTTP request processing failed: $($_.Exception.Message)"
