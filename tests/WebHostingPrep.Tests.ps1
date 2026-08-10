@@ -196,8 +196,8 @@ try {
     }
 
         Assert-True `
-        $InvalidSessionRejected `
-        "Invalid session duration values must be rejected."
+            $InvalidSessionRejected `
+            "Invalid session duration values must be rejected."
 
     # --------------------------------------------------------
     # Hosted health endpoint contract.
