@@ -3,6 +3,8 @@
   "last_state": {
     "display_name": "Test Vehicle",
     "state": "online",
+    "drive_state": { "latitude": 32.75, "longitude": -97.33, "heading": 194, "speed": 0, "shift_state": "P", "gps_as_of": 1786377600 },
+    "vehicle_state": { "odometer": 14096.49 },
     "charge_state": { "battery_level": 72, "battery_range": 184.6, "charging_state": "Disconnected", "charge_limit_soc": 80 },
     "climate_state": { "inside_temp": 20, "outside_temp": 10 }
   }

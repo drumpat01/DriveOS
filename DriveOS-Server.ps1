@@ -1,6 +1,8 @@
 param(
     [int]$ParentPid = 0,
-    [Int64]$ParentStartTicks = 0
+    [Int64]$ParentStartTicks = 0,
+    [switch]$FullLastFmSync,
+    [switch]$RefreshMusicCatalog
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,6 +48,7 @@ $WebRoot = Join-Path $PSScriptRoot "web"
 $DataDirectory = Join-Path $PSScriptRoot "data"
 $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
+$SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
 $LastFmConfigFile = Join-Path $DataDirectory "lastfm-config.json"
 $LastFmSyncStateFile = Join-Path $DataDirectory "lastfm-sync.json"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
@@ -57,24 +60,25 @@ $FoursquareDailyLimit = 10
 $FoursquareMonthlyLimit = 250
 $script:FoursquareApiKeyForRedaction = $null
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
+$MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
 }
 
-if (-not $env:TESSIE_TOKEN) {
+if (-not $MaintenanceMode -and -not $env:TESSIE_TOKEN) {
     throw "TESSIE_TOKEN is not available to DriveOS."
 }
 
-if (-not $env:SPOTIFY_CLIENT_ID) {
+if (-not $MaintenanceMode -and -not $env:SPOTIFY_CLIENT_ID) {
     throw "SPOTIFY_CLIENT_ID is not available to DriveOS."
 }
 
-if ($ParentPid -le 0 -or $ParentStartTicks -le 0) {
+if (-not $MaintenanceMode -and ($ParentPid -le 0 -or $ParentStartTicks -le 0)) {
     throw "DriveOS server requires a validated desktop parent process."
 }
 
-if (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$") {
+if (-not $MaintenanceMode -and (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$")) {
     throw "DriveOS local-session credential is missing or invalid."
 }
 
@@ -928,7 +932,10 @@ function Get-ListeningIdentityKey {
 }
 
 function Sync-LastFmHistory {
-    param($SpotifyClient = $null)
+    param(
+        $SpotifyClient = $null,
+        [switch]$FullHistory
+    )
 
     $Config = Get-LastFmConfiguration
     if (-not $Config) {
@@ -943,7 +950,7 @@ function Sync-LastFmHistory {
     $History = @(Get-SpotifyHistory)
     $Latest = [DateTimeOffset]::UtcNow.AddDays(-365)
 
-    if (Test-Path $LastFmSyncStateFile -PathType Leaf) {
+    if (-not $FullHistory -and (Test-Path $LastFmSyncStateFile -PathType Leaf)) {
         try {
             $SyncState = Read-DriveOSJson -Path $LastFmSyncStateFile
             if (
@@ -957,6 +964,7 @@ function Sync-LastFmHistory {
     }
 
     foreach ($Record in $History) {
+        if ($FullHistory) { break }
         try {
             $IsLastFm = "$($Record.id)".StartsWith("lastfm|", [StringComparison]::OrdinalIgnoreCase) -or
                 ($Record.PSObject.Properties['source'] -and "$($Record.source)" -eq "lastfm")
@@ -971,9 +979,10 @@ function Sync-LastFmHistory {
 
     # Re-read a small overlap so a Spotify play and its matching Last.fm
     # scrobble can be recognized even when the providers round differently.
-    $FromUnix = $Latest.AddHours(-1).ToUnixTimeSeconds()
+    # A full import intentionally omits this cursor to include every scrobble.
+    $FromUnix = if ($FullHistory) { 0 } else { $Latest.AddHours(-1).ToUnixTimeSeconds() }
     $Client = New-LastFmClient -Username $Config.username -ApiKey $Config.apiKey
-    $Items = @(Get-LastFmRecentTracks -Client $Client -FromUnix $FromUnix -MaxPages 50)
+    $Items = @(Get-LastFmRecentTracks -Client $Client -FromUnix $FromUnix -MaxPages $(if ($FullHistory) { 0 } else { 50 }))
     $ExistingIds = @{}
     $ExistingIdentities = @{}
 
@@ -1109,7 +1118,9 @@ function Get-SpotifySummary {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
         catch { 0 }
     } -Descending)
-    $Recent = @($History | Select-Object -First 10 | ForEach-Object {
+    # Keep one featured play plus the latest 20 recent plays. The dashboard
+    # presents these in a scrollable list so older entries remain reachable.
+    $Recent = @($History | Select-Object -First 21 | ForEach-Object {
         ConvertTo-PublicListeningPlay -Record $_
     })
     $LastFmAdded = [int]$LastFm.added
@@ -1810,8 +1821,172 @@ function Get-DriveShareCardData {
 # Music + aggregate statistics
 # ------------------------------------------------------------
 
+function Get-SpotifyCatalogCacheKey {
+    param([string[]]$Parts)
+
+    return (@($Parts | ForEach-Object {
+        ("$_" -replace '[^\p{L}\p{Nd}]', '').ToLowerInvariant()
+    }) -join '|')
+}
+
+function Get-SpotifyCatalogCache {
+    $Cache = $null
+
+    if (Test-Path $SpotifyCatalogCacheFile -PathType Leaf) {
+        try { $Cache = Read-DriveOSJson -Path $SpotifyCatalogCacheFile } catch {}
+    }
+
+    if (-not $Cache -or -not $Cache.PSObject.Properties['Version'] -or [int]$Cache.Version -ne 3) {
+        $Cache = [PSCustomObject]@{ Version = 3; tracks = @(); artists = @() }
+    }
+
+    if (-not $Cache.PSObject.Properties['tracks']) {
+        $Cache | Add-Member -NotePropertyName tracks -NotePropertyValue @()
+    }
+
+    if (-not $Cache.PSObject.Properties['artists']) {
+        $Cache | Add-Member -NotePropertyName artists -NotePropertyValue @()
+    }
+
+    return $Cache
+}
+
+function Add-SpotifyCatalogDetailsToMusicStats {
+    param(
+        [Parameter(Mandatory=$true)]$Stats,
+        [object[]]$History = @()
+    )
+
+    try {
+        $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+    }
+    catch {
+        return $Stats
+    }
+
+    $Cache = Get-SpotifyCatalogCache
+    $TrackCache = @($Cache.tracks)
+    $ArtistCache = @($Cache.artists)
+    $CacheChanged = $false
+
+    foreach ($Item in @($Stats.topTracks)) {
+        if ($Item.trackId -and $Item.albumImage) { continue }
+
+        $Key = Get-SpotifyCatalogCacheKey -Parts @("$($Item.track)", "$($Item.artist)")
+        $Entry = $TrackCache | Where-Object { "$($_.key)" -eq $Key } | Select-Object -First 1
+
+        if (-not $Entry) {
+            try {
+                $Track = Find-SpotifyTrack -Client $Client -Track "$($Item.track)" -Artist "$($Item.artist)"
+                $AlbumImage = $null
+                $CatalogAlbum = $null
+                if ($Track -and $Track.album.images -and $Track.album.images.Count -gt 0) {
+                    $AlbumImage = "$($Track.album.images[0].url)"
+                }
+
+                if (-not $Track -and $Item.album) {
+                    $CatalogAlbum = Find-SpotifyAlbum -Client $Client -Album "$($Item.album)" -Artist "$($Item.artist)"
+                }
+
+                if (-not $Track -and -not $CatalogAlbum) {
+                    $CatalogAlbum = Find-SpotifyLatestArtistAlbum -Client $Client -Artist "$($Item.artist)"
+                }
+
+                if (-not $AlbumImage -and $CatalogAlbum -and $CatalogAlbum.images -and $CatalogAlbum.images.Count -gt 0) {
+                    $AlbumImage = "$($CatalogAlbum.images[0].url)"
+                }
+
+                $Entry = [PSCustomObject]@{
+                    key        = $Key
+                    found      = [bool]($Track -or $AlbumImage)
+                    trackId    = if ($Track) { "$($Track.id)" } else { $null }
+                    albumImage = $AlbumImage
+                    spotifyUrl = if ($Track) { "$($Track.external_urls.spotify)" } elseif ($CatalogAlbum) { "$($CatalogAlbum.external_urls.spotify)" } else { $null }
+                    updatedAt  = [DateTimeOffset]::UtcNow.ToString('o')
+                }
+                $TrackCache += $Entry
+                $CacheChanged = $true
+            }
+            catch { continue }
+        }
+
+        if ($Entry.found) {
+            if ($Entry.trackId) { $Item.trackId = "$($Entry.trackId)" }
+            if ($Entry.albumImage) { $Item.albumImage = "$($Entry.albumImage)" }
+            if ($Entry.spotifyUrl) { $Item.spotifyUrl = "$($Entry.spotifyUrl)" }
+        }
+    }
+
+    foreach ($Item in @($Stats.topArtists)) {
+        $Key = Get-SpotifyCatalogCacheKey -Parts @("$($Item.artist)")
+        $Entry = $ArtistCache | Where-Object { "$($_.key)" -eq $Key } | Select-Object -First 1
+
+        if (-not $Entry) {
+            try {
+                $Artist = Find-SpotifyArtist -Client $Client -Artist "$($Item.artist)"
+                $ImageUrl = $null
+                $ImageSource = $null
+                $LatestAlbum = $null
+
+                if ($Artist -and $Artist.images -and $Artist.images.Count -gt 0) {
+                    $ImageUrl = "$($Artist.images[0].url)"
+                    $ImageSource = 'artist'
+                }
+
+                if (-not $ImageUrl) {
+                    $LatestAlbum = Find-SpotifyLatestArtistAlbum -Client $Client -Artist "$($Item.artist)"
+                    if ($LatestAlbum -and $LatestAlbum.images -and $LatestAlbum.images.Count -gt 0) {
+                        $ImageUrl = "$($LatestAlbum.images[0].url)"
+                        $ImageSource = 'album'
+                    }
+                }
+
+                if (-not $ImageUrl) {
+                    $FallbackRecord = $History |
+                        Where-Object { "$($_.artist)" -eq "$($Item.artist)" -and $_.album_image } |
+                        Sort-Object { try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks } catch { 0 } } -Descending |
+                        Select-Object -First 1
+
+                    if ($FallbackRecord) {
+                        $ImageUrl = "$($FallbackRecord.album_image)"
+                        $ImageSource = 'album'
+                    }
+                }
+
+                $Entry = [PSCustomObject]@{
+                    key         = $Key
+                    found       = [bool]($Artist -or $ImageUrl)
+                    artistId    = if ($Artist) { "$($Artist.id)" } elseif ($LatestAlbum -and $LatestAlbum.artists) { "$($LatestAlbum.artists[0].id)" } else { $null }
+                    imageUrl    = $ImageUrl
+                    imageSource = $ImageSource
+                    spotifyUrl  = if ($Artist) { "$($Artist.external_urls.spotify)" } elseif ($LatestAlbum -and $LatestAlbum.artists) { "$($LatestAlbum.artists[0].external_urls.spotify)" } else { $null }
+                    updatedAt   = [DateTimeOffset]::UtcNow.ToString('o')
+                }
+                $ArtistCache += $Entry
+                $CacheChanged = $true
+            }
+            catch { continue }
+        }
+
+        $Item | Add-Member -NotePropertyName artistId -NotePropertyValue $Entry.artistId -Force
+        $Item | Add-Member -NotePropertyName imageUrl -NotePropertyValue $Entry.imageUrl -Force
+        $Item | Add-Member -NotePropertyName imageSource -NotePropertyValue $Entry.imageSource -Force
+        $Item | Add-Member -NotePropertyName spotifyUrl -NotePropertyValue $Entry.spotifyUrl -Force
+    }
+
+    if ($CacheChanged) {
+        $Cache.tracks = @($TrackCache)
+        $Cache.artists = @($ArtistCache)
+        Write-DriveOSJson -Path $SpotifyCatalogCacheFile -Value $Cache
+    }
+
+    return $Stats
+}
+
 function Get-MusicStats {
-    return New-DriveOSMusicStats -History @(Get-SpotifyHistory)
+    $History = @(Get-SpotifyHistory)
+    $Stats = New-DriveOSMusicStats -History $History
+    return Add-SpotifyCatalogDetailsToMusicStats -Stats $Stats -History $History
 }
 
 function Get-DriveStats {
@@ -1986,6 +2161,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/lastfm/sync-full" {
+                    Send-Json -Stream $Stream -Object (Sync-LastFmHistory -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)) -FullHistory)
+                    return
+                }
+
                 "/api/foursquare/status" {
                     Send-Json -Stream $Stream -Object (Get-FoursquareConnectionStatus)
                     return
@@ -2127,6 +2307,23 @@ function Handle-Request {
 # ------------------------------------------------------------
 # Hardened local backend server
 # ------------------------------------------------------------
+
+if ($FullLastFmSync) {
+    # This one-time maintenance mode intentionally runs without the desktop
+    # parent/session requirements. It only reads the protected Last.fm
+    # configuration and writes the local listening archive.
+    Sync-LastFmHistory -FullHistory | ConvertTo-Json -Compress
+    exit 0
+}
+
+if ($RefreshMusicCatalog) {
+    $Stats = Get-MusicStats
+    [PSCustomObject]@{
+        topTracksWithArtwork = @($Stats.topTracks | Where-Object { $_.albumImage }).Count
+        topArtistsWithArtwork = @($Stats.topArtists | Where-Object { $_.imageUrl }).Count
+    } | ConvertTo-Json -Compress
+    exit 0
+}
 
 if (-not (Test-Path (Join-Path $WebRoot "index.html"))) {
     throw "web\index.html was not found."

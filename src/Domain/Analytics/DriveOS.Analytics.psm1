@@ -8,8 +8,11 @@ function Get-DriveOSTrackId {
 function New-DriveOSMusicStats {
     param([object[]]$History = @(), [datetime]$Today = (Get-Date).Date)
     $topTracks = @($History | Group-Object track,artist | Sort-Object Count -Descending | Select-Object -First 10 | ForEach-Object {
-        $example = $_.Group | Select-Object -First 1
-        [pscustomobject]@{track=$example.track;artist=$example.artist;plays=$_.Count;trackId=(Get-DriveOSTrackId $example);albumImage=$example.album_image;spotifyUrl=$example.spotify_url}
+        # Prefer an already-enriched Spotify record so a matching Last.fm
+        # scrobble cannot accidentally replace usable album artwork.
+        $example = $_.Group | Where-Object { $_.album_image -or $_.track_id } | Select-Object -First 1
+        if (-not $example) { $example = $_.Group | Select-Object -First 1 }
+        [pscustomobject]@{track=$example.track;artist=$example.artist;album=$example.album;plays=$_.Count;trackId=(Get-DriveOSTrackId $example);albumImage=$example.album_image;spotifyUrl=$example.spotify_url}
     })
     $topArtists = @($History | Group-Object artist | Sort-Object Count -Descending | Select-Object -First 10 | ForEach-Object {
         [pscustomobject]@{artist=$_.Name;plays=$_.Count}

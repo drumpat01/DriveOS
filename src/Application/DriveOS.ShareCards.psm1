@@ -159,6 +159,48 @@ function New-DriveOSShareCardModel {
     }
 
     $Songs = @($Drive.soundtrack)
+    $ShareSongMarkers = @()
+    if ($GeoRoute.Count -gt 1) {
+        if ($HomeProtected) {
+            $DriveStart = $null
+            $DriveDurationSeconds = [Math]::Max(1, [double]$Drive.durationMinutes * 60.0)
+            try { $DriveStart = [DateTimeOffset]::Parse([string]$Drive.startedAt) } catch {}
+            for ($SongIndex = 0; $SongIndex -lt $Songs.Count; $SongIndex++) {
+                $Progress = if ($Songs.Count -gt 1) { $SongIndex / [double]($Songs.Count - 1) } else { 0.5 }
+                if ($DriveStart -and $Songs[$SongIndex].playedAt) {
+                    try {
+                        $SongTime = [DateTimeOffset]::Parse([string]$Songs[$SongIndex].playedAt)
+                        $Progress = ($SongTime - $DriveStart).TotalSeconds / $DriveDurationSeconds
+                    } catch {}
+                }
+                $Progress = [Math]::Max(0, [Math]::Min(1, $Progress))
+                $Position = $Progress * ($GeoRoute.Count - 1)
+                $Lower = [Math]::Floor($Position)
+                $Upper = [Math]::Min($GeoRoute.Count - 1, $Lower + 1)
+                $Fraction = $Position - $Lower
+                $ShareSongMarkers += [PSCustomObject]@{
+                    index = $SongIndex + 1
+                    latitude = [Math]::Round(([double]$GeoRoute[$Lower].latitude * (1 - $Fraction)) + ([double]$GeoRoute[$Upper].latitude * $Fraction), 6)
+                    longitude = [Math]::Round(([double]$GeoRoute[$Lower].longitude * (1 - $Fraction)) + ([double]$GeoRoute[$Upper].longitude * $Fraction), 6)
+                    locationMode = 'synthetic-progress'
+                }
+            }
+        }
+        elseif ($MapData) {
+            $ShareSongMarkers = @(@($MapData.songMarkers) | Where-Object {
+                $null -ne $_.latitude -and $null -ne $_.longitude -and
+                [double]$_.latitude -ge -90 -and [double]$_.latitude -le 90 -and
+                [double]$_.longitude -ge -180 -and [double]$_.longitude -le 180
+            } | ForEach-Object {
+                [PSCustomObject]@{
+                    index = [int]$_.index
+                    latitude = [Math]::Round([double]$_.latitude, 6)
+                    longitude = [Math]::Round([double]$_.longitude, 6)
+                    locationMode = 'recorded'
+                }
+            })
+        }
+    }
     $Featured = @($Songs | Where-Object { $_.track } | Select-Object -First 1)[0]
     $TopArtist = @($Songs | Where-Object { $_.artist } | Group-Object artist |
         Sort-Object @{Expression='Count';Descending=$true}, Name | Select-Object -First 1)[0]
@@ -188,6 +230,7 @@ function New-DriveOSShareCardModel {
             mode=$RouteMode
             points=@(ConvertTo-DriveOSNormalizedRoute -Points $GeoRoute)
             mapPoints=@($GeoRoute)
+            songMarkers=@($ShareSongMarkers)
         }
         stats = [PSCustomObject]@{
             miles = $Drive.miles
@@ -208,6 +251,7 @@ function New-DriveOSShareCardModel {
             homeReplacement = if ($HomeProtected) { $HomeCityLabel } else { $null }
             homeCoordinatesIncluded = $false
             routeCoordinates = if ($HomeProtected) { 'city-level-synthetic' } else { 'recorded-simplified' }
+            songCoordinates = if ($HomeProtected) { 'time-projected-synthetic' } else { 'recorded' }
             rawAddressesIncluded = $false
             note = if ($HomeProtected) {
                 "Home was replaced with $HomeCityLabel. The real Home route geometry is not included."

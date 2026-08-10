@@ -42,7 +42,10 @@ function Get-LastFmRecentTracks {
         [long]$FromUnix = 0,
         [long]$ToUnix = 0,
         [ValidateRange(1,200)][int]$Limit = 200,
-        [ValidateRange(1,50)][int]$MaxPages = 25
+        # Use 0 to follow Last.fm's full reported page count. Routine syncs
+        # retain a finite limit, while a user-requested history import can
+        # deliberately retrieve the entire archive.
+        [ValidateRange(0,100000)][int]$MaxPages = 25
     )
 
     $Items = @()
@@ -93,7 +96,7 @@ function Get-LastFmRecentTracks {
         }
 
         $Page++
-    } while ($Page -le $TotalPages -and $Page -le $MaxPages)
+    } while ($Page -le $TotalPages -and ($MaxPages -eq 0 -or $Page -le $MaxPages))
 
     return $Items
 }
