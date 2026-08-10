@@ -214,9 +214,21 @@ try {
         ($ServerSource -match 'status\s*=\s*"ok"') `
         "DriveOS /healthz must return a minimal ok status."
 
-    Assert-True `
-        (-not ($ServerSource -match '"/healthz"[\s\S]{0,300}Get-OverallStatus')) `
-        "/healthz must not call provider status checks."
+    $HealthStart = $ServerSource.IndexOf('"/healthz"')
+$NextRoute = $ServerSource.IndexOf('"/api/status"', $HealthStart)
+
+Assert-True `
+    ($HealthStart -ge 0 -and $NextRoute -gt $HealthStart) `
+    "DriveOS health route boundaries could not be identified."
+
+$HealthRouteSource = $ServerSource.Substring(
+    $HealthStart,
+    $NextRoute - $HealthStart
+)
+
+Assert-True `
+    (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
+    "/healthz must not call provider status checks."
 
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
