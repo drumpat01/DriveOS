@@ -195,9 +195,28 @@ try {
         $InvalidSessionRejected = $true
     }
 
-    Assert-True `
+        Assert-True `
         $InvalidSessionRejected `
         "Invalid session duration values must be rejected."
+
+    # --------------------------------------------------------
+    # Hosted health endpoint contract.
+    # --------------------------------------------------------
+
+    $ServerPath = Join-Path $Root "DriveOS-Server.ps1"
+    $ServerSource = Get-Content $ServerPath -Raw
+
+    Assert-True `
+        ($ServerSource -match '"/healthz"') `
+        "DriveOS server must expose the /healthz route."
+
+    Assert-True `
+        ($ServerSource -match 'status\s*=\s*"ok"') `
+        "DriveOS /healthz must return a minimal ok status."
+
+    Assert-True `
+        (-not ($ServerSource -match '"/healthz"[\s\S]{0,300}Get-OverallStatus')) `
+        "/healthz must not call provider status checks."
 
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
