@@ -365,8 +365,46 @@ namespace DriveOSDesktop
             object sender,
             CoreWebView2DownloadStartingEventArgs e)
         {
-            // DriveOS has no in-app download workflow.
-            e.Cancel = true;
+            CoreWebView2DownloadOperation download = e.DownloadOperation;
+            string uri = download == null ? string.Empty : download.Uri;
+            string mimeType = download == null ? string.Empty : download.MimeType;
+            string suggestedName = Path.GetFileName(e.ResultFilePath ?? string.Empty);
+
+            // Share cards are created by DriveOS as blob-backed PNGs. Keep every
+            // other download blocked so external content cannot write local files.
+            bool isDriveOSShareCard =
+                uri.StartsWith("blob:" + DriveOSSecurityPolicy.LocalUrl, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(mimeType, "image/png", StringComparison.OrdinalIgnoreCase) &&
+                suggestedName.StartsWith("driveos-", StringComparison.OrdinalIgnoreCase) &&
+                suggestedName.EndsWith(".png", StringComparison.OrdinalIgnoreCase);
+
+            if (!isDriveOSShareCard)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            using (SaveFileDialog dialog = new SaveFileDialog())
+            {
+                dialog.Title = "Save DriveOS share card";
+                dialog.Filter = "PNG image (*.png)|*.png";
+                dialog.DefaultExt = "png";
+                dialog.AddExtension = true;
+                dialog.FileName = suggestedName;
+                dialog.InitialDirectory = Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyPictures
+                );
+
+                if (dialog.ShowDialog() != DialogResult.OK)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                e.ResultFilePath = Path.GetFullPath(dialog.FileName);
+                e.Handled = true;
+                e.Cancel = false;
+            }
         }
 
         private static void OnServerCertificateErrorDetected(

@@ -125,6 +125,11 @@
       </nav>
 
       <div class="topbar-right">
+        <button id="commandPaletteButton" class="command-palette-trigger" type="button" aria-label="Search DriveOS" aria-keyshortcuts="Control+K" title="Search DriveOS">
+          <span class="command-trigger-icon" aria-hidden="true">&#x2315;</span>
+          <span class="command-trigger-label">Search</span>
+          <kbd>Ctrl K</kbd>
+        </button>
         <div class="app-version" title="Installed DriveOS web build">4.3.1</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
@@ -159,8 +164,23 @@
     <main>
       <!-- DASHBOARD -->
       <section id="view-dashboard" class="view active-view">
-        <section class="hero-grid">
-          <article class="panel vehicle-panel">
+        <div class="dashboard-customize-bar">
+          <div>
+            <div class="section-label">YOUR DRIVEOS</div>
+            <span id="dashboardLayoutStatus">Dashboard layout saved on this device</span>
+          </div>
+          <button id="dashboardCustomizeButton" class="secondary-button" type="button" aria-expanded="false" aria-controls="dashboardCustomizer">Customize dashboard</button>
+        </div>
+        <aside id="dashboardCustomizer" class="dashboard-customizer" hidden aria-label="Dashboard layout editor">
+          <div class="dashboard-customizer-heading">
+            <div><strong>Arrange your dashboard</strong><span>Pin favorites, change panel size, or hide what you do not need.</span></div>
+            <button id="dashboardResetLayout" class="text-button" type="button">Reset layout</button>
+          </div>
+          <div id="dashboardCustomizerList" class="dashboard-customizer-list"></div>
+        </aside>
+
+        <section id="dashboardWidgetGrid" class="dashboard-widget-grid">
+          <article class="panel vehicle-panel dashboard-widget" data-dashboard-widget="vehicle" data-dashboard-title="Vehicle" data-dashboard-default-size="standard">
             <div class="panel-heading">
               <div>
                 <div class="section-label">TESLA</div>
@@ -218,7 +238,7 @@
             </div>
           </article>
 
-          <article class="panel spotify-panel">
+          <article class="panel spotify-panel dashboard-widget" data-dashboard-widget="music" data-dashboard-title="Now playing" data-dashboard-default-size="standard">
             <div class="panel-heading">
               <div>
                 <div class="section-label spotify-label">SPOTIFY</div>
@@ -244,9 +264,8 @@
               </div>
             </div>
           </article>
-        </section>
 
-        <section class="panel drives-panel v3-flight-recorder">
+        <section class="panel drives-panel v3-flight-recorder dashboard-widget" data-dashboard-widget="drives" data-dashboard-title="Recent drives" data-dashboard-default-size="wide">
           <div class="panel-heading drives-heading">
             <div>
               <div class="section-label">FLIGHT RECORDER</div>
@@ -257,12 +276,13 @@
           <div id="dashboardDrives" class="drive-content"></div>
         </section>
 
-        <section class="stats-grid v3-intelligence-grid">
+        <section class="stats-grid v3-intelligence-grid dashboard-widget dashboard-status-widget" data-dashboard-widget="status" data-dashboard-title="Connection status" data-dashboard-default-size="wide">
           <article class="stat-card"><span>DriveOS</span><strong id="driveOSStatus">ONLINE</strong></article>
           <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
           <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
           <article class="stat-card"><span>Last.fm</span><strong id="lastFmStatus">--</strong></article>
           <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
+        </section>
         </section>
       </section>
 
@@ -529,6 +549,27 @@
     </footer>
   </div>
 
+  <!-- LOCAL COMMAND PALETTE -->
+  <div id="commandPalette" class="command-palette" role="dialog" aria-modal="true" aria-labelledby="commandPaletteHeading" aria-hidden="true">
+    <div class="command-palette-backdrop" data-close-command-palette></div>
+    <article class="command-palette-card">
+      <h2 id="commandPaletteHeading" class="sr-only">Search DriveOS</h2>
+      <label class="command-palette-search">
+        <span aria-hidden="true">&#x2315;</span>
+        <input id="commandPaletteInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search drives, places, songs, settings, or actions&#x2026;" aria-controls="commandPaletteResults">
+        <kbd>Esc</kbd>
+      </label>
+      <div id="commandPaletteResults" class="command-palette-results" role="listbox" aria-label="DriveOS search results"></div>
+      <footer class="command-palette-footer">
+        <span><kbd>&#x2191;&#x2193;</kbd> Navigate</span>
+        <span><kbd>Enter</kbd> Open</span>
+        <span><kbd>Ctrl K</kbd> Toggle</span>
+        <span class="command-mobile-note">Tap a result to open</span>
+        <span class="command-local-note">Search stays on this device</span>
+      </footer>
+    </article>
+  </div>
+
   <!-- FRIENDLY PLACE EDITOR -->
   <div id="placeNamesModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="placeNamesModalHeading" aria-hidden="true">
     <div class="modal-backdrop" data-close-place-modal></div>
@@ -700,6 +741,22 @@
       <div id="shareCardWorkspace" class="share-card-workspace" hidden>
         <div class="share-card-preview"><canvas id="shareCardCanvas" width="1080" height="1350" aria-label="Preview of the shareable drive card"></canvas></div>
         <aside class="share-card-controls">
+          <div class="section-label">CARD STYLE</div>
+          <label class="share-card-field"><span>Theme</span><select id="shareCardTheme">
+            <option value="electric">Electric night</option>
+            <option value="sunset">Sunset drive</option>
+            <option value="paper">Clean paper</option>
+          </select></label>
+          <label class="share-card-field"><span>Map</span><select id="shareCardMapStyle">
+            <option value="street">Street map</option>
+            <option value="dim">Dimmed map</option>
+            <option value="route">Route only</option>
+          </select></label>
+          <label class="share-card-field"><span>Artwork</span><select id="shareCardArtwork">
+            <option value="album">Featured album</option>
+            <option value="backdrop">Album backdrop</option>
+            <option value="none">No artwork</option>
+          </select></label>
           <div class="section-label">SHOW ON CARD</div>
           <label><input type="checkbox" data-share-stat value="distance" checked> Distance</label>
           <label><input type="checkbox" data-share-stat value="duration" checked> Duration</label>
@@ -707,8 +764,13 @@
           <label><input type="checkbox" data-share-stat value="songs" checked> Song count</label>
           <label><input type="checkbox" data-share-stat value="artist" checked> Top artist</label>
           <div class="share-card-privacy-lock">
-            <strong>&#x1F512; Home privacy is locked on</strong>
+            <strong>&#x1F512; Privacy preview &#xB7; Home privacy is locked on</strong>
             <span id="shareCardPrivacy">Street addresses and coordinates are removed.</span>
+            <ul class="share-card-privacy-list">
+              <li>Exact coordinates excluded</li>
+              <li>Street addresses hidden</li>
+              <li id="shareCardHomeStatus">Home protection checked</li>
+            </ul>
           </div>
           <button id="shareCardNativeButton" class="primary-button share-to-x-button" type="button">Share to X</button>
           <button id="shareCardDownload" class="secondary-button" type="button">Save PNG</button>
@@ -738,6 +800,8 @@
   <script src="/features/replay.js?v=4.3.1"></script>
   <script src="/features/music.js?v=4.3.1"></script>
   <script src="/features/share-cards.js?v=4.3.1"></script>
+  <script src="/features/command-palette.js?v=4.3.1"></script>
+  <script src="/features/dashboard-customization.js?v=4.3.1"></script>
   <script src="/app.js?v=4.3.1"></script>
 </body>
 </html>

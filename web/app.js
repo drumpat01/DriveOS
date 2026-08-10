@@ -2444,6 +2444,29 @@ const refreshFeature = window.DriveOSFeatures.refresh.create({
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
 
+const commandPaletteFeature = window.DriveOSFeatures.commandPalette.create({
+  state,
+  actions: {
+    showView,
+    openDrive: openDriveModal,
+    openPlaces: showPlaceNamesDialog,
+    openShareCard: drive => shareCardsFeature.open(drive),
+    refresh: () => refreshAll(),
+    setTheme: theme => window.DriveOSTheme.apply(theme),
+    focusChargingRate: () => {
+      showView("dashboard");
+      setTimeout(() => {
+        $("electricityRateInput")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        $("electricityRateInput")?.focus();
+      }, 180);
+    }
+  }
+});
+commandPaletteFeature.bind();
+
+const dashboardCustomizationFeature = window.DriveOSFeatures.dashboardCustomization.create();
+dashboardCustomizationFeature.bind();
+
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {
   spotifyConnectButton.addEventListener("click", connectSpotifyOnThisComputer);

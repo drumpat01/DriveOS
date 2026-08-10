@@ -7,6 +7,20 @@
     let artwork = null;
     let mapArtwork = null;
 
+    const themes = Object.freeze({
+      electric: { bg1: "#07131d", bg2: "#0b2330", bg3: "#061019", text: "#f4fbff", muted: "#9eb8c5", accent: "#83e8ff", accent2: "#86f1c5", panel: "rgba(255,255,255,.055)", mapTint: "rgba(2,14,21,.22)", backdropVeil: "rgba(3,13,20,.38)", footer: "#7e9ba8" },
+      sunset: { bg1: "#241025", bg2: "#542532", bg3: "#171124", text: "#fff7f0", muted: "#e4b7ad", accent: "#ffbd76", accent2: "#ff8e7a", panel: "rgba(255,244,228,.075)", mapTint: "rgba(39,7,28,.28)", backdropVeil: "rgba(34,8,27,.36)", footer: "#d2a6a3" },
+      paper: { bg1: "#f7f4ec", bg2: "#e8eef0", bg3: "#f5f1e8", text: "#102832", muted: "#58727a", accent: "#087f91", accent2: "#168763", panel: "rgba(10,53,65,.075)", mapTint: "rgba(238,244,241,.18)", backdropVeil: "rgba(244,244,238,.44)", footer: "#60777c" }
+    });
+
+    function selection(id, fallback) {
+      return $(id)?.value || fallback;
+    }
+
+    function activeTheme() {
+      return themes[selection("shareCardTheme", "electric")] || themes.electric;
+    }
+
     function roundRect(ctx, x, y, w, h, radius) {
       const r = Math.min(radius, w / 2, h / 2);
       ctx.beginPath();
@@ -41,6 +55,16 @@
       return Math.min(lines.length, maxLines) * lineHeight;
     }
 
+    function drawImageCover(ctx, image, x, y, w, h, overscan = 0) {
+      const imageWidth = image.naturalWidth || image.width;
+      const imageHeight = image.naturalHeight || image.height;
+      if (!imageWidth || !imageHeight) return;
+      const scale = Math.max((w + overscan * 2) / imageWidth, (h + overscan * 2) / imageHeight);
+      const drawWidth = imageWidth * scale;
+      const drawHeight = imageHeight * scale;
+      ctx.drawImage(image, x + (w - drawWidth) / 2, y + (h - drawHeight) / 2, drawWidth, drawHeight);
+    }
+
     function selectedStats(card) {
       const choices = [...document.querySelectorAll("[data-share-stat]:checked")].map(input => input.value);
       const values = {
@@ -54,17 +78,19 @@
     }
 
     function drawRoute(ctx, card, box) {
+      const theme = activeTheme();
+      const mapStyle = selection("shareCardMapStyle", "street");
       ctx.save();
       roundRect(ctx, box.x, box.y, box.w, box.h, 34);
       ctx.clip();
-      if (mapArtwork) {
+      if (mapArtwork && mapStyle !== "route") {
         ctx.drawImage(mapArtwork, box.x, box.y, box.w, box.h);
-        ctx.fillStyle = "rgba(2, 14, 21, .22)";
+        ctx.fillStyle = mapStyle === "dim" ? "rgba(2, 10, 17, .58)" : theme.mapTint;
         ctx.fillRect(box.x, box.y, box.w, box.h);
       } else {
         const mapGradient = ctx.createLinearGradient(box.x, box.y, box.x + box.w, box.y + box.h);
-        mapGradient.addColorStop(0, "#102c3a");
-        mapGradient.addColorStop(1, "#071923");
+        mapGradient.addColorStop(0, theme.bg2);
+        mapGradient.addColorStop(1, theme.bg1);
         ctx.fillStyle = mapGradient;
         ctx.fillRect(box.x, box.y, box.w, box.h);
         ctx.strokeStyle = "rgba(137, 245, 189, .08)";
@@ -80,7 +106,7 @@
       const points = card.route?.points || [];
       const px = point => box.x + 70 + Number(point.x) * (box.w - 140);
       const py = point => box.y + 60 + Number(point.y) * (box.h - 120);
-      if (!mapArtwork && points.length > 1) {
+      if ((!mapArtwork || mapStyle === "route") && points.length > 1) {
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.strokeStyle = "rgba(8, 10, 14, .55)";
@@ -100,10 +126,34 @@
           ctx.beginPath(); ctx.arc(px(point), py(point), 20, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = "#f7ffff"; ctx.lineWidth = 7; ctx.stroke();
         });
+
+        const geoPoints = card.route?.mapPoints || [];
+        (card.route?.songMarkers || []).forEach(marker => {
+          if (!geoPoints.length || marker.latitude == null || marker.longitude == null) return;
+          let nearestIndex = 0;
+          let nearestDistance = Infinity;
+          geoPoints.forEach((point, index) => {
+            const distance = Math.pow(Number(point.latitude) - Number(marker.latitude), 2) + Math.pow(Number(point.longitude) - Number(marker.longitude), 2);
+            if (distance < nearestDistance) { nearestDistance = distance; nearestIndex = index; }
+          });
+          const point = points[Math.min(nearestIndex, points.length - 1)];
+          if (!point) return;
+          const x = px(point);
+          const y = py(point);
+          ctx.fillStyle = "rgba(1,13,18,.72)";
+          ctx.beginPath(); ctx.arc(x, y + 3, 25, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#2bd6a3";
+          ctx.beginPath(); ctx.arc(x, y, 21, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#06161a"; ctx.lineWidth = 3; ctx.stroke();
+          ctx.fillStyle = "#041316"; ctx.font = '800 19px "Segoe UI", sans-serif';
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(String(marker.index), x, y + 1);
+          ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+        });
       }
       ctx.restore();
 
-      ctx.fillStyle = "#eafbff";
+      ctx.fillStyle = theme.text;
       ctx.font = '700 25px "Segoe UI", sans-serif';
       ctx.textAlign = "left";
       drawWrappedText(ctx, card.startLabel, box.x + 34, box.y + box.h - 46, box.w * .4, 29, 2);
@@ -117,35 +167,61 @@
       const card = state.shareCardData;
       if (!canvas || !card) return;
       const ctx = canvas.getContext("2d");
+      const theme = activeTheme();
+      const artworkStyle = selection("shareCardArtwork", "album");
       canvas.width = width;
       canvas.height = height;
 
       const background = ctx.createLinearGradient(0, 0, width, height);
-      background.addColorStop(0, "#07131d");
-      background.addColorStop(.52, "#0b2330");
-      background.addColorStop(1, "#061019");
+      background.addColorStop(0, theme.bg1);
+      background.addColorStop(.52, theme.bg2);
+      background.addColorStop(1, theme.bg3);
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, width, height);
 
-      const glow = ctx.createRadialGradient(870, 160, 10, 870, 160, 440);
-      glow.addColorStop(0, "rgba(29, 214, 157, .27)");
-      glow.addColorStop(1, "rgba(29, 214, 157, 0)");
-      ctx.fillStyle = glow; ctx.fillRect(430, 0, 650, 600);
+      if (artwork && artworkStyle === "backdrop") {
+        ctx.save();
+        ctx.globalAlpha = .68;
+        ctx.filter = "blur(42px) saturate(1.18) contrast(1.08)";
+        drawImageCover(ctx, artwork, 0, 0, width, height, 90);
+        ctx.restore();
+        ctx.fillStyle = theme.backdropVeil;
+        ctx.fillRect(0, 0, width, height);
+        const readability = ctx.createLinearGradient(0, 0, 0, height);
+        if (selection("shareCardTheme", "electric") === "paper") {
+          readability.addColorStop(0, "rgba(255,255,250,.12)");
+          readability.addColorStop(.52, "rgba(255,255,250,.28)");
+          readability.addColorStop(1, "rgba(255,255,250,.56)");
+        } else {
+          readability.addColorStop(0, "rgba(2,8,13,.08)");
+          readability.addColorStop(.52, "rgba(2,8,13,.18)");
+          readability.addColorStop(1, "rgba(2,8,13,.42)");
+        }
+        ctx.fillStyle = readability;
+        ctx.fillRect(0, 0, width, height);
+      }
 
-      ctx.fillStyle = "#83e8ff";
+      if (artworkStyle !== "backdrop") {
+        const glow = ctx.createRadialGradient(870, 160, 10, 870, 160, 440);
+        glow.addColorStop(0, "rgba(29, 214, 157, .27)");
+        glow.addColorStop(1, "rgba(29, 214, 157, 0)");
+        ctx.fillStyle = glow; ctx.fillRect(430, 0, 650, 600);
+      }
+
+      ctx.fillStyle = theme.accent;
       ctx.font = '800 24px "Segoe UI", sans-serif';
       ctx.letterSpacing = "5px";
       ctx.fillText("DRIVEOS · ROAD NOTE", 72, 72);
       ctx.letterSpacing = "0px";
 
-      ctx.fillStyle = "#f4fbff";
+      ctx.fillStyle = theme.text;
       ctx.font = '800 66px "Segoe UI", sans-serif';
-      drawWrappedText(ctx, card.title, 72, 155, artwork ? 620 : 920, 72, 2);
-      ctx.fillStyle = "#9eb8c5";
+      drawWrappedText(ctx, card.title, 72, 155, artwork && artworkStyle === "album" ? 620 : 920, 72, 2);
+      ctx.fillStyle = theme.muted;
       ctx.font = '600 31px "Segoe UI", sans-serif';
-      drawWrappedText(ctx, `${card.startLabel} \u2192 ${card.endLabel}`, 72, 282, artwork ? 620 : 920, 39, 2);
+      drawWrappedText(ctx, `${card.startLabel} \u2192 ${card.endLabel}`, 72, 282, artwork && artworkStyle === "album" ? 620 : 920, 39, 2);
 
-      if (artwork) {
+      if (artwork && artworkStyle === "album") {
         ctx.save();
         roundRect(ctx, 760, 76, 248, 248, 28); ctx.clip();
         ctx.drawImage(artwork, 760, 76, 248, 248); ctx.restore();
@@ -166,26 +242,26 @@
         const y = 815 + row * 112;
         const wideLast = stats.length % 2 === 1 && index === stats.length - 1;
         const w = wideLast ? 936 : cellWidth;
-        ctx.fillStyle = "rgba(255,255,255,.055)";
+        ctx.fillStyle = theme.panel;
         roundRect(ctx, x, y, w, 94, 22); ctx.fill();
-        ctx.fillStyle = "#6fdff2"; ctx.font = '800 17px "Segoe UI", sans-serif'; ctx.fillText(entry[0], x + 24, y + 30);
-        ctx.fillStyle = "#f1fbff"; ctx.font = '700 30px "Segoe UI", sans-serif';
+        ctx.fillStyle = theme.accent; ctx.font = '800 17px "Segoe UI", sans-serif'; ctx.fillText(entry[0], x + 24, y + 30);
+        ctx.fillStyle = theme.text; ctx.font = '700 30px "Segoe UI", sans-serif';
         drawWrappedText(ctx, entry[1], x + 24, y + 68, w - 48, 34, 1);
       });
 
       const featuredY = stats.length > 4 ? 1165 : stats.length > 2 ? 1055 : 945;
       if (card.featured?.momentContext) {
-        ctx.fillStyle = "#86f1c5"; ctx.font = '800 18px "Segoe UI", sans-serif'; ctx.fillText("A MOMENT FROM THE SOUNDTRACK", 72, featuredY);
-        ctx.fillStyle = "#f4fbff"; ctx.font = '700 32px "Segoe UI", sans-serif';
+        ctx.fillStyle = theme.accent2; ctx.font = '800 18px "Segoe UI", sans-serif'; ctx.fillText("A MOMENT FROM THE SOUNDTRACK", 72, featuredY);
+        ctx.fillStyle = theme.text; ctx.font = '700 32px "Segoe UI", sans-serif';
         drawWrappedText(ctx, `\u201c${card.featured.track}\u201d ${card.featured.momentContext}`, 72, featuredY + 46, 936, 39, 2);
       }
 
       ctx.strokeStyle = "rgba(255,255,255,.11)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(72, 1282); ctx.lineTo(1008, 1282); ctx.stroke();
-      ctx.fillStyle = "#7e9ba8"; ctx.font = '600 19px "Segoe UI", sans-serif';
+      ctx.fillStyle = theme.footer; ctx.font = '600 19px "Segoe UI", sans-serif';
       ctx.fillText("Made locally with DriveOS", 72, 1323);
       ctx.textAlign = "right";
-      ctx.fillStyle = card.privacy.homeProtected ? "#86f1c5" : "#7e9ba8";
+      ctx.fillStyle = card.privacy.homeProtected ? theme.accent2 : theme.footer;
       ctx.fillText(card.privacy.homeProtected ? "HOME LOCATION PROTECTED · SAGINAW, TX" : "STREET ADDRESSES HIDDEN", 1008, 1323);
       ctx.textAlign = "left";
     }
@@ -240,6 +316,19 @@
             map.addSource("share-terminals", { type: "geojson", data: { type: "FeatureCollection", features: [coordinates[0], coordinates[coordinates.length - 1]].map((coordinate, index) => ({ type: "Feature", properties: { kind: index }, geometry: { type: "Point", coordinates: coordinate } })) } });
             map.addLayer({ id: "share-terminal-halo", type: "circle", source: "share-terminals", paint: { "circle-radius": 11, "circle-color": "#f7ffff" } });
             map.addLayer({ id: "share-terminals", type: "circle", source: "share-terminals", paint: { "circle-radius": 7, "circle-color": ["case", ["==", ["get", "kind"], 0], "#09b4c8", "#20d49e"] } });
+            const songFeatures = (card.route?.songMarkers || []).filter(marker =>
+              Number.isFinite(Number(marker.latitude)) && Number.isFinite(Number(marker.longitude))
+            ).map(marker => ({
+              type: "Feature",
+              properties: { index: Number(marker.index) },
+              geometry: { type: "Point", coordinates: [Number(marker.longitude), Number(marker.latitude)] }
+            }));
+            if (songFeatures.length) {
+              map.addSource("share-songs", { type: "geojson", data: { type: "FeatureCollection", features: songFeatures } });
+              map.addLayer({ id: "share-song-shadow", type: "circle", source: "share-songs", paint: { "circle-radius": 16, "circle-translate": [0, 3], "circle-color": "rgba(1,13,18,.58)", "circle-blur": .18 } });
+              map.addLayer({ id: "share-song-markers", type: "circle", source: "share-songs", paint: { "circle-radius": 13, "circle-color": "#2bd6a3", "circle-stroke-width": 2, "circle-stroke-color": "#06161a" } });
+              map.addLayer({ id: "share-song-numbers", type: "symbol", source: "share-songs", layout: { "text-field": ["to-string", ["get", "index"]], "text-size": 13, "text-allow-overlap": true, "text-ignore-placement": true }, paint: { "text-color": "#041316", "text-halo-color": "rgba(255,255,255,.18)", "text-halo-width": .5 } });
+            }
             const bounds = coordinates.reduce((value, coordinate) => value.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
             if (Math.abs(bounds.getEast() - bounds.getWest()) < .01 && Math.abs(bounds.getNorth() - bounds.getSouth()) < .01) {
               bounds.extend([bounds.getWest() - .02, bounds.getSouth() - .02]);
@@ -308,6 +397,9 @@
         state.shareCardData = card;
         await Promise.all([loadArtwork(card), loadMapArtwork(card)]);
         $("shareCardPrivacy").textContent = card.privacy.note;
+        $("shareCardHomeStatus").textContent = card.privacy.homeProtected
+          ? "Home replaced with Saginaw, TX"
+          : "No Home endpoint detected";
         $("shareCardLoading").hidden = true;
         $("shareCardWorkspace").hidden = false;
         render();
@@ -326,6 +418,7 @@
       $("shareCardButton")?.addEventListener("click", () => open(state.selectedDrive));
       document.querySelectorAll("[data-close-share-card]").forEach(item => item.addEventListener("click", close));
       document.querySelectorAll("[data-share-stat]").forEach(input => input.addEventListener("change", render));
+      ["shareCardTheme", "shareCardMapStyle", "shareCardArtwork"].forEach(id => $(id)?.addEventListener("change", render));
       $("shareCardDownload")?.addEventListener("click", () => download().catch(error => { $("shareCardMessage").textContent = error.message; }));
       $("shareCardNativeButton")?.addEventListener("click", () => shareToX().catch(error => {
         if (error?.name !== "AbortError") $("shareCardMessage").textContent = error.message || "Sharing was not available.";

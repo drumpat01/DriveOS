@@ -15,6 +15,10 @@ Assert-True ($Policy -match 'RandomNumberGenerator') 'Session tokens must use a 
 Assert-True ($Policy -match 'AreDevToolsEnabled = false') 'Embedded browser developer tools must remain disabled.'
 Assert-True ($Policy -match 'CoreWebView2PermissionState.Deny' -or
     (Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw) -match 'CoreWebView2PermissionState.Deny') 'Browser permissions must remain denied.'
+$DesktopProgram = Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw
+Assert-True ($DesktopProgram -match 'blob:' -and $DesktopProgram -match 'image/png' -and
+    $DesktopProgram -match 'SaveFileDialog') 'Share-card PNG downloads must use the restricted local save workflow.'
+Assert-True ($DesktopProgram -match 'if \(!isDriveOSShareCard\)') 'Non-share-card downloads must remain blocked.'
 
 $Installer = Get-Content (Join-Path $Root 'tools\Install-DriveOS-App.ps1') -Raw
 Assert-True ($Installer -match 'Sort-Object Name') 'Desktop source compilation order must be deterministic.'

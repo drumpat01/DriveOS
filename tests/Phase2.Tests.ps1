@@ -122,14 +122,20 @@ try {
     }
     Assert-Equal $shareCard.route.mapPoints[0].latitude 32.8601 'Private route must begin at the Saginaw city anchor.'
     Assert-Equal $shareCard.route.mapPoints[0].longitude -97.3639 'Private route must not begin at the Home longitude.'
+    Assert-Equal $shareCard.route.songMarkers.Count 1 'Private share card must preserve numbered song moments.'
+    Assert-Equal $shareCard.route.songMarkers[0].locationMode 'synthetic-progress' 'Home song markers must use synthetic route positions.'
     foreach($point in @($shareCard.route.points)){
         if($null -eq $point.x -or $null -eq $point.y -or $point.x -lt 0 -or $point.x -gt 1 -or $point.y -lt 0 -or $point.y -gt 1){throw 'Share route contains invalid normalized drawing points.'}
     }
     $publicDrive=$privateDrive.PSObject.Copy();$publicDrive.startingLocation='Coffee Shop';$publicDrive.rawStartingLocation='100 Coffee Way, Fort Worth, Texas 76102'
-    $publicMap=[pscustomobject]@{routePoints=@([pscustomobject]@{latitude=32.75;longitude=-97.33},[pscustomobject]@{latitude=32.76;longitude=-97.31})}
+    $publicMap=[pscustomobject]@{
+        routePoints=@([pscustomobject]@{latitude=32.75;longitude=-97.33},[pscustomobject]@{latitude=32.76;longitude=-97.31})
+        songMarkers=@([pscustomobject]@{index=1;latitude=32.755;longitude=-97.32})
+    }
     $publicCard=New-DriveOSShareCardModel -Drive $publicDrive -MapData $publicMap
     Assert-Equal $publicCard.route.mode 'recorded-simplified' 'Non-Home share card must use its recorded route.'
     Assert-Equal $publicCard.route.mapPoints[0].latitude 32.75 'Non-Home share route latitude changed.'
+    Assert-Equal $publicCard.route.songMarkers[0].locationMode 'recorded' 'Public share cards must retain recorded song positions.'
     $recapDrive=[pscustomobject]@{startedAt='2026-01-10T12:00:00-06:00';miles=10;energyKWh=2.5;batteryUsed=5;songCount=1;startingLocation='Home';endingLocation='Work';shortDateLabel='Sat, Jan 10';soundtrack=@([pscustomobject]@{track='Song';artist='Artist'})}
     $recapCharge=[pscustomobject]@{startedAt='2026-01-11T12:00:00-06:00';energyAddedKWh=20;displayCost=3.5}
     $recaps=New-DriveOSMonthlyRecaps -Drives @($recapDrive) -Charges @($recapCharge) -Settings ([pscustomobject]@{electricityRateCents=12.5}) -Now ([datetime]'2026-01-20')
