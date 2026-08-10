@@ -2363,6 +2363,14 @@ function Test-DriveOSParentAlive {
     }
 }
 
+function Test-DriveOSServerShouldRun {
+    if ($RuntimeConfig.IsWeb) {
+        return $true
+    }
+
+    return Test-DriveOSParentAlive
+}
+
 function Send-RequestRejected {
     param(
         [System.Net.Sockets.NetworkStream]$Stream,
@@ -2386,18 +2394,18 @@ $Listener = [System.Net.Sockets.TcpListener]::new(
 $Listener.Start()
 
 try {
-    while (Test-DriveOSParentAlive) {
+    while (Test-DriveOSServerShouldRun) {
         $AcceptResult = $Listener.BeginAcceptTcpClient($null, $null)
 
         while (-not $AcceptResult.IsCompleted) {
-            if (-not (Test-DriveOSParentAlive)) {
+            if (-not (Test-DriveOSServerShouldRun)) {
                 break
             }
 
             Start-Sleep -Milliseconds 100
         }
 
-        if (-not (Test-DriveOSParentAlive)) {
+        if (-not (Test-DriveOSServerShouldRun)) {
             break
         }
 
@@ -2412,8 +2420,15 @@ try {
         try {
             $Remote = $Client.Client.RemoteEndPoint
 
-            if ($Remote -isnot [System.Net.IPEndPoint] -or
-                -not [System.Net.IPAddress]::IsLoopback($Remote.Address)) {
+            if ($Remote -isnot [System.Net.IPEndPoint]) {
+                $Client.Close()
+                continue
+            }
+
+            if (
+                $RuntimeConfig.IsDesktop -and
+                -not [System.Net.IPAddress]::IsLoopback($Remote.Address)
+            ) {
                 $Client.Close()
                 continue
             }
