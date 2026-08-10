@@ -77,11 +77,23 @@ if (-not $MaintenanceMode -and -not $env:SPOTIFY_CLIENT_ID) {
     throw "SPOTIFY_CLIENT_ID is not available to DriveOS."
 }
 
-if (-not $MaintenanceMode -and ($ParentPid -le 0 -or $ParentStartTicks -le 0)) {
+if (-not $MaintenanceMode -and $RuntimeConfig.IsWeb) {
+    throw "DriveOS web runtime is not enabled until web authentication is configured."
+}
+
+if (
+    -not $MaintenanceMode -and
+    $RuntimeConfig.IsDesktop -and
+    ($ParentPid -le 0 -or $ParentStartTicks -le 0)
+) {
     throw "DriveOS server requires a validated desktop parent process."
 }
 
-if (-not $MaintenanceMode -and (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$")) {
+if (
+    -not $MaintenanceMode -and
+    $RuntimeConfig.IsDesktop -and
+    (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$")
+) {
     throw "DriveOS local-session credential is missing or invalid."
 }
 

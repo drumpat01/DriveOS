@@ -229,6 +229,29 @@ try {
     Assert-True `
         (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
         "/healthz must not call provider status checks."
+        # --------------------------------------------------------
+    # Desktop and web startup security boundaries.
+    # --------------------------------------------------------
+
+    Assert-True `
+        ($ServerSource -match '\$RuntimeConfig\.IsDesktop') `
+        "Desktop startup checks must be explicitly scoped to desktop mode."
+
+    Assert-True `
+        ($ServerSource -match '\$RuntimeConfig\.IsWeb') `
+        "DriveOS server must explicitly recognize web startup mode."
+
+    Assert-True `
+        ($ServerSource -match 'web runtime is not enabled until web authentication is configured') `
+        "Web mode must remain disabled until web authentication exists."
+
+    Assert-True `
+        ($ServerSource -match 'validated desktop parent process') `
+        "Desktop parent-process protection must remain in place."
+
+    Assert-True `
+        ($ServerSource -match 'local-session credential is missing or invalid') `
+        "Desktop local-session protection must remain in place."	
 
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
