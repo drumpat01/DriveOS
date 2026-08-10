@@ -29,7 +29,7 @@ foreach($searchId in @('driveSearchInput','driveAdvancedToggle','driveAdvancedFi
 if($index -notmatch 'id="driveAdvancedFilters"[^>]*hidden'){throw 'Advanced drive filters must be collapsed initially.'}
 if($index -notmatch 'placeholder="Enter a city or state'){throw 'The primary drive search is not labeled for city/state search.'}
 $styles=Get-Content (Join-Path $Root 'web\styles.css') -Raw
-if($app -notmatch 'tracks\.slice\(1, 13\)' -or $app -notmatch 'v3-recent-columns' -or $styles -notmatch 'dashboard-size-wide\.spotify-panel \.v3-recent-columns'){throw 'Wide dashboard Spotify recent-track columns are missing.'}
+if($app -notmatch 'tracks\.slice\(1, 21\)' -or $app -notmatch 'v3-recent-scroll' -or $app -notmatch 'v3-recent-columns' -or $styles -notmatch 'dashboard-size-wide\.spotify-panel \.v3-recent-columns'){throw 'Scrollable 20-track Spotify history is missing.'}
 if($styles -notmatch '(?s)\.dashboard-size-compact\.spotify-panel \.v3-now-playing\s*\{[^}]*grid-template-columns:\s*112px' -or $styles -notmatch '(?s)\.dashboard-size-compact\.spotify-panel \.v3-recent-list\s*\{[^}]*display:\s*none'){throw 'Compact Spotify Now Playing layout is missing.'}
 if($styles -notmatch 'grid-auto-flow:\s*row dense' -or $styles -notmatch 'align-items:\s*stretch' -or $styles -notmatch '(?s)\.dashboard-size-wide\s*\{[^}]*grid-column:\s*1\s*/\s*-1'){throw 'Dashboard size geometry is not standardized.'}
 if($styles -notmatch '(?s)\.topbar-right \.theme-switcher\s*\{[^}]*display:\s*inline-flex\s*!important'){throw 'The theme switcher is not restored in the mobile header.'}

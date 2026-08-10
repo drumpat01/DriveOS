@@ -86,6 +86,10 @@
       const track = topGroup(songs, song => `${song.track || ""}\u0000${song.artist || ""}`);
       const artist = topGroup(songs, song => song.artist || "");
       const album = topGroup(songs, song => song.album || "");
+      const uniqueArtists = new Set(songs.map(song => song.artist).filter(Boolean)).size;
+      const uniqueTracks = new Set(songs.map(song => `${song.track || ""}\u0000${song.artist || ""}`).filter(Boolean)).size;
+      const listeningMinutes = Math.max(1, Math.round(songs.reduce((total, song) => total + (Number(song.durationMs) || 180000), 0) / 60000));
+      const recentSongs = songs.slice(0, 4);
       container.innerHTML = `
         <div class="dashboard-soundtrack-featured">
           ${artworkMarkup(track.item, "dashboard-soundtrack-artwork")}
@@ -96,6 +100,21 @@
           <div><span>Top album</span><strong>${escapeHtml(album?.item.album || "--")}</strong></div>
           <div><span>Drive mood</span><strong>${escapeHtml(inferMood(songs))}</strong></div>
         </div>
+        <div class="dashboard-soundtrack-summary" aria-label="Recent drive music summary">
+          <div><strong>${uniqueArtists}</strong><span>artists</span></div>
+          <div><strong>${uniqueTracks}</strong><span>unique tracks</span></div>
+          <div><strong>${listeningMinutes} min</strong><span>on the road</span></div>
+        </div>
+        <section class="dashboard-soundtrack-recent" aria-label="Recent songs from drives">
+          <div class="dashboard-soundtrack-recent-heading"><span>Recent on the road</span><small>Latest matched plays</small></div>
+          <div class="dashboard-soundtrack-recent-grid">
+            ${recentSongs.map(song => `
+              <div class="dashboard-soundtrack-recent-song">
+                ${artworkMarkup(song, "dashboard-soundtrack-recent-artwork")}
+                <div><strong>${escapeHtml(song.track || "Unknown track")}</strong><span>${escapeHtml(song.artist || "Unknown artist")}</span></div>
+              </div>`).join("")}
+          </div>
+        </section>
         <div class="dashboard-soundtrack-caption">Based on ${songs.length} song${songs.length === 1 ? "" : "s"} across ${drives.length} recent drive${drives.length === 1 ? "" : "s"}</div>`;
     }
 

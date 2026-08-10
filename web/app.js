@@ -203,10 +203,19 @@ async function loadSpotify() {
 
     if (tracks.length) {
       const featured = tracks[0];
-      // Wide cards show three four-track columns; smaller cards retain the
-      // first column only.
-      const recent = tracks.slice(1, 13);
-      const recentColumns = [recent.slice(0, 4), recent.slice(4, 8), recent.slice(8, 12)];
+      // Keep the last 20 archived plays accessible in the vertical list.
+      // Wide cards redistribute the same list across three columns.
+      const recent = tracks.slice(1, 21);
+      const recentColumns = [recent.slice(0, 7), recent.slice(7, 14), recent.slice(14, 20)];
+      const recentTrackMarkup = track => `
+        <div class="v3-recent-track">
+          ${songArtworkMarkup(track, "track-artwork v3-recent-artwork")}
+          <div class="v3-recent-copy">
+            <strong>${escapeHtml(track.track)}</strong>
+            <span>${escapeHtml(track.artist)}</span>
+          </div>
+          <span class="v3-recent-time">${escapeHtml(track.time)}</span>
+        </div>`;
 
       list.innerHTML = `
         <div class="v3-now-playing">
@@ -230,21 +239,13 @@ async function loadSpotify() {
 
           <div class="v3-recent-list">
             <div class="v3-recent-heading">Recently played</div>
-            <div class="v3-recent-columns">
-              ${recentColumns.map(column => `
-                <div class="v3-recent-column">
-                  ${column.map(track => `
-                    <div class="v3-recent-track">
-                      ${songArtworkMarkup(track, "track-artwork v3-recent-artwork")}
-                      <div class="v3-recent-copy">
-                        <strong>${escapeHtml(track.track)}</strong>
-                        <span>${escapeHtml(track.artist)}</span>
-                      </div>
-                      <span class="v3-recent-time">${escapeHtml(track.time)}</span>
-                    </div>
-                  `).join("")}
-                </div>
-              `).join("")}
+            <div class="v3-recent-scroll" tabindex="0" aria-label="Last 20 songs played">
+              <div class="v3-recent-stack">${recent.map(recentTrackMarkup).join("")}</div>
+              <div class="v3-recent-columns">
+                ${recentColumns.map(column => `
+                  <div class="v3-recent-column">${column.map(recentTrackMarkup).join("")}</div>
+                `).join("")}
+              </div>
             </div>
           </div>
         </div>`;
@@ -1326,26 +1327,39 @@ async function loadMusicStats() {
     const data = await getJson("/api/music/stats");
     setText("musicTotalPlays", data.totalPlays, "0");
 
+    const rankedRow = (item, rowClass, body) => item.spotifyUrl
+      ? `<a class="rank-row ${rowClass} rank-row-link" href="${escapeHtml(item.spotifyUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHtml(item.track || item.artist || "item")} on Spotify">${body}</a>`
+      : `<div class="rank-row ${rowClass}">${body}</div>`;
+
+    const artistArtworkMarkup = item => {
+      const initial = escapeHtml(String(item.artist || "?").trim().slice(0, 1).toUpperCase() || "?");
+      if (!item.imageUrl) return `<div class="rank-artwork artist-rank-artwork artist-artwork-placeholder" aria-hidden="true">${initial}</div>`;
+      return `<div class="rank-artwork artist-rank-artwork artist-artwork-shell">
+        <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.artist || "Artist")} on Spotify" loading="lazy" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+        <div class="artist-artwork-placeholder" hidden aria-hidden="true">${initial}</div>
+      </div>`;
+    };
+
     $("topTracks").innerHTML = (data.topTracks || []).length
-      ? data.topTracks.map((item, i) => `
-          <div class="rank-row track-rank-row">
+      ? data.topTracks.map((item, i) => rankedRow(item, "track-rank-row", `
             <div class="rank-number">${String(i + 1).padStart(2, "0")}</div>
             ${songArtworkMarkup(item, "rank-artwork")}
             <div>
               <div class="rank-primary">${escapeHtml(item.track)}</div>
-              <div class="rank-secondary">${escapeHtml(item.artist)}</div>
+              <div class="rank-secondary">${escapeHtml(item.artist)}${item.spotifyUrl ? " &middot; Spotify" : ""}</div>
             </div>
-            <div class="rank-count">${item.plays} play${item.plays === 1 ? "" : "s"}</div>
-          </div>`).join("")
+            <div class="rank-count">${item.plays} play${item.plays === 1 ? "" : "s"}</div>`)).join("")
       : `<div class="empty-state"><p>Not enough listening history yet.</p></div>`;
 
     $("topArtists").innerHTML = (data.topArtists || []).length
-      ? data.topArtists.map((item, i) => `
-          <div class="rank-row">
+      ? data.topArtists.map((item, i) => rankedRow(item, "artist-rank-row", `
             <div class="rank-number">${String(i + 1).padStart(2, "0")}</div>
-            <div><div class="rank-primary">${escapeHtml(item.artist)}</div></div>
-            <div class="rank-count">${item.plays} play${item.plays === 1 ? "" : "s"}</div>
-          </div>`).join("")
+            ${artistArtworkMarkup(item)}
+            <div>
+              <div class="rank-primary">${escapeHtml(item.artist)}</div>
+              <div class="rank-secondary">${item.imageSource === "album" ? "Recent album artwork" : "Artist image"}${item.spotifyUrl ? " &middot; Spotify" : ""}</div>
+            </div>
+            <div class="rank-count">${item.plays} play${item.plays === 1 ? "" : "s"}</div>`)).join("")
       : `<div class="empty-state"><p>Not enough listening history yet.</p></div>`;
 
     const daily = data.daily || [];
