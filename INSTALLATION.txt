@@ -1,0 +1,277 @@
+DRIVEOS 5.0 - INSTALLATION AND CONFIGURATION GUIDE
+==================================================
+
+This guide installs DriveOS as a desktop application for the current Windows
+user and connects it to the services you choose to use.
+
+
+1. BEFORE YOU BEGIN
+-------------------
+
+Supported computer:
+
+  - 64-bit Windows 10 or Windows 11
+  - Windows PowerShell 5.1 or newer
+  - Microsoft Edge WebView2 Runtime
+  - Internet access during installation and data synchronization
+  - Enough permission to write to the DriveOS folder and your desktop
+
+Accounts and credentials:
+
+  - Tessie account and API token for Tesla vehicle and drive features
+  - Spotify Developer application and Client ID for Spotify music features
+  - Optional Last.fm username and API key for a deeper listening archive
+  - Optional Foursquare Service API key for friendly place names
+
+DriveOS can open without every optional service, but features that depend on a
+missing service will remain unavailable until that service is configured.
+
+
+2. GET DRIVEOS
+--------------
+
+Option A - Git
+
+Open PowerShell in the folder where you want DriveOS to live, then run:
+
+  git clone https://github.com/drumpat01/DriveOS.git
+  cd DriveOS
+
+Option B - ZIP download
+
+  1. Open https://github.com/drumpat01/DriveOS
+  2. Select Code, then Download ZIP.
+  3. Extract the ZIP to a folder owned by your Windows user.
+  4. Open PowerShell in the extracted DriveOS folder.
+
+Keep the project in a stable location. The installed desktop shortcut starts
+the application from this folder.
+
+
+3. CREATE A TESSIE TOKEN
+------------------------
+
+Tessie supplies DriveOS with Tesla status, drive, route, charging, and
+telemetry data.
+
+  1. Sign in to Tessie and make sure your Tesla is connected.
+  2. Create or copy an API token from your Tessie account settings.
+  3. Keep the token private. Do not paste it into a committed file.
+
+Tessie: https://my.tessie.com/
+
+
+4. CREATE A SPOTIFY DEVELOPER APPLICATION
+-----------------------------------------
+
+DriveOS uses Spotify's Authorization Code flow with PKCE. You need a Client ID,
+but you do not need to store a Spotify client secret.
+
+  1. Open https://developer.spotify.com/dashboard and sign in.
+  2. Create a new application.
+  3. Add this exact redirect URI:
+
+       http://127.0.0.1:8888/callback
+
+  4. Save the application settings.
+  5. Copy the application's Client ID.
+
+DriveOS requests the Spotify permissions needed to read recent and current
+playback data and, when used, manage private playlists.
+
+
+5. STORE THE CORE CREDENTIALS SECURELY
+--------------------------------------
+
+In PowerShell, from the DriveOS folder, set the two values for the current
+PowerShell session:
+
+  $env:TESSIE_TOKEN = "paste-your-tessie-token-here"
+  $env:SPOTIFY_CLIENT_ID = "paste-your-spotify-client-id-here"
+
+Then run:
+
+  .\Setup-DriveOS-Secrets.ps1
+
+The setup script encrypts both values with Windows DPAPI, writes them to the
+local data folder, and restricts the file to your Windows account and SYSTEM.
+The encrypted values are tied to the Windows user who ran the setup.
+
+The environment variables above last only for the current PowerShell window.
+You may close that window after setup completes.
+
+Optional 1Password users may instead configure .env from .env.example and use
+the 1Password CLI to inject the same environment variables. 1Password is not
+required for a normal installation.
+
+
+6. INSTALL THE DESKTOP APPLICATION
+----------------------------------
+
+From the DriveOS folder, run:
+
+  .\Install-DriveOS-App.ps1
+
+You may also double-click:
+
+  INSTALL-DRIVEOS-APP.bat
+
+The installer:
+
+  - confirms that the computer is running 64-bit Windows;
+  - downloads the pinned Microsoft WebView2 SDK from NuGet if needed;
+  - verifies the native WebView2 component's Microsoft signature;
+  - builds DriveOS.exe and its local supporting files; and
+  - creates or updates the DriveOS desktop shortcut.
+
+The installed application still needs the Microsoft Edge WebView2 Runtime. It
+is normally already present on Windows 10 and Windows 11. If DriveOS reports
+that it is missing, install the Evergreen WebView2 Runtime from Microsoft:
+
+  https://developer.microsoft.com/microsoft-edge/webview2/
+
+If PowerShell blocks the script because of the local execution policy, run:
+
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Install-DriveOS-App.ps1
+
+
+7. FIRST LAUNCH AND SPOTIFY AUTHORIZATION
+-----------------------------------------
+
+  1. Open DriveOS from the desktop shortcut.
+  2. Use the Spotify connection control when prompted.
+  3. A browser window opens to Spotify. Approve the requested permissions.
+  4. Spotify returns to http://127.0.0.1:8888/callback.
+  5. Return to DriveOS and select Refresh data.
+
+Allow the first refresh time to download drive history and build the local
+music archive. Later refreshes are incremental and should be faster.
+
+
+8. OPTIONAL: CONNECT LAST.FM
+----------------------------
+
+Last.fm can provide a listening history that extends farther back than
+Spotify's recent-history endpoint.
+
+  1. Create a Last.fm API account/key at:
+
+       https://www.last.fm/api/account/create
+
+  2. From the DriveOS folder, run:
+
+       .\Connect-LastFm.ps1
+
+  3. Enter your Last.fm username and API key when prompted.
+  4. Open DriveOS and select Refresh data.
+
+DriveOS validates the credentials, encrypts the API key with Windows DPAPI, and
+downloads scrobbles in multiple pages until the available history is synced.
+Later refreshes continue from the saved local cursor.
+
+
+9. OPTIONAL: CONNECT FOURSQUARE
+-------------------------------
+
+Foursquare is used to turn repeated coordinates into more recognizable place
+names. DriveOS caches results and limits requests to conserve quota.
+
+  1. Create a Foursquare developer project and Service API key.
+  2. From the DriveOS folder, run:
+
+       .\Connect-Foursquare.ps1
+
+  3. Enter the Service API key when prompted.
+  4. Refresh DriveOS.
+
+Foursquare developer portal:
+
+  https://location.foursquare.com/developer/
+
+
+10. WHERE DRIVEOS STORES DATA
+-----------------------------
+
+DriveOS keeps its runtime archive and configuration in the project's data
+folder. This folder is excluded from Git.
+
+Important privacy rules:
+
+  - Do not commit or share the data folder.
+  - Do not post screenshots containing real home or work addresses.
+  - Do not copy encrypted credential files to another Windows account and
+    expect them to work; DPAPI ties them to the configuring user.
+  - Use the share-card privacy preview before publishing a route image.
+
+The desktop service listens only on 127.0.0.1. It is not intended to be exposed
+directly to the public internet or a local network.
+
+
+11. UPDATING DRIVEOS
+--------------------
+
+If DriveOS was installed with Git:
+
+  1. Close DriveOS.
+  2. Open PowerShell in the DriveOS folder.
+  3. Run:
+
+       git pull
+       .\Install-DriveOS-App.ps1
+
+If DriveOS was installed from a ZIP, download the newer ZIP and copy or extract
+it into a new folder. Back up the existing data folder before moving local data
+to a replacement installation.
+
+Rerunning the installer rebuilds the desktop application and updates the
+shortcut. It does not intentionally erase the local data archive.
+
+
+12. TROUBLESHOOTING
+-------------------
+
+DriveOS says WebView2 is missing
+  Install Microsoft's Evergreen WebView2 Runtime, then reopen DriveOS.
+
+PowerShell says script execution is disabled
+  Use the ExecutionPolicy Bypass command shown in section 6 for the installer.
+  You can use the same pattern with another trusted DriveOS script if needed.
+
+The Tessie or Spotify setup script rejects a value
+  Confirm that TESSIE_TOKEN and SPOTIFY_CLIENT_ID were set in the same
+  PowerShell window immediately before running Setup-DriveOS-Secrets.ps1.
+
+Spotify authorization does not return to DriveOS
+  Confirm that the Spotify application contains the exact redirect URI
+  http://127.0.0.1:8888/callback and that another program is not using port
+  8888. Then try the connection again.
+
+DriveOS cannot start its local service
+  Close any other DriveOS window. If needed, check whether another program is
+  using DriveOS's localhost port, then reopen the app.
+
+No drives appear
+  Confirm the Tessie account has access to the vehicle and historical drives,
+  then select Refresh data. Tessie must already have recorded the trips.
+
+Music history is short
+  Spotify exposes only a limited recent-history window. Connect Last.fm and
+  refresh to import the older scrobbles available for that Last.fm account.
+
+Album or artist artwork is missing
+  Confirm Spotify is still authorized and refresh again. Some catalog items may
+  not have artwork available through Spotify.
+
+For security details, read SECURITY.md in the DriveOS folder.
+
+
+13. UNINSTALLING
+----------------
+
+  1. Close DriveOS.
+  2. Delete the DriveOS desktop shortcut.
+  3. Delete the DriveOS project folder if you no longer need the application.
+
+Deleting the project folder also deletes the local drive/music archive and the
+encrypted credentials stored inside its data folder. Back up any data you want
+to retain before removing the folder.

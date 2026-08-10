@@ -1,124 +1,136 @@
-# DriveOS 4.3.1
+<div align="center">
+  <img src="driveos-icon-squircle.png" alt="DriveOS icon" width="112">
 
-> Architecture: DriveOS is being evolved incrementally as a modular monolith. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
+# DriveOS
 
-Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-DriveOS.ps1` for offline architecture and compatibility validation.
+### Personal vehicle intelligence for your drives, music, charging, and travel history
 
-## Last.fm listening history
+DriveOS is a local-first Windows desktop application that turns Tesla telemetry and listening history into a customizable dashboard, searchable drive library, music archive, statistics, recaps, and privacy-aware share cards.
 
-DriveOS 4.1.0 can combine Spotify's recent-play feed with durable Last.fm scrobbles. Open DriveOS, choose **Add Last.fm** on the Dashboard or **Connect Last.fm** on the Music page, then enter the Last.fm username and API key in the secure Windows setup window.
+**Windows desktop | Tesla + Tessie | Spotify | Last.fm | Local data**
+</div>
 
-- the API key is encrypted with Windows DPAPI and remains under `data/`
-- Last.fm is read-only and optional; Spotify behavior continues unchanged without it
-- startup and **Refresh data** incrementally synchronize new scrobbles
-- matching Spotify and Last.fm events are stored only once
-- new Last.fm-only plays are enriched with Spotify IDs and artwork when a confident match is available
+![DriveOS dashboard using fictional demo data](docs/images/dashboard-demo.png)
 
-## Foursquare business names
+> **Privacy note:** Every location, trip, vehicle name, song, and artist shown in these screenshots is fictional demo data. No personal drive history or home location is included.
 
-DriveOS 4.2.0 can recognize businesses at repeated, unnamed Tessie locations. Open **Manage places**, connect a Foursquare Service API key, and DriveOS will check only the most frequently visited unknown locations that have GPS coordinates.
+## What DriveOS does
 
-- manual names always win, and named locations such as Home and Work are never sent to Foursquare
-- matched names are cached locally and reused across drives, charging history, search, and recaps
-- searches stop at 10 per day and 250 per month; the first backfill is limited to 25 candidates
-- setup does not spend an API call, and no details or photo endpoints are used
-- the encrypted key, usage counter, and place cache stay under `data/` and are excluded from releases
+DriveOS brings vehicle data and the soundtrack of each trip together in one interface. It records a local drive history from Tessie, connects songs to the drives in which they played, finds recurring routes and places, and turns the result into useful dashboards and visual summaries.
 
-## Shareable drive cards
+The application runs on your own Windows computer. Its web interface is served only to the desktop app through localhost, while long-lived credentials are encrypted for the current Windows account.
 
-Open a drive and choose **Create share card** to build a 1080×1350 PNG with an OpenFreeMap overview, route, album artwork, soundtrack moment, and selectable drive statistics. Non-Home drives show a simplified version of the recorded route. Mobile **Share to X** includes the PNG in the native share sheet; DriveOS otherwise saves the PNG and opens the official X composer with prefilled text.
+## Highlights
 
-Home privacy is mandatory and enforced by the backend. If either endpoint is named `Home`, the card replaces it with **Saginaw, TX**, discards the recorded route geometry, and generates a city-level map route using the public Saginaw anchor. The response never contains the Home address or Home coordinates, and the PNG contains no embedded geographic metadata. Normal DriveOS maps are unchanged.
-- no credential, listening data, sync cursor, `.env`, or token file is included in Git or release archives
+- **Customizable dashboard** - rearrange widgets with drag and drop; resize them to Compact, Standard, or Wide; hide panels; and pin favorites.
+- **Vehicle overview** - see battery, rated range, charge limit, charging state, temperatures, status, and current-location context.
+- **Drive library** - search trips by place, date, distance, and music; inspect a drive; replay its route; and see numbered song-start markers on the map.
+- **Music intelligence** - combine Spotify history with Last.fm scrobbles, browse recent plays, restore album artwork, and review top tracks and artists.
+- **Drive soundtrack** - discover the top song, artist, album, and listening mood from recent drives.
+- **Statistics and recaps** - explore mileage, efficiency, drive time, trip totals, listening activity, charging, and monthly summaries.
+- **Privacy-aware share cards** - customize themes, map styles, statistics, and artwork, preview privacy protections, and save a PNG locally.
+- **Command palette** - press `Ctrl+K` to search drives, places, songs, settings, and actions from one box.
 
-Frontend Phase 3 status and browser-smoke coverage are documented in [docs/PHASE3-STATUS.md](docs/PHASE3-STATUS.md).
+## Screenshots
 
-After installing the current build, run `tools/Migrate-To-Sqlite.ps1` to migrate local history, aliases, and charging settings. The migration preserves the original JSON/JSONL files and creates a timestamped backup. Run `tools/Rollback-To-Json.ps1` to switch back without deleting the SQLite database.
+### Searchable drive history and favorite routes
 
-DriveOS 3.0 adds two major local intelligence features on top of Drive Library Search.
+![DriveOS drive library with fictional city names](docs/images/drives-demo.png)
 
-## Favorite Routes
+### A combined Spotify and Last.fm listening archive
 
-The Drives screen now automatically detects repeated routes.
+![DriveOS music archive with fictional tracks and artists](docs/images/music-demo.png)
 
-DriveOS groups trips directionally when:
+## More notable features
 
-- both starting points are within about 0.75 miles, and
-- both destinations are within about 0.75 miles.
+- Today's driving summary with miles, drive time, efficiency, trips, and songs
+- Recent-drive cards and detailed trip views
+- Current vehicle location map in the wide vehicle widget
+- Route replay with synchronized song moments
+- Favorite-route and frequently visited-place detection
+- Top-track and top-artist artwork enrichment through Spotify
+- Scrollable recent-play history on larger dashboard widgets
+- Quick actions for refreshing, searching, opening the latest drive, creating a share card, and starting a recap
+- Light and dark themes with responsive layouts
+- Download handling that lets the Windows desktop app save generated PNG share cards locally
+- Local caching and incremental synchronization to reduce unnecessary service requests
 
-If coordinates are unavailable, it falls back to normalized Tessie start/end address matching.
+## Service integrations
 
-Favorite-route cards show:
+| Service | What DriveOS uses it for | Setup level |
+| --- | --- | --- |
+| **Tessie** | Tesla vehicle status, telemetry, drive history, routes, charging data, and location | Needed for vehicle and drive features |
+| **Spotify Web API** | Recent listening history, currently playing data, album artwork, artist images, and private playlist access | Needed for Spotify music features |
+| **Last.fm API** | A deeper, durable scrobble history that can extend beyond Spotify's recent-history window | Optional, recommended for a richer archive |
+| **Foursquare Places API** | Friendly names for repeated or otherwise unnamed locations | Optional |
+| **OpenFreeMap / OpenStreetMap** | Map tiles and geographic context for routes and places | Built in; no map API key required |
 
-- number of times driven
-- average distance
-- average duration
-- average efficiency
-- last driven date
+DriveOS uses Spotify's Authorization Code flow with PKCE, so a Spotify client secret is not stored in the application. Last.fm and Foursquare credentials are optional and are stored locally with Windows DPAPI protection.
 
-Selecting **Show drives** filters the Drive Library to the exact trips in that route cluster.
+## What you need
 
-## Music by Location
+- A 64-bit Windows 10 or Windows 11 computer
+- Windows PowerShell 5.1 or newer
+- Microsoft Edge WebView2 Runtime
+- Internet access during installation and synchronization
+- A Tessie account and API token for Tesla features
+- A Spotify Developer application and Client ID for music features
+- Optional Last.fm username/API key and Foursquare Service API key
 
-The Music screen can answer questions such as:
+The installer downloads the pinned Microsoft WebView2 SDK, verifies the native Microsoft signature, builds the desktop application, and creates a desktop shortcut. Administrator rights are not normally required when the project folder and desktop are writable by your Windows account.
 
-`Arlington`
+## Quick start
 
-or
+Clone the repository or download and extract its ZIP file:
 
-`East Lamar`
+```powershell
+git clone https://github.com/drumpat01/DriveOS.git
+cd DriveOS
+```
 
-Text search matches Tessie's starting and ending location strings. DriveOS then looks at music during the selected 10/15/30-minute window near the matching start or destination and summarizes:
+Provide your Tessie token and Spotify Client ID, then store them securely for the current Windows user:
 
-- matching drives
-- located plays
-- unique tracks
-- top tracks
-- top artists
-- recent matching plays
+```powershell
+$env:TESSIE_TOKEN = "your-tessie-token"
+$env:SPOTIFY_CLIENT_ID = "your-spotify-client-id"
+.\Setup-DriveOS-Secrets.ps1
+```
 
-The calculation is completely local after the Drive Library is loaded; the search text is not sent to an external geocoder.
+Install the desktop application:
 
-## Click the map for music
+```powershell
+.\Install-DriveOS-App.ps1
+```
 
-Every Drive Details map is now clickable.
+Open **DriveOS** from the new desktop shortcut, authorize Spotify when prompted, and use **Refresh data** to build the first local archive.
 
-Click a point on the map and DriveOS shows the actual GPS-located song starts within:
+For credential setup, optional integrations, updates, troubleshooting, and uninstall steps, see [INSTALLATION.txt](INSTALLATION.txt).
 
-- 0.5 mile
-- 1 mile
-- 2 miles
-- 5 miles
+## Local-first privacy and security
 
-Selecting a result jumps to its numbered song marker.
+- The desktop service binds to `127.0.0.1`, not the public network.
+- A per-session credential protects local API requests.
+- Tessie, Spotify, Last.fm, and Foursquare credentials are encrypted with Windows DPAPI and tied to the Windows user who configured them.
+- Runtime data is kept in the local `data` directory and excluded from Git.
+- Share-card privacy controls can replace exact places with city-level labels and exclude home coordinates and street addresses.
+- WebView2 navigation, permissions, downloads, certificates, and allowed remote hosts are restricted by the desktop security policy.
 
-## Hardening cleanup
+See [SECURITY.md](SECURITY.md) for the security model and reporting guidance.
 
-DriveOS 3.0 also includes a cleanup pass:
+## Development and testing
 
-- the Drive Library endpoint now really loads 365 days
-- Spotify history is read once per library aggregation rather than once per drive
-- internal Tessie history windows are range-validated
-- no new network API surface was required for Favorite Routes or Music by Location
-- all new user-visible location text is escaped before HTML rendering
-- existing localhost session authentication, CSP, WebView2 restrictions, DPAPI credentials, and parent-process validation remain intact
+DriveOS 5.0 is built with a PowerShell backend, a modular HTML/CSS/JavaScript interface, and a C# WebView2 desktop host. No Node package installation is required for normal use.
 
-## Update
+Run the project's automated checks from PowerShell:
 
-Run the single-file updater:
+```powershell
+.\tools\Test-DriveOS.ps1
+```
 
-`DriveOS-Update-2.0.cmd`
+Architecture and migration details are available in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATION-ROADMAP.md](docs/MIGRATION-ROADMAP.md).
 
-It preserves `.env`, `data`, and `update-backups`, compiles to a temporary verified EXE first, verifies file version `2.0.0.0`, swaps it over `DriveOS.exe`, refreshes the desktop shortcut, and launches DriveOS 3.0
+## Platform and project status
 
+DriveOS 5.0 currently targets 64-bit Windows and is designed as a personal, locally operated application. Other platforms are not currently packaged or supported.
 
-## DriveOS 3.0
-Major electric-glass UI redesign inspired by the DriveOS driving + music launch language. Light is the default appearance; Dark remains available.
-
-
-## DriveOS 3.0.1
-This build is intended for a fresh install on another Windows computer and includes the updated white Model 3 dashboard hero.
-
-
-## DriveOS 3.0.3
-UI polish: complete drive rows are clickable, the dashboard vehicle panel uses a structured responsive layout, and the white Model 3 hero has been redrawn with realistic sedan proportions.
+DriveOS is not affiliated with or endorsed by Tesla, Tessie, Spotify, Last.fm, Foursquare, OpenFreeMap, or OpenStreetMap. Product names and trademarks belong to their respective owners.
