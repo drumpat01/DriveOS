@@ -253,6 +253,23 @@ try {
         ($ServerSource -match 'local-session credential is missing or invalid') `
         "Desktop local-session protection must remain in place."	
 
+
+    # --------------------------------------------------------
+    # Hosted listener lifecycle boundaries.
+    # --------------------------------------------------------
+
+    Assert-True `
+        ($ServerSource -match 'function Test-DriveOSServerShouldRun') `
+        "Server lifetime must be runtime-mode aware."
+
+    Assert-True `
+        ($ServerSource -match 'while \(Test-DriveOSServerShouldRun\)') `
+        "Server loop must use the runtime-aware lifetime check."
+
+    Assert-True `
+        ($ServerSource -match '\$RuntimeConfig\.IsDesktop[\s\S]{0,150}IsLoopback') `
+        "Loopback-only network enforcement must remain scoped to desktop mode."
+
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
         -ForegroundColor Green
