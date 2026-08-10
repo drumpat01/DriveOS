@@ -163,8 +163,29 @@ function Send-HttpResponse {
         [int]$StatusCode = 200,
         [string]$StatusText = "OK",
         [string]$ContentType = "application/json; charset=utf-8",
-        [byte[]]$Body = @()
+        [byte[]]$Body = @(),
+        [hashtable]$AdditionalHeaders = @{}
     )
+
+    $ExtraHeaderText = ""
+
+    foreach ($Name in $AdditionalHeaders.Keys) {
+        $HeaderName = "$Name"
+        $HeaderValue = "$($AdditionalHeaders[$Name])"
+
+        if ($HeaderName -notmatch '^[A-Za-z0-9-]+$') {
+            throw "Invalid HTTP response header name."
+        }
+
+        if (
+            $HeaderValue.Contains("`r") -or
+            $HeaderValue.Contains("`n")
+        ) {
+            throw "Invalid HTTP response header value."
+        }
+
+        $ExtraHeaderText += "$HeaderName`: $HeaderValue`r`n"
+    }
 
     $Header =
         "HTTP/1.1 $StatusCode $StatusText`r`n" +
@@ -179,6 +200,7 @@ function Send-HttpResponse {
         "Cross-Origin-Opener-Policy: same-origin`r`n" +
         "Cross-Origin-Resource-Policy: same-origin`r`n" +
         "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; manifest-src 'self'`r`n" +
+        $ExtraHeaderText +
         "`r`n"
 
     $HeaderBytes = [System.Text.Encoding]::ASCII.GetBytes($Header)

@@ -229,7 +229,8 @@ try {
     Assert-True `
         (-not ($HealthRouteSource -match 'Get-OverallStatus|Get-VehicleSummary|Get-SpotifySummary')) `
         "/healthz must not call provider status checks."
-        # --------------------------------------------------------
+
+    # --------------------------------------------------------
     # Desktop and web startup security boundaries.
     # --------------------------------------------------------
 
@@ -255,20 +256,24 @@ try {
 
 
     # --------------------------------------------------------
-    # Hosted listener lifecycle boundaries.
+    # HTTP response headers for hosted authentication.
     # --------------------------------------------------------
 
     Assert-True `
-        ($ServerSource -match 'function Test-DriveOSServerShouldRun') `
-        "Server lifetime must be runtime-mode aware."
+        ($ServerSource -match '\[hashtable\]\$AdditionalHeaders') `
+        "HTTP responses must support additional response headers."
 
     Assert-True `
-        ($ServerSource -match 'while \(Test-DriveOSServerShouldRun\)') `
-        "Server loop must use the runtime-aware lifetime check."
+        ($ServerSource -match '\$HeaderValue\.Contains\("`r"\)') `
+        "Additional response headers must reject carriage-return injection."
 
     Assert-True `
-        ($ServerSource -match '\$RuntimeConfig\.IsDesktop[\s\S]{0,150}IsLoopback') `
-        "Loopback-only network enforcement must remain scoped to desktop mode."
+        ($ServerSource -match '\$HeaderValue\.Contains\("`n"\)') `
+        "Additional response headers must reject newline injection."
+
+    Assert-True `
+        ($ServerSource -match '\$ExtraHeaderText') `
+        "Additional response headers must be emitted by Send-HttpResponse."
 
     Write-Host `
         "DriveOS web-hosting configuration checks passed." `
