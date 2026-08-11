@@ -1117,28 +1117,78 @@ function Get-FoursquareConfiguration {
 }
 
 function Get-FoursquareUsageRecord {
+    if ($Repository.Provider -eq "Turso") {
+        try {
+            return Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "foursquare-usage"
+        }
+        catch {
+            return $null
+        }
+    }
+
     if (-not (Test-Path $FoursquareUsageFile -PathType Leaf)) { return $null }
+
     try { return Read-DriveOSJson -Path $FoursquareUsageFile }
     catch { return $null }
 }
 
+function Save-FoursquareUsageRecord {
+    param([Parameter(Mandatory=$true)]$Record)
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "foursquare-usage" `
+            -Value $Record
+        return
+    }
+
+    Write-DriveOSJson -Path $FoursquareUsageFile -Value $Record
+}
+
 function Get-FoursquareCacheEntries {
-    if (-not (Test-Path $FoursquareCacheFile -PathType Leaf)) { return @() }
     try {
-        $Record = Read-DriveOSJson -Path $FoursquareCacheFile
-        if ($Record -and $Record.PSObject.Properties['entries']) { return @($Record.entries) }
+        $Record = if ($Repository.Provider -eq "Turso") {
+            Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "foursquare-cache"
+        }
+        elseif (Test-Path $FoursquareCacheFile -PathType Leaf) {
+            Read-DriveOSJson -Path $FoursquareCacheFile
+        }
+        else {
+            $null
+        }
+
+        if ($Record -and $Record.PSObject.Properties['entries']) {
+            return @($Record.entries)
+        }
     }
     catch {}
+
     return @()
 }
 
 function Save-FoursquareCacheEntries {
     param([object[]]$Entries)
-    Write-DriveOSJson -Path $FoursquareCacheFile -Value ([PSCustomObject]@{
+
+    $Record = [PSCustomObject]@{
         version = 1
-        updatedAt = (Get-Date).ToString('o')
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
         entries = @($Entries)
-    })
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "foursquare-cache" `
+            -Value $Record
+        return
+    }
+
+    Write-DriveOSJson -Path $FoursquareCacheFile -Value $Record
 }
 
 function Get-FoursquareCacheMap {
@@ -1173,26 +1223,31 @@ function Get-FoursquareConnectionStatus {
 
 function Set-FoursquareLastError {
     param([string]$Message)
+
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
         -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
-    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+
+    $Record = [PSCustomObject]@{
         version = 1
         day = $Usage.day
         dayCount = [int]$Usage.dayCount
         month = $Usage.month
         monthCount = [int]$Usage.monthCount
         lastError = if ($Message) { $Message } else { $null }
-        lastErrorAt = if ($Message) { (Get-Date).ToString('o') } else { $null }
-        updatedAt = (Get-Date).ToString('o')
-    })
+        lastErrorAt = if ($Message) { [DateTimeOffset]::UtcNow.ToString('o') } else { $null }
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+
+    Save-FoursquareUsageRecord -Record $Record
 }
 
 function Register-FoursquareApiCall {
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
         -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
+
     if (-not $Usage.canCall) { return $false }
 
-    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+    $Record = [PSCustomObject]@{
         version = 1
         day = $Usage.day
         dayCount = ([int]$Usage.dayCount + 1)
@@ -1200,8 +1255,10 @@ function Register-FoursquareApiCall {
         monthCount = ([int]$Usage.monthCount + 1)
         lastError = $null
         lastErrorAt = $null
-        updatedAt = (Get-Date).ToString('o')
-    })
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+
+    Save-FoursquareUsageRecord -Record $Record
     return $true
 }
 
