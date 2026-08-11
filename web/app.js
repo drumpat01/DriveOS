@@ -14,6 +14,9 @@ let mapLibreLoadPromise = null;
 let driveLibraryRenderScheduled = false;
 let driveLibraryFullyLoaded = false;
 let driveLibraryLoadPromise = null;
+let driveTimelineDays = 7;
+let driveTimelineLoaded = false;
+let driveTimelineLoadPromise = null;
 
 function ensureMapLibre() {
   if (window.maplibregl) {
@@ -391,6 +394,7 @@ async function loadSpotify() {
   try {
     const data = await getJson("/api/spotify/recent");
     const tracks = data.recent || [];
+    state.spotifyRecent = tracks;
 
     if (tracks.length) {
       const featured = tracks[0];
@@ -1162,6 +1166,7 @@ async function loadCharging() {
     const data = await getJson("/api/charging");
     state.chargingSessions = data.sessions || [];
     renderCharging(data);
+    if (driveTimelineLoaded) renderDriveTimeline();
   } catch (error) {
     const container = $("chargingHistory");
     if (container) container.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
@@ -1366,6 +1371,219 @@ document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("cli
   }
 });
 
+
+function timelineDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+function timelineSamePlace(a, b) {
+  const normalize = value => String(value || "").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+  const left = normalize(a);
+  const right = normalize(b);
+  return Boolean(left && right && (left === right || left.includes(right) || right.includes(left)));
+}
+function timelineTimeLabel(value) {
+  const date = timelineDate(value);
+  return date ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+}
+function timelineDuration(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  if (total < 60) return `${total} min`;
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return mins ? `${hours} hr ${mins} min` : `${hours} hr`;
+}
+function timelineRangeStart(days) {
+  const start = new Date();
+  if (days <= 1) start.setHours(0, 0, 0, 0);
+  else {
+    start.setDate(start.getDate() - (days - 1));
+    start.setHours(0, 0, 0, 0);
+  }
+  return start;
+}
+function buildDriveTimelineEvents(days = 7) {
+  const cutoff = timelineRangeStart(days);
+  const events = [];
+  const drives = Array.isArray(state.drives) ? [...state.drives] : [];
+  const charges = Array.isArray(state.chargingSessions) ? state.chargingSessions : [];
+  const spotify = Array.isArray(state.spotifyRecent) ? state.spotifyRecent : [];
+
+  drives.forEach(drive => {
+    const start = timelineDate(drive.startedAt);
+    if (!start || start < cutoff) return;
+    events.push({
+      type: "drive",
+      at: start,
+      drive,
+      title: driveRouteText(drive) || "Drive",
+      detail: [
+        drive.miles != null ? `${drive.miles} mi` : null,
+        drive.durationMinutes != null ? timelineDuration(drive.durationMinutes) : null,
+        drive.songCount ? `${drive.songCount} song${drive.songCount === 1 ? "" : "s"}` : null
+      ].filter(Boolean).join(" \u00B7 ")
+    });
+  });
+
+  charges.forEach(session => {
+    const start = timelineDate(session.startedAt);
+    if (!start || start < cutoff) return;
+    events.push({
+      type: "charge",
+      at: start,
+      session,
+      title: session.isSupercharger ? "Supercharging" : "Charging",
+      detail: [
+        session.location || "Unknown location",
+        session.energyAddedKWh != null ? `${session.energyAddedKWh} kWh` : null,
+        session.displayCost != null ? money(session.displayCost) : null
+      ].filter(Boolean).join(" \u00B7 ")
+    });
+  });
+
+  spotify.forEach(song => {
+    const playedAt = timelineDate(song.playedAt || song.played_at);
+    if (!playedAt || playedAt < cutoff) return;
+    events.push({ type: "song", at: playedAt, song, title: song.track || "Spotify play", detail: song.artist || "" });
+  });
+
+  const chronological = drives
+    .filter(drive => timelineDate(drive.startedAt))
+    .sort((a, b) => timelineDate(a.startedAt) - timelineDate(b.startedAt));
+
+  for (let i = 0; i < chronological.length - 1; i += 1) {
+    const current = chronological[i];
+    const next = chronological[i + 1];
+    const stopStart = timelineDate(current.endedAt);
+    const nextStart = timelineDate(next.startedAt);
+    if (!stopStart || !nextStart || stopStart < cutoff) continue;
+    if (!timelineSamePlace(current.endingLocation, next.startingLocation)) continue;
+    const minutes = Math.round((nextStart - stopStart) / 60000);
+    if (minutes < 30 || minutes > 360) continue;
+    events.push({
+      type: "stop",
+      at: stopStart,
+      title: current.endingLocation || "Stop",
+      detail: `Stopped for ${timelineDuration(minutes)}`
+    });
+  }
+
+  return events.sort((a, b) => b.at - a.at);
+}
+function timelineIcon(type) {
+  return ({ drive: "\u2197", charge: "\u26A1", song: "\u266B", stop: "\u25CF" })[type] || "\u2022";
+}
+function timelineEventMarkup(event) {
+  const time = timelineTimeLabel(event.at);
+  if (event.type === "drive") {
+    return `
+      <button class="drive-timeline-event drive-timeline-event-drive" type="button" data-timeline-drive="${escapeHtml(event.drive.id)}">
+        <span class="drive-timeline-time">${escapeHtml(time)}</span>
+        <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
+        <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
+        <span class="drive-timeline-action">Open drive \u2192</span>
+      </button>`;
+  }
+  if (event.type === "song") {
+    return `
+      <article class="drive-timeline-event drive-timeline-event-song">
+        <span class="drive-timeline-time">${escapeHtml(time)}</span>
+        <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
+        <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
+      </article>`;
+  }
+  return `
+    <article class="drive-timeline-event drive-timeline-event-${escapeHtml(event.type)}">
+      <span class="drive-timeline-time">${escapeHtml(time)}</span>
+      <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
+      <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
+    </article>`;
+}
+function renderDriveTimeline() {
+  const container = $("driveTimelineContent");
+  if (!container) return;
+  const events = buildDriveTimelineEvents(driveTimelineDays);
+  const groups = new Map();
+
+  events.forEach(event => {
+    const key = event.at.toLocaleDateString("en-CA");
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(event);
+  });
+
+  const drives = events.filter(event => event.type === "drive");
+  const charges = events.filter(event => event.type === "charge");
+  const songs = events.filter(event => event.type === "song");
+  const miles = drives.reduce((sum, event) => sum + (Number(event.drive?.miles) || 0), 0);
+
+  setText("timelineDriveCount", drives.length, "0");
+  setText("timelineMiles", Math.round(miles * 10) / 10, "0");
+  setText("timelineChargeCount", charges.length, "0");
+  setText("timelineSongCount", songs.length, "0");
+
+  if (!events.length) {
+    container.innerHTML = `<div class="empty-state"><h3>No timeline activity in this range</h3><p>Try a longer range, or refresh DriveOS after your next drive.</p></div>`;
+    return;
+  }
+
+  container.innerHTML = [...groups.entries()].map(([dateKey, dayEvents]) => {
+    const day = dayEvents[0].at;
+    const heading = day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+    return `
+      <section class="drive-timeline-day" data-timeline-date="${escapeHtml(dateKey)}">
+        <div class="drive-timeline-day-heading"><span>${escapeHtml(heading)}</span><small>${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}</small></div>
+        <div class="drive-timeline-day-events">${dayEvents.map(timelineEventMarkup).join("")}</div>
+      </section>`;
+  }).join("");
+
+  container.querySelectorAll("[data-timeline-drive]").forEach(button => {
+    button.addEventListener("click", () => {
+      const drive = state.drives.find(item => String(item.id) === button.dataset.timelineDrive);
+      if (drive) openDriveModal(drive);
+    });
+  });
+}
+function setDriveTimelineLoading(active) {
+  const region = $("view-timeline");
+  if (!region) return;
+  if (active) {
+    region.classList.add("driveos-loading-region");
+    region.setAttribute("aria-busy", "true");
+    region.dataset.loadingLabel = "Loading Drive Timeline\u2026";
+  } else {
+    region.classList.remove("driveos-loading-region");
+    region.removeAttribute("aria-busy");
+    delete region.dataset.loadingLabel;
+  }
+}
+async function loadDriveTimeline() {
+  if (driveTimelineLoadPromise) return driveTimelineLoadPromise;
+  driveTimelineLoadPromise = (async () => {
+    setDriveTimelineLoading(true);
+    try {
+      const jobs = [];
+      if (!driveLibraryFullyLoaded) jobs.push(loadDrives());
+      if (!Array.isArray(state.chargingSessions)) jobs.push(loadCharging());
+      if (!Array.isArray(state.spotifyRecent)) jobs.push(loadSpotify());
+      if (jobs.length) await Promise.allSettled(jobs);
+      driveTimelineLoaded = true;
+      renderDriveTimeline();
+    } finally {
+      setDriveTimelineLoading(false);
+      driveTimelineLoadPromise = null;
+    }
+  })();
+  return driveTimelineLoadPromise;
+}
+
+document.querySelectorAll("[data-timeline-days]").forEach(button => {
+  button.addEventListener("click", () => {
+    driveTimelineDays = Number(button.dataset.timelineDays) || 7;
+    document.querySelectorAll("[data-timeline-days]").forEach(item => item.classList.toggle("active", item === button));
+    renderDriveTimeline();
+  });
+});
+document.querySelector('.nav-button[data-view="timeline"]')?.addEventListener("click", () => { void loadDriveTimeline(); });
 function locationContains(value, query) {
   const terms = String(query || "")
     .toLocaleLowerCase()
@@ -2883,8 +3101,11 @@ document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
 updateClock();
 setInterval(updateClock, 30_000);
 
-const initialView = ["dashboard", "drives", "music", "statistics"].includes(location.hash.slice(1))
+const initialView = ["dashboard", "drives", "timeline", "music", "statistics"].includes(location.hash.slice(1))
   ? location.hash.slice(1)
   : "dashboard";
 
 showView(initialView);
+if (initialView === "timeline") {
+  void loadDriveTimeline();
+}

@@ -10,6 +10,7 @@
     let draggedId = null;
     let resizeState = null;
     let pendingBlankDrop = null;
+    let pointerDragState = null;
 
     function defaults() {
       const items = widgets();
@@ -329,6 +330,82 @@
       grid.classList.add("dashboard-grid-accepting-drop");
     }
 
+    function pointerDropTarget(clientX, clientY) {
+      const element = document.elementFromPoint(clientX, clientY);
+      const widget = element?.closest?.("[data-dashboard-widget]");
+      const id = widget?.dataset.dashboardWidget || null;
+      return id && id !== draggedId ? id : null;
+    }
+
+    function updatePointerDropTarget(clientX, clientY) {
+      const targetId = pointerDropTarget(clientX, clientY);
+      widgets().forEach(widget => {
+        widget.classList.toggle(
+          "dashboard-widget-drop-target",
+          widget.dataset.dashboardWidget === targetId
+        );
+      });
+      return targetId;
+    }
+
+    function beginPointerWidgetDrag(event, widget, handle) {
+      if (event.pointerType === "mouse" && canDragWidgets()) return;
+      if (event.button != null && event.button !== 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      draggedId = widget.dataset.dashboardWidget;
+      pointerDragState = {
+        pointerId: event.pointerId,
+        widget,
+        handle,
+        targetId: null
+      };
+
+      handle.setPointerCapture?.(event.pointerId);
+      widget.classList.add("dashboard-widget-dragging");
+      document.body.classList.add("dashboard-pointer-dragging");
+      pointerDragState.targetId = updatePointerDropTarget(event.clientX, event.clientY);
+    }
+
+    function movePointerWidgetDrag(event) {
+      if (!pointerDragState || event.pointerId !== pointerDragState.pointerId) return;
+
+      event.preventDefault();
+      pointerDragState.targetId = updatePointerDropTarget(event.clientX, event.clientY);
+
+      const edge = 72;
+      if (event.clientY < edge) {
+        window.scrollBy({ top: -18, behavior: "auto" });
+      } else if (event.clientY > window.innerHeight - edge) {
+        window.scrollBy({ top: 18, behavior: "auto" });
+      }
+    }
+
+    function finishPointerWidgetDrag(event, commit) {
+      if (!pointerDragState || event.pointerId !== pointerDragState.pointerId) return;
+
+      event.preventDefault();
+      const dragState = pointerDragState;
+      pointerDragState = null;
+
+      dragState.handle.releasePointerCapture?.(event.pointerId);
+      dragState.widget.classList.remove("dashboard-widget-dragging");
+      document.body.classList.remove("dashboard-pointer-dragging");
+
+      const targetId = dragState.targetId || pointerDropTarget(event.clientX, event.clientY);
+      widgets().forEach(widget => widget.classList.remove("dashboard-widget-drop-target"));
+
+      if (commit && targetId && draggedId) {
+        reorderDragged(targetId);
+      } else {
+        draggedId = null;
+      }
+
+      clearDropVisuals();
+    }
+
     function setWidgetDragging(enabled) {
       widgets().forEach(widget => {
         let handle = widget.querySelector(".dashboard-widget-drag-handle");
@@ -352,9 +429,13 @@
             widgets().forEach(item => item.classList.remove("dashboard-widget-dragging", "dashboard-widget-drop-target"));
             clearDropVisuals();
           });
+          handle.addEventListener("pointerdown", event => beginPointerWidgetDrag(event, widget, handle));
+          handle.addEventListener("pointermove", movePointerWidgetDrag);
+          handle.addEventListener("pointerup", event => finishPointerWidgetDrag(event, true));
+          handle.addEventListener("pointercancel", event => finishPointerWidgetDrag(event, false));
         }
         handle.draggable = enabled && canDragWidgets();
-        handle.hidden = !enabled || !canDragWidgets();
+        handle.hidden = !enabled;
 
         if (!widget.querySelector(".dashboard-resize-indicator")) widget.append(resizeGraphic());
         if (!widget.querySelector(".dashboard-widget-resize-edge")) addResizeHandle(widget, "edge");
@@ -482,7 +563,13 @@
       button.textContent = open ? "Done customizing" : "Customize dashboard";
       document.body.classList.toggle("dashboard-editing", open);
       setWidgetDragging(open);
-      if (!open) clearDropVisuals();
+      if (!open) {
+        pointerDragState = null;
+        draggedId = null;
+        document.body.classList.remove("dashboard-pointer-dragging");
+        widgets().forEach(widget => widget.classList.remove("dashboard-widget-dragging", "dashboard-widget-drop-target"));
+        clearDropVisuals();
+      }
       if (open) renderEditor();
     }
 
