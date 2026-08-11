@@ -1,7 +1,18 @@
 function ConvertTo-DriveOSDrive {
     param([Parameter(Mandatory=$true)]$Drive,[object[]]$Soundtrack=@(),[string]$StartingLocation,[string]$EndingLocation)
-    $start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime()
-    $end=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
+
+    $startUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at)
+    $endUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at)
+
+    if ($env:DRIVEOS_MODE -eq "web") {
+        $driveTimeZone = [TimeZoneInfo]::FindSystemTimeZoneById("America/Chicago")
+        $start = [TimeZoneInfo]::ConvertTime($startUtc, $driveTimeZone)
+        $end = [TimeZoneInfo]::ConvertTime($endUtc, $driveTimeZone)
+    }
+    else {
+        $start = $startUtc.ToLocalTime()
+        $end = $endUtc.ToLocalTime()
+    }
     $duration=[math]::Max(0,[math]::Round(($end-$start).TotalMinutes))
     $battery=if($null -ne $Drive.starting_battery -and $null -ne $Drive.ending_battery){[int]$Drive.starting_battery-[int]$Drive.ending_battery}else{$null}
     $miles=if($null -ne $Drive.odometer_distance){[math]::Round([double]$Drive.odometer_distance,1)}else{$null}
