@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=3.2.0">
+  <link rel="stylesheet" href="/styles.css?v=5.0.1">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -122,6 +122,7 @@
       <nav class="main-nav" aria-label="DriveOS">
         <button class="nav-button active" data-view="dashboard">Dashboard</button>
         <button class="nav-button" data-view="drives">Drives</button>
+        <button class="nav-button" data-view="timeline">Timeline</button>
         <button class="nav-button" data-view="music">Music</button>
         <button class="nav-button" data-view="statistics">Statistics</button>
       </nav>
@@ -572,6 +573,35 @@
         </article>
       </section>
 
+      <!-- DRIVE TIMELINE -->
+      <section id="view-timeline" class="view">
+        <div class="page-heading drive-timeline-heading">
+          <div>
+            <div class="section-label">VEHICLE JOURNAL</div>
+            <h2>Drive Timeline</h2>
+            <p>One chronological view of drives, charging, music, and the places where Eloise spent time.</p>
+          </div>
+          <div class="timeline-range-control" role="group" aria-label="Timeline range">
+            <button class="secondary-button timeline-range-button" type="button" data-timeline-days="1">Today</button>
+            <button class="secondary-button timeline-range-button active" type="button" data-timeline-days="7">7 days</button>
+            <button class="secondary-button timeline-range-button" type="button" data-timeline-days="30">30 days</button>
+          </div>
+        </div>
+
+        <section class="panel drive-timeline-summary-panel">
+          <div class="drive-timeline-summary">
+            <div><span>Drives</span><strong id="timelineDriveCount">--</strong></div>
+            <div><span>Miles</span><strong id="timelineMiles">--</strong></div>
+            <div><span>Charging</span><strong id="timelineChargeCount">--</strong></div>
+            <div><span>Songs</span><strong id="timelineSongCount">--</strong></div>
+          </div>
+        </section>
+
+        <section id="driveTimelineContent" class="drive-timeline-content" aria-live="polite">
+          <div class="empty-state"><h3>Loading timeline&hellip;</h3><p>DriveOS is combining your recent vehicle and music activity.</p></div>
+        </section>
+      </section>
+
       <!-- STATISTICS -->
       <section id="view-statistics" class="view">
         <div class="page-heading">
@@ -844,27 +874,27 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.0.0"></script>
-  <script src="/core/dom.js?v=5.0.0"></script>
-  <script src="/core/state.js?v=5.0.0"></script>
-  <script src="/core/platform.js?v=5.0.0"></script>
-  <script src="/core/api.js?v=5.0.0"></script>
-  <script src="/components/song-artwork.js?v=5.0.0"></script>
-  <script src="/features/navigation.js?v=5.0.0"></script>
-  <script src="/features/pwa.js?v=5.0.0"></script>
-  <script src="/features/theme.js?v=5.0.0"></script>
-  <script src="/features/ignition.js?v=5.0.0"></script>
-  <script src="/features/places.js?v=5.0.0"></script>
-  <script src="/features/charging.js?v=5.0.0"></script>
-  <script src="/features/recaps.js?v=5.0.0"></script>
-  <script src="/features/refresh.js?v=5.0.0"></script>
-  <script src="/features/drives.js?v=5.0.0"></script>
-  <script src="/features/replay.js?v=5.0.0"></script>
-  <script src="/features/music.js?v=5.0.0"></script>
-  <script src="/features/share-cards.js?v=5.0.0"></script>
-  <script src="/features/command-palette.js?v=5.0.0"></script>
-  <script src="/features/dashboard-customization.js?v=5.0.0"></script>
-  <script src="/features/dashboard-widgets.js?v=5.0.0"></script>
-  <script src="/app.js?v=5.0.0"></script>
+  <script src="/core/build.js?v=5.0.1"></script>
+  <script src="/core/dom.js?v=5.0.1"></script>
+  <script src="/core/state.js?v=5.0.1"></script>
+  <script src="/core/platform.js?v=5.0.1"></script>
+  <script src="/core/api.js?v=5.0.1"></script>
+  <script src="/components/song-artwork.js?v=5.0.1"></script>
+  <script src="/features/navigation.js?v=5.0.1"></script>
+  <script src="/features/pwa.js?v=5.0.1"></script>
+  <script src="/features/theme.js?v=5.0.1"></script>
+  <script src="/features/ignition.js?v=5.0.1"></script>
+  <script src="/features/places.js?v=5.0.1"></script>
+  <script src="/features/charging.js?v=5.0.1"></script>
+  <script src="/features/recaps.js?v=5.0.1"></script>
+  <script src="/features/refresh.js?v=5.0.1"></script>
+  <script src="/features/drives.js?v=5.0.1"></script>
+  <script src="/features/replay.js?v=5.0.1"></script>
+  <script src="/features/music.js?v=5.0.1"></script>
+  <script src="/features/share-cards.js?v=5.0.1"></script>
+  <script src="/features/command-palette.js?v=5.0.1"></script>
+  <script src="/features/dashboard-customization.js?v=5.0.1"></script>
+  <script src="/features/dashboard-widgets.js?v=5.0.1"></script>
+  <script src="/app.js?v=5.0.1"></script>
 </body>
 </html>
