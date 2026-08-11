@@ -1584,25 +1584,12 @@ function ConvertTo-PublicListeningPlay {
 }
 
 function Get-SpotifySummary {
+    # Keep the dashboard response fast: archive Spotify's recent-play window
+    # here, but let Last.fm synchronization run separately after the main
+    # dashboard refresh has finished.
     $Items = @(Get-SpotifyRecent -Limit 50)
     $SpotifyAdded = Save-SpotifyHistory $Items
-    $SpotifyClient = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
-    $LastFm = $null
-    $LastFmError = $null
-
-    try {
-        $LastFm = Sync-LastFmHistory -SpotifyClient $SpotifyClient
-    }
-    catch {
-        $LastFmError = "Last.fm sync is temporarily unavailable"
-        Write-DriveOSServerLog "Last.fm sync failed: $($_.Exception.Message)"
-        $LastFm = [PSCustomObject]@{
-            configured = (Get-LastFmConnectionStatus).configured
-            username   = (Get-LastFmConnectionStatus).username
-            added      = 0
-            duplicates = 0
-        }
-    }
+    $LastFmStatus = Get-LastFmConnectionStatus
 
     $History = @(Get-SpotifyHistory | Sort-Object {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
@@ -1613,17 +1600,16 @@ function Get-SpotifySummary {
     $Recent = @($History | Select-Object -First 21 | ForEach-Object {
         ConvertTo-PublicListeningPlay -Record $_
     })
-    $LastFmAdded = [int]$LastFm.added
 
     return [PSCustomObject]@{
         recent             = $Recent
-        newlyArchived      = ($SpotifyAdded + $LastFmAdded)
+        newlyArchived      = $SpotifyAdded
         spotifyNewlyAdded  = $SpotifyAdded
-        lastFmNewlyAdded   = $LastFmAdded
+        lastFmNewlyAdded   = 0
         archiveTotal       = $History.Count
-        lastFmConfigured   = [bool]$LastFm.configured
-        lastFmUsername     = $LastFm.username
-        lastFmError        = $LastFmError
+        lastFmConfigured   = [bool]$LastFmStatus.configured
+        lastFmUsername     = $LastFmStatus.username
+        lastFmError        = $null
     }
 }
 
@@ -2805,6 +2791,26 @@ function Handle-Request {
 
                 "/api/lastfm/status" {
                     Send-Json -Stream $Stream -Object (Get-LastFmConnectionStatus)
+                    return
+                }
+
+                "/api/lastfm/sync" {
+                    $LastFmStatus = Get-LastFmConnectionStatus
+
+                    if (-not $LastFmStatus.configured) {
+                        Send-Json -Stream $Stream -Object @{
+                            configured = $false
+                            username = $LastFmStatus.username
+                            added = 0
+                            duplicates = 0
+                        }
+                        return
+                    }
+
+                    Send-Json -Stream $Stream -Object (
+                        Sync-LastFmHistory `
+                            -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken))
+                    )
                     return
                 }
 

@@ -24,6 +24,13 @@
           tasks.loadCharging(),
           tasks.loadRecaps()
         ]);
+
+        // Do not hold the dashboard refresh open while Last.fm catches up.
+        // The backend is single-request, so start this only after the visible
+        // dashboard data has finished loading.
+        if (tasks.syncListeningHistory) {
+          void tasks.syncListeningHistory();
+        }
       } finally {
         if (button) {
           button.disabled = false;
@@ -56,6 +63,10 @@
           tasks.loadCharging(),
           tasks.loadRecaps()
         ]);
+
+        if (tasks.syncListeningHistory) {
+          void tasks.syncListeningHistory();
+        }
       }, 300_000);
 
       return initialRefresh;

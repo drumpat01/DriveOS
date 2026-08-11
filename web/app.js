@@ -194,6 +194,35 @@ async function loadVehicle() {
   }
 }
 
+let listeningHistorySyncPromise = null;
+
+async function syncListeningHistory() {
+  if (listeningHistorySyncPromise) return listeningHistorySyncPromise;
+
+  listeningHistorySyncPromise = (async () => {
+    try {
+      const result = await getJson("/api/lastfm/sync");
+      const added = Number(result?.added) || 0;
+
+      // If Last.fm found new scrobbles, refresh only the music-facing views
+      // after the sync completes. The main dashboard is already interactive.
+      if (added > 0) {
+        await loadSpotify();
+        await loadMusicStats();
+      }
+
+      return result;
+    } catch (error) {
+      console.warn("Last.fm background sync failed:", error);
+      return null;
+    } finally {
+      listeningHistorySyncPromise = null;
+    }
+  })();
+
+  return listeningHistorySyncPromise;
+}
+
 async function loadSpotify() {
   const list = $("trackList");
 
@@ -2526,8 +2555,9 @@ async function configureFoursquareOnThisComputer() {
 }
 
 const refreshFeature = window.DriveOSFeatures.refresh.create({
-  loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
-  loadStatistics, loadPlaces, loadCharging, loadRecaps
+  loadStatus, loadVehicle, loadSpotify, syncListeningHistory,
+  loadDrives, loadMusicStats, loadStatistics, loadPlaces,
+  loadCharging, loadRecaps
 });
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
