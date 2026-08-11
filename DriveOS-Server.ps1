@@ -1398,17 +1398,31 @@ function Sync-LastFmHistory {
     $History = @(Get-SpotifyHistory)
     $Latest = [DateTimeOffset]::UtcNow.AddDays(-365)
 
-    if (-not $FullHistory -and (Test-Path $LastFmSyncStateFile -PathType Leaf)) {
+    if (-not $FullHistory) {
         try {
-            $SyncState = Read-DriveOSJson -Path $LastFmSyncStateFile
+            $SyncState = if ($Repository.Provider -eq "Turso") {
+                Get-DriveOSTursoState `
+                    -Repository $Repository `
+                    -Key "lastfm-sync"
+            }
+            elseif (Test-Path $LastFmSyncStateFile -PathType Leaf) {
+                Read-DriveOSJson -Path $LastFmSyncStateFile
+            }
+            else {
+                $null
+            }
+
             if (
+                $SyncState -and
                 "$($SyncState.Username)" -eq $Config.username -and
                 [long]$SyncState.CursorUnix -gt 0
             ) {
                 $Latest = [DateTimeOffset]::FromUnixTimeSeconds([long]$SyncState.CursorUnix)
             }
         }
-        catch {}
+        catch {
+            Write-DriveOSServerLog "Last.fm sync state lookup failed: $($_.Exception.Message)"
+        }
     }
 
     foreach ($Record in $History) {
@@ -1507,12 +1521,22 @@ function Sync-LastFmHistory {
         if ($NewestItemUnix -gt $CursorUnix) { $CursorUnix = $NewestItemUnix }
     }
 
-    Write-DriveOSJson -Path $LastFmSyncStateFile -Value ([PSCustomObject]@{
+    $SyncRecord = [PSCustomObject]@{
         Version    = 1
         Username   = $Config.username
         CursorUnix = $CursorUnix
         LastSyncAt = [DateTimeOffset]::UtcNow.ToString("o")
-    })
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "lastfm-sync" `
+            -Value $SyncRecord
+    }
+    else {
+        Write-DriveOSJson -Path $LastFmSyncStateFile -Value $SyncRecord
+    }
 
     return [PSCustomObject]@{
         configured = $true
