@@ -1651,14 +1651,14 @@ function Set-PlaceAlias {
 function Get-ChargingSettings {
     $Rate = $null
 
-    if (Test-Path $ChargingSettingsFile -PathType Leaf) {
-        try {
-            $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
-            if ($null -ne $Parsed.electricityRateCents) {
-                $Rate = [double]$Parsed.electricityRateCents
-            }
+    try {
+        $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
+        if ($Parsed -and $null -ne $Parsed.electricityRateCents) {
+            $Rate = [double]$Parsed.electricityRateCents
         }
-        catch {}
+    }
+    catch {
+        Write-DriveOSServerLog "Charging settings lookup failed: $($_.Exception.Message)"
     }
 
     return [PSCustomObject]@{
