@@ -9,8 +9,9 @@
   }
 
   function url(song) {
+    if (song?.albumImage) return song.albumImage;
     if (song?.trackId) return `/api/spotify/artwork/${encodeURIComponent(song.trackId)}`;
-    return song?.albumImage || "";
+    return "";
   }
 
   function markup(song, className = "song-list-artwork") {
@@ -20,7 +21,7 @@
     return `
     <div class="${className} song-artwork-shell">
       <img class="song-artwork-image" src="${escapeHtml(source)}"
-        alt="${escapeHtml(`${song.album || song.track || "Album"} artwork`)}" loading="lazy"
+        alt="${escapeHtml(`${song.album || song.track || "Album"} artwork`)}"
         onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
       <div class="song-artwork-placeholder" hidden aria-hidden="true">\u266B</div>
     </div>`;
