@@ -1292,10 +1292,17 @@ function Start-FoursquareConfiguration {
 }
 
 function Get-FoursquareCachedPlace {
-    param([string]$Location, $Latitude = $null, $Longitude = $null)
+    param(
+        [string]$Location,
+        $Latitude = $null,
+        $Longitude = $null,
+        $CacheMap = $null
+    )
+
     $Key = Get-DriveOSPlaceCacheKey -Location $Location -Latitude $Latitude -Longitude $Longitude
     if (-not $Key) { return $null }
-    $Map = Get-FoursquareCacheMap
+
+    $Map = if ($null -ne $CacheMap) { $CacheMap } else { Get-FoursquareCacheMap }
     if ($Map.ContainsKey($Key) -and $Map[$Key].status -eq 'matched') { return $Map[$Key] }
     return $null
 }
@@ -1654,13 +1661,24 @@ function Get-PlaceAliasMap {
 }
 
 function Get-FriendlyLocation {
-    param([string]$Location, $Latitude = $null, $Longitude = $null)
+    param(
+        [string]$Location,
+        $Latitude = $null,
+        $Longitude = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
+    )
 
-    $AliasMap = Get-PlaceAliasMap
-    $Friendly = Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap $AliasMap
+    $ResolvedAliasMap = if ($null -ne $AliasMap) { $AliasMap } else { Get-PlaceAliasMap }
+    $Friendly = Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap $ResolvedAliasMap
     if ($Friendly -ne $Location) { return $Friendly }
 
-    $Business = Get-FoursquareCachedPlace -Location $Location -Latitude $Latitude -Longitude $Longitude
+    $Business = Get-FoursquareCachedPlace `
+        -Location $Location `
+        -Latitude $Latitude `
+        -Longitude $Longitude `
+        -CacheMap $FoursquareCacheMap
+
     if ($Business -and $Business.name) { return [string]$Business.name }
     return $Location
 }
@@ -1992,14 +2010,16 @@ function Get-SoundtrackForWindow {
 function Convert-RawDrive {
     param(
         $Drive,
-        [object[]]$SpotifyHistory = $null
+        [object[]]$SpotifyHistory = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
     )
 
     $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
     $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
     return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack `
-        -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude) `
-        -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude)
+        -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap) `
+        -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap)
 }
 
 function Get-RecentDrives {
@@ -2008,8 +2028,18 @@ function Get-RecentDrives {
     $Output = @()
     $SpotifyHistory = @(Get-SpotifyHistory)
 
+    # Friendly-location data is shared across the entire build. In hosted mode
+    # these maps come from Turso, so loading them once avoids hundreds of
+    # repeated repository round trips for drive start/end locations.
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
     foreach ($Raw in @(Get-RawDrives -Days $Days)) {
-        $Output += Convert-RawDrive -Drive $Raw -SpotifyHistory $SpotifyHistory
+        $Output += Convert-RawDrive `
+            -Drive $Raw `
+            -SpotifyHistory $SpotifyHistory `
+            -AliasMap $AliasMap `
+            -FoursquareCacheMap $FoursquareCacheMap
     }
 
     return $Output
