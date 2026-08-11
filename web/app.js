@@ -81,8 +81,93 @@ function songArtworkMarkup(song, className = "song-list-artwork") {
 }
 
 
+const apiLoadingRegions = Object.freeze({
+  "/api/status": {
+    selector: '[data-dashboard-widget="status"]',
+    label: "Loading connection status\u2026"
+  },
+  "/api/vehicle": {
+    selector: '[data-dashboard-widget="vehicle"]',
+    label: "Loading vehicle data\u2026"
+  },
+  "/api/spotify/recent": {
+    selector: '[data-dashboard-widget="music"]',
+    label: "Loading Spotify\u2026"
+  },
+  "/api/drives/recent": {
+    selector: '[data-dashboard-widget="drives"]',
+    label: "Loading recent drives\u2026"
+  },
+  "/api/drives": {
+    selector: "#view-drives",
+    label: "Loading full drive library\u2026"
+  },
+  "/api/music/stats": {
+    selector: "#view-music",
+    label: "Loading music statistics\u2026"
+  },
+  "/api/statistics": {
+    selector: "#view-statistics",
+    label: "Loading driving statistics\u2026"
+  },
+  "/api/places": {
+    selector: "#placeNamesList",
+    label: "Loading saved places\u2026"
+  },
+  "/api/charging": {
+    selector: "#chargingHistory",
+    label: "Loading charging history\u2026"
+  },
+  "/api/recap": {
+    selector: "#monthlyRecap",
+    label: "Loading monthly recap\u2026"
+  }
+});
+
+const apiLoadingCounts = new WeakMap();
+
+function beginApiLoading(path) {
+  const config = apiLoadingRegions[path];
+  if (!config) return () => {};
+
+  const region = document.querySelector(config.selector);
+  if (!region) return () => {};
+
+  const count = (apiLoadingCounts.get(region) || 0) + 1;
+  apiLoadingCounts.set(region, count);
+
+  region.classList.add("driveos-loading-region");
+  region.setAttribute("aria-busy", "true");
+  region.dataset.loadingLabel = config.label;
+
+  let ended = false;
+
+  return () => {
+    if (ended) return;
+    ended = true;
+
+    const remaining = Math.max(0, (apiLoadingCounts.get(region) || 1) - 1);
+
+    if (remaining > 0) {
+      apiLoadingCounts.set(region, remaining);
+      return;
+    }
+
+    apiLoadingCounts.delete(region);
+    region.classList.remove("driveos-loading-region");
+    region.removeAttribute("aria-busy");
+    delete region.dataset.loadingLabel;
+  };
+}
+
 async function getJson(path) {
-  return window.DriveOSApi.get(path);
+  const endLoading = beginApiLoading(path);
+
+  try {
+    return await window.DriveOSApi.get(path);
+  } finally {
+    endLoading();
+  }
 }
 
 async function postJson(path, body) {

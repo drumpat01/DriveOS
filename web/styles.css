@@ -6842,3 +6842,79 @@ h1 span {
   content-visibility: auto;
   contain-intrinsic-size: 120px;
 }
+/* DriveOS honest loading states */
+.driveos-loading-region {
+  position: relative !important;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.driveos-loading-region::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 9990;
+  border-radius: inherit;
+  background: rgba(221, 226, 230, 0.78);
+  backdrop-filter: grayscale(0.65) blur(1px);
+  -webkit-backdrop-filter: grayscale(0.65) blur(1px);
+}
+
+.driveos-loading-region::after {
+  content: attr(data-loading-label);
+  position: absolute;
+  z-index: 9991;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 150px;
+  max-width: calc(100% - 32px);
+  padding: 10px 16px 10px 38px;
+  border: 1px solid rgba(66, 77, 87, 0.2);
+  border-radius: 999px;
+  background: rgba(248, 250, 251, 0.96);
+  box-shadow: 0 8px 28px rgba(20, 30, 38, 0.12);
+  color: #35414a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.driveos-loading-region::after {
+  background-image:
+    radial-gradient(circle at 20px 50%, transparent 5px, currentColor 5.5px, currentColor 7px, transparent 7.5px);
+  background-repeat: no-repeat;
+}
+
+:root[data-theme="dark"] .driveos-loading-region::before {
+  background: rgba(19, 25, 30, 0.78);
+}
+
+:root[data-theme="dark"] .driveos-loading-region::after {
+  border-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(31, 39, 46, 0.97);
+  color: #dce5eb;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 760px) {
+  .driveos-loading-region::after {
+    max-width: calc(100% - 24px);
+    padding: 9px 14px 9px 34px;
+    font-size: 0.76rem;
+    white-space: normal;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .driveos-loading-region::after {
+    animation: driveos-loading-pulse 1.25s ease-in-out infinite;
+  }
+
+  @keyframes driveos-loading-pulse {
+    0%, 100% { opacity: 0.72; }
+    50% { opacity: 1; }
+  }
+}
