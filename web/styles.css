@@ -6831,3 +6831,14 @@ h1 span {
   :root[data-theme="dark"] .vehicle-location-map { filter: brightness(.72) saturate(.82); }
   :root[data-theme="dark"] .vehicle-location-heading, :root[data-theme="dark"] .vehicle-location-marker { filter: none; }
 }
+
+/* DriveOS perceived-performance containment */
+#allDrives .drive-card,
+#chargingHistory .charge-session-card,
+#placeNamesList .place-name-row,
+#topTracks .rank-row,
+#topArtists .rank-row,
+#musicLocationResults .location-play-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 120px;
+}

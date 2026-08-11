@@ -10,6 +10,60 @@ let dashboardWidgetsFeature = null;
 let vehicleLocationMap = null;
 let vehicleLocationMarker = null;
 let vehicleLocationResizeObserver = null;
+let mapLibreLoadPromise = null;
+let driveLibraryRenderScheduled = false;
+
+function ensureMapLibre() {
+  if (window.maplibregl) {
+    return Promise.resolve(window.maplibregl);
+  }
+
+  if (mapLibreLoadPromise) {
+    return mapLibreLoadPromise;
+  }
+
+  mapLibreLoadPromise = new Promise((resolve, reject) => {
+    const stylesheetId = "driveos-maplibre-css";
+    const scriptId = "driveos-maplibre-js";
+
+    let stylesheet = document.getElementById(stylesheetId);
+    if (!stylesheet) {
+      stylesheet = document.createElement("link");
+      stylesheet.id = stylesheetId;
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css";
+      document.head.appendChild(stylesheet);
+    }
+
+    let script = document.getElementById(scriptId);
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    const finish = () => {
+      if (window.maplibregl) {
+        resolve(window.maplibregl);
+      }
+    };
+
+    if (window.maplibregl) {
+      finish();
+      return;
+    }
+
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => {
+      mapLibreLoadPromise = null;
+      reject(new Error("Map library could not be loaded."));
+    }, { once: true });
+  });
+
+  return mapLibreLoadPromise;
+}
 
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
@@ -133,9 +187,26 @@ function renderVehicleLocation(vehicle) {
     ? `GPS ${gpsDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : "Latest Tessie position");
 
-  if (!hasLocation || !window.maplibregl) {
+  if (!hasLocation) {
     container.classList.add("vehicle-location-unavailable");
-    if (!container.querySelector(".vehicle-location-message")) container.innerHTML = `<div class="vehicle-location-message">${window.maplibregl ? "No current GPS position" : "Map unavailable"}</div>`;
+    if (!container.querySelector(".vehicle-location-message")) {
+      container.innerHTML = '<div class="vehicle-location-message">No current GPS position</div>';
+    }
+    return;
+  }
+
+  if (!window.maplibregl) {
+    container.classList.add("vehicle-location-unavailable");
+    container.innerHTML = '<div class="vehicle-location-message">Loading live map\u2026</div>';
+
+    void ensureMapLibre()
+      .then(() => renderVehicleLocation(vehicle))
+      .catch(() => {
+        if (container) {
+          container.innerHTML = '<div class="vehicle-location-message">Map unavailable</div>';
+        }
+      });
+
     return;
   }
 
@@ -208,7 +279,11 @@ async function syncListeningHistory() {
       // after the sync completes. The main dashboard is already interactive.
       if (added > 0) {
         await loadSpotify();
-        await loadMusicStats();
+        await Promise.allSettled([
+          loadMusicStats(),
+          loadDrives(),
+          loadStatistics()
+        ]);
       }
 
       return result;
@@ -1084,6 +1159,28 @@ renderCharging = chargingFeature.render;
 loadCharging = chargingFeature.load;
 saveChargingRate = chargingFeature.saveRate;
 
+function scheduleDriveLibraryRender() {
+  const run = () => {
+    driveLibraryRenderScheduled = false;
+    renderDriveLibrary();
+  };
+
+  const drivesView = $("view-drives");
+  if (drivesView?.classList.contains("active-view")) {
+    run();
+    return;
+  }
+
+  if (driveLibraryRenderScheduled) return;
+  driveLibraryRenderScheduled = true;
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 900 });
+  } else {
+    window.setTimeout(run, 120);
+  }
+}
+
 async function loadDrives() {
   try {
     const data = await getJson("/api/drives");
@@ -1113,7 +1210,7 @@ async function loadDrives() {
 
     bindDriveButtons(dashboard);
     renderFavoriteRoutes();
-    renderDriveLibrary();
+    scheduleDriveLibraryRender();
     dashboardWidgetsFeature?.render();
   } catch (error) {
     const html = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
@@ -1763,7 +1860,7 @@ function setMapMusicPoint(lat, lng) {
   renderMapMusicNearby();
 }
 
-function renderDriveMap(data) {
+async function renderDriveMap(data) {
   state.driveMapData = data;
   state.songMapMarkers = new Map();
 
@@ -1776,13 +1873,6 @@ function renderDriveMap(data) {
   songMarkers.forEach(setSongLocationText);
   bindSoundtrackMapRows();
 
-  if (!window.maplibregl) {
-    $("driveMap").classList.add("map-unavailable");
-    $("driveMap").textContent = "MapLibre did not load. Check your internet connection and reload DriveOS.";
-    setText("driveMapStatus", "Map library unavailable");
-    return;
-  }
-
   if (!routePoints.length) {
     $("driveMap").classList.add("map-unavailable");
     $("driveMap").textContent =
@@ -1791,6 +1881,19 @@ function renderDriveMap(data) {
     $("replayPlayPause").disabled = true;
     $("replayScrubber").disabled = true;
     return;
+  }
+
+  if (!window.maplibregl) {
+    setText("driveMapStatus", "Loading map library\u2026");
+
+    try {
+      await ensureMapLibre();
+    } catch (error) {
+      $("driveMap").classList.add("map-unavailable");
+      $("driveMap").textContent = error.message || "Map library unavailable.";
+      setText("driveMapStatus", "Map library unavailable");
+      return;
+    }
   }
 
   if (state.driveMap) {
@@ -1937,7 +2040,7 @@ async function loadDriveMap(drive) {
       return;
     }
 
-    renderDriveMap(data);
+    await renderDriveMap(data);
   } catch (error) {
     $("driveMap").classList.add("map-unavailable");
     $("driveMap").textContent = error.message;

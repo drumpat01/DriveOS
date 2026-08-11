@@ -546,6 +546,8 @@ function Save-SpotifyHistory {
 
     if ($NewCount -gt 0) {
         Set-SpotifyHistoryMemoryCache -Records @($UpdatedHistory)
+        $script:DriveDataCache.drives365 = $null
+        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return $NewCount
@@ -1629,6 +1631,8 @@ function Sync-LastFmHistory {
 
     if ($Added -gt 0) {
         Clear-SpotifyHistoryMemoryCache
+        $script:DriveDataCache.drives365 = $null
+        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return [PSCustomObject]@{
