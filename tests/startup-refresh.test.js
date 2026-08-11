@@ -45,18 +45,22 @@ context.DriveOSIgnition.setReady(first);
 
 first.then(() => {
   const vehicle = calls.indexOf("vehicle");
-  const drives = calls.indexOf("drives");
-  const spotify = calls.indexOf("spotify");
   const status = calls.indexOf("status");
+  const spotify = calls.indexOf("spotify");
+  const drives = calls.indexOf("drives");
 
   assert.ok(vehicle >= 0, "Vehicle should load at startup");
-  assert.ok(drives >= 0, "Drive dashboard should load at startup");
-  assert.ok(spotify > vehicle, "Spotify should wait until critical vehicle data is requested");
-  assert.ok(spotify > drives, "Spotify should wait until critical drive data is requested");
-  assert.ok(status > drives, "Status should not delay the critical dashboard wave");
+  assert.ok(status >= 0, "Status should load at startup");
+  assert.ok(spotify > vehicle, "Spotify should start after the critical vehicle wave");
+  assert.ok(spotify > status, "Spotify should start after the critical status wave");
+  assert.ok(drives > vehicle, "Drives should start after the critical vehicle wave");
+  assert.ok(drives > status, "Drives should start after the critical status wave");
 
   for (const secondary of ["music", "statistics", "places", "charging", "recaps"]) {
-    assert.ok(calls.indexOf(secondary) > spotify, `${secondary} should load after primary dashboard data`);
+    assert.ok(
+      calls.indexOf(secondary) > spotify && calls.indexOf(secondary) > drives,
+      `${secondary} should load after the main-content wave`
+    );
   }
 
   assert.equal(button.disabled, false);

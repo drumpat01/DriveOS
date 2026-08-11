@@ -67,25 +67,48 @@
       }
 
       try {
-        // First wave: the two panels users perceive as the dashboard itself.
-        // Both are fast after the backend optimization pass.
+        // First wave: only the truly critical live shell. Do not make cold
+        // historical drive construction part of "critical ready".
+        const vehiclePromise = Promise.resolve(tasks.loadVehicle())
+          .finally(() => mark("driveos-vehicle-ready"));
+
+        const statusPromise = Promise.resolve(tasks.loadStatus())
+          .finally(() => mark("driveos-status-ready"));
+
         await Promise.allSettled([
-          tasks.loadVehicle(),
-          tasks.loadDrives()
+          vehiclePromise,
+          statusPromise
         ]);
 
         mark("driveos-critical-ready");
         await afterPaint();
 
-        // Second wave: fill the large music panel, then connection/status UI.
-        // Start Spotify first so it gets first chance at the serial backend.
-        const spotifyPromise = tasks.loadSpotify();
-        const statusPromise = tasks.loadStatus();
-        const spotifyResult = await Promise.resolve(spotifyPromise)
-          .then(value => ({ status: "fulfilled", value }))
-          .catch(reason => ({ status: "rejected", reason }));
+        // Main-content wave: start Spotify and historical drives after the
+        // critical shell has painted. Track each independently so cold drive
+        // history cannot hide where startup time is really being spent.
+        const spotifyPromise = Promise.resolve(tasks.loadSpotify())
+          .then(value => {
+            mark("driveos-spotify-ready");
+            return value;
+          }, error => {
+            mark("driveos-spotify-ready");
+            throw error;
+          });
 
-        await Promise.allSettled([statusPromise]);
+        const drivesPromise = Promise.resolve(tasks.loadDrives())
+          .then(value => {
+            mark("driveos-drives-ready");
+            return value;
+          }, error => {
+            mark("driveos-drives-ready");
+            throw error;
+          });
+
+        const [spotifyResult] = await Promise.allSettled([
+          spotifyPromise,
+          drivesPromise
+        ]);
+
         mark("driveos-primary-ready");
 
         // If Spotify just archived new plays, rematch drives once. The backend
@@ -99,6 +122,7 @@
 
         if (newlyArchived > 0) {
           await tasks.loadDrives();
+          mark("driveos-drives-ready");
         }
 
         // Give the browser a clean paint before filling views that are usually
