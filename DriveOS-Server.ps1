@@ -78,12 +78,14 @@ $script:FoursquareApiKeyForRedaction = $null
 # Expensive Tessie-derived data is reused briefly across the dashboard's
 # back-to-back API calls. This is process-local only and disappears on restart.
 $script:DriveDataCache = @{
+    rawDrives365 = $null
+    rawDrives365ExpiresAt = [DateTimeOffset]::MinValue
     drives365 = $null
     drives365ExpiresAt = [DateTimeOffset]::MinValue
     charges365 = $null
     charges365ExpiresAt = [DateTimeOffset]::MinValue
 }
-$DriveDataCacheTtlSeconds = 30
+$DriveDataCacheTtlSeconds = 300
 
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 $MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
@@ -1730,7 +1732,7 @@ function Get-PlaceCandidates {
     $Coordinates = @{}
     $AliasMap = Get-PlaceAliasMap
 
-    foreach ($Drive in @(Get-RawDrives -Days 365)) {
+    foreach ($Drive in @(Get-CachedRawDrives365)) {
         $Endpoints = @(
             [PSCustomObject]@{ location=$Drive.starting_location; latitude=$Drive.starting_latitude; longitude=$Drive.starting_longitude },
             [PSCustomObject]@{ location=$Drive.ending_location; latitude=$Drive.ending_latitude; longitude=$Drive.ending_longitude }
@@ -1913,6 +1915,22 @@ function Get-RawDrives {
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
+function Get-CachedRawDrives365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.rawDrives365 -and
+        $script:DriveDataCache.rawDrives365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.rawDrives365)
+    }
+
+    $RawDrives = @(Get-RawDrives -Days 365)
+    $script:DriveDataCache.rawDrives365 = @($RawDrives)
+    $script:DriveDataCache.rawDrives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $RawDrives
+}
 
 function Get-SoundtrackForWindow {
     param(
@@ -2020,7 +2038,14 @@ function Get-RecentDrives {
     $AliasMap = Get-PlaceAliasMap
     $FoursquareCacheMap = Get-FoursquareCacheMap
 
-    foreach ($Raw in @(Get-RawDrives -Days $Days)) {
+    $RawDrives = if ($Days -eq 365) {
+        @(Get-CachedRawDrives365)
+    }
+    else {
+        @(Get-RawDrives -Days $Days)
+    }
+
+    foreach ($Raw in $RawDrives) {
         $Output += Convert-RawDrive `
             -Drive $Raw `
             -SpotifyHistory $SpotifyHistory `
