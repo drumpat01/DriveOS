@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/powershell:7.4-ubuntu-22.04
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends sqlite3 ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -9,8 +9,8 @@ WORKDIR /app
 COPY . .
 
 ENV DRIVEOS_MODE=web
-ENV DRIVEOS_DATA_DIR=/app/data
-ENV DRIVEOS_REPOSITORY_PROVIDER=SQLite
+ENV DRIVEOS_DATA_DIR=/tmp/driveos
+ENV DRIVEOS_REPOSITORY_PROVIDER=Turso
 
 EXPOSE 10000
 

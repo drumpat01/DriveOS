@@ -10,6 +10,7 @@ $ErrorActionPreference = "Stop"
 Import-Module (Join-Path $PSScriptRoot "src\Configuration\DriveOS.Configuration.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Sqlite.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Turso.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
@@ -83,6 +84,9 @@ if (-not (Test-Path $DataDirectory)) {
 if ($Repository.Provider -eq "SQLite") {
     Initialize-DriveOSSqlite -Repository $Repository
 }
+elseif ($Repository.Provider -eq "Turso") {
+    Initialize-DriveOSTurso -Repository $Repository
+}
 
 if (-not $MaintenanceMode -and -not $env:TESSIE_TOKEN) {
     throw "TESSIE_TOKEN is not available to DriveOS."
@@ -118,6 +122,7 @@ function Write-DriveOSServerLog {
         foreach ($Secret in @(
             $env:TESSIE_TOKEN,
             $env:SPOTIFY_CLIENT_ID,
+            $env:TURSO_AUTH_TOKEN,
             $SessionToken,
             $script:FoursquareApiKeyForRedaction
         )) {
@@ -324,10 +329,31 @@ function Save-SpotifyTokenCache {
         ExpiresAt    = (Get-Date).AddSeconds($ExpiresIn).ToString("o")
         Scope        = $Scope
     }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-token" `
+            -Value $TokenCache
+        return
+    }
+
     Write-DriveOSJson -Path $SpotifyTokenFile -Value $TokenCache
 }
 
 function Get-SpotifyTokenCache {
+    if ($Repository.Provider -eq "Turso") {
+        $Stored = Get-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-token"
+
+        if (-not $Stored) {
+            throw "Spotify authorization is not configured."
+        }
+
+        return $Stored
+    }
+
     if (-not (Test-Path $SpotifyTokenFile)) {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
@@ -694,9 +720,20 @@ function Get-SpotifyAuthorizationStatus {
     }
     catch {}
 
+    $TokenStored = if ($Repository.Provider -eq "Turso") {
+        $null -ne (
+            Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-token"
+        )
+    }
+    else {
+        Test-Path $SpotifyTokenFile -PathType Leaf
+    }
+
     return [PSCustomObject]@{
         authorized = $Authorized
-        tokenFile  = (Test-Path $SpotifyTokenFile -PathType Leaf)
+        tokenFile  = [bool]$TokenStored
     }
 }
 
@@ -795,16 +832,26 @@ function Start-SpotifyWebAuthorization {
 
     $State = ConvertTo-SpotifyBase64Url -Bytes $StateBytes
 
-    Write-DriveOSJson `
-        -Path $SpotifyOAuthStateFile `
-        -Value ([PSCustomObject]@{
-            state = $State
-            verifier = Protect-Token $CodeVerifier
-            redirectUri = $RedirectUri
-            expiresAt = [DateTimeOffset]::UtcNow.
-                AddMinutes(10).
-                ToString("o")
-        })
+    $PendingAuthorization = [PSCustomObject]@{
+        state = $State
+        verifier = Protect-Token $CodeVerifier
+        redirectUri = $RedirectUri
+        expiresAt = [DateTimeOffset]::UtcNow.
+            AddMinutes(10).
+            ToString("o")
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state" `
+            -Value $PendingAuthorization
+    }
+    else {
+        Write-DriveOSJson `
+            -Path $SpotifyOAuthStateFile `
+            -Value $PendingAuthorization
+    }
 
     $AuthUrl =
         "https://accounts.spotify.com/authorize" +
@@ -828,18 +875,36 @@ function Complete-SpotifyWebAuthorization {
         [string]$Target
     )
 
-    if (-not (Test-Path $SpotifyOAuthStateFile -PathType Leaf)) {
-        throw "Spotify authorization state was not found or has expired."
+    $Pending = if ($Repository.Provider -eq "Turso") {
+        Get-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state"
+    }
+    elseif (Test-Path $SpotifyOAuthStateFile -PathType Leaf) {
+        Read-DriveOSJson -Path $SpotifyOAuthStateFile
+    }
+    else {
+        $null
     }
 
-    $Pending = Read-DriveOSJson -Path $SpotifyOAuthStateFile
+    if (-not $Pending) {
+        throw "Spotify authorization state was not found or has expired."
+    }
 
     $ExpiresAt = [DateTimeOffset]::Parse(
         "$($Pending.expiresAt)"
     )
 
     if ([DateTimeOffset]::UtcNow -ge $ExpiresAt) {
-        Remove-Item $SpotifyOAuthStateFile -Force -ErrorAction SilentlyContinue
+        if ($Repository.Provider -eq "Turso") {
+            Remove-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-oauth-state"
+        }
+        else {
+            Remove-Item $SpotifyOAuthStateFile -Force -ErrorAction SilentlyContinue
+        }
+
         throw "Spotify authorization state has expired."
     }
 
@@ -889,11 +954,19 @@ function Complete-SpotifyWebAuthorization {
         -ExpiresIn ([int]$TokenResponse.expires_in) `
         -Scope "$($TokenResponse.scope)"
 
-    Remove-Item `
-        $SpotifyOAuthStateFile `
-        -Force `
-        -ErrorAction SilentlyContinue
+    if ($Repository.Provider -eq "Turso") {
+        Remove-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state"
+    }
+    else {
+        Remove-Item `
+            $SpotifyOAuthStateFile `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
 }
+
 function Start-SpotifyAuthorization {
     if ($RuntimeConfig.IsWeb) {
         return Start-SpotifyWebAuthorization
