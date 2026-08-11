@@ -74,6 +74,17 @@ $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
 $FoursquareDailyLimit = 10
 $FoursquareMonthlyLimit = 250
 $script:FoursquareApiKeyForRedaction = $null
+
+# Expensive Tessie-derived data is reused briefly across the dashboard's
+# back-to-back API calls. This is process-local only and disappears on restart.
+$script:DriveDataCache = @{
+    drives365 = $null
+    drives365ExpiresAt = [DateTimeOffset]::MinValue
+    charges365 = $null
+    charges365ExpiresAt = [DateTimeOffset]::MinValue
+}
+$DriveDataCacheTtlSeconds = 30
+
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 $MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
 
@@ -1781,6 +1792,23 @@ function Get-PlaceCandidates {
     }
 }
 
+function Get-CachedRawCharges365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.charges365 -and
+        $script:DriveDataCache.charges365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.charges365)
+    }
+
+    $Charges = @(Get-RawCharges -Days 365)
+    $script:DriveDataCache.charges365 = @($Charges)
+    $script:DriveDataCache.charges365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Charges
+}
+
 function Get-RawCharges {
     param([ValidateRange(1, 730)][int]$Days = 365)
 
@@ -1807,7 +1835,7 @@ function Convert-RawCharge {
 
 function Get-ChargingSummary {
     $Sessions = @()
-    foreach ($Charge in @(Get-RawCharges -Days 365)) {
+    foreach ($Charge in @(Get-CachedRawCharges365)) {
         $Sessions += Convert-RawCharge -Charge $Charge
     }
 
@@ -1832,8 +1860,8 @@ function Get-ChargingSummary {
 
 
 function Get-MonthlyRecaps {
-    $Drives=@(Get-RecentDrives -Days 365)
-    $Charges=@(Get-RawCharges -Days 365|ForEach-Object{Convert-RawCharge -Charge $_})
+    $Drives = @(Get-CachedRecentDrives365)
+    $Charges = @(Get-CachedRawCharges365 | ForEach-Object { Convert-RawCharge -Charge $_ })
     return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings (Get-ChargingSettings)
 }
 
@@ -1985,6 +2013,23 @@ function Get-RecentDrives {
     }
 
     return $Output
+}
+
+function Get-CachedRecentDrives365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.drives365 -and
+        $script:DriveDataCache.drives365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.drives365)
+    }
+
+    $Drives = @(Get-RecentDrives -Days 365)
+    $script:DriveDataCache.drives365 = @($Drives)
+    $script:DriveDataCache.drives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Drives
 }
 
 
@@ -2459,7 +2504,19 @@ function Get-MusicStats {
 }
 
 function Get-DriveStats {
-    $Drives = @(Get-RecentDrives -Days 30)
+    $Cutoff = [DateTimeOffset]::Now.AddDays(-30)
+    $Drives = @(
+        Get-CachedRecentDrives365 |
+        Where-Object {
+            try {
+                [DateTimeOffset]::Parse("$($_.startedAt)") -ge $Cutoff
+            }
+            catch {
+                $false
+            }
+        }
+    )
+
     return New-DriveOSDriveStats -Drives $Drives -PeriodDays 30
 }
 
@@ -2739,7 +2796,7 @@ function Handle-Request {
                 "/api/drives" {
                     Send-Json -Stream $Stream -Object @{
                         windowDays = 365
-                        drives     = @(Get-RecentDrives -Days 365)
+                        drives     = @(Get-CachedRecentDrives365)
                     }
                     return
                 }
