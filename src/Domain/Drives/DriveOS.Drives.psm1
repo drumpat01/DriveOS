@@ -1,13 +1,47 @@
-function ConvertTo-DriveOSDrive {
+﻿function ConvertTo-DriveOSDrive {
     param([Parameter(Mandatory=$true)]$Drive,[object[]]$Soundtrack=@(),[string]$StartingLocation,[string]$EndingLocation)
 
     $startUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at)
     $endUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at)
 
     if ($env:DRIVEOS_MODE -eq "web") {
-        $driveTimeZone = [TimeZoneInfo]::FindSystemTimeZoneById("America/Chicago")
-        $start = [TimeZoneInfo]::ConvertTime($startUtc, $driveTimeZone)
-        $end = [TimeZoneInfo]::ConvertTime($endUtc, $driveTimeZone)
+        function ConvertTo-DriveOSCentralTime {
+            param([DateTimeOffset]$UtcValue)
+
+            $UtcValue = $UtcValue.ToUniversalTime()
+            $Year = $UtcValue.Year
+
+            $MarchFirst = [DateTimeOffset]::new(
+                $Year, 3, 1, 0, 0, 0, [TimeSpan]::Zero
+            )
+            $MarchDaysToSunday = (7 - [int]$MarchFirst.DayOfWeek) % 7
+            $DstStartUtc = $MarchFirst.AddDays(
+                $MarchDaysToSunday + 7
+            ).AddHours(8)
+
+            $NovemberFirst = [DateTimeOffset]::new(
+                $Year, 11, 1, 0, 0, 0, [TimeSpan]::Zero
+            )
+            $NovemberDaysToSunday = (7 - [int]$NovemberFirst.DayOfWeek) % 7
+            $DstEndUtc = $NovemberFirst.AddDays(
+                $NovemberDaysToSunday
+            ).AddHours(7)
+
+            $Offset = if (
+                $UtcValue -ge $DstStartUtc -and
+                $UtcValue -lt $DstEndUtc
+            ) {
+                [TimeSpan]::FromHours(-5)
+            }
+            else {
+                [TimeSpan]::FromHours(-6)
+            }
+
+            return $UtcValue.ToOffset($Offset)
+        }
+
+        $start = ConvertTo-DriveOSCentralTime $startUtc
+        $end = ConvertTo-DriveOSCentralTime $endUtc
     }
     else {
         $start = $startUtc.ToLocalTime()
@@ -29,3 +63,4 @@ function ConvertTo-DriveOSDrive {
     }
 }
 Export-ModuleMember -Function ConvertTo-DriveOSDrive
+
