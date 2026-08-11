@@ -135,7 +135,12 @@ function Write-DriveOSServerLog {
         $SafeMessage = $SafeMessage -replace '(?i)(api_key=)[^&\s]+', '$1[REDACTED]'
 
         $Stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-        "$Stamp  $SafeMessage" | Add-Content -Path $ServerLogFile -Encoding UTF8
+        $LogLine = "$Stamp  $SafeMessage"
+        $LogLine | Add-Content -Path $ServerLogFile -Encoding UTF8
+
+        if ($RuntimeConfig.IsWeb) {
+            Write-Host $LogLine
+        }
     }
     catch {}
 }
