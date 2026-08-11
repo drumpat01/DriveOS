@@ -82,6 +82,8 @@ $script:DriveDataCache = @{
     rawDrives365ExpiresAt = [DateTimeOffset]::MinValue
     drives365 = $null
     drives365ExpiresAt = [DateTimeOffset]::MinValue
+    dashboardDrives = $null
+    dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
     charges365 = $null
     charges365ExpiresAt = [DateTimeOffset]::MinValue
 }
@@ -548,6 +550,8 @@ function Save-SpotifyHistory {
         Set-SpotifyHistoryMemoryCache -Records @($UpdatedHistory)
         $script:DriveDataCache.drives365 = $null
         $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.dashboardDrives = $null
+        $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return $NewCount
@@ -1633,6 +1637,8 @@ function Sync-LastFmHistory {
         Clear-SpotifyHistoryMemoryCache
         $script:DriveDataCache.drives365 = $null
         $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.dashboardDrives = $null
+        $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return [PSCustomObject]@{
@@ -2219,6 +2225,25 @@ function Get-CachedRecentDrives365 {
     $Drives = @(Get-RecentDrives -Days 365)
     $script:DriveDataCache.drives365 = @($Drives)
     $script:DriveDataCache.drives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Drives
+}
+
+function Get-CachedDashboardDrives {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.dashboardDrives -and
+        $script:DriveDataCache.dashboardDrivesExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.dashboardDrives)
+    }
+
+    # The dashboard only needs a handful of recent trips. Avoid forcing the
+    # 365-day Tessie history build just to paint three cards on a cold start.
+    $Drives = @(Get-RecentDrives -Days 14 | Select-Object -First 10)
+    $script:DriveDataCache.dashboardDrives = @($Drives)
+    $script:DriveDataCache.dashboardDrivesExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
 
     return $Drives
 }
@@ -3045,6 +3070,15 @@ function Handle-Request {
 
                 "/api/music/stats" {
                     Send-Json -Stream $Stream -Object (Get-MusicStats)
+                    return
+                }
+
+                "/api/drives/recent" {
+                    Send-Json -Stream $Stream -Object @{
+                        windowDays = 14
+                        limited    = $true
+                        drives     = @(Get-CachedDashboardDrives)
+                    }
                     return
                 }
 

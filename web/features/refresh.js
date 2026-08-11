@@ -83,31 +83,21 @@
         mark("driveos-critical-ready");
         await afterPaint();
 
-        // Main-content wave: start Spotify and historical drives after the
-        // critical shell has painted. Track each independently so cold drive
-        // history cannot hide where startup time is really being spent.
-        const spotifyPromise = Promise.resolve(tasks.loadSpotify())
+        // Main-content wave: paint a tiny recent-drive payload before touching
+        // the 365-day library. This is the dashboard path users actually see.
+        await Promise.resolve(tasks.loadDashboardDrives())
+          .finally(() => mark("driveos-drives-ready"));
+
+        await afterPaint();
+
+        const spotifyResult = await Promise.resolve(tasks.loadSpotify())
           .then(value => {
             mark("driveos-spotify-ready");
-            return value;
-          }, error => {
+            return { status: "fulfilled", value };
+          }, reason => {
             mark("driveos-spotify-ready");
-            throw error;
+            return { status: "rejected", reason };
           });
-
-        const drivesPromise = Promise.resolve(tasks.loadDrives())
-          .then(value => {
-            mark("driveos-drives-ready");
-            return value;
-          }, error => {
-            mark("driveos-drives-ready");
-            throw error;
-          });
-
-        const [spotifyResult] = await Promise.allSettled([
-          spotifyPromise,
-          drivesPromise
-        ]);
 
         mark("driveos-primary-ready");
 
@@ -121,7 +111,7 @@
         ) || 0;
 
         if (newlyArchived > 0) {
-          await tasks.loadDrives();
+          await tasks.loadDashboardDrives();
           mark("driveos-drives-ready");
         }
 
@@ -139,6 +129,12 @@
         ]);
 
         mark("driveos-secondary-ready");
+
+        // Statistics/recaps normally populate the expensive 365-day backend
+        // cache during the secondary wave. Materialize the full client library
+        // only now, or sooner if the user opens the Drives tab.
+        await tasks.loadDrives();
+        mark("driveos-library-ready");
 
         // Last.fm can be comparatively expensive. Run it only after every
         // visible/secondary panel has finished and the browser is idle.

@@ -12,6 +12,8 @@ let vehicleLocationMarker = null;
 let vehicleLocationResizeObserver = null;
 let mapLibreLoadPromise = null;
 let driveLibraryRenderScheduled = false;
+let driveLibraryFullyLoaded = false;
+let driveLibraryLoadPromise = null;
 
 function ensureMapLibre() {
   if (window.maplibregl) {
@@ -1181,44 +1183,103 @@ function scheduleDriveLibraryRender() {
   }
 }
 
-async function loadDrives() {
+function renderDashboardDrives(drives) {
+  const dashboard = $("dashboardDrives");
+  if (!dashboard) return;
+
+  if (!drives.length) {
+    dashboard.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-mark">\u2197</div>
+        <h3>No recent Tessie drives</h3>
+        <p>Your next completed drive will appear here automatically.</p>
+      </div>`;
+    dashboardWidgetsFeature?.render();
+    return;
+  }
+
+  dashboard.innerHTML = `<div class="drive-stack">${drives.slice(0, 3).map(d => driveCard(d, true)).join("")}</div>`;
+  bindDriveButtons(dashboard);
+  dashboardWidgetsFeature?.render();
+}
+
+async function loadDashboardDrives() {
   try {
-    const data = await getJson("/api/drives");
-    state.drives = data.drives || [];
-    state.driveLibraryWindowDays = Number(data.windowDays) || 365;
+    const data = await getJson("/api/drives/recent");
+    const recent = data.drives || [];
 
-    const dashboard = $("dashboardDrives");
-    const all = $("allDrives");
-
-    if (!state.drives.length) {
-      const empty = `
-        <div class="empty-state">
-          <div class="empty-mark">\u2197</div>
-          <h3>No new Tessie drives yet</h3>
-          <p>Your next completed drive will appear here automatically.</p>
-        </div>`;
-
-      dashboard.innerHTML = empty;
-      all.innerHTML = empty;
-      setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
+    // Until the full library arrives, recent drives are sufficient for the
+    // dashboard widgets and drive-card interactions.
+    if (!driveLibraryFullyLoaded) {
+      state.drives = recent;
+      state.driveLibraryWindowDays = Number(data.windowDays) || 14;
       renderFavoriteRoutes();
-      dashboardWidgetsFeature?.render();
-      return;
     }
 
-    dashboard.innerHTML = `<div class="drive-stack">${state.drives.slice(0, 3).map(d => driveCard(d, true)).join("")}</div>`;
-
-    bindDriveButtons(dashboard);
-    renderFavoriteRoutes();
-    scheduleDriveLibraryRender();
-    dashboardWidgetsFeature?.render();
+    renderDashboardDrives(recent);
+    return data;
   } catch (error) {
-    const html = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
-    $("dashboardDrives").innerHTML = html;
-    $("allDrives").innerHTML = html;
+    const dashboard = $("dashboardDrives");
+    if (dashboard) {
+      dashboard.innerHTML = `<div class="empty-state"><h3>Recent drives unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+    }
     dashboardWidgetsFeature?.render();
+    return null;
   }
 }
+
+async function loadDrives() {
+  if (driveLibraryLoadPromise) return driveLibraryLoadPromise;
+
+  driveLibraryLoadPromise = (async () => {
+    try {
+      const data = await getJson("/api/drives");
+      state.drives = data.drives || [];
+      state.driveLibraryWindowDays = Number(data.windowDays) || 365;
+      driveLibraryFullyLoaded = true;
+
+      const all = $("allDrives");
+
+      renderDashboardDrives(state.drives);
+
+      if (!state.drives.length) {
+        const empty = `
+          <div class="empty-state">
+            <div class="empty-mark">\u2197</div>
+            <h3>No Tessie drives yet</h3>
+            <p>Your next completed drive will appear here automatically.</p>
+          </div>`;
+
+        if (all) all.innerHTML = empty;
+        setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
+        renderFavoriteRoutes();
+        dashboardWidgetsFeature?.render();
+        return data;
+      }
+
+      renderFavoriteRoutes();
+      scheduleDriveLibraryRender();
+      dashboardWidgetsFeature?.render();
+      return data;
+    } catch (error) {
+      const all = $("allDrives");
+      if (all) {
+        all.innerHTML = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+      }
+      return null;
+    } finally {
+      driveLibraryLoadPromise = null;
+    }
+  })();
+
+  return driveLibraryLoadPromise;
+}
+
+document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("click", () => {
+  if (!driveLibraryFullyLoaded) {
+    void loadDrives();
+  }
+});
 
 function locationContains(value, query) {
   const terms = String(query || "")
@@ -2659,7 +2720,7 @@ async function configureFoursquareOnThisComputer() {
 
 const refreshFeature = window.DriveOSFeatures.refresh.create({
   loadStatus, loadVehicle, loadSpotify, syncListeningHistory,
-  loadDrives, loadMusicStats, loadStatistics, loadPlaces,
+  loadDashboardDrives, loadDrives, loadMusicStats, loadStatistics, loadPlaces,
   loadCharging, loadRecaps
 });
 refreshAll = refreshFeature.refresh;
