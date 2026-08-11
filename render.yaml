@@ -4,7 +4,7 @@ services:
     runtime: docker
     plan: free
     region: ohio
-    branch: web-hosting-prep
+    branch: main
     autoDeployTrigger: commit
     healthCheckPath: /healthz
     envVars:
