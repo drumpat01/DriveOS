@@ -87,6 +87,27 @@ $script:DriveDataCache = @{
 }
 $DriveDataCacheTtlSeconds = 300
 
+# Process-local read-through caches. Turso/local storage remains the durable
+# source of truth, but repeated dashboard requests should not reopen the same
+# state on every endpoint.
+$script:SpotifyTokenCacheMemory = $null
+$script:SpotifyHistoryCache = $null
+$script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:MusicStatsCache = $null
+$script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:SpotifyCatalogCacheMemory = $null
+$script:SpotifyCatalogCacheLoaded = $false
+$script:PlaceAliasEntriesCache = @()
+$script:PlaceAliasEntriesLoaded = $false
+$script:ChargingSettingsCache = $null
+$script:FoursquareCacheEntriesMemory = @()
+$script:FoursquareCacheEntriesLoaded = $false
+$script:FoursquareUsageRecordMemory = $null
+$script:FoursquareUsageRecordLoaded = $false
+$script:VehicleSummaryCache = $null
+$script:VehicleSummaryCacheExpiresAt = [DateTimeOffset]::MinValue
+$VehicleSummaryCacheTtlSeconds = 15
+
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 $MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
 
@@ -381,13 +402,19 @@ function Save-SpotifyTokenCache {
             -Repository $Repository `
             -Key "spotify-token" `
             -Value $TokenCache
+        $script:SpotifyTokenCacheMemory = $TokenCache
         return
     }
 
     Write-DriveOSJson -Path $SpotifyTokenFile -Value $TokenCache
+    $script:SpotifyTokenCacheMemory = $TokenCache
 }
 
 function Get-SpotifyTokenCache {
+    if ($null -ne $script:SpotifyTokenCacheMemory) {
+        return $script:SpotifyTokenCacheMemory
+    }
+
     if ($Repository.Provider -eq "Turso") {
         $Stored = Get-DriveOSTursoState `
             -Repository $Repository `
@@ -397,6 +424,7 @@ function Get-SpotifyTokenCache {
             throw "Spotify authorization is not configured."
         }
 
+        $script:SpotifyTokenCacheMemory = $Stored
         return $Stored
     }
 
@@ -404,7 +432,9 @@ function Get-SpotifyTokenCache {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
 
-    return Read-DriveOSJson -Path $SpotifyTokenFile
+    $Stored = Read-DriveOSJson -Path $SpotifyTokenFile
+    $script:SpotifyTokenCacheMemory = $Stored
+    return $Stored
 }
 
 function Test-SpotifyScope {
@@ -468,56 +498,69 @@ function Get-SpotifyRecent {
     return Get-SpotifyRecentlyPlayed -Client $Client -Limit $Limit
 }
 
+function Set-SpotifyHistoryMemoryCache {
+    param([object[]]$Records = @())
+
+    $script:SpotifyHistoryCache = @($Records)
+    $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::UtcNow.AddSeconds($DriveDataCacheTtlSeconds)
+
+    # Aggregate music statistics depend on the listening archive.
+    $script:MusicStatsCache = $null
+    $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+}
+
+function Clear-SpotifyHistoryMemoryCache {
+    $script:SpotifyHistoryCache = $null
+    $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
+    $script:MusicStatsCache = $null
+    $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+}
+
 function Save-SpotifyHistory {
     param($Items)
 
     if (-not $Items) { return 0 }
 
     $ExistingIds = @{}
+    $UpdatedHistory = New-Object Collections.ArrayList
 
-    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
+    foreach ($Record in @(Get-SpotifyHistory)) {
         if ($Record.id) { $ExistingIds[$Record.id] = $true }
+        [void]$UpdatedHistory.Add($Record)
     }
 
     $NewCount = 0
 
     foreach ($Item in $Items) {
-        $Artists = ($Item.track.artists | ForEach-Object { $_.name }) -join ", "
         $RecordId = "$($Item.track.id)|$($Item.played_at)"
 
         if (-not $ExistingIds.ContainsKey($RecordId)) {
-            $AlbumImage = $null
-            $TrackUrl = $null
-            $AlbumUrl = $null
-
-            if (
-                $Item.track.album.images -and
-                $Item.track.album.images.Count -gt 0
-            ) {
-                # Spotify returns artwork sizes widest-first.
-                $AlbumImage = $Item.track.album.images[0].url
-            }
-
-            if ($Item.track.external_urls.spotify) {
-                $TrackUrl = $Item.track.external_urls.spotify
-            }
-
-            if ($Item.track.album.external_urls.spotify) {
-                $AlbumUrl = $Item.track.album.external_urls.spotify
-            }
-
             $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
             Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
 
+            [void]$UpdatedHistory.Add($HistoryRecord)
             $ExistingIds[$RecordId] = $true
             $NewCount++
         }
+    }
+
+    if ($NewCount -gt 0) {
+        Set-SpotifyHistoryMemoryCache -Records @($UpdatedHistory)
     }
 
     return $NewCount
 }
 
 function Get-SpotifyHistory {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:SpotifyHistoryCache -and
+        $script:SpotifyHistoryCacheExpiresAt -gt $Now
+    ) {
+        return @($script:SpotifyHistoryCache)
+    }
+
     $Records = @()
 
     foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
@@ -528,6 +571,7 @@ function Get-SpotifyHistory {
         $Records += $Record
     }
 
+    Set-SpotifyHistoryMemoryCache -Records $Records
     return $Records
 }
 
@@ -1130,21 +1174,27 @@ function Get-FoursquareConfiguration {
 }
 
 function Get-FoursquareUsageRecord {
+    if ($script:FoursquareUsageRecordLoaded) {
+        return $script:FoursquareUsageRecordMemory
+    }
+
+    $Record = $null
+
     if ($Repository.Provider -eq "Turso") {
         try {
-            return Get-DriveOSTursoState `
+            $Record = Get-DriveOSTursoState `
                 -Repository $Repository `
                 -Key "foursquare-usage"
         }
-        catch {
-            return $null
-        }
+        catch {}
+    }
+    elseif (Test-Path $FoursquareUsageFile -PathType Leaf) {
+        try { $Record = Read-DriveOSJson -Path $FoursquareUsageFile } catch {}
     }
 
-    if (-not (Test-Path $FoursquareUsageFile -PathType Leaf)) { return $null }
-
-    try { return Read-DriveOSJson -Path $FoursquareUsageFile }
-    catch { return $null }
+    $script:FoursquareUsageRecordMemory = $Record
+    $script:FoursquareUsageRecordLoaded = $true
+    return $Record
 }
 
 function Save-FoursquareUsageRecord {
@@ -1155,13 +1205,22 @@ function Save-FoursquareUsageRecord {
             -Repository $Repository `
             -Key "foursquare-usage" `
             -Value $Record
-        return
+    }
+    else {
+        Write-DriveOSJson -Path $FoursquareUsageFile -Value $Record
     }
 
-    Write-DriveOSJson -Path $FoursquareUsageFile -Value $Record
+    $script:FoursquareUsageRecordMemory = $Record
+    $script:FoursquareUsageRecordLoaded = $true
 }
 
 function Get-FoursquareCacheEntries {
+    if ($script:FoursquareCacheEntriesLoaded) {
+        return @($script:FoursquareCacheEntriesMemory)
+    }
+
+    $Entries = @()
+
     try {
         $Record = if ($Repository.Provider -eq "Turso") {
             Get-DriveOSTursoState `
@@ -1176,12 +1235,14 @@ function Get-FoursquareCacheEntries {
         }
 
         if ($Record -and $Record.PSObject.Properties['entries']) {
-            return @($Record.entries)
+            $Entries = @($Record.entries)
         }
     }
     catch {}
 
-    return @()
+    $script:FoursquareCacheEntriesMemory = @($Entries)
+    $script:FoursquareCacheEntriesLoaded = $true
+    return @($Entries)
 }
 
 function Save-FoursquareCacheEntries {
@@ -1198,10 +1259,18 @@ function Save-FoursquareCacheEntries {
             -Repository $Repository `
             -Key "foursquare-cache" `
             -Value $Record
-        return
+    }
+    else {
+        Write-DriveOSJson -Path $FoursquareCacheFile -Value $Record
     }
 
-    Write-DriveOSJson -Path $FoursquareCacheFile -Value $Record
+    $script:FoursquareCacheEntriesMemory = @($Entries)
+    $script:FoursquareCacheEntriesLoaded = $true
+
+    # Converted drives contain friendly location names, so refresh that layer
+    # only when the persisted place-resolution data changes.
+    $script:DriveDataCache.drives365 = $null
+    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function Get-FoursquareCacheMap {
@@ -1558,6 +1627,10 @@ function Sync-LastFmHistory {
         Write-DriveOSJson -Path $LastFmSyncStateFile -Value $SyncRecord
     }
 
+    if ($Added -gt 0) {
+        Clear-SpotifyHistoryMemoryCache
+    }
+
     return [PSCustomObject]@{
         configured = $true
         username   = $Config.username
@@ -1634,8 +1707,14 @@ function Write-JsonFileUtf8NoBom {
 }
 
 function Get-PlaceAliasEntries {
+    if ($script:PlaceAliasEntriesLoaded) {
+        return @($script:PlaceAliasEntriesCache)
+    }
+
     try {
-        $Parsed = Get-DriveOSPlaceAliases -Repository $Repository
+        $Parsed = @(Get-DriveOSPlaceAliases -Repository $Repository)
+        $script:PlaceAliasEntriesCache = @($Parsed)
+        $script:PlaceAliasEntriesLoaded = $true
         return @($Parsed)
     }
     catch {
@@ -1682,6 +1761,11 @@ function Set-PlaceAlias {
 
     Set-DriveOSPlaceAliases -Repository $Repository -Entries @($Entries)
 
+    $script:PlaceAliasEntriesCache = @($Entries)
+    $script:PlaceAliasEntriesLoaded = $true
+    $script:DriveDataCache.drives365 = $null
+    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+
     return [PSCustomObject]@{
         location = $Location
         label = $Label
@@ -1690,6 +1774,10 @@ function Set-PlaceAlias {
 }
 
 function Get-ChargingSettings {
+    if ($null -ne $script:ChargingSettingsCache) {
+        return $script:ChargingSettingsCache
+    }
+
     $Rate = $null
 
     try {
@@ -1702,9 +1790,11 @@ function Get-ChargingSettings {
         Write-DriveOSServerLog "Charging settings lookup failed: $($_.Exception.Message)"
     }
 
-    return [PSCustomObject]@{
+    $script:ChargingSettingsCache = [PSCustomObject]@{
         electricityRateCents = $Rate
     }
+
+    return $script:ChargingSettingsCache
 }
 
 function Set-ChargingSettings {
@@ -1724,6 +1814,7 @@ function Set-ChargingSettings {
     }
 
     Set-DriveOSChargingSettingsRecord -Repository $Repository -Settings $Settings
+    $script:ChargingSettingsCache = $Settings
     return $Settings
 }
 
@@ -1839,18 +1930,42 @@ function Get-RawCharges {
 }
 
 function Convert-RawCharge {
-    param($Charge)
+    param(
+        $Charge,
+        $Settings = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
+    )
 
-    $Settings = Get-ChargingSettings
-    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation `
-        (Get-FriendlyLocation -Location $Charge.location -Latitude $Charge.latitude -Longitude $Charge.longitude)
+    $ResolvedSettings = if ($null -ne $Settings) { $Settings } else { Get-ChargingSettings }
+
+    return ConvertTo-DriveOSCharge `
+        -Charge $Charge `
+        -Settings $ResolvedSettings `
+        -FriendlyLocation (
+            Get-FriendlyLocation `
+                -Location $Charge.location `
+                -Latitude $Charge.latitude `
+                -Longitude $Charge.longitude `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        )
 }
 
 function Get-ChargingSummary {
-    $Sessions = @()
-    foreach ($Charge in @(Get-CachedRawCharges365)) {
-        $Sessions += Convert-RawCharge -Charge $Charge
-    }
+    $Settings = Get-ChargingSettings
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
+    $Sessions = @(
+        Get-CachedRawCharges365 | ForEach-Object {
+            Convert-RawCharge `
+                -Charge $_ `
+                -Settings $Settings `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        }
+    )
 
     $Cutoff30 = [DateTimeOffset]::Now.AddDays(-30)
     $Recent = @($Sessions | Where-Object { [DateTimeOffset]::Parse($_.startedAt) -ge $Cutoff30 })
@@ -1859,7 +1974,7 @@ function Get-ChargingSummary {
     $TotalCost = if ($KnownCosts.Count) { [math]::Round((($KnownCosts | Measure-Object displayCost -Sum).Sum), 2) } else { $null }
 
     return [PSCustomObject]@{
-        settings = Get-ChargingSettings
+        settings = $Settings
         summary30 = [PSCustomObject]@{
             sessions = $Recent.Count
             energyAddedKWh = $TotalEnergy
@@ -1874,8 +1989,20 @@ function Get-ChargingSummary {
 
 function Get-MonthlyRecaps {
     $Drives = @(Get-CachedRecentDrives365)
-    $Charges = @(Get-CachedRawCharges365 | ForEach-Object { Convert-RawCharge -Charge $_ })
-    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings (Get-ChargingSettings)
+    $Settings = Get-ChargingSettings
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+    $Charges = @(
+        Get-CachedRawCharges365 | ForEach-Object {
+            Convert-RawCharge `
+                -Charge $_ `
+                -Settings $Settings `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        }
+    )
+
+    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings $Settings
 }
 
 function Get-TessieHeaders {
@@ -1888,13 +2015,25 @@ function Get-VehicleRecord {
 }
 
 function Get-VehicleSummary {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:VehicleSummaryCache -and
+        $script:VehicleSummaryCacheExpiresAt -gt $Now
+    ) {
+        return $script:VehicleSummaryCache
+    }
+
     $Vehicle = Get-VehicleRecord
 
     if (-not $Vehicle) {
         throw "No Tessie vehicle found."
     }
 
-    return ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
+    $Summary = ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
+    $script:VehicleSummaryCache = $Summary
+    $script:VehicleSummaryCacheExpiresAt = $Now.AddSeconds($VehicleSummaryCacheTtlSeconds)
+    return $Summary
 }
 
 function Get-RawDrives {
@@ -2354,7 +2493,7 @@ function Get-DriveShareCardData {
     param([string]$DriveId)
     if (-not $DriveId) { throw "driveId is required." }
 
-    $Drive = @(Get-RecentDrives -Days 365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
+    $Drive = @(Get-CachedRecentDrives365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
     if (-not $Drive) { throw "Drive could not be found." }
 
     $MapData = $null
@@ -2392,9 +2531,21 @@ function Get-SpotifyCatalogCacheKey {
 }
 
 function Get-SpotifyCatalogCache {
+    if ($script:SpotifyCatalogCacheLoaded) {
+        return $script:SpotifyCatalogCacheMemory
+    }
+
     $Cache = $null
 
-    if (Test-Path $SpotifyCatalogCacheFile -PathType Leaf) {
+    if ($Repository.Provider -eq "Turso") {
+        try {
+            $Cache = Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-catalog-cache"
+        }
+        catch {}
+    }
+    elseif (Test-Path $SpotifyCatalogCacheFile -PathType Leaf) {
         try { $Cache = Read-DriveOSJson -Path $SpotifyCatalogCacheFile } catch {}
     }
 
@@ -2410,7 +2561,26 @@ function Get-SpotifyCatalogCache {
         $Cache | Add-Member -NotePropertyName artists -NotePropertyValue @()
     }
 
+    $script:SpotifyCatalogCacheMemory = $Cache
+    $script:SpotifyCatalogCacheLoaded = $true
     return $Cache
+}
+
+function Save-SpotifyCatalogCache {
+    param([Parameter(Mandatory=$true)]$Cache)
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-catalog-cache" `
+            -Value $Cache
+    }
+    else {
+        Write-DriveOSJson -Path $SpotifyCatalogCacheFile -Value $Cache
+    }
+
+    $script:SpotifyCatalogCacheMemory = $Cache
+    $script:SpotifyCatalogCacheLoaded = $true
 }
 
 function Add-SpotifyCatalogDetailsToMusicStats {
@@ -2419,13 +2589,7 @@ function Add-SpotifyCatalogDetailsToMusicStats {
         [object[]]$History = @()
     )
 
-    try {
-        $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
-    }
-    catch {
-        return $Stats
-    }
-
+    $Client = $null
     $Cache = Get-SpotifyCatalogCache
     $TrackCache = @($Cache.tracks)
     $ArtistCache = @($Cache.artists)
@@ -2439,6 +2603,9 @@ function Add-SpotifyCatalogDetailsToMusicStats {
 
         if (-not $Entry) {
             try {
+                if (-not $Client) {
+                    $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+                }
                 $Track = Find-SpotifyTrack -Client $Client -Track "$($Item.track)" -Artist "$($Item.artist)"
                 $AlbumImage = $null
                 $CatalogAlbum = $null
@@ -2485,6 +2652,9 @@ function Add-SpotifyCatalogDetailsToMusicStats {
 
         if (-not $Entry) {
             try {
+                if (-not $Client) {
+                    $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+                }
                 $Artist = Find-SpotifyArtist -Client $Client -Artist "$($Item.artist)"
                 $ImageUrl = $null
                 $ImageSource = $null
@@ -2539,16 +2709,29 @@ function Add-SpotifyCatalogDetailsToMusicStats {
     if ($CacheChanged) {
         $Cache.tracks = @($TrackCache)
         $Cache.artists = @($ArtistCache)
-        Write-DriveOSJson -Path $SpotifyCatalogCacheFile -Value $Cache
+        Save-SpotifyCatalogCache -Cache $Cache
     }
 
     return $Stats
 }
 
 function Get-MusicStats {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:MusicStatsCache -and
+        $script:MusicStatsCacheExpiresAt -gt $Now
+    ) {
+        return $script:MusicStatsCache
+    }
+
     $History = @(Get-SpotifyHistory)
     $Stats = New-DriveOSMusicStats -History $History
-    return Add-SpotifyCatalogDetailsToMusicStats -Stats $Stats -History $History
+    $Result = Add-SpotifyCatalogDetailsToMusicStats -Stats $Stats -History $History
+
+    $script:MusicStatsCache = $Result
+    $script:MusicStatsCacheExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    return $Result
 }
 
 function Get-DriveStats {
@@ -2579,7 +2762,7 @@ function New-DrivePlaylist {
         throw "Spotify permission playlist-modify-private is missing. Run the updated Connect-Spotify.ps1 once, approve access, then try again."
     }
 
-    $Drive = @(Get-RecentDrives -Days 365) |
+    $Drive = @(Get-CachedRecentDrives365) |
         Where-Object { $_.id -eq $DriveId } |
         Select-Object -First 1
 
