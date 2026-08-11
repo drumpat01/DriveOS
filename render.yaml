@@ -23,9 +23,9 @@ services:
       - key: DRIVEOS_PASSWORD_HASH
         sync: false
       - key: DRIVEOS_AUTH_SECRET
-        generateValue: true
+        sync: false
       - key: DRIVEOS_ENCRYPTION_KEY
-        generateValue: true
+        sync: false
       - key: TESSIE_TOKEN
         sync: false
       - key: SPOTIFY_CLIENT_ID
