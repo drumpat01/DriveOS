@@ -1604,15 +1604,12 @@ function Write-JsonFileUtf8NoBom {
 }
 
 function Get-PlaceAliasEntries {
-    if (-not (Test-Path $PlaceAliasesFile -PathType Leaf)) {
-        return @()
-    }
-
     try {
         $Parsed = Get-DriveOSPlaceAliases -Repository $Repository
         return @($Parsed)
     }
     catch {
+        Write-DriveOSServerLog "Place alias lookup failed: $($_.Exception.Message)"
         return @()
     }
 }
