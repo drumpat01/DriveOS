@@ -1,11 +1,17 @@
 (function () {
   const { byId } = window.DriveOSDom;
-  const READY_TIMEOUT_MS = 20_000;
+  const SOFT_READY_TIMEOUT_MS = 900;
   let startupReady = Promise.resolve();
   let running = null;
 
   function delay(milliseconds) {
     return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+  }
+
+  function mark(name) {
+    try {
+      window.performance?.mark?.(name);
+    } catch {}
   }
 
   function setReady(readiness) {
@@ -24,11 +30,14 @@
 
   function finish(ignition) {
     ignition.classList.add("ignition-ready");
+
     window.setTimeout(() => {
       ignition.classList.add("ignition-complete");
       document.body.classList.remove("ignition-active");
-    }, 420);
-    window.setTimeout(() => ignition.remove(), 1100);
+      mark("driveos-ignition-visible");
+    }, 180);
+
+    window.setTimeout(() => ignition.remove(), 520);
   }
 
   function run() {
@@ -39,29 +48,34 @@
 
     const status = byId("ignitionSystemText");
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    const minimumDuration = reduced ? 320 : 1820;
+    const minimumDuration = reduced ? 180 : 520;
+    const readyTimeout = reduced ? 450 : SOFT_READY_TIMEOUT_MS;
+
     document.body.classList.add("ignition-active");
 
     if (reduced) {
       updateStatus(status, "LOADING DRIVE AND MUSIC DATA");
     } else {
       [
-        [480, "LINKING VEHICLE TELEMETRY"],
-        [920, "MAPPING DRIVE MEMORY"],
-        [1360, "REFRESHING MUSIC ARTWORK"]
+        [180, "LINKING VEHICLE TELEMETRY"],
+        [420, "MAPPING DRIVE MEMORY"],
+        [700, "REFRESHING MUSIC ARTWORK"]
       ].forEach(([wait, message]) => {
         window.setTimeout(() => updateStatus(status, message), wait);
       });
     }
 
-    const readyOrTimeout = Promise.race([
+    // The app now renders useful dashboard data progressively. Do not keep
+    // the full-screen ignition layer up while secondary views finish loading.
+    const readyOrSoftTimeout = Promise.race([
       startupReady,
-      delay(READY_TIMEOUT_MS).then(() => {
-        console.warn("DriveOS startup refresh timed out; continuing with available data.");
-      })
+      delay(readyTimeout)
     ]);
 
-    running = Promise.all([delay(minimumDuration), readyOrTimeout]).then(() => {
+    running = Promise.all([
+      delay(minimumDuration),
+      readyOrSoftTimeout
+    ]).then(() => {
       updateStatus(status, "VEHICLE INTELLIGENCE ONLINE");
       finish(ignition);
     });

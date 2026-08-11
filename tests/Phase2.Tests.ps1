@@ -86,8 +86,20 @@ try {
     $charge = [pscustomobject]@{id='charge-1';started_at=100;ended_at=3700;energy_added=10;cost=$null;location='123 Test Street';latitude=32;longitude=-97;is_supercharger=$false;odometer=1000;energy_used=11;miles_added=40;starting_battery=20;ending_battery=70}
     $chargeModel = ConvertTo-DriveOSCharge -Charge $charge -Settings ([pscustomobject]@{electricityRateCents=12.5}) -FriendlyLocation 'Home'
     Assert-Equal $chargeModel.durationMinutes 60 'Charge duration changed.'
-    Assert-Equal $chargeModel.estimatedCost 1.25 'Charge cost calculation changed.'
+    Assert-Equal $chargeModel.estimatedCost 1.4 'Fixed 14-cent home charging cost calculation changed.'
     Assert-Equal $chargeModel.location 'Home' 'Charge friendly location changed.'
+
+    $recordedCharge = $charge.PSObject.Copy()
+    $recordedCharge.cost = 2.75
+    $recordedModel = ConvertTo-DriveOSCharge -Charge $recordedCharge -Settings $null -FriendlyLocation 'Home'
+    Assert-Equal $recordedModel.displayCost 2.75 'Recorded Tessie charging cost must override the estimate.'
+    Assert-Equal $recordedModel.costType 'recorded' 'Recorded Tessie charging cost type changed.'
+
+    $supercharger = $charge.PSObject.Copy()
+    $supercharger.is_supercharger = $true
+    $superchargerModel = ConvertTo-DriveOSCharge -Charge $supercharger -Settings $null -FriendlyLocation 'Supercharger'
+    Assert-Equal $superchargerModel.estimatedCost $null 'Supercharger cost must remain unknown when Tessie has no recorded cost.'
+    Assert-Equal $superchargerModel.costType 'unknown' 'Supercharger unknown-cost type changed.'
 
     $history = @(
         [pscustomobject]@{id='track123456|a';track_id='track123456';track='Song';artist='Artist';played_at='2026-01-15T12:00:00Z';album_image='image';spotify_url='url'},

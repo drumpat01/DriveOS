@@ -66,8 +66,7 @@
       items.push(
         { group: "Settings", icon: "\u263E", title: "Use dark appearance", detail: "Switch DriveOS to the dark theme", type: "Setting", run: () => actions.setTheme("dark") },
         { group: "Settings", icon: "\u2600", title: "Use light appearance", detail: "Switch DriveOS to the light theme", type: "Setting", run: () => actions.setTheme("light") },
-        { group: "Settings", icon: "\u2316", title: "Manage friendly places", detail: "Name Home, Work, School, and frequent stops", type: "Setting", run: actions.openPlaces },
-        { group: "Settings", icon: "\u26A1", title: "Electricity rate", detail: "Update home charging cost calculations", type: "Setting", run: actions.focusChargingRate }
+        { group: "Settings", icon: "\u2316", title: "Manage friendly places", detail: "Name Home, Work, School, and frequent stops", type: "Setting", run: actions.openPlaces }
       );
       return items;
     }

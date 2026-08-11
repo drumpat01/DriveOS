@@ -1,7 +1,52 @@
-function ConvertTo-DriveOSDrive {
+﻿function ConvertTo-DriveOSDrive {
     param([Parameter(Mandatory=$true)]$Drive,[object[]]$Soundtrack=@(),[string]$StartingLocation,[string]$EndingLocation)
-    $start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime()
-    $end=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
+
+    $startUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at)
+    $endUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at)
+
+    if ($env:DRIVEOS_MODE -eq "web") {
+        function ConvertTo-DriveOSCentralTime {
+            param([DateTimeOffset]$UtcValue)
+
+            $UtcValue = $UtcValue.ToUniversalTime()
+            $Year = $UtcValue.Year
+
+            $MarchFirst = [DateTimeOffset]::new(
+                $Year, 3, 1, 0, 0, 0, [TimeSpan]::Zero
+            )
+            $MarchDaysToSunday = (7 - [int]$MarchFirst.DayOfWeek) % 7
+            $DstStartUtc = $MarchFirst.AddDays(
+                $MarchDaysToSunday + 7
+            ).AddHours(8)
+
+            $NovemberFirst = [DateTimeOffset]::new(
+                $Year, 11, 1, 0, 0, 0, [TimeSpan]::Zero
+            )
+            $NovemberDaysToSunday = (7 - [int]$NovemberFirst.DayOfWeek) % 7
+            $DstEndUtc = $NovemberFirst.AddDays(
+                $NovemberDaysToSunday
+            ).AddHours(7)
+
+            $Offset = if (
+                $UtcValue -ge $DstStartUtc -and
+                $UtcValue -lt $DstEndUtc
+            ) {
+                [TimeSpan]::FromHours(-5)
+            }
+            else {
+                [TimeSpan]::FromHours(-6)
+            }
+
+            return $UtcValue.ToOffset($Offset)
+        }
+
+        $start = ConvertTo-DriveOSCentralTime $startUtc
+        $end = ConvertTo-DriveOSCentralTime $endUtc
+    }
+    else {
+        $start = $startUtc.ToLocalTime()
+        $end = $endUtc.ToLocalTime()
+    }
     $duration=[math]::Max(0,[math]::Round(($end-$start).TotalMinutes))
     $battery=if($null -ne $Drive.starting_battery -and $null -ne $Drive.ending_battery){[int]$Drive.starting_battery-[int]$Drive.ending_battery}else{$null}
     $miles=if($null -ne $Drive.odometer_distance){[math]::Round([double]$Drive.odometer_distance,1)}else{$null}
@@ -18,3 +63,4 @@ function ConvertTo-DriveOSDrive {
     }
 }
 Export-ModuleMember -Function ConvertTo-DriveOSDrive
+

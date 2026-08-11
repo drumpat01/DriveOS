@@ -10,6 +10,62 @@ let dashboardWidgetsFeature = null;
 let vehicleLocationMap = null;
 let vehicleLocationMarker = null;
 let vehicleLocationResizeObserver = null;
+let mapLibreLoadPromise = null;
+let driveLibraryRenderScheduled = false;
+let driveLibraryFullyLoaded = false;
+let driveLibraryLoadPromise = null;
+
+function ensureMapLibre() {
+  if (window.maplibregl) {
+    return Promise.resolve(window.maplibregl);
+  }
+
+  if (mapLibreLoadPromise) {
+    return mapLibreLoadPromise;
+  }
+
+  mapLibreLoadPromise = new Promise((resolve, reject) => {
+    const stylesheetId = "driveos-maplibre-css";
+    const scriptId = "driveos-maplibre-js";
+
+    let stylesheet = document.getElementById(stylesheetId);
+    if (!stylesheet) {
+      stylesheet = document.createElement("link");
+      stylesheet.id = stylesheetId;
+      stylesheet.rel = "stylesheet";
+      stylesheet.href = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css";
+      document.head.appendChild(stylesheet);
+    }
+
+    let script = document.getElementById(scriptId);
+    if (!script) {
+      script = document.createElement("script");
+      script.id = scriptId;
+      script.src = "https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js";
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    const finish = () => {
+      if (window.maplibregl) {
+        resolve(window.maplibregl);
+      }
+    };
+
+    if (window.maplibregl) {
+      finish();
+      return;
+    }
+
+    script.addEventListener("load", finish, { once: true });
+    script.addEventListener("error", () => {
+      mapLibreLoadPromise = null;
+      reject(new Error("Map library could not be loaded."));
+    }, { once: true });
+  });
+
+  return mapLibreLoadPromise;
+}
 
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
@@ -25,8 +81,93 @@ function songArtworkMarkup(song, className = "song-list-artwork") {
 }
 
 
+const apiLoadingRegions = Object.freeze({
+  "/api/status": {
+    selector: '[data-dashboard-widget="status"]',
+    label: "Loading connection status\u2026"
+  },
+  "/api/vehicle": {
+    selector: '[data-dashboard-widget="vehicle"]',
+    label: "Loading vehicle data\u2026"
+  },
+  "/api/spotify/recent": {
+    selector: '[data-dashboard-widget="music"]',
+    label: "Loading Spotify\u2026"
+  },
+  "/api/drives/recent": {
+    selector: '[data-dashboard-widget="drives"]',
+    label: "Loading recent drives\u2026"
+  },
+  "/api/drives": {
+    selector: "#view-drives",
+    label: "Loading full drive library\u2026"
+  },
+  "/api/music/stats": {
+    selector: "#view-music",
+    label: "Loading music statistics\u2026"
+  },
+  "/api/statistics": {
+    selector: "#view-statistics",
+    label: "Loading driving statistics\u2026"
+  },
+  "/api/places": {
+    selector: "#placeNamesList",
+    label: "Loading saved places\u2026"
+  },
+  "/api/charging": {
+    selector: "#chargingHistory",
+    label: "Loading charging history\u2026"
+  },
+  "/api/recap": {
+    selector: "#monthlyRecap",
+    label: "Loading monthly recap\u2026"
+  }
+});
+
+const apiLoadingCounts = new WeakMap();
+
+function beginApiLoading(path) {
+  const config = apiLoadingRegions[path];
+  if (!config) return () => {};
+
+  const region = document.querySelector(config.selector);
+  if (!region) return () => {};
+
+  const count = (apiLoadingCounts.get(region) || 0) + 1;
+  apiLoadingCounts.set(region, count);
+
+  region.classList.add("driveos-loading-region");
+  region.setAttribute("aria-busy", "true");
+  region.dataset.loadingLabel = config.label;
+
+  let ended = false;
+
+  return () => {
+    if (ended) return;
+    ended = true;
+
+    const remaining = Math.max(0, (apiLoadingCounts.get(region) || 1) - 1);
+
+    if (remaining > 0) {
+      apiLoadingCounts.set(region, remaining);
+      return;
+    }
+
+    apiLoadingCounts.delete(region);
+    region.classList.remove("driveos-loading-region");
+    region.removeAttribute("aria-busy");
+    delete region.dataset.loadingLabel;
+  };
+}
+
 async function getJson(path) {
-  return window.DriveOSApi.get(path);
+  const endLoading = beginApiLoading(path);
+
+  try {
+    return await window.DriveOSApi.get(path);
+  } finally {
+    endLoading();
+  }
 }
 
 async function postJson(path, body) {
@@ -133,9 +274,26 @@ function renderVehicleLocation(vehicle) {
     ? `GPS ${gpsDate.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : "Latest Tessie position");
 
-  if (!hasLocation || !window.maplibregl) {
+  if (!hasLocation) {
     container.classList.add("vehicle-location-unavailable");
-    if (!container.querySelector(".vehicle-location-message")) container.innerHTML = `<div class="vehicle-location-message">${window.maplibregl ? "No current GPS position" : "Map unavailable"}</div>`;
+    if (!container.querySelector(".vehicle-location-message")) {
+      container.innerHTML = '<div class="vehicle-location-message">No current GPS position</div>';
+    }
+    return;
+  }
+
+  if (!window.maplibregl) {
+    container.classList.add("vehicle-location-unavailable");
+    container.innerHTML = '<div class="vehicle-location-message">Loading live map\u2026</div>';
+
+    void ensureMapLibre()
+      .then(() => renderVehicleLocation(vehicle))
+      .catch(() => {
+        if (container) {
+          container.innerHTML = '<div class="vehicle-location-message">Map unavailable</div>';
+        }
+      });
+
     return;
   }
 
@@ -192,6 +350,39 @@ async function loadVehicle() {
   } catch (error) {
     $("vehicleRefresh").textContent = `Tesla error: ${error.message}`;
   }
+}
+
+let listeningHistorySyncPromise = null;
+
+async function syncListeningHistory() {
+  if (listeningHistorySyncPromise) return listeningHistorySyncPromise;
+
+  listeningHistorySyncPromise = (async () => {
+    try {
+      const result = await getJson("/api/lastfm/sync");
+      const added = Number(result?.added) || 0;
+
+      // If Last.fm found new scrobbles, refresh only the music-facing views
+      // after the sync completes. The main dashboard is already interactive.
+      if (added > 0) {
+        await loadSpotify();
+        await Promise.allSettled([
+          loadMusicStats(),
+          loadDrives(),
+          loadStatistics()
+        ]);
+      }
+
+      return result;
+    } catch (error) {
+      console.warn("Last.fm background sync failed:", error);
+      return null;
+    } finally {
+      listeningHistorySyncPromise = null;
+    }
+  })();
+
+  return listeningHistorySyncPromise;
 }
 
 async function loadSpotify() {
@@ -941,9 +1132,6 @@ function renderCharging(data) {
   setText("charge30Cost", summary.cost == null ? "--" : money(summary.cost), "--");
   setText("charge30Superchargers", summary.superchargerSessions ?? 0, "0");
 
-  const rate = data.settings?.electricityRateCents;
-  const rateInput = $("electricityRateInput");
-  if (rateInput && document.activeElement !== rateInput) rateInput.value = rate == null ? "" : rate;
 
   const container = $("chargingHistory");
   if (!container) return;
@@ -980,19 +1168,6 @@ async function loadCharging() {
   }
 }
 
-async function saveChargingRate() {
-  const input = $("electricityRateInput");
-  const button = $("saveElectricityRate");
-  if (!input || !button) return;
-  button.disabled = true;
-  try {
-    const raw = input.value.trim();
-    await postJson("/api/charging/settings", { electricityRateCents: raw === "" ? null : Number(raw) });
-    await Promise.allSettled([loadCharging(), loadRecaps()]);
-  } finally {
-    button.disabled = false;
-  }
-}
 
 function renderMonthlyRecap() {
   const container = $("monthlyRecap");
@@ -1071,44 +1246,125 @@ renderCharging = chargingFeature.render;
 loadCharging = chargingFeature.load;
 saveChargingRate = chargingFeature.saveRate;
 
-async function loadDrives() {
-  try {
-    const data = await getJson("/api/drives");
-    state.drives = data.drives || [];
-    state.driveLibraryWindowDays = Number(data.windowDays) || 365;
-
-    const dashboard = $("dashboardDrives");
-    const all = $("allDrives");
-
-    if (!state.drives.length) {
-      const empty = `
-        <div class="empty-state">
-          <div class="empty-mark">\u2197</div>
-          <h3>No new Tessie drives yet</h3>
-          <p>Your next completed drive will appear here automatically.</p>
-        </div>`;
-
-      dashboard.innerHTML = empty;
-      all.innerHTML = empty;
-      setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
-      renderFavoriteRoutes();
-      dashboardWidgetsFeature?.render();
-      return;
-    }
-
-    dashboard.innerHTML = `<div class="drive-stack">${state.drives.slice(0, 3).map(d => driveCard(d, true)).join("")}</div>`;
-
-    bindDriveButtons(dashboard);
-    renderFavoriteRoutes();
+function scheduleDriveLibraryRender() {
+  const run = () => {
+    driveLibraryRenderScheduled = false;
     renderDriveLibrary();
-    dashboardWidgetsFeature?.render();
-  } catch (error) {
-    const html = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
-    $("dashboardDrives").innerHTML = html;
-    $("allDrives").innerHTML = html;
-    dashboardWidgetsFeature?.render();
+  };
+
+  const drivesView = $("view-drives");
+  if (drivesView?.classList.contains("active-view")) {
+    run();
+    return;
+  }
+
+  if (driveLibraryRenderScheduled) return;
+  driveLibraryRenderScheduled = true;
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 900 });
+  } else {
+    window.setTimeout(run, 120);
   }
 }
+
+function renderDashboardDrives(drives) {
+  const dashboard = $("dashboardDrives");
+  if (!dashboard) return;
+
+  if (!drives.length) {
+    dashboard.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-mark">\u2197</div>
+        <h3>No recent Tessie drives</h3>
+        <p>Your next completed drive will appear here automatically.</p>
+      </div>`;
+    dashboardWidgetsFeature?.render();
+    return;
+  }
+
+  dashboard.innerHTML = `<div class="drive-stack">${drives.slice(0, 3).map(d => driveCard(d, true)).join("")}</div>`;
+  bindDriveButtons(dashboard);
+  dashboardWidgetsFeature?.render();
+}
+
+async function loadDashboardDrives() {
+  try {
+    const data = await getJson("/api/drives/recent");
+    const recent = data.drives || [];
+
+    // Until the full library arrives, recent drives are sufficient for the
+    // dashboard widgets and drive-card interactions.
+    if (!driveLibraryFullyLoaded) {
+      state.drives = recent;
+      state.driveLibraryWindowDays = Number(data.windowDays) || 14;
+      renderFavoriteRoutes();
+    }
+
+    renderDashboardDrives(recent);
+    return data;
+  } catch (error) {
+    const dashboard = $("dashboardDrives");
+    if (dashboard) {
+      dashboard.innerHTML = `<div class="empty-state"><h3>Recent drives unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+    }
+    dashboardWidgetsFeature?.render();
+    return null;
+  }
+}
+
+async function loadDrives() {
+  if (driveLibraryLoadPromise) return driveLibraryLoadPromise;
+
+  driveLibraryLoadPromise = (async () => {
+    try {
+      const data = await getJson("/api/drives");
+      state.drives = data.drives || [];
+      state.driveLibraryWindowDays = Number(data.windowDays) || 365;
+      driveLibraryFullyLoaded = true;
+
+      const all = $("allDrives");
+
+      renderDashboardDrives(state.drives);
+
+      if (!state.drives.length) {
+        const empty = `
+          <div class="empty-state">
+            <div class="empty-mark">\u2197</div>
+            <h3>No Tessie drives yet</h3>
+            <p>Your next completed drive will appear here automatically.</p>
+          </div>`;
+
+        if (all) all.innerHTML = empty;
+        setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
+        renderFavoriteRoutes();
+        dashboardWidgetsFeature?.render();
+        return data;
+      }
+
+      renderFavoriteRoutes();
+      scheduleDriveLibraryRender();
+      dashboardWidgetsFeature?.render();
+      return data;
+    } catch (error) {
+      const all = $("allDrives");
+      if (all) {
+        all.innerHTML = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+      }
+      return null;
+    } finally {
+      driveLibraryLoadPromise = null;
+    }
+  })();
+
+  return driveLibraryLoadPromise;
+}
+
+document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("click", () => {
+  if (!driveLibraryFullyLoaded) {
+    void loadDrives();
+  }
+});
 
 function locationContains(value, query) {
   const terms = String(query || "")
@@ -1750,7 +2006,7 @@ function setMapMusicPoint(lat, lng) {
   renderMapMusicNearby();
 }
 
-function renderDriveMap(data) {
+async function renderDriveMap(data) {
   state.driveMapData = data;
   state.songMapMarkers = new Map();
 
@@ -1763,13 +2019,6 @@ function renderDriveMap(data) {
   songMarkers.forEach(setSongLocationText);
   bindSoundtrackMapRows();
 
-  if (!window.maplibregl) {
-    $("driveMap").classList.add("map-unavailable");
-    $("driveMap").textContent = "MapLibre did not load. Check your internet connection and reload DriveOS.";
-    setText("driveMapStatus", "Map library unavailable");
-    return;
-  }
-
   if (!routePoints.length) {
     $("driveMap").classList.add("map-unavailable");
     $("driveMap").textContent =
@@ -1778,6 +2027,19 @@ function renderDriveMap(data) {
     $("replayPlayPause").disabled = true;
     $("replayScrubber").disabled = true;
     return;
+  }
+
+  if (!window.maplibregl) {
+    setText("driveMapStatus", "Loading map library\u2026");
+
+    try {
+      await ensureMapLibre();
+    } catch (error) {
+      $("driveMap").classList.add("map-unavailable");
+      $("driveMap").textContent = error.message || "Map library unavailable.";
+      setText("driveMapStatus", "Map library unavailable");
+      return;
+    }
   }
 
   if (state.driveMap) {
@@ -1924,7 +2186,7 @@ async function loadDriveMap(drive) {
       return;
     }
 
-    renderDriveMap(data);
+    await renderDriveMap(data);
   } catch (error) {
     $("driveMap").classList.add("map-unavailable");
     $("driveMap").textContent = error.message;
@@ -2397,10 +2659,17 @@ async function connectSpotifyOnThisComputer() {
   }
 
   try {
-    await postJson("/api/spotify/connect", {});
+    const authorization = await postJson("/api/spotify/connect", {});
+
+    if (authorization?.authorizationUrl) {
+      setText("archiveAdded", "Opening Spotify authorization\u2026");
+      window.location.assign(authorization.authorizationUrl);
+      return;
+    }
+
     setText("archiveAdded", "Finish authorization in your browser\u2026");
 
-    // The authorization script runs separately and writes spotify-token.json.
+    // Desktop authorization runs separately and writes spotify-token.json.
     // Poll only the lightweight Spotify auth endpoint, not Tessie/status.
     const deadline = Date.now() + 5 * 60 * 1000;
 
@@ -2535,8 +2804,9 @@ async function configureFoursquareOnThisComputer() {
 }
 
 const refreshFeature = window.DriveOSFeatures.refresh.create({
-  loadStatus, loadVehicle, loadSpotify, loadDrives, loadMusicStats,
-  loadStatistics, loadPlaces, loadCharging, loadRecaps
+  loadStatus, loadVehicle, loadSpotify, syncListeningHistory,
+  loadDashboardDrives, loadDrives, loadMusicStats, loadStatistics, loadPlaces,
+  loadCharging, loadRecaps
 });
 refreshAll = refreshFeature.refresh;
 refreshFeature.bind();
@@ -2550,13 +2820,7 @@ const commandPaletteFeature = window.DriveOSFeatures.commandPalette.create({
     openShareCard: drive => shareCardsFeature.open(drive),
     refresh: () => refreshAll(),
     setTheme: theme => window.DriveOSTheme.apply(theme),
-    focusChargingRate: () => {
-      showView("dashboard");
-      setTimeout(() => {
-        $("electricityRateInput")?.scrollIntoView({ behavior: "smooth", block: "center" });
-        $("electricityRateInput")?.focus();
-      }, 180);
-    }
+
   }
 });
 commandPaletteFeature.bind();
@@ -2601,7 +2865,11 @@ initializePwa();
 const initialRefresh = refreshFeature.start();
 window.DriveOSIgnition.setReady(initialRefresh);
 
-if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
+const isHostedBrowser =
+  location.hostname !== "127.0.0.1" &&
+  location.hostname !== "localhost";
+
+if (isHostedBrowser || isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
   window.DriveOSIgnition.run();
 }
 

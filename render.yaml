@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: driveos
+    runtime: docker
+    plan: free
+    region: ohio
+    branch: web-hosting-prep
+    autoDeployTrigger: commit
+    healthCheckPath: /healthz
+    envVars:
+      - key: DRIVEOS_MODE
+        value: web
+      - key: DRIVEOS_DATA_DIR
+        value: /tmp/driveos
+      - key: DRIVEOS_REPOSITORY_PROVIDER
+        value: Turso
+      - key: DRIVEOS_SESSION_HOURS
+        value: "24"
+      - key: TURSO_DATABASE_URL
+        value: libsql://driveos-drumpat01.aws-us-east-2.turso.io
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: DRIVEOS_OWNER_EMAIL
+        sync: false
+      - key: DRIVEOS_PASSWORD_HASH
+        sync: false
+      - key: DRIVEOS_AUTH_SECRET
+        sync: false
+      - key: DRIVEOS_ENCRYPTION_KEY
+        sync: false
+      - key: TESSIE_TOKEN
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: LASTFM_USERNAME
+        sync: false
+      - key: LASTFM_API_KEY
+        sync: false
+      - key: FOURSQUARE_API_KEY
+        sync: false

@@ -11,7 +11,9 @@
   <link rel="icon" type="image/png" href="/assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+  <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+  <link rel="preconnect" href="https://i.scdn.co" crossorigin>
   <link rel="stylesheet" href="/styles.css?v=3.2.0">
 </head>
 <body>
@@ -476,9 +478,9 @@
               <p class="panel-description">Tessie charging sessions with energy, battery gain, location and cost.</p>
             </div>
             <div class="charging-rate-editor">
-              <label for="electricityRateInput">Home rate</label>
-              <div class="charging-rate-control"><input id="electricityRateInput" type="number" min="0" max="200" step="0.01" inputmode="decimal" placeholder="e.g. 15.2"><span>&#xA2;/kWh</span></div>
-              <button id="saveElectricityRate" class="secondary-button" type="button">Save rate</button>
+              <span>Home charging estimate</span>
+              <strong>14&#xA2;/kWh</strong>
+              <small>Tessie-recorded cost takes priority when available.</small>
             </div>
           </div>
           <div class="charging-summary-grid">
@@ -842,7 +844,6 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
   <script src="/core/build.js?v=5.0.0"></script>
   <script src="/core/dom.js?v=5.0.0"></script>
   <script src="/core/state.js?v=5.0.0"></script>

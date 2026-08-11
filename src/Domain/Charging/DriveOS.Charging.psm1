@@ -6,8 +6,12 @@ function ConvertTo-DriveOSCharge {
     $energyAdded = if ($null -ne $Charge.energy_added) { [math]::Round([double]$Charge.energy_added, 2) } else { $null }
     $recordedCost = if ($null -ne $Charge.cost -and [double]$Charge.cost -gt 0) { [math]::Round([double]$Charge.cost, 2) } else { $null }
     $estimatedCost = $null
-    if ($null -eq $recordedCost -and $null -ne $energyAdded -and $Settings -and $null -ne $Settings.electricityRateCents) {
-        $estimatedCost = [math]::Round($energyAdded * ([double]$Settings.electricityRateCents / 100), 2)
+    if (
+        $null -eq $recordedCost -and
+        $null -ne $energyAdded -and
+        -not [bool]$Charge.is_supercharger
+    ) {
+        $estimatedCost = [math]::Round($energyAdded * 0.14, 2)
     }
     [PSCustomObject]@{
         id=[string]$Charge.id; startedAt=$start.ToString('o'); endedAt=$end.ToString('o')

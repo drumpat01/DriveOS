@@ -7,8 +7,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Import-Module (Join-Path $PSScriptRoot "src\Configuration\DriveOS.Configuration.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Storage.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Sqlite.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Turso.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
@@ -25,6 +27,10 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1")
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebRequest.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.SecretProtection.psm1") -Force
 
 # ============================================================
 # DriveOS 3.2
@@ -34,19 +40,28 @@ Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 # Secrets are never exposed to the browser.
 # ============================================================
 
-$HostAddress = "127.0.0.1"
-$Port = 8787
+$RuntimeConfig = Get-DriveOSRuntimeConfiguration -AppRoot $PSScriptRoot
+$WebAuthConfig = $null
+
+if ($RuntimeConfig.IsWeb) {
+    $WebAuthConfig = Get-DriveOSWebAuthConfiguration `
+        -PublicUrl $RuntimeConfig.PublicUrl
+}
+
+$HostAddress = $RuntimeConfig.ListenAddress
+$Port = $RuntimeConfig.Port
 $ExpectedHostHeader = "${HostAddress}:$Port"
 $TailscaleHostPattern = "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9-]+)+\.ts\.net(?::443)?$"
 $MaxRequestLineBytes = 8192
 $MaxHeaderBytes = 32768
 $MaxBodyBytes = 65536
 $SessionToken = $env:DRIVEOS_SESSION_TOKEN
-$ServerLogFile = Join-Path $PSScriptRoot "data\driveos-server.log"
+$DataDirectory = $RuntimeConfig.DataDirectory
+$ServerLogFile = Join-Path $DataDirectory "driveos-server.log"
 
 $WebRoot = Join-Path $PSScriptRoot "web"
-$DataDirectory = Join-Path $PSScriptRoot "data"
 $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
+$SpotifyOAuthStateFile = Join-Path $DataDirectory "spotify-oauth-state.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
 $LastFmConfigFile = Join-Path $DataDirectory "lastfm-config.json"
@@ -59,11 +74,54 @@ $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
 $FoursquareDailyLimit = 10
 $FoursquareMonthlyLimit = 250
 $script:FoursquareApiKeyForRedaction = $null
+
+# Expensive Tessie-derived data is reused briefly across the dashboard's
+# back-to-back API calls. This is process-local only and disappears on restart.
+$script:DriveDataCache = @{
+    rawDrives365 = $null
+    rawDrives365ExpiresAt = [DateTimeOffset]::MinValue
+    drives365 = $null
+    drives365ExpiresAt = [DateTimeOffset]::MinValue
+    dashboardDrives = $null
+    dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
+    charges365 = $null
+    charges365ExpiresAt = [DateTimeOffset]::MinValue
+}
+$DriveDataCacheTtlSeconds = 300
+
+# Process-local read-through caches. Turso/local storage remains the durable
+# source of truth, but repeated dashboard requests should not reopen the same
+# state on every endpoint.
+$script:SpotifyTokenCacheMemory = $null
+$script:SpotifyHistoryCache = $null
+$script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:MusicStatsCache = $null
+$script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:SpotifyCatalogCacheMemory = $null
+$script:SpotifyCatalogCacheLoaded = $false
+$script:PlaceAliasEntriesCache = @()
+$script:PlaceAliasEntriesLoaded = $false
+$script:ChargingSettingsCache = $null
+$script:FoursquareCacheEntriesMemory = @()
+$script:FoursquareCacheEntriesLoaded = $false
+$script:FoursquareUsageRecordMemory = $null
+$script:FoursquareUsageRecordLoaded = $false
+$script:VehicleSummaryCache = $null
+$script:VehicleSummaryCacheExpiresAt = [DateTimeOffset]::MinValue
+$VehicleSummaryCacheTtlSeconds = 15
+
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
 $MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
+}
+
+if ($Repository.Provider -eq "SQLite") {
+    Initialize-DriveOSSqlite -Repository $Repository
+}
+elseif ($Repository.Provider -eq "Turso") {
+    Initialize-DriveOSTurso -Repository $Repository
 }
 
 if (-not $MaintenanceMode -and -not $env:TESSIE_TOKEN) {
@@ -74,11 +132,20 @@ if (-not $MaintenanceMode -and -not $env:SPOTIFY_CLIENT_ID) {
     throw "SPOTIFY_CLIENT_ID is not available to DriveOS."
 }
 
-if (-not $MaintenanceMode -and ($ParentPid -le 0 -or $ParentStartTicks -le 0)) {
+
+if (
+    -not $MaintenanceMode -and
+    $RuntimeConfig.IsDesktop -and
+    ($ParentPid -le 0 -or $ParentStartTicks -le 0)
+) {
     throw "DriveOS server requires a validated desktop parent process."
 }
 
-if (-not $MaintenanceMode -and (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$")) {
+if (
+    -not $MaintenanceMode -and
+    $RuntimeConfig.IsDesktop -and
+    (-not $SessionToken -or $SessionToken -notmatch "^[0-9a-f]{64}$")
+) {
     throw "DriveOS local-session credential is missing or invalid."
 }
 
@@ -91,6 +158,7 @@ function Write-DriveOSServerLog {
         foreach ($Secret in @(
             $env:TESSIE_TOKEN,
             $env:SPOTIFY_CLIENT_ID,
+            $env:TURSO_AUTH_TOKEN,
             $SessionToken,
             $script:FoursquareApiKeyForRedaction
         )) {
@@ -103,7 +171,12 @@ function Write-DriveOSServerLog {
         $SafeMessage = $SafeMessage -replace '(?i)(api_key=)[^&\s]+', '$1[REDACTED]'
 
         $Stamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-        "$Stamp  $SafeMessage" | Add-Content -Path $ServerLogFile -Encoding UTF8
+        $LogLine = "$Stamp  $SafeMessage"
+        $LogLine | Add-Content -Path $ServerLogFile -Encoding UTF8
+
+        if ($RuntimeConfig.IsWeb) {
+            Write-Host $LogLine
+        }
     }
     catch {}
 }
@@ -137,6 +210,34 @@ function Test-FixedTimeStringEquals {
 # HTTP helpers
 # ------------------------------------------------------------
 
+function Test-DriveOSClientDisconnectError {
+    param([System.Exception]$Exception)
+
+    $Current = $Exception
+
+    while ($Current) {
+        $Message = "$($Current.Message)"
+
+        if (
+            $Current -is [System.IO.IOException] -and
+            $Message -match '(?i)broken pipe|transport connection|connection.*closed|connection.*reset|forcibly closed'
+        ) {
+            return $true
+        }
+
+        if (
+            $Current -is [System.Net.Sockets.SocketException] -and
+            $Message -match '(?i)broken pipe|connection.*closed|connection.*reset|forcibly closed'
+        ) {
+            return $true
+        }
+
+        $Current = $Current.InnerException
+    }
+
+    return $false
+}
+
 function ConvertTo-JsonSafe {
     param($Object)
     return ($Object | ConvertTo-Json -Depth 20 -Compress)
@@ -148,8 +249,29 @@ function Send-HttpResponse {
         [int]$StatusCode = 200,
         [string]$StatusText = "OK",
         [string]$ContentType = "application/json; charset=utf-8",
-        [byte[]]$Body = @()
+        [byte[]]$Body = @(),
+        [hashtable]$AdditionalHeaders = @{}
     )
+
+    $ExtraHeaderText = ""
+
+    foreach ($Name in $AdditionalHeaders.Keys) {
+        $HeaderName = "$Name"
+        $HeaderValue = "$($AdditionalHeaders[$Name])"
+
+        if ($HeaderName -notmatch '^[A-Za-z0-9-]+$') {
+            throw "Invalid HTTP response header name."
+        }
+
+        if (
+            $HeaderValue.Contains("`r") -or
+            $HeaderValue.Contains("`n")
+        ) {
+            throw "Invalid HTTP response header value."
+        }
+
+        $ExtraHeaderText += "$HeaderName`: $HeaderValue`r`n"
+    }
 
     $Header =
         "HTTP/1.1 $StatusCode $StatusText`r`n" +
@@ -164,6 +286,7 @@ function Send-HttpResponse {
         "Cross-Origin-Opener-Policy: same-origin`r`n" +
         "Cross-Origin-Resource-Policy: same-origin`r`n" +
         "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; manifest-src 'self'`r`n" +
+        $ExtraHeaderText +
         "`r`n"
 
     $HeaderBytes = [System.Text.Encoding]::ASCII.GetBytes($Header)
@@ -181,11 +304,19 @@ function Send-Json {
         [System.Net.Sockets.NetworkStream]$Stream,
         $Object,
         [int]$StatusCode = 200,
-        [string]$StatusText = "OK"
+        [string]$StatusText = "OK",
+        [hashtable]$AdditionalHeaders = @{}
     )
 
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-JsonSafe $Object))
-    Send-HttpResponse -Stream $Stream -StatusCode $StatusCode -StatusText $StatusText -ContentType "application/json; charset=utf-8" -Body $Bytes
+
+    Send-HttpResponse `
+        -Stream $Stream `
+        -StatusCode $StatusCode `
+        -StatusText $StatusText `
+        -ContentType "application/json; charset=utf-8" `
+        -Body $Bytes `
+        -AdditionalHeaders $AdditionalHeaders
 }
 
 function Send-Text {
@@ -226,25 +357,31 @@ function Get-MimeType {
 function Unprotect-Token {
     param([string]$EncryptedToken)
 
-    if (-not $EncryptedToken) { return $null }
-
-    $SecureString = ConvertTo-SecureString $EncryptedToken
-    $BSTR = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)
-
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    if (-not $EncryptedToken) {
+        return $null
     }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
-    }
+
+    return Unprotect-DriveOSSecret `
+        -ProtectedText $EncryptedToken `
+        -Mode $RuntimeConfig.Mode `
+        -EncryptionKey $(if ($WebAuthConfig) {
+            $WebAuthConfig.EncryptionKey
+        } else {
+            $null
+        })
 }
 
 function Protect-Token {
     param([string]$Token)
 
-    return $Token |
-        ConvertTo-SecureString -AsPlainText -Force |
-        ConvertFrom-SecureString
+    return Protect-DriveOSSecret `
+        -PlainText $Token `
+        -Mode $RuntimeConfig.Mode `
+        -EncryptionKey $(if ($WebAuthConfig) {
+            $WebAuthConfig.EncryptionKey
+        } else {
+            $null
+        })
 }
 
 function Save-SpotifyTokenCache {
@@ -261,15 +398,45 @@ function Save-SpotifyTokenCache {
         ExpiresAt    = (Get-Date).AddSeconds($ExpiresIn).ToString("o")
         Scope        = $Scope
     }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-token" `
+            -Value $TokenCache
+        $script:SpotifyTokenCacheMemory = $TokenCache
+        return
+    }
+
     Write-DriveOSJson -Path $SpotifyTokenFile -Value $TokenCache
+    $script:SpotifyTokenCacheMemory = $TokenCache
 }
 
 function Get-SpotifyTokenCache {
+    if ($null -ne $script:SpotifyTokenCacheMemory) {
+        return $script:SpotifyTokenCacheMemory
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        $Stored = Get-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-token"
+
+        if (-not $Stored) {
+            throw "Spotify authorization is not configured."
+        }
+
+        $script:SpotifyTokenCacheMemory = $Stored
+        return $Stored
+    }
+
     if (-not (Test-Path $SpotifyTokenFile)) {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
 
-    return Read-DriveOSJson -Path $SpotifyTokenFile
+    $Stored = Read-DriveOSJson -Path $SpotifyTokenFile
+    $script:SpotifyTokenCacheMemory = $Stored
+    return $Stored
 }
 
 function Test-SpotifyScope {
@@ -333,56 +500,73 @@ function Get-SpotifyRecent {
     return Get-SpotifyRecentlyPlayed -Client $Client -Limit $Limit
 }
 
+function Set-SpotifyHistoryMemoryCache {
+    param([object[]]$Records = @())
+
+    $script:SpotifyHistoryCache = @($Records)
+    $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::UtcNow.AddSeconds($DriveDataCacheTtlSeconds)
+
+    # Aggregate music statistics depend on the listening archive.
+    $script:MusicStatsCache = $null
+    $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+}
+
+function Clear-SpotifyHistoryMemoryCache {
+    $script:SpotifyHistoryCache = $null
+    $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
+    $script:MusicStatsCache = $null
+    $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+}
+
 function Save-SpotifyHistory {
     param($Items)
 
     if (-not $Items) { return 0 }
 
     $ExistingIds = @{}
+    $UpdatedHistory = New-Object Collections.ArrayList
 
-    foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
+    foreach ($Record in @(Get-SpotifyHistory)) {
         if ($Record.id) { $ExistingIds[$Record.id] = $true }
+        [void]$UpdatedHistory.Add($Record)
     }
 
     $NewCount = 0
 
     foreach ($Item in $Items) {
-        $Artists = ($Item.track.artists | ForEach-Object { $_.name }) -join ", "
         $RecordId = "$($Item.track.id)|$($Item.played_at)"
 
         if (-not $ExistingIds.ContainsKey($RecordId)) {
-            $AlbumImage = $null
-            $TrackUrl = $null
-            $AlbumUrl = $null
-
-            if (
-                $Item.track.album.images -and
-                $Item.track.album.images.Count -gt 0
-            ) {
-                # Spotify returns artwork sizes widest-first.
-                $AlbumImage = $Item.track.album.images[0].url
-            }
-
-            if ($Item.track.external_urls.spotify) {
-                $TrackUrl = $Item.track.external_urls.spotify
-            }
-
-            if ($Item.track.album.external_urls.spotify) {
-                $AlbumUrl = $Item.track.album.external_urls.spotify
-            }
-
             $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
             Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
 
+            [void]$UpdatedHistory.Add($HistoryRecord)
             $ExistingIds[$RecordId] = $true
             $NewCount++
         }
+    }
+
+    if ($NewCount -gt 0) {
+        Set-SpotifyHistoryMemoryCache -Records @($UpdatedHistory)
+        $script:DriveDataCache.drives365 = $null
+        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.dashboardDrives = $null
+        $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return $NewCount
 }
 
 function Get-SpotifyHistory {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:SpotifyHistoryCache -and
+        $script:SpotifyHistoryCacheExpiresAt -gt $Now
+    ) {
+        return @($script:SpotifyHistoryCache)
+    }
+
     $Records = @()
 
     foreach ($Record in @(Get-DriveOSListeningHistory -Repository $Repository)) {
@@ -393,6 +577,7 @@ function Get-SpotifyHistory {
         $Records += $Record
     }
 
+    Set-SpotifyHistoryMemoryCache -Records $Records
     return $Records
 }
 
@@ -631,21 +816,265 @@ function Get-SpotifyAuthorizationStatus {
     }
     catch {}
 
+    $TokenStored = if ($Repository.Provider -eq "Turso") {
+        $null -ne (
+            Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-token"
+        )
+    }
+    else {
+        Test-Path $SpotifyTokenFile -PathType Leaf
+    }
+
     return [PSCustomObject]@{
         authorized = $Authorized
-        tokenFile  = (Test-Path $SpotifyTokenFile -PathType Leaf)
+        tokenFile  = [bool]$TokenStored
+    }
+}
+
+function ConvertTo-SpotifyBase64Url {
+    param([byte[]]$Bytes)
+
+    return [Convert]::ToBase64String($Bytes).
+        TrimEnd('=').
+        Replace('+', '-').
+        Replace('/', '_')
+}
+
+function Get-DriveOSQueryParameters {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Target
+    )
+
+    $Uri = [Uri]("https://driveos.invalid$Target")
+    $Result = @{}
+
+    foreach ($Pair in $Uri.Query.TrimStart("?").Split("&")) {
+        if (-not $Pair) {
+            continue
+        }
+
+        $Parts = $Pair.Split("=", 2)
+        $Key = [Uri]::UnescapeDataString(
+            $Parts[0].Replace("+", " ")
+        )
+
+        $Value = if ($Parts.Count -gt 1) {
+            [Uri]::UnescapeDataString(
+                $Parts[1].Replace("+", " ")
+            )
+        }
+        else {
+            ""
+        }
+
+        if ($Result.ContainsKey($Key)) {
+            throw "Duplicate query parameter was rejected."
+        }
+
+        $Result[$Key] = $Value
+    }
+
+    return $Result
+}
+
+function Start-SpotifyWebAuthorization {
+    $RedirectUri = "$($RuntimeConfig.PublicUrl)/auth/spotify/callback"
+
+    $Scopes = @(
+        "user-read-recently-played"
+        "user-read-playback-state"
+        "user-read-currently-playing"
+        "playlist-modify-private"
+    ) -join " "
+
+    $VerifierBytes = New-Object byte[] 64
+    $Random = [Security.Cryptography.RandomNumberGenerator]::Create()
+
+    try {
+        $Random.GetBytes($VerifierBytes)
+    }
+    finally {
+        $Random.Dispose()
+    }
+
+    $CodeVerifier = ConvertTo-SpotifyBase64Url -Bytes $VerifierBytes
+
+    $Sha256 = [Security.Cryptography.SHA256]::Create()
+
+    try {
+        $ChallengeBytes = $Sha256.ComputeHash(
+            [Text.Encoding]::ASCII.GetBytes($CodeVerifier)
+        )
+    }
+    finally {
+        $Sha256.Dispose()
+    }
+
+    $CodeChallenge = ConvertTo-SpotifyBase64Url `
+        -Bytes $ChallengeBytes
+
+    $StateBytes = New-Object byte[] 32
+    $Random = [Security.Cryptography.RandomNumberGenerator]::Create()
+
+    try {
+        $Random.GetBytes($StateBytes)
+    }
+    finally {
+        $Random.Dispose()
+    }
+
+    $State = ConvertTo-SpotifyBase64Url -Bytes $StateBytes
+
+    $PendingAuthorization = [PSCustomObject]@{
+        state = $State
+        verifier = Protect-Token $CodeVerifier
+        redirectUri = $RedirectUri
+        expiresAt = [DateTimeOffset]::UtcNow.
+            AddMinutes(10).
+            ToString("o")
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state" `
+            -Value $PendingAuthorization
+    }
+    else {
+        Write-DriveOSJson `
+            -Path $SpotifyOAuthStateFile `
+            -Value $PendingAuthorization
+    }
+
+    $AuthUrl =
+        "https://accounts.spotify.com/authorize" +
+        "?client_id=$([Uri]::EscapeDataString($env:SPOTIFY_CLIENT_ID))" +
+        "&response_type=code" +
+        "&redirect_uri=$([Uri]::EscapeDataString($RedirectUri))" +
+        "&scope=$([Uri]::EscapeDataString($Scopes))" +
+        "&code_challenge_method=S256" +
+        "&code_challenge=$([Uri]::EscapeDataString($CodeChallenge))" +
+        "&state=$([Uri]::EscapeDataString($State))"
+
+    return [PSCustomObject]@{
+        started = $true
+        authorizationUrl = $AuthUrl
+    }
+}
+
+function Complete-SpotifyWebAuthorization {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Target
+    )
+
+    $Pending = if ($Repository.Provider -eq "Turso") {
+        Get-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state"
+    }
+    elseif (Test-Path $SpotifyOAuthStateFile -PathType Leaf) {
+        Read-DriveOSJson -Path $SpotifyOAuthStateFile
+    }
+    else {
+        $null
+    }
+
+    if (-not $Pending) {
+        throw "Spotify authorization state was not found or has expired."
+    }
+
+    $ExpiresAt = [DateTimeOffset]::Parse(
+        "$($Pending.expiresAt)"
+    )
+
+    if ([DateTimeOffset]::UtcNow -ge $ExpiresAt) {
+        if ($Repository.Provider -eq "Turso") {
+            Remove-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-oauth-state"
+        }
+        else {
+            Remove-Item $SpotifyOAuthStateFile -Force -ErrorAction SilentlyContinue
+        }
+
+        throw "Spotify authorization state has expired."
+    }
+
+    $Query = Get-DriveOSQueryParameters -Target $Target
+
+    if ($Query["error"]) {
+        throw "Spotify authorization failed: $($Query["error"])"
+    }
+
+    if (-not $Query["code"] -or -not $Query["state"]) {
+        throw "Spotify authorization callback was incomplete."
+    }
+
+    if (-not (
+        Test-FixedTimeStringEquals `
+            "$($Query["state"])" `
+            "$($Pending.state)"
+    )) {
+        throw "Spotify authorization state did not match."
+    }
+
+    $CodeVerifier = Unprotect-Token "$($Pending.verifier)"
+    $RedirectUri = "$($Pending.redirectUri)"
+
+    $TokenResponse = Invoke-RestMethod `
+        -Uri "https://accounts.spotify.com/api/token" `
+        -Method Post `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body @{
+            client_id     = $env:SPOTIFY_CLIENT_ID
+            grant_type    = "authorization_code"
+            code          = $Query["code"]
+            redirect_uri  = $RedirectUri
+            code_verifier = $CodeVerifier
+        }
+
+    if (
+        -not $TokenResponse.access_token -or
+        -not $TokenResponse.refresh_token
+    ) {
+        throw "Spotify token response was incomplete."
+    }
+
+    Save-SpotifyTokenCache `
+        -AccessToken $TokenResponse.access_token `
+        -RefreshToken $TokenResponse.refresh_token `
+        -ExpiresIn ([int]$TokenResponse.expires_in) `
+        -Scope "$($TokenResponse.scope)"
+
+    if ($Repository.Provider -eq "Turso") {
+        Remove-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-oauth-state"
+    }
+    else {
+        Remove-Item `
+            $SpotifyOAuthStateFile `
+            -Force `
+            -ErrorAction SilentlyContinue
     }
 }
 
 function Start-SpotifyAuthorization {
+    if ($RuntimeConfig.IsWeb) {
+        return Start-SpotifyWebAuthorization
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-Spotify.ps1"
 
     if (-not (Test-Path $Script -PathType Leaf)) {
         throw "Spotify authorization script is missing."
     }
 
-    # Avoid exposing secrets in arguments. SPOTIFY_CLIENT_ID is inherited from
-    # the DriveOS backend process environment by the child PowerShell process.
+    # Desktop mode preserves the existing separate Windows authorization flow.
     Start-Process `
         -FilePath "powershell.exe" `
         -ArgumentList @(
@@ -662,6 +1091,17 @@ function Start-SpotifyAuthorization {
 }
 
 function Get-LastFmConfiguration {
+    if (
+        $RuntimeConfig.IsWeb -and
+        $env:LASTFM_USERNAME -and
+        $env:LASTFM_API_KEY
+    ) {
+        return [PSCustomObject]@{
+            username = "$($env:LASTFM_USERNAME)".Trim()
+            apiKey = "$($env:LASTFM_API_KEY)".Trim()
+        }
+    }
+
     if (-not (Test-Path $LastFmConfigFile -PathType Leaf)) {
         return $null
     }
@@ -697,6 +1137,10 @@ function Get-LastFmConnectionStatus {
 }
 
 function Start-LastFmConfiguration {
+    if ($RuntimeConfig.IsWeb) {
+        throw "Configure LASTFM_USERNAME and LASTFM_API_KEY in the hosting environment."
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-LastFm.ps1"
 
     if (-not (Test-Path $Script -PathType Leaf)) {
@@ -717,6 +1161,12 @@ function Start-LastFmConfiguration {
 }
 
 function Get-FoursquareConfiguration {
+    if ($RuntimeConfig.IsWeb -and $env:FOURSQUARE_API_KEY) {
+        $ApiKey = "$($env:FOURSQUARE_API_KEY)".Trim()
+        $script:FoursquareApiKeyForRedaction = $ApiKey
+        return [PSCustomObject]@{ apiKey = $ApiKey }
+    }
+
     if (-not (Test-Path $FoursquareConfigFile -PathType Leaf)) { return $null }
 
     $Config = Read-DriveOSJson -Path $FoursquareConfigFile
@@ -730,28 +1180,103 @@ function Get-FoursquareConfiguration {
 }
 
 function Get-FoursquareUsageRecord {
-    if (-not (Test-Path $FoursquareUsageFile -PathType Leaf)) { return $null }
-    try { return Read-DriveOSJson -Path $FoursquareUsageFile }
-    catch { return $null }
+    if ($script:FoursquareUsageRecordLoaded) {
+        return $script:FoursquareUsageRecordMemory
+    }
+
+    $Record = $null
+
+    if ($Repository.Provider -eq "Turso") {
+        try {
+            $Record = Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "foursquare-usage"
+        }
+        catch {}
+    }
+    elseif (Test-Path $FoursquareUsageFile -PathType Leaf) {
+        try { $Record = Read-DriveOSJson -Path $FoursquareUsageFile } catch {}
+    }
+
+    $script:FoursquareUsageRecordMemory = $Record
+    $script:FoursquareUsageRecordLoaded = $true
+    return $Record
+}
+
+function Save-FoursquareUsageRecord {
+    param([Parameter(Mandatory=$true)]$Record)
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "foursquare-usage" `
+            -Value $Record
+    }
+    else {
+        Write-DriveOSJson -Path $FoursquareUsageFile -Value $Record
+    }
+
+    $script:FoursquareUsageRecordMemory = $Record
+    $script:FoursquareUsageRecordLoaded = $true
 }
 
 function Get-FoursquareCacheEntries {
-    if (-not (Test-Path $FoursquareCacheFile -PathType Leaf)) { return @() }
+    if ($script:FoursquareCacheEntriesLoaded) {
+        return @($script:FoursquareCacheEntriesMemory)
+    }
+
+    $Entries = @()
+
     try {
-        $Record = Read-DriveOSJson -Path $FoursquareCacheFile
-        if ($Record -and $Record.PSObject.Properties['entries']) { return @($Record.entries) }
+        $Record = if ($Repository.Provider -eq "Turso") {
+            Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "foursquare-cache"
+        }
+        elseif (Test-Path $FoursquareCacheFile -PathType Leaf) {
+            Read-DriveOSJson -Path $FoursquareCacheFile
+        }
+        else {
+            $null
+        }
+
+        if ($Record -and $Record.PSObject.Properties['entries']) {
+            $Entries = @($Record.entries)
+        }
     }
     catch {}
-    return @()
+
+    $script:FoursquareCacheEntriesMemory = @($Entries)
+    $script:FoursquareCacheEntriesLoaded = $true
+    return @($Entries)
 }
 
 function Save-FoursquareCacheEntries {
     param([object[]]$Entries)
-    Write-DriveOSJson -Path $FoursquareCacheFile -Value ([PSCustomObject]@{
+
+    $Record = [PSCustomObject]@{
         version = 1
-        updatedAt = (Get-Date).ToString('o')
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
         entries = @($Entries)
-    })
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "foursquare-cache" `
+            -Value $Record
+    }
+    else {
+        Write-DriveOSJson -Path $FoursquareCacheFile -Value $Record
+    }
+
+    $script:FoursquareCacheEntriesMemory = @($Entries)
+    $script:FoursquareCacheEntriesLoaded = $true
+
+    # Converted drives contain friendly location names, so refresh that layer
+    # only when the persisted place-resolution data changes.
+    $script:DriveDataCache.drives365 = $null
+    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function Get-FoursquareCacheMap {
@@ -786,26 +1311,31 @@ function Get-FoursquareConnectionStatus {
 
 function Set-FoursquareLastError {
     param([string]$Message)
+
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
         -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
-    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+
+    $Record = [PSCustomObject]@{
         version = 1
         day = $Usage.day
         dayCount = [int]$Usage.dayCount
         month = $Usage.month
         monthCount = [int]$Usage.monthCount
         lastError = if ($Message) { $Message } else { $null }
-        lastErrorAt = if ($Message) { (Get-Date).ToString('o') } else { $null }
-        updatedAt = (Get-Date).ToString('o')
-    })
+        lastErrorAt = if ($Message) { [DateTimeOffset]::UtcNow.ToString('o') } else { $null }
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+
+    Save-FoursquareUsageRecord -Record $Record
 }
 
 function Register-FoursquareApiCall {
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage (Get-FoursquareUsageRecord) `
         -DailyLimit $FoursquareDailyLimit -MonthlyLimit $FoursquareMonthlyLimit
+
     if (-not $Usage.canCall) { return $false }
 
-    Write-DriveOSJson -Path $FoursquareUsageFile -Value ([PSCustomObject]@{
+    $Record = [PSCustomObject]@{
         version = 1
         day = $Usage.day
         dayCount = ([int]$Usage.dayCount + 1)
@@ -813,12 +1343,18 @@ function Register-FoursquareApiCall {
         monthCount = ([int]$Usage.monthCount + 1)
         lastError = $null
         lastErrorAt = $null
-        updatedAt = (Get-Date).ToString('o')
-    })
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    }
+
+    Save-FoursquareUsageRecord -Record $Record
     return $true
 }
 
 function Start-FoursquareConfiguration {
+    if ($RuntimeConfig.IsWeb) {
+        throw "Configure FOURSQUARE_API_KEY in the hosting environment."
+    }
+
     $Script = Join-Path $PSScriptRoot "Connect-Foursquare.ps1"
     if (-not (Test-Path $Script -PathType Leaf)) {
         throw "Foursquare configuration script is missing."
@@ -833,10 +1369,17 @@ function Start-FoursquareConfiguration {
 }
 
 function Get-FoursquareCachedPlace {
-    param([string]$Location, $Latitude = $null, $Longitude = $null)
+    param(
+        [string]$Location,
+        $Latitude = $null,
+        $Longitude = $null,
+        $CacheMap = $null
+    )
+
     $Key = Get-DriveOSPlaceCacheKey -Location $Location -Latitude $Latitude -Longitude $Longitude
     if (-not $Key) { return $null }
-    $Map = Get-FoursquareCacheMap
+
+    $Map = if ($null -ne $CacheMap) { $CacheMap } else { Get-FoursquareCacheMap }
     if ($Map.ContainsKey($Key) -and $Map[$Key].status -eq 'matched') { return $Map[$Key] }
     return $null
 }
@@ -950,17 +1493,31 @@ function Sync-LastFmHistory {
     $History = @(Get-SpotifyHistory)
     $Latest = [DateTimeOffset]::UtcNow.AddDays(-365)
 
-    if (-not $FullHistory -and (Test-Path $LastFmSyncStateFile -PathType Leaf)) {
+    if (-not $FullHistory) {
         try {
-            $SyncState = Read-DriveOSJson -Path $LastFmSyncStateFile
+            $SyncState = if ($Repository.Provider -eq "Turso") {
+                Get-DriveOSTursoState `
+                    -Repository $Repository `
+                    -Key "lastfm-sync"
+            }
+            elseif (Test-Path $LastFmSyncStateFile -PathType Leaf) {
+                Read-DriveOSJson -Path $LastFmSyncStateFile
+            }
+            else {
+                $null
+            }
+
             if (
+                $SyncState -and
                 "$($SyncState.Username)" -eq $Config.username -and
                 [long]$SyncState.CursorUnix -gt 0
             ) {
                 $Latest = [DateTimeOffset]::FromUnixTimeSeconds([long]$SyncState.CursorUnix)
             }
         }
-        catch {}
+        catch {
+            Write-DriveOSServerLog "Last.fm sync state lookup failed: $($_.Exception.Message)"
+        }
     }
 
     foreach ($Record in $History) {
@@ -1059,12 +1616,30 @@ function Sync-LastFmHistory {
         if ($NewestItemUnix -gt $CursorUnix) { $CursorUnix = $NewestItemUnix }
     }
 
-    Write-DriveOSJson -Path $LastFmSyncStateFile -Value ([PSCustomObject]@{
+    $SyncRecord = [PSCustomObject]@{
         Version    = 1
         Username   = $Config.username
         CursorUnix = $CursorUnix
         LastSyncAt = [DateTimeOffset]::UtcNow.ToString("o")
-    })
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "lastfm-sync" `
+            -Value $SyncRecord
+    }
+    else {
+        Write-DriveOSJson -Path $LastFmSyncStateFile -Value $SyncRecord
+    }
+
+    if ($Added -gt 0) {
+        Clear-SpotifyHistoryMemoryCache
+        $script:DriveDataCache.drives365 = $null
+        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.dashboardDrives = $null
+        $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
+    }
 
     return [PSCustomObject]@{
         configured = $true
@@ -1094,25 +1669,12 @@ function ConvertTo-PublicListeningPlay {
 }
 
 function Get-SpotifySummary {
+    # Keep the dashboard response fast: archive Spotify's recent-play window
+    # here, but let Last.fm synchronization run separately after the main
+    # dashboard refresh has finished.
     $Items = @(Get-SpotifyRecent -Limit 50)
     $SpotifyAdded = Save-SpotifyHistory $Items
-    $SpotifyClient = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
-    $LastFm = $null
-    $LastFmError = $null
-
-    try {
-        $LastFm = Sync-LastFmHistory -SpotifyClient $SpotifyClient
-    }
-    catch {
-        $LastFmError = "Last.fm sync is temporarily unavailable"
-        Write-DriveOSServerLog "Last.fm sync failed: $($_.Exception.Message)"
-        $LastFm = [PSCustomObject]@{
-            configured = (Get-LastFmConnectionStatus).configured
-            username   = (Get-LastFmConnectionStatus).username
-            added      = 0
-            duplicates = 0
-        }
-    }
+    $LastFmStatus = Get-LastFmConnectionStatus
 
     $History = @(Get-SpotifyHistory | Sort-Object {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
@@ -1123,17 +1685,16 @@ function Get-SpotifySummary {
     $Recent = @($History | Select-Object -First 21 | ForEach-Object {
         ConvertTo-PublicListeningPlay -Record $_
     })
-    $LastFmAdded = [int]$LastFm.added
 
     return [PSCustomObject]@{
         recent             = $Recent
-        newlyArchived      = ($SpotifyAdded + $LastFmAdded)
+        newlyArchived      = $SpotifyAdded
         spotifyNewlyAdded  = $SpotifyAdded
-        lastFmNewlyAdded   = $LastFmAdded
+        lastFmNewlyAdded   = 0
         archiveTotal       = $History.Count
-        lastFmConfigured   = [bool]$LastFm.configured
-        lastFmUsername     = $LastFm.username
-        lastFmError        = $LastFmError
+        lastFmConfigured   = [bool]$LastFmStatus.configured
+        lastFmUsername     = $LastFmStatus.username
+        lastFmError        = $null
     }
 }
 
@@ -1156,15 +1717,18 @@ function Write-JsonFileUtf8NoBom {
 }
 
 function Get-PlaceAliasEntries {
-    if (-not (Test-Path $PlaceAliasesFile -PathType Leaf)) {
-        return @()
+    if ($script:PlaceAliasEntriesLoaded) {
+        return @($script:PlaceAliasEntriesCache)
     }
 
     try {
-        $Parsed = Get-DriveOSPlaceAliases -Repository $Repository
+        $Parsed = @(Get-DriveOSPlaceAliases -Repository $Repository)
+        $script:PlaceAliasEntriesCache = @($Parsed)
+        $script:PlaceAliasEntriesLoaded = $true
         return @($Parsed)
     }
     catch {
+        Write-DriveOSServerLog "Place alias lookup failed: $($_.Exception.Message)"
         return @()
     }
 }
@@ -1174,13 +1738,24 @@ function Get-PlaceAliasMap {
 }
 
 function Get-FriendlyLocation {
-    param([string]$Location, $Latitude = $null, $Longitude = $null)
+    param(
+        [string]$Location,
+        $Latitude = $null,
+        $Longitude = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
+    )
 
-    $AliasMap = Get-PlaceAliasMap
-    $Friendly = Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap $AliasMap
+    $ResolvedAliasMap = if ($null -ne $AliasMap) { $AliasMap } else { Get-PlaceAliasMap }
+    $Friendly = Resolve-DriveOSFriendlyLocation -Location $Location -AliasMap $ResolvedAliasMap
     if ($Friendly -ne $Location) { return $Friendly }
 
-    $Business = Get-FoursquareCachedPlace -Location $Location -Latitude $Latitude -Longitude $Longitude
+    $Business = Get-FoursquareCachedPlace `
+        -Location $Location `
+        -Latitude $Latitude `
+        -Longitude $Longitude `
+        -CacheMap $FoursquareCacheMap
+
     if ($Business -and $Business.name) { return [string]$Business.name }
     return $Location
 }
@@ -1196,6 +1771,11 @@ function Set-PlaceAlias {
 
     Set-DriveOSPlaceAliases -Repository $Repository -Entries @($Entries)
 
+    $script:PlaceAliasEntriesCache = @($Entries)
+    $script:PlaceAliasEntriesLoaded = $true
+    $script:DriveDataCache.drives365 = $null
+    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+
     return [PSCustomObject]@{
         location = $Location
         label = $Label
@@ -1204,21 +1784,27 @@ function Set-PlaceAlias {
 }
 
 function Get-ChargingSettings {
+    if ($null -ne $script:ChargingSettingsCache) {
+        return $script:ChargingSettingsCache
+    }
+
     $Rate = $null
 
-    if (Test-Path $ChargingSettingsFile -PathType Leaf) {
-        try {
-            $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
-            if ($null -ne $Parsed.electricityRateCents) {
-                $Rate = [double]$Parsed.electricityRateCents
-            }
+    try {
+        $Parsed = Get-DriveOSChargingSettingsRecord -Repository $Repository
+        if ($Parsed -and $null -ne $Parsed.electricityRateCents) {
+            $Rate = [double]$Parsed.electricityRateCents
         }
-        catch {}
+    }
+    catch {
+        Write-DriveOSServerLog "Charging settings lookup failed: $($_.Exception.Message)"
     }
 
-    return [PSCustomObject]@{
+    $script:ChargingSettingsCache = [PSCustomObject]@{
         electricityRateCents = $Rate
     }
+
+    return $script:ChargingSettingsCache
 }
 
 function Set-ChargingSettings {
@@ -1238,6 +1824,7 @@ function Set-ChargingSettings {
     }
 
     Set-DriveOSChargingSettingsRecord -Repository $Repository -Settings $Settings
+    $script:ChargingSettingsCache = $Settings
     return $Settings
 }
 
@@ -1246,7 +1833,12 @@ function Get-PlaceCandidates {
     $Coordinates = @{}
     $AliasMap = Get-PlaceAliasMap
 
-    foreach ($Drive in @(Get-RawDrives -Days 365)) {
+    # Load the persisted Foursquare cache once for this entire request.
+    # Without this, every unique Tessie location can trigger another Turso
+    # read while building the candidate list.
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
+    foreach ($Drive in @(Get-CachedRawDrives365)) {
         $Endpoints = @(
             [PSCustomObject]@{ location=$Drive.starting_location; latitude=$Drive.starting_latitude; longitude=$Drive.starting_longitude },
             [PSCustomObject]@{ location=$Drive.ending_location; latitude=$Drive.ending_latitude; longitude=$Drive.ending_longitude }
@@ -1271,7 +1863,8 @@ function Get-PlaceCandidates {
         $ManualLabel = if ($AliasMap.ContainsKey($Location)) { [string]$AliasMap[$Location] } else { "" }
         $Business = Get-FoursquareCachedPlace -Location $Location `
             -Latitude $(if ($Coordinate) { $Coordinate.latitude } else { $null }) `
-            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null })
+            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null }) `
+            -CacheMap $FoursquareCacheMap
         [PSCustomObject]@{
             location = $Location
             label = $ManualLabel
@@ -1289,12 +1882,13 @@ function Get-PlaceCandidates {
 
     $NewMatches = Resolve-FoursquareCandidatePlaces -Candidates $Places
     if ($NewMatches -gt 0) {
-        $CacheMap = Get-FoursquareCacheMap
+        # Refresh once only when the resolver actually persisted new matches.
+        $FoursquareCacheMap = Get-FoursquareCacheMap
         foreach ($Place in $Places) {
             if ($Place.manualLabel) { continue }
             $Key = Get-DriveOSPlaceCacheKey -Location $Place.location -Latitude $Place.latitude -Longitude $Place.longitude
-            if ($Key -and $CacheMap.ContainsKey($Key) -and $CacheMap[$Key].status -eq 'matched') {
-                $Business = $CacheMap[$Key]
+            if ($Key -and $FoursquareCacheMap.ContainsKey($Key) -and $FoursquareCacheMap[$Key].status -eq 'matched') {
+                $Business = $FoursquareCacheMap[$Key]
                 $Place.businessName = [string]$Business.name
                 $Place.businessCategory = [string]$Business.category
                 $Place.businessDistanceMeters = $Business.distanceMeters
@@ -1310,6 +1904,23 @@ function Get-PlaceCandidates {
         newMatches = [int]$NewMatches
         foursquare = Get-FoursquareConnectionStatus
     }
+}
+
+function Get-CachedRawCharges365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.charges365 -and
+        $script:DriveDataCache.charges365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.charges365)
+    }
+
+    $Charges = @(Get-RawCharges -Days 365)
+    $script:DriveDataCache.charges365 = @($Charges)
+    $script:DriveDataCache.charges365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Charges
 }
 
 function Get-RawCharges {
@@ -1329,18 +1940,42 @@ function Get-RawCharges {
 }
 
 function Convert-RawCharge {
-    param($Charge)
+    param(
+        $Charge,
+        $Settings = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
+    )
 
-    $Settings = Get-ChargingSettings
-    return ConvertTo-DriveOSCharge -Charge $Charge -Settings $Settings -FriendlyLocation `
-        (Get-FriendlyLocation -Location $Charge.location -Latitude $Charge.latitude -Longitude $Charge.longitude)
+    $ResolvedSettings = if ($null -ne $Settings) { $Settings } else { Get-ChargingSettings }
+
+    return ConvertTo-DriveOSCharge `
+        -Charge $Charge `
+        -Settings $ResolvedSettings `
+        -FriendlyLocation (
+            Get-FriendlyLocation `
+                -Location $Charge.location `
+                -Latitude $Charge.latitude `
+                -Longitude $Charge.longitude `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        )
 }
 
 function Get-ChargingSummary {
-    $Sessions = @()
-    foreach ($Charge in @(Get-RawCharges -Days 365)) {
-        $Sessions += Convert-RawCharge -Charge $Charge
-    }
+    $Settings = Get-ChargingSettings
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
+    $Sessions = @(
+        Get-CachedRawCharges365 | ForEach-Object {
+            Convert-RawCharge `
+                -Charge $_ `
+                -Settings $Settings `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        }
+    )
 
     $Cutoff30 = [DateTimeOffset]::Now.AddDays(-30)
     $Recent = @($Sessions | Where-Object { [DateTimeOffset]::Parse($_.startedAt) -ge $Cutoff30 })
@@ -1349,7 +1984,7 @@ function Get-ChargingSummary {
     $TotalCost = if ($KnownCosts.Count) { [math]::Round((($KnownCosts | Measure-Object displayCost -Sum).Sum), 2) } else { $null }
 
     return [PSCustomObject]@{
-        settings = Get-ChargingSettings
+        settings = $Settings
         summary30 = [PSCustomObject]@{
             sessions = $Recent.Count
             energyAddedKWh = $TotalEnergy
@@ -1363,9 +1998,21 @@ function Get-ChargingSummary {
 
 
 function Get-MonthlyRecaps {
-    $Drives=@(Get-RecentDrives -Days 365)
-    $Charges=@(Get-RawCharges -Days 365|ForEach-Object{Convert-RawCharge -Charge $_})
-    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings (Get-ChargingSettings)
+    $Drives = @(Get-CachedRecentDrives365)
+    $Settings = Get-ChargingSettings
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+    $Charges = @(
+        Get-CachedRawCharges365 | ForEach-Object {
+            Convert-RawCharge `
+                -Charge $_ `
+                -Settings $Settings `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+        }
+    )
+
+    return New-DriveOSMonthlyRecaps -Drives $Drives -Charges $Charges -Settings $Settings
 }
 
 function Get-TessieHeaders {
@@ -1378,13 +2025,25 @@ function Get-VehicleRecord {
 }
 
 function Get-VehicleSummary {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:VehicleSummaryCache -and
+        $script:VehicleSummaryCacheExpiresAt -gt $Now
+    ) {
+        return $script:VehicleSummaryCache
+    }
+
     $Vehicle = Get-VehicleRecord
 
     if (-not $Vehicle) {
         throw "No Tessie vehicle found."
     }
 
-    return ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
+    $Summary = ConvertTo-DriveOSVehicleSummary -Vehicle $Vehicle
+    $script:VehicleSummaryCache = $Summary
+    $script:VehicleSummaryCacheExpiresAt = $Now.AddSeconds($VehicleSummaryCacheTtlSeconds)
+    return $Summary
 }
 
 function Get-RawDrives {
@@ -1411,6 +2070,22 @@ function Get-RawDrives {
     $Response = Get-TessieHistoryRange -Client $Client -Vin $Vin -Resource drives -From $From -To $To -ExtraQuery "limit=1000&distance_format=mi&temperature_format=f"
 
     return @($Response.results | Sort-Object started_at -Descending)
+}
+function Get-CachedRawDrives365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.rawDrives365 -and
+        $script:DriveDataCache.rawDrives365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.rawDrives365)
+    }
+
+    $RawDrives = @(Get-RawDrives -Days 365)
+    $script:DriveDataCache.rawDrives365 = @($RawDrives)
+    $script:DriveDataCache.rawDrives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $RawDrives
 }
 
 function Get-SoundtrackForWindow {
@@ -1495,14 +2170,16 @@ function Get-SoundtrackForWindow {
 function Convert-RawDrive {
     param(
         $Drive,
-        [object[]]$SpotifyHistory = $null
+        [object[]]$SpotifyHistory = $null,
+        $AliasMap = $null,
+        $FoursquareCacheMap = $null
     )
 
     $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
     $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
     return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack `
-        -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude) `
-        -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude)
+        -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap) `
+        -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap)
 }
 
 function Get-RecentDrives {
@@ -1511,11 +2188,64 @@ function Get-RecentDrives {
     $Output = @()
     $SpotifyHistory = @(Get-SpotifyHistory)
 
-    foreach ($Raw in @(Get-RawDrives -Days $Days)) {
-        $Output += Convert-RawDrive -Drive $Raw -SpotifyHistory $SpotifyHistory
+    # Friendly-location data is shared across the entire build. In hosted mode
+    # these maps come from Turso, so loading them once avoids hundreds of
+    # repeated repository round trips for drive start/end locations.
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
+    $RawDrives = if ($Days -eq 365) {
+        @(Get-CachedRawDrives365)
+    }
+    else {
+        @(Get-RawDrives -Days $Days)
+    }
+
+    foreach ($Raw in $RawDrives) {
+        $Output += Convert-RawDrive `
+            -Drive $Raw `
+            -SpotifyHistory $SpotifyHistory `
+            -AliasMap $AliasMap `
+            -FoursquareCacheMap $FoursquareCacheMap
     }
 
     return $Output
+}
+
+function Get-CachedRecentDrives365 {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.drives365 -and
+        $script:DriveDataCache.drives365ExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.drives365)
+    }
+
+    $Drives = @(Get-RecentDrives -Days 365)
+    $script:DriveDataCache.drives365 = @($Drives)
+    $script:DriveDataCache.drives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Drives
+}
+
+function Get-CachedDashboardDrives {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $script:DriveDataCache.dashboardDrives -and
+        $script:DriveDataCache.dashboardDrivesExpiresAt -gt $Now
+    ) {
+        return @($script:DriveDataCache.dashboardDrives)
+    }
+
+    # The dashboard only needs a handful of recent trips. Avoid forcing the
+    # 365-day Tessie history build just to paint three cards on a cold start.
+    $Drives = @(Get-RecentDrives -Days 14 | Select-Object -First 10)
+    $script:DriveDataCache.dashboardDrives = @($Drives)
+    $script:DriveDataCache.dashboardDrivesExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+
+    return $Drives
 }
 
 
@@ -1792,7 +2522,7 @@ function Get-DriveShareCardData {
     param([string]$DriveId)
     if (-not $DriveId) { throw "driveId is required." }
 
-    $Drive = @(Get-RecentDrives -Days 365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
+    $Drive = @(Get-CachedRecentDrives365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
     if (-not $Drive) { throw "Drive could not be found." }
 
     $MapData = $null
@@ -1830,9 +2560,21 @@ function Get-SpotifyCatalogCacheKey {
 }
 
 function Get-SpotifyCatalogCache {
+    if ($script:SpotifyCatalogCacheLoaded) {
+        return $script:SpotifyCatalogCacheMemory
+    }
+
     $Cache = $null
 
-    if (Test-Path $SpotifyCatalogCacheFile -PathType Leaf) {
+    if ($Repository.Provider -eq "Turso") {
+        try {
+            $Cache = Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-catalog-cache"
+        }
+        catch {}
+    }
+    elseif (Test-Path $SpotifyCatalogCacheFile -PathType Leaf) {
         try { $Cache = Read-DriveOSJson -Path $SpotifyCatalogCacheFile } catch {}
     }
 
@@ -1848,7 +2590,26 @@ function Get-SpotifyCatalogCache {
         $Cache | Add-Member -NotePropertyName artists -NotePropertyValue @()
     }
 
+    $script:SpotifyCatalogCacheMemory = $Cache
+    $script:SpotifyCatalogCacheLoaded = $true
     return $Cache
+}
+
+function Save-SpotifyCatalogCache {
+    param([Parameter(Mandatory=$true)]$Cache)
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState `
+            -Repository $Repository `
+            -Key "spotify-catalog-cache" `
+            -Value $Cache
+    }
+    else {
+        Write-DriveOSJson -Path $SpotifyCatalogCacheFile -Value $Cache
+    }
+
+    $script:SpotifyCatalogCacheMemory = $Cache
+    $script:SpotifyCatalogCacheLoaded = $true
 }
 
 function Add-SpotifyCatalogDetailsToMusicStats {
@@ -1857,13 +2618,7 @@ function Add-SpotifyCatalogDetailsToMusicStats {
         [object[]]$History = @()
     )
 
-    try {
-        $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
-    }
-    catch {
-        return $Stats
-    }
-
+    $Client = $null
     $Cache = Get-SpotifyCatalogCache
     $TrackCache = @($Cache.tracks)
     $ArtistCache = @($Cache.artists)
@@ -1877,6 +2632,9 @@ function Add-SpotifyCatalogDetailsToMusicStats {
 
         if (-not $Entry) {
             try {
+                if (-not $Client) {
+                    $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+                }
                 $Track = Find-SpotifyTrack -Client $Client -Track "$($Item.track)" -Artist "$($Item.artist)"
                 $AlbumImage = $null
                 $CatalogAlbum = $null
@@ -1923,6 +2681,9 @@ function Add-SpotifyCatalogDetailsToMusicStats {
 
         if (-not $Entry) {
             try {
+                if (-not $Client) {
+                    $Client = New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)
+                }
                 $Artist = Find-SpotifyArtist -Client $Client -Artist "$($Item.artist)"
                 $ImageUrl = $null
                 $ImageSource = $null
@@ -1977,20 +2738,45 @@ function Add-SpotifyCatalogDetailsToMusicStats {
     if ($CacheChanged) {
         $Cache.tracks = @($TrackCache)
         $Cache.artists = @($ArtistCache)
-        Write-DriveOSJson -Path $SpotifyCatalogCacheFile -Value $Cache
+        Save-SpotifyCatalogCache -Cache $Cache
     }
 
     return $Stats
 }
 
 function Get-MusicStats {
+    $Now = [DateTimeOffset]::UtcNow
+
+    if (
+        $null -ne $script:MusicStatsCache -and
+        $script:MusicStatsCacheExpiresAt -gt $Now
+    ) {
+        return $script:MusicStatsCache
+    }
+
     $History = @(Get-SpotifyHistory)
     $Stats = New-DriveOSMusicStats -History $History
-    return Add-SpotifyCatalogDetailsToMusicStats -Stats $Stats -History $History
+    $Result = Add-SpotifyCatalogDetailsToMusicStats -Stats $Stats -History $History
+
+    $script:MusicStatsCache = $Result
+    $script:MusicStatsCacheExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    return $Result
 }
 
 function Get-DriveStats {
-    $Drives = @(Get-RecentDrives -Days 30)
+    $Cutoff = [DateTimeOffset]::Now.AddDays(-30)
+    $Drives = @(
+        Get-CachedRecentDrives365 |
+        Where-Object {
+            try {
+                [DateTimeOffset]::Parse("$($_.startedAt)") -ge $Cutoff
+            }
+            catch {
+                $false
+            }
+        }
+    )
+
     return New-DriveOSDriveStats -Drives $Drives -PeriodDays 30
 }
 
@@ -2005,7 +2791,7 @@ function New-DrivePlaylist {
         throw "Spotify permission playlist-modify-private is missing. Run the updated Connect-Spotify.ps1 once, approve access, then try again."
     }
 
-    $Drive = @(Get-RecentDrives -Days 365) |
+    $Drive = @(Get-CachedRecentDrives365) |
         Where-Object { $_.id -eq $DriveId } |
         Select-Object -First 1
 
@@ -2121,6 +2907,51 @@ function Send-StaticFile {
 }
 
 # ------------------------------------------------------------
+# Hosted web authentication helpers
+# ------------------------------------------------------------
+
+function Send-Redirect {
+    param(
+        [System.Net.Sockets.NetworkStream]$Stream,
+        [Parameter(Mandatory = $true)]
+        [string]$Location
+    )
+
+    Send-HttpResponse `
+        -Stream $Stream `
+        -StatusCode 302 `
+        -StatusText "Found" `
+        -ContentType "text/plain; charset=utf-8" `
+        -Body @() `
+        -AdditionalHeaders @{
+            Location = $Location
+        }
+}
+
+function Test-DriveOSAuthenticatedWebRequest {
+    param(
+        [hashtable]$Headers
+    )
+
+    if (-not $RuntimeConfig.IsWeb -or -not $WebAuthConfig) {
+        return $false
+    }
+
+    $Token = Get-DriveOSCookieValue `
+        -Headers $Headers `
+        -CookieName "DriveOSSession"
+
+    if (-not $Token) {
+        return $false
+    }
+
+    return Test-DriveOSWebSessionToken `
+        -Token $Token `
+        -OwnerEmail $WebAuthConfig.OwnerEmail `
+        -AuthSecret $WebAuthConfig.AuthSecret
+}
+
+# ------------------------------------------------------------
 # Router
 # ------------------------------------------------------------
 
@@ -2129,12 +2960,58 @@ function Handle-Request {
         [System.Net.Sockets.NetworkStream]$Stream,
         [string]$Method,
         [string]$Path,
-        [string]$BodyText
+        [string]$Target,
+        [string]$BodyText,
+        [hashtable]$Headers,
+        [string]$ClientKey
     )
 
     try {
         if ($Method -eq "GET") {
             switch ($Path) {
+                "/healthz" {
+                    Send-Json -Stream $Stream -Object @{
+                        status = "ok"
+                    }
+                    return
+                }
+
+                "/login" {
+                    Send-StaticFile `
+                        -Stream $Stream `
+                        -RequestPath "/login.html"
+                    return
+                }
+
+                "/auth/spotify/callback" {
+                    if (-not $RuntimeConfig.IsWeb) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 404 `
+                            -StatusText "Not Found" `
+                            -Object @{
+                                error = "Not found."
+                            }
+                        return
+                    }
+
+                    Complete-SpotifyWebAuthorization `
+                        -Target $Target
+
+                    Send-Redirect `
+                        -Stream $Stream `
+                        -Location "/"
+                    return
+                }
+
+                "/api/auth/session" {
+                    Send-Json -Stream $Stream -Object @{
+                        authenticated = $true
+                        ownerEmail = $WebAuthConfig.OwnerEmail
+                    }
+                    return
+                }
+
                 "/api/status" {
                     Send-Json -Stream $Stream -Object (Get-OverallStatus)
                     return
@@ -2161,6 +3038,26 @@ function Handle-Request {
                     return
                 }
 
+                "/api/lastfm/sync" {
+                    $LastFmStatus = Get-LastFmConnectionStatus
+
+                    if (-not $LastFmStatus.configured) {
+                        Send-Json -Stream $Stream -Object @{
+                            configured = $false
+                            username = $LastFmStatus.username
+                            added = 0
+                            duplicates = 0
+                        }
+                        return
+                    }
+
+                    Send-Json -Stream $Stream -Object (
+                        Sync-LastFmHistory `
+                            -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken))
+                    )
+                    return
+                }
+
                 "/api/lastfm/sync-full" {
                     Send-Json -Stream $Stream -Object (Sync-LastFmHistory -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)) -FullHistory)
                     return
@@ -2176,10 +3073,19 @@ function Handle-Request {
                     return
                 }
 
+                "/api/drives/recent" {
+                    Send-Json -Stream $Stream -Object @{
+                        windowDays = 14
+                        limited    = $true
+                        drives     = @(Get-CachedDashboardDrives)
+                    }
+                    return
+                }
+
                 "/api/drives" {
                     Send-Json -Stream $Stream -Object @{
                         windowDays = 365
-                        drives     = @(Get-RecentDrives -Days 365)
+                        drives     = @(Get-CachedRecentDrives365)
                     }
                     return
                 }
@@ -2228,6 +3134,89 @@ function Handle-Request {
 
         if ($Method -eq "POST") {
             switch ($Path) {
+                "/api/auth/login" {
+                    if (-not (Test-DriveOSLoginAllowed -ClientKey $ClientKey)) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 429 `
+                            -StatusText "Too Many Requests" `
+                            -AdditionalHeaders @{
+                                "Retry-After" = "30"
+                            } `
+                            -Object @{
+                                error = "Too many login attempts. Please wait and try again."
+                            }
+                        return
+                    }
+
+                    $Body = ConvertFrom-DriveOSRequestBody `
+                        -BodyText $BodyText `
+                        -RequiredFields email,password
+
+                    $Email = "$($Body.email)".Trim().ToLowerInvariant()
+                    $PasswordText = "$($Body.password)"
+                    $SecurePassword = ConvertTo-SecureString `
+                        $PasswordText `
+                        -AsPlainText `
+                        -Force
+
+                    $Body.password = $null
+                    $PasswordText = $null
+
+                    $EmailOk = Test-FixedTimeStringEquals `
+                        $Email `
+                        $WebAuthConfig.OwnerEmail
+
+                    $PasswordOk = Test-DriveOSPassword `
+                        -Password $SecurePassword `
+                        -StoredHash $WebAuthConfig.PasswordHash
+
+                    if (-not $EmailOk -or -not $PasswordOk) {
+                        Register-DriveOSLoginFailure -ClientKey $ClientKey
+
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 401 `
+                            -StatusText "Unauthorized" `
+                            -Object @{
+                                error = "Invalid email or password."
+                            }
+                        return
+                    }
+
+                    Clear-DriveOSLoginFailures -ClientKey $ClientKey
+
+                    $Token = New-DriveOSWebSessionToken `
+                        -OwnerEmail $WebAuthConfig.OwnerEmail `
+                        -AuthSecret $WebAuthConfig.AuthSecret `
+                        -SessionHours $RuntimeConfig.SessionHours
+
+                    $Cookie = New-DriveOSWebSessionCookie `
+                        -Token $Token `
+                        -SessionHours $RuntimeConfig.SessionHours
+
+                    Send-Json `
+                        -Stream $Stream `
+                        -AdditionalHeaders @{
+                            "Set-Cookie" = $Cookie
+                        } `
+                        -Object @{
+                            authenticated = $true
+                        }
+                    return
+                }
+
+                "/api/auth/logout" {
+                    Send-Json `
+                        -Stream $Stream `
+                        -AdditionalHeaders @{
+                            "Set-Cookie" = (New-DriveOSWebSessionClearCookie)
+                        } `
+                        -Object @{
+                            authenticated = $false
+                        }
+                    return
+                }
 
                 "/api/spotify/connect" {
                     Send-Json -Stream $Stream -Object (Start-SpotifyAuthorization)
@@ -2290,6 +3279,10 @@ function Handle-Request {
         }
     }
     catch {
+        if (Test-DriveOSClientDisconnectError -Exception $_.Exception) {
+            return
+        }
+
         $Message = $_.Exception.Message
         $ErrorResponse = Get-DriveOSHttpError -Message $Message
         $Code = $ErrorResponse.statusCode
@@ -2341,6 +3334,14 @@ function Test-DriveOSParentAlive {
     }
 }
 
+function Test-DriveOSServerShouldRun {
+    if ($RuntimeConfig.IsWeb) {
+        return $true
+    }
+
+    return Test-DriveOSParentAlive
+}
+
 function Send-RequestRejected {
     param(
         [System.Net.Sockets.NetworkStream]$Stream,
@@ -2364,18 +3365,18 @@ $Listener = [System.Net.Sockets.TcpListener]::new(
 $Listener.Start()
 
 try {
-    while (Test-DriveOSParentAlive) {
+    while (Test-DriveOSServerShouldRun) {
         $AcceptResult = $Listener.BeginAcceptTcpClient($null, $null)
 
         while (-not $AcceptResult.IsCompleted) {
-            if (-not (Test-DriveOSParentAlive)) {
+            if (-not (Test-DriveOSServerShouldRun)) {
                 break
             }
 
             Start-Sleep -Milliseconds 100
         }
 
-        if (-not (Test-DriveOSParentAlive)) {
+        if (-not (Test-DriveOSServerShouldRun)) {
             break
         }
 
@@ -2390,8 +3391,15 @@ try {
         try {
             $Remote = $Client.Client.RemoteEndPoint
 
-            if ($Remote -isnot [System.Net.IPEndPoint] -or
-                -not [System.Net.IPAddress]::IsLoopback($Remote.Address)) {
+            if ($Remote -isnot [System.Net.IPEndPoint]) {
+                $Client.Close()
+                continue
+            }
+
+            if (
+                $RuntimeConfig.IsDesktop -and
+                -not [System.Net.IPAddress]::IsLoopback($Remote.Address)
+            ) {
                 $Client.Close()
                 continue
             }
@@ -2490,40 +3498,60 @@ try {
             }
 
             $RequestHost = $Headers["host"].ToLowerInvariant()
-            $IsLocalDesktopRequest = $RequestHost -eq $ExpectedHostHeader
-            $IsTailscaleHost = $RequestHost -match $TailscaleHostPattern
+            $IsRemoteTailscaleRequest = $false
 
-            $LocalSessionOk =
-                $IsLocalDesktopRequest -and
-                $Headers.ContainsKey("x-driveos-session") -and
-                (Test-FixedTimeStringEquals `
-                    $Headers["x-driveos-session"] `
-                    $SessionToken)
+            if ($RuntimeConfig.IsDesktop) {
+                $IsLocalDesktopRequest = $RequestHost -eq $ExpectedHostHeader
+                $IsTailscaleHost = $RequestHost -match $TailscaleHostPattern
 
-            # Tailscale Serve strips user-supplied identity headers and injects
-            # authenticated identity headers on tailnet traffic. DriveOS still
-            # listens only on localhost, matching Tailscale's recommended setup.
-            $TailscaleIdentityOk =
-                $Headers.ContainsKey("tailscale-user-login") -and
-                -not [String]::IsNullOrWhiteSpace($Headers["tailscale-user-login"]) -and
-                $Headers["tailscale-user-login"].Length -le 512
+                $LocalSessionOk =
+                    $IsLocalDesktopRequest -and
+                    $Headers.ContainsKey("x-driveos-session") -and
+                    (Test-FixedTimeStringEquals `
+                        $Headers["x-driveos-session"] `
+                        $SessionToken)
 
-            # Reverse proxies may preserve the original ts.net Host or rewrite it
-            # to the localhost target. Both are acceptable only when a verified
-            # Tailscale identity header is present.
-            $RemoteHostOk = $IsLocalDesktopRequest -or $IsTailscaleHost
+                # Tailscale Serve strips user-supplied identity headers and injects
+                # authenticated identity headers on tailnet traffic. DriveOS still
+                # listens only on localhost, matching Tailscale's recommended setup.
+                $TailscaleIdentityOk =
+                    $Headers.ContainsKey("tailscale-user-login") -and
+                    -not [String]::IsNullOrWhiteSpace($Headers["tailscale-user-login"]) -and
+                    $Headers["tailscale-user-login"].Length -le 512
 
-            if (-not $LocalSessionOk -and (-not $TailscaleIdentityOk -or -not $RemoteHostOk)) {
+                # Reverse proxies may preserve the original ts.net Host or rewrite it
+                # to the localhost target. Both are acceptable only when a verified
+                # Tailscale identity header is present.
+                $RemoteHostOk = $IsLocalDesktopRequest -or $IsTailscaleHost
+
+                if (
+                    -not $LocalSessionOk -and
+                    (-not $TailscaleIdentityOk -or -not $RemoteHostOk)
+                ) {
+                    Send-RequestRejected `
+                        -Stream $Stream `
+                        -Code 403 `
+                        -Text "Forbidden" `
+                        -Message "DriveOS session authentication failed."
+
+                    continue
+                }
+
+                $IsRemoteTailscaleRequest = $TailscaleIdentityOk
+            }
+            elseif (-not (
+                Test-DriveOSWebHost `
+                    -HostHeader $RequestHost `
+                    -PublicUrl $RuntimeConfig.PublicUrl
+            )) {
                 Send-RequestRejected `
                     -Stream $Stream `
-                    -Code 403 `
-                    -Text "Forbidden" `
-                    -Message "DriveOS session authentication failed."
+                    -Code 400 `
+                    -Text "Bad Request" `
+                    -Message "Invalid host."
 
                 continue
             }
-
-            $IsRemoteTailscaleRequest = $TailscaleIdentityOk
 
             if ($Headers.ContainsKey("transfer-encoding")) {
                 Send-RequestRejected `
@@ -2611,6 +3639,64 @@ try {
             $Path = ($Target -split "\?", 2)[0]
             $BodyText = ""
 
+            if ($RuntimeConfig.IsWeb) {
+                if (
+                    $Method -eq "POST" -and
+                    -not (
+                        Test-DriveOSWebOrigin `
+                            -Headers $Headers `
+                            -PublicUrl $RuntimeConfig.PublicUrl
+                    )
+                ) {
+                    Send-RequestRejected `
+                        -Stream $Stream `
+                        -Code 403 `
+                        -Text "Forbidden" `
+                        -Message "Request origin validation failed."
+
+                    continue
+                }
+
+                $WebSessionOk = Test-DriveOSAuthenticatedWebRequest `
+                    -Headers $Headers
+
+                $IsPublicWebRequest = Test-DriveOSWebPublicRequest `
+                    -Method $Method `
+                    -Path $Path
+
+                if (
+                    -not $IsPublicWebRequest -and
+                    -not $WebSessionOk
+                ) {
+                    if ($Path.StartsWith("/api/")) {
+                        Send-RequestRejected `
+                            -Stream $Stream `
+                            -Code 401 `
+                            -Text "Unauthorized" `
+                            -Message "Authentication required."
+                    }
+                    else {
+                        Send-Redirect `
+                            -Stream $Stream `
+                            -Location "/login"
+                    }
+
+                    continue
+                }
+
+                if (
+                    $WebSessionOk -and
+                    $Method -eq "GET" -and
+                    $Path -in @("/login", "/login.html")
+                ) {
+                    Send-Redirect `
+                        -Stream $Stream `
+                        -Location "/"
+
+                    continue
+                }
+            }
+
             $ContentLength = 0
 
             if ($Headers.ContainsKey("content-length")) {
@@ -2681,23 +3767,28 @@ try {
                 -Stream $Stream `
                 -Method $Method `
                 -Path $Path `
-                -BodyText $BodyText
+                -Target $Target `
+                -BodyText $BodyText `
+                -Headers $Headers `
+                -ClientKey $Remote.Address.ToString()
         }
         catch {
-            Write-DriveOSServerLog "HTTP request processing failed: $($_.Exception.Message)"
+            if (-not (Test-DriveOSClientDisconnectError -Exception $_.Exception)) {
+                Write-DriveOSServerLog "HTTP request processing failed: $($_.Exception.Message)"
 
-            try {
-                if ($Stream) {
-                    Send-Json `
-                        -Stream $Stream `
-                        -StatusCode 500 `
-                        -StatusText "Internal Server Error" `
-                        -Object @{
-                            error = "DriveOS request failed."
-                        }
+                try {
+                    if ($Stream) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 500 `
+                            -StatusText "Internal Server Error" `
+                            -Object @{
+                                error = "DriveOS request failed."
+                            }
+                    }
                 }
+                catch {}
             }
-            catch {}
         }
         finally {
             if ($Reader) {

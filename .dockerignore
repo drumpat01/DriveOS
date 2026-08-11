@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+data
+logs
+*.log
+desktop/bin
+desktop/obj
+**/*.user
+**/*.suo
