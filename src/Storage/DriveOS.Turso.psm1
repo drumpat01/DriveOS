@@ -36,7 +36,7 @@ function Invoke-DriveOSTursoPipeline {
     }
 
     $BaseUrl = Get-DriveOSTursoHttpUrl -DatabaseUrl $Repository.TursoDatabaseUrl
-    $Requests = New-Object System.Collections.Generic.List[object]
+    $Requests = [System.Collections.Generic.List[object]]::new()
 
     foreach ($Statement in $Statements) {
         $Stmt = [ordered]@{ sql = "$($Statement.Sql)" }
@@ -58,7 +58,7 @@ function Invoke-DriveOSTursoPipeline {
     $Requests.Add([PSCustomObject]@{ type = "close" })
 
     $Payload = [PSCustomObject]@{
-        requests = @($Requests)
+        requests = $Requests.ToArray()
     } | ConvertTo-Json -Depth 20 -Compress
 
     $Response = Invoke-RestMethod `
@@ -213,7 +213,7 @@ function Set-DriveOSTursoAliases {
         [Parameter(Mandatory=$true)][object[]]$Entries
     )
 
-    $Statements = New-Object System.Collections.Generic.List[object]
+    $Statements = [System.Collections.Generic.List[object]]::new()
     $Statements.Add([PSCustomObject]@{ Sql = "BEGIN IMMEDIATE;" })
     $Statements.Add([PSCustomObject]@{ Sql = "DELETE FROM place_aliases;" })
 
@@ -228,7 +228,7 @@ function Set-DriveOSTursoAliases {
 
     $null = Invoke-DriveOSTursoPipeline `
         -Repository $Repository `
-        -Statements @($Statements)
+        -Statements $Statements.ToArray()
 }
 
 function Get-DriveOSTursoSettings {
