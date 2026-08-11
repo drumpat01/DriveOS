@@ -2608,7 +2608,11 @@ initializePwa();
 const initialRefresh = refreshFeature.start();
 window.DriveOSIgnition.setReady(initialRefresh);
 
-if (isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
+const isHostedBrowser =
+  location.hostname !== "127.0.0.1" &&
+  location.hostname !== "localhost";
+
+if (isHostedBrowser || isTailnetRemote() || new URLSearchParams(location.search).has("smoke")) {
   window.DriveOSIgnition.run();
 }
 
