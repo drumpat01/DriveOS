@@ -1732,6 +1732,11 @@ function Get-PlaceCandidates {
     $Coordinates = @{}
     $AliasMap = Get-PlaceAliasMap
 
+    # Load the persisted Foursquare cache once for this entire request.
+    # Without this, every unique Tessie location can trigger another Turso
+    # read while building the candidate list.
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+
     foreach ($Drive in @(Get-CachedRawDrives365)) {
         $Endpoints = @(
             [PSCustomObject]@{ location=$Drive.starting_location; latitude=$Drive.starting_latitude; longitude=$Drive.starting_longitude },
@@ -1757,7 +1762,8 @@ function Get-PlaceCandidates {
         $ManualLabel = if ($AliasMap.ContainsKey($Location)) { [string]$AliasMap[$Location] } else { "" }
         $Business = Get-FoursquareCachedPlace -Location $Location `
             -Latitude $(if ($Coordinate) { $Coordinate.latitude } else { $null }) `
-            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null })
+            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null }) `
+            -CacheMap $FoursquareCacheMap
         [PSCustomObject]@{
             location = $Location
             label = $ManualLabel
@@ -1775,12 +1781,13 @@ function Get-PlaceCandidates {
 
     $NewMatches = Resolve-FoursquareCandidatePlaces -Candidates $Places
     if ($NewMatches -gt 0) {
-        $CacheMap = Get-FoursquareCacheMap
+        # Refresh once only when the resolver actually persisted new matches.
+        $FoursquareCacheMap = Get-FoursquareCacheMap
         foreach ($Place in $Places) {
             if ($Place.manualLabel) { continue }
             $Key = Get-DriveOSPlaceCacheKey -Location $Place.location -Latitude $Place.latitude -Longitude $Place.longitude
-            if ($Key -and $CacheMap.ContainsKey($Key) -and $CacheMap[$Key].status -eq 'matched') {
-                $Business = $CacheMap[$Key]
+            if ($Key -and $FoursquareCacheMap.ContainsKey($Key) -and $FoursquareCacheMap[$Key].status -eq 'matched') {
+                $Business = $FoursquareCacheMap[$Key]
                 $Place.businessName = [string]$Business.name
                 $Place.businessCategory = [string]$Business.category
                 $Place.businessDistanceMeters = $Business.distanceMeters
