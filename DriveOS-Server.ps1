@@ -174,6 +174,34 @@ function Test-FixedTimeStringEquals {
 # HTTP helpers
 # ------------------------------------------------------------
 
+function Test-DriveOSClientDisconnectError {
+    param([System.Exception]$Exception)
+
+    $Current = $Exception
+
+    while ($Current) {
+        $Message = "$($Current.Message)"
+
+        if (
+            $Current -is [System.IO.IOException] -and
+            $Message -match '(?i)broken pipe|transport connection|connection.*closed|connection.*reset|forcibly closed'
+        ) {
+            return $true
+        }
+
+        if (
+            $Current -is [System.Net.Sockets.SocketException] -and
+            $Message -match '(?i)broken pipe|connection.*closed|connection.*reset|forcibly closed'
+        ) {
+            return $true
+        }
+
+        $Current = $Current.InnerException
+    }
+
+    return $false
+}
+
 function ConvertTo-JsonSafe {
     param($Object)
     return ($Object | ConvertTo-Json -Depth 20 -Compress)
@@ -2827,6 +2855,10 @@ function Handle-Request {
         }
     }
     catch {
+        if (Test-DriveOSClientDisconnectError -Exception $_.Exception) {
+            return
+        }
+
         $Message = $_.Exception.Message
         $ErrorResponse = Get-DriveOSHttpError -Message $Message
         $Code = $ErrorResponse.statusCode
@@ -3317,20 +3349,22 @@ try {
                 -ClientKey $Remote.Address.ToString()
         }
         catch {
-            Write-DriveOSServerLog "HTTP request processing failed: $($_.Exception.Message)"
+            if (-not (Test-DriveOSClientDisconnectError -Exception $_.Exception)) {
+                Write-DriveOSServerLog "HTTP request processing failed: $($_.Exception.Message)"
 
-            try {
-                if ($Stream) {
-                    Send-Json `
-                        -Stream $Stream `
-                        -StatusCode 500 `
-                        -StatusText "Internal Server Error" `
-                        -Object @{
-                            error = "DriveOS request failed."
-                        }
+                try {
+                    if ($Stream) {
+                        Send-Json `
+                            -Stream $Stream `
+                            -StatusCode 500 `
+                            -StatusText "Internal Server Error" `
+                            -Object @{
+                                error = "DriveOS request failed."
+                            }
+                    }
                 }
+                catch {}
             }
-            catch {}
         }
         finally {
             if ($Reader) {
