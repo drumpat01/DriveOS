@@ -941,9 +941,6 @@ function renderCharging(data) {
   setText("charge30Cost", summary.cost == null ? "--" : money(summary.cost), "--");
   setText("charge30Superchargers", summary.superchargerSessions ?? 0, "0");
 
-  const rate = data.settings?.electricityRateCents;
-  const rateInput = $("electricityRateInput");
-  if (rateInput && document.activeElement !== rateInput) rateInput.value = rate == null ? "" : rate;
 
   const container = $("chargingHistory");
   if (!container) return;
@@ -980,19 +977,6 @@ async function loadCharging() {
   }
 }
 
-async function saveChargingRate() {
-  const input = $("electricityRateInput");
-  const button = $("saveElectricityRate");
-  if (!input || !button) return;
-  button.disabled = true;
-  try {
-    const raw = input.value.trim();
-    await postJson("/api/charging/settings", { electricityRateCents: raw === "" ? null : Number(raw) });
-    await Promise.allSettled([loadCharging(), loadRecaps()]);
-  } finally {
-    button.disabled = false;
-  }
-}
 
 function renderMonthlyRecap() {
   const container = $("monthlyRecap");
@@ -2557,13 +2541,7 @@ const commandPaletteFeature = window.DriveOSFeatures.commandPalette.create({
     openShareCard: drive => shareCardsFeature.open(drive),
     refresh: () => refreshAll(),
     setTheme: theme => window.DriveOSTheme.apply(theme),
-    focusChargingRate: () => {
-      showView("dashboard");
-      setTimeout(() => {
-        $("electricityRateInput")?.scrollIntoView({ behavior: "smooth", block: "center" });
-        $("electricityRateInput")?.focus();
-      }, 180);
-    }
+
   }
 });
 commandPaletteFeature.bind();
