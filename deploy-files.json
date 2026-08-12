@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "allowed": [
     "*.md", "*.txt", "*.json", "*.yaml", "*.yml", "*.ps1", "*.bat", ".env.example", "Dockerfile",
-    "desktop/*.cs", "docs/**", "src/**", "tests/**", "tools/**", "web/**"
+    ".github/workflows/**", "desktop/*.cs", "docs/**", "src/**", "tests/**", "tools/**", "web/**"
   ],
   "forbidden": [
     ".env", "artifacts/**", "data/**", "desktop/packages/**", "update-backups/**",

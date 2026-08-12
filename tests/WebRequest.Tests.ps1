@@ -100,6 +100,24 @@ Assert-True `
         -Path "/api/status")) `
     "DriveOS API status must require authentication."
 
+$SyncSecret = '0123456789abcdef0123456789abcdef'
+$SyncHeaders = @{ 'x-driveos-sync-token' = $SyncSecret }
+Assert-True `
+    (Test-DriveOSScheduledSyncRequest -IsWeb $true -Method POST -Path '/api/spotify/sync' -Headers $SyncHeaders -ExpectedSecret $SyncSecret) `
+    'A valid hosted scheduled sync request should be accepted.'
+Assert-True `
+    (-not (Test-DriveOSScheduledSyncRequest -IsWeb $false -Method POST -Path '/api/spotify/sync' -Headers $SyncHeaders -ExpectedSecret $SyncSecret)) `
+    'Desktop DriveOS must reject scheduled sync requests.'
+Assert-True `
+    (-not (Test-DriveOSScheduledSyncRequest -IsWeb $true -Method GET -Path '/api/spotify/sync' -Headers $SyncHeaders -ExpectedSecret $SyncSecret)) `
+    'Scheduled sync must reject the wrong HTTP method.'
+Assert-True `
+    (-not (Test-DriveOSScheduledSyncRequest -IsWeb $true -Method POST -Path '/api/spotify/sync' -Headers @{ 'x-driveos-sync-token' = 'wrong' } -ExpectedSecret $SyncSecret)) `
+    'Scheduled sync must reject an invalid secret.'
+Assert-True `
+    (-not (Test-DriveOSScheduledSyncRequest -IsWeb $true -Method POST -Path '/api/spotify/sync' -Headers $SyncHeaders -ExpectedSecret 'too-short')) `
+    'Scheduled sync must reject weak server secrets.'
+
 $Key = "test-client"
 $Now = [DateTimeOffset]::Parse("2026-08-10T23:00:00Z")
 

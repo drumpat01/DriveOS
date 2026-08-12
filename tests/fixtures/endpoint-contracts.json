@@ -12,6 +12,7 @@
   { "method": "GET", "path": "/api/recap" },
   { "method": "GET", "pathPattern": "^/api/spotify/artwork/([A-Za-z0-9]{10,64})$" },
   { "method": "POST", "path": "/api/spotify/connect" },
+  { "method": "POST", "path": "/api/spotify/sync" },
   { "method": "POST", "path": "/api/places/alias" },
   { "method": "POST", "path": "/api/charging/settings" },
   { "method": "POST", "path": "/api/dashboard/layout" },

@@ -1710,6 +1710,25 @@ function Get-SpotifySummary {
     }
 }
 
+function Invoke-ScheduledSpotifySync {
+    if (-not $RuntimeConfig.IsWeb) {
+        throw 'Scheduled Spotify sync is available only in hosted DriveOS.'
+    }
+
+    $Items = @(Get-SpotifyRecent -Limit 50)
+    $Added = Save-SpotifyHistory -Items $Items
+    $ArchiveTotal = @(Get-SpotifyHistory).Count
+    $CompletedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    Write-DriveOSServerLog "Scheduled Spotify sync completed: $Added new play(s), $ArchiveTotal archived."
+
+    return [PSCustomObject]@{
+        ok = $true
+        newlyArchived = $Added
+        archiveTotal = $ArchiveTotal
+        completedAt = $CompletedAt
+    }
+}
+
 # ------------------------------------------------------------
 # Tessie
 # ------------------------------------------------------------
@@ -3193,6 +3212,22 @@ function Handle-Request {
 
         if ($Method -eq "POST") {
             switch ($Path) {
+                "/api/spotify/sync" {
+                    if (-not (Test-DriveOSScheduledSyncRequest `
+                        -IsWeb $RuntimeConfig.IsWeb `
+                        -Method $Method `
+                        -Path $Path `
+                        -Headers $Headers `
+                        -ExpectedSecret "$($env:DRIVEOS_SPOTIFY_SYNC_SECRET)")) {
+                        Send-Json -Stream $Stream -StatusCode 401 -StatusText "Unauthorized" -Object @{
+                            error = "Scheduled sync authentication failed."
+                        }
+                        return
+                    }
+                    Send-Json -Stream $Stream -Object (Invoke-ScheduledSpotifySync)
+                    return
+                }
+
                 "/api/auth/login" {
                     if (-not (Test-DriveOSLoginAllowed -ClientKey $ClientKey)) {
                         Send-Json `
@@ -3692,8 +3727,16 @@ try {
             $BodyText = ""
 
             if ($RuntimeConfig.IsWeb) {
+                $ScheduledSpotifySyncOk = Test-DriveOSScheduledSyncRequest `
+                    -IsWeb $RuntimeConfig.IsWeb `
+                    -Method $Method `
+                    -Path $Path `
+                    -Headers $Headers `
+                    -ExpectedSecret "$($env:DRIVEOS_SPOTIFY_SYNC_SECRET)"
+
                 if (
                     $Method -eq "POST" -and
+                    -not $ScheduledSpotifySyncOk -and
                     -not (
                         Test-DriveOSWebOrigin `
                             -Headers $Headers `
@@ -3718,7 +3761,8 @@ try {
 
                 if (
                     -not $IsPublicWebRequest -and
-                    -not $WebSessionOk
+                    -not $WebSessionOk -and
+                    -not $ScheduledSpotifySyncOk
                 ) {
                     if ($Path.StartsWith("/api/")) {
                         Send-RequestRejected `

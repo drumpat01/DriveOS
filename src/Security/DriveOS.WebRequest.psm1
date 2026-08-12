@@ -155,6 +155,43 @@ function Test-DriveOSWebPublicRequest {
     return $false
 }
 
+function Test-DriveOSScheduledSyncRequest {
+    param(
+        [bool]$IsWeb,
+        [Parameter(Mandatory = $true)][string]$Method,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][hashtable]$Headers,
+        [AllowEmptyString()][string]$ExpectedSecret
+    )
+
+    if (
+        -not $IsWeb -or
+        $Method.ToUpperInvariant() -ne 'POST' -or
+        $Path -ne '/api/spotify/sync' -or
+        [String]::IsNullOrWhiteSpace($ExpectedSecret) -or
+        $ExpectedSecret.Length -lt 32 -or
+        -not $Headers.ContainsKey('x-driveos-sync-token')
+    ) {
+        return $false
+    }
+
+    $Candidate = "$($Headers['x-driveos-sync-token'])"
+    if ([String]::IsNullOrWhiteSpace($Candidate) -or $Candidate.Length -gt 512) {
+        return $false
+    }
+
+    $A = [Text.Encoding]::UTF8.GetBytes($Candidate)
+    $B = [Text.Encoding]::UTF8.GetBytes($ExpectedSecret)
+    $Difference = $A.Length -bxor $B.Length
+    $Max = [Math]::Max($A.Length, $B.Length)
+    for ($Index = 0; $Index -lt $Max; $Index++) {
+        $Left = if ($Index -lt $A.Length) { $A[$Index] } else { 0 }
+        $Right = if ($Index -lt $B.Length) { $B[$Index] } else { 0 }
+        $Difference = $Difference -bor ($Left -bxor $Right)
+    }
+    return $Difference -eq 0
+}
+
 function Test-DriveOSLoginAllowed {
     param(
         [Parameter(Mandatory = $true)]
@@ -226,6 +263,7 @@ Export-ModuleMember -Function `
     Test-DriveOSWebHost, `
     Test-DriveOSWebOrigin, `
     Test-DriveOSWebPublicRequest, `
+    Test-DriveOSScheduledSyncRequest, `
     Test-DriveOSLoginAllowed, `
     Register-DriveOSLoginFailure, `
     Clear-DriveOSLoginFailures
