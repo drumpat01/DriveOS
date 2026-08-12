@@ -1474,6 +1474,100 @@ function Get-ListeningIdentityKey {
         $UnixSeconds
 }
 
+function Test-ListeningArtistCompatible {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    $LeftNormalized = ConvertTo-ListeningIdentityText $Left
+    $RightNormalized = ConvertTo-ListeningIdentityText $Right
+
+    if (-not $LeftNormalized -or -not $RightNormalized) {
+        return $false
+    }
+
+    if ($LeftNormalized -eq $RightNormalized) {
+        return $true
+    }
+
+    # Spotify often includes featured artists while Last.fm may only return
+    # the primary artist. Treat one normalized artist string containing the
+    # other as compatible.
+    return (
+        $LeftNormalized.Contains($RightNormalized) -or
+        $RightNormalized.Contains($LeftNormalized)
+    )
+}
+
+function Test-LastFmSpotifyDuplicate {
+    param(
+        [Parameter(Mandatory=$true)]$Candidate,
+        [Parameter(Mandatory=$true)]$ExistingRecord
+    )
+
+    $ExistingSource = if ($ExistingRecord.PSObject.Properties['source']) {
+        "$($ExistingRecord.source)"
+    }
+    else {
+        "spotify"
+    }
+
+    if ($ExistingSource -ne "spotify") {
+        return $false
+    }
+
+    try {
+        $CandidateSeconds = [DateTimeOffset]::Parse("$($Candidate.played_at)").ToUnixTimeSeconds()
+        $ExistingSeconds = [DateTimeOffset]::Parse("$($ExistingRecord.played_at)").ToUnixTimeSeconds()
+    }
+    catch {
+        return $false
+    }
+
+    $SameTrackId = (
+        $Candidate.track_id -and
+        $ExistingRecord.track_id -and
+        "$($Candidate.track_id)" -eq "$($ExistingRecord.track_id)"
+    )
+
+    $SameTrackText = (
+        (ConvertTo-ListeningIdentityText "$($Candidate.track)") -eq
+        (ConvertTo-ListeningIdentityText "$($ExistingRecord.track)")
+    )
+
+    if (-not $SameTrackId -and -not $SameTrackText) {
+        return $false
+    }
+
+    if (
+        -not $SameTrackId -and
+        -not (Test-ListeningArtistCompatible -Left "$($Candidate.artist)" -Right "$($ExistingRecord.artist)")
+    ) {
+        return $false
+    }
+
+    $DurationSeconds = 240
+
+    foreach ($Record in @($Candidate, $ExistingRecord)) {
+        if ($Record.PSObject.Properties['duration_ms'] -and [long]$Record.duration_ms -gt 0) {
+            $DurationSeconds = [Math]::Max(
+                $DurationSeconds,
+                [Math]::Ceiling([double]$Record.duration_ms / 1000)
+            )
+        }
+    }
+
+    # Provider timestamps may represent different points in the same play.
+    # Allow roughly one track duration plus a small buffer.
+    $WindowSeconds = [Math]::Min(
+        [Math]::Max($DurationSeconds + 90, 180),
+        720
+    )
+
+    return [Math]::Abs($CandidateSeconds - $ExistingSeconds) -le $WindowSeconds
+}
+
 function Sync-LastFmHistory {
     param(
         $SpotifyClient = $null,
@@ -1566,25 +1660,8 @@ function Sync-LastFmHistory {
         }
 
         $Seconds = [DateTimeOffset]::Parse($Candidate.played_at).ToUnixTimeSeconds()
-        $IsDuplicate = $false
 
-        for ($Offset = -10; $Offset -le 10; $Offset++) {
-            $Identity = Get-ListeningIdentityKey `
-                -Track $Candidate.track `
-                -Artist $Candidate.artist `
-                -UnixSeconds ($Seconds + $Offset)
-
-            if ($ExistingIdentities.ContainsKey($Identity)) {
-                $IsDuplicate = $true
-                break
-            }
-        }
-
-        if ($IsDuplicate) {
-            $Duplicates++
-            continue
-        }
-
+        # Enrich first so we can compare Spotify track IDs when possible.
         if ($SpotifyClient -and $EnrichmentRemaining -gt 0) {
             $EnrichmentRemaining--
             try {
@@ -1598,9 +1675,43 @@ function Sync-LastFmHistory {
                 }
             }
             catch {
-                # A scrobble remains useful without Spotify enrichment and can
-                # still be matched to a drive by timestamp.
+                # A scrobble remains useful without Spotify enrichment.
             }
+        }
+
+        $IsDuplicate = $false
+
+        # Keep the original precise identity check for true near-exact matches
+        # regardless of source.
+        for ($Offset = -10; $Offset -le 10; $Offset++) {
+            $Identity = Get-ListeningIdentityKey `
+                -Track $Candidate.track `
+                -Artist $Candidate.artist `
+                -UnixSeconds ($Seconds + $Offset)
+
+            if ($ExistingIdentities.ContainsKey($Identity)) {
+                $IsDuplicate = $true
+                break
+            }
+        }
+
+        # Then perform a broader cross-provider match against existing Spotify
+        # records. This handles provider timestamp differences and featured
+        # artist credit differences while preserving genuine repeat plays.
+        if (-not $IsDuplicate) {
+            foreach ($ExistingRecord in $History) {
+                if (Test-LastFmSpotifyDuplicate `
+                    -Candidate $Candidate `
+                    -ExistingRecord $ExistingRecord) {
+                    $IsDuplicate = $true
+                    break
+                }
+            }
+        }
+
+        if ($IsDuplicate) {
+            $Duplicates++
+            continue
         }
 
         Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $Candidate
