@@ -20,7 +20,9 @@ function Write-DriveOSBackendLog {
         foreach ($Secret in @(
             $env:TESSIE_TOKEN,
             $env:SPOTIFY_CLIENT_ID,
-            $env:DRIVEOS_SESSION_TOKEN
+            $env:DRIVEOS_SESSION_TOKEN,
+            $env:TURSO_DATABASE_URL,
+            $env:TURSO_AUTH_TOKEN
         )) {
             if ($Secret) {
                 $SafeMessage = $SafeMessage.Replace($Secret, "[REDACTED]")
@@ -96,6 +98,20 @@ try {
     $env:TESSIE_TOKEN = Unprotect-DriveOSSecret $Secrets.TessieToken
     $env:SPOTIFY_CLIENT_ID = Unprotect-DriveOSSecret $Secrets.SpotifyClientId
 
+    if (
+        $Secrets.PSObject.Properties['TursoDatabaseUrl'] -and
+        $Secrets.PSObject.Properties['TursoAuthToken'] -and
+        $Secrets.TursoDatabaseUrl -and
+        $Secrets.TursoAuthToken
+    ) {
+        $env:DRIVEOS_REPOSITORY_PROVIDER = "Turso"
+        $env:TURSO_DATABASE_URL = Unprotect-DriveOSSecret $Secrets.TursoDatabaseUrl
+        $env:TURSO_AUTH_TOKEN = Unprotect-DriveOSSecret $Secrets.TursoAuthToken
+        Write-DriveOSBackendLog "Repository provider: Turso"
+    }
+    else {
+        Write-DriveOSBackendLog "Turso credentials were not present."
+    }
     & $ServerFile `
         -ParentPid $ParentPid `
         -ParentStartTicks ([Int64]$env:DRIVEOS_PARENT_START_TICKS)
@@ -107,6 +123,9 @@ catch {
 finally {
     Remove-Item Env:TESSIE_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:SPOTIFY_CLIENT_ID -ErrorAction SilentlyContinue
+    Remove-Item Env:DRIVEOS_REPOSITORY_PROVIDER -ErrorAction SilentlyContinue
+    Remove-Item Env:TURSO_DATABASE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:TURSO_AUTH_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:DRIVEOS_SESSION_TOKEN -ErrorAction SilentlyContinue
     Remove-Item Env:DRIVEOS_PARENT_START_TICKS -ErrorAction SilentlyContinue
 }

@@ -128,6 +128,113 @@ const apiLoadingRegions = Object.freeze({
 });
 
 const apiLoadingCounts = new WeakMap();
+const backgroundActivityLabels = Object.freeze({
+  "/api/status": "Checking status",
+  "/api/vehicle": "Loading vehicle",
+  "/api/spotify/recent": "Loading Spotify",
+  "/api/lastfm/sync": "Syncing Last.fm",
+  "/api/drives/recent": "Loading recent drives",
+  "/api/drives": "Loading drives",
+  "/api/music/stats": "Loading music stats",
+  "/api/statistics": "Loading statistics",
+  "/api/places": "Loading places",
+  "/api/charging": "Loading charging",
+  "/api/recap": "Loading recap"
+});
+
+const backgroundActivityCounts = new Map();
+let backgroundActivitySequence = 0;
+const backgroundActivityOrder = new Map();
+
+function backgroundActivityLabel(path) {
+  if (backgroundActivityLabels[path]) return backgroundActivityLabels[path];
+
+  const clean = String(path || "")
+    .replace(/^\/api\//, "")
+    .replace(/[?#].*$/, "")
+    .replace(/[-_/]+/g, " ")
+    .trim();
+
+  if (!clean) return "Working";
+
+  return clean.replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function renderBackgroundActivity() {
+  const monitor = $("backgroundActivityMonitor");
+  const text = $("backgroundActivityText");
+  const count = $("backgroundActivityCount");
+
+  if (!monitor || !text || !count) return;
+
+  const activeEntries = [...backgroundActivityCounts.entries()]
+    .filter(([, value]) => value > 0);
+
+  const total = activeEntries.reduce((sum, [, value]) => sum + value, 0);
+
+  if (total <= 0) {
+    monitor.classList.remove("busy");
+    monitor.classList.add("idle");
+    text.textContent = "Idle";
+    count.hidden = true;
+    count.textContent = "";
+    monitor.title = "No DriveOS API requests are running";
+    return;
+  }
+
+  monitor.classList.remove("idle");
+  monitor.classList.add("busy");
+
+  activeEntries.sort((a, b) =>
+    (backgroundActivityOrder.get(b[0]) || 0) -
+    (backgroundActivityOrder.get(a[0]) || 0)
+  );
+
+  const currentPath = activeEntries[0][0];
+  text.textContent = backgroundActivityLabel(currentPath);
+
+  count.hidden = total <= 1;
+  count.textContent = total > 1 ? String(total) : "";
+
+  monitor.title = activeEntries
+    .map(([path, value]) =>
+      `${backgroundActivityLabel(path)}${value > 1 ? ` Ã—${value}` : ""}`
+    )
+    .join("\n");
+}
+
+function beginBackgroundActivity(path) {
+  const key = String(path || "unknown");
+
+  backgroundActivityCounts.set(
+    key,
+    (backgroundActivityCounts.get(key) || 0) + 1
+  );
+  backgroundActivityOrder.set(key, ++backgroundActivitySequence);
+  renderBackgroundActivity();
+
+  let ended = false;
+
+  return () => {
+    if (ended) return;
+    ended = true;
+
+    const remaining = Math.max(
+      0,
+      (backgroundActivityCounts.get(key) || 1) - 1
+    );
+
+    if (remaining > 0) {
+      backgroundActivityCounts.set(key, remaining);
+    } else {
+      backgroundActivityCounts.delete(key);
+      backgroundActivityOrder.delete(key);
+    }
+
+    renderBackgroundActivity();
+  };
+}
+
 
 function beginApiLoading(path) {
   const config = apiLoadingRegions[path];
@@ -164,17 +271,25 @@ function beginApiLoading(path) {
 }
 
 async function getJson(path) {
+  const endActivity = beginBackgroundActivity(path);
   const endLoading = beginApiLoading(path);
 
   try {
     return await window.DriveOSApi.get(path);
   } finally {
     endLoading();
+    endActivity();
   }
 }
 
 async function postJson(path, body) {
-  return window.DriveOSApi.post(path, body);
+  const endActivity = beginBackgroundActivity(path);
+
+  try {
+    return await window.DriveOSApi.post(path, body);
+  } finally {
+    endActivity();
+  }
 }
 
 
@@ -2998,7 +3113,7 @@ async function configureFoursquareOnThisComputer() {
   if (state.foursquareConnecting || isTailnetRemote()) return;
   const buttons = [...document.querySelectorAll("[data-foursquare-configure]")];
   state.foursquareConnecting = true;
-  buttons.forEach(button => { button.disabled = true; button.textContent = "Opening setup…"; });
+  buttons.forEach(button => { button.disabled = true; button.textContent = "Opening setupâ€¦"; });
   try {
     await postJson("/api/foursquare/configure", {});
     setText("foursquarePlaceStatus", "Paste your Service API key into the secure Windows setup window.");
@@ -3007,7 +3122,7 @@ async function configureFoursquareOnThisComputer() {
       await new Promise(resolve => setTimeout(resolve, 2500));
       const status = await getJson("/api/foursquare/status");
       if (!status.configured) continue;
-      setText("foursquarePlaceStatus", "Connected. Looking up your most-visited unnamed locations…");
+      setText("foursquarePlaceStatus", "Connected. Looking up your most-visited unnamed locationsâ€¦");
       await loadPlaces();
       await loadStatus();
       return;

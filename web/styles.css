@@ -7434,3 +7434,103 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 
+
+/* ============================================================
+   Background API activity monitor
+   ============================================================ */
+
+.background-activity-monitor {
+  position: fixed;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  z-index: 1200;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  max-width: min(330px, calc(100vw - 28px));
+  padding: 7px 11px;
+  border: 1px solid rgba(73, 105, 122, 0.18);
+  border-radius: 999px;
+  background: rgba(250, 253, 254, 0.94);
+  box-shadow: 0 8px 24px rgba(20, 43, 56, 0.12);
+  color: var(--text, #20313a);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.background-activity-monitor.idle {
+  opacity: 0.72;
+}
+
+.background-activity-monitor.busy {
+  opacity: 1;
+  transform: translateY(-1px);
+  border-color: rgba(0, 166, 207, 0.34);
+  box-shadow: 0 10px 28px rgba(20, 43, 56, 0.16);
+}
+
+.background-activity-indicator {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #7e939d;
+}
+
+.background-activity-monitor.busy .background-activity-indicator {
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
+  border: 2px solid rgba(0, 166, 207, 0.22);
+  border-top-color: currentColor;
+  background: transparent;
+  animation: driveos-background-spin 0.75s linear infinite;
+}
+
+.background-activity-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(0, 166, 207, 0.12);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.background-activity-count[hidden] {
+  display: none;
+}
+
+@keyframes driveos-background-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 720px) {
+  .background-activity-monitor {
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(10px, env(safe-area-inset-bottom));
+    max-width: calc(100vw - 20px);
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .background-activity-monitor.busy .background-activity-indicator {
+    animation-duration: 1.5s;
+  }
+}
