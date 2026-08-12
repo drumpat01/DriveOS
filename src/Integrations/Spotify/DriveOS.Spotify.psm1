@@ -142,8 +142,25 @@ function ConvertTo-DriveOSSpotifyPlay {
     param([Parameter(Mandatory=$true)]$Item)
     $albumImage = $null
     if ($Item.track.album.images -and $Item.track.album.images.Count -gt 0) { $albumImage = $Item.track.album.images[0].url }
+    $playedValue = if ($Item.played_at -is [DateTimeOffset]) {
+        [DateTimeOffset]$Item.played_at
+    }
+    elseif ($Item.played_at -is [DateTime]) {
+        [DateTimeOffset]([DateTime]$Item.played_at)
+    }
+    else {
+        [DateTimeOffset]::Parse(
+            "$($Item.played_at)",
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind
+        )
+    }
+    $playedAt = $playedValue.ToUniversalTime().ToString(
+        "yyyy-MM-ddTHH:mm:ss.fffZ",
+        [Globalization.CultureInfo]::InvariantCulture
+    )
     [PSCustomObject]@{
-        id = "$($Item.track.id)|$($Item.played_at)"; source = "spotify"; played_at = $Item.played_at
+        id = "$($Item.track.id)|$playedAt"; source = "spotify"; played_at = $playedAt
         track_id = $Item.track.id; track_uri = $Item.track.uri; track = $Item.track.name
         artist = ($Item.track.artists | ForEach-Object { $_.name }) -join ", "
         album = $Item.track.album.name; duration_ms = $Item.track.duration_ms; album_image = $albumImage

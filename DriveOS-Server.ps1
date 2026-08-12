@@ -521,32 +521,245 @@ function Clear-SpotifyHistoryMemoryCache {
     $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
 }
 
+function ConvertTo-ListeningMatchText {
+    param([string]$Value)
+
+    if (-not $Value) { return "" }
+
+    return (($Value -replace '[^\p{L}\p{Nd}]', '').ToLowerInvariant())
+}
+
+function Get-ListeningRecordSource {
+    param($Record)
+
+    if ($Record -and $Record.PSObject.Properties['source'] -and $Record.source) {
+        return "$($Record.source)".ToLowerInvariant()
+    }
+
+    if ($Record -and $Record.id -and "$($Record.id)".StartsWith(
+        "lastfm|",
+        [StringComparison]::OrdinalIgnoreCase
+    )) {
+        return "lastfm"
+    }
+
+    return "spotify"
+}
+
+function Test-CrossProviderListeningDuplicate {
+    param(
+        [Parameter(Mandatory=$true)]$Candidate,
+        [Parameter(Mandatory=$true)]$ExistingRecord
+    )
+
+    $CandidateSource = Get-ListeningRecordSource -Record $Candidate
+    $ExistingSource = Get-ListeningRecordSource -Record $ExistingRecord
+
+    # Only collapse the old Last.fm/Spotify overlap. Never collapse two Spotify
+    # plays, so genuine repeat listens remain intact.
+    if ($CandidateSource -eq $ExistingSource) {
+        return $false
+    }
+
+    if (
+        @($CandidateSource, $ExistingSource) -notcontains "spotify" -or
+        @($CandidateSource, $ExistingSource) -notcontains "lastfm"
+    ) {
+        return $false
+    }
+
+    $CandidateTrack = ConvertTo-ListeningMatchText "$($Candidate.track)"
+    $ExistingTrack = ConvertTo-ListeningMatchText "$($ExistingRecord.track)"
+
+    if (-not $CandidateTrack -or $CandidateTrack -ne $ExistingTrack) {
+        return $false
+    }
+
+    $CandidateArtist = ConvertTo-ListeningMatchText "$($Candidate.artist)"
+    $ExistingArtist = ConvertTo-ListeningMatchText "$($ExistingRecord.artist)"
+
+    if (
+        $CandidateArtist -and
+        $ExistingArtist -and
+        $CandidateArtist -ne $ExistingArtist -and
+        -not $CandidateArtist.Contains($ExistingArtist) -and
+        -not $ExistingArtist.Contains($CandidateArtist)
+    ) {
+        return $false
+    }
+
+    try {
+        $CandidateSeconds = [DateTimeOffset]::Parse(
+            "$($Candidate.played_at)"
+        ).ToUnixTimeSeconds()
+
+        $ExistingSeconds = [DateTimeOffset]::Parse(
+            "$($ExistingRecord.played_at)"
+        ).ToUnixTimeSeconds()
+    }
+    catch {
+        return $false
+    }
+
+    # Last.fm and Spotify can timestamp the same listen at different points
+    # in the playback lifecycle. Use the track duration plus a small buffer,
+    # matching the cross-provider rule DriveOS used successfully before the
+    # Last.fm active integration was retired.
+    $DurationSeconds = 240
+
+    foreach ($Record in @($Candidate, $ExistingRecord)) {
+        if (
+            $Record.PSObject.Properties['duration_ms'] -and
+            [long]$Record.duration_ms -gt 0
+        ) {
+            $DurationSeconds = [Math]::Max(
+                $DurationSeconds,
+                [Math]::Ceiling([double]$Record.duration_ms / 1000)
+            )
+        }
+    }
+
+    $WindowSeconds = [Math]::Min(
+        [Math]::Max($DurationSeconds + 90, 180),
+        720
+    )
+
+    return [Math]::Abs($CandidateSeconds - $ExistingSeconds) -le $WindowSeconds
+}
+
+function Remove-CrossProviderListeningDuplicates {
+    param([object[]]$Records = @())
+
+    $Kept = New-Object Collections.ArrayList
+
+    foreach ($Record in @($Records | Sort-Object {
+        try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
+        catch { 0 }
+    })) {
+        $DuplicateIndex = -1
+
+        for ($i = 0; $i -lt $Kept.Count; $i++) {
+            if (Test-CrossProviderListeningDuplicate `
+                -Candidate $Record `
+                -ExistingRecord $Kept[$i]) {
+                $DuplicateIndex = $i
+                break
+            }
+        }
+
+        if ($DuplicateIndex -lt 0) {
+            [void]$Kept.Add($Record)
+            continue
+        }
+
+        # Prefer the Spotify row when both providers represent the same listen.
+        # The old Last.fm row remains safely stored in Turso; it is simply not
+        # exposed twice through DriveOS.
+        if ((Get-ListeningRecordSource -Record $Record) -eq "spotify") {
+            $Kept[$DuplicateIndex] = $Record
+        }
+    }
+
+    return @($Kept)
+}
+
+function Get-SpotifyListeningIdentity {
+    param($Record)
+
+    if (
+        (Get-ListeningRecordSource -Record $Record) -ne "spotify" -or
+        -not $Record.track_id -or
+        -not $Record.played_at
+    ) {
+        return $null
+    }
+
+    try {
+        $PlayedMilliseconds = [DateTimeOffset]::Parse(
+            "$($Record.played_at)"
+        ).ToUnixTimeMilliseconds()
+    }
+    catch {
+        return $null
+    }
+
+    return "$($Record.track_id)|$PlayedMilliseconds"
+}
+
+function Remove-ExactSpotifyListeningDuplicates {
+    param([object[]]$Records = @())
+
+    $Seen = @{}
+    $Kept = New-Object Collections.ArrayList
+
+    foreach ($Record in @($Records)) {
+        $Identity = Get-SpotifyListeningIdentity -Record $Record
+
+        if ($Identity -and $Seen.ContainsKey($Identity)) {
+            continue
+        }
+
+        if ($Identity) {
+            $Seen[$Identity] = $true
+        }
+
+        [void]$Kept.Add($Record)
+    }
+
+    return @($Kept)
+}
+
 function Save-SpotifyHistory {
     param($Items)
 
     if (-not $Items) { return 0 }
 
     $ExistingIds = @{}
+    $ExistingSpotifyPlays = @{}
     $UpdatedHistory = New-Object Collections.ArrayList
 
     foreach ($Record in @(Get-SpotifyHistory)) {
         if ($Record.id) { $ExistingIds[$Record.id] = $true }
+        $ExistingIdentity = Get-SpotifyListeningIdentity -Record $Record
+        if ($ExistingIdentity) { $ExistingSpotifyPlays[$ExistingIdentity] = $true }
         [void]$UpdatedHistory.Add($Record)
     }
 
     $NewCount = 0
 
     foreach ($Item in $Items) {
-        $RecordId = "$($Item.track.id)|$($Item.played_at)"
+        $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
+        $RecordId = "$($HistoryRecord.id)"
+        $SpotifyIdentity = Get-SpotifyListeningIdentity -Record $HistoryRecord
 
-        if (-not $ExistingIds.ContainsKey($RecordId)) {
-            $HistoryRecord = ConvertTo-DriveOSSpotifyPlay -Item $Item
-            Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
-
-            [void]$UpdatedHistory.Add($HistoryRecord)
-            $ExistingIds[$RecordId] = $true
-            $NewCount++
+        if (
+            $ExistingIds.ContainsKey($RecordId) -or
+            ($SpotifyIdentity -and $ExistingSpotifyPlays.ContainsKey($SpotifyIdentity))
+        ) {
+            continue
         }
+
+        $CrossProviderDuplicate = $false
+
+        foreach ($ExistingRecord in @($UpdatedHistory)) {
+            if (Test-CrossProviderListeningDuplicate `
+                -Candidate $HistoryRecord `
+                -ExistingRecord $ExistingRecord) {
+                $CrossProviderDuplicate = $true
+                break
+            }
+        }
+
+        if ($CrossProviderDuplicate) {
+            continue
+        }
+
+        Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $HistoryRecord
+
+        [void]$UpdatedHistory.Add($HistoryRecord)
+        $ExistingIds[$RecordId] = $true
+        if ($SpotifyIdentity) { $ExistingSpotifyPlays[$SpotifyIdentity] = $true }
+        $NewCount++
     }
 
     if ($NewCount -gt 0) {
@@ -579,6 +792,13 @@ function Get-SpotifyHistory {
         }
         $Records += $Record
     }
+
+    # Historical Last.fm rows are intentionally preserved in Turso. During the
+    # cutover to Spotify-only ingestion, a small number of the same listens were
+    # also archived as Spotify rows. Collapse only those cross-provider twins
+    # for every DriveOS consumer while leaving the durable history untouched.
+    $Records = @(Remove-ExactSpotifyListeningDuplicates -Records $Records)
+    $Records = @(Remove-CrossProviderListeningDuplicates -Records $Records)
 
     Set-SpotifyHistoryMemoryCache -Records $Records
     return $Records
