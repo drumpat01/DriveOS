@@ -29,7 +29,19 @@ try {
         album=[pscustomobject]@{name="Album"; images=@(); external_urls=[pscustomobject]@{spotify=$null}}
     }}
     $Play = ConvertTo-DriveOSSpotifyPlay -Item $Item
-    if ($Play.id -ne "track1|2026-01-01T00:00:00Z" -or $Play.artist -ne "Artist" -or $Play.source -ne "spotify") { throw "Spotify model mapping failed" }
+    if ($Play.id -ne 'track1|2026-01-01T00:00:00.000Z' -or $Play.played_at -ne '2026-01-01T00:00:00.000Z') {
+        throw "Spotify play timestamp normalization failed"
+    }
+
+    $DateItem = [pscustomobject]@{
+        played_at = [datetime]::SpecifyKind([datetime]'2026-01-01T00:00:00', [DateTimeKind]::Utc)
+        track = $Item.track
+    }
+    $DatePlay = ConvertTo-DriveOSSpotifyPlay -Item $DateItem
+    if ($DatePlay.id -ne $Play.id -or $DatePlay.played_at -ne $Play.played_at) {
+        throw "Spotify play ID must be invariant across timestamp representations"
+    }
+    if ($Play.artist -ne "Artist" -or $Play.source -ne "spotify") { throw "Spotify model mapping failed" }
 
     $LastFmItem = [pscustomobject]@{
         name = "Song"
