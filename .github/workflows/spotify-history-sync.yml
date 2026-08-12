@@ -28,4 +28,6 @@ jobs:
             --retry 2 --retry-all-errors --max-time 240 \
             --request POST \
             --header "X-DriveOS-Sync-Token: $DRIVEOS_SYNC_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
             "$DRIVEOS_SYNC_URL/api/spotify/sync"
