@@ -126,6 +126,23 @@ Run checks without creating a branch or commit with:
 .\Deploy-DriveOS.ps1 -PreflightOnly
 ```
 
+## Automatic Spotify history sync
+
+Hosted DriveOS exposes a single-purpose `POST /api/spotify/sync` endpoint for
+the scheduled GitHub Actions workflow. The endpoint is disabled on desktop and
+accepts only requests carrying the private sync token.
+
+Configure one random secret of at least 32 characters in both places:
+
+- Render: `DRIVEOS_SPOTIFY_SYNC_SECRET`
+- GitHub Actions repository secret: `DRIVEOS_SYNC_TOKEN`
+
+Also configure the GitHub Actions repository secret `DRIVEOS_SYNC_URL` with the
+hosted DriveOS origin, such as `https://driveos.example.com` (no trailing path).
+The workflow runs every two hours and can be started manually from GitHub's
+Actions page. Each run asks Spotify for the latest 50 plays and archives only
+new records through DriveOS's existing Turso deduplication path.
+
 ## Local-first privacy and security
 
 - The desktop service binds to `127.0.0.1`, not the public network.

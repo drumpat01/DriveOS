@@ -34,5 +34,7 @@ services:
         sync: false
       - key: SPOTIFY_CLIENT_ID
         sync: false
+      - key: DRIVEOS_SPOTIFY_SYNC_SECRET
+        sync: false
       - key: FOURSQUARE_API_KEY
         sync: false

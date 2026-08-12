@@ -1,0 +1,31 @@
+name: Sync Spotify history
+
+on:
+  schedule:
+    - cron: "17 */2 * * *"
+      timezone: "America/Chicago"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: driveos-spotify-history-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Archive recent Spotify plays
+        env:
+          DRIVEOS_SYNC_URL: ${{ secrets.DRIVEOS_SYNC_URL }}
+          DRIVEOS_SYNC_TOKEN: ${{ secrets.DRIVEOS_SYNC_TOKEN }}
+        run: |
+          test -n "$DRIVEOS_SYNC_URL"
+          test -n "$DRIVEOS_SYNC_TOKEN"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 240 \
+            --request POST \
+            --header "X-DriveOS-Sync-Token: $DRIVEOS_SYNC_TOKEN" \
+            "$DRIVEOS_SYNC_URL/api/spotify/sync"
