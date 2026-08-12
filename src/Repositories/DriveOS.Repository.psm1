@@ -80,6 +80,7 @@ function New-DriveOSRepository {
         SpotifyHistoryPath = Join-Path $DataDirectory 'spotify-history.jsonl'
         PlaceAliasesPath = Join-Path $DataDirectory 'place-aliases.json'
         ChargingSettingsPath = Join-Path $DataDirectory 'charging-settings.json'
+        DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
         ConfigPath = $configPath
         DatabasePath = Join-Path $DataDirectory 'driveos.db'
         SqliteExecutable = $sqliteExecutable
@@ -184,6 +185,38 @@ function Set-DriveOSChargingSettingsRecord {
     Write-DriveOSJson -Path $Repository.ChargingSettingsPath -Value $Settings
 }
 
+function Get-DriveOSDashboardLayoutRecord {
+    param([Parameter(Mandatory=$true)]$Repository)
+
+    if ($Repository.Provider -eq 'SQLite') {
+        return Get-DriveOSSqliteDashboardLayout -Repository $Repository
+    }
+
+    if ($Repository.Provider -eq 'Turso') {
+        return Get-DriveOSTursoState -Repository $Repository -Key 'dashboard-layout'
+    }
+
+    Assert-JsonRepository $Repository
+    return Read-DriveOSJson -Path $Repository.DashboardLayoutPath
+}
+
+function Set-DriveOSDashboardLayoutRecord {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$LayoutRecord)
+
+    if ($Repository.Provider -eq 'SQLite') {
+        Set-DriveOSSqliteDashboardLayout -Repository $Repository -LayoutRecord $LayoutRecord
+        return
+    }
+
+    if ($Repository.Provider -eq 'Turso') {
+        Set-DriveOSTursoState -Repository $Repository -Key 'dashboard-layout' -Value $LayoutRecord
+        return
+    }
+
+    Assert-JsonRepository $Repository
+    Write-DriveOSJson -Path $Repository.DashboardLayoutPath -Value $LayoutRecord
+}
+
 function Assert-JsonRepository {
     param($Repository)
 
@@ -199,4 +232,6 @@ Export-ModuleMember -Function `
     Get-DriveOSPlaceAliases, `
     Set-DriveOSPlaceAliases, `
     Get-DriveOSChargingSettingsRecord, `
-    Set-DriveOSChargingSettingsRecord
+    Set-DriveOSChargingSettingsRecord, `
+    Get-DriveOSDashboardLayoutRecord, `
+    Set-DriveOSDashboardLayoutRecord

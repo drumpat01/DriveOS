@@ -1840,6 +1840,81 @@ function Set-ChargingSettings {
     return $Settings
 }
 
+function ConvertTo-SafeDashboardLayout {
+    param($Candidate)
+
+    $AllowedIds = @('status','vehicle','music','drives','today','soundtrack','actions')
+    $AllowedSizes = @('compact','standard','wide')
+    $Order = New-Object Collections.ArrayList
+    $Seen = @{}
+
+    foreach ($Id in @($Candidate.order) + $AllowedIds) {
+        $Value = "$Id"
+        if ($Value -in $AllowedIds -and -not $Seen.ContainsKey($Value)) {
+            [void]$Order.Add($Value)
+            $Seen[$Value] = $true
+        }
+    }
+
+    $Hidden = @($Candidate.hidden | ForEach-Object { "$_" } | Where-Object { $_ -in $AllowedIds } | Select-Object -Unique)
+    $Pinned = @($Candidate.pinned | ForEach-Object { "$_" } | Where-Object { $_ -in $AllowedIds } | Select-Object -Unique)
+    $Sizes = [ordered]@{}
+    $Positions = [ordered]@{}
+
+    foreach ($Id in $AllowedIds) {
+        $Size = if ($Candidate.sizes -and $Candidate.sizes.PSObject.Properties[$Id]) { "$($Candidate.sizes.$Id)" } else { $null }
+        if ($Size -in $AllowedSizes) { $Sizes[$Id] = $Size }
+
+        $Position = if ($Candidate.positions -and $Candidate.positions.PSObject.Properties[$Id]) { $Candidate.positions.$Id } else { $null }
+        if ($Position) {
+            $RowValue = 0.0
+            $ColValue = 0.0
+            if (
+                [double]::TryParse("$($Position.row)", [ref]$RowValue) -and
+                [double]::TryParse("$($Position.col)", [ref]$ColValue)
+            ) {
+                $Row = [math]::Max(1, [math]::Min(50, [math]::Round($RowValue)))
+                $Col = [math]::Max(1, [math]::Min(12, [math]::Round($ColValue)))
+                $Positions[$Id] = [PSCustomObject]@{ row = [int]$Row; col = [int]$Col }
+            }
+        }
+    }
+
+    return [PSCustomObject]@{
+        order = @($Order)
+        hidden = $Hidden
+        pinned = $Pinned
+        positions = [PSCustomObject]$Positions
+        sizes = [PSCustomObject]$Sizes
+    }
+}
+
+function Get-DashboardLayout {
+    $Stored = Get-DriveOSDashboardLayoutRecord -Repository $Repository
+    if (-not $Stored -or -not $Stored.layout) {
+        return [PSCustomObject]@{ version = 1; updatedAt = $null; layout = $null }
+    }
+
+    return [PSCustomObject]@{
+        version = 1
+        updatedAt = "$($Stored.updatedAt)"
+        layout = ConvertTo-SafeDashboardLayout -Candidate $Stored.layout
+    }
+}
+
+function Set-DashboardLayout {
+    param($Candidate)
+
+    if (-not $Candidate) { throw 'Dashboard layout is required.' }
+    $Record = [PSCustomObject]@{
+        version = 1
+        updatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        layout = ConvertTo-SafeDashboardLayout -Candidate $Candidate
+    }
+    Set-DriveOSDashboardLayoutRecord -Repository $Repository -LayoutRecord $Record
+    return $Record
+}
+
 function Get-PlaceCandidates {
     $Counts = @{}
     $Coordinates = @{}
@@ -3084,6 +3159,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/dashboard/layout" {
+                    Send-Json -Stream $Stream -Object (Get-DashboardLayout)
+                    return
+                }
+
                 "/api/recap" {
                     Send-Json -Stream $Stream -Object (Get-MonthlyRecaps)
                     return
@@ -3216,6 +3296,12 @@ function Handle-Request {
                 "/api/charging/settings" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-ChargingSettings -ElectricityRateCents $Body.electricityRateCents)
+                    return
+                }
+
+                "/api/dashboard/layout" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields layout
+                    Send-Json -Stream $Stream -Object (Set-DashboardLayout -Candidate $Body.layout)
                     return
                 }
 

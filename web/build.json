@@ -1,7 +1,7 @@
 {
   "product": "DriveOS",
   "version": "5.0.0",
-  "webBuild": "5.0.1",
+  "webBuild": "5.0.2",
   "features": [
     "friendly-places",
     "charging-history",
@@ -10,6 +10,6 @@
     "foursquare-business-names",
     "privacy-safe-share-cards"
   ],
-  "css": "/styles.css?v=5.0.1",
-  "js": "/app.js?v=5.0.1"
+  "css": "/styles.css?v=5.0.2",
+  "js": "/app.js?v=5.0.2"
 }

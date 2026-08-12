@@ -75,6 +75,20 @@ function Set-DriveOSSqliteSettings {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $sql
 }
 
+function Get-DriveOSSqliteDashboardLayout {
+    param($Repository)
+    $rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT value_json FROM settings WHERE key='dashboard-layout';" -Json)
+    if (-not $rows.Count) { return $null }
+    return $rows[0].value_json | ConvertFrom-Json
+}
+
+function Set-DriveOSSqliteDashboardLayout {
+    param($Repository,$LayoutRecord)
+    $payload=$LayoutRecord|ConvertTo-Json -Depth 20 -Compress
+    $sql="INSERT OR REPLACE INTO settings(key,value_json) VALUES('dashboard-layout',$(ConvertTo-SqlLiteral $payload));"
+    $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $sql
+}
+
 function Test-DriveOSSqliteIntegrity {
     param($Repository)
     $rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql 'PRAGMA integrity_check;' -Json)
@@ -95,4 +109,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData

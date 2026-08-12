@@ -4,13 +4,16 @@
   const validSizes = new Set(["compact", "standard", "wide"]);
   const sizeOrder = ["compact", "standard", "wide"];
 
-  function create() {
+  function create({ api = window.DriveOSApi } = {}) {
     const widgets = () => [...document.querySelectorAll("[data-dashboard-widget]")];
     let layout = null;
     let draggedId = null;
     let resizeState = null;
     let pendingBlankDrop = null;
     let pointerDragState = null;
+    let localUpdatedAt = null;
+    let syncState = "local";
+    let syncTimer = null;
 
     function defaults() {
       const items = widgets();
@@ -42,15 +45,56 @@
       return { order, hidden, pinned, positions, sizes };
     }
 
-    function load() {
-      try { return sanitize(JSON.parse(localStorage.getItem(storageKey) || "null")); }
-      catch { return defaults(); }
+    function loadLocal() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(storageKey) || "null");
+        if (stored?.layout) {
+          return { exists: true, layout: sanitize(stored.layout), updatedAt: stored.updatedAt || null };
+        }
+        return { exists: Boolean(stored), layout: sanitize(stored), updatedAt: null };
+      } catch {
+        return { exists: false, layout: defaults(), updatedAt: null };
+      }
+    }
+
+    function saveLocal() {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({ version: 1, updatedAt: localUpdatedAt, layout }));
+      } catch {}
+    }
+
+    async function sync() {
+      window.clearTimeout(syncTimer);
+      syncTimer = null;
+      const requestedAt = localUpdatedAt;
+      const requestedLayout = JSON.parse(JSON.stringify(layout));
+      try {
+        const saved = await api.post("/api/dashboard/layout", { layout: requestedLayout });
+        if (localUpdatedAt !== requestedAt) {
+          scheduleSync();
+          return;
+        }
+        localUpdatedAt = saved.updatedAt || localUpdatedAt;
+        syncState = "synced";
+        saveLocal();
+      } catch {
+        syncState = "offline";
+      }
+      updateStatus();
+    }
+
+    function scheduleSync() {
+      window.clearTimeout(syncTimer);
+      syncTimer = window.setTimeout(sync, 400);
     }
 
     function save() {
-      try { localStorage.setItem(storageKey, JSON.stringify(layout)); } catch {}
+      localUpdatedAt = new Date().toISOString();
+      syncState = "syncing";
+      saveLocal();
       apply();
       renderEditor();
+      scheduleSync();
     }
 
     function sortedIds() {
@@ -65,7 +109,14 @@
       if (!status) return;
       const hiddenCount = layout.hidden.length;
       const pinnedCount = layout.pinned.length;
-      status.textContent = `${pinnedCount} pinned \u00B7 ${hiddenCount} hidden \u00B7 saved on this device`;
+      const syncLabel = syncState === "synced"
+        ? "synced across devices"
+        : syncState === "syncing"
+          ? "syncing…"
+          : syncState === "offline"
+            ? "offline · saved on this device"
+            : "saved on this device";
+      status.textContent = `${pinnedCount} pinned \u00B7 ${hiddenCount} hidden \u00B7 ${syncLabel}`;
     }
 
     function apply() {
@@ -575,17 +626,39 @@
 
     function reset() {
       layout = defaults();
-      try { localStorage.removeItem(storageKey); } catch {}
-      apply();
-      renderEditor();
+      save();
     }
 
-    function bind() {
-      layout = load();
+    async function bind() {
+      const local = loadLocal();
+      layout = local.layout;
+      localUpdatedAt = local.updatedAt;
       apply();
       bindWidgetDropEvents();
       $("dashboardCustomizeButton")?.addEventListener("click", event => setEditorOpen(event.currentTarget.getAttribute("aria-expanded") !== "true"));
       $("dashboardResetLayout")?.addEventListener("click", reset);
+
+      try {
+        const remote = await api.get("/api/dashboard/layout");
+        const remoteTime = Date.parse(remote.updatedAt || "") || 0;
+        const localTime = Date.parse(localUpdatedAt || "") || 0;
+        if (remote.layout && remoteTime >= localTime) {
+          layout = sanitize(remote.layout);
+          localUpdatedAt = remote.updatedAt;
+          syncState = "synced";
+          saveLocal();
+          apply();
+          renderEditor();
+        } else if (local.exists) {
+          await sync();
+        } else {
+          syncState = "synced";
+          updateStatus();
+        }
+      } catch {
+        syncState = "offline";
+        updateStatus();
+      }
     }
 
     return Object.freeze({ bind, apply, reset });
