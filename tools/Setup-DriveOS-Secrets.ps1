@@ -82,11 +82,13 @@ function Protect-DriveOSSecret {
 }
 
 $Payload = [PSCustomObject]@{
-    Version         = 1
+        Version          = 2
     CreatedAt       = (Get-Date).ToString("o")
     WindowsUser     = "$env:USERDOMAIN\$env:USERNAME"
     TessieToken     = Protect-DriveOSSecret $env:TESSIE_TOKEN
     SpotifyClientId = Protect-DriveOSSecret $env:SPOTIFY_CLIENT_ID
+    TursoDatabaseUrl = if ($env:TURSO_DATABASE_URL) { Protect-DriveOSSecret $env:TURSO_DATABASE_URL } else { $null }
+    TursoAuthToken   = if ($env:TURSO_AUTH_TOKEN) { Protect-DriveOSSecret $env:TURSO_AUTH_TOKEN } else { $null }
 }
 
 $Payload |
@@ -105,7 +107,7 @@ Write-Host ""
 Write-Host "Saved to:" -ForegroundColor DarkGray
 Write-Host $SecretFile -ForegroundColor Yellow
 Write-Host ""
-Write-Host "The Tessie token and Spotify Client ID are NOT stored in plaintext." -ForegroundColor Green
+Write-Host "DriveOS credentials are NOT stored in plaintext." -ForegroundColor Green
 Write-Host "Windows DPAPI ties the encrypted values to this Windows user account." -ForegroundColor Green
 if ($AclHardened) { Write-Host "The secret file ACL was also restricted to your account and SYSTEM." -ForegroundColor Green }
 Write-Host ""

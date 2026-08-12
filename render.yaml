@@ -10,6 +10,8 @@ services:
     envVars:
       - key: DRIVEOS_MODE
         value: web
+      - key: TZ
+        value: America/Chicago
       - key: DRIVEOS_DATA_DIR
         value: /tmp/driveos
       - key: DRIVEOS_REPOSITORY_PROVIDER

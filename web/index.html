@@ -109,7 +109,17 @@
       <strong id="ignitionVersion">5.0</strong>
     </div>
   </div>
-  <div class="app-shell">
+    <div id="backgroundActivityMonitor"
+       class="background-activity-monitor idle"
+       role="status"
+       aria-live="polite"
+       aria-label="DriveOS background activity"
+       title="DriveOS background activity">
+    <span class="background-activity-indicator" aria-hidden="true"></span>
+    <span id="backgroundActivityText">Idle</span>
+    <span id="backgroundActivityCount" class="background-activity-count" hidden></span>
+  </div>
+<div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <img class="brand-logo" src="/assets/driveos-logo-v3.png" alt="DriveOS logo">
