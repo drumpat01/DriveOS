@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "allowed": [
-    "*.md", "*.txt", "*.json", "*.yaml", "*.yml", "*.ps1", "*.bat", "Dockerfile",
+    "*.md", "*.txt", "*.json", "*.yaml", "*.yml", "*.ps1", "*.bat", ".env.example", "Dockerfile",
     "desktop/*.cs", "docs/**", "src/**", "tests/**", "tools/**", "web/**"
   ],
   "forbidden": [
-    ".env", ".env.*", "artifacts/**", "data/**", "desktop/packages/**", "update-backups/**",
+    ".env", "artifacts/**", "data/**", "desktop/packages/**", "update-backups/**",
     "WebView2Profile/**", "webview2profile/**", "**/*.exe", "**/*.dll", "**/*.pdb", "**/*.zip",
     "**/*.log", "**/*token*", "**/*secret*.json"
   ]
