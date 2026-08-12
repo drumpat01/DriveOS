@@ -106,6 +106,26 @@ Open **DriveOS** from the new desktop shortcut, authorize Spotify when prompted,
 
 For credential setup, optional integrations, updates, troubleshooting, and uninstall steps, see [INSTALLATION.txt](INSTALLATION.txt).
 
+## Safe deployment workflow
+
+Start from `main` with the intended source changes present, then run:
+
+```powershell
+.\Deploy-DriveOS.ps1 -CommitMessage "Describe the release"
+```
+
+The workflow runs release checks, updates `main` with a fast-forward-only pull,
+creates a timestamped `deploy/*` branch, rejects secrets and generated binaries,
+shows the exact staged files, asks for confirmation, pushes only that branch,
+and prints the GitHub pull-request URL. Render deploys after the PR is merged
+into `main`.
+
+Run checks without creating a branch or commit with:
+
+```powershell
+.\Deploy-DriveOS.ps1 -PreflightOnly
+```
+
 ## Local-first privacy and security
 
 - The desktop service binds to `127.0.0.1`, not the public network.

@@ -197,7 +197,7 @@ function renderBackgroundActivity() {
 
   monitor.title = activeEntries
     .map(([path, value]) =>
-      `${backgroundActivityLabel(path)}${value > 1 ? ` Ã—${value}` : ""}`
+      `${backgroundActivityLabel(path)}${value > 1 ? ` ×${value}` : ""}`
     )
     .join("\n");
 }
