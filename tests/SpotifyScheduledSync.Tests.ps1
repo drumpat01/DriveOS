@@ -14,6 +14,8 @@ Assert-True ($Workflow -match 'workflow_dispatch:') 'Spotify workflow must suppo
 Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_URL') 'Spotify workflow URL must come from a GitHub secret.'
 Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_TOKEN') 'Spotify workflow token must come from a GitHub secret.'
 Assert-True ($Workflow -match 'X-DriveOS-Sync-Token') 'Spotify workflow must authenticate its request.'
+Assert-True ($Workflow -match 'Content-Type: application/json') 'Spotify workflow must identify its POST body as JSON.'
+Assert-True ($Workflow -match "--data '\{\}'") 'Spotify workflow must send a valid JSON body.'
 Assert-True ($Server -match 'Test-DriveOSScheduledSyncRequest') 'Scheduled sync endpoint authentication is missing.'
 Assert-True ($Server -match 'Invoke-ScheduledSpotifySync') 'Hosted Spotify sync operation is missing.'
 Assert-True ($Server -match 'Get-SpotifyRecent -Limit 50') 'Scheduled sync must collect Spotify recent history.'
