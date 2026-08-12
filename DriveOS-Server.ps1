@@ -1,7 +1,6 @@
 param(
     [int]$ParentPid = 0,
     [Int64]$ParentStartTicks = 0,
-    [switch]$FullLastFmSync,
     [switch]$RefreshMusicCatalog
 )
 
@@ -14,7 +13,6 @@ Import-Module (Join-Path $PSScriptRoot "src\Storage\DriveOS.Turso.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Repositories\DriveOS.Repository.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Tessie\DriveOS.Tessie.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Spotify\DriveOS.Spotify.psm1") -Force
-Import-Module (Join-Path $PSScriptRoot "src\Integrations\LastFm\DriveOS.LastFm.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Integrations\Foursquare\DriveOS.Foursquare.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Vehicle\DriveOS.Vehicle.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Domain\Replay\DriveOS.Replay.psm1") -Force
@@ -36,7 +34,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.SecretProtection.ps
 # DriveOS 3.2
 # Windows PowerShell 5.1 compatible
 #
-# DriveOS.exe -> authenticated localhost backend -> Tessie / Spotify / Last.fm
+# DriveOS.exe -> authenticated localhost backend -> Tessie / Spotify
 # Secrets are never exposed to the browser.
 # ============================================================
 
@@ -64,8 +62,6 @@ $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyOAuthStateFile = Join-Path $DataDirectory "spotify-oauth-state.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
-$LastFmConfigFile = Join-Path $DataDirectory "lastfm-config.json"
-$LastFmSyncStateFile = Join-Path $DataDirectory "lastfm-sync.json"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
 $FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
@@ -111,7 +107,7 @@ $script:VehicleSummaryCacheExpiresAt = [DateTimeOffset]::MinValue
 $VehicleSummaryCacheTtlSeconds = 15
 
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
-$MaintenanceMode = $FullLastFmSync -or $RefreshMusicCatalog
+$MaintenanceMode = $RefreshMusicCatalog
 
 if (-not (Test-Path $DataDirectory)) {
     New-Item -ItemType Directory -Path $DataDirectory | Out-Null
@@ -399,7 +395,7 @@ function Save-SpotifyTokenCache {
         Scope        = $Scope
     }
 
-    if ($Repository.Provider -eq "Turso") {
+    if ($RuntimeConfig.IsWeb -and $Repository.Provider -eq "Turso") {
         Set-DriveOSTursoState `
             -Repository $Repository `
             -Key "spotify-token" `
@@ -413,24 +409,31 @@ function Save-SpotifyTokenCache {
 }
 
 function Get-SpotifyTokenCache {
-    if ($null -ne $script:SpotifyTokenCacheMemory) {
-        return $script:SpotifyTokenCacheMemory
-    }
-
-    if ($Repository.Provider -eq "Turso") {
-        $Stored = Get-DriveOSTursoState `
-            -Repository $Repository `
-            -Key "spotify-token"
-
-        if (-not $Stored) {
-            throw "Spotify authorization is not configured."
+    # The hosted app can safely keep its Turso-backed token in process memory.
+    # Desktop authorization is completed by the separate Connect-Spotify.ps1
+    # process, which overwrites spotify-token.json while the backend is still
+    # running. Always reread that local file so the backend immediately sees
+    # newly authorized credentials instead of retaining a stale token.
+    if ($RuntimeConfig.IsWeb) {
+        if ($null -ne $script:SpotifyTokenCacheMemory) {
+            return $script:SpotifyTokenCacheMemory
         }
 
-        $script:SpotifyTokenCacheMemory = $Stored
-        return $Stored
+        if ($Repository.Provider -eq "Turso") {
+            $Stored = Get-DriveOSTursoState `
+                -Repository $Repository `
+                -Key "spotify-token"
+
+            if (-not $Stored) {
+                throw "Spotify authorization is not configured."
+            }
+
+            $script:SpotifyTokenCacheMemory = $Stored
+            return $Stored
+        }
     }
 
-    if (-not (Test-Path $SpotifyTokenFile)) {
+    if (-not (Test-Path $SpotifyTokenFile -PathType Leaf)) {
         throw "Spotify token file not found. Run Connect-Spotify.ps1."
     }
 
@@ -816,7 +819,10 @@ function Get-SpotifyAuthorizationStatus {
     }
     catch {}
 
-    $TokenStored = if ($Repository.Provider -eq "Turso") {
+    $TokenStored = if (
+        $RuntimeConfig.IsWeb -and
+        $Repository.Provider -eq "Turso"
+    ) {
         $null -ne (
             Get-DriveOSTursoState `
                 -Repository $Repository `
@@ -1088,76 +1094,6 @@ function Start-SpotifyAuthorization {
     return [PSCustomObject]@{
         started = $true
     }
-}
-
-function Get-LastFmConfiguration {
-    if (
-        $RuntimeConfig.IsWeb -and
-        $env:LASTFM_USERNAME -and
-        $env:LASTFM_API_KEY
-    ) {
-        return [PSCustomObject]@{
-            username = "$($env:LASTFM_USERNAME)".Trim()
-            apiKey = "$($env:LASTFM_API_KEY)".Trim()
-        }
-    }
-
-    if (-not (Test-Path $LastFmConfigFile -PathType Leaf)) {
-        return $null
-    }
-
-    $Config = Read-DriveOSJson -Path $LastFmConfigFile
-    $Username = "$($Config.Username)".Trim()
-    $ApiKey = Unprotect-Token $Config.ApiKey
-
-    if (-not $Username -or -not $ApiKey) {
-        throw "Last.fm configuration is incomplete. Run Connect-LastFm.ps1 again."
-    }
-
-    return [PSCustomObject]@{
-        username = $Username
-        apiKey   = $ApiKey
-    }
-}
-
-function Get-LastFmConnectionStatus {
-    try {
-        $Config = Get-LastFmConfiguration
-        return [PSCustomObject]@{
-            configured = ($null -ne $Config)
-            username   = if ($Config) { $Config.username } else { $null }
-        }
-    }
-    catch {
-        return [PSCustomObject]@{
-            configured = $false
-            username   = $null
-        }
-    }
-}
-
-function Start-LastFmConfiguration {
-    if ($RuntimeConfig.IsWeb) {
-        throw "Configure LASTFM_USERNAME and LASTFM_API_KEY in the hosting environment."
-    }
-
-    $Script = Join-Path $PSScriptRoot "Connect-LastFm.ps1"
-
-    if (-not (Test-Path $Script -PathType Leaf)) {
-        throw "Last.fm configuration script is missing."
-    }
-
-    Start-Process `
-        -FilePath "powershell.exe" `
-        -ArgumentList @(
-            "-NoProfile",
-            "-ExecutionPolicy", "Bypass",
-            "-File", ('"' + $Script + '"')
-        ) `
-        -WorkingDirectory $PSScriptRoot `
-        -WindowStyle Normal | Out-Null
-
-    return [PSCustomObject]@{ started = $true }
 }
 
 function Get-FoursquareConfiguration {
@@ -1454,316 +1390,58 @@ function Resolve-FoursquareCandidatePlaces {
     return $NewMatches
 }
 
-function ConvertTo-ListeningIdentityText {
-    param([string]$Value)
-
-    if (-not $Value) { return "" }
-    return (($Value -replace '[^\p{L}\p{Nd}]', '').ToLowerInvariant())
-}
-
-function Get-ListeningIdentityKey {
+function ConvertTo-DriveOSDisplayTime {
     param(
-        [string]$Track,
-        [string]$Artist,
-        [long]$UnixSeconds
+        [Parameter(Mandatory=$true)]
+        [DateTimeOffset]$Value
     )
 
-    return "{0}|{1}|{2}" -f `
-        (ConvertTo-ListeningIdentityText $Track), `
-        (ConvertTo-ListeningIdentityText $Artist), `
-        $UnixSeconds
+    if ($RuntimeConfig.IsWeb) {
+        $UtcValue = $Value.ToUniversalTime()
+        $Year = $UtcValue.Year
+
+        $MarchFirst = [DateTimeOffset]::new(
+            $Year, 3, 1, 0, 0, 0, [TimeSpan]::Zero
+        )
+
+        $MarchDaysToSunday =
+            (7 - [int]$MarchFirst.DayOfWeek) % 7
+
+        $DstStartUtc = $MarchFirst.AddDays(
+            $MarchDaysToSunday + 7
+        ).AddHours(8)
+
+        $NovemberFirst = [DateTimeOffset]::new(
+            $Year, 11, 1, 0, 0, 0, [TimeSpan]::Zero
+        )
+
+        $NovemberDaysToSunday =
+            (7 - [int]$NovemberFirst.DayOfWeek) % 7
+
+        $DstEndUtc = $NovemberFirst.AddDays(
+            $NovemberDaysToSunday
+        ).AddHours(7)
+
+        $Offset = if (
+            $UtcValue -ge $DstStartUtc -and
+            $UtcValue -lt $DstEndUtc
+        ) {
+            [TimeSpan]::FromHours(-5)
+        }
+        else {
+            [TimeSpan]::FromHours(-6)
+        }
+
+        return $UtcValue.ToOffset($Offset)
+    }
+
+    return $Value.ToLocalTime()
 }
-
-function Test-ListeningArtistCompatible {
-    param(
-        [string]$Left,
-        [string]$Right
-    )
-
-    $LeftNormalized = ConvertTo-ListeningIdentityText $Left
-    $RightNormalized = ConvertTo-ListeningIdentityText $Right
-
-    if (-not $LeftNormalized -or -not $RightNormalized) {
-        return $false
-    }
-
-    if ($LeftNormalized -eq $RightNormalized) {
-        return $true
-    }
-
-    # Spotify often includes featured artists while Last.fm may only return
-    # the primary artist. Treat one normalized artist string containing the
-    # other as compatible.
-    return (
-        $LeftNormalized.Contains($RightNormalized) -or
-        $RightNormalized.Contains($LeftNormalized)
-    )
-}
-
-function Test-LastFmSpotifyDuplicate {
-    param(
-        [Parameter(Mandatory=$true)]$Candidate,
-        [Parameter(Mandatory=$true)]$ExistingRecord
-    )
-
-    $ExistingSource = if ($ExistingRecord.PSObject.Properties['source']) {
-        "$($ExistingRecord.source)"
-    }
-    else {
-        "spotify"
-    }
-
-    if ($ExistingSource -ne "spotify") {
-        return $false
-    }
-
-    try {
-        $CandidateSeconds = [DateTimeOffset]::Parse("$($Candidate.played_at)").ToUnixTimeSeconds()
-        $ExistingSeconds = [DateTimeOffset]::Parse("$($ExistingRecord.played_at)").ToUnixTimeSeconds()
-    }
-    catch {
-        return $false
-    }
-
-    $SameTrackId = (
-        $Candidate.track_id -and
-        $ExistingRecord.track_id -and
-        "$($Candidate.track_id)" -eq "$($ExistingRecord.track_id)"
-    )
-
-    $SameTrackText = (
-        (ConvertTo-ListeningIdentityText "$($Candidate.track)") -eq
-        (ConvertTo-ListeningIdentityText "$($ExistingRecord.track)")
-    )
-
-    if (-not $SameTrackId -and -not $SameTrackText) {
-        return $false
-    }
-
-    if (
-        -not $SameTrackId -and
-        -not (Test-ListeningArtistCompatible -Left "$($Candidate.artist)" -Right "$($ExistingRecord.artist)")
-    ) {
-        return $false
-    }
-
-    $DurationSeconds = 240
-
-    foreach ($Record in @($Candidate, $ExistingRecord)) {
-        if ($Record.PSObject.Properties['duration_ms'] -and [long]$Record.duration_ms -gt 0) {
-            $DurationSeconds = [Math]::Max(
-                $DurationSeconds,
-                [Math]::Ceiling([double]$Record.duration_ms / 1000)
-            )
-        }
-    }
-
-    # Provider timestamps may represent different points in the same play.
-    # Allow roughly one track duration plus a small buffer.
-    $WindowSeconds = [Math]::Min(
-        [Math]::Max($DurationSeconds + 90, 180),
-        720
-    )
-
-    return [Math]::Abs($CandidateSeconds - $ExistingSeconds) -le $WindowSeconds
-}
-
-function Sync-LastFmHistory {
-    param(
-        $SpotifyClient = $null,
-        [switch]$FullHistory
-    )
-
-    $Config = Get-LastFmConfiguration
-    if (-not $Config) {
-        return [PSCustomObject]@{
-            configured = $false
-            username   = $null
-            added      = 0
-            duplicates = 0
-        }
-    }
-
-    $History = @(Get-SpotifyHistory)
-    $Latest = [DateTimeOffset]::UtcNow.AddDays(-365)
-
-    if (-not $FullHistory) {
-        try {
-            $SyncState = if ($Repository.Provider -eq "Turso") {
-                Get-DriveOSTursoState `
-                    -Repository $Repository `
-                    -Key "lastfm-sync"
-            }
-            elseif (Test-Path $LastFmSyncStateFile -PathType Leaf) {
-                Read-DriveOSJson -Path $LastFmSyncStateFile
-            }
-            else {
-                $null
-            }
-
-            if (
-                $SyncState -and
-                "$($SyncState.Username)" -eq $Config.username -and
-                [long]$SyncState.CursorUnix -gt 0
-            ) {
-                $Latest = [DateTimeOffset]::FromUnixTimeSeconds([long]$SyncState.CursorUnix)
-            }
-        }
-        catch {
-            Write-DriveOSServerLog "Last.fm sync state lookup failed: $($_.Exception.Message)"
-        }
-    }
-
-    foreach ($Record in $History) {
-        if ($FullHistory) { break }
-        try {
-            $IsLastFm = "$($Record.id)".StartsWith("lastfm|", [StringComparison]::OrdinalIgnoreCase) -or
-                ($Record.PSObject.Properties['source'] -and "$($Record.source)" -eq "lastfm")
-
-            if ($IsLastFm) {
-                $Played = [DateTimeOffset]::Parse("$($Record.played_at)")
-                if ($Played -gt $Latest) { $Latest = $Played }
-            }
-        }
-        catch {}
-    }
-
-    # Re-read a small overlap so a Spotify play and its matching Last.fm
-    # scrobble can be recognized even when the providers round differently.
-    # A full import intentionally omits this cursor to include every scrobble.
-    $FromUnix = if ($FullHistory) { 0 } else { $Latest.AddHours(-1).ToUnixTimeSeconds() }
-    $Client = New-LastFmClient -Username $Config.username -ApiKey $Config.apiKey
-    $Items = @(Get-LastFmRecentTracks -Client $Client -FromUnix $FromUnix -MaxPages $(if ($FullHistory) { 0 } else { 50 }))
-    $ExistingIds = @{}
-    $ExistingIdentities = @{}
-
-    foreach ($Record in $History) {
-        if ($Record.id) { $ExistingIds["$($Record.id)"] = $true }
-
-        try {
-            $Seconds = [DateTimeOffset]::Parse("$($Record.played_at)").ToUnixTimeSeconds()
-            $Identity = Get-ListeningIdentityKey -Track "$($Record.track)" -Artist "$($Record.artist)" -UnixSeconds $Seconds
-            $ExistingIdentities[$Identity] = $true
-        }
-        catch {}
-    }
-
-    $Added = 0
-    $Duplicates = 0
-    $EnrichmentRemaining = 50
-
-    foreach ($Item in @($Items | Sort-Object { [long]$_.date.uts })) {
-        $Candidate = ConvertTo-DriveOSLastFmPlay -Item $Item
-
-        if ($ExistingIds.ContainsKey("$($Candidate.id)")) {
-            continue
-        }
-
-        $Seconds = [DateTimeOffset]::Parse($Candidate.played_at).ToUnixTimeSeconds()
-
-        # Enrich first so we can compare Spotify track IDs when possible.
-        if ($SpotifyClient -and $EnrichmentRemaining -gt 0) {
-            $EnrichmentRemaining--
-            try {
-                $SpotifyTrack = Find-SpotifyTrack `
-                    -Client $SpotifyClient `
-                    -Track $Candidate.track `
-                    -Artist $Candidate.artist
-
-                if ($SpotifyTrack) {
-                    $Candidate = ConvertTo-DriveOSLastFmPlay -Item $Item -SpotifyTrack $SpotifyTrack
-                }
-            }
-            catch {
-                # A scrobble remains useful without Spotify enrichment.
-            }
-        }
-
-        $IsDuplicate = $false
-
-        # Keep the original precise identity check for true near-exact matches
-        # regardless of source.
-        for ($Offset = -10; $Offset -le 10; $Offset++) {
-            $Identity = Get-ListeningIdentityKey `
-                -Track $Candidate.track `
-                -Artist $Candidate.artist `
-                -UnixSeconds ($Seconds + $Offset)
-
-            if ($ExistingIdentities.ContainsKey($Identity)) {
-                $IsDuplicate = $true
-                break
-            }
-        }
-
-        # Then perform a broader cross-provider match against existing Spotify
-        # records. This handles provider timestamp differences and featured
-        # artist credit differences while preserving genuine repeat plays.
-        if (-not $IsDuplicate) {
-            foreach ($ExistingRecord in $History) {
-                if (Test-LastFmSpotifyDuplicate `
-                    -Candidate $Candidate `
-                    -ExistingRecord $ExistingRecord) {
-                    $IsDuplicate = $true
-                    break
-                }
-            }
-        }
-
-        if ($IsDuplicate) {
-            $Duplicates++
-            continue
-        }
-
-        Add-DriveOSListeningHistoryRecord -Repository $Repository -Record $Candidate
-        $ExistingIds["$($Candidate.id)"] = $true
-        $Identity = Get-ListeningIdentityKey -Track $Candidate.track -Artist $Candidate.artist -UnixSeconds $Seconds
-        $ExistingIdentities[$Identity] = $true
-        $Added++
-    }
-
-    $CursorUnix = [DateTimeOffset]::UtcNow.AddMinutes(-10).ToUnixTimeSeconds()
-    if ($Items.Count -gt 0) {
-        $NewestItemUnix = [long](($Items | ForEach-Object { [long]$_.date.uts } | Measure-Object -Maximum).Maximum)
-        if ($NewestItemUnix -gt $CursorUnix) { $CursorUnix = $NewestItemUnix }
-    }
-
-    $SyncRecord = [PSCustomObject]@{
-        Version    = 1
-        Username   = $Config.username
-        CursorUnix = $CursorUnix
-        LastSyncAt = [DateTimeOffset]::UtcNow.ToString("o")
-    }
-
-    if ($Repository.Provider -eq "Turso") {
-        Set-DriveOSTursoState `
-            -Repository $Repository `
-            -Key "lastfm-sync" `
-            -Value $SyncRecord
-    }
-    else {
-        Write-DriveOSJson -Path $LastFmSyncStateFile -Value $SyncRecord
-    }
-
-    if ($Added -gt 0) {
-        Clear-SpotifyHistoryMemoryCache
-        $script:DriveDataCache.drives365 = $null
-        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
-        $script:DriveDataCache.dashboardDrives = $null
-        $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
-    }
-
-    return [PSCustomObject]@{
-        configured = $true
-        username   = $Config.username
-        added      = $Added
-        duplicates = $Duplicates
-    }
-}
-
 function ConvertTo-PublicListeningPlay {
     param([Parameter(Mandatory=$true)]$Record)
 
-    $Played = [DateTimeOffset]::Parse("$($Record.played_at)").ToLocalTime()
+    $Played = ConvertTo-DriveOSDisplayTime `
+        -Value ([DateTimeOffset]::Parse("$($Record.played_at)"))
     $Source = if ($Record.PSObject.Properties['source']) { "$($Record.source)" } else { "spotify" }
 
     return [PSCustomObject]@{
@@ -1780,32 +1458,35 @@ function ConvertTo-PublicListeningPlay {
 }
 
 function Get-SpotifySummary {
-    # Keep the dashboard response fast: archive Spotify's recent-play window
-    # here, but let Last.fm synchronization run separately after the main
-    # dashboard refresh has finished.
-    $Items = @(Get-SpotifyRecent -Limit 50)
-    $SpotifyAdded = Save-SpotifyHistory $Items
-    $LastFmStatus = Get-LastFmConnectionStatus
+    # Spotify is the only active listening source. The hosted DriveOS instance
+    # is responsible for polling Spotify and writing new plays into Turso.
+    #
+    # Desktop DriveOS reads that same shared archive but does not write new
+    # listening records. This keeps desktop and web on one source of truth and
+    # avoids Windows PowerShell/Turso write failures during dashboard refresh.
+    $SpotifyAdded = 0
+
+    if ($RuntimeConfig.IsWeb) {
+        $Items = @(Get-SpotifyRecent -Limit 50)
+        $SpotifyAdded = Save-SpotifyHistory $Items
+    }
 
     $History = @(Get-SpotifyHistory | Sort-Object {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
         catch { 0 }
     } -Descending)
-    # Keep one featured play plus the latest 20 recent plays. The dashboard
-    # presents these in a scrollable list so older entries remain reachable.
+
+    # Keep one featured play plus the latest 20 recent plays. Historical
+    # Last.fm-derived rows remain visible because they are preserved in Turso.
     $Recent = @($History | Select-Object -First 21 | ForEach-Object {
         ConvertTo-PublicListeningPlay -Record $_
     })
 
     return [PSCustomObject]@{
-        recent             = $Recent
-        newlyArchived      = $SpotifyAdded
-        spotifyNewlyAdded  = $SpotifyAdded
-        lastFmNewlyAdded   = 0
-        archiveTotal       = $History.Count
-        lastFmConfigured   = [bool]$LastFmStatus.configured
-        lastFmUsername     = $LastFmStatus.username
-        lastFmError        = $null
+        recent            = $Recent
+        newlyArchived     = $SpotifyAdded
+        spotifyNewlyAdded = $SpotifyAdded
+        archiveTotal      = $History.Count
     }
 }
 
@@ -2224,7 +1905,7 @@ function Get-SoundtrackForWindow {
 
             # Include any song whose playback interval overlaps the drive.
             if ($TrackStart -lt $DriveEnd -and $TrackEnd -gt $DriveStart) {
-                $Local = $TrackStart.ToLocalTime()
+                $Local = ConvertTo-DriveOSDisplayTime -Value $TrackStart
 
                 $AlbumImage = $Record.album_image
                 $SpotifyUrl = $Record.spotify_url
@@ -2936,15 +2617,12 @@ function Get-OverallStatus {
     }
     catch {}
 
-    $LastFmStatus = Get-LastFmConnectionStatus
     $FoursquareStatus = Get-FoursquareConnectionStatus
 
     return [PSCustomObject]@{
         driveOS       = "online"
         tessie        = $VehicleOk
         spotify       = $SpotifyOk
-        lastfm        = [bool]$LastFmStatus.configured
-        lastfmUsername = $LastFmStatus.username
         foursquare    = [bool]$FoursquareStatus.configured
         foursquareCached = [int]$FoursquareStatus.cachedCount
         playlistScope = $PlaylistScope
@@ -3144,36 +2822,6 @@ function Handle-Request {
                     return
                 }
 
-                "/api/lastfm/status" {
-                    Send-Json -Stream $Stream -Object (Get-LastFmConnectionStatus)
-                    return
-                }
-
-                "/api/lastfm/sync" {
-                    $LastFmStatus = Get-LastFmConnectionStatus
-
-                    if (-not $LastFmStatus.configured) {
-                        Send-Json -Stream $Stream -Object @{
-                            configured = $false
-                            username = $LastFmStatus.username
-                            added = 0
-                            duplicates = 0
-                        }
-                        return
-                    }
-
-                    Send-Json -Stream $Stream -Object (
-                        Sync-LastFmHistory `
-                            -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken))
-                    )
-                    return
-                }
-
-                "/api/lastfm/sync-full" {
-                    Send-Json -Stream $Stream -Object (Sync-LastFmHistory -SpotifyClient (New-SpotifyClient -AccessToken (Get-SpotifyAccessToken)) -FullHistory)
-                    return
-                }
-
                 "/api/foursquare/status" {
                     Send-Json -Stream $Stream -Object (Get-FoursquareConnectionStatus)
                     return
@@ -3334,11 +2982,6 @@ function Handle-Request {
                     return
                 }
 
-                "/api/lastfm/configure" {
-                    Send-Json -Stream $Stream -Object (Start-LastFmConfiguration)
-                    return
-                }
-
                 "/api/foursquare/configure" {
                     Send-Json -Stream $Stream -Object (Start-FoursquareConfiguration)
                     return
@@ -3411,14 +3054,6 @@ function Handle-Request {
 # ------------------------------------------------------------
 # Hardened local backend server
 # ------------------------------------------------------------
-
-if ($FullLastFmSync) {
-    # This one-time maintenance mode intentionally runs without the desktop
-    # parent/session requirements. It only reads the protected Last.fm
-    # configuration and writes the local listening archive.
-    Sync-LastFmHistory -FullHistory | ConvertTo-Json -Compress
-    exit 0
-}
 
 if ($RefreshMusicCatalog) {
     $Stats = Get-MusicStats

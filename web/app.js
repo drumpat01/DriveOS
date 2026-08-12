@@ -132,7 +132,6 @@ const backgroundActivityLabels = Object.freeze({
   "/api/status": "Checking status",
   "/api/vehicle": "Loading vehicle",
   "/api/spotify/recent": "Loading Spotify",
-  "/api/lastfm/sync": "Syncing Last.fm",
   "/api/drives/recent": "Loading recent drives",
   "/api/drives": "Loading drives",
   "/api/music/stats": "Loading music stats",
@@ -334,18 +333,6 @@ async function loadStatus() {
       spotifyConnectButton.hidden = Boolean(status.spotify);
     }
 
-    const lastFmConfigured = Boolean(status.lastfm);
-    setText("lastFmStatus", lastFmConfigured ? "CONNECTED" : "OPTIONAL");
-    $("lastFmStatus").className = lastFmConfigured ? "ok-text" : "warn-text";
-    setText(
-      "lastFmMusicStatus",
-      lastFmConfigured
-        ? `Connected as ${status.lastfmUsername || "Last.fm user"}. New scrobbles sync during startup and Refresh data.`
-        : "Connect a read-only Last.fm API key to preserve listening history beyond Spotify's recent-play limit."
-    );
-    document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
-      button.hidden = lastFmConfigured || isTailnetRemote();
-    });
     document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
       button.hidden = isTailnetRemote();
       button.textContent = status.foursquare ? "Change key" : "Connect Foursquare";
@@ -473,34 +460,9 @@ async function loadVehicle() {
 let listeningHistorySyncPromise = null;
 
 async function syncListeningHistory() {
-  if (listeningHistorySyncPromise) return listeningHistorySyncPromise;
-
-  listeningHistorySyncPromise = (async () => {
-    try {
-      const result = await getJson("/api/lastfm/sync");
-      const added = Number(result?.added) || 0;
-
-      // If Last.fm found new scrobbles, refresh only the music-facing views
-      // after the sync completes. The main dashboard is already interactive.
-      if (added > 0) {
-        await loadSpotify();
-        await Promise.allSettled([
-          loadMusicStats(),
-          loadDrives(),
-          loadStatistics()
-        ]);
-      }
-
-      return result;
-    } catch (error) {
-      console.warn("Last.fm background sync failed:", error);
-      return null;
-    } finally {
-      listeningHistorySyncPromise = null;
-    }
-  })();
-
-  return listeningHistorySyncPromise;
+  // Compatibility hook retained for the refresh feature. Spotify is now the
+  // only active listening source; historical Last.fm rows remain archived.
+  return null;
 }
 
 async function loadSpotify() {
@@ -569,22 +531,10 @@ async function loadSpotify() {
 
     setText("archiveTotal", data.archiveTotal, "0");
     const recovered = Number(data.newlyArchived) || 0;
-    let archiveMessage = recovered > 0
+    const archiveMessage = recovered > 0
       ? `Recovered ${recovered} new play${recovered === 1 ? "" : "s"}`
-      : data.lastFmConfigured
-        ? "Spotify + Last.fm archive up to date"
-        : "Spotify archive up to date \u00B7 Last.fm is optional";
-    if (data.lastFmError) archiveMessage = data.lastFmError;
+      : "Spotify archive up to date";
     setText("archiveAdded", archiveMessage);
-    setText(
-      "lastFmMusicStatus",
-      data.lastFmConfigured
-        ? `Connected as ${data.lastFmUsername || "Last.fm user"}. New scrobbles sync during startup and Refresh data.`
-        : "Connect a read-only Last.fm API key to preserve listening history beyond Spotify's recent-play limit."
-    );
-    document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
-      button.hidden = Boolean(data.lastFmConfigured) || isTailnetRemote();
-    });
 
     return data;
   } catch (error) {
@@ -3069,46 +3019,6 @@ async function refreshAll() {
   }
 }
 
-async function configureLastFmOnThisComputer() {
-  if (state.lastFmConnecting || isTailnetRemote()) return;
-
-  const buttons = [...document.querySelectorAll("[data-lastfm-configure]")];
-  state.lastFmConnecting = true;
-  buttons.forEach(button => {
-    button.disabled = true;
-    button.textContent = "Opening setup\u2026";
-  });
-
-  try {
-    await postJson("/api/lastfm/configure", {});
-    setText("lastFmMusicStatus", "Enter your Last.fm username and API key in the secure Windows setup window.");
-    setText("archiveAdded", "Finish Last.fm setup in the open window\u2026");
-    const deadline = Date.now() + 5 * 60 * 1000;
-
-    while (Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      const status = await getJson("/api/lastfm/status");
-      if (!status.configured) continue;
-
-      buttons.forEach(button => { button.hidden = true; });
-      setText("lastFmMusicStatus", `Connected as ${status.username || "Last.fm user"}. Syncing scrobbles\u2026`);
-      await recoverSpotifyAndRematch();
-      await loadStatus();
-      return;
-    }
-
-    setText("lastFmMusicStatus", "Setup window expired. Click Connect Last.fm to try again.");
-  } catch (error) {
-    setText("lastFmMusicStatus", error.message || "Could not start Last.fm setup");
-  } finally {
-    state.lastFmConnecting = false;
-    buttons.forEach(button => {
-      button.disabled = false;
-      button.textContent = button.closest(".music-source-panel") ? "Connect Last.fm" : "Add Last.fm";
-    });
-  }
-}
-
 async function configureFoursquareOnThisComputer() {
   if (state.foursquareConnecting || isTailnetRemote()) return;
   const buttons = [...document.querySelectorAll("[data-foursquare-configure]")];
@@ -3206,9 +3116,6 @@ if (isHostedBrowser || isTailnetRemote() || new URLSearchParams(location.search)
   window.DriveOSIgnition.run();
 }
 
-document.querySelectorAll("[data-lastfm-configure]").forEach(button => {
-  button.addEventListener("click", configureLastFmOnThisComputer);
-});
 document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
   button.addEventListener("click", configureFoursquareOnThisComputer);
 });

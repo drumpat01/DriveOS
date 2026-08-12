@@ -293,7 +293,6 @@
               </div>
               <div class="music-source-actions">
                 <button id="spotifyConnectButton" class="primary-button spotify-connect-button" type="button" hidden>Connect Spotify</button>
-                <button class="secondary-button lastfm-connect-button" type="button" data-lastfm-configure hidden>Add Last.fm</button>
               </div>
             </div>
           </article>
@@ -354,7 +353,6 @@
           <article class="stat-card"><span>DriveOS</span><strong id="driveOSStatus">ONLINE</strong></article>
           <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
           <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
-          <article class="stat-card"><span>Last.fm</span><strong id="lastFmStatus">--</strong></article>
           <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
         </section>
         </section>
@@ -512,19 +510,10 @@
           <div>
             <div class="section-label spotify-label">LISTENING ARCHIVE</div>
             <h2>Music</h2>
-            <p>Your DriveOS listening archive combines Spotify history with Last.fm scrobbles.</p>
+            <p>Your DriveOS listening archive is powered by Spotify. Historical plays previously imported from Last.fm are preserved.</p>
           </div>
           <div class="big-number"><span id="musicTotalPlays">--</span><small> archived plays</small></div>
         </div>
-
-        <article class="panel music-source-panel">
-          <div>
-            <div class="section-label spotify-label">MUSIC SOURCES</div>
-            <h3>Last.fm history</h3>
-            <p id="lastFmMusicStatus" class="panel-description">Checking connection&#x2026;</p>
-          </div>
-          <button class="secondary-button lastfm-connect-button" type="button" data-lastfm-configure hidden>Connect Last.fm</button>
-        </article>
 
         <div class="analytics-grid">
           <article class="panel analytics-panel">

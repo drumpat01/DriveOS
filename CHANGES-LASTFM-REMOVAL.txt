@@ -1,0 +1,16 @@
+DriveOS - Last.fm active integration removal
+
+Changed:
+- Spotify is now the only active listening source.
+- Removed Last.fm sync/status/configuration API routes.
+- Removed Last.fm background sync calls.
+- Removed Last.fm connection UI and dashboard status card.
+- Removed Last.fm environment variables from render.yaml.
+- Last.fm scripts/module are inert compatibility stubs.
+- Existing historical Last.fm-derived listening rows are NOT deleted or filtered.
+  They remain available for old drive soundtracks, music statistics, and archive history.
+- Existing Spotify token-storage separation and DriveOS display-time fixes in the uploaded files were preserved.
+
+Install:
+Extract the DriveOS folder over your existing C:\Users\pstewart\DriveOS folder and allow Windows to replace the files.
+No PowerShell patch script is required.
