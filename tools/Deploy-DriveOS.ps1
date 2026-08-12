@@ -24,16 +24,23 @@ function Test-DeployPattern {
 
 function Test-ApprovedDeployPath {
     param([string]$Path, $Rules)
-    $Allowed = @($Rules.allowed | Where-Object { Test-DeployPattern $Path $_ }).Count -gt 0
-    $Forbidden = @($Rules.forbidden | Where-Object { Test-DeployPattern $Path $_ }).Count -gt 0
-    return $Allowed -and -not $Forbidden
+    $Normalized = $Path.Replace('\', '/')
+    $Allowed = @($Rules.allowed | Where-Object { Test-DeployPattern $Normalized $_ }).Count -gt 0
+    $Forbidden = @($Rules.forbidden | Where-Object { Test-DeployPattern $Normalized $_ }).Count -gt 0
+    $PrivateEnvironmentFile = (
+        $Normalized -match '(^|/)\.env(?:\..+)?$' -and
+        $Normalized -notmatch '(^|/)\.env\.example$'
+    )
+    return $Allowed -and -not $Forbidden -and -not $PrivateEnvironmentFile
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'Git is required.' }
 if (-not (Test-Path $RulesPath -PathType Leaf)) { throw 'deploy-files.json is missing.' }
 
-& (Join-Path $PSScriptRoot 'Test-ReleasePreflight.ps1') -SkipTests:$SkipTests
-if ($PreflightOnly) { return }
+if ($PreflightOnly) {
+    & (Join-Path $PSScriptRoot 'Test-ReleasePreflight.ps1') -SkipTests:$SkipTests
+    return
+}
 if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
     throw 'CommitMessage is required unless PreflightOnly is used.'
 }
@@ -60,7 +67,12 @@ else {
     throw "Deployments must start from main or resume a deploy/* branch. Current branch: $Branch"
 }
 
+# Validate after main is updated so the exact code entering the deployment
+# branch, including anything just pulled from origin, passes the release gate.
+& (Join-Path $PSScriptRoot 'Test-ReleasePreflight.ps1') -SkipTests:$SkipTests
+
 $Changed = @(& git -C $Root diff --name-only)
+$Changed += @(& git -C $Root diff --cached --name-only)
 $Changed += @(& git -C $Root ls-files --others --exclude-standard)
 $Changed = @($Changed | Where-Object { $_ } | Sort-Object -Unique)
 $Selected = if ($Paths) { @($Paths | ForEach-Object { $_.Replace('\', '/') } | Sort-Object -Unique) } else { $Changed }
