@@ -50,6 +50,7 @@ if (-not $SkipTests) {
         'tests\WebHostingPrep.Tests.ps1', 'tests\WebAuth.Tests.ps1',
         'tests\WebSession.Tests.ps1', 'tests\WebRequest.Tests.ps1',
         'tests\SecretProtection.Tests.ps1', 'tests\Turso.Tests.ps1',
+        'tests\DashboardLayout.Tests.ps1',
         'tests\WebDeployment.Tests.ps1'
     )) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root $Test)

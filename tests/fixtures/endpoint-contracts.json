@@ -8,11 +8,13 @@
   { "method": "GET", "path": "/api/statistics" },
   { "method": "GET", "path": "/api/places" },
   { "method": "GET", "path": "/api/charging" },
+  { "method": "GET", "path": "/api/dashboard/layout" },
   { "method": "GET", "path": "/api/recap" },
   { "method": "GET", "pathPattern": "^/api/spotify/artwork/([A-Za-z0-9]{10,64})$" },
   { "method": "POST", "path": "/api/spotify/connect" },
   { "method": "POST", "path": "/api/places/alias" },
   { "method": "POST", "path": "/api/charging/settings" },
+  { "method": "POST", "path": "/api/dashboard/layout" },
   { "method": "POST", "path": "/api/drive/map" },
   { "method": "POST", "path": "/api/drive/share-card" },
   { "method": "POST", "path": "/api/playlist/create" }

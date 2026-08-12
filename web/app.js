@@ -3068,8 +3068,8 @@ const commandPaletteFeature = window.DriveOSFeatures.commandPalette.create({
 });
 commandPaletteFeature.bind();
 
-const dashboardCustomizationFeature = window.DriveOSFeatures.dashboardCustomization.create();
-dashboardCustomizationFeature.bind();
+const dashboardCustomizationFeature = window.DriveOSFeatures.dashboardCustomization.create({ api: window.DriveOSApi });
+void dashboardCustomizationFeature.bind();
 
 dashboardWidgetsFeature = window.DriveOSFeatures.dashboardWidgets.create({
   state,
