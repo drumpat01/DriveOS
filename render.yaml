@@ -34,9 +34,5 @@ services:
         sync: false
       - key: SPOTIFY_CLIENT_ID
         sync: false
-      - key: LASTFM_USERNAME
-        sync: false
-      - key: LASTFM_API_KEY
-        sync: false
       - key: FOURSQUARE_API_KEY
         sync: false
