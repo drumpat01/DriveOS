@@ -11,8 +11,15 @@
     const date = Number.isFinite(seconds) && seconds > 1e9 ? new Date(seconds * 1000) : new Date(value);
     return Number.isNaN(date.getTime()) ? "Car status is up to date" : `Updated ${date.toLocaleString([], { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" })}`;
   };
-  const renderTrips = (target, drives, limit) => {
-    $(target).innerHTML = drives.slice(0, limit).map((drive) => `<button class="trip" type="button" data-wife-drive-id="${escape(drive.id)}" aria-label="Open read-only overview for ${escape(drive.shortDateLabel || drive.dateLabel)}"><strong>${escape(drive.shortDateLabel || drive.dateLabel)}</strong><span class="trip-route">${escape(drive.startingLocation || "Start")} &rarr; ${escape(drive.endingLocation || "Destination")}</span><span class="trip-meta">${escape(drive.miles ?? 0)} mi &middot; ${escape(drive.durationMinutes ?? 0)} min</span>${drive.topArtist ? `<span class="trip-artist">Top artist: ${escape(drive.topArtist)}</span>` : ""}</button>`).join("") || '<article class="trip"><strong>No recent trips yet</strong><span class="trip-meta">Trips will appear here after a drive.</span></article>';
+  const renderTrips = (target, drives, limit, musicState = "idle") => {
+    $(target).innerHTML = drives.slice(0, limit).map((drive) => {
+      const artist = drive.topArtist
+        ? `<span class="trip-artist">Top artist: ${escape(drive.topArtist)}</span>`
+        : musicState === "loading"
+          ? '<span class="trip-artist trip-artist-loading">Music loading&hellip;</span>'
+          : "";
+      return `<button class="trip" type="button" data-wife-drive-id="${escape(drive.id)}" aria-label="Open read-only overview for ${escape(drive.shortDateLabel || drive.dateLabel)}"><strong>${escape(drive.shortDateLabel || drive.dateLabel)}</strong><span class="trip-route">${escape(drive.startingLocation || "Start")} &rarr; ${escape(drive.endingLocation || "Destination")}</span><span class="trip-meta">${escape(drive.miles ?? 0)} mi &middot; ${escape(drive.durationMinutes ?? 0)} min</span>${artist}</button>`;
+    }).join("") || '<article class="trip"><strong>No recent trips yet</strong><span class="trip-meta">Trips will appear here after a drive.</span></article>';
   };
   let drives = [];
   let selectedDriveId = null;
@@ -157,30 +164,31 @@
       drives = data.drives || [];
       $("wifeTodayMiles").textContent = data.today?.miles ?? 0;
       $("wifeTodayTrips").textContent = data.today?.trips ?? 0;
-      renderTrips("wifeRecentHome", drives, 3);
-      renderTrips("wifeTrips", drives, 20);
+      renderTrips("wifeRecentHome", drives, 3, "loading");
+      renderTrips("wifeTrips", drives, 20, "loading");
       drivesReady = true;
       if (!vehicleReady) setStatus("Trips ready - checking your car...");
     }).catch(() => { failures += 1; renderTrips("wifeRecentHome", [], 3); renderTrips("wifeTrips", [], 20); });
 
     await Promise.allSettled([vehiclePromise, drivesPromise]);
-    setStatus("Drive data ready - adding music...");
+    setStatus(failures ? "Core drive data ready" : "Drive data ready", "ready");
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-    const musicPromise = request("/api/wife/music").then((data) => {
+    void request("/api/wife/music").then((data) => {
       const music = new Map((data.drives || []).map((drive) => [drive.id, drive]));
       drives = drives.map((drive) => ({ ...drive, topArtist: music.get(drive.id)?.topArtist || null, songCount: music.get(drive.id)?.songCount ?? 0 }));
       renderTrips("wifeRecentHome", drives, 3);
       renderTrips("wifeTrips", drives, 20);
       if (selectedDriveId) renderDriveDetail();
-    }).catch(() => { failures += 1; });
+      setStatus("Everything is up to date", "ready");
+    }).catch(() => {
+      renderTrips("wifeRecentHome", drives, 3);
+      renderTrips("wifeTrips", drives, 20);
+    });
 
-    const livePromise = request("/api/wife/live").then((live) => {
+    void request("/api/wife/live").then((live) => {
       if (live.latitude != null && live.longitude != null) showMap(Number(live.latitude), Number(live.longitude));
       else $("wifeLocationText").textContent = "Location is not available right now";
-    }).catch(() => { failures += 1; $("wifeLocationText").textContent = "Location is taking longer than usual"; });
-
-    await Promise.allSettled([musicPromise, livePromise]);
-    setStatus(failures ? "Core drive data ready" : "Everything is up to date", "ready");
+    }).catch(() => { $("wifeLocationText").textContent = "Location is taking longer than usual"; });
   })();
 })();
