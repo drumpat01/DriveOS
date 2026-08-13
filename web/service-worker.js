@@ -1,4 +1,4 @@
-const CACHE_NAME = "driveos-shell-5.0.3";
+const CACHE_NAME = "driveos-shell-5.1.0";
 const OFFLINE_URL = "/offline.html";
 
 const SHELL = [

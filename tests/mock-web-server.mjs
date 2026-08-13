@@ -108,6 +108,7 @@ const routePoints = Array.from({ length: 18 }, (_, index) => ({
 const responses = {
   '/api/status': { driveOS: 'online', tessie: true, spotify: true, lastfm: true, lastfmUsername: 'demo-listener', foursquare: true, foursquareCached: 7, playlistScope: true },
   '/api/vehicle': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 0, shiftState: 'P', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
+  '/api/vehicle/live': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 38, shiftState: 'D', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
   '/api/spotify/recent': { recent, newlyArchived: 4, archiveTotal: 1427, lastFmConfigured: true, lastFmUsername: 'demo-listener' },
   '/api/spotify/auth-status': { authorized: true },
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
@@ -147,9 +148,7 @@ http.createServer((req, res) => {
   }
 
   const requestPath = url.pathname === '/' ? '/index.html' : url.pathname;
-  const staticRoot = requestPath.startsWith('/assets/') || requestPath === '/driveos-icon-squircle.png'
-    ? projectRoot
-    : root;
+  const staticRoot = requestPath === '/driveos-icon-squircle.png' ? projectRoot : root;
   const file = path.resolve(staticRoot, `.${requestPath}`);
   if (!file.startsWith(staticRoot) || !fs.existsSync(file)) {
     res.writeHead(404);

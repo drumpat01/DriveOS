@@ -2131,9 +2131,11 @@ function Get-VehicleRecord {
 }
 
 function Get-VehicleSummary {
+    param([switch]$ForceRefresh)
     $Now = [DateTimeOffset]::UtcNow
 
     if (
+        -not $ForceRefresh -and
         $null -ne $script:VehicleSummaryCache -and
         $script:VehicleSummaryCacheExpiresAt -gt $Now
     ) {
@@ -3122,6 +3124,11 @@ function Handle-Request {
 
                 "/api/vehicle" {
                     Send-Json -Stream $Stream -Object (Get-VehicleSummary)
+                    return
+                }
+
+                "/api/vehicle/live" {
+                    Send-Json -Stream $Stream -Object (Get-VehicleSummary -ForceRefresh)
                     return
                 }
 

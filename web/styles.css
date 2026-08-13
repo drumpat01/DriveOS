@@ -7595,7 +7595,7 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 .topbar .brand h1 { font-size: clamp(1.24rem, 1.5vw, 1.7rem); letter-spacing: .075em; font-weight: 720; white-space: nowrap; }
 .topbar .brand h1 span { font-weight: 430; }
 
-@media (min-width: 761px) and (max-width: 1220px) {
+@media (min-width: 761px) and (max-width: 1450px) {
   .topbar { grid-template-columns: max-content minmax(0, 1fr) !important; grid-template-rows: auto auto !important; gap: 5px 14px !important; }
   .topbar .brand { grid-column: 1; grid-row: 1; }
   .topbar .main-nav { grid-column: 2 !important; grid-row: 1 !important; justify-self: end !important; }
@@ -7624,6 +7624,148 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
     display: grid !important;
     place-items: center;
   }
+}
+
+/* A Windows app window stops shrinking before phone rules apply. Use the same
+   five-view switcher once the desktop header would otherwise become crowded. */
+@media (min-width: 761px) and (max-width: 1120px) {
+  .app-shell { padding-bottom: 98px !important; }
+
+  .main-nav.mobile-nav-portal,
+  body > .main-nav {
+    position: fixed !important;
+    inset: auto 16px 14px 16px !important;
+    z-index: 2147483000 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding: 5px !important;
+    border: 1px solid rgba(33,83,101,.14) !important;
+    border-radius: 19px !important;
+    background: rgba(249,252,253,.94) !important;
+    box-shadow: 0 16px 46px rgba(39,74,88,.18) !important;
+    backdrop-filter: blur(24px) saturate(1.25) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  :root[data-theme="dark"] .main-nav.mobile-nav-portal,
+  :root[data-theme="dark"] body > .main-nav {
+    background: rgba(8,25,33,.96) !important;
+    border-color: rgba(120,218,224,.16) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button {
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 8px 4px !important;
+    border-radius: 14px !important;
+    font-size: .72rem !important;
+  }
+}
++/* JourneyDeck 5.1 - Live Drive */
+.nav-button-live { display: inline-flex; align-items: center; gap: 7px; }
+.nav-mobile-icon,.nav-mobile-label,.mobile-more-button,.mobile-more-menu { display: none; }
+.nav-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #29d5b0; box-shadow: 0 0 0 4px rgba(41,213,176,.12), 0 0 14px rgba(41,213,176,.58); }
+.nav-button-live.active .nav-live-dot { animation: live-drive-pulse 1.8s ease-in-out infinite; }
+
+.live-drive-view { padding-top: 4px; }
+.live-drive-shell { overflow: hidden; border: 1px solid rgba(84,207,193,.24); border-radius: 30px; background: #071a24; box-shadow: 0 26px 70px rgba(3,25,35,.24); color: #f4fbfb; }
+.live-drive-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 92px; padding: 18px 24px; border-bottom: 1px solid rgba(121,221,210,.12); background: linear-gradient(105deg,rgba(11,43,56,.98),rgba(7,26,36,.98)); }
+.live-drive-header h2 { margin: 4px 0 0; color: #fff; font-size: clamp(1.4rem,3vw,2.1rem); line-height: 1; }
+.live-drive-kicker { display: flex; align-items: center; gap: 9px; color: #6ce8d1; font-size: .67rem; font-weight: 900; letter-spacing: .18em; }
+.live-drive-kicker span { width: 22px; height: 2px; background: #5ee7d1; box-shadow: 0 0 12px #47d7c1; }
+.live-drive-header-actions { display: flex; align-items: center; gap: 10px; }
+.live-drive-connection { padding: 8px 11px; border: 1px solid rgba(93,228,203,.28); border-radius: 999px; color: #75ead4; background: rgba(30,138,122,.12); font-size: .64rem; font-weight: 900; letter-spacing: .12em; }
+.live-drive-shell.is-driving .live-drive-connection { animation: live-drive-pulse 1.8s ease-in-out infinite; }
+.live-drive-refresh { min-height: 36px; padding: 0 14px; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; background: rgba(255,255,255,.06); color: #dff8f3; font: inherit; font-size: .75rem; font-weight: 800; cursor: pointer; }
+.live-drive-refresh:hover { background: rgba(255,255,255,.11); }
+
+.live-drive-stage { position: relative; display: grid; grid-template-columns: 150px minmax(0,1fr); grid-template-rows: 178px minmax(300px,1fr) auto; grid-template-areas: "speed telemetry" "map map" "music gps"; gap: 18px 20px; min-height: clamp(620px,calc(100vh - 220px),840px); overflow: hidden; padding: 24px; background: radial-gradient(circle at 50% 30%,#123c48,#071821 68%); }
+.live-drive-map { position: relative; grid-area: map; min-height: 300px; overflow: hidden; border: 1px solid rgba(133,225,214,.16); border-radius: 24px; background-color: #0b2b36; background-image: linear-gradient(rgba(83,180,174,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(83,180,174,.07) 1px,transparent 1px),radial-gradient(circle at 54% 46%,rgba(65,212,187,.14),transparent 38%); background-size: 38px 38px,38px 38px,auto; box-shadow: inset 0 0 55px rgba(0,0,0,.2); }
+.live-drive-map::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(90deg,rgba(4,19,27,.55),transparent 30%,transparent 70%,rgba(4,19,27,.32)),linear-gradient(0deg,rgba(4,19,27,.72),transparent 35%); }
+.live-drive-map .maplibregl-canvas { filter: saturate(.78) brightness(.72) contrast(1.06); }
+.live-drive-map-message { display: grid; height: 100%; place-items: center; color: #88a8b1; font-size: .85rem; }
+.live-drive-marker { display: grid; width: 46px; height: 46px; place-items: center; border: 3px solid rgba(255,255,255,.92); border-radius: 50%; background: #50e1c8; box-shadow: 0 0 0 8px rgba(52,221,191,.16),0 12px 34px rgba(0,0,0,.45); }
+.live-drive-marker span { color: #062631; font-size: 1.15rem; transform: rotate(var(--vehicle-heading,0deg)); }
+.live-drive-overlay { position: absolute; z-index: 2; border: 1px solid rgba(133,225,214,.15); background: rgba(5,24,33,.84); box-shadow: 0 14px 42px rgba(0,0,0,.26); backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2); }
+.live-drive-speed-card { position: relative; grid-area: speed; display: grid; width: auto; height: 178px; place-items: center; align-content: center; border-radius: 24px; }
+.live-drive-speed-card span { color: #65e5ce; font-size: .7rem; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+.live-drive-speed-card strong { color: #fff; font-size: 5rem; font-variant-numeric: tabular-nums; letter-spacing: -.07em; line-height: .95; }
+.live-drive-speed-card small { color: #8ca8b0; font-size: .63rem; font-weight: 900; letter-spacing: .18em; }
+.live-drive-telemetry { position: relative; grid-area: telemetry; display: grid; grid-template-columns: repeat(2,minmax(100px,1fr)); width: auto; height: 178px; border-radius: 24px; }
+.live-drive-telemetry > div { display: grid; gap: 3px; padding: 15px 18px; border-right: 1px solid rgba(133,225,214,.09); border-bottom: 1px solid rgba(133,225,214,.09); }
+.live-drive-telemetry span,.live-drive-music span { color: #71949e; font-size: .57rem; font-weight: 900; letter-spacing: .13em; }
+.live-drive-telemetry strong { color: #eefafa; font-size: 1.05rem; }
+.live-drive-music { position: relative; grid-area: music; display: flex; width: min(420px,100%); align-items: center; gap: 14px; padding: 12px; border-radius: 20px; }
+.live-drive-artwork { width: 62px; height: 62px; overflow: hidden; border-radius: 13px; object-fit: cover; }
+.live-drive-music > div:last-child { display: grid; min-width: 0; gap: 3px; }
+.live-drive-music strong,.live-drive-music small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-drive-music strong { color: #fff; font-size: 1rem; }
+.live-drive-music small { color: #a3bac1; font-size: .78rem; }
+.live-drive-music-empty { padding: 10px; color: #8ca8b0; font-size: .78rem; }
+.live-drive-gps { position: relative; z-index: 2; grid-area: gps; align-self: center; justify-self: end; color: rgba(220,245,241,.75); font-size: .68rem; font-weight: 800; text-shadow: 0 2px 10px #000; }
+.live-drive-safety { margin: 0; padding: 12px 20px; color: #78939c; background: #061720; font-size: .66rem; text-align: center; }
+
+@keyframes live-drive-pulse { 0%,100% { opacity: 1; } 50% { opacity: .48; } }
+
+@media (max-width: 760px) {
+  .main-nav,.main-nav.mobile-nav-portal { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
+  .main-nav .nav-secondary { display: none !important; }
+  .main-nav .mobile-more-button { display: grid !important; }
+  .nav-mobile-icon,.nav-mobile-label { display: inline; }
+  .nav-desktop-label { display: none; }
+  .nav-mobile-icon { color: currentColor; font-size: 1.05rem; line-height: 1; }
+  .nav-button,.main-nav.mobile-nav-portal .nav-button { gap: 3px !important; font-size: .72rem !important; font-weight: 850 !important; }
+  .nav-button-live { gap: 4px; }
+  .nav-live-dot { width: 5px; height: 5px; }
+  .live-drive-view { margin: 0 -6px; }
+  .live-drive-shell { border-radius: 22px; }
+  .live-drive-header { min-height: 76px; padding: 14px 15px; }
+  .live-drive-header h2 { font-size: 1.25rem; }
+  .live-drive-refresh { display: none; }
+  .live-drive-stage { grid-template-columns: 130px minmax(0,1fr); grid-template-rows: 150px minmax(280px,42vh) auto auto; grid-template-areas: "speed telemetry" "map map" "music music" "gps gps"; gap: 12px; min-height: calc(100svh - 190px); padding: 14px; }
+  .live-drive-speed-card { width: auto; height: 150px; min-height: 0; border-radius: 19px; }
+  .live-drive-speed-card strong { font-size: 3.8rem; }
+  .live-drive-telemetry { width: auto; height: 150px; grid-template-columns: 1fr 1fr; }
+  .live-drive-telemetry > div { padding: 11px 10px; }
+  .live-drive-telemetry strong { font-size: .86rem; }
+  .live-drive-map { min-height: 280px; border-radius: 20px; }
+  .live-drive-music { width: 100%; }
+  .live-drive-gps { justify-self: end; padding: 0 2px; }
+  .live-drive-safety { padding: 10px 14px; }
+
+  .mobile-more-menu:not([hidden]) { position: fixed; z-index: 2147483200; inset: 0; display: block; }
+  .mobile-more-backdrop { position: absolute; inset: 0; width: 100%; border: 0; background: rgba(2,13,18,.68); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+  .mobile-more-sheet { position: absolute; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); left: 10px; overflow: hidden; border: 1px solid rgba(95,218,205,.22); border-radius: 24px; background: #0a222c; box-shadow: 0 24px 70px rgba(0,0,0,.45); color: #eefafa; }
+  .mobile-more-sheet header { display: flex; align-items: center; justify-content: space-between; padding: 17px 18px 13px; border-bottom: 1px solid rgba(95,218,205,.12); }
+  .mobile-more-sheet header > div { display: grid; gap: 2px; }
+  .mobile-more-sheet header span { color: #63dfca; font-size: .57rem; font-weight: 900; letter-spacing: .16em; }
+  .mobile-more-sheet header strong { font-size: 1.25rem; }
+  .mobile-more-sheet header button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(255,255,255,.1); border-radius: 50%; background: rgba(255,255,255,.05); color: #fff; font-size: 1.4rem; }
+  .mobile-more-grid { display: grid; gap: 8px; padding: 10px; }
+  .mobile-more-grid button { display: grid; grid-template-columns: 44px 1fr; grid-template-rows: auto auto; gap: 2px 12px; min-height: 66px; align-items: center; padding: 10px 13px; border: 1px solid rgba(95,218,205,.1); border-radius: 17px; background: rgba(255,255,255,.035); color: #eefafa; text-align: left; }
+  .mobile-more-grid button > span { grid-row: 1 / 3; display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: rgba(75,224,198,.1); color: #63dfca; font-size: 1.2rem; }
+  .mobile-more-grid strong { align-self: end; font-size: .92rem; }
+  .mobile-more-grid small { align-self: start; color: #83a2ab; font-size: .68rem; }
+  body.mobile-menu-open { overflow: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-button-live.active .nav-live-dot,.live-drive-shell.is-driving .live-drive-connection { animation: none; }
+}
+
+/* Final mobile navigation authority: four readable destinations plus More. */
+@media (max-width: 760px) {
+  .main-nav.mobile-nav-portal,
+  body > .main-nav { grid-template-columns: repeat(4,minmax(0,1fr)) !important; }
+  .main-nav.mobile-nav-portal .nav-secondary,
+  body > .main-nav .nav-secondary { display: none !important; }
+  .main-nav.mobile-nav-portal .mobile-more-button,
+  body > .main-nav .mobile-more-button { display: grid !important; }
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button { font-size: .72rem !important; }
 }
 
 /* A Windows app window stops shrinking before phone rules apply. Use the same

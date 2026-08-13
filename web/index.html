@@ -65,7 +65,7 @@
       </div>
 
       <div class="jd-loading-panel">
-        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.0</strong></div>
+        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.1</strong></div>
         <div class="jd-loading-track"><i></i></div>
         <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
@@ -95,11 +95,13 @@
       </div>
 
       <nav class="main-nav" aria-label="JourneyDeck">
-        <button class="nav-button active" data-view="dashboard">Dashboard</button>
-        <button class="nav-button" data-view="drives">Drives</button>
-        <button class="nav-button" data-view="timeline">Timeline</button>
-        <button class="nav-button" data-view="music">Music</button>
-        <button class="nav-button" data-view="statistics">Statistics</button>
+        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Dashboard</span><span class="nav-mobile-label">Home</span></button>
+        <button class="nav-button nav-button-live" data-view="live"><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Drives</span></button>
+        <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
+        <button class="nav-button nav-secondary" data-view="music">Music</button>
+        <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
+        <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true">&#x2022;&#x2022;&#x2022;</span><span>More</span></button>
       </nav>
 
       <div class="topbar-right">
@@ -108,7 +110,7 @@
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed JourneyDeck web build">5.0.0</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.1.0</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -321,6 +323,45 @@
           <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
         </section>
         </section>
+      </section>
+
+      <!-- LIVE DRIVE -->
+      <section id="view-live" class="view live-drive-view">
+        <div id="liveDriveShell" class="live-drive-shell">
+          <header class="live-drive-header">
+            <div>
+              <div class="live-drive-kicker"><span></span> LIVE DRIVE</div>
+              <h2 id="liveDriveVehicle">Vehicle</h2>
+            </div>
+            <div class="live-drive-header-actions">
+              <span id="liveDriveConnection" class="live-drive-connection">PAUSED</span>
+              <button id="liveDriveRefresh" class="live-drive-refresh" type="button">Refresh</button>
+            </div>
+          </header>
+
+          <div class="live-drive-stage">
+            <div id="liveDriveMap" class="live-drive-map" aria-label="Live vehicle location map">
+              <div class="live-drive-map-message">Open Live Drive to connect</div>
+            </div>
+            <div class="live-drive-overlay live-drive-speed-card">
+              <span id="liveDriveState">Waiting</span>
+              <strong id="liveDriveSpeed">0</strong>
+              <small>MPH</small>
+            </div>
+            <div class="live-drive-overlay live-drive-telemetry">
+              <div><span>BATTERY</span><strong id="liveDriveBattery">--</strong></div>
+              <div><span>RANGE</span><strong id="liveDriveRange">--</strong></div>
+              <div><span>HEADING</span><strong id="liveDriveHeading">--</strong></div>
+              <div><span>GEAR</span><strong id="liveDriveGear">--</strong></div>
+            </div>
+            <div id="liveDriveMusic" class="live-drive-overlay live-drive-music">
+              <div class="live-drive-music-empty">Waiting for Spotify</div>
+            </div>
+            <div id="liveDriveGps" class="live-drive-gps">Latest Tessie position</div>
+          </div>
+
+          <p class="live-drive-safety">JourneyDeck is for glanceable trip awareness. Keep your attention on the road and do not interact while driving.</p>
+        </div>
       </section>
 
       <!-- DRIVES -->
@@ -601,9 +642,20 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">JourneyDeck Web 5.0.3</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.1.0</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
+  </div>
+  <div id="mobileMoreMenu" class="mobile-more-menu" hidden>
+    <button class="mobile-more-backdrop" type="button" data-mobile-menu-close aria-label="Close navigation menu"></button>
+    <section class="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="More JourneyDeck views">
+      <header><div><span>JOURNEYDECK</span><strong>More</strong></div><button type="button" data-mobile-menu-close aria-label="Close">&times;</button></header>
+      <div class="mobile-more-grid">
+        <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Drives and music together</small></button>
+        <button type="button" data-mobile-view="music"><span aria-hidden="true">&#9835;</span><strong>Music</strong><small>Your driving soundtrack</small></button>
+        <button type="button" data-mobile-view="statistics"><span aria-hidden="true">&#x2197;</span><strong>Statistics</strong><small>Miles, energy, and recaps</small></button>
+      </div>
+    </section>
   </div>
 
   <!-- LOCAL COMMAND PALETTE -->
@@ -838,27 +890,28 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.0.3"></script>
-  <script src="/core/dom.js?v=5.0.3"></script>
-  <script src="/core/state.js?v=5.0.3"></script>
-  <script src="/core/platform.js?v=5.0.3"></script>
-  <script src="/core/api.js?v=5.0.3"></script>
-  <script src="/components/song-artwork.js?v=5.0.3"></script>
-  <script src="/features/navigation.js?v=5.0.4"></script>
-  <script src="/features/pwa.js?v=5.0.3"></script>
-  <script src="/features/theme.js?v=5.0.3"></script>
-  <script src="/features/ignition.js?v=5.0.3"></script>
-  <script src="/features/places.js?v=5.0.3"></script>
-  <script src="/features/charging.js?v=5.0.3"></script>
-  <script src="/features/recaps.js?v=5.0.3"></script>
-  <script src="/features/refresh.js?v=5.0.3"></script>
-  <script src="/features/drives.js?v=5.0.3"></script>
-  <script src="/features/replay.js?v=5.0.3"></script>
-  <script src="/features/music.js?v=5.0.3"></script>
-  <script src="/features/share-cards.js?v=5.0.3"></script>
-  <script src="/features/command-palette.js?v=5.0.3"></script>
-  <script src="/features/dashboard-customization.js?v=5.0.3"></script>
-  <script src="/features/dashboard-widgets.js?v=5.0.3"></script>
-  <script src="/app.js?v=5.0.3"></script>
+  <script src="/core/build.js?v=5.1.0"></script>
+  <script src="/core/dom.js?v=5.1.0"></script>
+  <script src="/core/state.js?v=5.1.0"></script>
+  <script src="/core/platform.js?v=5.1.0"></script>
+  <script src="/core/api.js?v=5.1.0"></script>
+  <script src="/components/song-artwork.js?v=5.1.0"></script>
+  <script src="/features/navigation.js?v=5.1.0"></script>
+  <script src="/features/pwa.js?v=5.1.0"></script>
+  <script src="/features/theme.js?v=5.1.0"></script>
+  <script src="/features/ignition.js?v=5.1.0"></script>
+  <script src="/features/places.js?v=5.1.0"></script>
+  <script src="/features/charging.js?v=5.1.0"></script>
+  <script src="/features/recaps.js?v=5.1.0"></script>
+  <script src="/features/refresh.js?v=5.1.0"></script>
+  <script src="/features/drives.js?v=5.1.0"></script>
+  <script src="/features/replay.js?v=5.1.0"></script>
+  <script src="/features/music.js?v=5.1.0"></script>
+  <script src="/features/share-cards.js?v=5.1.0"></script>
+  <script src="/features/command-palette.js?v=5.1.0"></script>
+  <script src="/features/dashboard-customization.js?v=5.1.0"></script>
+  <script src="/features/dashboard-widgets.js?v=5.1.0"></script>
+  <script src="/features/live-drive.js?v=5.1.0"></script>
+  <script src="/app.js?v=5.1.0"></script>
 </body>
 </html>
