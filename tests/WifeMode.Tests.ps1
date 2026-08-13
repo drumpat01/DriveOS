@@ -7,11 +7,16 @@ $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $auth = Get-Content (Join-Path $Root 'src\Security\DriveOS.WebAuth.psm1') -Raw
 $wifeHtml = Get-Content (Join-Path $Root 'web\wife.html') -Raw
 $wifeJs = Get-Content (Join-Path $Root 'web\wife.js') -Raw
+$wifeMusicFunction = [regex]::Match($server, '(?s)function Get-WifeModeMusic\s*\{.*?(?=\r?\nfunction Get-WifeModeVehicle)').Value
 
 Assert-True ($auth -match 'DRIVEOS_WIFE_USERNAME') 'Wife username configuration is missing.'
 Assert-True ($auth -match 'DRIVEOS_WIFE_PASSWORD_HASH') 'Wife password configuration is missing.'
 Assert-True ($server -match 'Get-WifeModeSummary') 'Wife summary endpoint is missing.'
 Assert-True ($server -match '"/api/wife/mode"') 'Wife Mode switch endpoint is missing.'
+Assert-True ($server -match '"/api/wife/music"') 'Deferred Wife Mode music endpoint is missing.'
+Assert-True ($server -match 'WifeModeMusicCache') 'Wife Mode music results are not cached.'
+Assert-True ($wifeMusicFunction -notmatch 'Get-SoundtrackForWindow') 'Wife Mode still builds full soundtrack payloads.'
+Assert-True ($wifeMusicFunction -notmatch 'Get-SpotifyTrackMetadata') 'Wife Mode still performs unnecessary Spotify metadata requests.'
 Assert-True ($wifeHtml -match 'Open Full JourneyDeck') 'Full JourneyDeck toggle is missing.'
 Assert-True ($wifeHtml -notmatch '(?i)charging|notification|sign out') 'Wife screen includes an excluded control.'
 Assert-True ($wifeHtml -match 'tripDetailView') 'Wife Mode read-only drive overview is missing.'
@@ -21,6 +26,8 @@ Assert-True ($wifeHtml -match 'wifeDriveMap') 'Wife Mode drive map is missing.'
 Assert-True ($wifeHtml -match 'wifeDetailMusic') 'Wife Mode soundtrack list is missing.'
 Assert-True ($wifeJs -match '/api/wife/vehicle') 'Wife dashboard does not request its vehicle summary.'
 Assert-True ($wifeJs -match '/api/wife/drives') 'Wife dashboard does not request its curated drives.'
+Assert-True ($wifeJs -match 'Music loading') 'Wife dashboard does not show deferred music progress.'
+Assert-True ($wifeJs -match 'void request\("/api/wife/music"\)') 'Wife dashboard blocks core data on Spotify enrichment.'
 Assert-True ($wifeJs -match '/api/wife/drive/map') 'Wife Mode does not request its read-only map data.'
 Assert-True ($wifeJs -match '/api/wife/mode') 'Wife dashboard cannot switch to full mode.'
 Assert-True ($wifeJs -match 'data-wife-drive-id') 'Wife Mode recent drives are not interactive.'
