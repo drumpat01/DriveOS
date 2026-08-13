@@ -13,8 +13,8 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
 
-[assembly: AssemblyTitle("DriveOS")]
-[assembly: AssemblyProduct("DriveOS")]
+[assembly: AssemblyTitle("JourneyDeck")]
+[assembly: AssemblyProduct("JourneyDeck")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
 [assembly: AssemblyVersion("5.0.0.0")]
 [assembly: AssemblyFileVersion("5.0.0.0")]
@@ -40,8 +40,8 @@ namespace DriveOSDesktop
             if (!createdNew)
             {
                 MessageBox.Show(
-                    "DriveOS is already running.",
-                    "DriveOS",
+                    "JourneyDeck is already running.",
+                    "JourneyDeck",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information
                 );
@@ -81,7 +81,7 @@ namespace DriveOSDesktop
             sessionToken = DriveOSSecurityPolicy.CreateSessionToken();
             backendHost = new DriveOSBackendHost();
 
-            Text = "DriveOS 5.0";
+            Text = "JourneyDeck 5.0";
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(980, 680);
             ClientSize = new Size(1420, 900);
@@ -126,8 +126,8 @@ namespace DriveOSDesktop
                     MessageBox.Show(
                         this,
                         "Local port 8787 is already in use.\r\n\r\n" +
-                        "Close the other DriveOS instance or the application using that port and try again.",
-                        "DriveOS",
+                        "Close the other JourneyDeck instance or the application using that port and try again.",
+                        "JourneyDeck",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Information
                     );
@@ -140,7 +140,7 @@ namespace DriveOSDesktop
 
                 if (!String.IsNullOrEmpty(installationError))
                 {
-                    MessageBox.Show(this, installationError, "DriveOS", MessageBoxButtons.OK,
+                    MessageBox.Show(this, installationError, "JourneyDeck", MessageBoxButtons.OK,
                         installationError.IndexOf("secrets", StringComparison.OrdinalIgnoreCase) >= 0
                             ? MessageBoxIcon.Warning
                             : MessageBoxIcon.Error);
@@ -162,11 +162,11 @@ namespace DriveOSDesktop
 
                     MessageBox.Show(
                         this,
-                        "DriveOS could not start its local backend.\r\n\r\n" +
+                        "JourneyDeck could not start its local backend.\r\n\r\n" +
                         (String.IsNullOrWhiteSpace(details)
                             ? "No additional error details were recorded."
                             : details),
-                        "DriveOS",
+                        "JourneyDeck",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error
                     );
@@ -210,8 +210,8 @@ namespace DriveOSDesktop
                 MessageBox.Show(
                     this,
                     "Microsoft Edge WebView2 Runtime is not installed on this computer.\r\n\r\n" +
-                    "DriveOS needs the WebView2 Runtime to display its interface.",
-                    "DriveOS",
+                    "JourneyDeck needs the WebView2 Runtime to display its interface.",
+                    "JourneyDeck",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error
                 );
@@ -222,8 +222,8 @@ namespace DriveOSDesktop
             {
                 MessageBox.Show(
                     this,
-                    "DriveOS could not open.\r\n\r\n" + ex.Message,
-                    "DriveOS",
+                    "JourneyDeck could not open.\r\n\r\n" + ex.Message,
+                    "JourneyDeck",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error
                 );
@@ -386,7 +386,7 @@ namespace DriveOSDesktop
 
             using (SaveFileDialog dialog = new SaveFileDialog())
             {
-                dialog.Title = "Save DriveOS share card";
+                dialog.Title = "Save JourneyDeck share card";
                 dialog.Filter = "PNG image (*.png)|*.png";
                 dialog.DefaultExt = "png";
                 dialog.AddExtension = true;

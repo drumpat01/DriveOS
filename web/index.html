@@ -3,118 +3,83 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>DriveOS</title>
+  <title>JourneyDeck</title>
   <meta name="theme-color" content="#eef6f8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="DriveOS">
-  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <meta name="apple-mobile-web-app-title" content="JourneyDeck">
+  <link rel="icon" type="image/svg+xml" href="/assets/journeydeck-mark.svg">
+  <link rel="alternate icon" type="image/png" href="/assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=5.0.1">
+  <link rel="stylesheet" href="/styles.css?v=5.0.4">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
     <div>
-      <strong>Add DriveOS to your iPhone</strong>
+      <strong>Add JourneyDeck to your iPhone</strong>
       <span>In Safari, tap Share, then Add to Home Screen.</span>
     </div>
     <button id="pwaInstallDismiss" type="button" aria-label="Dismiss install instructions">&times;</button>
   </div>
-  <div id="driveosIgnition" class="ignition" aria-hidden="true">
-    <div class="ignition-atmosphere ignition-atmosphere-a"></div>
-    <div class="ignition-atmosphere ignition-atmosphere-b"></div>
+  <div id="driveosIgnition" class="ignition journeydeck-launch" aria-hidden="true">
+    <div class="jd-launch-glow jd-launch-glow-a"></div>
+    <div class="jd-launch-glow jd-launch-glow-b"></div>
+    <div class="jd-launch-grid"></div>
 
-    <svg class="ignition-route-field"
-         viewBox="0 0 1200 700"
-         preserveAspectRatio="xMidYMid slice"
-         aria-hidden="true">
+    <svg class="jd-route-canvas" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
-        <linearGradient id="ignitionRouteGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#00a6cf"/>
-          <stop offset="52%" stop-color="#39d9be"/>
-          <stop offset="100%" stop-color="#93f0c4"/>
+        <linearGradient id="journeyDeckRoute" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#47e6d2"/>
+          <stop offset="52%" stop-color="#87f1c4"/>
+          <stop offset="100%" stop-color="#ffcb78"/>
         </linearGradient>
-        <filter id="ignitionRouteGlow" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="7" result="blur"/>
-          <feMerge>
-            <feMergeNode in="blur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
+        <filter id="journeyDeckGlow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="9" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
       </defs>
-
-      <path class="ignition-route ignition-route-glow"
-            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
-      <path class="ignition-route ignition-route-core"
-            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
-
-      <circle class="ignition-route-node ignition-route-node-a" cx="375" cy="395" r="7"/>
-      <circle class="ignition-route-node ignition-route-node-b" cx="705" cy="432" r="7"/>
-      <circle class="ignition-route-node ignition-route-node-c" cx="1010" cy="205" r="7"/>
+      <path class="jd-route jd-route-ghost" d="M-60,698 C146,687 205,551 350,571 C481,589 462,758 654,696 C828,640 792,411 983,417 C1144,421 1167,246 1500,160"/>
+      <path class="jd-route jd-route-main" d="M-60,698 C146,687 205,551 350,571 C481,589 462,758 654,696 C828,640 792,411 983,417 C1144,421 1167,246 1500,160"/>
+      <g class="jd-route-waypoints">
+        <circle cx="350" cy="571" r="7"/><circle cx="654" cy="696" r="7"/><circle cx="983" cy="417" r="7"/>
+        <circle class="jd-destination-ring" cx="1250" cy="299" r="15"/><circle class="jd-destination-dot" cx="1250" cy="299" r="5"/>
+      </g>
     </svg>
 
-    <div class="ignition-lockup">
-      <div class="ignition-logo-assembly" aria-hidden="true">
-        <div class="ignition-emblem-shell">
-          <div class="ignition-emblem-halo"></div>
-          <div class="ignition-piece ignition-emblem-ring"></div>
-
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-top"></div>
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-left"></div>
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-right"></div>
-
-          <div class="ignition-piece ignition-emblem-crest">
-            <span class="ignition-crest-wing ignition-crest-left"></span>
-            <span class="ignition-crest-wing ignition-crest-right"></span>
-            <span class="ignition-crest-stem"></span>
-          </div>
-
-          <div class="ignition-piece ignition-emblem-road">
-            <span class="ignition-road-lane"></span>
-          </div>
+    <main class="jd-launch-content">
+      <div class="jd-launch-kicker"><span></span> PERSONAL DRIVING ATLAS</div>
+      <div class="jd-launch-lockup">
+        <div class="jd-route-mark" aria-hidden="true">
+          <i class="jd-mark-card jd-mark-card-back"></i>
+          <i class="jd-mark-card jd-mark-card-front"></i>
+          <svg viewBox="0 0 76 76"><path d="M16 58c10-4 8-26 21-27 12-1 11 15 23 11"/><circle cx="16" cy="58" r="4"/><circle cx="60" cy="42" r="4"/></svg>
         </div>
-
-        <div class="ignition-wordmark-lockup">
-          <div class="ignition-brand-line ignition-piece">
-            Personal Vehicle Intelligence
-          </div>
-
-          <div class="ignition-wordmark" aria-hidden="true">
-            <span class="ignition-word-drive ignition-piece">DRIVE</span><span class="ignition-word-os ignition-piece">OS</span>
-          </div>
+        <div>
+          <div class="jd-launch-title"><span>JOURNEY</span><strong>DECK</strong></div>
+          <p>Every mile, beautifully remembered.</p>
         </div>
       </div>
 
-      <div class="ignition-system-line">
-        <span class="ignition-system-dot"></span>
-        <span id="ignitionSystemText">INITIALIZING VEHICLE INTELLIGENCE</span>
+      <div class="jd-loading-panel">
+        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.0</strong></div>
+        <div class="jd-loading-track"><i></i></div>
+        <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
+    </main>
 
-      <div class="ignition-progress">
-        <span class="ignition-progress-fill"></span>
-      </div>
-    </div>
-
-    <div class="ignition-data ignition-data-left">
-      <span>ROUTE CORE</span>
-      <strong>ONLINE</strong>
-    </div>
-
-    <div class="ignition-data ignition-data-right">
-      <span>DRIVEOS</span>
-      <strong id="ignitionVersion">5.0</strong>
-    </div>
+    <div class="jd-launch-corner jd-launch-corner-left"><span>JOURNEY LOG</span><strong>SYNCED</strong></div>
+    <div class="jd-launch-corner jd-launch-corner-right"><span>THE ROAD IS</span><strong>YOURS</strong></div>
   </div>
     <div id="backgroundActivityMonitor"
        class="background-activity-monitor idle"
        role="status"
        aria-live="polite"
-       aria-label="DriveOS background activity"
-       title="DriveOS background activity">
+       aria-label="JourneyDeck background activity"
+       title="JourneyDeck background activity">
     <span class="background-activity-indicator" aria-hidden="true"></span>
     <span id="backgroundActivityText">Idle</span>
     <span id="backgroundActivityCount" class="background-activity-count" hidden></span>
@@ -122,14 +87,14 @@
 <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="/assets/driveos-logo-v3.png" alt="DriveOS logo">
+        <img class="brand-logo" src="/assets/journeydeck-mark.svg" alt="JourneyDeck route mark">
         <div class="brand-copy">
           <div class="eyebrow">PERSONAL VEHICLE INTELLIGENCE</div>
-          <h1>DRIVE<span>OS</span></h1>
+          <h1>JOURNEY<span>DECK</span></h1>
         </div>
       </div>
 
-      <nav class="main-nav" aria-label="DriveOS">
+      <nav class="main-nav" aria-label="JourneyDeck">
         <button class="nav-button active" data-view="dashboard">Dashboard</button>
         <button class="nav-button" data-view="drives">Drives</button>
         <button class="nav-button" data-view="timeline">Timeline</button>
@@ -138,12 +103,12 @@
       </nav>
 
       <div class="topbar-right">
-        <button id="commandPaletteButton" class="command-palette-trigger" type="button" aria-label="Search DriveOS" aria-keyshortcuts="Control+K" title="Search DriveOS">
+        <button id="commandPaletteButton" class="command-palette-trigger" type="button" aria-label="Search JourneyDeck" aria-keyshortcuts="Control+K" title="Search JourneyDeck">
           <span class="command-trigger-icon" aria-hidden="true">&#x2315;</span>
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed DriveOS web build">5.0.0</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.0.0</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -179,7 +144,7 @@
       <section id="view-dashboard" class="view active-view">
         <div class="dashboard-customize-bar">
           <div>
-            <div class="section-label">YOUR DRIVEOS</div>
+            <div class="section-label">YOUR JOURNEYDECK</div>
             <span id="dashboardLayoutStatus">Dashboard layout saved on this device</span>
           </div>
           <button id="dashboardCustomizeButton" class="secondary-button" type="button" aria-expanded="false" aria-controls="dashboardCustomizer">Customize dashboard</button>
@@ -350,7 +315,7 @@
         </section>
 
         <section class="stats-grid v3-intelligence-grid dashboard-widget dashboard-status-widget" data-dashboard-widget="status" data-dashboard-title="Connection status" data-dashboard-default-size="wide">
-          <article class="stat-card"><span>DriveOS</span><strong id="driveOSStatus">ONLINE</strong></article>
+          <article class="stat-card"><span>JourneyDeck</span><strong id="driveOSStatus">ONLINE</strong></article>
           <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
           <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
           <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
@@ -510,7 +475,7 @@
           <div>
             <div class="section-label spotify-label">LISTENING ARCHIVE</div>
             <h2>Music</h2>
-            <p>Your DriveOS listening archive is powered by Spotify. Historical plays previously imported from Last.fm are preserved.</p>
+            <p>Your JourneyDeck listening archive is powered by Spotify. Historical plays previously imported from Last.fm are preserved.</p>
           </div>
           <div class="big-number"><span id="musicTotalPlays">--</span><small> archived plays</small></div>
         </div>
@@ -555,7 +520,7 @@
           </form>
 
           <div id="musicLocationStatus" class="music-location-status">
-            DriveOS uses Tessie start/end addresses for text searches. Click a drive map for GPS-precise song locations on that trip.
+            JourneyDeck uses Tessie start/end addresses for text searches. Click a drive map for GPS-precise song locations on that trip.
           </div>
 
           <div id="musicLocationResults" class="music-location-results"></div>
@@ -597,7 +562,7 @@
         </section>
 
         <section id="driveTimelineContent" class="drive-timeline-content" aria-live="polite">
-          <div class="empty-state"><h3>Loading timeline&hellip;</h3><p>DriveOS is combining your recent vehicle and music activity.</p></div>
+          <div class="empty-state"><h3>Loading timeline&hellip;</h3><p>JourneyDeck is combining your recent vehicle and music activity.</p></div>
         </section>
       </section>
 
@@ -607,7 +572,7 @@
           <div>
             <div class="section-label">30 DAY WINDOW</div>
             <h2>Statistics</h2>
-            <p>DriveOS will become more useful as Tessie records trips and the Spotify archive grows.</p>
+            <p>JourneyDeck will become more useful as Tessie records trips and the Spotify archive grows.</p>
           </div>
         </div>
 
@@ -625,7 +590,7 @@
           <div class="panel-heading recap-heading">
             <div>
               <div class="section-label">MONTHLY RECAP</div>
-              <h3>Your month in DriveOS</h3>
+              <h3>Your month in JourneyDeck</h3>
               <p class="panel-description">Driving, charging and Spotify together in one summary.</p>
             </div>
             <label class="recap-month-control"><span>Month</span><select id="recapMonthSelect"></select></label>
@@ -636,7 +601,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">DriveOS Web 5.0.2</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.0.3</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -645,13 +610,13 @@
   <div id="commandPalette" class="command-palette" role="dialog" aria-modal="true" aria-labelledby="commandPaletteHeading" aria-hidden="true">
     <div class="command-palette-backdrop" data-close-command-palette></div>
     <article class="command-palette-card">
-      <h2 id="commandPaletteHeading" class="sr-only">Search DriveOS</h2>
+      <h2 id="commandPaletteHeading" class="sr-only">Search JourneyDeck</h2>
       <label class="command-palette-search">
         <span aria-hidden="true">&#x2315;</span>
         <input id="commandPaletteInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search drives, places, songs, settings, or actions&#x2026;" aria-controls="commandPaletteResults">
         <kbd>Esc</kbd>
       </label>
-      <div id="commandPaletteResults" class="command-palette-results" role="listbox" aria-label="DriveOS search results"></div>
+      <div id="commandPaletteResults" class="command-palette-results" role="listbox" aria-label="JourneyDeck search results"></div>
       <footer class="command-palette-footer">
         <span><kbd>&#x2191;&#x2193;</kbd> Navigate</span>
         <span><kbd>Enter</kbd> Open</span>
@@ -670,11 +635,11 @@
 
       <div class="section-label">FRIENDLY PLACES</div>
       <h2 id="placeNamesModalHeading">Name the places you drive</h2>
-      <p class="modal-subtitle">Give repeated Tessie locations names such as Home, Work, School, or Gym. DriveOS keeps the original address for search and maps.</p>
+      <p class="modal-subtitle">Give repeated Tessie locations names such as Home, Work, School, or Gym. JourneyDeck keeps the original address for search and maps.</p>
       <div class="foursquare-place-source">
         <div>
           <strong>Automatic business names</strong>
-          <span id="foursquarePlaceStatus">Foursquare is optional. DriveOS only checks repeated locations you have not named.</span>
+          <span id="foursquarePlaceStatus">Foursquare is optional. JourneyDeck only checks repeated locations you have not named.</span>
         </div>
         <button class="secondary-button" type="button" data-foursquare-configure>Connect Foursquare</button>
       </div>
@@ -737,7 +702,7 @@
         </div>
 
         <p class="map-privacy">
-          Route and song coordinates stay in your local DriveOS browser session.
+          Route and song coordinates stay in your local JourneyDeck browser session.
           OpenFreeMap supplies the basemap tiles underneath them.
         </p>
       </section>
@@ -873,27 +838,27 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.0.2"></script>
-  <script src="/core/dom.js?v=5.0.2"></script>
-  <script src="/core/state.js?v=5.0.2"></script>
-  <script src="/core/platform.js?v=5.0.2"></script>
-  <script src="/core/api.js?v=5.0.2"></script>
-  <script src="/components/song-artwork.js?v=5.0.2"></script>
-  <script src="/features/navigation.js?v=5.0.2"></script>
-  <script src="/features/pwa.js?v=5.0.2"></script>
-  <script src="/features/theme.js?v=5.0.2"></script>
-  <script src="/features/ignition.js?v=5.0.2"></script>
-  <script src="/features/places.js?v=5.0.2"></script>
-  <script src="/features/charging.js?v=5.0.2"></script>
-  <script src="/features/recaps.js?v=5.0.2"></script>
-  <script src="/features/refresh.js?v=5.0.2"></script>
-  <script src="/features/drives.js?v=5.0.2"></script>
-  <script src="/features/replay.js?v=5.0.2"></script>
-  <script src="/features/music.js?v=5.0.2"></script>
-  <script src="/features/share-cards.js?v=5.0.2"></script>
-  <script src="/features/command-palette.js?v=5.0.2"></script>
-  <script src="/features/dashboard-customization.js?v=5.0.2"></script>
-  <script src="/features/dashboard-widgets.js?v=5.0.2"></script>
-  <script src="/app.js?v=5.0.2"></script>
+  <script src="/core/build.js?v=5.0.3"></script>
+  <script src="/core/dom.js?v=5.0.3"></script>
+  <script src="/core/state.js?v=5.0.3"></script>
+  <script src="/core/platform.js?v=5.0.3"></script>
+  <script src="/core/api.js?v=5.0.3"></script>
+  <script src="/components/song-artwork.js?v=5.0.3"></script>
+  <script src="/features/navigation.js?v=5.0.4"></script>
+  <script src="/features/pwa.js?v=5.0.3"></script>
+  <script src="/features/theme.js?v=5.0.3"></script>
+  <script src="/features/ignition.js?v=5.0.3"></script>
+  <script src="/features/places.js?v=5.0.3"></script>
+  <script src="/features/charging.js?v=5.0.3"></script>
+  <script src="/features/recaps.js?v=5.0.3"></script>
+  <script src="/features/refresh.js?v=5.0.3"></script>
+  <script src="/features/drives.js?v=5.0.3"></script>
+  <script src="/features/replay.js?v=5.0.3"></script>
+  <script src="/features/music.js?v=5.0.3"></script>
+  <script src="/features/share-cards.js?v=5.0.3"></script>
+  <script src="/features/command-palette.js?v=5.0.3"></script>
+  <script src="/features/dashboard-customization.js?v=5.0.3"></script>
+  <script src="/features/dashboard-widgets.js?v=5.0.3"></script>
+  <script src="/app.js?v=5.0.3"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@
 
   function setReady(readiness) {
     startupReady = Promise.resolve(readiness).catch(error => {
-      console.error("DriveOS startup refresh failed:", error);
+      console.error("JourneyDeck startup refresh failed:", error);
     });
   }
 
