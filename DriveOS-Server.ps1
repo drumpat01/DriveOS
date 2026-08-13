@@ -63,6 +63,7 @@ $SpotifyTokenFile = Join-Path $DataDirectory "spotify-token.json"
 $SpotifyOAuthStateFile = Join-Path $DataDirectory "spotify-oauth-state.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
+$WifeModeMusicFile = Join-Path $DataDirectory "wife-mode-music.json"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
 $FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
@@ -94,8 +95,8 @@ $DriveDataCacheTtlSeconds = 300
 $script:SpotifyTokenCacheMemory = $null
 $script:SpotifyHistoryCache = $null
 $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
-$script:WifeModeMusicCache = $null
-$script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:WifeModeMusicRecordsMemory = @()
+$script:WifeModeMusicRecordsLoaded = $false
 $script:MusicStatsCache = $null
 $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
 $script:SpotifyCatalogCacheMemory = $null
@@ -517,8 +518,6 @@ function Set-SpotifyHistoryMemoryCache {
     # Aggregate music statistics depend on the listening archive.
     $script:MusicStatsCache = $null
     $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
-    $script:WifeModeMusicCache = $null
-    $script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function Clear-SpotifyHistoryMemoryCache {
@@ -526,8 +525,6 @@ function Clear-SpotifyHistoryMemoryCache {
     $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
     $script:MusicStatsCache = $null
     $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
-    $script:WifeModeMusicCache = $null
-    $script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function ConvertTo-ListeningMatchText {
@@ -3133,59 +3130,146 @@ function Get-WifeModeToday {
     return [ordered]@{ miles = [math]::Round([double]$Miles, 1); trips = $Today.Count }
 }
 
-function Get-WifeModeMusic {
-    $Now = [DateTimeOffset]::UtcNow
-    if ($null -ne $script:WifeModeMusicCache -and $script:WifeModeMusicCacheExpiresAt -gt $Now) {
-        return @($script:WifeModeMusicCache)
+function Get-WifeModeMusicRecords {
+    if ($script:WifeModeMusicRecordsLoaded) {
+        return @($script:WifeModeMusicRecordsMemory)
     }
 
-    $History = @(Get-SpotifyHistory)
-    $Windows = @(Get-WifeModeBaseDrives | Select-Object -First 6 | ForEach-Object {
-        [PSCustomObject]@{
-            id = $_.id
-            start = [DateTimeOffset]::Parse($_.startedAt)
-            end = [DateTimeOffset]::Parse($_.endedAt)
-            artists = @{}
-            songCount = 0
+    $Records = @()
+    try {
+        $Stored = if ($Repository.Provider -eq "Turso") {
+            Get-DriveOSTursoState -Repository $Repository -Key "wife-mode-music"
         }
-    })
+        elseif (Test-Path $WifeModeMusicFile -PathType Leaf) {
+            Read-DriveOSJson -Path $WifeModeMusicFile
+        }
+        else {
+            $null
+        }
 
-    if ($Windows.Count -eq 0) { return @() }
-    $Earliest = @($Windows | Sort-Object start | Select-Object -First 1)[0].start
-    $Latest = @($Windows | Sort-Object end -Descending | Select-Object -First 1)[0].end
+        if ($Stored -and $Stored.PSObject.Properties['drives']) {
+            $Records = @($Stored.drives)
+        }
+    }
+    catch {
+        Write-DriveOSServerLog "Wife Mode music cache lookup failed: $($_.Exception.Message)"
+    }
 
-    # Wife Mode only displays a top-artist label. Walk the listening archive
-    # once and avoid metadata/artwork requests for data this view never renders.
-    foreach ($Record in $History) {
-        try {
-            $TrackStart = [DateTimeOffset]::Parse($Record.played_at)
-            if ($TrackStart -gt $Latest) { continue }
-            $DurationMs = if ($Record.duration_ms) { [double]$Record.duration_ms } else { 0 }
-            $TrackEnd = $TrackStart.AddMilliseconds($DurationMs)
-            if ($TrackEnd -lt $Earliest) { continue }
+    $script:WifeModeMusicRecordsMemory = @($Records)
+    $script:WifeModeMusicRecordsLoaded = $true
+    return @($Records)
+}
 
-            foreach ($Window in $Windows) {
-                if ($TrackStart -lt $Window.end -and $TrackEnd -gt $Window.start) {
-                    $Window.songCount++
-                    $Artist = "$($Record.artist)".Trim()
-                    if ($Artist) {
-                        if (-not $Window.artists.ContainsKey($Artist)) { $Window.artists[$Artist] = 0 }
-                        $Window.artists[$Artist]++
+function Save-WifeModeMusicRecords {
+    param([object[]]$Records)
+
+    $Stored = [PSCustomObject]@{
+        version = 1
+        updatedAt = [DateTimeOffset]::UtcNow.ToString("o")
+        drives = @($Records)
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState -Repository $Repository -Key "wife-mode-music" -Value $Stored
+    }
+    else {
+        Write-DriveOSJson -Path $WifeModeMusicFile -Value $Stored
+    }
+
+    $script:WifeModeMusicRecordsMemory = @($Records)
+    $script:WifeModeMusicRecordsLoaded = $true
+}
+
+function Get-WifeModeMusic {
+    $Drives = @(Get-WifeModeBaseDrives | Select-Object -First 6)
+    if ($Drives.Count -eq 0) { return @() }
+
+    $StoredRecords = @(Get-WifeModeMusicRecords)
+    $StoredByDrive = @{}
+    foreach ($Record in $StoredRecords) {
+        if ($Record.id) { $StoredByDrive["$($Record.id)"] = $Record }
+    }
+
+    $ResultsByDrive = @{}
+    foreach ($Drive in $Drives) {
+        $DriveId = "$($Drive.id)"
+        if ($StoredByDrive.ContainsKey($DriveId)) {
+            $ResultsByDrive[$DriveId] = $StoredByDrive[$DriveId]
+        }
+    }
+
+    $MissingDrives = @($Drives | Where-Object { -not $StoredByDrive.ContainsKey("$($_.id)") })
+    if ($MissingDrives.Count -gt 0) {
+        $History = @(Get-SpotifyHistory)
+        $Windows = @($MissingDrives | ForEach-Object {
+            [PSCustomObject]@{
+                id = "$($_.id)"
+                start = [DateTimeOffset]::Parse($_.startedAt)
+                end = [DateTimeOffset]::Parse($_.endedAt)
+                artists = @{}
+                songCount = 0
+            }
+        })
+
+        $Earliest = @($Windows | Sort-Object start | Select-Object -First 1)[0].start
+        $Latest = @($Windows | Sort-Object end -Descending | Select-Object -First 1)[0].end
+
+        foreach ($HistoryRecord in $History) {
+            try {
+                $TrackStart = [DateTimeOffset]::Parse($HistoryRecord.played_at)
+                if ($TrackStart -gt $Latest) { continue }
+                $DurationMs = if ($HistoryRecord.duration_ms) { [double]$HistoryRecord.duration_ms } else { 0 }
+                $TrackEnd = $TrackStart.AddMilliseconds($DurationMs)
+                if ($TrackEnd -lt $Earliest) { continue }
+
+                foreach ($Window in $Windows) {
+                    if ($TrackStart -lt $Window.end -and $TrackEnd -gt $Window.start) {
+                        $Window.songCount++
+                        $Artist = "$($HistoryRecord.artist)".Trim()
+                        if ($Artist) {
+                            if (-not $Window.artists.ContainsKey($Artist)) { $Window.artists[$Artist] = 0 }
+                            $Window.artists[$Artist]++
+                        }
                     }
                 }
             }
+            catch {}
         }
-        catch {}
+
+        $FinalizationCutoff = [DateTimeOffset]::UtcNow.AddMinutes(-15)
+        $NewPermanentRecords = @()
+        foreach ($Window in $Windows) {
+            $TopArtist = @($Window.artists.GetEnumerator() | Sort-Object @{ Expression = 'Value'; Descending = $true }, @{ Expression = 'Key'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Key })[0]
+            $MusicRecord = [PSCustomObject]@{
+                id = $Window.id
+                topArtist = $TopArtist
+                songCount = $Window.songCount
+                calculatedAt = [DateTimeOffset]::UtcNow.ToString("o")
+            }
+            $ResultsByDrive[$Window.id] = $MusicRecord
+
+            # Allow Spotify's archive sync to catch up before permanently
+            # finalizing a just-finished drive. Finalized drives never recalculate.
+            if ($Window.end -le $FinalizationCutoff) {
+                $NewPermanentRecords += $MusicRecord
+            }
+        }
+
+        if ($NewPermanentRecords.Count -gt 0) {
+            Save-WifeModeMusicRecords -Records @($StoredRecords + $NewPermanentRecords)
+        }
     }
 
-    $Result = @($Windows | ForEach-Object {
-        $TopArtist = @($_.artists.GetEnumerator() | Sort-Object @{ Expression = 'Value'; Descending = $true }, @{ Expression = 'Key'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Key })[0]
-        [ordered]@{ id = $_.id; topArtist = $TopArtist; songCount = $_.songCount }
+    return @($Drives | ForEach-Object {
+        $Result = $ResultsByDrive["$($_.id)"]
+        [ordered]@{
+            id = $_.id
+            topArtist = if ($Result) { $Result.topArtist } else { $null }
+            songCount = if ($Result) { $Result.songCount } else { 0 }
+        }
     })
-    $script:WifeModeMusicCache = @($Result)
-    $script:WifeModeMusicCacheExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
-    return $Result
 }
+
 
 function Get-WifeModeVehicle {
     $Vehicle = Get-VehicleSummary
