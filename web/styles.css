@@ -6503,6 +6503,14 @@ h1 span {
 .command-palette-search > span { font-size: 1.2rem; }
 .command-palette-search input { width: 100%; border: 0; outline: 0; background: transparent; color: #102832; font: inherit; font-size: 1.05rem; font-weight: 700; }
 .command-palette-search input::placeholder { color: #8299a1; font-weight: 600; }
+.command-answer { display: grid; gap: 9px; margin: 12px; padding: 16px; border: 1px solid rgba(11,169,190,.22); border-radius: 15px; background: rgba(11,169,190,.07); }
+.command-answer strong { color: var(--text); font-size: 1rem; line-height: 1.45; }
+.command-answer p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.command-answer-evidence { display: grid; gap: 6px; }
+.command-answer-evidence span { padding: 8px 10px; border: 1px solid rgba(11,169,190,.16); border-radius: 10px; background: rgba(255,255,255,.48); color: var(--text); font-size: .72rem; line-height: 1.35; }
+.command-answer-suggestions { display: flex; flex-wrap: wrap; gap: 7px; }
+.command-answer-suggestions button { padding: 8px 10px; border: 1px solid rgba(11,169,190,.22); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: .7rem; font-weight: 700; cursor: pointer; }
+:root[data-theme="dark"] .command-answer-evidence span { background: rgba(255,255,255,.035); }
 .command-palette-results { max-height: min(58vh, 470px); overflow-y: auto; padding: 9px; }
 .command-group-label { padding: 10px 11px 6px; color: #78909a; font-size: .62rem; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
 .command-result { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 11px; width: 100%; min-height: 58px; padding: 8px 11px; border: 0; border-radius: 12px; background: transparent; color: #17333d; text-align: left; cursor: pointer; }

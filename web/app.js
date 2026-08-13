@@ -3056,6 +3056,7 @@ refreshFeature.bind();
 
 const commandPaletteFeature = window.DriveOSFeatures.commandPalette.create({
   state,
+  api: window.DriveOSApi,
   actions: {
     showView,
     openDrive: openDriveModal,
