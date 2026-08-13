@@ -94,6 +94,8 @@ $DriveDataCacheTtlSeconds = 300
 $script:SpotifyTokenCacheMemory = $null
 $script:SpotifyHistoryCache = $null
 $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
+$script:WifeModeMusicCache = $null
+$script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
 $script:MusicStatsCache = $null
 $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
 $script:SpotifyCatalogCacheMemory = $null
@@ -515,6 +517,8 @@ function Set-SpotifyHistoryMemoryCache {
     # Aggregate music statistics depend on the listening archive.
     $script:MusicStatsCache = $null
     $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+    $script:WifeModeMusicCache = $null
+    $script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function Clear-SpotifyHistoryMemoryCache {
@@ -522,6 +526,8 @@ function Clear-SpotifyHistoryMemoryCache {
     $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
     $script:MusicStatsCache = $null
     $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
+    $script:WifeModeMusicCache = $null
+    $script:WifeModeMusicCacheExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function ConvertTo-ListeningMatchText {
@@ -3128,12 +3134,57 @@ function Get-WifeModeToday {
 }
 
 function Get-WifeModeMusic {
+    $Now = [DateTimeOffset]::UtcNow
+    if ($null -ne $script:WifeModeMusicCache -and $script:WifeModeMusicCacheExpiresAt -gt $Now) {
+        return @($script:WifeModeMusicCache)
+    }
+
     $History = @(Get-SpotifyHistory)
-    return @(Get-WifeModeBaseDrives | Select-Object -First 6 | ForEach-Object {
-        $Songs = @(Get-SoundtrackForWindow -DriveStart ([DateTimeOffset]::Parse($_.startedAt)) -DriveEnd ([DateTimeOffset]::Parse($_.endedAt)) -History $History)
-        $TopArtist = @($Songs | Where-Object { $_.artist } | Group-Object artist | Sort-Object @{ Expression = 'Count'; Descending = $true }, @{ Expression = 'Name'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Name })[0]
-        [ordered]@{ id = $_.id; topArtist = $TopArtist; songCount = $Songs.Count }
+    $Windows = @(Get-WifeModeBaseDrives | Select-Object -First 6 | ForEach-Object {
+        [PSCustomObject]@{
+            id = $_.id
+            start = [DateTimeOffset]::Parse($_.startedAt)
+            end = [DateTimeOffset]::Parse($_.endedAt)
+            artists = @{}
+            songCount = 0
+        }
     })
+
+    if ($Windows.Count -eq 0) { return @() }
+    $Earliest = @($Windows | Sort-Object start | Select-Object -First 1)[0].start
+    $Latest = @($Windows | Sort-Object end -Descending | Select-Object -First 1)[0].end
+
+    # Wife Mode only displays a top-artist label. Walk the listening archive
+    # once and avoid metadata/artwork requests for data this view never renders.
+    foreach ($Record in $History) {
+        try {
+            $TrackStart = [DateTimeOffset]::Parse($Record.played_at)
+            if ($TrackStart -gt $Latest) { continue }
+            $DurationMs = if ($Record.duration_ms) { [double]$Record.duration_ms } else { 0 }
+            $TrackEnd = $TrackStart.AddMilliseconds($DurationMs)
+            if ($TrackEnd -lt $Earliest) { continue }
+
+            foreach ($Window in $Windows) {
+                if ($TrackStart -lt $Window.end -and $TrackEnd -gt $Window.start) {
+                    $Window.songCount++
+                    $Artist = "$($Record.artist)".Trim()
+                    if ($Artist) {
+                        if (-not $Window.artists.ContainsKey($Artist)) { $Window.artists[$Artist] = 0 }
+                        $Window.artists[$Artist]++
+                    }
+                }
+            }
+        }
+        catch {}
+    }
+
+    $Result = @($Windows | ForEach-Object {
+        $TopArtist = @($_.artists.GetEnumerator() | Sort-Object @{ Expression = 'Value'; Descending = $true }, @{ Expression = 'Key'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Key })[0]
+        [ordered]@{ id = $_.id; topArtist = $TopArtist; songCount = $_.songCount }
+    })
+    $script:WifeModeMusicCache = @($Result)
+    $script:WifeModeMusicCacheExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    return $Result
 }
 
 function Get-WifeModeVehicle {
