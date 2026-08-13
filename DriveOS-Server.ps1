@@ -3959,7 +3959,8 @@ try {
                     continue
                 }
 
-                if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $Method -eq "POST" -and $Path -ne "/api/wife/mode") {
+                $WifePostAllowed = $Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map")
+                if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $Method -eq "POST" -and -not $WifePostAllowed) {
                     Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
                     continue
                 }
