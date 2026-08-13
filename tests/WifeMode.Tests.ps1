@@ -7,6 +7,7 @@ $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $auth = Get-Content (Join-Path $Root 'src\Security\DriveOS.WebAuth.psm1') -Raw
 $wifeHtml = Get-Content (Join-Path $Root 'web\wife.html') -Raw
 $wifeJs = Get-Content (Join-Path $Root 'web\wife.js') -Raw
+$wifeMusicFunction = [regex]::Match($server, '(?s)function Get-WifeModeMusic\s*\{.*?(?=\r?\nfunction Get-WifeModeVehicle)').Value
 
 Assert-True ($auth -match 'DRIVEOS_WIFE_USERNAME') 'Wife username configuration is missing.'
 Assert-True ($auth -match 'DRIVEOS_WIFE_PASSWORD_HASH') 'Wife password configuration is missing.'
