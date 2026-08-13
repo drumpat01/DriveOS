@@ -7906,3 +7906,4 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
     font-size: .72rem !important;
   }
 }
+.return-wife-mode { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:var(--panel); color:var(--accent); font-weight:800; white-space:nowrap; }
