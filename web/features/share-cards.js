@@ -211,7 +211,7 @@
       ctx.fillStyle = theme.accent;
       ctx.font = '800 24px "Segoe UI", sans-serif';
       ctx.letterSpacing = "5px";
-      ctx.fillText("DRIVEOS · ROAD NOTE", 72, 72);
+      ctx.fillText("JOURNEYDECK · ROAD NOTE", 72, 72);
       ctx.letterSpacing = "0px";
 
       ctx.fillStyle = theme.text;
@@ -259,7 +259,7 @@
       ctx.strokeStyle = "rgba(255,255,255,.11)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(72, 1282); ctx.lineTo(1008, 1282); ctx.stroke();
       ctx.fillStyle = theme.footer; ctx.font = '600 19px "Segoe UI", sans-serif';
-      ctx.fillText("Made locally with DriveOS", 72, 1323);
+      ctx.fillText("Made locally with JourneyDeck", 72, 1323);
       ctx.textAlign = "right";
       ctx.fillStyle = card.privacy.homeProtected ? theme.accent2 : theme.footer;
       ctx.fillText(card.privacy.homeProtected ? "HOME LOCATION PROTECTED · SAGINAW, TX" : "STREET ADDRESSES HIDDEN", 1008, 1323);
@@ -351,13 +351,13 @@
 
     function canvasBlob() {
       return new Promise((resolve, reject) => {
-        $("shareCardCanvas").toBlob(blob => blob ? resolve(blob) : reject(new Error("DriveOS could not create the image.")), "image/png", 1);
+        $("shareCardCanvas").toBlob(blob => blob ? resolve(blob) : reject(new Error("JourneyDeck could not create the image.")), "image/png", 1);
       });
     }
 
     function filename() {
       const title = String(state.shareCardData?.title || "drive").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      return `driveos-${title || "drive"}.png`;
+      return `journeydeck-${title || "drive"}.png`;
     }
 
     async function download() {
@@ -374,7 +374,7 @@
       render();
       const blob = await canvasBlob();
       const file = new File([blob], filename(), { type: "image/png" });
-      const postText = `${state.shareCardData.title}\n${state.shareCardData.startLabel} \u2192 ${state.shareCardData.endLabel}\n${state.shareCardData.stats.miles ?? "--"} miles · ${state.shareCardData.stats.durationMinutes ?? "--"} minutes\n#DriveOS`;
+      const postText = `${state.shareCardData.title}\n${state.shareCardData.startLabel} \u2192 ${state.shareCardData.endLabel}\n${state.shareCardData.stats.miles ?? "--"} miles · ${state.shareCardData.stats.durationMinutes ?? "--"} minutes\n#JourneyDeck`;
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
         await navigator.share({ files: [file], title: state.shareCardData.title, text: postText });
         $("shareCardMessage").textContent = "Choose X in the share sheet to post the card.";
@@ -404,7 +404,7 @@
         $("shareCardWorkspace").hidden = false;
         render();
       } catch (error) {
-        $("shareCardLoading").textContent = error.message || "DriveOS could not create this card.";
+        $("shareCardLoading").textContent = error.message || "JourneyDeck could not create this card.";
       }
     }
 
