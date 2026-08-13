@@ -3054,7 +3054,7 @@ function Test-DriveOSAuthenticatedWebRequest {
     )
 
     if (-not $RuntimeConfig.IsWeb -or -not $WebAuthConfig) {
-        return $false
+        return $null
     }
 
     $Token = Get-DriveOSCookieValue `
@@ -3062,13 +3062,37 @@ function Test-DriveOSAuthenticatedWebRequest {
         -CookieName "DriveOSSession"
 
     if (-not $Token) {
-        return $false
+        return $null
     }
 
-    return Test-DriveOSWebSessionToken `
-        -Token $Token `
-        -OwnerEmail $WebAuthConfig.OwnerEmail `
-        -AuthSecret $WebAuthConfig.AuthSecret
+    $Principal = Get-DriveOSWebSessionPrincipal -Token $Token -AuthSecret $WebAuthConfig.AuthSecret
+    if (-not $Principal) { return $null }
+    if ($Principal.Role -eq "owner" -and $Principal.Subject -eq $WebAuthConfig.OwnerEmail) { return $Principal }
+    if ($Principal.Role -eq "wife" -and $WebAuthConfig.WifeUsername -and $Principal.Subject -eq $WebAuthConfig.WifeUsername) { return $Principal }
+    return $null
+}
+
+function Get-WifeModeSummary {
+    $Vehicle = Get-VehicleSummary
+    $Drives = @(Get-CachedDashboardDrives | Select-Object -First 6 | ForEach-Object {
+        [ordered]@{
+            id = $_.id; dateLabel = $_.dateLabel; shortDateLabel = $_.shortDateLabel
+            startTime = $_.startTime; endTime = $_.endTime
+            startingLocation = $_.startingLocation; endingLocation = $_.endingLocation
+            miles = $_.miles; durationMinutes = $_.durationMinutes; startedAt = $_.startedAt
+        }
+    })
+    $Today = @($Drives | Where-Object { "$($_.dateLabel)" -eq ([DateTimeOffset]::Now.ToString("ddd, MMM d")) })
+    return [ordered]@{
+        vehicle = [ordered]@{ name = $Vehicle.name; battery = $Vehicle.battery; rangeMiles = $Vehicle.rangeMiles; state = $Vehicle.state; gpsAsOf = $Vehicle.gpsAsOf }
+        today = [ordered]@{ miles = [math]::Round((@($Today | Measure-Object -Property miles -Sum).Sum), 1); trips = $Today.Count }
+        drives = $Drives
+    }
+}
+
+function Get-WifeModeLiveLocation {
+    $Vehicle = Get-VehicleSummary -ForceRefresh
+    return [ordered]@{ name = $Vehicle.name; latitude = $Vehicle.latitude; longitude = $Vehicle.longitude; heading = $Vehicle.heading; gpsAsOf = $Vehicle.gpsAsOf }
 }
 
 # ------------------------------------------------------------
@@ -3083,7 +3107,8 @@ function Handle-Request {
         [string]$Target,
         [string]$BodyText,
         [hashtable]$Headers,
-        [string]$ClientKey
+        [string]$ClientKey,
+        $Principal = $null
     )
 
     try {
@@ -3100,6 +3125,11 @@ function Handle-Request {
                     Send-StaticFile `
                         -Stream $Stream `
                         -RequestPath "/login.html"
+                    return
+                }
+
+                "/wife" {
+                    Send-StaticFile -Stream $Stream -RequestPath "/wife.html"
                     return
                 }
 
@@ -3127,8 +3157,19 @@ function Handle-Request {
                 "/api/auth/session" {
                     Send-Json -Stream $Stream -Object @{
                         authenticated = $true
-                        ownerEmail = $WebAuthConfig.OwnerEmail
+                        role = if ($Principal) { $Principal.Role } else { "owner" }
+                        mode = if ($Principal) { $Principal.Mode } else { "full" }
                     }
+                    return
+                }
+
+                "/api/wife/summary" {
+                    Send-Json -Stream $Stream -Object (Get-WifeModeSummary)
+                    return
+                }
+
+                "/api/wife/live" {
+                    Send-Json -Stream $Stream -Object (Get-WifeModeLiveLocation)
                     return
                 }
 
@@ -3279,15 +3320,17 @@ function Handle-Request {
                     $Body.password = $null
                     $PasswordText = $null
 
-                    $EmailOk = Test-FixedTimeStringEquals `
-                        $Email `
-                        $WebAuthConfig.OwnerEmail
+                    $OwnerEmailOk = Test-FixedTimeStringEquals $Email $WebAuthConfig.OwnerEmail
+                    $OwnerPasswordOk = Test-DriveOSPassword -Password $SecurePassword -StoredHash $WebAuthConfig.PasswordHash
+                    $WifeUsernameOk = $false
+                    $WifePasswordOk = $false
+                    if ($WebAuthConfig.WifeUsername) {
+                        $WifeUsernameOk = Test-FixedTimeStringEquals $Email $WebAuthConfig.WifeUsername
+                        $WifePasswordOk = Test-DriveOSPassword -Password $SecurePassword -StoredHash $WebAuthConfig.WifePasswordHash
+                    }
+                    $Role = if ($OwnerEmailOk -and $OwnerPasswordOk) { "owner" } elseif ($WifeUsernameOk -and $WifePasswordOk) { "wife" } else { $null }
 
-                    $PasswordOk = Test-DriveOSPassword `
-                        -Password $SecurePassword `
-                        -StoredHash $WebAuthConfig.PasswordHash
-
-                    if (-not $EmailOk -or -not $PasswordOk) {
+                    if (-not $Role) {
                         Register-DriveOSLoginFailure -ClientKey $ClientKey
 
                         Send-Json `
@@ -3303,7 +3346,9 @@ function Handle-Request {
                     Clear-DriveOSLoginFailures -ClientKey $ClientKey
 
                     $Token = New-DriveOSWebSessionToken `
-                        -OwnerEmail $WebAuthConfig.OwnerEmail `
+                        -OwnerEmail $(if ($Role -eq "wife") { $WebAuthConfig.WifeUsername } else { $WebAuthConfig.OwnerEmail }) `
+                        -Role $Role `
+                        -Mode $(if ($Role -eq "wife") { "wife" } else { "full" }) `
                         -AuthSecret $WebAuthConfig.AuthSecret `
                         -SessionHours $RuntimeConfig.SessionHours
 
@@ -3318,6 +3363,7 @@ function Handle-Request {
                         } `
                         -Object @{
                             authenticated = $true
+                            role = $Role
                         }
                     return
                 }
@@ -3331,6 +3377,29 @@ function Handle-Request {
                         -Object @{
                             authenticated = $false
                         }
+                    return
+                }
+
+                "/api/wife/mode" {
+                    if (-not $Principal -or $Principal.Role -ne "wife") {
+                        Send-Json -Stream $Stream -StatusCode 403 -StatusText "Forbidden" -Object @{ error = "Wife Mode access is required." }
+                        return
+                    }
+
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields mode
+                    $Mode = "$($Body.mode)".Trim().ToLowerInvariant()
+                    if ($Mode -notin @("wife", "full")) {
+                        Send-Json -Stream $Stream -StatusCode 400 -StatusText "Bad Request" -Object @{ error = "Mode must be wife or full." }
+                        return
+                    }
+
+                    $Token = New-DriveOSWebSessionToken `
+                        -OwnerEmail $WebAuthConfig.WifeUsername `
+                        -Role "wife" `
+                        -Mode $Mode `
+                        -AuthSecret $WebAuthConfig.AuthSecret `
+                        -SessionHours $RuntimeConfig.SessionHours
+                    Send-Json -Stream $Stream -AdditionalHeaders @{ "Set-Cookie" = (New-DriveOSWebSessionCookie -Token $Token -SessionHours $RuntimeConfig.SessionHours) } -Object @{ mode = $Mode }
                     return
                 }
 
@@ -3753,6 +3822,7 @@ try {
 
             $Path = ($Target -split "\?", 2)[0]
             $BodyText = ""
+            $WebPrincipal = $null
 
             if ($RuntimeConfig.IsWeb) {
                 $ScheduledSpotifySyncOk = Test-DriveOSScheduledSyncRequest `
@@ -3780,8 +3850,8 @@ try {
                     continue
                 }
 
-                $WebSessionOk = Test-DriveOSAuthenticatedWebRequest `
-                    -Headers $Headers
+                $WebPrincipal = Test-DriveOSAuthenticatedWebRequest -Headers $Headers
+                $WebSessionOk = $null -ne $WebPrincipal
 
                 $IsPublicWebRequest = Test-DriveOSWebPublicRequest `
                     -Method $Method `
@@ -3806,6 +3876,24 @@ try {
                     }
 
                     continue
+                }
+
+                if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $Method -eq "POST" -and $Path -ne "/api/wife/mode") {
+                    Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
+                    continue
+                }
+
+                if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $WebPrincipal.Mode -ne "full") {
+                    $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/live")
+                    $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -eq "/api/wife/mode")
+                    if ($Path.StartsWith("/api/") -and -not $WifeApiAllowed) {
+                        Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
+                        continue
+                    }
+                    if ($Path -eq "/") {
+                        Send-Redirect -Stream $Stream -Location "/wife"
+                        continue
+                    }
                 }
 
                 if (
@@ -3894,7 +3982,8 @@ try {
                 -Target $Target `
                 -BodyText $BodyText `
                 -Headers $Headers `
-                -ClientKey $Remote.Address.ToString()
+                -ClientKey $Remote.Address.ToString() `
+                -Principal $WebPrincipal
         }
         catch {
             if (-not (Test-DriveOSClientDisconnectError -Exception $_.Exception)) {

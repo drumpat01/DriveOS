@@ -3103,6 +3103,23 @@ if (spotifyConnectButton) {
 
 window.DriveOSTheme.initialize();
 
+// Companion accounts can temporarily open the full dashboard, then return to
+// their deliberately simpler mobile view without signing out.
+void (async () => {
+  try {
+    const response = await fetch("/api/auth/session", { credentials: "same-origin" });
+    const session = await response.json();
+    if (!response.ok || session.role !== "wife") return;
+    const button = $("returnToWifeMode");
+    if (!button) return;
+    button.hidden = false;
+    button.addEventListener("click", async () => {
+      await fetch("/api/wife/mode", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "wife" }) });
+      location.replace("/wife");
+    });
+  } catch { /* The dashboard remains usable if session decoration is unavailable. */ }
+})();
+
 
 // ---------------------------------------------------------------------
 // DriveOS 3.0 \u2014 Ignition launch sequence

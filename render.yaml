@@ -26,6 +26,10 @@ services:
         sync: false
       - key: DRIVEOS_PASSWORD_HASH
         sync: false
+      - key: DRIVEOS_WIFE_USERNAME
+        sync: false
+      - key: DRIVEOS_WIFE_PASSWORD_HASH
+        sync: false
       - key: DRIVEOS_AUTH_SECRET
         sync: false
       - key: DRIVEOS_ENCRYPTION_KEY

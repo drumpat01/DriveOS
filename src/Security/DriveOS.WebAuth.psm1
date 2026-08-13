@@ -191,6 +191,8 @@ function Get-DriveOSWebAuthConfiguration {
 
     $OwnerEmail = "$($env:DRIVEOS_OWNER_EMAIL)".Trim().ToLowerInvariant()
     $PasswordHash = "$($env:DRIVEOS_PASSWORD_HASH)".Trim()
+    $WifeUsername = "$($env:DRIVEOS_WIFE_USERNAME)".Trim().ToLowerInvariant()
+    $WifePasswordHash = "$($env:DRIVEOS_WIFE_PASSWORD_HASH)".Trim()
     $AuthSecretText = "$($env:DRIVEOS_AUTH_SECRET)".Trim()
     $EncryptionKeyText = "$($env:DRIVEOS_ENCRYPTION_KEY)".Trim()
 
@@ -247,6 +249,32 @@ function Get-DriveOSWebAuthConfiguration {
         throw "DRIVEOS_PASSWORD_HASH has an invalid hash length."
     }
 
+    if ([bool]$WifeUsername -xor [bool]$WifePasswordHash) {
+        throw "DRIVEOS_WIFE_USERNAME and DRIVEOS_WIFE_PASSWORD_HASH must be configured together."
+    }
+
+    if ($WifeUsername) {
+        if ($WifeUsername -notmatch '^[a-z0-9][a-z0-9._-]{2,63}$') {
+            throw "DRIVEOS_WIFE_USERNAME must be 3-64 lowercase letters, numbers, dots, underscores, or hyphens."
+        }
+
+        $WifeHashParts = $WifePasswordHash.Split('$')
+        if ($WifeHashParts.Count -ne 4 -or $WifeHashParts[0] -ne $script:DriveOSPasswordAlgorithm) {
+            throw "DRIVEOS_WIFE_PASSWORD_HASH has an unsupported format."
+        }
+
+        $WifeIterations = 0
+        if (-not [int]::TryParse($WifeHashParts[1], [ref]$WifeIterations) -or $WifeIterations -lt $script:DriveOSPasswordIterations) {
+            throw "DRIVEOS_WIFE_PASSWORD_HASH uses an insufficient work factor."
+        }
+
+        $null = ConvertFrom-DriveOSBase64 -Value $WifeHashParts[2] -Name "DRIVEOS_WIFE_PASSWORD_HASH salt"
+        $WifeStoredPasswordBytes = ConvertFrom-DriveOSBase64 -Value $WifeHashParts[3] -Name "DRIVEOS_WIFE_PASSWORD_HASH value"
+        if ($WifeStoredPasswordBytes.Length -ne $script:DriveOSPasswordHashBytes) {
+            throw "DRIVEOS_WIFE_PASSWORD_HASH has an invalid hash length."
+        }
+    }
+
     if (-not $AuthSecretText) {
         throw "DRIVEOS_AUTH_SECRET is required in web mode."
     }
@@ -274,6 +302,8 @@ function Get-DriveOSWebAuthConfiguration {
     return [PSCustomObject]@{
         OwnerEmail    = $OwnerEmail
         PasswordHash  = $PasswordHash
+        WifeUsername  = $WifeUsername
+        WifePasswordHash = $WifePasswordHash
         AuthSecret    = $AuthSecret
         EncryptionKey = $EncryptionKey
         PublicUrl     = $PublicUrl.TrimEnd("/")
