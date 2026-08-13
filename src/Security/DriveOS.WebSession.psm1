@@ -87,6 +87,12 @@ function New-DriveOSWebSessionToken {
         [Parameter(Mandatory = $true)]
         [string]$OwnerEmail,
 
+        [ValidateSet("owner", "wife")]
+        [string]$Role = "owner",
+
+        [ValidateSet("wife", "full")]
+        [string]$Mode = "full",
+
         [Parameter(Mandatory = $true)]
         [byte[]]$AuthSecret,
 
@@ -118,6 +124,8 @@ function New-DriveOSWebSessionToken {
     $Payload = [ordered]@{
         v     = 1
         sub   = $NormalizedEmail
+        role  = $Role
+        mode  = $Mode
         iat   = $IssuedAt
         exp   = $ExpiresAt
         nonce = ConvertTo-DriveOSBase64Url -Bytes $NonceBytes
@@ -138,6 +146,32 @@ function New-DriveOSWebSessionToken {
     return "$SignedValue.$SignatureEncoded"
 }
 
+function Get-DriveOSWebSessionPrincipal {
+    param(
+        [Parameter(Mandatory = $true)][string]$Token,
+        [Parameter(Mandatory = $true)][byte[]]$AuthSecret,
+        [DateTimeOffset]$Now = [DateTimeOffset]::UtcNow
+    )
+
+    try {
+        $Parts = $Token.Split('.')
+        if ($Parts.Count -ne 3 -or $Parts[0] -ne $script:DriveOSSessionVersion) { return $null }
+        $SignedValue = "$($Parts[0]).$($Parts[1])"
+        $Expected = Get-DriveOSSessionSignature -SignedValue $SignedValue -AuthSecret $AuthSecret
+        $Provided = ConvertFrom-DriveOSBase64Url -Value $Parts[2]
+        if (-not (Test-DriveOSSessionFixedTimeBytes -Left $Expected -Right $Provided)) { return $null }
+        $Payload = ([Text.Encoding]::UTF8.GetString((ConvertFrom-DriveOSBase64Url -Value $Parts[1]))) | ConvertFrom-Json
+        $Role = "$($Payload.role)".Trim().ToLowerInvariant()
+        $Mode = "$($Payload.mode)".Trim().ToLowerInvariant()
+        $Subject = "$($Payload.sub)".Trim().ToLowerInvariant()
+        if (-not $Payload -or [int]$Payload.v -ne 1 -or $Role -notin @("owner", "wife") -or $Mode -notin @("wife", "full") -or -not $Subject -or -not "$($Payload.nonce)") { return $null }
+        $NowUnix = $Now.ToUnixTimeSeconds(); $IssuedAt = [long]$Payload.iat; $ExpiresAt = [long]$Payload.exp
+        if ($ExpiresAt -le $IssuedAt -or $ExpiresAt -le $NowUnix -or $IssuedAt -gt ($NowUnix + 300)) { return $null }
+        return [PSCustomObject]@{ Subject = $Subject; Role = $Role; Mode = $Mode }
+    }
+    catch { return $null }
+}
+
 function Test-DriveOSWebSessionToken {
     param(
         [Parameter(Mandatory = $true)]
@@ -153,77 +187,9 @@ function Test-DriveOSWebSessionToken {
     )
 
     try {
-        $Parts = $Token.Split('.')
-
-        if (
-            $Parts.Count -ne 3 -or
-            $Parts[0] -ne $script:DriveOSSessionVersion
-        ) {
-            return $false
-        }
-
-        $SignedValue = "$($Parts[0]).$($Parts[1])"
-
-        $ExpectedSignature = Get-DriveOSSessionSignature `
-            -SignedValue $SignedValue `
-            -AuthSecret $AuthSecret
-
-        $ProvidedSignature = ConvertFrom-DriveOSBase64Url `
-            -Value $Parts[2]
-
-        if (-not (
-            Test-DriveOSSessionFixedTimeBytes `
-                -Left $ExpectedSignature `
-                -Right $ProvidedSignature
-        )) {
-            return $false
-        }
-
-        $PayloadBytes = ConvertFrom-DriveOSBase64Url `
-            -Value $Parts[1]
-
-        $PayloadJson = [Text.Encoding]::UTF8.GetString($PayloadBytes)
-        $Payload = $PayloadJson | ConvertFrom-Json
-
-        if (
-            -not $Payload -or
-            [int]$Payload.v -ne 1
-        ) {
-            return $false
-        }
-
-        $ExpectedEmail = $OwnerEmail.Trim().ToLowerInvariant()
-
-        if (
-            "$($Payload.sub)".Trim().ToLowerInvariant() -ne
-            $ExpectedEmail
-        ) {
-            return $false
-        }
-
-        $NowUnix = $Now.ToUnixTimeSeconds()
-        $IssuedAt = [long]$Payload.iat
-        $ExpiresAt = [long]$Payload.exp
-
-        if ($ExpiresAt -le $IssuedAt) {
-            return $false
-        }
-
-        if ($ExpiresAt -le $NowUnix) {
-            return $false
-        }
-
-        # Reject tokens supposedly issued more than five minutes
-        # in the future.
-        if ($IssuedAt -gt ($NowUnix + 300)) {
-            return $false
-        }
-
-        if (-not "$($Payload.nonce)") {
-            return $false
-        }
-
-        return $true
+        $Principal = Get-DriveOSWebSessionPrincipal -Token $Token -AuthSecret $AuthSecret -Now $Now
+        if (-not $Principal -or $Principal.Role -ne "owner") { return $false }
+        return $Principal.Subject -eq $OwnerEmail.Trim().ToLowerInvariant()
     }
     catch {
         return $false
@@ -256,6 +222,7 @@ function New-DriveOSWebSessionClearCookie {
 
 Export-ModuleMember -Function `
     New-DriveOSWebSessionToken, `
+    Get-DriveOSWebSessionPrincipal, `
     Test-DriveOSWebSessionToken, `
     New-DriveOSWebSessionCookie, `
     New-DriveOSWebSessionClearCookie

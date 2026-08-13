@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("JourneyDeck")]
 [assembly: AssemblyProduct("JourneyDeck")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("5.1.0.0")]
-[assembly: AssemblyFileVersion("5.1.0.0")]
-[assembly: AssemblyInformationalVersion("5.1.0")]
+[assembly: AssemblyVersion("5.2.3.0")]
+[assembly: AssemblyFileVersion("5.2.3.0")]
+[assembly: AssemblyInformationalVersion("5.2.3")]
 
 namespace DriveOSDesktop
 {
@@ -81,7 +81,7 @@ namespace DriveOSDesktop
             sessionToken = DriveOSSecurityPolicy.CreateSessionToken();
             backendHost = new DriveOSBackendHost();
 
-            Text = "JourneyDeck 5.1";
+            Text = "JourneyDeck 5.2";
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(980, 680);
             ClientSize = new Size(1420, 900);
@@ -431,6 +431,11 @@ namespace DriveOSDesktop
         private void OnFormClosing(object sender, FormClosingEventArgs e)
         {
             ShutdownBackend();
+
+            // WebView2 can stall while WinForms disposes the closing form and
+            // leave this otherwise invisible process alive. The backend is
+            // already stopped, so finish the desktop process immediately.
+            Environment.Exit(0);
         }
 
         private void ShutdownBackend()
@@ -444,14 +449,12 @@ namespace DriveOSDesktop
 
             try
             {
-                if (browser != null)
-                {
-                    browser.Dispose();
-                }
+                // Never allow backend-process cleanup to pin the WinForms UI
+                // thread indefinitely. The server also watches this process
+                // and exits automatically if this bounded cleanup times out.
+                Task.Run(() => backendHost.Dispose()).Wait(2500);
             }
             catch { }
-
-            backendHost.Dispose();
         }
     }
 }

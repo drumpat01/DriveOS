@@ -9,6 +9,10 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase4.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Assistant.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\WifeMode.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $parseErrors = @()
 Get-ChildItem $Root -Recurse -Include *.ps1,*.psm1 | ForEach-Object {

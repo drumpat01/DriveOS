@@ -30,7 +30,7 @@
       }
 
       form.password.value = "";
-      window.location.replace("/");
+      window.location.replace(data.role === "wife" ? "/wife" : "/");
     }
     catch {
       message.textContent =

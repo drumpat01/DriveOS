@@ -6503,6 +6503,14 @@ h1 span {
 .command-palette-search > span { font-size: 1.2rem; }
 .command-palette-search input { width: 100%; border: 0; outline: 0; background: transparent; color: #102832; font: inherit; font-size: 1.05rem; font-weight: 700; }
 .command-palette-search input::placeholder { color: #8299a1; font-weight: 600; }
+.command-answer { display: grid; gap: 9px; margin: 12px; padding: 16px; border: 1px solid rgba(11,169,190,.22); border-radius: 15px; background: rgba(11,169,190,.07); }
+.command-answer strong { color: var(--text); font-size: 1rem; line-height: 1.45; }
+.command-answer p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.command-answer-evidence { display: grid; gap: 6px; }
+.command-answer-evidence span { padding: 8px 10px; border: 1px solid rgba(11,169,190,.16); border-radius: 10px; background: rgba(255,255,255,.48); color: var(--text); font-size: .72rem; line-height: 1.35; }
+.command-answer-suggestions { display: flex; flex-wrap: wrap; gap: 7px; }
+.command-answer-suggestions button { padding: 8px 10px; border: 1px solid rgba(11,169,190,.22); border-radius: 999px; background: transparent; color: var(--text); font: inherit; font-size: .7rem; font-weight: 700; cursor: pointer; }
+:root[data-theme="dark"] .command-answer-evidence span { background: rgba(255,255,255,.035); }
 .command-palette-results { max-height: min(58vh, 470px); overflow-y: auto; padding: 9px; }
 .command-group-label { padding: 10px 11px 6px; color: #78909a; font-size: .62rem; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
 .command-result { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; align-items: center; gap: 11px; width: 100%; min-height: 58px; padding: 8px 11px; border: 0; border-radius: 12px; background: transparent; color: #17333d; text-align: left; cursor: pointer; }
@@ -7664,6 +7672,98 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
     font-size: .72rem !important;
   }
 }
+
+/* JourneyDeck 5.2.2 mobile density and theme polish */
+@media (max-width: 760px) {
+  .app-shell { padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
+
+  .topbar { grid-template-columns: minmax(0,1fr) auto !important; gap: 5px !important; }
+  .topbar .brand { gap: 6px !important; min-width: 0 !important; }
+  .topbar .brand-logo { width: 36px !important; height: 36px !important; border-radius: 11px !important; }
+  .topbar .brand h1 { font-size: clamp(.9rem,4.25vw,1.08rem) !important; letter-spacing: .035em !important; }
+  .topbar-right { gap: 3px !important; padding: 0 !important; }
+  .topbar-right .theme-switcher { flex: 0 0 auto !important; gap: 1px !important; padding: 1px !important; }
+  .topbar-right .theme-choice { width: 27px !important; min-width: 27px !important; min-height: 29px !important; padding: 0 !important; }
+  .topbar-right .theme-choice-icon { font-size: .78rem !important; }
+  .status-pill { flex: 0 0 auto !important; min-height: 31px !important; padding: 4px 7px !important; font-size: .5rem !important; letter-spacing: .025em !important; }
+
+  .dashboard-customizer-row {
+    grid-template-columns: 20px minmax(0,1fr) 88px !important;
+    grid-template-rows: 30px 22px !important;
+    gap: 2px 6px !important;
+    min-height: 58px !important;
+    padding: 5px 7px !important;
+  }
+  .dashboard-customizer-row > .dashboard-drag-handle { grid-column: 1 !important; grid-row: 1 / 3 !important; width: 20px !important; height: 32px !important; }
+  .dashboard-customizer-row > strong { grid-column: 2 !important; grid-row: 1 !important; font-size: .68rem !important; }
+  .dashboard-size-select { grid-column: 3 !important; grid-row: 1 !important; width: 88px !important; height: 29px !important; font-size: .59rem !important; }
+  .dashboard-toggle-label:first-of-type { grid-column: 2 !important; grid-row: 2 !important; justify-self: start !important; }
+  .dashboard-toggle-label:last-of-type { grid-column: 3 !important; grid-row: 2 !important; justify-self: end !important; }
+  .dashboard-editing .dashboard-widget-drag-handle { top: 10px !important; right: 10px !important; left: auto !important; width: 32px !important; height: 32px !important; }
+
+  .dashboard-widget { min-height: 0 !important; }
+  .today-driving-widget, .drive-soundtrack-widget, .quick-actions-widget { min-height: 0 !important; padding: 18px !important; }
+  .dashboard-size-standard.quick-actions-widget .dashboard-quick-actions,
+  .dashboard-size-wide.quick-actions-widget .dashboard-quick-actions,
+  .dashboard-quick-actions { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; margin-top: 14px !important; }
+  .dashboard-quick-actions button { min-height: 54px !important; padding: 8px !important; }
+  .dashboard-quick-actions button strong { font-size: 0 !important; }
+  .dashboard-quick-actions button strong::after { content: attr(data-mobile-label); font-size: .69rem; }
+  .dashboard-quick-actions button small { font-size: .56rem !important; }
+  .dashboard-quick-actions button > span { width: 28px !important; height: 28px !important; }
+
+  .spotify-panel .v3-now-playing,
+  .dashboard-size-compact.spotify-panel .v3-now-playing,
+  .dashboard-size-standard.spotify-panel .v3-now-playing,
+  .dashboard-size-wide.spotify-panel .v3-now-playing { grid-template-columns: 82px minmax(0,1fr) !important; gap: 12px !important; min-height: 0 !important; }
+  .spotify-panel .v3-featured-artwork,
+  .spotify-panel .v3-featured-art .track-artwork { width: 82px !important; height: 82px !important; }
+  .spotify-panel .v3-featured-title { margin-top: 5px !important; font-size: 1rem !important; }
+  .spotify-panel .v3-waveform { margin-top: 8px !important; }
+  .spotify-panel .v3-recent-list { margin-top: 14px !important; }
+
+  .dashboard-drive-card { grid-template-columns: minmax(0,1fr) minmax(0,1fr) 38px !important; grid-template-rows: auto auto !important; gap: 10px 12px !important; min-height: 0 !important; padding: 14px !important; }
+  .dashboard-drive-card .drive-main { grid-column: 1 / 4 !important; display: grid !important; grid-template-columns: minmax(0,1fr) auto !important; gap: 7px 12px !important; }
+  .dashboard-drive-card .drive-main-heading { grid-column: 1 !important; }
+  .dashboard-drive-card .dashboard-route-cities { grid-column: 1 / 3 !important; margin-top: 3px !important; }
+  .dashboard-drive-card .drive-stat { grid-row: 2 !important; }
+  .dashboard-drive-card .v3-drive-play { grid-column: 3 !important; grid-row: 2 !important; align-self: center !important; width: 38px !important; height: 38px !important; }
+
+  .charging-heading { display: grid !important; grid-template-columns: 1fr !important; gap: 12px !important; }
+  .charging-rate-editor { display: grid !important; grid-template-columns: minmax(0,1fr) auto !important; gap: 4px 10px !important; margin: 0 !important; padding: 11px 12px !important; border: 1px solid var(--line); border-radius: 13px; background: rgba(11,169,190,.05); }
+  .charging-rate-editor > span { align-self: center; font-size: .72rem !important; }
+  .charging-rate-editor > strong { align-self: center; white-space: nowrap; font-size: .9rem !important; }
+  .charging-rate-editor > small { grid-column: 1 / -1 !important; line-height: 1.35; font-size: .63rem !important; }
+
+  .background-activity-monitor { right: max(10px,env(safe-area-inset-right)) !important; bottom: calc(76px + env(safe-area-inset-bottom)) !important; }
+  .background-activity-monitor.idle { display: none !important; }
+}
+
+:root[data-theme="light"] .live-drive-shell { border-color: rgba(27,141,151,.2); background: #f7fbfc; box-shadow: 0 22px 60px rgba(31,81,94,.14); color: var(--text); }
+:root[data-theme="light"] .live-drive-header { border-color: rgba(33,83,101,.1); background: linear-gradient(110deg,#f9fcfd,#eaf6f5); }
+:root[data-theme="light"] .live-drive-header h2 { color: var(--text); }
+:root[data-theme="light"] .live-drive-kicker { color: #078f9f; }
+:root[data-theme="light"] .live-drive-kicker span { background: #13bca4; box-shadow: 0 0 10px rgba(19,188,164,.35); }
+:root[data-theme="light"] .live-drive-connection { border-color: rgba(13,166,189,.2); background: rgba(13,166,189,.08); color: #078f9f; }
+:root[data-theme="light"] .live-drive-refresh { border-color: var(--line); background: rgba(255,255,255,.72); color: var(--text); }
+:root[data-theme="light"] .live-drive-stage { background: radial-gradient(circle at 50% 30%,#e8f7f4,#dcecef 68%); }
+:root[data-theme="light"] .live-drive-map { border-color: rgba(33,83,101,.13); background-color: #dcecee; background-image: linear-gradient(rgba(33,83,101,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(33,83,101,.06) 1px,transparent 1px),radial-gradient(circle at 54% 46%,rgba(65,212,187,.18),transparent 40%); }
+:root[data-theme="light"] .live-drive-map::after { background: linear-gradient(90deg,rgba(225,242,243,.4),transparent 28%,transparent 72%,rgba(225,242,243,.3)),linear-gradient(0deg,rgba(225,242,243,.55),transparent 35%); }
+:root[data-theme="light"] .live-drive-map .maplibregl-canvas { filter: saturate(.85) brightness(1.08) contrast(.94); }
+:root[data-theme="light"] .live-drive-overlay { border-color: rgba(33,83,101,.13); background: rgba(250,253,253,.88); box-shadow: 0 12px 34px rgba(35,83,96,.14); }
+:root[data-theme="light"] .live-drive-speed-card strong,
+:root[data-theme="light"] .live-drive-telemetry strong,
+:root[data-theme="light"] .live-drive-music strong { color: var(--text); }
+:root[data-theme="light"] .live-drive-speed-card span,
+:root[data-theme="light"] .live-drive-telemetry span,
+:root[data-theme="light"] .live-drive-music span { color: #078f9f; }
+:root[data-theme="light"] .live-drive-speed-card small,
+:root[data-theme="light"] .live-drive-music small,
+:root[data-theme="light"] .live-drive-music-empty,
+:root[data-theme="light"] .live-drive-map-message { color: var(--muted); }
+:root[data-theme="light"] .live-drive-telemetry > div { border-color: rgba(33,83,101,.09); }
+:root[data-theme="light"] .live-drive-gps { color: #315e69; text-shadow: 0 1px 8px rgba(255,255,255,.8); }
+:root[data-theme="light"] .live-drive-safety { background: #eef6f7; color: var(--muted); }
 +/* JourneyDeck 5.1 - Live Drive */
 .nav-button-live { display: inline-flex; align-items: center; gap: 7px; }
 .nav-mobile-icon,.nav-mobile-label,.mobile-more-button,.mobile-more-menu { display: none; }
@@ -7806,3 +7906,4 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
     font-size: .72rem !important;
   }
 }
+.return-wife-mode { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:var(--panel); color:var(--accent); font-weight:800; white-space:nowrap; }

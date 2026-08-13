@@ -8,14 +8,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="JourneyDeck">
-  <link rel="icon" type="image/svg+xml" href="/assets/journeydeck-mark.svg">
-  <link rel="alternate icon" type="image/png" href="/assets/favicon.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png">
-  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/pwa-192.png?v=5.2.2">
+  <link rel="shortcut icon" type="image/png" href="/assets/favicon.png?v=5.2.2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png?v=5.2.2">
+  <link rel="manifest" href="/manifest.webmanifest?v=5.2.2">
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=5.0.4">
+  <link rel="stylesheet" href="/styles.css?v=5.2.2">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -65,7 +65,7 @@
       </div>
 
       <div class="jd-loading-panel">
-        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.1</strong></div>
+        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.2</strong></div>
         <div class="jd-loading-track"><i></i></div>
         <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
@@ -105,12 +105,13 @@
       </nav>
 
       <div class="topbar-right">
+        <button id="returnToWifeMode" class="return-wife-mode" type="button" hidden>Wife Mode</button>
         <button id="commandPaletteButton" class="command-palette-trigger" type="button" aria-label="Search JourneyDeck" aria-keyshortcuts="Control+K" title="Search JourneyDeck">
           <span class="command-trigger-icon" aria-hidden="true">&#x2315;</span>
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed JourneyDeck web build">5.1.0</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.2.3</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -297,11 +298,11 @@
               <div class="dashboard-widget-symbol" aria-hidden="true">&#x2726;</div>
             </div>
             <div class="dashboard-quick-actions">
-              <button type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong>Refresh data</strong><small>Sync everything</small></button>
-              <button type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong>Create share card</strong><small>Latest drive</small></button>
-              <button type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong>Open search</strong><small>Find anything</small></button>
-              <button type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x2192;</span><strong>Latest drive</strong><small>Open details</small></button>
-              <button type="button" data-dashboard-action="recap"><span aria-hidden="true">&#x2606;</span><strong>Start a recap</strong><small>Review your month</small></button>
+              <button type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong data-mobile-label="Refresh">Refresh data</strong><small>Sync everything</small></button>
+              <button type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong data-mobile-label="Share">Create share card</strong><small>Latest drive</small></button>
+              <button type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong data-mobile-label="Search">Open search</strong><small>Find anything</small></button>
+              <button type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x2192;</span><strong data-mobile-label="Latest">Latest drive</strong><small>Open details</small></button>
+              <button type="button" data-dashboard-action="recap"><span aria-hidden="true">&#x2606;</span><strong data-mobile-label="Recap">Start a recap</strong><small>Review your month</small></button>
             </div>
           </article>
 
@@ -642,7 +643,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">JourneyDeck Web 5.1.0</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.2.3</span>
       <span>Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -665,7 +666,7 @@
       <h2 id="commandPaletteHeading" class="sr-only">Search JourneyDeck</h2>
       <label class="command-palette-search">
         <span aria-hidden="true">&#x2315;</span>
-        <input id="commandPaletteInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search drives, places, songs, settings, or actions&#x2026;" aria-controls="commandPaletteResults">
+        <input id="commandPaletteInput" type="search" autocomplete="off" spellcheck="false" placeholder="Ask a question or search JourneyDeck&#x2026;" aria-controls="commandPaletteResults">
         <kbd>Esc</kbd>
       </label>
       <div id="commandPaletteResults" class="command-palette-results" role="listbox" aria-label="JourneyDeck search results"></div>
@@ -674,7 +675,7 @@
         <span><kbd>Enter</kbd> Open</span>
         <span><kbd>Ctrl K</kbd> Toggle</span>
         <span class="command-mobile-note">Tap a result to open</span>
-        <span class="command-local-note">Search stays on this device</span>
+        <span class="command-local-note">Answers use your saved JourneyDeck records</span>
       </footer>
     </article>
   </div>
@@ -890,28 +891,28 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.1.0"></script>
-  <script src="/core/dom.js?v=5.1.0"></script>
-  <script src="/core/state.js?v=5.1.0"></script>
-  <script src="/core/platform.js?v=5.1.0"></script>
-  <script src="/core/api.js?v=5.1.0"></script>
-  <script src="/components/song-artwork.js?v=5.1.0"></script>
-  <script src="/features/navigation.js?v=5.1.0"></script>
-  <script src="/features/pwa.js?v=5.1.0"></script>
-  <script src="/features/theme.js?v=5.1.0"></script>
-  <script src="/features/ignition.js?v=5.1.0"></script>
-  <script src="/features/places.js?v=5.1.0"></script>
-  <script src="/features/charging.js?v=5.1.0"></script>
-  <script src="/features/recaps.js?v=5.1.0"></script>
-  <script src="/features/refresh.js?v=5.1.0"></script>
-  <script src="/features/drives.js?v=5.1.0"></script>
-  <script src="/features/replay.js?v=5.1.0"></script>
-  <script src="/features/music.js?v=5.1.0"></script>
-  <script src="/features/share-cards.js?v=5.1.0"></script>
-  <script src="/features/command-palette.js?v=5.1.0"></script>
-  <script src="/features/dashboard-customization.js?v=5.1.0"></script>
-  <script src="/features/dashboard-widgets.js?v=5.1.0"></script>
-  <script src="/features/live-drive.js?v=5.1.0"></script>
-  <script src="/app.js?v=5.1.0"></script>
+  <script src="/core/build.js?v=5.2.3"></script>
+  <script src="/core/dom.js?v=5.2.3"></script>
+  <script src="/core/state.js?v=5.2.3"></script>
+  <script src="/core/platform.js?v=5.2.3"></script>
+  <script src="/core/api.js?v=5.2.3"></script>
+  <script src="/components/song-artwork.js?v=5.2.3"></script>
+  <script src="/features/navigation.js?v=5.2.3"></script>
+  <script src="/features/pwa.js?v=5.2.3"></script>
+  <script src="/features/theme.js?v=5.2.3"></script>
+  <script src="/features/ignition.js?v=5.2.3"></script>
+  <script src="/features/places.js?v=5.2.3"></script>
+  <script src="/features/charging.js?v=5.2.3"></script>
+  <script src="/features/recaps.js?v=5.2.3"></script>
+  <script src="/features/refresh.js?v=5.2.3"></script>
+  <script src="/features/drives.js?v=5.2.3"></script>
+  <script src="/features/replay.js?v=5.2.3"></script>
+  <script src="/features/music.js?v=5.2.3"></script>
+  <script src="/features/share-cards.js?v=5.2.3"></script>
+  <script src="/features/command-palette.js?v=5.2.3"></script>
+  <script src="/features/dashboard-customization.js?v=5.2.3"></script>
+  <script src="/features/dashboard-widgets.js?v=5.2.3"></script>
+  <script src="/features/live-drive.js?v=5.2.3"></script>
+  <script src="/app.js?v=5.2.3"></script>
 </body>
 </html>

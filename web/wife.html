@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wife Mode · JourneyDeck</title>
+  <meta name="theme-color" content="#f3faf9">
+  <link rel="icon" type="image/png" href="/assets/favicon.png?v=5.2.3">
+  <link rel="apple-touch-icon" href="/assets/pwa-180.png?v=5.2.3">
+  <link rel="stylesheet" href="/wife.css?v=5.2.3">
+  <script src="/wife.js?v=5.2.3" defer></script>
+</head>
+<body>
+  <main>
+    <header class="wife-header">
+      <a href="/wife" class="brand" aria-label="JourneyDeck Wife Mode"><img src="/assets/journeydeck-mark.svg" alt=""><span>JOURNEY<strong>DECK</strong></span></a>
+      <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle color theme">☼</button>
+    </header>
+
+    <section class="hero" aria-labelledby="wifeGreeting">
+      <p>YOUR DRIVE</p>
+      <h1 id="wifeGreeting">Ready when you are</h1>
+      <span id="wifeUpdated">Updating your car…</span>
+    </section>
+
+    <section id="homeView" class="view active">
+      <article class="vehicle-card">
+        <div><p id="wifeVehicleName">Your car</p><strong id="wifeBattery">—%</strong><span>Battery</span></div>
+        <div class="range"><strong id="wifeRange">— mi</strong><span>Estimated range</span></div>
+      </article>
+      <section class="today-card" aria-labelledby="todayTitle"><p>TODAY</p><h2 id="todayTitle">Today’s driving</h2><div class="stat-row"><div><strong id="wifeTodayMiles">—</strong><span>Miles</span></div><div><strong id="wifeTodayTrips">—</strong><span>Trips</span></div></div></section>
+      <section class="recent"><div class="section-heading"><div><p>RECENT</p><h2>Recent trips</h2></div><button class="text-button" type="button" data-view="tripsView">See all</button></div><div id="wifeRecentHome" class="trip-list"></div></section>
+    </section>
+
+    <section id="tripsView" class="view" aria-labelledby="tripsTitle"><div class="section-heading"><div><p>YOUR TRIPS</p><h2 id="tripsTitle">Recent drives</h2></div></div><div id="wifeTrips" class="trip-list"></div></section>
+
+    <section id="liveView" class="view" aria-labelledby="liveTitle"><p>LIVE</p><h2 id="liveTitle">Car location</h2><div id="wifeMap" class="map-card"><div id="mapDot" class="map-dot" hidden></div><span id="wifeLocationText">Finding your car…</span></div><p class="location-note">Location updates when the car reports it.</p></section>
+  </main>
+
+  <button id="openFull" class="full-button" type="button">Open Full JourneyDeck</button>
+  <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Trips</button><button data-view="liveView" type="button">Live</button></nav>
+</body>
+</html>
