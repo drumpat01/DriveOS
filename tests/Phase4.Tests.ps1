@@ -19,6 +19,11 @@ $DesktopProgram = Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw
 Assert-True ($DesktopProgram -match 'blob:' -and $DesktopProgram -match 'image/png' -and
     $DesktopProgram -match 'SaveFileDialog') 'Share-card PNG downloads must use the restricted local save workflow.'
 Assert-True ($DesktopProgram -match 'if \(!isDriveOSShareCard\)') 'Non-share-card downloads must remain blocked.'
+Assert-True ($DesktopProgram -match 'private void OnFormClosing[\s\S]*ShutdownBackend\(\);[\s\S]*Environment\.Exit\(0\)') 'Desktop close must stop the backend before forcing lingering WebView2 threads to exit.'
+$ShutdownBody = [regex]::Match($DesktopProgram, 'private void ShutdownBackend\(\)[\s\S]*?\n        \}').Value
+Assert-True ($ShutdownBody -match 'backendHost\.Dispose\(\)') 'Desktop close must stop the local backend.'
+Assert-True ($ShutdownBody -match 'Task\.Run' -and $ShutdownBody -match 'Wait\(2500\)') 'Backend shutdown must be bounded so the desktop UI cannot remain stuck.'
+Assert-True ($ShutdownBody -notmatch 'browser\.Dispose\(\)') 'FormClosing must not synchronously dispose WebView2 before backend shutdown.'
 
 $Installer = Get-Content (Join-Path $Root 'tools\Install-DriveOS-App.ps1') -Raw
 Assert-True ($Installer -match 'Sort-Object Name') 'Desktop source compilation order must be deterministic.'

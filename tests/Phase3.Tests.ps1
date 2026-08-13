@@ -14,7 +14,8 @@ foreach($commandId in @('commandPaletteButton','commandPalette','commandPaletteI
 foreach($dashboardId in @('dashboardCustomizeButton','dashboardCustomizer','dashboardCustomizerList','dashboardWidgetGrid')){if($index -notmatch ('id="'+$dashboardId+'"')){throw "Dashboard customization control is missing: $dashboardId"}}
 foreach($widgetId in @('todayDrivingMiles','dashboardSoundtrack')){if($index -notmatch ('id="'+$widgetId+'"')){throw "Dashboard insight widget is missing: $widgetId"}}
 $commandPalette=Get-Content (Join-Path $Root 'web\features\command-palette.js') -Raw
-if($commandPalette -notmatch 'event\.ctrlKey' -or $commandPalette -notmatch 'ArrowDown' -or $index -notmatch 'Search stays on this device'){throw 'Command palette keyboard or privacy behavior is missing.'}
+if($commandPalette -notmatch 'event\.ctrlKey' -or $commandPalette -notmatch 'ArrowDown' -or $index -notmatch 'Answers use your saved JourneyDeck records'){throw 'Command palette keyboard or privacy behavior is missing.'}
+if($commandPalette -notmatch 'looksLikeQuestion' -or $commandPalette -notmatch 'matches\.concat\(askItem\)' -or $commandPalette -notmatch 'relevance\(a, query\)'){throw 'Direct search matches must stay ahead of assistant answers for short queries.'}
 $dashboardCustomization=Get-Content (Join-Path $Root 'web\features\dashboard-customization.js') -Raw
 foreach($capability in @('localStorage','dashboard-size-compact','pinned','hidden','draggable','dashboard-widget-drag-handle','bindWidgetDropEvents','dashboard-widget-resize-handle','nearestSize','pointerdown','positions','blankDropPosition','dashboardGridDropPreview')){if($dashboardCustomization -notmatch [regex]::Escape($capability)){throw "Dashboard customization capability is missing: $capability"}}
 $dashboardWidgets=Get-Content (Join-Path $Root 'web\features\dashboard-widgets.js') -Raw
