@@ -1,7 +1,7 @@
 {
-  "product": "DriveOS",
+  "product": "JourneyDeck",
   "version": "5.0.0",
-  "webBuild": "5.0.2",
+  "webBuild": "5.0.3",
   "features": [
     "friendly-places",
     "charging-history",
@@ -10,6 +10,6 @@
     "foursquare-business-names",
     "privacy-safe-share-cards"
   ],
-  "css": "/styles.css?v=5.0.2",
-  "js": "/app.js?v=5.0.2"
+  "css": "/styles.css?v=5.0.3",
+  "js": "/app.js?v=5.0.3"
 }
