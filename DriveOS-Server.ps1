@@ -81,6 +81,8 @@ $script:DriveDataCache = @{
     drives365ExpiresAt = [DateTimeOffset]::MinValue
     dashboardDrives = $null
     dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
+    wifeDrives = $null
+    wifeDrivesExpiresAt = [DateTimeOffset]::MinValue
     charges365 = $null
     charges365ExpiresAt = [DateTimeOffset]::MinValue
 }
@@ -769,6 +771,8 @@ function Save-SpotifyHistory {
         $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
         $script:DriveDataCache.dashboardDrives = $null
         $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.wifeDrives = $null
+        $script:DriveDataCache.wifeDrivesExpiresAt = [DateTimeOffset]::MinValue
     }
 
     return $NewCount
@@ -3074,22 +3078,69 @@ function Test-DriveOSAuthenticatedWebRequest {
 
 function Get-WifeModeSummary {
     $Vehicle = Get-VehicleSummary
-    $Drives = @(Get-CachedDashboardDrives | Select-Object -First 6 | ForEach-Object {
+    $Drives = @(Get-WifeModeDrives)
+    return [ordered]@{
+        vehicle = [ordered]@{ name = $Vehicle.name; battery = $Vehicle.battery; rangeMiles = $Vehicle.rangeMiles; state = $Vehicle.state; gpsAsOf = $Vehicle.gpsAsOf }
+        today = Get-WifeModeToday -Drives $Drives
+        drives = $Drives
+    }
+}
+
+function Get-WifeModeBaseDrives {
+    $Now = [DateTimeOffset]::UtcNow
+    if ($script:DriveDataCache.wifeDrives -and $script:DriveDataCache.wifeDrivesExpiresAt -gt $Now) {
+        return @($script:DriveDataCache.wifeDrives)
+    }
+
+    $AliasMap = Get-PlaceAliasMap
+    $FoursquareCacheMap = Get-FoursquareCacheMap
+    $Drives = @(Get-RawDrives -Days 14 | Select-Object -First 10 | ForEach-Object {
+        Convert-RawDrive -Drive $_ -SpotifyHistory @() -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap
+    })
+    $script:DriveDataCache.wifeDrives = @($Drives)
+    $script:DriveDataCache.wifeDrivesExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    return $Drives
+}
+
+function Get-WifeModeDrives {
+    return @(Get-WifeModeBaseDrives | Select-Object -First 6 | ForEach-Object {
         [ordered]@{
             id = $_.id; dateLabel = $_.dateLabel; shortDateLabel = $_.shortDateLabel
             dateIso = $_.dateIso
             startTime = $_.startTime; endTime = $_.endTime
             startingLocation = $_.startingLocation; endingLocation = $_.endingLocation
             miles = $_.miles; durationMinutes = $_.durationMinutes; startedAt = $_.startedAt
-            topArtist = @($_.soundtrack | Where-Object { $_.artist } | Group-Object artist | Sort-Object @{ Expression = 'Count'; Descending = $true }, @{ Expression = 'Name'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Name })[0]
+            startingBattery = $_.startingBattery; endingBattery = $_.endingBattery
+            batteryUsed = $_.batteryUsed; energyKWh = $_.energyKWh
+            efficiencyWhMi = $_.efficiencyWhMi; averageSpeed = $_.averageSpeed
+            maxSpeed = $_.maxSpeed
         }
     })
+}
+
+function Get-WifeModeToday {
+    param([object[]]$Drives)
     $TodayIso = [DateTimeOffset]::Now.ToLocalTime().ToString("yyyy-MM-dd")
     $Today = @($Drives | Where-Object { "$($_.dateIso)" -eq $TodayIso })
+    $Miles = ($Today | ForEach-Object { [double]$_.miles } | Measure-Object -Sum).Sum
+    if ($null -eq $Miles) { $Miles = 0 }
+    return [ordered]@{ miles = [math]::Round([double]$Miles, 1); trips = $Today.Count }
+}
+
+function Get-WifeModeMusic {
+    $History = @(Get-SpotifyHistory)
+    return @(Get-WifeModeBaseDrives | Select-Object -First 6 | ForEach-Object {
+        $Songs = @(Get-SoundtrackForWindow -DriveStart ([DateTimeOffset]::Parse($_.startedAt)) -DriveEnd ([DateTimeOffset]::Parse($_.endedAt)) -History $History)
+        $TopArtist = @($Songs | Where-Object { $_.artist } | Group-Object artist | Sort-Object @{ Expression = 'Count'; Descending = $true }, @{ Expression = 'Name'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Name })[0]
+        [ordered]@{ id = $_.id; topArtist = $TopArtist; songCount = $Songs.Count }
+    })
+}
+
+function Get-WifeModeVehicle {
+    $Vehicle = Get-VehicleSummary
     return [ordered]@{
-        vehicle = [ordered]@{ name = $Vehicle.name; battery = $Vehicle.battery; rangeMiles = $Vehicle.rangeMiles; state = $Vehicle.state; gpsAsOf = $Vehicle.gpsAsOf }
-        today = [ordered]@{ miles = [math]::Round((@($Today | Measure-Object -Property miles -Sum).Sum), 1); trips = $Today.Count }
-        drives = $Drives
+        name = $Vehicle.name; battery = $Vehicle.battery; rangeMiles = $Vehicle.rangeMiles
+        state = $Vehicle.state; gpsAsOf = $Vehicle.gpsAsOf
     }
 }
 
@@ -3168,6 +3219,22 @@ function Handle-Request {
 
                 "/api/wife/summary" {
                     Send-Json -Stream $Stream -Object (Get-WifeModeSummary)
+                    return
+                }
+
+                "/api/wife/vehicle" {
+                    Send-Json -Stream $Stream -Object (Get-WifeModeVehicle)
+                    return
+                }
+
+                "/api/wife/drives" {
+                    $WifeDrives = @(Get-WifeModeDrives)
+                    Send-Json -Stream $Stream -Object @{ today = Get-WifeModeToday -Drives $WifeDrives; drives = $WifeDrives }
+                    return
+                }
+
+                "/api/wife/music" {
+                    Send-Json -Stream $Stream -Object @{ drives = @(Get-WifeModeMusic) }
                     return
                 }
 
@@ -3384,15 +3451,20 @@ function Handle-Request {
                 }
 
                 "/api/wife/mode" {
-                    if (-not $Principal -or $Principal.Role -ne "wife") {
-                        Send-Json -Stream $Stream -StatusCode 403 -StatusText "Forbidden" -Object @{ error = "Wife Mode access is required." }
-                        return
-                    }
-
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields mode
                     $Mode = "$($Body.mode)".Trim().ToLowerInvariant()
                     if ($Mode -notin @("wife", "full")) {
                         Send-Json -Stream $Stream -StatusCode 400 -StatusText "Bad Request" -Object @{ error = "Mode must be wife or full." }
+                        return
+                    }
+
+                    if ($RuntimeConfig.IsDesktop) {
+                        Send-Json -Stream $Stream -Object @{ mode = $Mode }
+                        return
+                    }
+
+                    if (-not $Principal -or $Principal.Role -ne "wife") {
+                        Send-Json -Stream $Stream -StatusCode 403 -StatusText "Forbidden" -Object @{ error = "Wife Mode access is required." }
                         return
                     }
 
@@ -3431,6 +3503,12 @@ function Handle-Request {
                 "/api/dashboard/layout" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields layout
                     Send-Json -Stream $Stream -Object (Set-DashboardLayout -Candidate $Body.layout)
+                    return
+                }
+
+                "/api/wife/drive/map" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
+                    Send-Json -Stream $Stream -Object (Get-DriveMapData -DriveId $Body.driveId)
                     return
                 }
 
@@ -3887,8 +3965,8 @@ try {
                 }
 
                 if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $WebPrincipal.Mode -ne "full") {
-                    $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/live")
-                    $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -eq "/api/wife/mode")
+                    $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/vehicle", "/api/wife/drives", "/api/wife/music", "/api/wife/live")
+                    $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map"))
                     if ($Path.StartsWith("/api/") -and -not $WifeApiAllowed) {
                         Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
                         continue
