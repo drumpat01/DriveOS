@@ -3077,12 +3077,15 @@ function Get-WifeModeSummary {
     $Drives = @(Get-CachedDashboardDrives | Select-Object -First 6 | ForEach-Object {
         [ordered]@{
             id = $_.id; dateLabel = $_.dateLabel; shortDateLabel = $_.shortDateLabel
+            dateIso = $_.dateIso
             startTime = $_.startTime; endTime = $_.endTime
             startingLocation = $_.startingLocation; endingLocation = $_.endingLocation
             miles = $_.miles; durationMinutes = $_.durationMinutes; startedAt = $_.startedAt
+            topArtist = @($_.soundtrack | Where-Object { $_.artist } | Group-Object artist | Sort-Object @{ Expression = 'Count'; Descending = $true }, @{ Expression = 'Name'; Descending = $false } | Select-Object -First 1 | ForEach-Object { $_.Name })[0]
         }
     })
-    $Today = @($Drives | Where-Object { "$($_.dateLabel)" -eq ([DateTimeOffset]::Now.ToString("ddd, MMM d")) })
+    $TodayIso = [DateTimeOffset]::Now.ToLocalTime().ToString("yyyy-MM-dd")
+    $Today = @($Drives | Where-Object { "$($_.dateIso)" -eq $TodayIso })
     return [ordered]@{
         vehicle = [ordered]@{ name = $Vehicle.name; battery = $Vehicle.battery; rangeMiles = $Vehicle.rangeMiles; state = $Vehicle.state; gpsAsOf = $Vehicle.gpsAsOf }
         today = [ordered]@{ miles = [math]::Round((@($Today | Measure-Object -Property miles -Sum).Sum), 1); trips = $Today.Count }
