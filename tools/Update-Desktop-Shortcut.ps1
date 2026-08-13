@@ -5,13 +5,14 @@ param(
 $ErrorActionPreference = "Stop"
 
 $DriveOSFolder = Split-Path -Parent $PSScriptRoot
-$IconPath = Join-Path $DriveOSFolder "DriveOS-v4.ico"
+$IconPath = Join-Path $DriveOSFolder "JourneyDeck.ico"
 $AppPath = Join-Path $DriveOSFolder "DriveOS.exe"
 $Desktop = [Environment]::GetFolderPath("Desktop")
-$ShortcutPath = Join-Path $Desktop "DriveOS.lnk"
+$ShortcutPath = Join-Path $Desktop "JourneyDeck.lnk"
+$LegacyShortcutPath = Join-Path $Desktop "DriveOS.lnk"
 
 if (-not (Test-Path $IconPath)) {
-    throw "DriveOS-v4.ico was not found in $DriveOSFolder"
+    throw "JourneyDeck.ico was not found in $DriveOSFolder"
 }
 
 if (-not (Test-Path $AppPath)) {
@@ -23,12 +24,16 @@ if (Test-Path $ShortcutPath) {
     Start-Sleep -Milliseconds 400
 }
 
+if (Test-Path $LegacyShortcutPath) {
+    Remove-Item $LegacyShortcutPath -Force
+}
+
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $AppPath
 $Shortcut.WorkingDirectory = $DriveOSFolder
 $Shortcut.IconLocation = "$IconPath,0"
-$Shortcut.Description = "Open DriveOS"
+$Shortcut.Description = "Open JourneyDeck"
 $Shortcut.WindowStyle = 1
 $Shortcut.Save()
 
@@ -64,7 +69,7 @@ if (Test-Path $Ie4uinit) {
 }
 
 Write-Host ""
-Write-Host "DriveOS desktop shortcut now points directly to DriveOS.exe." -ForegroundColor Green
+Write-Host "JourneyDeck desktop shortcut now points directly to DriveOS.exe." -ForegroundColor Green
 
 if (-not $NoPause) {
     Write-Host ""

@@ -9,7 +9,7 @@ $Stage = Join-Path $Scratch "DriveOS-$Version"
 $Required = @(
     'DriveOS.exe', 'DriveOS-Backend.ps1', 'DriveOS-Server.ps1',
     'Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.WinForms.dll',
-    'WebView2Loader.dll', 'version.json', 'artifact-manifest.json',
+    'WebView2Loader.dll', 'JourneyDeck.ico', 'version.json', 'artifact-manifest.json',
     'web/index.html', 'src/Repositories/DriveOS.Repository.psm1'
 )
 

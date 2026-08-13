@@ -11,7 +11,7 @@ $Root = Split-Path -Parent $PSScriptRoot
 $DesktopSources = @(Get-ChildItem (Join-Path $Root "desktop") -Filter "*.cs" -File |
     Sort-Object Name |
     ForEach-Object { $_.FullName })
-$IconPath = Join-Path $Root "DriveOS-v4.ico"
+$IconPath = Join-Path $Root "JourneyDeck.ico"
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) { $OutputDirectory = $Root }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $OutputExe = Join-Path $OutputDirectory "DriveOS.exe"
@@ -58,7 +58,7 @@ if ($DesktopSources.Count -eq 0 -or -not (Test-Path (Join-Path $Root "desktop\Pr
 }
 
 if (-not (Test-Path $IconPath)) {
-    Fail-DriveOSInstall "DriveOS-v4.ico is missing."
+    Fail-DriveOSInstall "JourneyDeck.ico is missing."
 }
 
 if (-not (Test-Path $PackageRoot)) {
@@ -130,7 +130,7 @@ if ($LoaderSignature.Status -ne "Valid" -or
     Fail-DriveOSInstall "The native WebView2 loader did not have a valid Microsoft signature."
 }
 
-Write-Host "Building DriveOS.exe..." -ForegroundColor Cyan
+Write-Host "Building JourneyDeck..." -ForegroundColor Cyan
 
 if (-not (Test-Path $OutputDirectory)) {
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
@@ -165,7 +165,7 @@ if ($CompileExitCode -ne 0 -or -not (Test-Path $OutputExe)) {
 Copy-Item $CoreDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.Core.dll") -Force
 Copy-Item $WinFormsDll (Join-Path $OutputDirectory "Microsoft.Web.WebView2.WinForms.dll") -Force
 Copy-Item $LoaderDll (Join-Path $OutputDirectory "WebView2Loader.dll") -Force
-$OutputIcon = Join-Path $OutputDirectory "DriveOS-v4.ico"
+$OutputIcon = Join-Path $OutputDirectory "JourneyDeck.ico"
 if (-not [String]::Equals(
         [IO.Path]::GetFullPath($IconPath),
         [IO.Path]::GetFullPath($OutputIcon),
@@ -174,7 +174,7 @@ if (-not [String]::Equals(
 }
 
 if (-not $SkipShortcut) {
-    Write-Host "Creating DriveOS desktop shortcut..." -ForegroundColor Cyan
+    Write-Host "Creating JourneyDeck desktop shortcut..." -ForegroundColor Cyan
 
     $ShortcutUpdater = Join-Path $Root "tools\Update-Desktop-Shortcut.ps1"
 
@@ -187,12 +187,12 @@ if (-not $SkipShortcut) {
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "               DRIVEOS $DriveOSVersion INSTALLED                " -ForegroundColor Green
+Write-Host "             JOURNEYDECK $DriveOSVersion INSTALLED              " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "DriveOS $DriveOSVersion was built successfully." -ForegroundColor Cyan
+Write-Host "JourneyDeck $DriveOSVersion was built successfully." -ForegroundColor Cyan
 Write-Host ""
-Write-Host "From now on, use the DriveOS desktop icon." -ForegroundColor Cyan
+Write-Host "From now on, use the JourneyDeck desktop icon." -ForegroundColor Cyan
 Write-Host "It opens a normal Windows application window." -ForegroundColor Cyan
 Write-Host ""
 Write-Host "No Chrome window. No Edge app window. No PowerShell window." -ForegroundColor Green
