@@ -38,7 +38,9 @@ namespace DriveOSDesktop
             webView.Settings.AreDefaultContextMenusEnabled = false;
             webView.Settings.IsStatusBarEnabled = false;
             webView.Settings.AreBrowserAcceleratorKeysEnabled = false;
-            webView.Settings.IsWebMessageEnabled = false;
+            // JourneyDeck's two desktop-only preview controls use narrowly
+            // validated messages from the approved local app origin.
+            webView.Settings.IsWebMessageEnabled = true;
             webView.Settings.AreHostObjectsAllowed = false;
         }
 

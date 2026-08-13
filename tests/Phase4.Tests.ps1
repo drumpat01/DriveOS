@@ -13,9 +13,17 @@ Assert-True ($DesktopFiles.Name -contains 'DriveOSSecurityPolicy.cs') 'Desktop s
 $Policy = Get-Content (Join-Path $Root 'desktop\DriveOSSecurityPolicy.cs') -Raw
 Assert-True ($Policy -match 'RandomNumberGenerator') 'Session tokens must use a cryptographic RNG.'
 Assert-True ($Policy -match 'AreDevToolsEnabled = false') 'Embedded browser developer tools must remain disabled.'
+Assert-True ($Policy -match 'IsWebMessageEnabled = true') 'Desktop preview controls require WebView messages.'
 Assert-True ($Policy -match 'CoreWebView2PermissionState.Deny' -or
     (Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw) -match 'CoreWebView2PermissionState.Deny') 'Browser permissions must remain denied.'
 $DesktopProgram = Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw
+$IndexHtml = Get-Content (Join-Path $Root 'web\index.html') -Raw
+$Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
+Assert-True ($DesktopProgram -match 'journeydeck:mobile-preview' -and $DesktopProgram -match 'ClientSize = new Size\(430,' -and $DesktopProgram -match 'Keys\.Escape') 'Desktop mobile-preview resizing, web message, or restore control is missing.'
+Assert-True ($DesktopProgram -match 'journeydeck:wife-preview' -and $DesktopProgram -match 'Navigate\(DriveOSSecurityPolicy\.LocalUrl \+ "wife"\)' -and $DesktopProgram -match 'DriveOSSecurityPolicy\.IsLocalUri\(source\)') 'Desktop Wife Mode preview navigation or local-origin validation is missing.'
+Assert-True ($IndexHtml -match 'desktopWifePreviewButton') 'Desktop Wife Mode preview button is missing.'
+Assert-True ($Styles -match '\.desktop-wife-preview' -and $Styles -match '225,103,156') 'Desktop Wife Mode preview button is not styled pink.'
+Assert-True ($DesktopProgram -notmatch 'previewToolbar') 'The desktop mobile-preview control must not consume a native toolbar above JourneyDeck.'
 Assert-True ($DesktopProgram -match 'blob:' -and $DesktopProgram -match 'image/png' -and
     $DesktopProgram -match 'SaveFileDialog') 'Share-card PNG downloads must use the restricted local save workflow.'
 Assert-True ($DesktopProgram -match 'if \(!isDriveOSShareCard\)') 'Non-share-card downloads must remain blocked.'

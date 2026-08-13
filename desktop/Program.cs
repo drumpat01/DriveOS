@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("JourneyDeck")]
 [assembly: AssemblyProduct("JourneyDeck")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("5.2.4.0")]
-[assembly: AssemblyFileVersion("5.2.4.0")]
-[assembly: AssemblyInformationalVersion("5.2.4")]
+[assembly: AssemblyVersion("5.2.5.0")]
+[assembly: AssemblyFileVersion("5.2.5.0")]
+[assembly: AssemblyInformationalVersion("5.2.5")]
 
 namespace DriveOSDesktop
 {
@@ -75,6 +75,9 @@ namespace DriveOSDesktop
         private readonly DriveOSBackendHost backendHost;
         private bool startupComplete;
         private bool shutdownStarted;
+        private bool mobilePreviewActive;
+        private Rectangle desktopBounds;
+        private FormWindowState desktopWindowState;
 
         public DriveOSForm()
         {
@@ -83,10 +86,11 @@ namespace DriveOSDesktop
 
             Text = "JourneyDeck 5.2";
             StartPosition = FormStartPosition.CenterScreen;
-            MinimumSize = new Size(980, 680);
+            MinimumSize = new Size(390, 680);
             ClientSize = new Size(1420, 900);
             BackColor = Color.FromArgb(248, 252, 254);
             Opacity = 0;
+            KeyPreview = true;
 
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string iconPath = Path.Combine(baseDir, "DriveOS-v4.ico");
@@ -107,7 +111,76 @@ namespace DriveOSDesktop
             Controls.Add(browser);
 
             Shown += OnShown;
+            KeyDown += OnWindowKeyDown;
+            browser.KeyDown += OnWindowKeyDown;
             FormClosing += OnFormClosing;
+        }
+
+        private void EnterMobilePreview(object sender, EventArgs e)
+        {
+            if (mobilePreviewActive)
+            {
+                return;
+            }
+
+            desktopWindowState = WindowState;
+            if (WindowState == FormWindowState.Normal)
+            {
+                desktopBounds = Bounds;
+            }
+            else
+            {
+                desktopBounds = RestoreBounds;
+            }
+
+            mobilePreviewActive = true;
+            WindowState = FormWindowState.Normal;
+
+            Rectangle workingArea = Screen.FromControl(this).WorkingArea;
+            int previewHeight = Math.Min(860, workingArea.Height - 32);
+            ClientSize = new Size(430, Math.Max(680, previewHeight));
+            Location = new Point(
+                workingArea.Left + Math.Max(0, (workingArea.Width - Width) / 2),
+                workingArea.Top + Math.Max(0, (workingArea.Height - Height) / 2)
+            );
+
+            Text = "JourneyDeck 5.2 - Mobile Preview (Esc to exit)";
+            browser.Focus();
+        }
+
+        private void ExitMobilePreview()
+        {
+            if (!mobilePreviewActive)
+            {
+                return;
+            }
+
+            mobilePreviewActive = false;
+            WindowState = FormWindowState.Normal;
+            Bounds = desktopBounds;
+            if (desktopWindowState == FormWindowState.Maximized)
+            {
+                WindowState = FormWindowState.Maximized;
+            }
+
+            Text = "JourneyDeck 5.2";
+            if (browser.CoreWebView2 != null)
+            {
+                browser.CoreWebView2.ExecuteScriptAsync("window.scrollTo({ top: 0, behavior: 'instant' });");
+            }
+            browser.Focus();
+        }
+
+        private void OnWindowKeyDown(object sender, KeyEventArgs e)
+        {
+            if (mobilePreviewActive &&
+                (e.KeyCode == Keys.Escape ||
+                 (e.Control && e.Shift && e.KeyCode == Keys.M)))
+            {
+                ExitMobilePreview();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
         }
 
         private async void OnShown(object sender, EventArgs e)
@@ -199,6 +272,7 @@ namespace DriveOSDesktop
                 browser.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 browser.CoreWebView2.NavigationStarting += OnNavigationStarting;
                 browser.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                browser.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 browser.CoreWebView2.PermissionRequested += OnPermissionRequested;
                 browser.CoreWebView2.DownloadStarting += OnDownloadStarting;
                 browser.CoreWebView2.ServerCertificateErrorDetected += OnServerCertificateErrorDetected;
@@ -306,6 +380,13 @@ namespace DriveOSDesktop
                     "if (typeof runDriveOSIgnition === 'function') { runDriveOSIgnition(); }"
                 );
 
+                await browser.ExecuteScriptAsync(
+                    "const previewButton=document.getElementById('desktopMobilePreviewButton');" +
+                    "if(previewButton){previewButton.hidden=false;previewButton.onclick=()=>window.chrome.webview.postMessage('journeydeck:mobile-preview');}" +
+                    "const wifePreviewButton=document.getElementById('desktopWifePreviewButton');" +
+                    "if(wifePreviewButton){wifePreviewButton.hidden=false;wifePreviewButton.onclick=()=>window.chrome.webview.postMessage('journeydeck:wife-preview');}"
+                );
+
                 // Reveal only after the ignition overlay is already active.
                 Opacity = 1;
                 Activate();
@@ -317,6 +398,38 @@ namespace DriveOSDesktop
                 // than leaving DriveOS permanently invisible.
                 Opacity = 1;
             }
+        }
+
+        private void OnWebMessageReceived(
+            object sender,
+            CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                Uri source;
+                if (!Uri.TryCreate(e.Source, UriKind.Absolute, out source) ||
+                    !DriveOSSecurityPolicy.IsLocalUri(source))
+                {
+                    return;
+                }
+
+                string message = e.TryGetWebMessageAsString();
+                if (String.Equals(
+                    message,
+                    "journeydeck:mobile-preview",
+                    StringComparison.Ordinal))
+                {
+                    EnterMobilePreview(this, EventArgs.Empty);
+                }
+                else if (String.Equals(
+                    message,
+                    "journeydeck:wife-preview",
+                    StringComparison.Ordinal))
+                {
+                    browser.CoreWebView2.Navigate(DriveOSSecurityPolicy.LocalUrl + "wife");
+                }
+            }
+            catch { }
         }
 
         private void OnNavigationStarting(

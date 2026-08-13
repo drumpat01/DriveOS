@@ -3389,7 +3389,7 @@ h1 span {
 
 .date-time {
   color: #38586a;
-  font-weight: 650;
+  font-weight: 400;
 }
 
 .status-pill {
@@ -7767,7 +7767,7 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
 +/* JourneyDeck 5.1 - Live Drive */
 .nav-button-live { display: inline-flex; align-items: center; gap: 7px; }
 .nav-mobile-icon,.nav-mobile-label,.mobile-more-button,.mobile-more-menu { display: none; }
-.nav-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #29d5b0; box-shadow: 0 0 0 4px rgba(41,213,176,.12), 0 0 14px rgba(41,213,176,.58); }
+.nav-live-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: #ef4444; box-shadow: none; }
 .nav-button-live.active .nav-live-dot { animation: live-drive-pulse 1.8s ease-in-out infinite; }
 
 .live-drive-view { padding-top: 4px; }
@@ -7907,3 +7907,211 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
   }
 }
 .return-wife-mode { border:1px solid var(--line); border-radius:10px; padding:8px 10px; background:var(--panel); color:var(--accent); font-weight:800; white-space:nowrap; }
+.desktop-mobile-preview { min-height:38px; padding:0 11px; border:1px solid rgba(11,169,190,.28); border-radius:11px; background:rgba(11,169,190,.08); color:var(--accent); font-size:.68rem; font-weight:850; white-space:nowrap; cursor:pointer; }
+.desktop-mobile-preview:hover,.desktop-mobile-preview:focus-visible { border-color:rgba(11,169,190,.48); background:rgba(11,169,190,.14); color:var(--text); outline:none; }
+.desktop-wife-preview { min-height:38px; padding:0 11px; border:1px solid rgba(225,103,156,.42); border-radius:11px; background:rgba(225,103,156,.14); color:#d84f8b; font-size:.68rem; font-weight:850; white-space:nowrap; cursor:pointer; }
+.desktop-wife-preview:hover,.desktop-wife-preview:focus-visible { border-color:rgba(225,103,156,.68); background:rgba(225,103,156,.23); color:#bd376f; outline:none; }
+:root[data-theme="dark"] .desktop-wife-preview { border-color:rgba(255,139,190,.46); background:rgba(225,103,156,.17); color:#ff9bc6; }
+:root[data-theme="dark"] .desktop-wife-preview:hover,:root[data-theme="dark"] .desktop-wife-preview:focus-visible { background:rgba(225,103,156,.27); color:#ffd3e6; }
+
+/* =====================================================================
+   JourneyDeck 5.2.6 - owner mobile bottom navigation
+   Keep Full Mode as calm and legible as Wife Mode on phones and tablets. The nav is
+   intentionally a single, lightly translucent bottom bar rather than a
+   floating pill, while More preserves access to the secondary views.
+   ===================================================================== */
+@media (max-width: 1120px) {
+  .desktop-mobile-preview,.desktop-wife-preview { display:none !important; }
+  .app-shell {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .main-nav.mobile-nav-portal,
+  body > .main-nav {
+    position: fixed !important;
+    z-index: 900 !important;
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    min-height: calc(64px + env(safe-area-inset-bottom)) !important;
+    margin: 0 !important;
+    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+    border: 0 !important;
+    border-top: 1px solid rgba(33,83,101,.13) !important;
+    border-radius: 0 !important;
+    background: rgba(249,252,253,.82) !important;
+    box-shadow: 0 -8px 26px rgba(39,74,88,.08) !important;
+    backdrop-filter: blur(16px) saturate(1.12) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(1.12) !important;
+  }
+
+  .main-nav.mobile-nav-portal,
+  body > .main-nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 0 !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-secondary,
+  body > .main-nav .nav-secondary {
+    display: none !important;
+  }
+
+  .main-nav.mobile-nav-portal .mobile-more-button,
+  body > .main-nav .mobile-more-button {
+    display: grid !important;
+  }
+
+  :root[data-theme="dark"] .main-nav.mobile-nav-portal,
+  :root[data-theme="dark"] body > .main-nav {
+    border-top-color: rgba(255,181,212,.16) !important;
+    background: rgba(31,14,24,.82) !important;
+    box-shadow: 0 -8px 26px rgba(0,0,0,.18) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button {
+    min-height: 64px !important;
+    padding: 11px 4px 8px !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: var(--muted) !important;
+    font-size: .76rem !important;
+    font-weight: 750 !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button:hover,
+  .main-nav.mobile-nav-portal .nav-button:focus-visible,
+  body > .main-nav .nav-button:hover,
+  body > .main-nav .nav-button:focus-visible {
+    background: transparent !important;
+    color: var(--text) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button.active,
+  body > .main-nav .nav-button.active {
+    background: transparent !important;
+    color: var(--accent-2) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button.active::after,
+  body > .main-nav .nav-button.active::after {
+    top: 0 !important;
+    right: 27% !important;
+    bottom: auto !important;
+    left: 27% !important;
+    height: 3px !important;
+    background: linear-gradient(90deg, var(--v3-cyan), var(--v3-green)) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-mobile-icon,
+  body > .main-nav .nav-mobile-icon {
+    display: none !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-live-dot,
+  body > .main-nav .nav-live-dot {
+    display: inline-block !important;
+    width: 6px !important;
+    height: 6px !important;
+    margin-right: 2px !important;
+    background: #ef4444 !important;
+    box-shadow: none !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-backdrop {
+    background: rgba(32,53,61,.34) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-sheet {
+    border-color: rgba(33,83,101,.14) !important;
+    background: rgba(249,252,253,.94) !important;
+    box-shadow: 0 24px 70px rgba(39,74,88,.22) !important;
+    color: var(--text) !important;
+    backdrop-filter: blur(18px) saturate(1.08) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(1.08) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-sheet header {
+    border-bottom-color: rgba(33,83,101,.10) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-sheet header span {
+    color: var(--accent-2) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-sheet header button {
+    border-color: rgba(33,83,101,.12) !important;
+    background: rgba(255,255,255,.72) !important;
+    color: var(--text) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-grid button {
+    border-color: rgba(33,83,101,.11) !important;
+    background: rgba(255,255,255,.68) !important;
+    color: var(--text) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-grid button > span {
+    background: rgba(17,174,191,.10) !important;
+    color: var(--accent-2) !important;
+  }
+
+  :root[data-theme="light"] .mobile-more-grid small {
+    color: var(--muted) !important;
+  }
+}
+
+/* Dark desktop header contrast. Keep secondary controls quieter than the
+   active destination, but bright enough to remain immediately readable. */
+@media (min-width: 1121px) {
+  :root[data-theme="dark"] .main-nav .nav-button {
+    color: #a9c5cf !important;
+  }
+
+  :root[data-theme="dark"] .main-nav .nav-button:hover,
+  :root[data-theme="dark"] .main-nav .nav-button:focus-visible {
+    color: #effbff !important;
+  }
+
+  :root[data-theme="dark"] .main-nav .nav-button.active {
+    color: #f7fdff !important;
+  }
+
+  :root[data-theme="dark"] .command-palette-trigger,
+  :root[data-theme="dark"] .command-palette-trigger kbd,
+  :root[data-theme="dark"] .topbar-right .app-version,
+  :root[data-theme="dark"] .topbar-right .date-time,
+  :root[data-theme="dark"] .theme-choice:not(.active) {
+    color: #9fbac4 !important;
+  }
+}
+
+/* Keep the Live status dot and label on one centered baseline at every width.
+   This intentionally sits after the legacy responsive navigation rules. */
+.main-nav .nav-button.nav-button-live,
+.main-nav.mobile-nav-portal .nav-button.nav-button-live,
+body > .main-nav .nav-button.nav-button-live {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 5px !important;
+}
+
+.main-nav .nav-button-live .nav-live-dot,
+.main-nav.mobile-nav-portal .nav-button-live .nav-live-dot,
+body > .main-nav .nav-button-live .nav-live-dot {
+  position: static !important;
+  display: inline-block !important;
+  width: 6px !important;
+  height: 6px !important;
+  margin: 0 !important;
+  transform: none !important;
+  vertical-align: middle !important;
+  background: #ef4444 !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
