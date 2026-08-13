@@ -13,6 +13,22 @@
       return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     }
 
+    function looksLikeQuestion(value) {
+      const question = String(value || "").trim();
+      const words = normalize(question).split(" ").filter(Boolean);
+      return question.endsWith("?") ||
+        /^(who|what|when|where|why|how|which|show me|tell me)\b/i.test(question) ||
+        words.length >= 4;
+    }
+
+    function relevance(item, query) {
+      const title = normalize(item.title);
+      if (title === query) return 0;
+      if (title.startsWith(query)) return 1;
+      const titleMatch = title.indexOf(query);
+      return titleMatch >= 0 ? 2 + (titleMatch / 100) : 3;
+    }
+
     function driveTitle(drive) {
       return drive.dateLabel || drive.shortDateLabel || "Drive";
     }
@@ -88,11 +104,13 @@
           detail: "Answer using your saved drives, music, places, and charging records", type: "Answer",
           run: () => ask(naturalQuestion)
         }] : [];
-        return askItem.concat(all.sort((a, b) => {
-        const aTitle = normalize(a.title).startsWith(query) ? 0 : 1;
-        const bTitle = normalize(b.title).startsWith(query) ? 0 : 1;
-        return aTitle - bTitle || groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group);
-        })).slice(0, 30);
+        const matches = all.sort((a, b) => {
+          return relevance(a, query) - relevance(b, query) ||
+            groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group);
+        }).slice(0, 29);
+        return (looksLikeQuestion(naturalQuestion)
+          ? askItem.concat(matches)
+          : matches.concat(askItem)).slice(0, 30);
       }
       const limits = { Actions: 4, Drives: 3, Places: 2, Songs: 3, Settings: 3 };
       const counts = {};
