@@ -1,11 +1,13 @@
 (function () {
   const $ = window.DriveOSDom.byId;
 
-  function create({ state, actions }) {
+  function create({ state, actions, api }) {
     const groupOrder = ["Actions", "Drives", "Places", "Songs", "Settings"];
     let results = [];
     let selectedIndex = 0;
     let returnFocus = null;
+    let assistantAnswer = null;
+    let assistantBusy = false;
 
     function normalize(value) {
       return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -79,11 +81,19 @@
     function visibleResults() {
       const query = normalize($("commandPaletteInput")?.value);
       const all = buildResults().filter(item => !item.disabled && (!query || matches(item, query)));
-      if (query) return all.sort((a, b) => {
+      if (query) {
+        const naturalQuestion = String($("commandPaletteInput")?.value || "").trim();
+        const askItem = naturalQuestion.length >= 3 ? [{
+          group: "Ask JourneyDeck", icon: "✦", title: `Ask JourneyDeck: ${naturalQuestion}`,
+          detail: "Answer using your saved drives, music, places, and charging records", type: "Answer",
+          run: () => ask(naturalQuestion)
+        }] : [];
+        return askItem.concat(all.sort((a, b) => {
         const aTitle = normalize(a.title).startsWith(query) ? 0 : 1;
         const bTitle = normalize(b.title).startsWith(query) ? 0 : 1;
         return aTitle - bTitle || groupOrder.indexOf(a.group) - groupOrder.indexOf(b.group);
-      }).slice(0, 30);
+        })).slice(0, 30);
+      }
       const limits = { Actions: 4, Drives: 3, Places: 2, Songs: 3, Settings: 3 };
       const counts = {};
       return all.filter(item => {
@@ -126,6 +136,68 @@
       results = visibleResults();
       selectedIndex = Math.min(selectedIndex, Math.max(0, results.length - 1));
       container.replaceChildren();
+      if (assistantBusy) {
+        const loading = document.createElement("div");
+        loading.className = "command-empty";
+        loading.textContent = "Checking your JourneyDeck records…";
+        container.appendChild(loading);
+        return;
+      }
+      if (assistantAnswer) {
+        const answer = document.createElement("section");
+        answer.className = "command-answer";
+        const label = document.createElement("div");
+        label.className = "command-group-label";
+        label.textContent = "Ask JourneyDeck";
+        const title = document.createElement("strong");
+        title.textContent = assistantAnswer.answer || "No answer available.";
+        const detail = document.createElement("p");
+        const evidence = Array.isArray(assistantAnswer.evidence) ? assistantAnswer.evidence : [];
+        detail.textContent = evidence.length
+          ? `Based on ${evidence.length} evidence item${evidence.length === 1 ? "" : "s"}. ${assistantAnswer.filters?.periodDays ? `Period: last ${assistantAnswer.filters.periodDays} days.` : ""}`
+          : "No matching records were needed for this answer.";
+        answer.append(label, title, detail);
+
+        if (evidence.length) {
+          const evidenceList = document.createElement("div");
+          evidenceList.className = "command-answer-evidence";
+          evidence.slice(0, 5).forEach(item => {
+            const chip = document.createElement("span");
+            if (item.type === "drive") chip.textContent = `${item.date || "Drive"} · ${item.miles ?? "--"} mi · ${item.route || "Route unavailable"}`;
+            else if (item.type === "track") chip.textContent = `${item.track || "Track"}${item.artist ? ` · ${item.artist}` : ""}${item.plays ? ` · ${item.plays} plays` : ""}`;
+            else if (item.type === "artist") chip.textContent = `${item.artist || "Artist"} · ${item.plays || 0} plays`;
+            else if (item.type === "place") chip.textContent = `${item.name || "Place"} · ${item.uses || 0} endpoints`;
+            else if (item.type === "charging") chip.textContent = `${item.sessions || 0} sessions · ${item.energyAddedKWh || 0} kWh`;
+            else if (item.type === "drives") chip.textContent = `${item.count || 0} drives${item.miles != null ? ` · ${item.miles} mi` : ""}${item.efficiencyWhMi != null ? ` · ${item.efficiencyWhMi} Wh/mi` : ""}`;
+            else chip.textContent = "JourneyDeck record";
+            evidenceList.appendChild(chip);
+          });
+          answer.appendChild(evidenceList);
+        }
+
+        const suggestions = Array.isArray(assistantAnswer.suggestions) ? assistantAnswer.suggestions : [];
+        if (assistantAnswer.operation === "unsupported" && suggestions.length) {
+          const suggestionList = document.createElement("div");
+          suggestionList.className = "command-answer-suggestions";
+          suggestions.slice(0, 4).forEach(suggestion => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = suggestion;
+            button.addEventListener("click", () => {
+              const input = $("commandPaletteInput");
+              if (input) input.value = suggestion;
+              assistantAnswer = null;
+              selectedIndex = 0;
+              render();
+              input?.focus();
+            });
+            suggestionList.appendChild(button);
+          });
+          answer.appendChild(suggestionList);
+        }
+        container.appendChild(answer);
+        return;
+      }
       if (!results.length) {
         const empty = document.createElement("div");
         empty.className = "command-empty";
@@ -158,8 +230,27 @@
     function execute(index) {
       const item = results[index];
       if (!item) return;
+      if (item.group === "Ask JourneyDeck") {
+        Promise.resolve().then(item.run).catch(error => console.error("JourneyDeck answer failed:", error));
+        return;
+      }
       close();
       Promise.resolve().then(item.run).catch(error => console.error("Command palette action failed:", error));
+    }
+
+    async function ask(question) {
+      if (!api || assistantBusy) return;
+      assistantBusy = true;
+      assistantAnswer = null;
+      render();
+      try {
+        assistantAnswer = await api.post("/api/assistant/query", { question });
+      } catch (error) {
+        assistantAnswer = { answer: error.message || "JourneyDeck could not answer that question.", evidence: [] };
+      } finally {
+        assistantBusy = false;
+        render();
+      }
     }
 
     function open() {
@@ -172,6 +263,8 @@
       document.body.style.overflow = "hidden";
       input.value = "";
       selectedIndex = 0;
+      assistantAnswer = null;
+      assistantBusy = false;
       render();
       requestAnimationFrame(() => input.focus());
     }
@@ -188,7 +281,7 @@
 
     function bind() {
       $("commandPaletteButton")?.addEventListener("click", open);
-      $("commandPaletteInput")?.addEventListener("input", () => { selectedIndex = 0; render(); });
+      $("commandPaletteInput")?.addEventListener("input", () => { assistantAnswer = null; selectedIndex = 0; render(); });
       $("commandPalette")?.addEventListener("click", event => {
         if (event.target.closest("[data-close-command-palette]")) close();
       });

@@ -131,6 +131,23 @@ const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascri
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/api/assistant/query') {
+    let requestBody = '';
+    req.on('data', chunk => { requestBody += chunk; });
+    req.on('end', () => {
+      const question = String(JSON.parse(requestBody || '{}').question || '').toLowerCase();
+      const result = question.includes('longest')
+        ? { answer: 'Your longest recorded demo drive was 35.4 miles on Demo Day 10.', operation: 'longest_drive', evidence: [{ type: 'drive', date: 'Demo Day 10', miles: 35.4, route: 'Pinecrest to Harbor Point' }] }
+        : question.includes('artist')
+          ? { answer: 'Your most-played artist is Nova Lane, with 18 archived plays.', operation: 'top_artists', evidence: [{ type: 'artist', artist: 'Nova Lane', plays: 18 }] }
+          : question.includes('miles') || question.includes('far')
+            ? { answer: 'You drove 300.0 miles in the last 30 days across 10 completed drives.', operation: 'drive_distance', evidence: [{ type: 'drives', count: 10, miles: 300 }] }
+            : { answer: 'I can currently answer questions about drives, efficiency, music, places, and charging. Try one of the suggested questions.', operation: 'unsupported', evidence: [] };
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ...result, filters: { periodDays: 30 }, suggestions: ['How many miles did I drive this month?', 'What was my longest drive?', 'Who is my top artist?', 'What is my most visited place?'] }));
+    });
+    return;
+  }
   if (url.pathname.startsWith('/api/spotify/artwork/')) {
     const artwork = ['driveos-logo-v3.png', 'DriveOS-Icon-v2.png', 'favicon.png'];
     const match = url.pathname.match(/(\d+)$/);

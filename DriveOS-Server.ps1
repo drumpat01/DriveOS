@@ -24,6 +24,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Domain\Recaps\DriveOS.Recaps.psm1") 
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
@@ -2888,6 +2889,20 @@ function Get-DriveStats {
     return New-DriveOSDriveStats -Drives $Drives -PeriodDays 30
 }
 
+function Get-AssistantAnswer {
+    param([string]$Question)
+
+    # The assistant receives only the application's normalized records. It cannot
+    # execute database text, invoke external models, or alter any stored data.
+    $Charging = Get-ChargingSummary
+    return Get-DriveOSAssistantAnswer `
+        -Question $Question `
+        -Drives @(Get-CachedRecentDrives365) `
+        -History @(Get-SpotifyHistory) `
+        -Places @((Get-PlaceCandidates).places) `
+        -Charges @($Charging.sessions)
+}
+
 # ------------------------------------------------------------
 # Spotify playlist creation
 # ------------------------------------------------------------
@@ -3364,6 +3379,12 @@ function Handle-Request {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields driveId
 
                     Send-Json -Stream $Stream -Object (New-DrivePlaylist -DriveId $Body.driveId)
+                    return
+                }
+
+                "/api/assistant/query" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields question
+                    Send-Json -Stream $Stream -Object (Get-AssistantAnswer -Question "$($Body.question)")
                     return
                 }
 
