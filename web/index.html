@@ -8,13 +8,14 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="JourneyDeck">
-  <link rel="icon" type="image/png" href="/assets/favicon.png">
+  <link rel="icon" type="image/svg+xml" href="/assets/journeydeck-mark.svg">
+  <link rel="alternate icon" type="image/png" href="/assets/favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/assets/pwa-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=5.0.1">
+  <link rel="stylesheet" href="/styles.css?v=5.0.4">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -24,90 +25,54 @@
     </div>
     <button id="pwaInstallDismiss" type="button" aria-label="Dismiss install instructions">&times;</button>
   </div>
-  <div id="driveosIgnition" class="ignition" aria-hidden="true">
-    <div class="ignition-atmosphere ignition-atmosphere-a"></div>
-    <div class="ignition-atmosphere ignition-atmosphere-b"></div>
+  <div id="driveosIgnition" class="ignition journeydeck-launch" aria-hidden="true">
+    <div class="jd-launch-glow jd-launch-glow-a"></div>
+    <div class="jd-launch-glow jd-launch-glow-b"></div>
+    <div class="jd-launch-grid"></div>
 
-    <svg class="ignition-route-field"
-         viewBox="0 0 1200 700"
-         preserveAspectRatio="xMidYMid slice"
-         aria-hidden="true">
+    <svg class="jd-route-canvas" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <defs>
-        <linearGradient id="ignitionRouteGradient" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stop-color="#00a6cf"/>
-          <stop offset="52%" stop-color="#39d9be"/>
-          <stop offset="100%" stop-color="#93f0c4"/>
+        <linearGradient id="journeyDeckRoute" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#47e6d2"/>
+          <stop offset="52%" stop-color="#87f1c4"/>
+          <stop offset="100%" stop-color="#ffcb78"/>
         </linearGradient>
-        <filter id="ignitionRouteGlow" x="-40%" y="-40%" width="180%" height="180%">
-          <feGaussianBlur stdDeviation="7" result="blur"/>
-          <feMerge>
-            <feMergeNode in="blur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
+        <filter id="journeyDeckGlow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="9" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
       </defs>
-
-      <path class="ignition-route ignition-route-glow"
-            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
-      <path class="ignition-route ignition-route-core"
-            d="M -70 650 C 165 555, 175 365, 375 395 S 555 610, 705 432 S 805 155, 1010 205 S 1140 220, 1280 42"/>
-
-      <circle class="ignition-route-node ignition-route-node-a" cx="375" cy="395" r="7"/>
-      <circle class="ignition-route-node ignition-route-node-b" cx="705" cy="432" r="7"/>
-      <circle class="ignition-route-node ignition-route-node-c" cx="1010" cy="205" r="7"/>
+      <path class="jd-route jd-route-ghost" d="M-60,698 C146,687 205,551 350,571 C481,589 462,758 654,696 C828,640 792,411 983,417 C1144,421 1167,246 1500,160"/>
+      <path class="jd-route jd-route-main" d="M-60,698 C146,687 205,551 350,571 C481,589 462,758 654,696 C828,640 792,411 983,417 C1144,421 1167,246 1500,160"/>
+      <g class="jd-route-waypoints">
+        <circle cx="350" cy="571" r="7"/><circle cx="654" cy="696" r="7"/><circle cx="983" cy="417" r="7"/>
+        <circle class="jd-destination-ring" cx="1250" cy="299" r="15"/><circle class="jd-destination-dot" cx="1250" cy="299" r="5"/>
+      </g>
     </svg>
 
-    <div class="ignition-lockup">
-      <div class="ignition-logo-assembly" aria-hidden="true">
-        <div class="ignition-emblem-shell">
-          <div class="ignition-emblem-halo"></div>
-          <div class="ignition-piece ignition-emblem-ring"></div>
-
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-top"></div>
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-left"></div>
-          <div class="ignition-piece ignition-emblem-arc ignition-emblem-arc-right"></div>
-
-          <div class="ignition-piece ignition-emblem-crest">
-            <span class="ignition-crest-wing ignition-crest-left"></span>
-            <span class="ignition-crest-wing ignition-crest-right"></span>
-            <span class="ignition-crest-stem"></span>
-          </div>
-
-          <div class="ignition-piece ignition-emblem-road">
-            <span class="ignition-road-lane"></span>
-          </div>
+    <main class="jd-launch-content">
+      <div class="jd-launch-kicker"><span></span> PERSONAL DRIVING ATLAS</div>
+      <div class="jd-launch-lockup">
+        <div class="jd-route-mark" aria-hidden="true">
+          <i class="jd-mark-card jd-mark-card-back"></i>
+          <i class="jd-mark-card jd-mark-card-front"></i>
+          <svg viewBox="0 0 76 76"><path d="M16 58c10-4 8-26 21-27 12-1 11 15 23 11"/><circle cx="16" cy="58" r="4"/><circle cx="60" cy="42" r="4"/></svg>
         </div>
-
-        <div class="ignition-wordmark-lockup">
-          <div class="ignition-brand-line ignition-piece">
-            Personal Vehicle Intelligence
-          </div>
-
-          <div class="ignition-wordmark" aria-hidden="true">
-            <span class="ignition-word-drive ignition-piece">JOURNEY</span><span class="ignition-word-os ignition-piece">DECK</span>
-          </div>
+        <div>
+          <div class="jd-launch-title"><span>JOURNEY</span><strong>DECK</strong></div>
+          <p>Every mile, beautifully remembered.</p>
         </div>
       </div>
 
-      <div class="ignition-system-line">
-        <span class="ignition-system-dot"></span>
-        <span id="ignitionSystemText">INITIALIZING VEHICLE INTELLIGENCE</span>
+      <div class="jd-loading-panel">
+        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.0</strong></div>
+        <div class="jd-loading-track"><i></i></div>
+        <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
+    </main>
 
-      <div class="ignition-progress">
-        <span class="ignition-progress-fill"></span>
-      </div>
-    </div>
-
-    <div class="ignition-data ignition-data-left">
-      <span>ROUTE CORE</span>
-      <strong>ONLINE</strong>
-    </div>
-
-    <div class="ignition-data ignition-data-right">
-      <span>JOURNEYDECK</span>
-      <strong id="ignitionVersion">5.0</strong>
-    </div>
+    <div class="jd-launch-corner jd-launch-corner-left"><span>JOURNEY LOG</span><strong>SYNCED</strong></div>
+    <div class="jd-launch-corner jd-launch-corner-right"><span>THE ROAD IS</span><strong>YOURS</strong></div>
   </div>
     <div id="backgroundActivityMonitor"
        class="background-activity-monitor idle"
@@ -122,7 +87,7 @@
 <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="/assets/driveos-logo-v3.png" alt="JourneyDeck logo">
+        <img class="brand-logo" src="/assets/journeydeck-mark.svg" alt="JourneyDeck route mark">
         <div class="brand-copy">
           <div class="eyebrow">PERSONAL VEHICLE INTELLIGENCE</div>
           <h1>JOURNEY<span>DECK</span></h1>
@@ -879,7 +844,7 @@
   <script src="/core/platform.js?v=5.0.3"></script>
   <script src="/core/api.js?v=5.0.3"></script>
   <script src="/components/song-artwork.js?v=5.0.3"></script>
-  <script src="/features/navigation.js?v=5.0.3"></script>
+  <script src="/features/navigation.js?v=5.0.4"></script>
   <script src="/features/pwa.js?v=5.0.3"></script>
   <script src="/features/theme.js?v=5.0.3"></script>
   <script src="/features/ignition.js?v=5.0.3"></script>
