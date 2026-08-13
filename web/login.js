@@ -34,7 +34,7 @@
     }
     catch {
       message.textContent =
-        "DriveOS could not be reached. Please try again.";
+        "JourneyDeck could not be reached. Please try again.";
     }
     finally {
       button.disabled = false;

@@ -26,13 +26,13 @@ namespace DriveOSDesktop
 
             if (!File.Exists(Path.Combine(baseDir, "data", "driveos-secrets.json")))
             {
-                return "DriveOS encrypted secrets have not been set up yet.\r\n\r\n" +
-                    "Run SETUP-DRIVEOS-SECRETS.bat once, then open DriveOS again.";
+                return "JourneyDeck encrypted secrets have not been set up yet.\r\n\r\n" +
+                    "Run SETUP-DRIVEOS-SECRETS.bat once, then open JourneyDeck again.";
             }
 
             if (!File.Exists(Path.Combine(baseDir, "DriveOS-Backend.ps1")))
             {
-                return "DriveOS-Backend.ps1 is missing from the DriveOS folder.";
+                return "DriveOS-Backend.ps1 is missing from the JourneyDeck installation folder.";
             }
 
             return "";

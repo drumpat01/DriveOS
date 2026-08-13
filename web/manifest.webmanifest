@@ -1,6 +1,6 @@
 {
-  "name": "DriveOS",
-  "short_name": "DriveOS",
+  "name": "JourneyDeck",
+  "short_name": "JourneyDeck",
   "description": "Personal Vehicle Intelligence",
   "id": "/",
   "start_url": "/#dashboard",

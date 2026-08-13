@@ -10,7 +10,7 @@ $VersionParts = $Version.Split('.')
 $DisplayVersion = "$($VersionParts[0]).$($VersionParts[1])"
 
 $Expected = @{
-    (Join-Path $Root "web\build.json") = "{`n  `"product`": `"DriveOS`",`n  `"version`": `"$Version`",`n  `"webBuild`": `"$WebBuild`",`n  `"features`": [`n    `"friendly-places`",`n    `"charging-history`",`n    `"monthly-recap`",`n    `"lastfm-history`",`n    `"foursquare-business-names`",`n    `"privacy-safe-share-cards`"`n  ],`n  `"css`": `"/styles.css?v=$WebBuild`",`n  `"js`": `"/app.js?v=$WebBuild`"`n}`n"
+    (Join-Path $Root "web\build.json") = "{`n  `"product`": `"JourneyDeck`",`n  `"version`": `"$Version`",`n  `"webBuild`": `"$WebBuild`",`n  `"features`": [`n    `"friendly-places`",`n    `"charging-history`",`n    `"monthly-recap`",`n    `"lastfm-history`",`n    `"foursquare-business-names`",`n    `"privacy-safe-share-cards`"`n  ],`n  `"css`": `"/styles.css?v=$WebBuild`",`n  `"js`": `"/app.js?v=$WebBuild`"`n}`n"
     (Join-Path $Root "web\core\build.js") = "(function () {`n  window.DriveOSBuild = Object.freeze({ version: `"$Version`", webBuild: `"$WebBuild`" });`n  document.documentElement.dataset.webBuild = window.DriveOSBuild.webBuild;`n})();`n"
 }
 
@@ -29,7 +29,7 @@ $UpdatedProgram = $Program `
     -replace 'AssemblyVersion\("[0-9.]+"\)', "AssemblyVersion(`"$Version.0`")" `
     -replace 'AssemblyFileVersion\("[0-9.]+"\)', "AssemblyFileVersion(`"$Version.0`")" `
     -replace 'AssemblyInformationalVersion\("[0-9.]+"\)', "AssemblyInformationalVersion(`"$Version`")" `
-    -replace 'Text = "DriveOS [0-9.]+"', "Text = `"DriveOS $DisplayVersion`""
+    -replace 'Text = "JourneyDeck [0-9.]+"', "Text = `"JourneyDeck $DisplayVersion`""
 if ($Check) {
     if ($UpdatedProgram -ne $Program) { throw "desktop/Program.cs version is stale." }
 } else {
@@ -64,7 +64,7 @@ $UpdatedIndex = [regex]::Replace(
 )
 $UpdatedIndex = [regex]::Replace(
     $UpdatedIndex,
-    '(id="webBuildFooter">DriveOS Web )[0-9.]+(<)',
+    '(id="webBuildFooter">JourneyDeck Web )[0-9.]+(<)',
     { param($Match) $Match.Groups[1].Value + $WebBuild + $Match.Groups[2].Value }
 )
 if ($Check) {
@@ -73,4 +73,4 @@ if ($Check) {
     [IO.File]::WriteAllText($IndexPath, $UpdatedIndex, (New-Object Text.UTF8Encoding($false)))
 }
 
-Write-Host "DriveOS version metadata is synchronized at $Version (web $WebBuild)."
+Write-Host "JourneyDeck version metadata is synchronized at $Version (web $WebBuild)."
