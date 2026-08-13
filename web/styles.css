@@ -7504,3 +7504,163 @@ button.drive-timeline-event:hover{transform:translateY(-1px);border-color:rgba(4
     animation-duration: 1.5s;
   }
 }
+
+/* JourneyDeck launch sequence ------------------------------------------------ */
+.journeydeck-launch {
+  isolation: isolate;
+  color: #eefbf8;
+  background: #081d31;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.journeydeck-launch::before {
+  inset: 0;
+  z-index: -4;
+  opacity: 1;
+  animation: none;
+  mask-image: none;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(19, 72, 91, .65), transparent 45%),
+    linear-gradient(135deg, #071a2d 0%, #0b2e43 52%, #153d4c 100%);
+}
+
+.journeydeck-launch::after {
+  inset: -20%;
+  z-index: -3;
+  opacity: .8;
+  animation: jd-aurora 7s ease-in-out infinite alternate;
+  filter: blur(42px);
+  background: conic-gradient(from 200deg at 47% 50%, transparent, rgba(79, 232, 206, .15), transparent 34%, rgba(255, 181, 96, .12), transparent 62%);
+}
+
+.jd-launch-grid {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  opacity: .28;
+  background-image:
+    linear-gradient(rgba(152, 239, 220, .15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(152, 239, 220, .15) 1px, transparent 1px);
+  background-size: 58px 58px;
+  mask-image: radial-gradient(ellipse at 50% 47%, #000 0%, rgba(0,0,0,.75) 34%, transparent 74%);
+  animation: jd-grid-arrive 1.2s ease-out both;
+}
+
+.jd-launch-glow {
+  position: absolute;
+  z-index: -1;
+  width: 50vw;
+  min-width: 390px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(34px);
+  opacity: 0;
+}
+.jd-launch-glow-a { left: -18vw; bottom: -25vw; background: radial-gradient(circle, rgba(56, 222, 198, .35), transparent 67%); animation: jd-glow-in 1.7s .15s ease-out forwards; }
+.jd-launch-glow-b { right: -18vw; top: -24vw; background: radial-gradient(circle, rgba(255, 185, 104, .28), transparent 68%); animation: jd-glow-in 1.7s .32s ease-out forwards; }
+
+.jd-route-canvas { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; overflow: visible; }
+.jd-route { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1900; stroke-dashoffset: 1900; }
+.jd-route-ghost { stroke: url(#journeyDeckRoute); stroke-width: 20; opacity: .17; filter: url(#journeyDeckGlow); animation: jd-route-draw 2.4s .25s cubic-bezier(.32,.07,.15,1) forwards; }
+.jd-route-main { stroke: url(#journeyDeckRoute); stroke-width: 2.5; animation: jd-route-draw 2.2s .35s cubic-bezier(.32,.07,.15,1) forwards; }
+.jd-route-waypoints circle { fill: #a8ffe1; stroke: #0c4b58; stroke-width: 4; opacity: 0; transform-box: fill-box; transform-origin: center; animation: jd-node-in .5s 1.25s cubic-bezier(.18,.88,.24,1.15) forwards; }
+.jd-route-waypoints circle:nth-child(2) { animation-delay: 1.62s; }.jd-route-waypoints circle:nth-child(3) { animation-delay: 1.98s; }
+.jd-route-waypoints .jd-destination-ring { fill: none; stroke: #ffd08a; stroke-width: 2; animation-delay: 2.3s; }
+.jd-route-waypoints .jd-destination-dot { fill: #ffd08a; stroke: #fff2d5; stroke-width: 2; animation-delay: 2.42s; }
+
+.jd-launch-content { position: relative; z-index: 2; display: grid; justify-items: center; width: min(820px, calc(100vw - 44px)); text-align: center; }
+.jd-launch-kicker { display: flex; gap: 10px; align-items: center; color: rgba(210,255,243,.78); font-size: .65rem; font-weight: 800; letter-spacing: .2em; opacity: 0; transform: translateY(10px); animation: jd-rise .65s .45s ease-out forwards; }
+.jd-launch-kicker span { width: 7px; height: 7px; border-radius: 999px; background: #7df3c9; box-shadow: 0 0 0 0 rgba(125,243,201,.7); animation: jd-pulse 1.6s 1s infinite; }
+.jd-launch-lockup { display: flex; align-items: center; justify-content: center; gap: 23px; margin-top: 23px; }
+.jd-route-mark { position: relative; width: 104px; height: 104px; opacity: 0; transform: translateX(-18px) scale(.76); animation: jd-mark-in .8s .72s cubic-bezier(.18,.88,.24,1.12) forwards; }
+.jd-mark-card { position: absolute; inset: 10px; border: 1px solid rgba(167,255,225,.52); border-radius: 25px 18px 25px 18px; }
+.jd-mark-card-back { transform: rotate(-10deg) translate(-6px, 5px); background: rgba(93,233,197,.08); }
+.jd-mark-card-front { transform: rotate(7deg) translate(6px, -3px); background: linear-gradient(135deg, rgba(100,242,205,.23), rgba(255,205,132,.12)); box-shadow: 0 14px 34px rgba(0,0,0,.22); }
+.jd-route-mark svg { position: absolute; inset: 14px; z-index: 2; overflow: visible; }.jd-route-mark path { fill: none; stroke: #d3ffe7; stroke-width: 3.2; stroke-linecap: round; stroke-dasharray: 90; stroke-dashoffset: 90; animation: jd-mark-route .7s 1.36s ease-out forwards; }.jd-route-mark circle { fill: #ffd08a; opacity: 0; animation: jd-node-in .35s 1.95s ease-out forwards; }.jd-route-mark circle:last-child { animation-delay: 2.1s; }
+.jd-launch-title { font-size: clamp(3.4rem, 9vw, 6.55rem); font-weight: 820; line-height: .84; letter-spacing: -.085em; white-space: nowrap; }.jd-launch-title span, .jd-launch-title strong { display: inline-block; opacity: 0; }.jd-launch-title span { color: #effff8; transform: translateY(28px); animation: jd-title-in .85s .86s cubic-bezier(.2,.9,.25,1) forwards; }.jd-launch-title strong { margin-left: .045em; color: #87efd0; font-weight: 430; transform: translateY(28px); animation: jd-title-in .85s 1.02s cubic-bezier(.2,.9,.25,1) forwards; }
+.jd-launch-lockup p { margin: 14px 0 0; color: rgba(212,241,237,.72); font-family: Georgia, serif; font-size: clamp(1rem, 2.3vw, 1.2rem); font-style: italic; letter-spacing: .01em; opacity: 0; transform: translateY(10px); animation: jd-rise .6s 1.5s ease-out forwards; }
+
+.jd-loading-panel { width: min(390px, 76vw); margin-top: 38px; opacity: 0; transform: translateY(12px); animation: jd-rise .65s 1.72s ease-out forwards; }.jd-loading-topline { display: flex; justify-content: space-between; gap: 16px; color: rgba(211,255,241,.74); font-size: .59rem; font-weight: 780; letter-spacing: .14em; text-align: left; }.jd-loading-topline strong { color: #ffd08a; }.jd-loading-track { height: 4px; margin-top: 11px; overflow: hidden; border-radius: 999px; background: rgba(219,255,245,.16); }.jd-loading-track i { display: block; width: 100%; height: 100%; border-radius: inherit; transform: translateX(-100%); background: linear-gradient(90deg, #4be4d0, #9af3c4 60%, #ffd08a); box-shadow: 0 0 18px rgba(102,246,207,.75); animation: jd-load 1.8s 1.86s cubic-bezier(.22,.76,.2,1) forwards; }.jd-loading-steps { display: flex; justify-content: space-between; margin-top: 12px; color: rgba(211,255,241,.42); font-size: .54rem; font-weight: 800; letter-spacing: .17em; }.jd-loading-steps span { opacity: 0; animation: jd-step .4s ease forwards; }.jd-loading-steps span:nth-child(1) { animation-delay: 1.9s; }.jd-loading-steps span:nth-child(2) { animation-delay: 2.25s; }.jd-loading-steps span:nth-child(3) { animation-delay: 2.58s; }
+.jd-launch-corner { position: absolute; bottom: 32px; z-index: 2; display: grid; gap: 4px; color: rgba(212,255,243,.5); font-size: .55rem; font-weight: 780; letter-spacing: .17em; opacity: 0; animation: jd-rise .55s 1.95s ease-out forwards; }.jd-launch-corner strong { color: rgba(225,255,245,.86); font-size: .65rem; }.jd-launch-corner-left { left: 34px; text-align: left; }.jd-launch-corner-right { right: 34px; text-align: right; }
+.journeydeck-launch.ignition-ready .jd-loading-track i { background: #83f1c2; }.journeydeck-launch.ignition-ready .jd-launch-kicker span { background: #83f1c2; }
+
+@keyframes jd-route-draw { to { stroke-dashoffset: 0; } } @keyframes jd-grid-arrive { from { opacity: 0; transform: scale(1.08); } to { opacity: .28; transform: none; } } @keyframes jd-glow-in { to { opacity: 1; transform: scale(1); } } @keyframes jd-aurora { from { transform: rotate(-10deg) scale(.95); } to { transform: rotate(14deg) scale(1.05); } } @keyframes jd-node-in { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } } @keyframes jd-rise { to { opacity: 1; transform: translateY(0); } } @keyframes jd-mark-in { to { opacity: 1; transform: translateX(0) scale(1); } } @keyframes jd-mark-route { to { stroke-dashoffset: 0; } } @keyframes jd-title-in { to { opacity: 1; transform: translateY(0); } } @keyframes jd-load { to { transform: translateX(0); } } @keyframes jd-step { to { opacity: 1; } } @keyframes jd-pulse { 70% { box-shadow: 0 0 0 7px rgba(125,243,201,0); } 100% { box-shadow: 0 0 0 0 rgba(125,243,201,0); } }
+
+@media (max-width: 640px) { .jd-launch-lockup { display: grid; gap: 14px; }.jd-route-mark { width: 78px; height: 78px; }.jd-launch-title { font-size: clamp(3.15rem, 15vw, 4.7rem); }.jd-launch-corner { bottom: max(19px, env(safe-area-inset-bottom)); }.jd-launch-corner-left { left: 20px; }.jd-launch-corner-right { right: 20px; }.jd-launch-kicker { font-size: .56rem; }.jd-loading-panel { margin-top: 31px; } }
+@media (prefers-reduced-motion: reduce) { .journeydeck-launch *, .journeydeck-launch::before, .journeydeck-launch::after { animation-duration: 1ms !important; animation-delay: 0ms !important; } }
+
+/* JourneyDeck header: make the full identity fit beside navigation at every desktop width. */
+.topbar .brand { min-width: max-content; gap: 11px; }
+.topbar .brand-logo { width: 46px; height: 46px; border-radius: 14px; background: #0b2b40; }
+.topbar .brand h1 { font-size: clamp(1.24rem, 1.5vw, 1.7rem); letter-spacing: .075em; font-weight: 720; white-space: nowrap; }
+.topbar .brand h1 span { font-weight: 430; }
+
+@media (min-width: 761px) and (max-width: 1220px) {
+  .topbar { grid-template-columns: max-content minmax(0, 1fr) !important; grid-template-rows: auto auto !important; gap: 5px 14px !important; }
+  .topbar .brand { grid-column: 1; grid-row: 1; }
+  .topbar .main-nav { grid-column: 2 !important; grid-row: 1 !important; justify-self: end !important; }
+  .topbar .topbar-right { grid-column: 1 / -1 !important; grid-row: 2 !important; justify-self: stretch !important; justify-content: flex-end !important; }
+  .topbar .nav-button { padding: 10px 13px !important; font-size: .78rem !important; }
+}
+
+@media (max-width: 760px) { .topbar .brand { min-width: 0; }.topbar .brand-logo { width: 40px; height: 40px; }.topbar .brand h1 { font-size: clamp(1.08rem, 5vw, 1.35rem) !important; letter-spacing: .055em !important; } }
+
+/* Keep the five-view switcher above every mobile surface, including maps and PWA standalone mode. */
+@media (max-width: 760px) {
+  .main-nav.mobile-nav-portal,
+  body > .main-nav {
+    position: fixed !important;
+    inset: auto max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
+    z-index: 2147483000 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button {
+    display: grid !important;
+    place-items: center;
+  }
+}
+
+/* A Windows app window stops shrinking before phone rules apply. Use the same
+   five-view switcher once the desktop header would otherwise become crowded. */
+@media (min-width: 761px) and (max-width: 1120px) {
+  .app-shell { padding-bottom: 98px !important; }
+
+  .main-nav.mobile-nav-portal,
+  body > .main-nav {
+    position: fixed !important;
+    inset: auto 16px 14px 16px !important;
+    z-index: 2147483000 !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    padding: 5px !important;
+    border: 1px solid rgba(33,83,101,.14) !important;
+    border-radius: 19px !important;
+    background: rgba(249,252,253,.94) !important;
+    box-shadow: 0 16px 46px rgba(39,74,88,.18) !important;
+    backdrop-filter: blur(24px) saturate(1.25) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  :root[data-theme="dark"] .main-nav.mobile-nav-portal,
+  :root[data-theme="dark"] body > .main-nav {
+    background: rgba(8,25,33,.96) !important;
+    border-color: rgba(120,218,224,.16) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button {
+    min-width: 0 !important;
+    min-height: 46px !important;
+    padding: 8px 4px !important;
+    border-radius: 14px !important;
+    font-size: .72rem !important;
+  }
+}
