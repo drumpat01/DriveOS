@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "allowed": [
-    "*.md", "*.txt", "*.json", "*.yaml", "*.yml", "*.ps1", "*.bat", ".env.example", "Dockerfile",
+    "*.md", "*.txt", "*.json", "*.yaml", "*.yml", "*.ps1", "*.bat", "*.ico", ".env.example", "Dockerfile",
     ".github/workflows/**", "desktop/*.cs", "docs/**", "src/**", "tests/**", "tools/**", "web/**"
   ],
   "forbidden": [

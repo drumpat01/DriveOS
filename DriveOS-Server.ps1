@@ -64,6 +64,7 @@ $SpotifyOAuthStateFile = Join-Path $DataDirectory "spotify-oauth-state.json"
 $SpotifyHistoryFile = Join-Path $DataDirectory "spotify-history.jsonl"
 $SpotifyCatalogCacheFile = Join-Path $DataDirectory "spotify-catalog-cache.json"
 $WifeModeMusicFile = Join-Path $DataDirectory "wife-mode-music.json"
+$FullModeDriveCacheFile = Join-Path $DataDirectory "full-mode-drive-cache.json"
 $PlaceAliasesFile = Join-Path $DataDirectory "place-aliases.json"
 $FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
 $FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
@@ -97,6 +98,8 @@ $script:SpotifyHistoryCache = $null
 $script:SpotifyHistoryCacheExpiresAt = [DateTimeOffset]::MinValue
 $script:WifeModeMusicRecordsMemory = @()
 $script:WifeModeMusicRecordsLoaded = $false
+$script:FullModeDriveRecordsMemory = @()
+$script:FullModeDriveRecordsLoaded = $false
 $script:MusicStatsCache = $null
 $script:MusicStatsCacheExpiresAt = [DateTimeOffset]::MinValue
 $script:SpotifyCatalogCacheMemory = $null
@@ -2283,16 +2286,78 @@ function Get-SoundtrackForWindow {
     return @($Matches | Sort-Object playedAt)
 }
 
+function Get-FullModeDriveRecords {
+    if ($script:FullModeDriveRecordsLoaded) {
+        return @($script:FullModeDriveRecordsMemory)
+    }
+
+    $Records = @()
+    try {
+        $Stored = if ($Repository.Provider -eq "Turso") {
+            Get-DriveOSTursoState -Repository $Repository -Key "full-mode-drive-cache"
+        }
+        elseif (Test-Path $FullModeDriveCacheFile -PathType Leaf) {
+            Read-DriveOSJson -Path $FullModeDriveCacheFile
+        }
+        else {
+            $null
+        }
+
+        if ($Stored -and $Stored.PSObject.Properties['drives']) {
+            $Records = @($Stored.drives)
+        }
+    }
+    catch {
+        Write-DriveOSServerLog "Full Mode drive cache lookup failed: $($_.Exception.Message)"
+    }
+
+    $script:FullModeDriveRecordsMemory = @($Records)
+    $script:FullModeDriveRecordsLoaded = $true
+    return @($Records)
+}
+
+function Save-FullModeDriveRecords {
+    param([object[]]$Records)
+
+    $ByDrive = [ordered]@{}
+    foreach ($Record in @($Records)) {
+        if ($Record.id) { $ByDrive["$($Record.id)"] = $Record }
+    }
+
+    $Stored = [PSCustomObject]@{
+        version = 1
+        updatedAt = [DateTimeOffset]::UtcNow.ToString("o")
+        drives = @($ByDrive.Values)
+    }
+
+    if ($Repository.Provider -eq "Turso") {
+        Set-DriveOSTursoState -Repository $Repository -Key "full-mode-drive-cache" -Value $Stored
+    }
+    else {
+        Write-DriveOSJson -Path $FullModeDriveCacheFile -Value $Stored
+    }
+
+    $script:FullModeDriveRecordsMemory = @($Stored.drives)
+    $script:FullModeDriveRecordsLoaded = $true
+}
+
 function Convert-RawDrive {
     param(
         $Drive,
         [object[]]$SpotifyHistory = $null,
         $AliasMap = $null,
-        $FoursquareCacheMap = $null
+        $FoursquareCacheMap = $null,
+        [object[]]$SoundtrackOverride = $null,
+        [switch]$UseSoundtrackOverride
     )
 
     $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
-    $Soundtrack=@(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
+    $Soundtrack = if ($UseSoundtrackOverride) {
+        @($SoundtrackOverride)
+    }
+    else {
+        @(Get-SoundtrackForWindow -DriveStart $Start -DriveEnd $End -History $SpotifyHistory)
+    }
     return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack `
         -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap) `
         -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap)
@@ -2302,7 +2367,14 @@ function Get-RecentDrives {
     param([ValidateRange(1, 730)][int]$Days = 30)
 
     $Output = @()
-    $SpotifyHistory = @(Get-SpotifyHistory)
+    $SpotifyHistory = $null
+    $StoredRecords = @(Get-FullModeDriveRecords)
+    $StoredByDrive = @{}
+    foreach ($Record in $StoredRecords) {
+        if ($Record.id) { $StoredByDrive["$($Record.id)"] = $Record }
+    }
+    $NewPermanentRecords = @()
+    $FinalizationCutoff = [DateTimeOffset]::UtcNow.AddMinutes(-15)
 
     # Friendly-location data is shared across the entire build. In hosted mode
     # these maps come from Turso, so loading them once avoids hundreds of
@@ -2318,11 +2390,44 @@ function Get-RecentDrives {
     }
 
     foreach ($Raw in $RawDrives) {
-        $Output += Convert-RawDrive `
-            -Drive $Raw `
-            -SpotifyHistory $SpotifyHistory `
-            -AliasMap $AliasMap `
-            -FoursquareCacheMap $FoursquareCacheMap
+        $DriveId = "$($Raw.started_at)-$($Raw.ended_at)"
+        $StoredRecord = if ($StoredByDrive.ContainsKey($DriveId)) { $StoredByDrive[$DriveId] } else { $null }
+
+        if ($StoredRecord) {
+            $Converted = Convert-RawDrive `
+                -Drive $Raw `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap `
+                -SoundtrackOverride @($StoredRecord.soundtrack) `
+                -UseSoundtrackOverride
+        }
+        else {
+            if ($null -eq $SpotifyHistory) {
+                $SpotifyHistory = @(Get-SpotifyHistory)
+            }
+            $Converted = Convert-RawDrive `
+                -Drive $Raw `
+                -SpotifyHistory $SpotifyHistory `
+                -AliasMap $AliasMap `
+                -FoursquareCacheMap $FoursquareCacheMap
+
+            $DriveEnd = [DateTimeOffset]::FromUnixTimeSeconds([long]$Raw.ended_at)
+            if ($DriveEnd -le $FinalizationCutoff) {
+                $NewPermanentRecords += [PSCustomObject]@{
+                    id = $DriveId
+                    soundtrack = @($Converted.soundtrack)
+                    calculatedAt = [DateTimeOffset]::UtcNow.ToString("o")
+                }
+            }
+        }
+
+        $Output += $Converted
+    }
+
+    if ($NewPermanentRecords.Count -gt 0) {
+        # Completed drives are immutable for soundtrack matching. Keep their
+        # result durably and calculate only drives that have never been seen.
+        Save-FullModeDriveRecords -Records @($StoredRecords + $NewPermanentRecords)
     }
 
     return $Output
