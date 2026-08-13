@@ -294,13 +294,17 @@ async function postJson(path, body) {
 
 
 function updateClock() {
-  $("dateTime").textContent = new Date().toLocaleString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
+  const now = new Date();
+  const date = now.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric"
+  });
+  const time = now.toLocaleTimeString([], {
     hour: "numeric",
     minute: "2-digit"
   });
+  $("dateTime").textContent = `${date} ${time}`;
 }
 
 window.DriveOSNavigation.bind();
