@@ -15,7 +15,7 @@ Assert-True ($server -match 'Get-WifeModeSummary') 'Wife summary endpoint is mis
 Assert-True ($server -match '"/api/wife/mode"') 'Wife Mode switch endpoint is missing.'
 Assert-True ($server -match '"/api/wife/music"') 'Deferred Wife Mode music endpoint is missing.'
 Assert-True ($server -match 'Get-WifeModeMusicRecords') 'Persistent Wife Mode music lookup is missing.'
-Assert-True ($server -match 'Set-DriveOSTursoState -Repository $Repository -Key "wife-mode-music"') 'Wife Mode music is not persisted to Turso.'
+Assert-True ($server -match 'Set-DriveOSTursoState -Repository \$Repository -Key "wife-mode-music"') 'Wife Mode music is not persisted to Turso.'
 Assert-True ($server -match 'Finalized drives never recalculate') 'Wife Mode does not preserve finalized trip music.'
 Assert-True ($wifeMusicFunction -notmatch 'Get-SoundtrackForWindow') 'Wife Mode still builds full soundtrack payloads.'
 Assert-True ($wifeMusicFunction -notmatch 'Get-SpotifyTrackMetadata') 'Wife Mode still performs unnecessary Spotify metadata requests.'
