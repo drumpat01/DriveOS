@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("JourneyDeck")]
 [assembly: AssemblyProduct("JourneyDeck")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("5.2.8.0")]
-[assembly: AssemblyFileVersion("5.2.8.0")]
-[assembly: AssemblyInformationalVersion("5.2.8")]
+[assembly: AssemblyVersion("5.2.9.0")]
+[assembly: AssemblyFileVersion("5.2.9.0")]
+[assembly: AssemblyInformationalVersion("5.2.9")]
 
 namespace DriveOSDesktop
 {
@@ -93,7 +93,7 @@ namespace DriveOSDesktop
             KeyPreview = true;
 
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            string iconPath = Path.Combine(baseDir, "DriveOS-v4.ico");
+            string iconPath = Path.Combine(baseDir, "JourneyDeck.ico");
 
             if (File.Exists(iconPath))
             {
