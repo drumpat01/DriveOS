@@ -36,6 +36,7 @@ Assert-True ($wifeJs -match 'data-wife-drive-id') 'Wife Mode recent drives are n
 Assert-True ($wifeJs -notmatch 'detailMetric\("(Battery used|Energy|Efficiency)"') 'Wife Mode exposes a hidden drive metric.'
 Assert-True ($server -match '"/api/wife/drive/map"') 'Wife Mode read-only map endpoint is missing.'
 Assert-True ($server -match '\$WifePostAllowed\s*=\s*\$Method -eq "POST" -and \$Path -in @\("/api/wife/mode", "/api/wife/drive/map"\)') 'Wife Mode map POST is blocked by the production authorization guard.'
+Assert-True ($server -match '\$Method -eq "POST" -and -not \$IsPublicWebRequest -and -not \$WifePostAllowed') 'A Wife Mode cookie can still block the public login API.'
 
 $tokens = $null
 $parseErrors = $null
