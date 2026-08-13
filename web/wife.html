@@ -4,11 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Wife Mode · JourneyDeck</title>
-  <meta name="theme-color" content="#f3faf9">
-  <link rel="icon" type="image/png" href="/assets/favicon.png?v=5.2.3">
-  <link rel="apple-touch-icon" href="/assets/pwa-180.png?v=5.2.3">
-  <link rel="stylesheet" href="/wife.css?v=5.2.3">
-  <script src="/wife.js?v=5.2.3" defer></script>
+  <meta name="theme-color" content="#fff5f8">
+  <link rel="icon" type="image/png" href="/assets/favicon.png?v=5.2.4">
+  <link rel="apple-touch-icon" href="/assets/pwa-180.png?v=5.2.4">
+  <link rel="stylesheet" href="/wife.css?v=5.2.4">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" defer></script>
+  <script src="/wife.js?v=5.2.4" defer></script>
 </head>
 <body>
   <main>
@@ -34,10 +36,10 @@
 
     <section id="tripsView" class="view" aria-labelledby="tripsTitle"><div class="section-heading"><div><p>YOUR TRIPS</p><h2 id="tripsTitle">Recent drives</h2></div></div><div id="wifeTrips" class="trip-list"></div></section>
 
-    <section id="liveView" class="view" aria-labelledby="liveTitle"><p>LIVE</p><h2 id="liveTitle">Car location</h2><div id="wifeMap" class="map-card"><div id="mapDot" class="map-dot" hidden></div><span id="wifeLocationText">Finding your car…</span></div><p class="location-note">Location updates when the car reports it.</p></section>
+    <section id="liveView" class="view" aria-labelledby="liveTitle"><p>LIVE</p><h2 id="liveTitle">Car location</h2><div id="wifeMap" class="map-card"><span id="wifeLocationText">Finding your car&hellip;</span></div><p class="location-note">Location updates when the car reports it.</p></section>
+    <footer class="wife-footer"><button id="openFull" class="full-button" type="button">Open Full JourneyDeck</button></footer>
   </main>
 
-  <button id="openFull" class="full-button" type="button">Open Full JourneyDeck</button>
   <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Trips</button><button data-view="liveView" type="button">Live</button></nav>
 </body>
 </html>
