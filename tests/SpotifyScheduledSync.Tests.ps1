@@ -9,7 +9,7 @@ $Workflow = Get-Content $WorkflowPath -Raw
 $Render = Get-Content (Join-Path $Root 'render.yaml') -Raw
 
 Assert-True (Test-Path $WorkflowPath) 'Scheduled Spotify workflow is missing.'
-Assert-True ($Workflow -match 'cron:\s*"17 \*/2 \* \* \*"') 'Spotify workflow must run every two hours off the top of the hour.'
+Assert-True ($Workflow -match 'cron:\s*"\*/15 \* \* \* \*"') 'Spotify workflow must run every 15 minutes.'
 Assert-True ($Workflow -match 'workflow_dispatch:') 'Spotify workflow must support manual runs.'
 Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_URL') 'Spotify workflow URL must come from a GitHub secret.'
 Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_TOKEN') 'Spotify workflow token must come from a GitHub secret.'
