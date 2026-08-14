@@ -25,6 +25,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Playlists.psm1")
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
@@ -111,7 +112,28 @@ $script:VehicleSummaryCache = $null
 $script:VehicleSummaryCacheExpiresAt = [DateTimeOffset]::MinValue
 $VehicleSummaryCacheTtlSeconds = 15
 
+function Test-DriveOSEnabledEnvironmentFlag {
+    param([Parameter(Mandatory=$true)][string]$Name)
+    $Value = [Environment]::GetEnvironmentVariable($Name)
+    if (-not $Value) { return $false }
+    if ($Value.Trim().ToLowerInvariant() -in @('1','true','yes','on')) { return $true }
+    if ($Value.Trim().ToLowerInvariant() -in @('0','false','no','off')) { return $false }
+    throw "$Name must be true or false."
+}
+
 $Repository = New-DriveOSRepository -DataDirectory $DataDirectory -AppRoot $PSScriptRoot
+$DurableTessieWriteEnabled = Test-DriveOSEnabledEnvironmentFlag -Name 'JOURNEYDECK_TESSIE_DB_WRITE_ENABLED'
+$DurableTessieReadEnabled = Test-DriveOSEnabledEnvironmentFlag -Name 'JOURNEYDECK_TESSIE_DB_READ_ENABLED'
+$DurableTessieReadCanaryApproved = Test-DriveOSEnabledEnvironmentFlag -Name 'JOURNEYDECK_TESSIE_READ_CANARY_APPROVED'
+if (($DurableTessieWriteEnabled -or $DurableTessieReadEnabled) -and $Repository.Provider -notin @('SQLite','Turso')) {
+    throw 'Durable Tessie history flags require the SQLite or Turso repository provider.'
+}
+if ($DurableTessieReadEnabled -and -not $DurableTessieReadCanaryApproved) {
+    throw 'JOURNEYDECK_TESSIE_DB_READ_ENABLED requires JOURNEYDECK_TESSIE_READ_CANARY_APPROVED=true after a passing 30-day parity report.'
+}
+if ($DurableTessieReadEnabled -and -not $DurableTessieWriteEnabled) {
+    throw 'JOURNEYDECK_TESSIE_DB_READ_ENABLED requires JOURNEYDECK_TESSIE_DB_WRITE_ENABLED=true so the external worker remains active.'
+}
 $MaintenanceMode = $RefreshMusicCatalog
 
 if (-not (Test-Path $DataDirectory)) {
@@ -123,6 +145,18 @@ if ($Repository.Provider -eq "SQLite") {
 }
 elseif ($Repository.Provider -eq "Turso") {
     Initialize-DriveOSTurso -Repository $Repository
+}
+
+if ($DurableTessieReadEnabled) {
+    $ReadMaximumStalenessMinutes = 45
+    if ($env:JOURNEYDECK_TESSIE_READ_MAX_STALENESS_MINUTES -and (
+        -not [int]::TryParse("$($env:JOURNEYDECK_TESSIE_READ_MAX_STALENESS_MINUTES)",[ref]$ReadMaximumStalenessMinutes) -or
+        $ReadMaximumStalenessMinutes -lt 5 -or
+        $ReadMaximumStalenessMinutes -gt 1440
+    )) {
+        throw 'JOURNEYDECK_TESSIE_READ_MAX_STALENESS_MINUTES must be between 5 and 1440.'
+    }
+    $null = Assert-JourneyDeckTessieReadReady -Repository $Repository -MaximumStalenessMinutes $ReadMaximumStalenessMinutes
 }
 
 if (-not $MaintenanceMode -and -not $env:TESSIE_TOKEN) {
@@ -2049,6 +2083,10 @@ function Get-CachedRawCharges365 {
 function Get-RawCharges {
     param([ValidateRange(1, 730)][int]$Days = 365)
 
+    if ($DurableTessieReadEnabled) {
+        return @(Get-DriveOSTessieCharges -Repository $Repository -Days $Days)
+    }
+
     $Vehicle = Get-VehicleRecord
     if (-not $Vehicle) { throw "No Tessie vehicle found." }
 
@@ -2174,6 +2212,10 @@ function Get-VehicleSummary {
 function Get-RawDrives {
     param([ValidateRange(1, 730)][int]$Days = 30)
 
+    if ($DurableTessieReadEnabled) {
+        return @(Get-DriveOSTessieDrives -Repository $Repository -Days $Days)
+    }
+
     $Vehicle = Get-VehicleRecord
 
     if (-not $Vehicle) {
@@ -2196,6 +2238,7 @@ function Get-RawDrives {
 
     return @($Response.results | Sort-Object started_at -Descending)
 }
+
 function Get-CachedRawDrives365 {
     $Now = [DateTimeOffset]::UtcNow
 

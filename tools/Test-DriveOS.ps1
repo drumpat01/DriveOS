@@ -5,7 +5,19 @@ $Root = Split-Path -Parent $PSScriptRoot
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase2.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase3.Tests.ps1') -NodePath $env:DRIVEOS_NODE
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\DatabaseArchitecture.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TessieIngestion.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TessieReadiness.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TursoRehearsal.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TessieParity.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+$Phase3Arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'tests\Phase3.Tests.ps1'))
+if ($env:DRIVEOS_NODE) { $Phase3Arguments += @('-NodePath',$env:DRIVEOS_NODE) }
+& powershell.exe @Phase3Arguments
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Phase4.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

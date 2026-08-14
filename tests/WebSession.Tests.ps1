@@ -82,10 +82,9 @@ Assert-True `
         -Now $Now.AddHours(25))) `
     "Expired sessions must be rejected."
 
-$TamperedToken = $Token.Substring(
-    0,
-    $Token.Length - 1
-) + $(if ($Token.EndsWith("A")) { "B" } else { "A" })
+$TokenParts = $Token.Split('.')
+$TamperedSignature = $(if ($TokenParts[2].StartsWith("A")) { "B" } else { "A" }) + $TokenParts[2].Substring(1)
+$TamperedToken = "$($TokenParts[0]).$($TokenParts[1]).$TamperedSignature"
 
 Assert-True `
     (-not (Test-DriveOSWebSessionToken `

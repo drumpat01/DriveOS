@@ -1,0 +1,33 @@
+name: Sync Tessie history
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+      timezone: "America/Chicago"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: driveos-tessie-history-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: vars.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive recent Tessie history directly to Turso
+        shell: pwsh
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          TESSIE_TOKEN: ${{ secrets.TESSIE_TOKEN }}
+          JOURNEYDECK_TESSIE_DB_WRITE_ENABLED: "true"
+          JOURNEYDECK_TESSIE_INITIAL_SYNC_DAYS: "30"
+          JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS: "30"
+          JOURNEYDECK_TURSO_BATCH_STATEMENTS: "100"
+        run: ./tools/Sync-JourneyDeckTessieHistory.ps1 -TessieTimeoutSeconds 30
