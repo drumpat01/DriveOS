@@ -1038,6 +1038,7 @@ const drivesFeature = window.DriveOSFeatures.drives;
 batteryText = drivesFeature.batteryText;
 compactLocation = drivesFeature.compactLocation;
 driveRouteText = drivesFeature.driveRouteText;
+normalizeDriveCollection = drivesFeature.normalizeDriveCollection;
 driveSearchHaystack = drivesFeature.driveSearchHaystack;
 degreesToRadians = drivesFeature.degreesToRadians;
 geoDistanceMiles = drivesFeature.geoDistanceMiles;
@@ -1365,7 +1366,7 @@ function renderDashboardDrives(drives) {
 async function loadDashboardDrives() {
   try {
     const data = await getJson("/api/drives/recent");
-    const recent = data.drives || [];
+    const recent = normalizeDriveCollection(data.drives);
 
     // Until the full library arrives, recent drives are sufficient for the
     // dashboard widgets and drive-card interactions.
@@ -1393,7 +1394,7 @@ async function loadDrives() {
   driveLibraryLoadPromise = (async () => {
     try {
       const data = await getJson("/api/drives");
-      state.drives = data.drives || [];
+      state.drives = normalizeDriveCollection(data.drives);
       state.driveLibraryWindowDays = Number(data.windowDays) || 365;
       driveLibraryFullyLoaded = true;
 

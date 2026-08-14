@@ -78,7 +78,7 @@
       const container = $("dashboardSoundtrack");
       if (!container) return;
       const drives = state.drives.slice(0, recentDriveCount);
-      const songs = drives.flatMap(drive => drive.soundtrack || []);
+      const songs = drives.flatMap(drive => (drive.soundtrack || []).filter(Boolean));
       if (!songs.length) {
         container.innerHTML = `<div class="dashboard-widget-empty"><strong>No drive soundtrack yet</strong><span>Your next matched drive songs will appear here.</span></div>`;
         return;
