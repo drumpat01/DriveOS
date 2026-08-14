@@ -28,6 +28,8 @@ PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS listening_history(id TEXT PRIMARY KEY, played_at TEXT, payload_json TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_listening_history_played_at ON listening_history(played_at);
+CREATE TABLE IF NOT EXISTS drive_soundtracks(drive_id TEXT PRIMARY KEY, drive_started_at TEXT NOT NULL, drive_ended_at TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_drive_soundtracks_ended_at ON drive_soundtracks(drive_ended_at);
 CREATE TABLE IF NOT EXISTS place_aliases(location TEXT PRIMARY KEY, label TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
 INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(1,datetime('now'));
@@ -46,6 +48,20 @@ function Add-DriveOSSqliteHistoryRecord {
     $payload = $Record | ConvertTo-Json -Depth 20 -Compress
     $sql = "INSERT OR IGNORE INTO listening_history(id,played_at,payload_json) VALUES($(ConvertTo-SqlLiteral ([string]$Record.id)),$(ConvertTo-SqlLiteral ([string]$Record.played_at)),$(ConvertTo-SqlLiteral $payload));"
     $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $sql
+}
+
+function Get-DriveOSSqliteSoundtracks {
+    param($Repository)
+    $rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql 'SELECT payload_json FROM drive_soundtracks ORDER BY drive_ended_at DESC,drive_id;' -Json)
+    return @($rows | ForEach-Object { $_.payload_json | ConvertFrom-Json })
+}
+
+function Set-DriveOSSqliteSoundtrack {
+    param($Repository,$Record)
+    $payload=$Record|ConvertTo-Json -Depth 30 -Compress
+    $updatedAt=[DateTimeOffset]::UtcNow.ToString('o')
+    $sql="INSERT OR REPLACE INTO drive_soundtracks(drive_id,drive_started_at,drive_ended_at,status,payload_json,updated_at) VALUES($(ConvertTo-SqlLiteral ([string]$Record.driveId)),$(ConvertTo-SqlLiteral ([string]$Record.startedAt)),$(ConvertTo-SqlLiteral ([string]$Record.endedAt)),$(ConvertTo-SqlLiteral ([string]$Record.status)),$(ConvertTo-SqlLiteral $payload),$(ConvertTo-SqlLiteral $updatedAt));"
+    $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $sql
 }
 
 function Get-DriveOSSqliteAliases {
@@ -109,4 +125,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData

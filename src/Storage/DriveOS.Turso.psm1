@@ -167,6 +167,8 @@ function Initialize-DriveOSTurso {
     $Statements = @(
         [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS listening_history(id TEXT PRIMARY KEY, played_at TEXT, payload_json TEXT NOT NULL);" },
         [PSCustomObject]@{ Sql = "CREATE INDEX IF NOT EXISTS ix_listening_history_played_at ON listening_history(played_at);" },
+        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS drive_soundtracks(drive_id TEXT PRIMARY KEY, drive_started_at TEXT NOT NULL, drive_ended_at TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL);" },
+        [PSCustomObject]@{ Sql = "CREATE INDEX IF NOT EXISTS ix_drive_soundtracks_ended_at ON drive_soundtracks(drive_ended_at);" },
         [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS place_aliases(location TEXT PRIMARY KEY, label TEXT NOT NULL);" },
         [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);" },
         [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS app_state(key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);" }
@@ -197,6 +199,31 @@ function Add-DriveOSTursoHistoryRecord {
         -Repository $Repository `
         -Sql "INSERT OR IGNORE INTO listening_history(id,played_at,payload_json) VALUES(?,?,?);" `
         -Args @("$($Record.id)", "$($Record.played_at)", $Payload)
+}
+
+function Get-DriveOSTursoSoundtracks {
+    param([Parameter(Mandatory=$true)]$Repository)
+
+    $Rows = @(Invoke-DriveOSTursoQuery `
+        -Repository $Repository `
+        -Sql "SELECT payload_json FROM drive_soundtracks ORDER BY drive_ended_at DESC,drive_id;")
+
+    return @($Rows | ForEach-Object { $_.payload_json | ConvertFrom-Json })
+}
+
+function Set-DriveOSTursoSoundtrack {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)]$Record
+    )
+
+    $Payload = $Record | ConvertTo-Json -Depth 30 -Compress
+    $UpdatedAt = [DateTimeOffset]::UtcNow.ToString("o")
+
+    Invoke-DriveOSTursoExecute `
+        -Repository $Repository `
+        -Sql "INSERT INTO drive_soundtracks(drive_id,drive_started_at,drive_ended_at,status,payload_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET drive_started_at=excluded.drive_started_at,drive_ended_at=excluded.drive_ended_at,status=excluded.status,payload_json=excluded.payload_json,updated_at=excluded.updated_at;" `
+        -Args @("$($Record.driveId)", "$($Record.startedAt)", "$($Record.endedAt)", "$($Record.status)", $Payload, $UpdatedAt)
 }
 
 function Get-DriveOSTursoAliases {
@@ -311,6 +338,8 @@ Export-ModuleMember -Function `
     Initialize-DriveOSTurso, `
     Get-DriveOSTursoHistory, `
     Add-DriveOSTursoHistoryRecord, `
+    Get-DriveOSTursoSoundtracks, `
+    Set-DriveOSTursoSoundtrack, `
     Get-DriveOSTursoAliases, `
     Set-DriveOSTursoAliases, `
     Get-DriveOSTursoSettings, `

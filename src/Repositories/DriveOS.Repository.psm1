@@ -78,6 +78,7 @@ function New-DriveOSRepository {
         Provider = $Provider
         DataDirectory = $DataDirectory
         SpotifyHistoryPath = Join-Path $DataDirectory 'spotify-history.jsonl'
+        DriveSoundtracksPath = Join-Path $DataDirectory 'drive-soundtracks.json'
         PlaceAliasesPath = Join-Path $DataDirectory 'place-aliases.json'
         ChargingSettingsPath = Join-Path $DataDirectory 'charging-settings.json'
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
@@ -119,6 +120,39 @@ function Add-DriveOSListeningHistoryRecord {
 
     Assert-JsonRepository $Repository
     Add-DriveOSJsonLine -Path $Repository.SpotifyHistoryPath -Value $Record
+}
+
+function Get-DriveOSDriveSoundtracks {
+    param([Parameter(Mandatory=$true)]$Repository)
+
+    if ($Repository.Provider -eq 'SQLite') {
+        return @(Get-DriveOSSqliteSoundtracks -Repository $Repository)
+    }
+
+    if ($Repository.Provider -eq 'Turso') {
+        return @(Get-DriveOSTursoSoundtracks -Repository $Repository)
+    }
+
+    Assert-JsonRepository $Repository
+    return @(Read-DriveOSJson -Path $Repository.DriveSoundtracksPath -Default @())
+}
+
+function Set-DriveOSDriveSoundtrack {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Record)
+
+    if ($Repository.Provider -eq 'SQLite') {
+        Set-DriveOSSqliteSoundtrack -Repository $Repository -Record $Record
+        return
+    }
+
+    if ($Repository.Provider -eq 'Turso') {
+        Set-DriveOSTursoSoundtrack -Repository $Repository -Record $Record
+        return
+    }
+
+    Assert-JsonRepository $Repository
+    $Records = @(Read-DriveOSJson -Path $Repository.DriveSoundtracksPath -Default @() | Where-Object { "$($_.driveId)" -ne "$($Record.driveId)" })
+    Write-DriveOSJson -Path $Repository.DriveSoundtracksPath -Value @($Records + $Record)
 }
 
 function Get-DriveOSPlaceAliases {
@@ -229,6 +263,8 @@ Export-ModuleMember -Function `
     New-DriveOSRepository, `
     Get-DriveOSListeningHistory, `
     Add-DriveOSListeningHistoryRecord, `
+    Get-DriveOSDriveSoundtracks, `
+    Set-DriveOSDriveSoundtrack, `
     Get-DriveOSPlaceAliases, `
     Set-DriveOSPlaceAliases, `
     Get-DriveOSChargingSettingsRecord, `
