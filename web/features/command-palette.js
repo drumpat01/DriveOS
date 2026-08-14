@@ -48,7 +48,7 @@
       ];
 
       (state.drives || []).slice(0, 80).forEach(drive => {
-        const soundtrack = (drive.soundtrack || []).map(song => `${song.track || ""} ${song.artist || ""}`).join(" ");
+        const soundtrack = (drive.soundtrack || []).filter(Boolean).map(song => `${song.track || ""} ${song.artist || ""}`).join(" ");
         items.push({
           group: "Drives", icon: "\u2197", title: driveTitle(drive),
           detail: `${driveRoute(drive)} \u00B7 ${drive.miles ?? "--"} mi \u00B7 ${drive.durationMinutes ?? "--"} min`,
@@ -66,7 +66,7 @@
       });
 
       const songs = new Map();
-      (state.drives || []).forEach(drive => (drive.soundtrack || []).forEach(song => {
+      (state.drives || []).forEach(drive => (drive.soundtrack || []).filter(Boolean).forEach(song => {
         if (!song.track) return;
         const key = normalize(`${song.track}|${song.artist}`);
         const existing = songs.get(key);
