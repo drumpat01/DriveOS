@@ -3,6 +3,7 @@
   function compactLocation(value){if(!value)return'Unknown location';const parts=value.split(',').map(p=>p.trim()).filter(Boolean);if(parts.length<=2)return value;return `${parts[0]}, ${parts[1]}`;}
   function driveRouteText(drive){return `${drive.startingLocation||drive.rawStartingLocation||''} → ${drive.endingLocation||drive.rawEndingLocation||''}`.trim();}
   function normalizeDriveCollection(drives){return (Array.isArray(drives)?drives:[]).filter(Boolean).map(drive=>({...drive,soundtrack:Array.isArray(drive.soundtrack)?drive.soundtrack.filter(Boolean):[]}));}
+  function visibleDriveCollection(drives,expanded,limit=10){const collection=Array.isArray(drives)?drives:[];return expanded?collection:collection.slice(0,Math.max(0,limit));}
   function driveSearchHaystack(drive){return [drive.id,drive.dateLabel,drive.shortDateLabel,drive.dateIso,drive.dateNumeric,drive.startTime,drive.endTime,drive.startingLocation,drive.endingLocation,drive.rawStartingLocation,drive.rawEndingLocation,drive.tessieTag,drive.driverProfile,drive.miles,drive.durationMinutes,drive.efficiencyWhMi,...(drive.soundtrack||[]).filter(Boolean).flatMap(song=>[song.track,song.artist,song.album])].map(v=>String(v??'').toLocaleLowerCase()).join(' ');}
   const degreesToRadians=value=>value*Math.PI/180;
   function geoDistanceMiles(lat1,lon1,lat2,lon2){const values=[lat1,lon1,lat2,lon2].map(Number);if(!values.every(Number.isFinite))return Number.POSITIVE_INFINITY;const [a,b,c,d]=values,dLat=degreesToRadians(c-a),dLon=degreesToRadians(d-b),h=Math.sin(dLat/2)**2+Math.cos(degreesToRadians(a))*Math.cos(degreesToRadians(c))*Math.sin(dLon/2)**2;return 2*3958.7613*Math.asin(Math.min(1,Math.sqrt(h)));}
@@ -13,5 +14,5 @@
   function cityFromLocation(value){const parts=String(value||'').split(',').map(p=>p.trim()).filter(Boolean);return parts.length>1?parts[parts.length-2]:parts[0]||'';}
   function money(value){const number=Number(value);return Number.isFinite(number)?number.toLocaleString(undefined,{style:'currency',currency:'USD'}):'--';}
   function locationDisplay(location,rawLocation){if(!location)return rawLocation||'Unknown location';if(rawLocation&&location!==rawLocation)return `${location} · ${rawLocation}`;return location;}
-  window.DriveOSFeatures=window.DriveOSFeatures||{};window.DriveOSFeatures.drives=Object.freeze({batteryText,compactLocation,driveRouteText,normalizeDriveCollection,driveSearchHaystack,degreesToRadians,geoDistanceMiles,normalizedLocationText,routeAddressesMatch,driveFitsRouteCluster,detectFavoriteRoutes,cityFromLocation,money,locationDisplay});
+  window.DriveOSFeatures=window.DriveOSFeatures||{};window.DriveOSFeatures.drives=Object.freeze({batteryText,compactLocation,driveRouteText,normalizeDriveCollection,visibleDriveCollection,driveSearchHaystack,degreesToRadians,geoDistanceMiles,normalizedLocationText,routeAddressesMatch,driveFitsRouteCluster,detectFavoriteRoutes,cityFromLocation,money,locationDisplay});
 })();

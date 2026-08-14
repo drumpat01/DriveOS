@@ -474,21 +474,23 @@
         </section>
 
 
-        <section class="panel place-names-panel place-names-launcher" aria-labelledby="placeNamesHeading">
-          <div class="panel-heading">
-            <div>
-              <div class="section-label">FRIENDLY PLACES</div>
-              <h3 id="placeNamesHeading">Name the places you drive</h3>
-              <p class="panel-description">Keep the Drive Library tidy and open the place editor only when you need it.</p>
-            </div>
-            <div class="place-names-launcher-actions">
-              <span id="placeNamesSummary" class="muted">Loading places&#x2026;</span>
-              <button id="openPlaceNamesModal" class="primary-button" type="button">Manage places</button>
-            </div>
-          </div>
-        </section>
+        <div class="drive-place-action">
+          <button
+            id="openPlaceNamesModal"
+            class="primary-button"
+            type="button"
+            aria-haspopup="dialog"
+            aria-controls="placeNamesModal">Name the places you drive</button>
+        </div>
 
-        <section class="panel charging-panel" aria-labelledby="chargingHeading">
+        <div id="allDrives" class="drive-stack"></div>
+
+        <div id="driveLibraryMore" class="drive-library-more" hidden>
+          <span id="driveLibraryMoreSummary" class="muted"></span>
+          <button id="driveLibraryMoreButton" class="secondary-button" type="button" aria-expanded="false">Show all drives</button>
+        </div>
+
+        <section class="panel charging-panel drive-library-charging" aria-labelledby="chargingHeading">
           <div class="panel-heading charging-heading">
             <div>
               <div class="section-label">CHARGING HISTORY</div>
@@ -509,8 +511,6 @@
           </div>
           <div id="chargingHistory" class="charging-history"></div>
         </section>
-
-        <div id="allDrives" class="drive-stack"></div>
       </section>
 
       <!-- MUSIC -->
