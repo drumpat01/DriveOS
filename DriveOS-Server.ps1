@@ -670,24 +670,63 @@ function Remove-CrossProviderListeningDuplicates {
     param([object[]]$Records = @())
 
     $Kept = New-Object Collections.ArrayList
+    $CandidateIndexesByTrack = @{}
+    $MaximumWindowSeconds = 720
 
     foreach ($Record in @($Records | Sort-Object {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
         catch { 0 }
     })) {
         $DuplicateIndex = -1
+        $TrackKey = ConvertTo-ListeningMatchText "$($Record.track)"
+        $PlayedAtEpoch = try {
+            [DateTimeOffset]::Parse("$($Record.played_at)").ToUnixTimeSeconds()
+        }
+        catch { $null }
 
-        for ($i = 0; $i -lt $Kept.Count; $i++) {
-            if (Test-CrossProviderListeningDuplicate `
-                -Candidate $Record `
-                -ExistingRecord $Kept[$i]) {
-                $DuplicateIndex = $i
-                break
+        if (
+            $TrackKey -and
+            $null -ne $PlayedAtEpoch -and
+            $CandidateIndexesByTrack.ContainsKey($TrackKey)
+        ) {
+            $ActiveIndexes = New-Object Collections.ArrayList
+
+            foreach ($Index in @($CandidateIndexesByTrack[$TrackKey])) {
+                $ExistingRecord = $Kept[[int]$Index]
+                $ExistingEpoch = try {
+                    [DateTimeOffset]::Parse("$($ExistingRecord.played_at)").ToUnixTimeSeconds()
+                }
+                catch { $null }
+
+                if (
+                    $null -eq $ExistingEpoch -or
+                    [long]$ExistingEpoch -lt ([long]$PlayedAtEpoch - $MaximumWindowSeconds)
+                ) {
+                    continue
+                }
+
+                [void]$ActiveIndexes.Add([int]$Index)
+                if (
+                    $DuplicateIndex -lt 0 -and
+                    (Test-CrossProviderListeningDuplicate `
+                        -Candidate $Record `
+                        -ExistingRecord $ExistingRecord)
+                ) {
+                    $DuplicateIndex = [int]$Index
+                }
             }
+
+            $CandidateIndexesByTrack[$TrackKey] = $ActiveIndexes
         }
 
         if ($DuplicateIndex -lt 0) {
-            [void]$Kept.Add($Record)
+            $NewIndex = $Kept.Add($Record)
+            if ($TrackKey -and $null -ne $PlayedAtEpoch) {
+                if (-not $CandidateIndexesByTrack.ContainsKey($TrackKey)) {
+                    $CandidateIndexesByTrack[$TrackKey] = New-Object Collections.ArrayList
+                }
+                [void]$CandidateIndexesByTrack[$TrackKey].Add([int]$NewIndex)
+            }
             continue
         }
 
@@ -1719,18 +1758,9 @@ function ConvertTo-PublicListeningPlay {
 }
 
 function Get-SpotifySummary {
-    # Spotify is the only active listening source. The hosted DriveOS instance
-    # is responsible for polling Spotify and writing new plays into Turso.
-    #
-    # Desktop DriveOS reads that same shared archive but does not write new
-    # listening records. This keeps desktop and web on one source of truth and
-    # avoids Windows PowerShell/Turso write failures during dashboard refresh.
+    # The scheduled background sync owns Spotify polling and durable writes.
+    # Dashboard requests read the same archive in hosted and desktop modes.
     $SpotifyAdded = 0
-
-    if ($RuntimeConfig.IsWeb) {
-        $Items = @(Get-SpotifyRecent -Limit 50)
-        $SpotifyAdded = Save-SpotifyHistory $Items
-    }
 
     $History = @(Get-SpotifyHistory | Sort-Object {
         try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks }
@@ -2354,6 +2384,16 @@ function Save-DriveSoundtrackRecord {
     $Map["$($Record.driveId)"] = $Record
 }
 
+function Get-CachedDriveSoundtrack {
+    param([Parameter(Mandatory=$true)][string]$DriveId)
+
+    # Request paths consume only the durable projection. Spotify matching and
+    # persistence belong to Update-RecentDriveSoundtrackCache.
+    $Map = Get-DriveSoundtrackRecordMap
+    if (-not $Map.ContainsKey($DriveId)) { return @() }
+    return @($Map[$DriveId].songs)
+}
+
 function Get-CanonicalDriveSoundtrack {
     param(
         [Parameter(Mandatory=$true)][string]$DriveId,
@@ -2421,7 +2461,6 @@ function Update-RecentDriveSoundtrackCache {
 function Convert-RawDrive {
     param(
         $Drive,
-        [object[]]$SpotifyHistory = $null,
         $AliasMap = $null,
         $FoursquareCacheMap = $null,
         [switch]$SkipSoundtrack
@@ -2429,7 +2468,7 @@ function Convert-RawDrive {
 
     $Start=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at).ToLocalTime();$End=[DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at).ToLocalTime()
     $DriveId="$($Drive.started_at)-$($Drive.ended_at)"
-    $Soundtrack = if ($SkipSoundtrack) { @() } else { @(Get-CanonicalDriveSoundtrack -DriveId $DriveId -DriveStart $Start -DriveEnd $End -SpotifyHistory $SpotifyHistory) }
+    $Soundtrack = if ($SkipSoundtrack) { @() } else { @(Get-CachedDriveSoundtrack -DriveId $DriveId) }
     return ConvertTo-DriveOSDrive -Drive $Drive -Soundtrack $Soundtrack `
         -StartingLocation (Get-FriendlyLocation -Location $Drive.starting_location -Latitude $Drive.starting_latitude -Longitude $Drive.starting_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap) `
         -EndingLocation (Get-FriendlyLocation -Location $Drive.ending_location -Latitude $Drive.ending_latitude -Longitude $Drive.ending_longitude -AliasMap $AliasMap -FoursquareCacheMap $FoursquareCacheMap)
@@ -2439,7 +2478,6 @@ function Get-RecentDrives {
     param([ValidateRange(1, 730)][int]$Days = 30)
 
     $Output = @()
-    $SpotifyHistory = @(Get-SpotifyHistory)
 
     # Friendly-location data is shared across the entire build. In hosted mode
     # these maps come from Turso, so loading them once avoids hundreds of
@@ -2457,7 +2495,6 @@ function Get-RecentDrives {
     foreach ($Raw in $RawDrives) {
         $Output += Convert-RawDrive `
             -Drive $Raw `
-            -SpotifyHistory $SpotifyHistory `
             -AliasMap $AliasMap `
             -FoursquareCacheMap $FoursquareCacheMap
     }
@@ -2564,7 +2601,7 @@ function Get-DriveMapData {
     }
 
     $Vin = $Vehicle.vin
-    $Soundtrack = @(Get-CanonicalDriveSoundtrack -DriveId $DriveId -DriveStart $DriveStart -DriveEnd $DriveEnd -ForcePersist)
+    $Soundtrack = @(Get-CachedDriveSoundtrack -DriveId $DriveId)
 
     # If a soundtrack song began slightly before the drive and overlapped it,
     # include enough pre-drive history to locate where the song actually began.
@@ -3271,13 +3308,8 @@ function Get-WifeModeMusic {
     $Drives = @(Get-WifeModeBaseDrives | Select-Object -First 6)
     if ($Drives.Count -eq 0) { return @() }
 
-    $History = @(Get-SpotifyHistory)
     return @($Drives | ForEach-Object {
-        $Songs = @(Get-CanonicalDriveSoundtrack `
-            -DriveId "$($_.id)" `
-            -DriveStart ([DateTimeOffset]::Parse($_.startedAt)) `
-            -DriveEnd ([DateTimeOffset]::Parse($_.endedAt)) `
-            -SpotifyHistory $History)
+        $Songs = @(Get-CachedDriveSoundtrack -DriveId "$($_.id)")
         $TopArtist = @($Songs | Group-Object artist | Sort-Object Count -Descending | Select-Object -First 1 | ForEach-Object { $_.Name })[0]
         [ordered]@{
             id = $_.id

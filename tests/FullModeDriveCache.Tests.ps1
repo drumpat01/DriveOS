@@ -7,7 +7,7 @@ function Assert-True([bool]$Condition, [string]$Message) {
 
 $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 
-Assert-True ($server -match 'Get-CanonicalDriveSoundtrack') 'Full Mode is not using the shared soundtrack cache.'
+Assert-True ($server -match 'Get-CachedDriveSoundtrack') 'Full Mode is not using the shared soundtrack cache.'
 Assert-True ($server -match 'Get-DriveOSDriveSoundtracks -Repository \$Repository') 'Shared soundtrack records are not loaded through the repository.'
 Assert-True ($server -match 'Set-DriveOSDriveSoundtrack -Repository \$Repository') 'Shared soundtrack records are not persisted through the repository.'
 Assert-True ($server -match 'DriveSoundtrackRecordsLoaded') 'Shared soundtrack cache lacks its process-local read-through layer.'
@@ -19,8 +19,16 @@ $recentFunction = [regex]::Match(
     $server,
     '(?s)function Get-RecentDrives\s*\{.*?(?=\r?\nfunction Get-CachedRecentDrives365)'
 ).Value
-Assert-True ($recentFunction -match 'Get-SpotifyHistory') 'Full Mode does not provide shared Spotify history to the canonical cache.'
+Assert-True ($recentFunction -notmatch 'Get-SpotifyHistory') 'Full Mode still loads Spotify history while serving historical drives.'
+Assert-True ($recentFunction -notmatch 'Get-CanonicalDriveSoundtrack') 'Full Mode still reconciles soundtracks while serving historical drives.'
 Assert-True ($recentFunction -match 'Convert-RawDrive') 'Full Mode no longer builds drive records.'
+
+$convertFunction = [regex]::Match(
+    $server,
+    '(?s)function Convert-RawDrive\s*\{.*?(?=\r?\nfunction Get-RecentDrives)'
+).Value
+Assert-True ($convertFunction -match 'Get-CachedDriveSoundtrack') 'Drive conversion does not use the read-only soundtrack cache.'
+Assert-True ($convertFunction -notmatch 'Get-SpotifyHistory|Get-CanonicalDriveSoundtrack|Save-DriveSoundtrackRecord') 'Drive conversion can still load, reconcile, or write soundtrack history.'
 
 $tokens = $null
 $parseErrors = $null

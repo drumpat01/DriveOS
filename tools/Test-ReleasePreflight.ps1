@@ -52,6 +52,7 @@ if (-not $SkipTests) {
         'tests\SecretProtection.Tests.ps1', 'tests\Turso.Tests.ps1',
         'tests\DashboardLayout.Tests.ps1',
         'tests\Assistant.Tests.ps1',
+        'tests\ListeningHistoryDedup.Tests.ps1',
         'tests\DatabaseArchitecture.Tests.ps1',
         'tests\TessieIngestion.Tests.ps1',
         'tests\TessieReadiness.Tests.ps1',

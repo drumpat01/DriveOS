@@ -26,19 +26,40 @@ finally {
 
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 Assert-True ($Server -match 'Get-CanonicalDriveSoundtrack') 'Canonical soundtrack resolver is missing.'
-Assert-True ($Server -match 'Get-DriveMapData[\s\S]+Get-CanonicalDriveSoundtrack') 'Drive maps do not use the canonical soundtrack.'
-Assert-True ($Server -match 'Get-WifeModeMusic[\s\S]+Get-CanonicalDriveSoundtrack') 'Wife Mode does not use the canonical soundtrack.'
+Assert-True ($Server -match 'Get-CachedDriveSoundtrack') 'Read-only soundtrack cache accessor is missing.'
 Assert-True ($Server -match 'Invoke-ScheduledSpotifySync[\s\S]+Update-RecentDriveSoundtrackCache -Days 1') 'Scheduled Spotify sync does not reconcile recent drive soundtracks.'
 
 $Tokens = $null
 $ParseErrors = $null
 $Ast = [System.Management.Automation.Language.Parser]::ParseInput($Server,[ref]$Tokens,[ref]$ParseErrors)
 Assert-True ($ParseErrors.Count -eq 0) 'DriveOS server has PowerShell syntax errors.'
-foreach ($FunctionName in @('Get-SoundtrackForWindow','Get-DriveSoundtrackRecordMap','Save-DriveSoundtrackRecord','Get-CanonicalDriveSoundtrack')) {
+foreach ($FunctionName in @('Get-SoundtrackForWindow','Get-DriveSoundtrackRecordMap','Save-DriveSoundtrackRecord','Get-CachedDriveSoundtrack','Get-CanonicalDriveSoundtrack')) {
     $FunctionAst = $Ast.Find({ param($Node) $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq $FunctionName },$true)
     Assert-True ($null -ne $FunctionAst) "Missing runtime function: $FunctionName"
     Invoke-Expression $FunctionAst.Extent.Text
 }
+
+$MapFunction = $Ast.Find({
+    param($Node)
+    $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Get-DriveMapData'
+},$true).Extent.Text
+$ReconcileFunction = $Ast.Find({
+    param($Node)
+    $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Update-RecentDriveSoundtrackCache'
+},$true).Extent.Text
+Assert-True ($MapFunction -match 'Get-CachedDriveSoundtrack') 'Drive maps do not use the read-only shared soundtrack cache.'
+Assert-True ($MapFunction -notmatch 'Get-SpotifyHistory|Get-CanonicalDriveSoundtrack|Save-DriveSoundtrackRecord') 'Drive maps can still load, reconcile, or write soundtrack history.'
+Assert-True ($ReconcileFunction -match 'Get-CanonicalDriveSoundtrack[\s\S]+-Reconcile[\s\S]+-ForcePersist') 'Background sync no longer owns durable soundtrack reconciliation.'
+$CanonicalCalls = @($Ast.FindAll({
+    param($Node)
+    $Node -is [System.Management.Automation.Language.CommandAst] -and $Node.GetCommandName() -eq 'Get-CanonicalDriveSoundtrack'
+},$true))
+Assert-True ($CanonicalCalls.Count -eq 1) 'A non-background request path can invoke soundtrack reconciliation.'
+$CanonicalParent = $CanonicalCalls[0].Parent
+while ($CanonicalParent -and $CanonicalParent -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
+    $CanonicalParent = $CanonicalParent.Parent
+}
+Assert-True ($CanonicalParent.Name -eq 'Update-RecentDriveSoundtrackCache') 'Soundtrack reconciliation escaped the background cache updater.'
 
 $script:DriveSoundtrackRecordsMemory = @{}
 $script:DriveSoundtrackRecordsLoaded = $true
@@ -48,6 +69,15 @@ function Get-DriveOSDriveSoundtracks { @() }
 function Set-DriveOSDriveSoundtrack { param($Repository,$Record) $script:SavedSoundtrack=$Record }
 function ConvertTo-DriveOSDisplayTime { param($Value) return $Value.ToLocalTime() }
 function Get-SpotifyRecordTrackId { param($Record) return $Record.track_id }
+
+$script:DriveSoundtrackRecordsMemory['cached-drive'] = [PSCustomObject]@{
+    driveId = 'cached-drive'
+    songs = @([PSCustomObject]@{ track='Stored'; playedAt='2026-08-13T10:05:00Z' })
+}
+$CachedSongs = @(Get-CachedDriveSoundtrack -DriveId 'cached-drive')
+$MissingSongs = @(Get-CachedDriveSoundtrack -DriveId 'missing-drive')
+Assert-True ($CachedSongs.Count -eq 1 -and $CachedSongs[0].track -eq 'Stored') 'Read-only cache did not return the stored soundtrack payload.'
+Assert-True ($MissingSongs.Count -eq 0) 'A missing cached soundtrack did not return an empty song list.'
 
 $RecentEnd = [DateTimeOffset]::UtcNow.AddMinutes(-30)
 $RecentStart = $RecentEnd.AddMinutes(-60)
