@@ -2,7 +2,7 @@ name: Sync Spotify history
 
 on:
   schedule:
-    - cron: "17 */2 * * *"
+    - cron: "*/15 * * * *"
       timezone: "America/Chicago"
   workflow_dispatch:
 
