@@ -43,10 +43,26 @@ function Get-JourneyDeckPayloadHash {
     finally { $Sha.Dispose() }
 }
 
+function Get-JourneyDeckUtcTicks {
+    param([AllowNull()]$Value)
+    if ($Value -is [DateTimeOffset]) { return $Value.ToUniversalTime().UtcDateTime.Ticks }
+    if ($Value -is [DateTime]) { return ([DateTimeOffset]$Value).ToUniversalTime().UtcDateTime.Ticks }
+    $Text = "$Value".Trim()
+    if ($Text -notmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$') { return $null }
+    $Instant = [DateTimeOffset]::MinValue
+    if (-not [DateTimeOffset]::TryParse($Text,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind,[ref]$Instant)) { return $null }
+    return $Instant.ToUniversalTime().UtcDateTime.Ticks
+}
+
 function Test-JourneyDeckScalarEqual {
     param([AllowNull()]$Left,[AllowNull()]$Right)
     if ($null -eq $Left -and $null -eq $Right) { return $true }
     if ($null -eq $Left -or $null -eq $Right) { return $false }
+    $LeftUtcTicks = Get-JourneyDeckUtcTicks -Value $Left
+    $RightUtcTicks = Get-JourneyDeckUtcTicks -Value $Right
+    if ($null -ne $LeftUtcTicks -or $null -ne $RightUtcTicks) {
+        return $null -ne $LeftUtcTicks -and $null -ne $RightUtcTicks -and $LeftUtcTicks -eq $RightUtcTicks
+    }
     $NumericTypes = @([byte],[sbyte],[int16],[uint16],[int32],[uint32],[int64],[uint64],[single],[double],[decimal])
     if ($Left.GetType() -in $NumericTypes -and $Right.GetType() -in $NumericTypes) {
         return [decimal]$Left -eq [decimal]$Right
