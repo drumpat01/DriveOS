@@ -2391,7 +2391,9 @@ function Get-CachedDriveSoundtrack {
     # persistence belong to Update-RecentDriveSoundtrackCache.
     $Map = Get-DriveSoundtrackRecordMap
     if (-not $Map.ContainsKey($DriveId)) { return @() }
-    return @($Map[$DriveId].songs)
+    # Older cache payloads can contain a null array element. Treat it as an
+    # absent song so one malformed legacy entry cannot break every drive read.
+    return @($Map[$DriveId].songs | Where-Object { $null -ne $_ })
 }
 
 function Get-CanonicalDriveSoundtrack {

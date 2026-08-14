@@ -583,7 +583,7 @@ function driveRouteText(drive) {
 }
 
 function driveSearchHaystack(drive) {
-  const soundtrack = drive.soundtrack || [];
+  const soundtrack = (drive.soundtrack || []).filter(Boolean);
   const songText = soundtrack.flatMap(song => [
     song.track,
     song.artist,
