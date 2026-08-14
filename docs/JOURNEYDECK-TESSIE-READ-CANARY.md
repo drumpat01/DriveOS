@@ -30,13 +30,15 @@ That checkout created its own untracked rehearsal script and did not contain thi
 
 The exact local candidate passed `tools/Test-DriveOS.ps1` with the bundled Node runtime, `tools/Test-ReleasePreflight.ps1`, the shared-drive soundtrack and release-workflow suites, both standalone Node test files, and `git diff --check` on 2026-08-14. These checks validate the offline and mocked contracts but do not remove the exact-source real-Turso gate above.
 
-Run this in an environment with the same repository credentials and Tessie token as the target instance:
+Run the manual **Audit Tessie read readiness** workflow from the exact candidate commit. The workflow uses the repository's existing Turso and Tessie secrets, forces the Turso repository provider, enforces the 30-day window and 45-minute cursor limit, and fails unless the report is ready. It writes only counts and pass/fail status to the Actions summary. The full privacy-safe report is retained as a workflow artifact for 14 days.
+
+For a local or isolated environment with the same repository credentials and Tessie token as the target instance, the equivalent command is:
 
 ```powershell
 .\tools\Test-JourneyDeckTessieParity.ps1 -RequireReady
 ```
 
-The default report is `data/journeydeck-tessie-parity.json` (or the configured web data directory). It contains no VIN, locations, or provider payloads. Archive the report with the rollout record before changing flags.
+The default local report is `data/journeydeck-tessie-parity.json` (or the configured web data directory). The Actions workflow instead writes to the runner's temporary directory. Both report forms contain no VIN, locations, or provider payloads. Archive the report with the rollout record before changing flags.
 
 The report must say `status: ready` and `readyForReadCanary: true`. The gate fails when a cursor is absent or stale, either resource has an error, identities or UTC-day counts differ, normalized columns differ, payload hashes differ, or the existing drive/charge compatibility projections differ.
 

@@ -15,6 +15,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TessieParity.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\TessieAuditWorkflow.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $Phase3Arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'tests\Phase3.Tests.ps1'))
 if ($env:DRIVEOS_NODE) { $Phase3Arguments += @('-NodePath',$env:DRIVEOS_NODE) }
 & powershell.exe @Phase3Arguments

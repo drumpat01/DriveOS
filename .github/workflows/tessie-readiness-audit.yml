@@ -1,0 +1,68 @@
+name: Audit Tessie read readiness
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeydeck-tessie-readiness-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    if: vars.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare 30-day Tessie history with Turso
+        shell: pwsh
+        env:
+          DRIVEOS_REPOSITORY_PROVIDER: Turso
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          TESSIE_TOKEN: ${{ secrets.TESSIE_TOKEN }}
+          JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS: "30"
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'journeydeck-tessie-parity.json'
+          ./tools/Test-JourneyDeckTessieParity.ps1 `
+            -Days 30 `
+            -MaximumCursorLagMinutes 45 `
+            -OutputPath $reportPath `
+            -RequireReady | Out-Null
+      - name: Publish privacy-safe readiness summary
+        if: always()
+        shell: pwsh
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'journeydeck-tessie-parity.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) {
+            '### JourneyDeck Tessie readiness audit' | Add-Content $env:GITHUB_STEP_SUMMARY
+            '' | Add-Content $env:GITHUB_STEP_SUMMARY
+            'No parity report was produced. Database reads must remain disabled.' | Add-Content $env:GITHUB_STEP_SUMMARY
+            exit 1
+          }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          @(
+            '### JourneyDeck Tessie readiness audit'
+            ''
+            "- Status: **$($report.status)**"
+            "- Ready for read canary: **$($report.readyForReadCanary)**"
+            "- Audit window: **$($report.auditRange.days) days**"
+            "- Drives: provider **$($report.resources.drives.providerCount)**, database **$($report.resources.drives.databaseCount)**"
+            "- Charges: provider **$($report.resources.charges.providerCount)**, database **$($report.resources.charges.databaseCount)**"
+            "- Drive parity: **$($report.resources.drives.passed)**"
+            "- Charging parity: **$($report.resources.charges.passed)**"
+            "- Cursor readiness: **$($report.checks[0].passed)**"
+            ''
+            'The archived report excludes VINs, locations, and raw provider payloads.'
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY
+      - name: Archive privacy-safe parity report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journeydeck-tessie-parity-${{ github.run_id }}
+          path: ${{ runner.temp }}/journeydeck-tessie-parity.json
+          if-no-files-found: error
+          retention-days: 14
