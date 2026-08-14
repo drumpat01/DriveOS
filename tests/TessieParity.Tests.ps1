@@ -55,6 +55,15 @@ Assert-Equal $Ready.status 'ready' 'Ready parity status changed.'
 Assert-True $Ready.resources.drives.passed 'Matching drives did not pass parity.'
 Assert-True $Ready.resources.charges.passed 'Matching charges did not pass parity.'
 
+$CoercedDriveRow = $DriveRow.PSObject.Copy()
+$CoercedDriveRow.started_at_utc = [DateTime]::Parse($StoredDrive.startedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
+$CoercedDriveRow.ended_at_utc = [DateTime]::Parse($StoredDrive.endedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
+$CoercedChargeRow = $ChargeRow.PSObject.Copy()
+$CoercedChargeRow.started_at_utc = [DateTimeOffset]::Parse($StoredCharge.startedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
+$CoercedChargeRow.ended_at_utc = [DateTimeOffset]::Parse($StoredCharge.endedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
+$CoercedReady = New-JourneyDeckTessieParityReport -RepositoryProvider Turso -Vin $Vin -ProviderDrives @($Drive) -DatabaseDrives @($CoercedDriveRow) -ProviderCharges @($Charge) -DatabaseCharges @($CoercedChargeRow) -DriveCursor $Cursor -ChargeCursor $Cursor -RangeFromUtc $Now.AddDays(-30) -RangeToUtc $Now -GeneratedAtUtc $Now.AddMinutes(5)
+Assert-True $CoercedReady.readyForReadCanary 'Equivalent UTC timestamps coerced to date objects by PowerShell 7 should pass parity.'
+
 $MismatchedDriveRow = $DriveRow.PSObject.Copy()
 $MismatchedDriveRow.energy_used_kwh = 99
 $NotReady = New-JourneyDeckTessieParityReport -RepositoryProvider SQLite -Vin $Vin -ProviderDrives @($Drive) -DatabaseDrives @($MismatchedDriveRow) -ProviderCharges @($Charge) -DatabaseCharges @($ChargeRow) -DriveCursor $Cursor -ChargeCursor $Cursor -RangeFromUtc $Now.AddDays(-30) -RangeToUtc $Now -GeneratedAtUtc $Now.AddMinutes(5)
