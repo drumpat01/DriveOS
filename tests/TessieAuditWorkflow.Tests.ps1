@@ -1,0 +1,23 @@
+$ErrorActionPreference = 'Stop'
+$Root = Split-Path -Parent $PSScriptRoot
+
+function Assert-True { param([bool]$Condition,[string]$Message) if (-not $Condition) { throw $Message } }
+
+$Workflow = Get-Content (Join-Path $Root '.github\workflows\tessie-readiness-audit.yml') -Raw
+
+Assert-True ($Workflow -match '(?m)^\s*workflow_dispatch:\s*$') 'The production readiness audit must support an explicit manual run.'
+Assert-True (-not ($Workflow -match '(?m)^\s*schedule:\s*$')) 'The provider parity audit must not run on a schedule.'
+Assert-True ($Workflow -match "if:\s*vars\.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'") 'The readiness audit is not coupled to the active durable writer.'
+Assert-True ($Workflow -match 'DRIVEOS_REPOSITORY_PROVIDER:\s*Turso') 'The readiness audit does not force the production Turso provider.'
+Assert-True ($Workflow -match 'TURSO_DATABASE_URL:\s*\$\{\{ secrets\.TURSO_DATABASE_URL \}\}') 'The readiness audit is missing its Turso URL secret.'
+Assert-True ($Workflow -match 'TURSO_AUTH_TOKEN:\s*\$\{\{ secrets\.TURSO_AUTH_TOKEN \}\}') 'The readiness audit is missing its Turso token secret.'
+Assert-True ($Workflow -match 'TESSIE_TOKEN:\s*\$\{\{ secrets\.TESSIE_TOKEN \}\}') 'The readiness audit is missing its Tessie token secret.'
+Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,240}-Days 30[\s\S]{0,240}-MaximumCursorLagMinutes 45[\s\S]{0,240}-RequireReady') 'The readiness audit does not enforce the approved 30-day parity and cursor gate.'
+Assert-True ($Workflow -match 'RUNNER_TEMP') 'The readiness report must be written outside the repository checkout.'
+Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,300}\| Out-Null') 'Detailed parity report objects must not be emitted to the Actions log.'
+Assert-True ($Workflow -match 'actions/upload-artifact@v4') 'The privacy-safe parity report is not archived for rollout evidence.'
+Assert-True ($Workflow -match 'retention-days:\s*14') 'The parity artifact retention period changed unexpectedly.'
+Assert-True ($Workflow -notmatch 'Sync-JourneyDeckTessieHistory|Initialize-DriveOS(Sqlite|Turso)') 'The readiness workflow must remain read-only.'
+Assert-True ($Workflow -notmatch '(?im)(Write-(Host|Output)|Add-Content)[^\r\n]*(TURSO_|TESSIE_TOKEN|raw_payload|examples)') 'The readiness workflow risks printing secrets or detailed provider records.'
+
+Write-Host 'JourneyDeck Tessie audit workflow checks passed.' -ForegroundColor Green
