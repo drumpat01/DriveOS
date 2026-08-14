@@ -7,20 +7,20 @@ function Assert-True([bool]$Condition, [string]$Message) {
 
 $server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 
-Assert-True ($server -match '\$FullModeDriveCacheFile') 'Full Mode durable drive cache file is missing.'
-Assert-True ($server -match 'Get-DriveOSTursoState -Repository \$Repository -Key "full-mode-drive-cache"') 'Full Mode cache is not read from Turso.'
-Assert-True ($server -match 'Set-DriveOSTursoState -Repository \$Repository -Key "full-mode-drive-cache"') 'Full Mode cache is not persisted to Turso.'
-Assert-True ($server -match 'FullModeDriveRecordsLoaded') 'Full Mode cache lacks its process-local read-through layer.'
-Assert-True ($server -match 'FinalizationCutoff = \[DateTimeOffset\]::UtcNow.AddMinutes\(-15\)') 'Newly finished drives are finalized too early.'
-Assert-True ($server -match 'UseSoundtrackOverride') 'Cached Full Mode soundtracks are not reused.'
-Assert-True ($server -match 'Completed drives are immutable for soundtrack matching') 'Completed-drive permanence is not documented in code.'
+Assert-True ($server -match 'Get-CanonicalDriveSoundtrack') 'Full Mode is not using the shared soundtrack cache.'
+Assert-True ($server -match 'Get-DriveOSDriveSoundtracks -Repository \$Repository') 'Shared soundtrack records are not loaded through the repository.'
+Assert-True ($server -match 'Set-DriveOSDriveSoundtrack -Repository \$Repository') 'Shared soundtrack records are not persisted through the repository.'
+Assert-True ($server -match 'DriveSoundtrackRecordsLoaded') 'Shared soundtrack cache lacks its process-local read-through layer.'
+Assert-True ($server -match 'AddHours\(-3\)') 'New drives do not retain a Spotify catch-up window.'
+Assert-True ($server -match 'Update-RecentDriveSoundtrackCache -Days 1') 'Scheduled sync does not reconcile the previous day of drives.'
+Assert-True ($server -notmatch 'full-mode-drive-cache') 'The legacy Full Mode-only soundtrack cache is still active.'
 
 $recentFunction = [regex]::Match(
     $server,
     '(?s)function Get-RecentDrives\s*\{.*?(?=\r?\nfunction Get-CachedRecentDrives365)'
 ).Value
-Assert-True ($recentFunction -match '\$SpotifyHistory = \$null') 'Full Mode eagerly opens Spotify history before checking its cache.'
-Assert-True ($recentFunction -match 'if \(\$null -eq \$SpotifyHistory\)') 'Full Mode does not lazily load Spotify history for uncached drives.'
+Assert-True ($recentFunction -match 'Get-SpotifyHistory') 'Full Mode does not provide shared Spotify history to the canonical cache.'
+Assert-True ($recentFunction -match 'Convert-RawDrive') 'Full Mode no longer builds drive records.'
 
 $tokens = $null
 $parseErrors = $null

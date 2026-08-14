@@ -60,5 +60,7 @@ $Source = Get-Content $TursoModulePath -Raw
 Assert-True ($Source -match '/v2/pipeline') "Turso storage must use SQL-over-HTTP."
 Assert-True ($Source -match 'Authorization\s*=\s*"Bearer') "Turso requests must use Bearer auth."
 Assert-True ($Source -match 'CREATE TABLE IF NOT EXISTS app_state') "Turso must persist app state."
+Assert-True ($Source -match 'CREATE TABLE IF NOT EXISTS drive_soundtracks') "Turso must persist one canonical soundtrack record per drive."
+Assert-True ($Source -match 'ON CONFLICT\(drive_id\) DO UPDATE') "Turso soundtrack writes must upsert by drive ID."
 
 Write-Host "DriveOS Turso checks passed." -ForegroundColor Green
