@@ -6288,6 +6288,32 @@ h1 span {
   gap: 14px;
 }
 
+.drive-place-action {
+  display: flex;
+  justify-content: flex-end;
+  margin: 16px 0;
+}
+
+.drive-library-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255,255,255,.34);
+}
+
+.drive-library-more[hidden] { display: none !important; }
+.drive-library-charging { margin-top: 16px; }
+
+:root[data-theme="dark"] .drive-library-more {
+  background: rgba(8,26,34,.72);
+  border-color: var(--dark-border);
+}
+
 .place-names-modal-card {
   width: min(1180px, calc(100% - 30px));
 }
@@ -6347,6 +6373,17 @@ h1 span {
   .place-names-launcher-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .drive-place-action .primary-button,
+  .drive-library-more .secondary-button {
+    width: 100%;
+  }
+
+  .drive-library-more {
+    align-items: stretch;
+    flex-direction: column;
+    text-align: center;
   }
 }
 

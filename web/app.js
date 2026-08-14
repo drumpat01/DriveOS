@@ -14,6 +14,7 @@ let mapLibreLoadPromise = null;
 let driveLibraryRenderScheduled = false;
 let driveLibraryFullyLoaded = false;
 let driveLibraryLoadPromise = null;
+let driveLibraryExpanded = false;
 let driveTimelineDays = 7;
 let driveTimelineLoaded = false;
 let driveTimelineLoadPromise = null;
@@ -911,7 +912,11 @@ function renderDriveLibrary() {
   if (!container) return;
 
   const drives = filteredDriveLibrary();
+  const visibleDrives = visibleDriveCollection(drives, driveLibraryExpanded);
   const count = $("driveSearchCount");
+  const more = $("driveLibraryMore");
+  const moreButton = $("driveLibraryMoreButton");
+  const moreSummary = $("driveLibraryMoreSummary");
 
   if (count) {
     const windowText = state.driveLibraryWindowDays
@@ -921,7 +926,21 @@ function renderDriveLibrary() {
     const routeText = state.routeFilterDriveIds ? " \u00B7 favorite route" : "";
 
     count.textContent =
-      `${drives.length} of ${state.drives.length} drive${state.drives.length === 1 ? "" : "s"}${windowText}${routeText}`;
+      `${visibleDrives.length} of ${state.drives.length} drive${state.drives.length === 1 ? "" : "s"}${windowText}${routeText}`;
+  }
+
+  const hasMore = drives.length > 10;
+  if (more) more.hidden = !hasMore;
+  if (moreButton) {
+    moreButton.textContent = driveLibraryExpanded
+      ? "Show most recent 10"
+      : `Show all ${drives.length} drives`;
+    moreButton.setAttribute("aria-expanded", driveLibraryExpanded ? "true" : "false");
+  }
+  if (moreSummary) {
+    moreSummary.textContent = driveLibraryExpanded
+      ? `Showing all ${drives.length} matching drives`
+      : `Showing the most recent ${visibleDrives.length}`;
   }
 
   if (!state.drives.length) {
@@ -947,7 +966,7 @@ function renderDriveLibrary() {
     return;
   }
 
-  container.innerHTML = drives.map(drive => driveCard(drive)).join("");
+  container.innerHTML = visibleDrives.map(drive => driveCard(drive)).join("");
   bindDriveButtons(container);
 }
 
@@ -1003,6 +1022,13 @@ function bindDriveLibrarySearch() {
 
   $("driveFiltersClear")?.addEventListener("click", resetDriveFilters);
   $("driveRouteFilterClear")?.addEventListener("click", () => clearFavoriteRouteFilter());
+  $("driveLibraryMoreButton")?.addEventListener("click", () => {
+    driveLibraryExpanded = !driveLibraryExpanded;
+    renderDriveLibrary();
+    if (!driveLibraryExpanded) {
+      $("allDrives")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
   $("driveAdvancedToggle")?.addEventListener("click", () => {
     setAdvancedSearchOpen(Boolean($("driveAdvancedFilters")?.hidden));
   });
@@ -1039,6 +1065,7 @@ batteryText = drivesFeature.batteryText;
 compactLocation = drivesFeature.compactLocation;
 driveRouteText = drivesFeature.driveRouteText;
 normalizeDriveCollection = drivesFeature.normalizeDriveCollection;
+visibleDriveCollection = drivesFeature.visibleDriveCollection;
 driveSearchHaystack = drivesFeature.driveSearchHaystack;
 degreesToRadians = drivesFeature.degreesToRadians;
 geoDistanceMiles = drivesFeature.geoDistanceMiles;

@@ -10,6 +10,9 @@ $app=Get-Content (Join-Path $Root 'web\app.js') -Raw
 if($app -notmatch 'toLocaleDateString\("en-US"' -or $app -notmatch 'month:\s*"2-digit"' -or $app -notmatch 'year:\s*"numeric"'){throw 'Desktop header date is not using compact MM/DD/YYYY formatting.'}
 foreach($legacy in @('function initializePwa','function showView','function applyDriveOSTheme','function runDriveOSIgnition','const state = {')){if($app.Contains($legacy)){throw "Extracted frontend implementation returned to app.js: $legacy"}}
 foreach($modalId in @('openPlaceNamesModal','placeNamesModal','placeNamesList')){if($index -notmatch ('id="'+$modalId+'"')){throw "Friendly places modal control is missing: $modalId"}}
+if($index -notmatch 'id="openPlaceNamesModal"[\s\S]{0,220}>Name the places you drive</button>'){throw 'Friendly places is not exposed as the compact drive-library action.'}
+$DriveListIndex=$index.IndexOf('id="allDrives"');$DriveMoreIndex=$index.IndexOf('id="driveLibraryMore"');$ChargingIndex=$index.IndexOf('id="chargingHeading"')
+if($DriveListIndex -lt 0 -or $DriveMoreIndex -le $DriveListIndex -or $ChargingIndex -le $DriveMoreIndex){throw 'Drive list, show-all control, and charging history are not in the required order.'}
 foreach($shareId in @('shareCardButton','shareCardModal','shareCardCanvas','shareCardDownload')){if($index -notmatch ('id="'+$shareId+'"')){throw "Share card control is missing: $shareId"}}
 foreach($commandId in @('commandPaletteButton','commandPalette','commandPaletteInput','commandPaletteResults')){if($index -notmatch ('id="'+$commandId+'"')){throw "Command palette control is missing: $commandId"}}
 foreach($dashboardId in @('dashboardCustomizeButton','dashboardCustomizer','dashboardCustomizerList','dashboardWidgetGrid')){if($index -notmatch ('id="'+$dashboardId+'"')){throw "Dashboard customization control is missing: $dashboardId"}}
