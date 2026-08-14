@@ -127,6 +127,7 @@ try {
     }
     $shareCard=New-DriveOSShareCardModel -Drive $privateDrive
     Assert-Equal $shareCard.title 'Saturday Night Drive' 'Share card title changed.'
+    Assert-Equal (Get-DriveOSShareTitle -StartedAt '2026-08-08T23:30:00-10:00') 'Saturday Night Drive' 'Share card title must honor the drive timestamp offset instead of the host timezone.'
     Assert-Equal $shareCard.startLabel 'Saginaw, TX' 'Home share label must resolve to Saginaw.'
     Assert-Equal $shareCard.route.mode 'city-private' 'Home route must use private city geometry.'
     Assert-Equal $shareCard.privacy.homeProtected $true 'Home privacy flag changed.'
