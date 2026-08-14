@@ -8,6 +8,7 @@ function Assert-True {
 
 $Deploy = Get-Content (Join-Path $Root 'tools\Deploy-DriveOS.ps1') -Raw
 $Preflight = Get-Content (Join-Path $Root 'tools\Test-ReleasePreflight.ps1') -Raw
+$CiWorkflow = Get-Content (Join-Path $Root '.github\workflows\journeydeck-ci.yml') -Raw
 $Rules = Get-Content (Join-Path $Root 'deploy-files.json') -Raw | ConvertFrom-Json
 
 $Tokens = $null
@@ -39,6 +40,11 @@ Assert-True ($Deploy -match 'diff --cached --name-status') 'Workflow must show s
 Assert-True ($Deploy -match 'push -u origin \$DeployBranch') 'Workflow must push only its branch.'
 Assert-True ($Deploy -match 'compare/main\.\.\.') 'Workflow must print a PR URL.'
 Assert-True ($Preflight -match 'Mojibake') 'Preflight must check for mojibake.'
+Assert-True ($CiWorkflow -match '(?m)^\s*pull_request:\s*$') 'JourneyDeck CI must run for pull requests.'
+Assert-True ($CiWorkflow -match '(?m)^\s*- main\s*$') 'JourneyDeck CI must target main.'
+Assert-True ($CiWorkflow -match 'Test-DriveOS\.ps1') 'JourneyDeck CI must run application validation.'
+Assert-True ($CiWorkflow -match 'Test-ReleasePreflight\.ps1') 'JourneyDeck CI must run release preflight.'
+Assert-True ($CiWorkflow -match 'node --test') 'JourneyDeck CI must run standalone frontend tests.'
 Assert-True (@($Rules.forbidden) -contains '**/*.zip') 'Rules must reject ZIP files.'
 Assert-True (@($Rules.forbidden) -contains '**/*secret*.json') 'Rules must reject secret JSON files.'
 Assert-True (@($Rules.forbidden) -notcontains '.env.*') 'Rules must not reject .env.example.'
