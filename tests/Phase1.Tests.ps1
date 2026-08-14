@@ -43,19 +43,22 @@ try {
     }
     if ($Play.artist -ne "Artist" -or $Play.source -ne "spotify") { throw "Spotify model mapping failed" }
 
-    $LastFmItem = [pscustomobject]@{
-        name = "Song"
-        artist = [pscustomobject]@{ '#text' = "Artist" }
-        album = [pscustomobject]@{ '#text' = "Album" }
-        date = [pscustomobject]@{ uts = "1767225600" }
-        url = "https://www.last.fm/music/Artist/_/Song"
-        mbid = ""
+    $LastFmHistoryPath = Join-Path $Scratch 'lastfm-history.jsonl'
+    $LastFmPlay = [pscustomobject]@{
+        id = 'lastfm|1767225600|0123456789abcdef'
+        played_at = '2026-01-01T00:00:00Z'
+        source = 'lastfm'
+        track_id = 'track1'
+        track_name = 'Song'
+        artist = 'Artist'
+        album = 'Album'
+        external_url = 'https://www.last.fm/music/Artist/_/Song'
     }
-    $LastFmPlay = ConvertTo-DriveOSLastFmPlay -Item $LastFmItem -SpotifyTrack $Item.track
-    if ($LastFmPlay.source -ne "lastfm" -or $LastFmPlay.track_id -ne "track1" -or $LastFmPlay.artist -ne "Artist") {
-        throw "Last.fm model mapping or Spotify enrichment failed"
+    Add-DriveOSJsonLine -Path $LastFmHistoryPath -Value $LastFmPlay
+    $LastFmArchive = @(Read-DriveOSJsonLines -Path $LastFmHistoryPath)
+    if ($LastFmArchive.Count -ne 1 -or $LastFmArchive[0].source -ne 'lastfm' -or $LastFmArchive[0].track_id -ne 'track1') {
+        throw 'Historical Last.fm listening records no longer round-trip through the shared archive.'
     }
-    if ($LastFmPlay.id -notmatch '^lastfm\|1767225600\|[0-9a-f]{16}$') { throw "Last.fm stable record ID failed" }
 
     $FoursquareClient = New-FoursquareClient -ApiKey "test-service-key"
     if ($FoursquareClient.Headers.Authorization -ne "Bearer test-service-key") { throw "Foursquare bearer authentication failed" }
@@ -94,7 +97,7 @@ try {
     if ($ServerSource -notmatch '\$null\s*=\s*\$Response\.EnsureSuccessStatusCode\(\)') {
         throw "Spotify artwork status validation must suppress its response object."
     }
-    if ($ServerSource -notmatch "api_key=.*REDACTED") { throw "Last.fm log redaction is missing" }
+    if ($ServerSource -notmatch 'Last.fm active integration was retired') { throw "Last.fm retirement compatibility marker is missing" }
     if ($ServerSource -notmatch 'FoursquareDailyLimit\s*=\s*10' -or $ServerSource -notmatch 'FoursquareMonthlyLimit\s*=\s*250') {
         throw "Foursquare free-tier guardrails are missing"
     }

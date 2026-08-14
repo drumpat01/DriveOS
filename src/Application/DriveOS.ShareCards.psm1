@@ -35,7 +35,9 @@ function Get-DriveOSShareLocationLabel {
 
 function Get-DriveOSShareTitle {
     param([Parameter(Mandatory=$true)][string]$StartedAt)
-    $Started = [DateTimeOffset]::Parse($StartedAt).ToLocalTime()
+    # The drive timestamp already carries the location's offset. Using the
+    # runner's local zone makes the title change on UTC-hosted servers and CI.
+    $Started = [DateTimeOffset]::Parse($StartedAt)
     $Moment = if ($Started.Hour -lt 5) { 'Late Night' }
         elseif ($Started.Hour -lt 12) { 'Morning' }
         elseif ($Started.Hour -lt 17) { 'Afternoon' }

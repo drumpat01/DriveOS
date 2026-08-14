@@ -241,36 +241,11 @@ function Initialize-DriveOSTurso {
     param([Parameter(Mandatory=$true)]$Repository)
 
     $Statements = @(
-        [PSCustomObject]@{ Sql = @'
-CREATE TABLE IF NOT EXISTS listening_history(
-    id TEXT PRIMARY KEY,
-    played_at TEXT,
-    payload_json TEXT NOT NULL
-);
-'@ },
-        [PSCustomObject]@{ Sql = @'
-CREATE INDEX IF NOT EXISTS ix_listening_history_played_at
-ON listening_history(played_at);
-'@ },
-        [PSCustomObject]@{ Sql = @'
-CREATE TABLE IF NOT EXISTS place_aliases(
-    location TEXT PRIMARY KEY,
-    label TEXT NOT NULL
-);
-'@ },
-        [PSCustomObject]@{ Sql = @'
-CREATE TABLE IF NOT EXISTS settings(
-    key TEXT PRIMARY KEY,
-    value_json TEXT NOT NULL
-);
-'@ },
-        [PSCustomObject]@{ Sql = @'
-CREATE TABLE IF NOT EXISTS app_state(
-    key TEXT PRIMARY KEY,
-    value_json TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-);
-'@ }
+        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS listening_history(id TEXT PRIMARY KEY, played_at TEXT, payload_json TEXT NOT NULL);" },
+        [PSCustomObject]@{ Sql = "CREATE INDEX IF NOT EXISTS ix_listening_history_played_at ON listening_history(played_at);" },
+        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS place_aliases(location TEXT PRIMARY KEY, label TEXT NOT NULL);" },
+        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);" },
+        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS app_state(key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);" }
     )
 
     $null = Invoke-DriveOSTursoPipeline -Repository $Repository -Statements $Statements

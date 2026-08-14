@@ -301,7 +301,7 @@ try {
         "Hosted POST requests must use origin validation."
 
     Assert-True `
-        ($ServerSource -match 'Test-DriveOSWebSessionToken') `
+        ($ServerSource -match 'Get-DriveOSWebSessionPrincipal') `
         "Protected hosted requests must validate signed sessions."
 
     Assert-True `

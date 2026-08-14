@@ -1,4 +1,5 @@
 Set-StrictMode -Version 2.0
+Import-Module (Join-Path $PSScriptRoot 'DriveOS.Migrations.psm1') -Force
 
 function Get-DriveOSTursoHttpUrl {
     param([Parameter(Mandatory=$true)][string]$DatabaseUrl)
@@ -12,6 +13,24 @@ function Get-DriveOSTursoHttpUrl {
     return "https://$($Matches[1])"
 }
 
+function Get-DriveOSTursoHttpTimeoutSeconds {
+    $TimeoutSeconds = 30
+    $Configured = [Environment]::GetEnvironmentVariable('JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS')
+    if ($Configured -and (-not [int]::TryParse($Configured,[ref]$TimeoutSeconds) -or $TimeoutSeconds -lt 1 -or $TimeoutSeconds -gt 300)) {
+        throw 'JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS must be between 1 and 300.'
+    }
+    return $TimeoutSeconds
+}
+
+function Get-DriveOSTursoBatchStatementLimit {
+    $Limit = 100
+    $Configured = [Environment]::GetEnvironmentVariable('JOURNEYDECK_TURSO_BATCH_STATEMENTS')
+    if ($Configured -and (-not [int]::TryParse($Configured,[ref]$Limit) -or $Limit -lt 1 -or $Limit -gt 500)) {
+        throw 'JOURNEYDECK_TURSO_BATCH_STATEMENTS must be between 1 and 500.'
+    }
+    return $Limit
+}
+
 function New-DriveOSTursoTextArgument {
     param([AllowNull()][object]$Value)
 
@@ -23,6 +42,15 @@ function New-DriveOSTursoTextArgument {
         type = "text"
         value = "$Value"
     }
+}
+
+function New-DriveOSTursoStatementPayload {
+    param([Parameter(Mandatory=$true)]$Statement)
+    $Stmt = [ordered]@{ sql = "$($Statement.Sql)" }
+    if ($Statement.PSObject.Properties['Args']) {
+        $Stmt.args = @($Statement.Args | ForEach-Object { New-DriveOSTursoTextArgument -Value $_ })
+    }
+    return [PSCustomObject]$Stmt
 }
 
 function Invoke-DriveOSTursoPipeline {
@@ -66,7 +94,8 @@ function Invoke-DriveOSTursoPipeline {
         -Method Post `
         -Headers @{ Authorization = "Bearer $($Repository.TursoAuthToken)" } `
         -ContentType "application/json" `
-        -Body $Payload
+        -Body $Payload `
+        -TimeoutSec (Get-DriveOSTursoHttpTimeoutSeconds)
 
     $ExecuteResults = @()
 
@@ -91,6 +120,71 @@ function Invoke-DriveOSTursoPipeline {
     }
 
     return @($ExecuteResults)
+}
+
+function Invoke-DriveOSTursoTransactionalBatch {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)][object[]]$Statements
+    )
+
+    if (-not $Statements.Count) { return }
+    if (-not $Repository.TursoDatabaseUrl -or -not $Repository.TursoAuthToken) { throw 'Turso repository credentials are incomplete.' }
+
+    $Steps = @([PSCustomObject]@{ stmt = [PSCustomObject]@{ sql = 'BEGIN IMMEDIATE;' } })
+    $PreviousStep = 0
+    foreach ($Statement in $Statements) {
+        $Steps += [PSCustomObject]@{
+            condition = [PSCustomObject]@{ type = 'ok'; step = $PreviousStep }
+            stmt = New-DriveOSTursoStatementPayload -Statement $Statement
+        }
+        $PreviousStep++
+    }
+    $CommitStep = $Steps.Count
+    $Steps += [PSCustomObject]@{
+        condition = [PSCustomObject]@{ type = 'ok'; step = $PreviousStep }
+        stmt = [PSCustomObject]@{ sql = 'COMMIT;' }
+    }
+    $Steps += [PSCustomObject]@{
+        condition = [PSCustomObject]@{ type = 'not'; cond = [PSCustomObject]@{ type = 'ok'; step = $CommitStep } }
+        stmt = [PSCustomObject]@{ sql = 'ROLLBACK;' }
+    }
+
+    $Payload = [PSCustomObject]@{
+        requests = @(
+            [PSCustomObject]@{ type = 'batch'; batch = [PSCustomObject]@{ steps = @($Steps) } },
+            [PSCustomObject]@{ type = 'close' }
+        )
+    } | ConvertTo-Json -Depth 30 -Compress
+    $BaseUrl = Get-DriveOSTursoHttpUrl -DatabaseUrl $Repository.TursoDatabaseUrl
+    $Response = Invoke-RestMethod -Uri "$BaseUrl/v2/pipeline" -Method Post -Headers @{ Authorization = "Bearer $($Repository.TursoAuthToken)" } -ContentType 'application/json' -Body $Payload -TimeoutSec (Get-DriveOSTursoHttpTimeoutSeconds)
+    $PipelineResult = $Response.results[0]
+    if (-not $PipelineResult -or $PipelineResult.type -ne 'ok' -or $PipelineResult.response.type -ne 'batch') {
+        $Message = 'Turso transactional batch failed.'
+        if ($PipelineResult -and $PipelineResult.PSObject.Properties['error'] -and $PipelineResult.error.message) { $Message = $PipelineResult.error.message }
+        throw $Message
+    }
+
+    $BatchResult = $PipelineResult.response.result
+    for ($Index = 0; $Index -le $CommitStep; $Index++) {
+        $StepError = $BatchResult.step_errors[$Index]
+        if ($null -ne $StepError) { throw "Turso transactional batch failed at step ${Index}: $($StepError.message)" }
+    }
+    if ($null -eq $BatchResult.step_results[$CommitStep]) { throw 'Turso transactional batch did not commit.' }
+}
+
+function Invoke-DriveOSTursoStatementChunks {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][object[]]$Statements,
+        [int]$MaximumStatements = (Get-DriveOSTursoBatchStatementLimit)
+    )
+
+    if (-not $Statements.Count) { return }
+    for ($Offset = 0; $Offset -lt $Statements.Count; $Offset += $MaximumStatements) {
+        $Last = [math]::Min($Statements.Count - 1,$Offset + $MaximumStatements - 1)
+        Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements @($Statements[$Offset..$Last])
+    }
 }
 
 function ConvertFrom-DriveOSTursoResultRows {
@@ -164,17 +258,122 @@ function Invoke-DriveOSTursoExecute {
 function Initialize-DriveOSTurso {
     param([Parameter(Mandatory=$true)]$Repository)
 
-    $Statements = @(
-        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS listening_history(id TEXT PRIMARY KEY, played_at TEXT, payload_json TEXT NOT NULL);" },
-        [PSCustomObject]@{ Sql = "CREATE INDEX IF NOT EXISTS ix_listening_history_played_at ON listening_history(played_at);" },
-        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS drive_soundtracks(drive_id TEXT PRIMARY KEY, drive_started_at TEXT NOT NULL, drive_ended_at TEXT NOT NULL, status TEXT NOT NULL, payload_json TEXT NOT NULL, updated_at TEXT NOT NULL);" },
-        [PSCustomObject]@{ Sql = "CREATE INDEX IF NOT EXISTS ix_drive_soundtracks_ended_at ON drive_soundtracks(drive_ended_at);" },
-        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS place_aliases(location TEXT PRIMARY KEY, label TEXT NOT NULL);" },
-        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);" },
-        [PSCustomObject]@{ Sql = "CREATE TABLE IF NOT EXISTS app_state(key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);" }
-    )
+    Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);'
+    $Applied = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT version FROM schema_migrations ORDER BY version;' | ForEach-Object { [int]$_.version })
 
-    $null = Invoke-DriveOSTursoPipeline -Repository $Repository -Statements $Statements
+    foreach ($Migration in @(Get-DriveOSOrderedMigrations)) {
+        if ($Migration.Version -in $Applied) { continue }
+        $Statements = @($Migration.Statements | ForEach-Object { [PSCustomObject]@{ Sql = $_ } })
+        $Statements += [PSCustomObject]@{
+            Sql = 'INSERT INTO schema_migrations(version,applied_at) VALUES(?,?);'
+            Args = @($Migration.Version,[DateTimeOffset]::UtcNow.ToString('o'))
+        }
+        Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $Statements
+    }
+}
+
+function New-DriveOSTursoSyncRunStatement {
+    param([Parameter(Mandatory=$true)]$Run)
+    return [PSCustomObject]@{
+        Sql = 'INSERT INTO integration_sync_runs(id,household_id,provider,resource,idempotency_key,status,range_from_utc,range_to_utc,records_seen,records_written,started_at_utc,completed_at_utc,error_message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,range_from_utc=excluded.range_from_utc,range_to_utc=excluded.range_to_utc,records_seen=excluded.records_seen,records_written=excluded.records_written,started_at_utc=excluded.started_at_utc,completed_at_utc=excluded.completed_at_utc,error_message=excluded.error_message;'
+        Args = @($Run.id,$Run.householdId,$Run.provider,$Run.resource,$Run.idempotencyKey,$Run.status,$Run.rangeFromUtc,$Run.rangeToUtc,$Run.recordsSeen,$Run.recordsWritten,$Run.startedAtUtc,$Run.completedAtUtc,$Run.errorMessage)
+    }
+}
+
+function Set-DriveOSTursoTessieSnapshot {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Snapshot)
+
+    $Now = [string]$Snapshot.syncedAtUtc
+    $HouseholdId = [string]$Snapshot.householdId
+    $Vehicle = $Snapshot.vehicle
+    $IdentityStatements = @()
+    $IdentityStatements += [PSCustomObject]@{
+        Sql = "INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"
+        Args = @($HouseholdId,$Now,$Now)
+    }
+    $IdentityStatements += [PSCustomObject]@{
+        Sql = "INSERT INTO vehicles(id,household_id,provider,provider_vehicle_id,vin,display_name,observed_at_utc,raw_payload_json,created_at_utc,updated_at_utc) VALUES(?,?,'tessie',?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET vin=excluded.vin,display_name=excluded.display_name,observed_at_utc=excluded.observed_at_utc,raw_payload_json=excluded.raw_payload_json,updated_at_utc=excluded.updated_at_utc;"
+        Args = @($Vehicle.id,$HouseholdId,$Vehicle.providerVehicleId,$Vehicle.vin,$Vehicle.displayName,$Vehicle.observedAtUtc,$Vehicle.rawPayloadJson,$Now,$Now)
+    }
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $IdentityStatements
+
+    $RecordStatements = @()
+    foreach ($Drive in @($Snapshot.drives)) {
+        $RecordStatements += [PSCustomObject]@{
+            Sql = "INSERT INTO drives(id,household_id,vehicle_id,provider,provider_drive_id,legacy_drive_id,started_at_utc,ended_at_utc,started_at_epoch,ended_at_epoch,starting_location,ending_location,starting_latitude,starting_longitude,ending_latitude,ending_longitude,starting_battery,ending_battery,distance_miles,energy_used_kwh,average_speed_mph,max_speed_mph,tessie_tag,driver_profile,raw_payload_json,source_updated_at_utc,created_at_utc,updated_at_utc) VALUES(?,?,?,'tessie',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider_drive_id=excluded.provider_drive_id,legacy_drive_id=excluded.legacy_drive_id,started_at_utc=excluded.started_at_utc,ended_at_utc=excluded.ended_at_utc,started_at_epoch=excluded.started_at_epoch,ended_at_epoch=excluded.ended_at_epoch,starting_location=excluded.starting_location,ending_location=excluded.ending_location,starting_latitude=excluded.starting_latitude,starting_longitude=excluded.starting_longitude,ending_latitude=excluded.ending_latitude,ending_longitude=excluded.ending_longitude,starting_battery=excluded.starting_battery,ending_battery=excluded.ending_battery,distance_miles=excluded.distance_miles,energy_used_kwh=excluded.energy_used_kwh,average_speed_mph=excluded.average_speed_mph,max_speed_mph=excluded.max_speed_mph,tessie_tag=excluded.tessie_tag,driver_profile=excluded.driver_profile,raw_payload_json=excluded.raw_payload_json,source_updated_at_utc=excluded.source_updated_at_utc,updated_at_utc=excluded.updated_at_utc;"
+            Args = @($Drive.id,$HouseholdId,$Vehicle.id,$Drive.providerDriveId,$Drive.legacyDriveId,$Drive.startedAtUtc,$Drive.endedAtUtc,$Drive.startedAtEpoch,$Drive.endedAtEpoch,$Drive.startingLocation,$Drive.endingLocation,$Drive.startingLatitude,$Drive.startingLongitude,$Drive.endingLatitude,$Drive.endingLongitude,$Drive.startingBattery,$Drive.endingBattery,$Drive.distanceMiles,$Drive.energyUsedKwh,$Drive.averageSpeedMph,$Drive.maxSpeedMph,$Drive.tessieTag,$Drive.driverProfile,$Drive.rawPayloadJson,$Drive.sourceUpdatedAtUtc,$Now,$Now)
+        }
+    }
+
+    foreach ($Charge in @($Snapshot.charges)) {
+        $RecordStatements += [PSCustomObject]@{
+            Sql = "INSERT INTO charging_sessions(id,household_id,vehicle_id,provider,provider_session_id,started_at_utc,ended_at_utc,started_at_epoch,ended_at_epoch,location,latitude,longitude,is_supercharger,odometer_miles,energy_added_kwh,energy_used_kwh,miles_added,starting_battery,ending_battery,recorded_cost,raw_payload_json,source_updated_at_utc,created_at_utc,updated_at_utc) VALUES(?,?,?,'tessie',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET provider_session_id=excluded.provider_session_id,started_at_utc=excluded.started_at_utc,ended_at_utc=excluded.ended_at_utc,started_at_epoch=excluded.started_at_epoch,ended_at_epoch=excluded.ended_at_epoch,location=excluded.location,latitude=excluded.latitude,longitude=excluded.longitude,is_supercharger=excluded.is_supercharger,odometer_miles=excluded.odometer_miles,energy_added_kwh=excluded.energy_added_kwh,energy_used_kwh=excluded.energy_used_kwh,miles_added=excluded.miles_added,starting_battery=excluded.starting_battery,ending_battery=excluded.ending_battery,recorded_cost=excluded.recorded_cost,raw_payload_json=excluded.raw_payload_json,source_updated_at_utc=excluded.source_updated_at_utc,updated_at_utc=excluded.updated_at_utc;"
+            Args = @($Charge.id,$HouseholdId,$Vehicle.id,$Charge.providerSessionId,$Charge.startedAtUtc,$Charge.endedAtUtc,$Charge.startedAtEpoch,$Charge.endedAtEpoch,$Charge.location,$Charge.latitude,$Charge.longitude,$Charge.isSupercharger,$Charge.odometerMiles,$Charge.energyAddedKwh,$Charge.energyUsedKwh,$Charge.milesAdded,$Charge.startingBattery,$Charge.endingBattery,$Charge.recordedCost,$Charge.rawPayloadJson,$Charge.sourceUpdatedAtUtc,$Now,$Now)
+        }
+    }
+    Invoke-DriveOSTursoStatementChunks -Repository $Repository -Statements $RecordStatements
+
+    $CompletionStatements = @()
+    foreach ($Resource in @($Snapshot.completedResources)) {
+        $CompletionStatements += [PSCustomObject]@{
+            Sql = "INSERT INTO integration_sync_cursors(household_id,provider,resource,cursor_value,high_watermark_utc,last_attempt_at_utc,last_success_at_utc,last_error,updated_at_utc) VALUES(?,'tessie',?,?,?,?,?,NULL,?) ON CONFLICT(household_id,provider,resource) DO UPDATE SET cursor_value=excluded.cursor_value,high_watermark_utc=excluded.high_watermark_utc,last_attempt_at_utc=excluded.last_attempt_at_utc,last_success_at_utc=excluded.last_success_at_utc,last_error=NULL,updated_at_utc=excluded.updated_at_utc;"
+            Args = @($HouseholdId,$Resource,$Snapshot.cursorEpoch,$Snapshot.rangeToUtc,$Now,$Now,$Now)
+        }
+    }
+    if ($Snapshot.syncRun) { $CompletionStatements += New-DriveOSTursoSyncRunStatement -Run $Snapshot.syncRun }
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $CompletionStatements
+}
+
+function Set-DriveOSTursoIntegrationSyncRun {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Run)
+    $Now = [DateTimeOffset]::UtcNow.ToString('o')
+    $ErrorValue = if ($Run.status -eq 'failed') { [string]$Run.errorMessage } else { $null }
+    $Statements = @(
+        [PSCustomObject]@{
+            Sql = "INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"
+            Args = @($Run.householdId,$Now,$Now)
+        },
+        (New-DriveOSTursoSyncRunStatement -Run $Run),
+        [PSCustomObject]@{
+            Sql = 'INSERT INTO integration_sync_cursors(household_id,provider,resource,cursor_value,high_watermark_utc,last_attempt_at_utc,last_success_at_utc,last_error,updated_at_utc) VALUES(?,?,?,NULL,NULL,?,NULL,?,?) ON CONFLICT(household_id,provider,resource) DO UPDATE SET last_attempt_at_utc=excluded.last_attempt_at_utc,last_error=excluded.last_error,updated_at_utc=excluded.updated_at_utc;'
+            Args = @($Run.householdId,$Run.provider,$Run.resource,$Run.startedAtUtc,$ErrorValue,$Now)
+        }
+    )
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $Statements
+}
+
+function Get-DriveOSTursoTessieDrives {
+    param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM drives WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
+    return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
+}
+
+function Get-DriveOSTursoTessieCharges {
+    param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
+    return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
+}
+
+function Get-DriveOSTursoTessieAuditRows {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)][ValidateSet('drives','charges')][string]$Resource,
+        [Parameter(Mandatory=$true)][long]$FromEpoch,
+        [Parameter(Mandatory=$true)][long]$ToEpoch,
+        [string]$VehicleId
+    )
+    $Table = if ($Resource -eq 'drives') { 'drives' } else { 'charging_sessions' }
+    if ($VehicleId) {
+        return @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT * FROM $Table WHERE provider='tessie' AND vehicle_id=? AND started_at_epoch >= ? AND started_at_epoch <= ? ORDER BY started_at_epoch,id;" -Args @($VehicleId,$FromEpoch,$ToEpoch))
+    }
+    return @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT * FROM $Table WHERE provider='tessie' AND started_at_epoch >= ? AND started_at_epoch <= ? ORDER BY started_at_epoch,id;" -Args @($FromEpoch,$ToEpoch))
+}
+
+function Get-DriveOSTursoIntegrationSyncCursor {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$HouseholdId,[string]$Provider,[string]$Resource)
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT cursor_value,high_watermark_utc,last_attempt_at_utc,last_success_at_utc,last_error FROM integration_sync_cursors WHERE household_id=? AND provider=? AND resource=?;' -Args @($HouseholdId,$Provider,$Resource))
+    if (-not $Rows.Count) { return $null }
+    return $Rows[0]
 }
 
 function Get-DriveOSTursoHistory {
@@ -240,9 +439,7 @@ function Set-DriveOSTursoAliases {
         [Parameter(Mandatory=$true)][object[]]$Entries
     )
 
-    $Statements = @()
-    $Statements += [PSCustomObject]@{ Sql = "BEGIN IMMEDIATE;" }
-    $Statements += [PSCustomObject]@{ Sql = "DELETE FROM place_aliases;" }
+    $Statements = @([PSCustomObject]@{ Sql = "DELETE FROM place_aliases;" })
 
     foreach ($Entry in @($Entries)) {
         $Statements += [PSCustomObject]@{
@@ -251,9 +448,7 @@ function Set-DriveOSTursoAliases {
         }
     }
 
-    $Statements += [PSCustomObject]@{ Sql = "COMMIT;" }
-
-    $null = Invoke-DriveOSTursoPipeline `
+    Invoke-DriveOSTursoTransactionalBatch `
         -Repository $Repository `
         -Statements @($Statements)
 }
@@ -334,8 +529,20 @@ function Remove-DriveOSTursoState {
 
 Export-ModuleMember -Function `
     Get-DriveOSTursoHttpUrl, `
+    Get-DriveOSTursoHttpTimeoutSeconds, `
+    Get-DriveOSTursoBatchStatementLimit, `
     Invoke-DriveOSTursoPipeline, `
+    Invoke-DriveOSTursoTransactionalBatch, `
+    Invoke-DriveOSTursoStatementChunks, `
+    Invoke-DriveOSTursoQuery, `
+    Invoke-DriveOSTursoExecute, `
     Initialize-DriveOSTurso, `
+    Set-DriveOSTursoTessieSnapshot, `
+    Set-DriveOSTursoIntegrationSyncRun, `
+    Get-DriveOSTursoTessieDrives, `
+    Get-DriveOSTursoTessieCharges, `
+    Get-DriveOSTursoTessieAuditRows, `
+    Get-DriveOSTursoIntegrationSyncCursor, `
     Get-DriveOSTursoHistory, `
     Add-DriveOSTursoHistoryRecord, `
     Get-DriveOSTursoSoundtracks, `

@@ -1,0 +1,38 @@
+name: JourneyDeck CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeydeck-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run application validation
+        shell: pwsh
+        run: ./tools/Test-DriveOS.ps1
+      - name: Run release preflight
+        shell: pwsh
+        run: ./tools/Test-ReleasePreflight.ps1
+      - name: Run shared-cache and release-workflow characterization
+        shell: pwsh
+        run: |
+          ./tests/SharedDriveSoundtrackCache.Tests.ps1
+          ./tests/ReleaseWorkflow.Tests.ps1
+      - name: Run standalone frontend tests
+        shell: pwsh
+        run: node --test ./tests/frontend-modules.test.js ./tests/startup-refresh.test.js
