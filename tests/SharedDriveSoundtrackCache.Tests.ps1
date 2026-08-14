@@ -72,11 +72,12 @@ function Get-SpotifyRecordTrackId { param($Record) return $Record.track_id }
 
 $script:DriveSoundtrackRecordsMemory['cached-drive'] = [PSCustomObject]@{
     driveId = 'cached-drive'
-    songs = @([PSCustomObject]@{ track='Stored'; playedAt='2026-08-13T10:05:00Z' })
+    songs = @($null, [PSCustomObject]@{ track='Stored'; playedAt='2026-08-13T10:05:00Z' })
 }
 $CachedSongs = @(Get-CachedDriveSoundtrack -DriveId 'cached-drive')
 $MissingSongs = @(Get-CachedDriveSoundtrack -DriveId 'missing-drive')
 Assert-True ($CachedSongs.Count -eq 1 -and $CachedSongs[0].track -eq 'Stored') 'Read-only cache did not return the stored soundtrack payload.'
+Assert-True ($null -notin $CachedSongs) 'Read-only cache exposed a null legacy soundtrack entry.'
 Assert-True ($MissingSongs.Count -eq 0) 'A missing cached soundtrack did not return an empty song list.'
 
 $RecentEnd = [DateTimeOffset]::UtcNow.AddMinutes(-30)
