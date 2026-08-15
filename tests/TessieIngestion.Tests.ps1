@@ -73,10 +73,28 @@ if (Test-Path -LiteralPath $SqliteExecutable) {
         }
         $WorkerResult = Invoke-JourneyDeckTessieHistorySync -Repository $Repository -Client ([PSCustomObject]@{}) -Vehicle $WorkerVehicle -RangeToUtc $RangeTo -HistoryReader $HistoryReader
         Assert-Equal $WorkerResult.drives 1 'External worker did not ingest the drive resource.'
+        Assert-Equal $WorkerResult.newDrives 1 'External worker did not identify the newly discovered drive.'
         Assert-Equal $WorkerResult.charges 1 'External worker did not ingest the charging resource.'
         Assert-True ((Get-DriveOSIntegrationSyncCursor -Repository $Repository -Provider tessie -Resource drives).cursor_value -eq $RangeTo.ToUnixTimeSeconds()) 'External worker did not advance the drive cursor.'
         Assert-True ((Get-DriveOSIntegrationSyncCursor -Repository $Repository -Provider tessie -Resource charges).cursor_value -eq $RangeTo.ToUnixTimeSeconds()) 'External worker did not advance the charging cursor.'
         Assert-True ((Assert-JourneyDeckTessieReadReady -Repository $Repository -Now $RangeTo).ready) 'Fresh worker cursors did not activate the default read-readiness path.'
+
+        $RetryResult = Invoke-JourneyDeckTessieHistorySync -Repository $Repository -Client ([PSCustomObject]@{}) -Vehicle $WorkerVehicle -RangeToUtc $RangeTo -HistoryReader $HistoryReader
+        Assert-Equal $RetryResult.newDrives 0 'An idempotent retry incorrectly rediscovered an existing drive.'
+
+        $CorrectedEnded = $Ended + 60
+        $CorrectedHistoryReader = {
+            param($Client,$Vin,$Resource,$From,$To,$ExtraQuery)
+            if ($Resource -eq 'drives') {
+                return [PSCustomObject]@{ results=@([PSCustomObject]@{ id='worker-drive'; started_at=$Started; ended_at=$CorrectedEnded; odometer_distance=5.2 }) }
+            }
+            return [PSCustomObject]@{ results=@([PSCustomObject]@{ id='worker-charge'; started_at=$Started; ended_at=$Ended; energy_added=10 }) }
+        }
+        $CorrectionResult = Invoke-JourneyDeckTessieHistorySync -Repository $Repository -Client ([PSCustomObject]@{}) -Vehicle $WorkerVehicle -RangeToUtc $RangeTo.AddMinutes(1) -HistoryReader $CorrectedHistoryReader
+        Assert-Equal $CorrectionResult.newDrives 0 'A correction upsert incorrectly rediscovered an existing provider drive.'
+        $CorrectedDrives = @(Get-DriveOSTessieDrives -Repository $Repository -Days 1)
+        Assert-Equal $CorrectedDrives.Count 1 'A correction upsert duplicated the existing provider drive.'
+        Assert-Equal $CorrectedDrives[0].ended_at $CorrectedEnded 'A correction upsert did not retain the provider correction.'
     }
     finally {
         if (Test-Path -LiteralPath $Scratch) { Remove-Item -LiteralPath $Scratch -Recurse -Force }
@@ -93,6 +111,8 @@ Assert-True ($Workflow -match '7,22,37,52 \* \* \* \*') 'Tessie workflow is not 
 Assert-True ($Workflow -match 'Sync-JourneyDeckTessieHistory\.ps1') 'Tessie workflow does not execute the direct worker.'
 Assert-True ($Workflow -match "if:\s*vars\.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'") 'Tessie workflow is not disabled by default behind its rollout variable.'
 Assert-True ($Workflow -match 'TURSO_DATABASE_URL' -and $Workflow -match 'TURSO_AUTH_TOKEN' -and $Workflow -match 'TESSIE_TOKEN') 'Tessie workflow is missing direct worker credentials.'
-Assert-True (-not ($Workflow -match 'DRIVEOS_SYNC_URL|X-DriveOS-Sync-Token|/api/tessie/sync')) 'Tessie workflow still routes ingestion through the web process.'
+Assert-True (-not ($Workflow -match '/api/tessie/sync')) 'Tessie workflow still routes ingestion through the web process.'
+Assert-True ($Workflow -match "if:\s*steps\.tessie_sync\.outputs\.new_drives != '0'") 'New-drive soundtrack reconciliation is not conditional.'
+Assert-True ($Workflow -match 'DRIVEOS_SYNC_URL' -and $Workflow -match 'X-DriveOS-Sync-Token' -and $Workflow -match '/api/spotify/sync') 'New drives do not trigger the protected Spotify reconciliation job.'
 
 Write-Host 'JourneyDeck Tessie ingestion checks passed.' -ForegroundColor Green
