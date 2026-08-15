@@ -101,6 +101,7 @@
         <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
         <button class="nav-button nav-secondary" data-view="music">Music</button>
         <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
+        <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden>Data Health</button>
         <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true">&#x2022;&#x2022;&#x2022;</span><span>More</span></button>
       </nav>
 
@@ -108,6 +109,7 @@
         <button id="desktopMobilePreviewButton" class="desktop-mobile-preview" type="button" hidden>Mobile Preview</button>
         <button id="desktopWifePreviewButton" class="desktop-wife-preview" type="button" hidden>Wife Mode Preview</button>
         <button id="returnToWifeMode" class="return-wife-mode" type="button" hidden>Wife Mode</button>
+        <button id="signOutButton" class="header-sign-out" type="button" hidden>Sign out</button>
         <button id="commandPaletteButton" class="command-palette-trigger" type="button" aria-label="Search JourneyDeck" aria-keyshortcuts="Control+K" title="Search JourneyDeck">
           <span class="command-trigger-icon" aria-hidden="true">&#x2315;</span>
           <span class="command-trigger-label">Search</span>
@@ -642,6 +644,42 @@
           <div id="monthlyRecap" class="monthly-recap-content"></div>
         </article>
       </section>
+
+      <!-- OWNER DATA HEALTH -->
+      <section id="view-health" class="view">
+        <div class="page-heading data-health-heading">
+          <div>
+            <div class="section-label">OWNER ONLY</div>
+            <h2>Data Health Center</h2>
+            <p>See what JourneyDeck has safely stored, when each provider last synced, and whether recent drives have soundtrack records.</p>
+          </div>
+          <button id="dataHealthRefresh" class="secondary-button" type="button">Refresh status</button>
+        </div>
+        <div id="dataHealthOverall" class="data-health-overall" role="status" aria-live="polite">
+          <span class="data-health-status-dot" aria-hidden="true"></span>
+          <div><strong>Checking your data&hellip;</strong><small>Reading JourneyDeck's database only.</small></div>
+        </div>
+        <div id="dataHealthIntegrations" class="data-health-grid"></div>
+        <div class="data-health-detail-grid">
+          <article class="panel data-health-panel">
+            <div class="section-label">DRIVE SOUNDTRACKS</div>
+            <h3>Reconciliation coverage</h3>
+            <div id="dataHealthSoundtracks" class="data-health-metrics"></div>
+          </article>
+          <article class="panel data-health-panel">
+            <div class="section-label">DATABASE CUTOVER</div>
+            <h3>Durable history state</h3>
+            <div id="dataHealthRollout" class="data-health-rollout"></div>
+          </article>
+        </div>
+        <article class="panel data-health-actions">
+          <div><div class="section-label">SAFE RETRIES</div><h3>Background workers</h3><p>These links open GitHub Actions. Running a worker there keeps provider work outside JourneyDeck's web process.</p></div>
+          <div>
+            <a class="secondary-button" href="https://github.com/drumpat01/DriveOS/actions/workflows/tessie-history-sync.yml" target="_blank" rel="noopener noreferrer">Tessie worker</a>
+            <a class="secondary-button" href="https://github.com/drumpat01/DriveOS/actions/workflows/spotify-history-sync.yml" target="_blank" rel="noopener noreferrer">Spotify worker</a>
+          </div>
+        </article>
+      </section>
     </main>
 
     <footer>
@@ -657,6 +695,8 @@
         <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Drives and music together</small></button>
         <button type="button" data-mobile-view="music"><span aria-hidden="true">&#9835;</span><strong>Music</strong><small>Your driving soundtrack</small></button>
         <button type="button" data-mobile-view="statistics"><span aria-hidden="true">&#x2197;</span><strong>Statistics</strong><small>Miles, energy, and recaps</small></button>
+        <button id="mobileDataHealthNav" type="button" data-mobile-view="health" hidden><span aria-hidden="true">&#x2713;</span><strong>Data Health</strong><small>Sync and database status</small></button>
+        <button id="mobileSignOutButton" class="mobile-sign-out" type="button" hidden><span aria-hidden="true">&#x2192;</span><strong>Sign out</strong><small>End this JourneyDeck session</small></button>
       </div>
     </section>
   </div>
@@ -915,6 +955,7 @@
   <script src="/features/dashboard-customization.js?v=5.2.9"></script>
   <script src="/features/dashboard-widgets.js?v=5.2.9"></script>
   <script src="/features/live-drive.js?v=5.2.9"></script>
+  <script src="/features/data-health.js?v=5.2.9"></script>
   <script src="/app.js?v=5.2.9"></script>
 </body>
 </html>

@@ -22,7 +22,9 @@ Assert-True ($wifeMusicFunction -notmatch 'Get-SpotifyTrackMetadata') 'Wife Mode
 Assert-True ($wifeMusicFunction -notmatch 'Get-SpotifyHistory|Get-CanonicalDriveSoundtrack|Save-DriveSoundtrackRecord') 'Wife Mode can still load, reconcile, or write soundtrack history.'
 Assert-True ($server -match 'Get-WifeModeBaseDrives[\s\S]+Convert-RawDrive[^\r\n]+-SkipSoundtrack') 'Wife Mode core drive loading can write a false empty soundtrack.'
 Assert-True ($wifeHtml -match 'Open Full JourneyDeck') 'Full JourneyDeck toggle is missing.'
-Assert-True ($wifeHtml -notmatch '(?i)charging|notification|sign out') 'Wife screen includes an excluded control.'
+Assert-True ($wifeHtml -notmatch '(?i)charging|notification|data health') 'Wife screen includes an excluded control.'
+Assert-True ($wifeHtml -match 'id="wifeSignOut"') 'Wife Mode mobile sign-out is missing.'
+Assert-True ($wifeJs -match '/api/auth/logout') 'Wife Mode sign-out does not clear the hosted session.'
 Assert-True ($wifeHtml -match 'tripDetailView') 'Wife Mode read-only drive overview is missing.'
 Assert-True ($wifeHtml -match 'WIFE MODE.*DRIVE OVERVIEW') 'Wife Mode detail branding is missing.'
 Assert-True ($wifeHtml -notmatch '(?i)shareCardButton|playlistButton|place-name-edit') 'Wife Mode exposes an owner drive action.'
@@ -37,7 +39,7 @@ Assert-True ($wifeJs -match '/api/wife/mode') 'Wife dashboard cannot switch to f
 Assert-True ($wifeJs -match 'data-wife-drive-id') 'Wife Mode recent drives are not interactive.'
 Assert-True ($wifeJs -notmatch 'detailMetric\("(Battery used|Energy|Efficiency)"') 'Wife Mode exposes a hidden drive metric.'
 Assert-True ($server -match '"/api/wife/drive/map"') 'Wife Mode read-only map endpoint is missing.'
-Assert-True ($server -match '\$WifePostAllowed\s*=\s*\$Method -eq "POST" -and \$Path -in @\("/api/wife/mode", "/api/wife/drive/map"\)') 'Wife Mode map POST is blocked by the production authorization guard.'
+Assert-True ($server -match '\$WifePostAllowed\s*=\s*\$Method -eq "POST" -and \$Path -in @\("/api/wife/mode", "/api/wife/drive/map", "/api/auth/logout"\)') 'Wife Mode map or sign-out POST is blocked by the production authorization guard.'
 Assert-True ($server -match '\$Method -eq "POST" -and -not \$IsPublicWebRequest -and -not \$WifePostAllowed') 'A Wife Mode cookie can still block the public login API.'
 
 $tokens = $null

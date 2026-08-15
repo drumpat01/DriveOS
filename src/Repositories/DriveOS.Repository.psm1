@@ -198,6 +198,7 @@ function New-DriveOSRepository {
         PlaceAliasesPath = Join-Path $DataDirectory 'place-aliases.json'
         ChargingSettingsPath = Join-Path $DataDirectory 'charging-settings.json'
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
+        IntegrationHealthPath = Join-Path $DataDirectory 'integration-health.json'
         ConfigPath = $configPath
         DatabasePath = Join-Path $DataDirectory 'driveos.db'
         SqliteExecutable = $sqliteExecutable
@@ -467,6 +468,29 @@ function Set-DriveOSDashboardLayoutRecord {
     Write-DriveOSJson -Path $Repository.DashboardLayoutPath -Value $LayoutRecord
 }
 
+function Get-DriveOSIntegrationHealthRecord {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)][string]$Provider)
+    $Key = "integration-health:$Provider"
+    if ($Repository.Provider -eq 'SQLite') { return Get-DriveOSSqliteState -Repository $Repository -Key $Key }
+    if ($Repository.Provider -eq 'Turso') { return Get-DriveOSTursoState -Repository $Repository -Key $Key }
+    Assert-JsonRepository $Repository
+    $Records = Read-DriveOSJson -Path $Repository.IntegrationHealthPath -Default @{}
+    if ($Records -and $Records.PSObject.Properties[$Provider]) { return $Records.$Provider }
+    return $null
+}
+
+function Set-DriveOSIntegrationHealthRecord {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)][string]$Provider,[Parameter(Mandatory=$true)]$Record)
+    $Key = "integration-health:$Provider"
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteState -Repository $Repository -Key $Key -Value $Record; return }
+    if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoState -Repository $Repository -Key $Key -Value $Record; return }
+    Assert-JsonRepository $Repository
+    $Records = Read-DriveOSJson -Path $Repository.IntegrationHealthPath -Default @{}
+    if (-not $Records) { $Records = [PSCustomObject]@{} }
+    $Records | Add-Member -NotePropertyName $Provider -NotePropertyValue $Record -Force
+    Write-DriveOSJson -Path $Repository.IntegrationHealthPath -Value $Records
+}
+
 function Assert-JsonRepository {
     param($Repository)
 
@@ -495,4 +519,6 @@ Export-ModuleMember -Function `
     Get-DriveOSChargingSettingsRecord, `
     Set-DriveOSChargingSettingsRecord, `
     Get-DriveOSDashboardLayoutRecord, `
-    Set-DriveOSDashboardLayoutRecord
+    Set-DriveOSDashboardLayoutRecord, `
+    Get-DriveOSIntegrationHealthRecord, `
+    Set-DriveOSIntegrationHealthRecord

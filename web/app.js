@@ -3127,6 +3127,9 @@ const liveDriveFeature = window.DriveOSFeatures.liveDrive.create({
 });
 liveDriveFeature.bind();
 
+const dataHealthFeature = window.DriveOSFeatures.dataHealth.create({ api: window.DriveOSApi });
+dataHealthFeature.bind();
+
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {
   spotifyConnectButton.addEventListener("click", connectSpotifyOnThisComputer);
@@ -3135,13 +3138,40 @@ if (spotifyConnectButton) {
 
 window.DriveOSTheme.initialize();
 
-// Companion accounts can temporarily open the full dashboard, then return to
-// their deliberately simpler mobile view without signing out.
+const requestedInitialView = location.hash.slice(1);
+
+async function signOut() {
+  const buttons = [$("signOutButton"), $("mobileSignOutButton")].filter(Boolean);
+  buttons.forEach(button => { button.disabled = true; });
+  try {
+    await window.DriveOSApi.post("/api/auth/logout", {});
+    location.replace("/login");
+  } catch {
+    buttons.forEach(button => { button.disabled = false; });
+  }
+}
+
+// Decorate hosted navigation from the authenticated role. Data Health is
+// deliberately owner-only; both hosted roles retain an obvious sign-out path.
 void (async () => {
   try {
     const response = await fetch("/api/auth/session", { credentials: "same-origin" });
     const session = await response.json();
-    if (!response.ok || session.role !== "wife") return;
+    if (!response.ok) return;
+    const hosted = location.hostname !== "127.0.0.1" && location.hostname !== "localhost";
+    if (hosted) {
+      [$("signOutButton"), $("mobileSignOutButton")].filter(Boolean).forEach(button => {
+        button.hidden = false;
+        button.addEventListener("click", signOut);
+      });
+    }
+    if (session.role === "owner") {
+      [$("dataHealthNav"), $("mobileDataHealthNav")].filter(Boolean).forEach(button => { button.hidden = false; });
+      if (requestedInitialView === "health") showView("health");
+      return;
+    }
+    if (requestedInitialView === "health") showView("dashboard");
+    if (session.role !== "wife") return;
     const button = $("returnToWifeMode");
     if (!button) return;
     button.hidden = false;
@@ -3180,8 +3210,8 @@ document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
 updateClock();
 setInterval(updateClock, 30_000);
 
-const initialView = ["dashboard", "live", "drives", "timeline", "music", "statistics"].includes(location.hash.slice(1))
-  ? location.hash.slice(1)
+const initialView = ["dashboard", "live", "drives", "timeline", "music", "statistics"].includes(requestedInitialView)
+  ? requestedInitialView
   : "dashboard";
 
 showView(initialView);

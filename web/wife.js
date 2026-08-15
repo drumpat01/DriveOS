@@ -145,6 +145,7 @@
   $("themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("journeydeck-wife-theme", document.documentElement.dataset.theme); });
   document.documentElement.dataset.theme = localStorage.getItem("journeydeck-wife-theme") || "light";
   $("openFull").addEventListener("click", async () => { try { $("openFull").disabled = true; await request("/api/wife/mode", { method: "POST", body: JSON.stringify({ mode: "full" }) }); location.replace("/"); } catch { $("openFull").disabled = false; } });
+  $("wifeSignOut").addEventListener("click", async () => { try { $("wifeSignOut").disabled = true; await request("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); } catch { $("wifeSignOut").disabled = false; } });
   void (async () => {
     let failures = 0;
     let vehicleReady = false;
