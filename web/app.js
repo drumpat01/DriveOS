@@ -3168,6 +3168,7 @@ void (async () => {
     }
     if (session.role === "owner") {
       [$("dataHealthNav"), $("mobileDataHealthNav")].filter(Boolean).forEach(button => { button.hidden = false; });
+      void dataHealthFeature.load();
       if (requestedInitialView === "health") showView("health");
       return;
     }

@@ -101,7 +101,7 @@
         <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
         <button class="nav-button nav-secondary" data-view="music">Music</button>
         <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
-        <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden>Data Health</button>
+        <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden>Data Health <span id="dataHealthNavAlertCount" class="data-health-nav-alert" hidden></span></button>
         <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true">&#x2022;&#x2022;&#x2022;</span><span>More</span></button>
       </nav>
 
@@ -659,6 +659,10 @@
           <span class="data-health-status-dot" aria-hidden="true"></span>
           <div><strong>Checking your data&hellip;</strong><small>Reading JourneyDeck's database only.</small></div>
         </div>
+        <article class="panel data-health-alerts" aria-labelledby="dataHealthAlertsHeading">
+          <div><div class="section-label">ALERTS</div><h3 id="dataHealthAlertsHeading">Active alerts</h3></div>
+          <div id="dataHealthAlerts" class="data-health-alert-list" aria-live="polite"><p class="data-health-no-alerts">Checking durable sync state&hellip;</p></div>
+        </article>
         <div id="dataHealthIntegrations" class="data-health-grid"></div>
         <div class="data-health-detail-grid">
           <article class="panel data-health-panel">
@@ -695,7 +699,7 @@
         <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Drives and music together</small></button>
         <button type="button" data-mobile-view="music"><span aria-hidden="true">&#9835;</span><strong>Music</strong><small>Your driving soundtrack</small></button>
         <button type="button" data-mobile-view="statistics"><span aria-hidden="true">&#x2197;</span><strong>Statistics</strong><small>Miles, energy, and recaps</small></button>
-        <button id="mobileDataHealthNav" type="button" data-mobile-view="health" hidden><span aria-hidden="true">&#x2713;</span><strong>Data Health</strong><small>Sync and database status</small></button>
+        <button id="mobileDataHealthNav" type="button" data-mobile-view="health" hidden><span aria-hidden="true">&#x2713;</span><strong>Data Health <span id="mobileDataHealthAlertCount" class="data-health-nav-alert" hidden></span></strong><small>Sync and database status</small></button>
         <button id="mobileSignOutButton" class="mobile-sign-out" type="button" hidden><span aria-hidden="true">&#x2192;</span><strong>Sign out</strong><small>End this JourneyDeck session</small></button>
       </div>
     </section>

@@ -3397,6 +3397,59 @@ function Get-DataHealthCursorSignal {
     }
 }
 
+function Get-DataHealthAlerts {
+    param(
+        [object[]]$Signals = @(),
+        $SoundtrackProjection = $null,
+        $Rollout = $null,
+        [string]$RepositoryProvider = '',
+        [bool]$IsWeb = $false
+    )
+
+    $Alerts = @()
+    foreach ($Signal in @($Signals)) {
+        if (-not $Signal) { continue }
+        $Status = "$($Signal.status)".ToLowerInvariant()
+        $Name = if ($Signal.name) { "$($Signal.name)" } else { 'Background worker' }
+        $Id = if ($Signal.id) { "$($Signal.id)" } else { 'integration' }
+        if ($Status -eq 'failed') {
+            $Alerts += [ordered]@{ id="$Id-failed"; severity='critical'; title="$Name sync failed"; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The latest background worker attempt did not complete successfully.' } }
+        }
+        elseif ($Status -eq 'stale') {
+            $Lag = if ($null -ne $Signal.lagMinutes) { " ($([Math]::Round([double]$Signal.lagMinutes)) minutes behind)" } else { '' }
+            $Alerts += [ordered]@{ id="$Id-stale"; severity='warning'; title="$Name is late"; message="The durable sync cursor is outside the expected 45-minute window$Lag." }
+        }
+        elseif ($Status -eq 'unknown') {
+            $Alerts += [ordered]@{ id="$Id-unknown"; severity='warning'; title="$Name has no successful sync"; message='JourneyDeck is waiting for this worker to publish durable health data.' }
+        }
+        elseif ($Status -eq 'degraded' -or $Status -eq 'attention') {
+            $Alerts += [ordered]@{ id="$Id-attention"; severity='warning'; title="$Name needs attention"; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The integration reported a degraded state.' } }
+        }
+    }
+
+    $Missing = if ($SoundtrackProjection -and $null -ne $SoundtrackProjection.missingCount) { [int]$SoundtrackProjection.missingCount } else { 0 }
+    if ($Missing -gt 0) {
+        $Alerts += [ordered]@{ id='soundtracks-missing'; severity='warning'; title="$Missing recent drive soundtrack$(if ($Missing -eq 1) { '' } else { 's' }) missing"; message='A drive exists in durable history without a materialized soundtrack record.' }
+    }
+
+    if ($IsWeb) {
+        if ($RepositoryProvider -ne 'Turso') {
+            $Alerts += [ordered]@{ id='database-provider'; severity='critical'; title='Production database is not Turso'; message='Hosted JourneyDeck is not using the expected durable repository.' }
+        }
+        if (-not $Rollout -or -not $Rollout.tessieWritesEnabled) {
+            $Alerts += [ordered]@{ id='tessie-writes'; severity='critical'; title='Durable Tessie writes are disabled'; message='New drive and charging history will not be archived to Turso.' }
+        }
+        if (-not $Rollout -or -not $Rollout.tessieReadsEnabled) {
+            $Alerts += [ordered]@{ id='tessie-reads'; severity='warning'; title='Database history reads are disabled'; message='Historical screens are not reading the durable Tessie repository.' }
+        }
+        if (-not $Rollout -or -not $Rollout.readCanaryApproved) {
+            $Alerts += [ordered]@{ id='read-canary'; severity='warning'; title='Read canary is not approved'; message='The durable-history parity gate is not active.' }
+        }
+    }
+
+    return @($Alerts)
+}
+
 function Get-DataHealthSummary {
     $History = @(Get-DriveOSListeningHistory -Repository $Repository)
     $SpotifyHealth = Get-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify'
@@ -3437,16 +3490,20 @@ function Get-DataHealthSummary {
     }
 
     $Signals = @((Get-DataHealthCursorSignal -Resource drives),(Get-DataHealthCursorSignal -Resource charges),$SpotifySignal)
+    $Projection = [ordered]@{ recentDriveCount=$RecentRawDrives.Count; materializedCount=($RecentRawDrives.Count-$Missing); missingCount=$Missing; pendingCount=$Pending }
+    $Rollout = [ordered]@{ tessieWritesEnabled=$DurableTessieWriteEnabled; tessieReadsEnabled=$DurableTessieReadEnabled; readCanaryApproved=$DurableTessieReadCanaryApproved }
+    $Alerts = @(Get-DataHealthAlerts -Signals $Signals -SoundtrackProjection $Projection -Rollout $Rollout -RepositoryProvider $Repository.Provider -IsWeb $RuntimeConfig.IsWeb)
     $Statuses = @($Signals | ForEach-Object { $_.status })
-    $Overall = if ($Statuses -contains 'failed') { 'failed' } elseif ($Statuses -contains 'stale' -or $Statuses -contains 'degraded' -or $Missing -gt 0) { 'attention' } elseif ($Statuses -contains 'unknown') { 'warming-up' } else { 'healthy' }
+    $Overall = if ($Statuses -contains 'failed' -or @($Alerts | Where-Object { $_.severity -eq 'critical' }).Count) { 'failed' } elseif ($Alerts.Count) { 'attention' } elseif ($Statuses -contains 'unknown') { 'warming-up' } else { 'healthy' }
 
     return [ordered]@{
         generatedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
         overallStatus = $Overall
         repositoryProvider = $Repository.Provider
         integrations = $Signals
-        soundtrackProjection = [ordered]@{ recentDriveCount=$RecentRawDrives.Count; materializedCount=($RecentRawDrives.Count-$Missing); missingCount=$Missing; pendingCount=$Pending }
-        rollout = [ordered]@{ tessieWritesEnabled=$DurableTessieWriteEnabled; tessieReadsEnabled=$DurableTessieReadEnabled; readCanaryApproved=$DurableTessieReadCanaryApproved }
+        alerts = $Alerts
+        soundtrackProjection = $Projection
+        rollout = $Rollout
     }
 }
 

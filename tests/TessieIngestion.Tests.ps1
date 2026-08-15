@@ -107,6 +107,7 @@ $Worker = Get-Content (Join-Path $Root 'tools\Sync-JourneyDeckTessieHistory.ps1'
 Assert-True ($Worker -match 'Invoke-JourneyDeckTessieHistorySync') 'The direct Tessie worker entry point is missing.'
 
 $Workflow = Get-Content (Join-Path $Root '.github\workflows\tessie-history-sync.yml') -Raw
+Assert-True ($Workflow -match 'actions/checkout@v7') 'The Tessie worker checkout action must use the Node 24 runtime.'
 Assert-True ($Workflow -match '7,22,37,52 \* \* \* \*') 'Tessie workflow is not staggered from the Spotify schedule.'
 Assert-True ($Workflow -match 'Sync-JourneyDeckTessieHistory\.ps1') 'Tessie workflow does not execute the direct worker.'
 Assert-True ($Workflow -match "if:\s*vars\.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'") 'Tessie workflow is not disabled by default behind its rollout variable.'

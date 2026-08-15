@@ -36,11 +36,34 @@
       return `<div><span>${escapeHtml(label)}</span><strong class="${enabled ? "enabled" : "disabled"}">${enabled ? "Enabled" : "Disabled"}</strong></div>`;
     }
 
+    function renderAlertNavigation(alerts, unavailable = false) {
+      const count = alerts.length;
+      [$('dataHealthNavAlertCount'), $('mobileDataHealthAlertCount')].filter(Boolean).forEach((badge) => {
+        badge.hidden = !unavailable && count === 0;
+        badge.textContent = unavailable ? '!' : String(count);
+        badge.setAttribute('aria-label', unavailable ? 'Data Health unavailable' : `${count} active data health alert${count === 1 ? '' : 's'}`);
+      });
+      [$('dataHealthNav'), $('mobileDataHealthNav')].filter(Boolean).forEach((button) => button.classList.toggle('has-data-health-alerts', unavailable || count > 0));
+    }
+
+    function renderAlerts(alerts) {
+      const target = $('dataHealthAlerts');
+      if (!target) return;
+      if (!alerts.length) {
+        target.innerHTML = '<p class="data-health-no-alerts"><span aria-hidden="true">&#10003;</span> No active alerts. Syncs, soundtracks, and durable database gates look good.</p>';
+        return;
+      }
+      target.innerHTML = alerts.map((alert) => `<section class="data-health-alert severity-${escapeHtml(alert.severity || 'warning')}"><span class="data-health-alert-icon" aria-hidden="true">${alert.severity === 'critical' ? '!' : '&#9888;'}</span><div><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.message)}</p></div></section>`).join('');
+    }
+
     function render(data) {
       const overall = $("dataHealthOverall");
       const overallLabel = statusCopy[data.overallStatus] || data.overallStatus;
       overall.className = `data-health-overall status-${data.overallStatus}`;
       overall.innerHTML = `<span class="data-health-status-dot" aria-hidden="true"></span><div><strong>${escapeHtml(overallLabel)}</strong><small>Checked ${escapeHtml(formatTime(data.generatedAtUtc))} from ${escapeHtml(data.repositoryProvider)}.</small></div>`;
+      const alerts = data.alerts || [];
+      renderAlerts(alerts);
+      renderAlertNavigation(alerts);
       $("dataHealthIntegrations").innerHTML = (data.integrations || []).map(signalMarkup).join("");
 
       const projection = data.soundtrackProjection || {};
@@ -67,6 +90,8 @@
         const overall = $("dataHealthOverall");
         overall.className = "data-health-overall status-failed";
         overall.innerHTML = `<span class="data-health-status-dot" aria-hidden="true"></span><div><strong>Health check unavailable</strong><small>${escapeHtml(error.message)}</small></div>`;
+        renderAlerts([{ severity: 'critical', title: 'Data Health check unavailable', message: error.message }]);
+        renderAlertNavigation([], true);
       } finally {
         loading = false;
         if (button) button.disabled = false;
@@ -80,7 +105,7 @@
       });
     }
 
-    return Object.freeze({ bind, load, render });
+    return Object.freeze({ bind, load, render, renderAlerts });
   }
 
   window.DriveOSFeatures = window.DriveOSFeatures || {};

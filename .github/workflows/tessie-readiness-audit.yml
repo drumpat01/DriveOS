@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Compare 30-day Tessie history with Turso
         shell: pwsh
         env:
@@ -60,7 +60,7 @@ jobs:
           ) | Add-Content $env:GITHUB_STEP_SUMMARY
       - name: Archive privacy-safe parity report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: journeydeck-tessie-parity-${{ github.run_id }}
           path: ${{ runner.temp }}/journeydeck-tessie-parity.json
