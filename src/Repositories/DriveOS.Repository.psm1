@@ -199,6 +199,7 @@ function New-DriveOSRepository {
         ChargingSettingsPath = Join-Path $DataDirectory 'charging-settings.json'
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
         IntegrationHealthPath = Join-Path $DataDirectory 'integration-health.json'
+        JourneyCollectionsPath = Join-Path $DataDirectory 'journey-collections.json'
         ConfigPath = $configPath
         DatabasePath = Join-Path $DataDirectory 'driveos.db'
         SqliteExecutable = $sqliteExecutable
@@ -506,6 +507,32 @@ function Set-DriveOSIntegrationHealthRecord {
     Write-DriveOSJson -Path $Repository.IntegrationHealthPath -Value $Records
 }
 
+function Get-DriveOSJourneyCollections {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$HouseholdId='household_primary')
+    if ($Repository.Provider -eq 'SQLite') { return @(Get-DriveOSSqliteJourneyCollections -Repository $Repository -HouseholdId $HouseholdId) }
+    if ($Repository.Provider -eq 'Turso') { return @(Get-DriveOSTursoJourneyCollections -Repository $Repository -HouseholdId $HouseholdId) }
+    Assert-JsonRepository $Repository
+    return @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @())
+}
+
+function Set-DriveOSJourneyCollection {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Collection,[string]$HouseholdId='household_primary')
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteJourneyCollection -Repository $Repository -Collection $Collection -HouseholdId $HouseholdId; return }
+    if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoJourneyCollection -Repository $Repository -Collection $Collection -HouseholdId $HouseholdId; return }
+    Assert-JsonRepository $Repository
+    $Records = @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @() | Where-Object { "$($_.id)" -ne "$($Collection.id)" })
+    Write-DriveOSJson -Path $Repository.JourneyCollectionsPath -Value @($Records + $Collection)
+}
+
+function Remove-DriveOSJourneyCollection {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)][string]$CollectionId,[string]$HouseholdId='household_primary')
+    if ($Repository.Provider -eq 'SQLite') { Remove-DriveOSSqliteJourneyCollection -Repository $Repository -CollectionId $CollectionId -HouseholdId $HouseholdId; return }
+    if ($Repository.Provider -eq 'Turso') { Remove-DriveOSTursoJourneyCollection -Repository $Repository -CollectionId $CollectionId -HouseholdId $HouseholdId; return }
+    Assert-JsonRepository $Repository
+    $Records = @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @() | Where-Object { "$($_.id)" -ne $CollectionId })
+    Write-DriveOSJson -Path $Repository.JourneyCollectionsPath -Value $Records
+}
+
 function Assert-JsonRepository {
     param($Repository)
 
@@ -538,4 +565,7 @@ Export-ModuleMember -Function `
     Get-DriveOSDashboardLayoutRecord, `
     Set-DriveOSDashboardLayoutRecord, `
     Get-DriveOSIntegrationHealthRecord, `
-    Set-DriveOSIntegrationHealthRecord
+    Set-DriveOSIntegrationHealthRecord, `
+    Get-DriveOSJourneyCollections, `
+    Set-DriveOSJourneyCollection, `
+    Remove-DriveOSJourneyCollection

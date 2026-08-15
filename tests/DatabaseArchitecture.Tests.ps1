@@ -11,12 +11,13 @@ function Assert-True { param([bool]$Condition,[string]$Message) if (-not $Condit
 function Assert-Equal { param($Actual,$Expected,[string]$Message) if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." } }
 
 $Migrations = @(Get-DriveOSOrderedMigrations)
-Assert-Equal $Migrations.Count 3 'Ordered migration count changed.'
+Assert-Equal $Migrations.Count 4 'Ordered migration count changed.'
 Assert-Equal $Migrations[0].Version 1 'Baseline migration must remain first.'
 Assert-Equal $Migrations[1].Version 2 'Durable Tessie migration must remain second.'
 Assert-Equal $Migrations[2].Version 3 'Durable integrity audit migration must remain third.'
+Assert-Equal $Migrations[3].Version 4 'Journey Collections migration must remain fourth.'
 $SchemaSql = @($Migrations | ForEach-Object { Get-Content -LiteralPath $_.Path -Raw }) -join "`n"
-foreach ($Table in @('schema_migrations','households','app_users','household_members','user_preferences','vehicles','drives','charging_sessions','integration_sync_cursors','integration_sync_runs','durable_rollups','integrity_audit_runs')) {
+foreach ($Table in @('schema_migrations','households','app_users','household_members','user_preferences','vehicles','drives','charging_sessions','integration_sync_cursors','integration_sync_runs','durable_rollups','integrity_audit_runs','journey_collections','journey_collection_drives')) {
     if ($Table -eq 'schema_migrations') { continue }
     Assert-True ($SchemaSql -match "CREATE TABLE IF NOT EXISTS $Table") "Shared schema is missing $Table."
 }
@@ -69,7 +70,7 @@ if (Test-Path -LiteralPath $SqliteExecutable) {
         Initialize-DriveOSSqlite -Repository $Repository
         Initialize-DriveOSSqlite -Repository $Repository
         $Versions = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $Repository.DatabasePath -Sql 'SELECT version FROM schema_migrations ORDER BY version;' -Json)
-        Assert-Equal $Versions.Count 3 'Migrations were not applied exactly once.'
+        Assert-Equal $Versions.Count 4 'Migrations were not applied exactly once.'
 
         $LegacyRepository = $Repository.PSObject.Copy()
         $LegacyRepository.DatabasePath = Join-Path $Scratch 'legacy-v1.db'
@@ -85,7 +86,7 @@ CREATE TABLE settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
         Initialize-DriveOSSqlite -Repository $LegacyRepository
         $LegacyVersions = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $LegacyRepository.DatabasePath -Sql 'SELECT version FROM schema_migrations ORDER BY version;' -Json)
         $LegacyTables = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $LegacyRepository.DatabasePath -Sql "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_state','drives','charging_sessions') ORDER BY name;" -Json)
-        Assert-Equal $LegacyVersions.Count 3 'Legacy schema version 1 did not upgrade to the current version.'
+        Assert-Equal $LegacyVersions.Count 4 'Legacy schema version 1 did not upgrade to the current version.'
         Assert-Equal $LegacyTables.Count 3 'Legacy schema upgrade did not add all durable history tables.'
 
         $First = Save-DriveOSTessieHistorySnapshot -Repository $Repository -Vehicle $Vehicle -Drives @($Drive) -Charges @($Charge) -RangeToUtc $Now -SyncedAtUtc $Now
@@ -155,6 +156,20 @@ CREATE TABLE settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
         Assert-True $LatestAudit.readyForReadCanary 'Latest integrity audit readiness did not round-trip.'
         Assert-True $LatestAudit.report.resources.drives.passed 'Integrity audit privacy-safe report did not round-trip.'
         Assert-True (Test-DriveOSSqliteIntegrity -Repository $Repository) 'SQLite integrity check failed after Tessie upserts.'
+
+        $CollectionNow = [DateTimeOffset]::UtcNow.ToString('o')
+        $Collection = [pscustomobject]@{ id='collection_11111111111111111111111111111111'; name='Road trips'; description='Test collection'; driveIds=@("$Started-$($Ended + 60)"); createdAtUtc=$CollectionNow; updatedAtUtc=$CollectionNow }
+        Set-DriveOSJourneyCollection -Repository $Repository -Collection $Collection
+        $SavedCollections = @(Get-DriveOSJourneyCollections -Repository $Repository)
+        Assert-Equal $SavedCollections.Count 1 'Journey collection did not round-trip.'
+        Assert-Equal $SavedCollections[0].driveIds[0] "$Started-$($Ended + 60)" 'Collection membership lost the existing legacy drive ID.'
+        $Drive.ended_at = $Ended + 180
+        $null = Save-DriveOSTessieHistorySnapshot -Repository $Repository -Vehicle $Vehicle -Drives @($Drive) -RangeToUtc $Now.AddMinutes(4) -SyncedAtUtc $Now.AddMinutes(4) -CompletedResources @('drives')
+        $CorrectedCollections = @(Get-DriveOSJourneyCollections -Repository $Repository)
+        Assert-Equal $CorrectedCollections[0].driveIds[0] "$Started-$($Ended + 180)" 'Collection did not follow the stable internal drive ID after provider correction.'
+        Remove-DriveOSJourneyCollection -Repository $Repository -CollectionId $Collection.id
+        Assert-Equal @(Get-DriveOSJourneyCollections -Repository $Repository).Count 0 'Collection deletion did not remove the collection.'
+        Assert-Equal @(Get-DriveOSTessieDrives -Repository $Repository -Days 1).Count 1 'Collection deletion removed durable drive history.'
     }
     finally {
         if (Test-Path -LiteralPath $Scratch) { Remove-Item -LiteralPath $Scratch -Recurse -Force }

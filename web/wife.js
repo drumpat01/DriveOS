@@ -22,10 +22,19 @@
     }).join("") || '<article class="trip"><strong>No recent trips yet</strong><span class="trip-meta">Trips will appear here after a drive.</span></article>';
   };
   let drives = [];
+  let collections = [];
   let selectedDriveId = null;
   let detailReturnView = "tripsView";
   let detailMap = null;
   const safeHttpsUrl = (value) => { try { const url = new URL(value); return url.protocol === "https:" ? url.href : ""; } catch { return ""; } };
+  const renderCollections = () => {
+    $("wifeCollections").innerHTML = collections.length ? collections.map((collection) => {
+      const members = new Set(collection.driveIds || []);
+      const collectionDrives = drives.filter((drive) => members.has(drive.id));
+      const trips = collectionDrives.map((drive) => `<button class="trip wife-collection-trip" type="button" data-wife-drive-id="${escape(drive.id)}"><strong>${escape(drive.shortDateLabel || drive.dateLabel)}</strong><span class="trip-route">${escape(drive.startingLocation || "Start")} &rarr; ${escape(drive.endingLocation || "Destination")}</span><span class="trip-meta">${escape(drive.miles ?? 0)} mi &middot; ${escape(drive.durationMinutes ?? 0)} min</span></button>`).join("");
+      return `<article class="wife-collection"><div class="wife-collection-heading"><div><strong>${escape(collection.name)}</strong><p>${escape(collection.description || "A shared journey collection")}</p></div><span>${members.size} drive${members.size === 1 ? "" : "s"}</span></div><div class="trip-list">${trips || '<div class="wife-collection-empty">No available drives in this collection.</div>'}</div></article>`;
+    }).join("") : '<article class="wife-collection"><strong>No collections yet</strong><p>Collections created in Full JourneyDeck will appear here.</p></article>';
+  };
   const detailMetric = (label, value) => `<div class="detail-metric"><span>${escape(label)}</span><strong>${escape(value)}</strong></div>`;
   const formatMetric = (value, suffix) => value == null ? "—" : `${value}${suffix}`;
   const renderDriveDetail = () => {
@@ -136,10 +145,10 @@
     status.querySelector("span").textContent = message;
   };
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => activate(button.dataset.view)));
-  ["wifeRecentHome", "wifeTrips"].forEach((id) => $(id).addEventListener("click", (event) => {
+  ["wifeRecentHome", "wifeTrips", "wifeCollections"].forEach((id) => $(id).addEventListener("click", (event) => {
     const trip = event.target.closest("[data-wife-drive-id]");
     if (!trip) return;
-    openDriveDetail(trip.dataset.wifeDriveId, id === "wifeRecentHome" ? "homeView" : "tripsView");
+    openDriveDetail(trip.dataset.wifeDriveId, id === "wifeRecentHome" ? "homeView" : id === "wifeCollections" ? "collectionsView" : "tripsView");
   }));
   $("wifeDetailBack").addEventListener("click", () => activate(detailReturnView));
   $("themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("journeydeck-wife-theme", document.documentElement.dataset.theme); });
@@ -171,7 +180,10 @@
       if (!vehicleReady) setStatus("Trips ready - checking your car...");
     }).catch(() => { failures += 1; renderTrips("wifeRecentHome", [], 3); renderTrips("wifeTrips", [], 20); });
 
-    await Promise.allSettled([vehiclePromise, drivesPromise]);
+    const collectionsPromise = request("/api/wife/collections").then((data) => { collections = data.collections || []; renderCollections(); }).catch(() => { failures += 1; collections = []; renderCollections(); });
+
+    await Promise.allSettled([vehiclePromise, drivesPromise, collectionsPromise]);
+    renderCollections();
     setStatus(failures ? "Core drive data ready" : "Drive data ready", "ready");
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
@@ -180,11 +192,13 @@
       drives = drives.map((drive) => ({ ...drive, topArtist: music.get(drive.id)?.topArtist || null, songCount: music.get(drive.id)?.songCount ?? 0 }));
       renderTrips("wifeRecentHome", drives, 3);
       renderTrips("wifeTrips", drives, 20);
+      renderCollections();
       if (selectedDriveId) renderDriveDetail();
       setStatus("Everything is up to date", "ready");
     }).catch(() => {
       renderTrips("wifeRecentHome", drives, 3);
       renderTrips("wifeTrips", drives, 20);
+      renderCollections();
     });
 
     void request("/api/wife/live").then((live) => {

@@ -122,6 +122,51 @@ function Get-DriveOSSqliteTessieDrives {
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
 }
 
+function Get-DriveOSSqliteJourneyCollections {
+    param($Repository,[string]$HouseholdId)
+    $Sql = "SELECT c.id,c.name,c.description,c.created_at_utc,c.updated_at_utc,d.legacy_drive_id,m.sort_order FROM journey_collections c LEFT JOIN journey_collection_drives m ON m.collection_id=c.id LEFT JOIN drives d ON d.id=m.drive_id WHERE c.household_id=$(ConvertTo-SqlLiteral $HouseholdId) ORDER BY c.updated_at_utc DESC,c.id,m.sort_order,m.drive_id;"
+    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql -Json)
+    $Collections = @()
+    foreach ($Group in @($Rows | Group-Object id)) {
+        $First = $Group.Group[0]
+        $Collections += [PSCustomObject]@{
+            id = $First.id; name = $First.name; description = $First.description
+            driveIds = @($Group.Group | Where-Object { $_.legacy_drive_id } | ForEach-Object { $_.legacy_drive_id })
+            createdAtUtc = $First.created_at_utc; updatedAtUtc = $First.updated_at_utc
+        }
+    }
+    return @($Collections)
+}
+
+function Set-DriveOSSqliteJourneyCollection {
+    param($Repository,$Collection,[string]$HouseholdId)
+    $Now = [string]$Collection.updatedAtUtc
+    $DriveIds = @($Collection.driveIds)
+    $ExistingOwners = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT household_id FROM journey_collections WHERE id=$(ConvertTo-SqlLiteral ([string]$Collection.id));" -Json)
+    if ($ExistingOwners.Count -and "$($ExistingOwners[0].household_id)" -ne $HouseholdId) { throw 'Collection belongs to another household.' }
+    if ($DriveIds.Count) {
+        $IdList = @($DriveIds | ForEach-Object { ConvertTo-SqlLiteral ([string]$_) }) -join ','
+        $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT legacy_drive_id FROM drives WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND legacy_drive_id IN ($IdList);" -Json)
+        if ($Rows.Count -ne $DriveIds.Count) { throw 'One or more collection drives no longer exist.' }
+    }
+    $Sql = New-Object System.Collections.Generic.List[string]
+    $Sql.Add('PRAGMA foreign_keys=ON;'); $Sql.Add('BEGIN IMMEDIATE;')
+    $Sql.Add("INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $HouseholdId),'Primary household',$(ConvertTo-SqlLiteral $Now),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;")
+    $Sql.Add("INSERT INTO journey_collections(id,household_id,name,description,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral ([string]$Collection.id)),$(ConvertTo-SqlLiteral $HouseholdId),$(ConvertTo-SqlLiteral ([string]$Collection.name)),$(ConvertTo-SqlLiteral ([string]$Collection.description)),$(ConvertTo-SqlLiteral ([string]$Collection.createdAtUtc)),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,updated_at_utc=excluded.updated_at_utc WHERE journey_collections.household_id=excluded.household_id;")
+    $Sql.Add("DELETE FROM journey_collection_drives WHERE collection_id=$(ConvertTo-SqlLiteral ([string]$Collection.id)) AND EXISTS(SELECT 1 FROM journey_collections WHERE id=$(ConvertTo-SqlLiteral ([string]$Collection.id)) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId));")
+    for ($Index=0; $Index -lt $DriveIds.Count; $Index++) {
+        $Sql.Add("INSERT INTO journey_collection_drives(collection_id,drive_id,sort_order,added_at_utc) SELECT $(ConvertTo-SqlLiteral ([string]$Collection.id)),id,$Index,$(ConvertTo-SqlLiteral $Now) FROM drives WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND legacy_drive_id=$(ConvertTo-SqlLiteral ([string]$DriveIds[$Index]));")
+    }
+    $Sql.Add('COMMIT;')
+    $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($Sql -join "`n")
+}
+
+function Remove-DriveOSSqliteJourneyCollection {
+    param($Repository,[string]$CollectionId,[string]$HouseholdId)
+    $Sql = "PRAGMA foreign_keys=ON;`nBEGIN IMMEDIATE;`nDELETE FROM journey_collections WHERE id=$(ConvertTo-SqlLiteral $CollectionId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId);`nCOMMIT;"
+    $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
+}
+
 function Get-DriveOSSqliteTessieCharges {
     param($Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
@@ -277,4 +322,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection
