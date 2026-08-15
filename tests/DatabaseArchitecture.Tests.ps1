@@ -11,11 +11,12 @@ function Assert-True { param([bool]$Condition,[string]$Message) if (-not $Condit
 function Assert-Equal { param($Actual,$Expected,[string]$Message) if ($Actual -ne $Expected) { throw "$Message Expected '$Expected', got '$Actual'." } }
 
 $Migrations = @(Get-DriveOSOrderedMigrations)
-Assert-Equal $Migrations.Count 2 'Ordered migration count changed.'
+Assert-Equal $Migrations.Count 3 'Ordered migration count changed.'
 Assert-Equal $Migrations[0].Version 1 'Baseline migration must remain first.'
 Assert-Equal $Migrations[1].Version 2 'Durable Tessie migration must remain second.'
+Assert-Equal $Migrations[2].Version 3 'Durable integrity audit migration must remain third.'
 $SchemaSql = @($Migrations | ForEach-Object { Get-Content -LiteralPath $_.Path -Raw }) -join "`n"
-foreach ($Table in @('schema_migrations','households','app_users','household_members','user_preferences','vehicles','drives','charging_sessions','integration_sync_cursors','integration_sync_runs','durable_rollups')) {
+foreach ($Table in @('schema_migrations','households','app_users','household_members','user_preferences','vehicles','drives','charging_sessions','integration_sync_cursors','integration_sync_runs','durable_rollups','integrity_audit_runs')) {
     if ($Table -eq 'schema_migrations') { continue }
     Assert-True ($SchemaSql -match "CREATE TABLE IF NOT EXISTS $Table") "Shared schema is missing $Table."
 }
@@ -68,7 +69,7 @@ if (Test-Path -LiteralPath $SqliteExecutable) {
         Initialize-DriveOSSqlite -Repository $Repository
         Initialize-DriveOSSqlite -Repository $Repository
         $Versions = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $Repository.DatabasePath -Sql 'SELECT version FROM schema_migrations ORDER BY version;' -Json)
-        Assert-Equal $Versions.Count 2 'Migrations were not applied exactly once.'
+        Assert-Equal $Versions.Count 3 'Migrations were not applied exactly once.'
 
         $LegacyRepository = $Repository.PSObject.Copy()
         $LegacyRepository.DatabasePath = Join-Path $Scratch 'legacy-v1.db'
@@ -84,7 +85,7 @@ CREATE TABLE settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
         Initialize-DriveOSSqlite -Repository $LegacyRepository
         $LegacyVersions = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $LegacyRepository.DatabasePath -Sql 'SELECT version FROM schema_migrations ORDER BY version;' -Json)
         $LegacyTables = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $LegacyRepository.DatabasePath -Sql "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('app_state','drives','charging_sessions') ORDER BY name;" -Json)
-        Assert-Equal $LegacyVersions.Count 2 'Legacy schema version 1 did not upgrade to the current version.'
+        Assert-Equal $LegacyVersions.Count 3 'Legacy schema version 1 did not upgrade to the current version.'
         Assert-Equal $LegacyTables.Count 3 'Legacy schema upgrade did not add all durable history tables.'
 
         $First = Save-DriveOSTessieHistorySnapshot -Repository $Repository -Vehicle $Vehicle -Drives @($Drive) -Charges @($Charge) -RangeToUtc $Now -SyncedAtUtc $Now
@@ -139,6 +140,20 @@ CREATE TABLE settings(key TEXT PRIMARY KEY, value_json TEXT NOT NULL);
         Assert-Equal $CursorAfterFailure.cursor_value $DriveCursorAfter.cursor_value 'Failed sync attempt incorrectly advanced the drive cursor.'
         Assert-Equal $CursorAfterFailure.last_error 'provider timeout' 'Failed sync error was not persisted on the resource cursor.'
         Assert-Equal $FailedRows[0].status 'failed' 'Failed sync run status was not persisted.'
+
+        $AuditRun = [pscustomobject]@{
+            id='audit-test-1'; householdId='household_primary'; auditKind='tessie-parity'; status='ready'; readyForReadCanary=$true
+            rangeFromUtc=$Now.AddDays(-30).ToString('o'); rangeToUtc=$Now.ToString('o'); generatedAtUtc=$Now.ToString('o'); completedAtUtc=$Now.AddMinutes(1).ToString('o')
+            report=[pscustomobject]@{ status='ready'; resources=[pscustomobject]@{ drives=[pscustomobject]@{ passed=$true }; charges=[pscustomobject]@{ passed=$true } } }
+        }
+        Set-DriveOSIntegrityAuditRun -Repository $Repository -Run $AuditRun
+        Set-DriveOSIntegrityAuditRun -Repository $Repository -Run $AuditRun
+        $LatestAudit = Get-DriveOSLatestIntegrityAuditRun -Repository $Repository
+        $AuditRows = @(Invoke-DriveOSSqlite -Executable $SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT id FROM integrity_audit_runs WHERE id='audit-test-1';" -Json)
+        Assert-Equal $AuditRows.Count 1 'Integrity audit retry created a duplicate result.'
+        Assert-Equal $LatestAudit.status 'ready' 'Latest integrity audit status did not round-trip.'
+        Assert-True $LatestAudit.readyForReadCanary 'Latest integrity audit readiness did not round-trip.'
+        Assert-True $LatestAudit.report.resources.drives.passed 'Integrity audit privacy-safe report did not round-trip.'
         Assert-True (Test-DriveOSSqliteIntegrity -Repository $Repository) 'SQLite integrity check failed after Tessie upserts.'
     }
     finally {

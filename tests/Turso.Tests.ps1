@@ -69,6 +69,7 @@ Assert-True ($Source -match 'Invoke-DriveOSTursoStatementChunks') 'Turso Tessie 
 Assert-True ($Source -match 'legacy_drive_id=excluded\.legacy_drive_id') 'Turso correction upserts must update the legacy drive ID.'
 Assert-True ($Source -match 'started_at_epoch=excluded\.started_at_epoch' -and $Source -match 'ended_at_epoch=excluded\.ended_at_epoch') 'Turso correction upserts must update epoch columns.'
 Assert-True ($MigrationSql -match 'CREATE TABLE IF NOT EXISTS app_state') "Shared migrations must persist app state."
+Assert-True ($MigrationSql -match 'CREATE TABLE IF NOT EXISTS integrity_audit_runs') 'Shared migrations must persist durable integrity audit results.'
 Assert-True ($MigrationSql -match 'CREATE TABLE IF NOT EXISTS drive_soundtracks') "Shared migrations must persist one canonical soundtrack record per drive."
 Assert-True ($Source -match 'ON CONFLICT\(drive_id\) DO UPDATE') "Turso soundtrack writes must upsert by drive ID."
 Assert-True ($Source -match 'function Get-DriveOSTursoTessieAuditRows') 'Turso is missing bounded parity audit queries.'
@@ -132,6 +133,13 @@ try {
     Assert-True ($RunSteps[2].stmt.sql -match 'integration_sync_runs') 'Turso sync-run state is not written transactionally.'
     Assert-True ($RunSteps[3].stmt.sql -match 'integration_sync_cursors') 'Turso cursor attempt/error state is not written with the sync run.'
     Assert-True ($RunSteps[-2].stmt.sql -eq 'COMMIT;') 'Turso sync-run state is missing its transactional COMMIT.'
+
+    $AuditRun = [pscustomobject]@{ id='audit-1'; householdId='household_primary'; auditKind='tessie-parity'; status='ready'; readyForReadCanary=$true; rangeFromUtc='2026-07-15T00:00:00Z'; rangeToUtc='2026-08-14T00:00:00Z'; generatedAtUtc='2026-08-14T00:05:00Z'; completedAtUtc='2026-08-14T00:06:00Z'; report=[pscustomobject]@{status='ready'} }
+    Set-DriveOSTursoIntegrityAuditRun -Repository $FakeRepository -Run $AuditRun
+    $AuditPayload = $global:DriveOSTestTursoBody | ConvertFrom-Json
+    $AuditSteps = @($AuditPayload.requests[0].batch.steps)
+    Assert-True ($AuditSteps[2].stmt.sql -match 'integrity_audit_runs') 'Turso integrity result is not written transactionally.'
+    Assert-True ($AuditSteps[-2].stmt.sql -eq 'COMMIT;') 'Turso integrity result is missing its transactional COMMIT.'
 }
 finally {
     Remove-Item Function:\global:Invoke-RestMethod -ErrorAction SilentlyContinue

@@ -322,6 +322,21 @@ function Get-DriveOSTessieAuditRows {
     throw 'Tessie parity audit requires SQLite or Turso.'
 }
 
+function Set-DriveOSIntegrityAuditRun {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Run)
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteIntegrityAuditRun -Repository $Repository -Run $Run; return }
+    if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoIntegrityAuditRun -Repository $Repository -Run $Run; return }
+    if ($Repository.Provider -eq 'Json') { return }
+    throw 'Integrity audit persistence requires SQLite or Turso.'
+}
+
+function Get-DriveOSLatestIntegrityAuditRun {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$AuditKind='tessie-parity',[string]$HouseholdId='household_primary')
+    if ($Repository.Provider -eq 'SQLite') { return Get-DriveOSSqliteLatestIntegrityAuditRun -Repository $Repository -HouseholdId $HouseholdId -AuditKind $AuditKind }
+    if ($Repository.Provider -eq 'Turso') { return Get-DriveOSTursoLatestIntegrityAuditRun -Repository $Repository -HouseholdId $HouseholdId -AuditKind $AuditKind }
+    return $null
+}
+
 function Add-DriveOSListeningHistoryRecord {
     param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Record)
 
@@ -510,6 +525,8 @@ Export-ModuleMember -Function `
     Get-DriveOSTessieCharges, `
     Get-DriveOSIntegrationSyncCursor, `
     Get-DriveOSTessieAuditRows, `
+    Set-DriveOSIntegrityAuditRun, `
+    Get-DriveOSLatestIntegrityAuditRun, `
     Get-DriveOSListeningHistory, `
     Add-DriveOSListeningHistoryRecord, `
     Get-DriveOSDriveSoundtracks, `

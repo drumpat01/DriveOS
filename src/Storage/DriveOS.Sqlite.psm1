@@ -234,6 +234,29 @@ function Set-DriveOSSqliteState {
     $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
 }
 
+function Set-DriveOSSqliteIntegrityAuditRun {
+    param($Repository,[Parameter(Mandatory=$true)]$Run)
+    $Now = [DateTimeOffset]::UtcNow.ToString('o')
+    $ReportJson = $Run.report | ConvertTo-Json -Depth 30 -Compress
+    $Sql = @(
+        'PRAGMA foreign_keys=ON;'
+        'BEGIN IMMEDIATE;'
+        "INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral ([string]$Run.householdId)),'Primary household',$(ConvertTo-SqlLiteral $Now),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"
+        "INSERT INTO integrity_audit_runs(id,household_id,audit_kind,status,ready_for_read_canary,range_from_utc,range_to_utc,generated_at_utc,completed_at_utc,report_json,created_at_utc) VALUES($(ConvertTo-SqlLiteral ([string]$Run.id)),$(ConvertTo-SqlLiteral ([string]$Run.householdId)),$(ConvertTo-SqlLiteral ([string]$Run.auditKind)),$(ConvertTo-SqlLiteral ([string]$Run.status)),$(if($Run.readyForReadCanary){1}else{0}),$(ConvertTo-SqlLiteral ([string]$Run.rangeFromUtc)),$(ConvertTo-SqlLiteral ([string]$Run.rangeToUtc)),$(ConvertTo-SqlLiteral ([string]$Run.generatedAtUtc)),$(ConvertTo-SqlLiteral ([string]$Run.completedAtUtc)),$(ConvertTo-SqlLiteral $ReportJson),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET status=excluded.status,ready_for_read_canary=excluded.ready_for_read_canary,range_from_utc=excluded.range_from_utc,range_to_utc=excluded.range_to_utc,generated_at_utc=excluded.generated_at_utc,completed_at_utc=excluded.completed_at_utc,report_json=excluded.report_json;"
+        'COMMIT;'
+    )
+    $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($Sql -join "`n")
+}
+
+function Get-DriveOSSqliteLatestIntegrityAuditRun {
+    param($Repository,[string]$HouseholdId,[string]$AuditKind)
+    $Sql = "SELECT id,audit_kind,status,ready_for_read_canary,range_from_utc,range_to_utc,generated_at_utc,completed_at_utc,report_json FROM integrity_audit_runs WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND audit_kind=$(ConvertTo-SqlLiteral $AuditKind) ORDER BY completed_at_utc DESC,id DESC LIMIT 1;"
+    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql -Json)
+    if (-not $Rows.Count) { return $null }
+    $Row = $Rows[0]
+    return [PSCustomObject]@{ id=$Row.id; auditKind=$Row.audit_kind; status=$Row.status; readyForReadCanary=([int]$Row.ready_for_read_canary -eq 1); rangeFromUtc=$Row.range_from_utc; rangeToUtc=$Row.range_to_utc; generatedAtUtc=$Row.generated_at_utc; completedAtUtc=$Row.completed_at_utc; report=($Row.report_json | ConvertFrom-Json) }
+}
+
 function Test-DriveOSSqliteIntegrity {
     param($Repository)
     $rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql 'PRAGMA integrity_check;' -Json)
@@ -254,4 +277,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
