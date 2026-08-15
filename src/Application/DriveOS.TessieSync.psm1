@@ -1,5 +1,22 @@
 Set-StrictMode -Version 2.0
 
+function Get-JourneyDeckTessieDriveIdentity {
+    param(
+        [Parameter(Mandatory=$true)]$Drive,
+        [Parameter(Mandatory=$true)][string]$Vin
+    )
+
+    $ProviderIdProperty = $Drive.PSObject.Properties['id']
+    $ProviderId = if ($ProviderIdProperty) { "$($ProviderIdProperty.Value)".Trim() } else { '' }
+    if ($ProviderId) { return "id:${Vin}:$ProviderId" }
+
+    $StartedProperty = $Drive.PSObject.Properties['started_at']
+    $EndedProperty = $Drive.PSObject.Properties['ended_at']
+    $Started = if ($StartedProperty) { "$($StartedProperty.Value)" } else { '' }
+    $Ended = if ($EndedProperty) { "$($EndedProperty.Value)" } else { '' }
+    return "window:${Vin}:$Started`:$Ended"
+}
+
 function Invoke-JourneyDeckTessieHistorySync {
     param(
         [Parameter(Mandatory=$true)]$Repository,
@@ -16,7 +33,7 @@ function Invoke-JourneyDeckTessieHistorySync {
 
     $To = $RangeToUtc.ToUniversalTime()
     $ToEpoch = $To.ToUnixTimeSeconds()
-    $Counts = @{ drives=0; charges=0 }
+    $Counts = @{ drives=0; charges=0; newDrives=0 }
     $Failures = @()
     if (-not $HistoryReader) {
         $HistoryReader = {
@@ -52,7 +69,24 @@ function Invoke-JourneyDeckTessieHistorySync {
             $Run.completedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
 
             if ($Resource -eq 'drives') {
+                $ExistingDriveDays = [math]::Min(
+                    730,
+                    [math]::Max(1,[math]::Ceiling(($To - $From).TotalDays) + 1)
+                )
+                $ExistingDriveIdentities = @{}
+                foreach ($ExistingDrive in @(Get-DriveOSTessieDrives -Repository $Repository -Days $ExistingDriveDays)) {
+                    $ExistingIdentity = Get-JourneyDeckTessieDriveIdentity -Drive $ExistingDrive -Vin "$($Vehicle.vin)"
+                    $ExistingDriveIdentities[$ExistingIdentity] = $true
+                }
+                $NewDriveIdentities = @{}
+                foreach ($Drive in $Records) {
+                    $Identity = Get-JourneyDeckTessieDriveIdentity -Drive $Drive -Vin "$($Vehicle.vin)"
+                    if (-not $ExistingDriveIdentities.ContainsKey($Identity)) {
+                        $NewDriveIdentities[$Identity] = $true
+                    }
+                }
                 $null = Save-DriveOSTessieHistorySnapshot -Repository $Repository -Vehicle $Vehicle -Drives $Records -RangeToUtc $To -CompletedResources @('drives') -SyncRun $Run
+                $Counts.newDrives = $NewDriveIdentities.Count
             }
             else {
                 $null = Save-DriveOSTessieHistorySnapshot -Repository $Repository -Vehicle $Vehicle -Charges $Records -RangeToUtc $To -CompletedResources @('charges') -SyncRun $Run
@@ -74,6 +108,7 @@ function Invoke-JourneyDeckTessieHistorySync {
     return [PSCustomObject]@{
         ok = $true
         drives = $Counts.drives
+        newDrives = $Counts.newDrives
         charges = $Counts.charges
         completedAt = [DateTimeOffset]::UtcNow.ToString('o')
     }

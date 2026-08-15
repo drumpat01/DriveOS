@@ -21,6 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Archive recent Tessie history directly to Turso
+        id: tessie_sync
         shell: pwsh
         env:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
@@ -30,4 +31,24 @@ jobs:
           JOURNEYDECK_TESSIE_INITIAL_SYNC_DAYS: "30"
           JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS: "30"
           JOURNEYDECK_TURSO_BATCH_STATEMENTS: "100"
-        run: ./tools/Sync-JourneyDeckTessieHistory.ps1 -TessieTimeoutSeconds 30
+        run: |
+          $json = (& ./tools/Sync-JourneyDeckTessieHistory.ps1 -TessieTimeoutSeconds 30 | Out-String).Trim()
+          Write-Host $json
+          $result = $json | ConvertFrom-Json
+          "new_drives=$($result.newDrives)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+      - name: Reconcile soundtracks for newly discovered drives
+        if: steps.tessie_sync.outputs.new_drives != '0'
+        shell: bash
+        env:
+          DRIVEOS_SYNC_URL: ${{ secrets.DRIVEOS_SYNC_URL }}
+          DRIVEOS_SYNC_TOKEN: ${{ secrets.DRIVEOS_SYNC_TOKEN }}
+        run: |
+          test -n "$DRIVEOS_SYNC_URL"
+          test -n "$DRIVEOS_SYNC_TOKEN"
+          curl --fail-with-body --silent --show-error \
+            --retry 2 --retry-all-errors --max-time 240 \
+            --request POST \
+            --header "X-DriveOS-Sync-Token: $DRIVEOS_SYNC_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data '{}' \
+            "$DRIVEOS_SYNC_URL/api/spotify/sync"
