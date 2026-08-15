@@ -54,6 +54,27 @@ Assert-True $Ready.readyForReadCanary 'Matching 30-day data and fresh cursors sh
 Assert-Equal $Ready.status 'ready' 'Ready parity status changed.'
 Assert-True $Ready.resources.drives.passed 'Matching drives did not pass parity.'
 Assert-True $Ready.resources.charges.passed 'Matching charges did not pass parity.'
+Assert-True $Ready.resources.charges.rawPayloadParity 'Matching charge payloads should report raw parity.'
+
+$RawDriftChargeRow = $ChargeRow.PSObject.Copy()
+$RawDriftPayload = $RawDriftChargeRow.raw_payload_json | ConvertFrom-Json
+$RawDriftPayload | Add-Member -NotePropertyName provider_auxiliary_state -NotePropertyValue 'changed after archival'
+$RawDriftChargeRow.raw_payload_json = $RawDriftPayload | ConvertTo-Json -Depth 20 -Compress
+$RawDriftReady = New-JourneyDeckTessieParityReport -RepositoryProvider Turso -Vin $Vin -ProviderDrives @($Drive) -DatabaseDrives @($DriveRow) -ProviderCharges @($Charge) -DatabaseCharges @($RawDriftChargeRow) -DriveCursor $Cursor -ChargeCursor $Cursor -RangeFromUtc $Now.AddDays(-30) -RangeToUtc $Now -GeneratedAtUtc $Now.AddMinutes(5)
+Assert-True $RawDriftReady.readyForReadCanary 'Raw-only provider drift incorrectly blocked otherwise exact durable data.'
+Assert-True $RawDriftReady.resources.charges.passed 'Raw-only provider drift incorrectly failed charging parity.'
+Assert-True (-not $RawDriftReady.resources.charges.rawPayloadParity) 'Raw-only provider drift was not reported.'
+Assert-Equal $RawDriftReady.resources.charges.payloadMismatchCount 1 'Raw payload diagnostic count changed.'
+Assert-Equal $RawDriftReady.resources.charges.compatibilityProjectionMismatchCount 0 'Auxiliary raw drift changed compatibility parity.'
+Assert-Equal $RawDriftReady.resources.charges.normalizedMismatchCount 0 'Auxiliary raw drift changed normalized parity.'
+
+$ProjectionDriftChargeRow = $ChargeRow.PSObject.Copy()
+$ProjectionDriftPayload = $ProjectionDriftChargeRow.raw_payload_json | ConvertFrom-Json
+$ProjectionDriftPayload.location = 'Different provider location'
+$ProjectionDriftChargeRow.raw_payload_json = $ProjectionDriftPayload | ConvertTo-Json -Depth 20 -Compress
+$ProjectionNotReady = New-JourneyDeckTessieParityReport -RepositoryProvider Turso -Vin $Vin -ProviderDrives @($Drive) -DatabaseDrives @($DriveRow) -ProviderCharges @($Charge) -DatabaseCharges @($ProjectionDriftChargeRow) -DriveCursor $Cursor -ChargeCursor $Cursor -RangeFromUtc $Now.AddDays(-30) -RangeToUtc $Now -GeneratedAtUtc $Now.AddMinutes(5)
+Assert-True (-not $ProjectionNotReady.readyForReadCanary) 'User-visible compatibility drift incorrectly passed readiness.'
+Assert-Equal $ProjectionNotReady.resources.charges.compatibilityProjectionMismatchCount 1 'Compatibility drift was not reported.'
 
 $CoercedDriveRow = $DriveRow.PSObject.Copy()
 $CoercedDriveRow.started_at_utc = [DateTime]::Parse($StoredDrive.startedAtUtc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
