@@ -9,6 +9,8 @@ assert.equal(context.DriveOSDom.escapeHtml(`<Driver's & "Song">`),'&lt;Driver&#0
 context.DriveOSDom.setText('status','ONLINE');assert.equal(elements.get('status').textContent,'ONLINE');
 assert.equal(context.DriveOSState.driveLibraryWindowDays,365);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);
 assert.equal(context.DriveOSPlatform.isTailnetRemote(),false);assert.equal(context.DriveOSPlatform.isStandalonePwa(),false);
+assert.equal(context.DriveOSPlatform.connectionContextLabel(),'Local only \u00b7 127.0.0.1','desktop should retain its local-only footer');
+assert.equal(context.DriveOSPlatform.connectionContextLabel('journeydeck.me'),'Hosted securely \u00b7 journeydeck.me','production should identify its hosted context');
 const repeated=[{id:'a',startedAt:'2026-01-02',shortDateLabel:'Jan 2',startingLocation:'Home',endingLocation:'Work',startingLatitude:32,startingLongitude:-97,endingLatitude:33,endingLongitude:-98,miles:10,durationMinutes:20,efficiencyWhMi:250},{id:'b',startedAt:'2026-01-01',shortDateLabel:'Jan 1',startingLocation:'Home',endingLocation:'Work',startingLatitude:32.001,startingLongitude:-97.001,endingLatitude:33.001,endingLongitude:-98.001,miles:12,durationMinutes:24,efficiencyWhMi:260}];
 const routes=context.DriveOSFeatures.drives.detectFavoriteRoutes(repeated);assert.equal(routes.length,1);assert.deepEqual(Array.from(routes[0].driveIds),['a','b']);
 assert.ok(context.DriveOSFeatures.drives.driveSearchHaystack({id:'legacy-drive',soundtrack:[null,{track:'Stored'}]}).includes('stored'),'drive search should tolerate null legacy soundtrack entries');
