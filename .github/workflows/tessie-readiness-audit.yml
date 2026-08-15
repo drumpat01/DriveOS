@@ -55,6 +55,7 @@ jobs:
             "- Drive parity: **$($report.resources.drives.passed)**"
             "- Charging parity: **$($report.resources.charges.passed)**"
             "- Cursor readiness: **$($report.checks[0].passed)**"
+            "- Raw payload drift (diagnostic only): drives **$($report.resources.drives.payloadMismatchCount)**, charges **$($report.resources.charges.payloadMismatchCount)**"
             ''
             'The archived report excludes VINs, locations, and raw provider payloads.'
           ) | Add-Content $env:GITHUB_STEP_SUMMARY

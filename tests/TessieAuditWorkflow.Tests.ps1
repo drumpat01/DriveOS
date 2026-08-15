@@ -18,6 +18,7 @@ Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,300}\| 
 Assert-True ($Workflow -match 'actions/checkout@v7') 'The readiness audit checkout action must use the Node 24 runtime.'
 Assert-True ($Workflow -match 'actions/upload-artifact@v7') 'The privacy-safe parity report is not archived with the Node 24 action runtime.'
 Assert-True ($Workflow -match 'retention-days:\s*14') 'The parity artifact retention period changed unexpectedly.'
+Assert-True ($Workflow -match 'Raw payload drift \(diagnostic only\)') 'The readiness summary does not disclose advisory raw payload drift.'
 Assert-True ($Workflow -notmatch 'Sync-JourneyDeckTessieHistory|Initialize-DriveOS(Sqlite|Turso)') 'The readiness workflow must remain read-only.'
 Assert-True ($Workflow -notmatch '(?im)(Write-(Host|Output)|Add-Content)[^\r\n]*(TURSO_|TESSIE_TOKEN|raw_payload|examples)') 'The readiness workflow risks printing secrets or detailed provider records.'
 

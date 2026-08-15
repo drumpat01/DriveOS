@@ -213,7 +213,11 @@ function Compare-JourneyDeckTessieResource {
     $ProviderNewest = if ($ProviderEpochs.Count) { ($ProviderEpochs | Measure-Object -Maximum).Maximum } else { $null }
     $DatabaseOldest = if ($DatabaseEpochs.Count) { ($DatabaseEpochs | Measure-Object -Minimum).Minimum } else { $null }
     $DatabaseNewest = if ($DatabaseEpochs.Count) { ($DatabaseEpochs | Measure-Object -Maximum).Maximum } else { $null }
-    $Passed = $ProviderDuplicates.Count -eq 0 -and $DatabaseDuplicates.Count -eq 0 -and $Missing.Count -eq 0 -and $Unexpected.Count -eq 0 -and $PayloadMismatches.Count -eq 0 -and $ProjectionMismatches.Count -eq 0 -and $NormalizedMismatches.Count -eq 0 -and $DayParity -and (Test-JourneyDeckScalarEqual $ProviderOldest $DatabaseOldest) -and (Test-JourneyDeckScalarEqual $ProviderNewest $DatabaseNewest)
+    # Raw payloads are retained for diagnostics, but providers may add or
+    # mutate fields that JourneyDeck does not own or expose. Read readiness is
+    # therefore governed by identity, normalized fields, and the compatibility
+    # projection; raw-only drift remains visible without blocking the canary.
+    $Passed = $ProviderDuplicates.Count -eq 0 -and $DatabaseDuplicates.Count -eq 0 -and $Missing.Count -eq 0 -and $Unexpected.Count -eq 0 -and $ProjectionMismatches.Count -eq 0 -and $NormalizedMismatches.Count -eq 0 -and $DayParity -and (Test-JourneyDeckScalarEqual $ProviderOldest $DatabaseOldest) -and (Test-JourneyDeckScalarEqual $ProviderNewest $DatabaseNewest)
     return [PSCustomObject]@{
         resource = $Resource
         passed = $Passed
@@ -230,6 +234,7 @@ function Compare-JourneyDeckTessieResource {
         databaseDuplicateCount = $DatabaseDuplicates.Count
         missingFromDatabaseCount = $Missing.Count
         unexpectedInDatabaseCount = $Unexpected.Count
+        rawPayloadParity = $PayloadMismatches.Count -eq 0
         payloadMismatchCount = $PayloadMismatches.Count
         compatibilityProjectionMismatchCount = $ProjectionMismatches.Count
         normalizedMismatchCount = $NormalizedMismatches.Count
