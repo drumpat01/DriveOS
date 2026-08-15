@@ -13,6 +13,7 @@
       failed: "Failed",
       unknown: "Waiting for data",
       attention: "Needs attention",
+      ready: "Ready",
       "warming-up": "Warming up"
     });
 
@@ -76,6 +77,20 @@
 
       const rollout = data.rollout || {};
       $("dataHealthRollout").innerHTML = `<p><strong>${escapeHtml(data.repositoryProvider)}</strong> is the active repository.</p>${flag("Tessie worker writes", rollout.tessieWritesEnabled)}${flag("Database history reads", rollout.tessieReadsEnabled)}${flag("Read canary approved", rollout.readCanaryApproved)}`;
+
+      const audit = data.integrityAudit;
+      const auditReport = audit?.report || {};
+      const auditDrives = auditReport.resources?.drives || {};
+      const auditCharges = auditReport.resources?.charges || {};
+      const auditTarget = $("dataHealthIntegrityAudit");
+      if (auditTarget) {
+        auditTarget.innerHTML = [
+          ["Last result", audit ? (statusCopy[audit.status] || audit.status) : "Waiting"],
+          ["Completed", audit ? formatTime(audit.completedAtUtc) : "Not yet"],
+          ["Drive parity", auditDrives.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
+          ["Charge parity", auditCharges.passed === true ? "Passed" : audit ? "Failed" : "Pending"]
+        ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+      }
     }
 
     async function load() {

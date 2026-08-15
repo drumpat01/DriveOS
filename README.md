@@ -25,7 +25,7 @@ The application runs on your own Windows computer. Its web interface is served o
 - **Customizable dashboard** - rearrange widgets with drag and drop; resize them to Compact, Standard, or Wide; hide panels; and pin favorites.
 - **Vehicle overview** - see battery, rated range, charge limit, charging state, temperatures, status, and current-location context.
 - **Drive library** - search trips by place, date, distance, and music; inspect a drive; replay its route; and see numbered song-start markers on the map.
-- **Music intelligence** - combine Spotify history with Last.fm scrobbles, browse recent plays, restore album artwork, and review top tracks and artists.
+- **Music intelligence** - use durable Spotify history to browse recent plays, restore album artwork, and review top tracks and artists.
 - **Drive soundtrack** - discover the top song, artist, album, and listening mood from recent drives.
 - **Statistics and recaps** - explore mileage, efficiency, drive time, trip totals, listening activity, charging, and monthly summaries.
 - **Privacy-aware share cards** - customize themes, map styles, statistics, and artwork, preview privacy protections, and save a PNG locally.

@@ -1,0 +1,60 @@
+name: Rehearse Turso restore
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "43 7 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeydeck-turso-restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate rehearsal configuration
+        shell: pwsh
+        env:
+          TURSO_ORGANIZATION: ${{ vars.TURSO_ORGANIZATION }}
+          TURSO_SOURCE_DATABASE: ${{ vars.TURSO_SOURCE_DATABASE }}
+          TURSO_GROUP: ${{ vars.TURSO_GROUP }}
+          TURSO_PLATFORM_TOKEN: ${{ secrets.TURSO_PLATFORM_TOKEN }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          foreach ($name in @('TURSO_ORGANIZATION','TURSO_SOURCE_DATABASE','TURSO_PLATFORM_TOKEN','TURSO_DATABASE_URL','TURSO_AUTH_TOKEN')) {
+            if ([string]::IsNullOrWhiteSpace("$(Get-Item "env:$name" -ErrorAction SilentlyContinue)")) { throw "$name is required for the restore rehearsal." }
+          }
+      - name: Fork, verify, and destroy disposable restore
+        shell: pwsh
+        env:
+          TURSO_PLATFORM_TOKEN: ${{ secrets.TURSO_PLATFORM_TOKEN }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS: "30"
+        run: |
+          $group = if ('${{ vars.TURSO_GROUP }}') { '${{ vars.TURSO_GROUP }}' } else { 'default' }
+          $result = ./tools/Test-JourneyDeckTursoRestore.ps1 `
+            -Organization '${{ vars.TURSO_ORGANIZATION }}' `
+            -SourceDatabase '${{ vars.TURSO_SOURCE_DATABASE }}' `
+            -Group $group `
+            -ConfirmProductionReadOnly
+          @(
+            '### JourneyDeck Turso restore rehearsal'
+            ''
+            "- Result: **$($result.ok)**"
+            "- Source remained read-only: **$($result.sourceReadOnly)**"
+            "- Migration versions: **$($result.migrationVersions -join ', ')**"
+            "- Verified table counts: **$($result.verifiedTables.Count)**"
+            "- Row-count parity: **$($result.rowCountParity)**"
+            "- SQLite integrity check: **$($result.integrityCheck)**"
+            '- Disposable database deletion was independently confirmed.'
+            ''
+            'No application rows, database URLs, or tokens were printed or archived.'
+          ) | Add-Content $env:GITHUB_STEP_SUMMARY

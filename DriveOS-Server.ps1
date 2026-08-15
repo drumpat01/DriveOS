@@ -3413,11 +3413,11 @@ function Get-DataHealthAlerts {
         $Name = if ($Signal.name) { "$($Signal.name)" } else { 'Background worker' }
         $Id = if ($Signal.id) { "$($Signal.id)" } else { 'integration' }
         if ($Status -eq 'failed') {
-            $Alerts += [ordered]@{ id="$Id-failed"; severity='critical'; title="$Name sync failed"; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The latest background worker attempt did not complete successfully.' } }
+            $Alerts += [ordered]@{ id="$Id-failed"; severity='critical'; title=if($Id -eq 'integrity-audit'){'Daily integrity audit failed'}else{"$Name sync failed"}; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The latest background worker attempt did not complete successfully.' } }
         }
         elseif ($Status -eq 'stale') {
             $Lag = if ($null -ne $Signal.lagMinutes) { " ($([Math]::Round([double]$Signal.lagMinutes)) minutes behind)" } else { '' }
-            $Alerts += [ordered]@{ id="$Id-stale"; severity='warning'; title="$Name is late"; message="The durable sync cursor is outside the expected 45-minute window$Lag." }
+            $Alerts += [ordered]@{ id="$Id-stale"; severity='warning'; title="$Name is late"; message=if($Id -eq 'integrity-audit'){'No successful integrity audit has been recorded in the last 26 hours.'}else{"The durable sync cursor is outside the expected 45-minute window$Lag."} }
         }
         elseif ($Status -eq 'unknown') {
             $Alerts += [ordered]@{ id="$Id-unknown"; severity='warning'; title="$Name has no successful sync"; message='JourneyDeck is waiting for this worker to publish durable health data.' }
@@ -3489,7 +3489,22 @@ function Get-DataHealthSummary {
         if ($Row.PSObject.Properties['status'] -and "$($Row.status)" -eq 'pending') { $Pending++ }
     }
 
-    $Signals = @((Get-DataHealthCursorSignal -Resource drives),(Get-DataHealthCursorSignal -Resource charges),$SpotifySignal)
+    $LatestAudit = Get-DriveOSLatestIntegrityAuditRun -Repository $Repository -AuditKind 'tessie-parity'
+    $AuditLag = $null
+    try { if ($LatestAudit -and $LatestAudit.completedAtUtc) { $AuditLag = [Math]::Max(0,[Math]::Round(([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse("$($LatestAudit.completedAtUtc)").ToUniversalTime()).TotalMinutes)) } } catch {}
+    $AuditStatus = if (-not $LatestAudit) { 'unknown' } elseif ($LatestAudit.status -ne 'ready' -or -not $LatestAudit.readyForReadCanary) { 'failed' } elseif ($null -eq $AuditLag -or $AuditLag -gt 1560) { 'stale' } else { 'healthy' }
+    $AuditSignal = [ordered]@{
+        id = 'integrity-audit'
+        name = 'Daily integrity audit'
+        status = $AuditStatus
+        lastAttemptAtUtc = if($LatestAudit){$LatestAudit.generatedAtUtc}else{$null}
+        lastSuccessAtUtc = if($LatestAudit -and $LatestAudit.readyForReadCanary){$LatestAudit.completedAtUtc}else{$null}
+        highWatermarkUtc = if($LatestAudit){$LatestAudit.rangeToUtc}else{$null}
+        lagMinutes = $AuditLag
+        lastError = if(-not $LatestAudit){'No durable integrity audit result has been recorded yet.'}elseif($AuditStatus -eq 'failed'){'The latest durable parity audit did not approve database reads.'}else{$null}
+    }
+
+    $Signals = @((Get-DataHealthCursorSignal -Resource drives),(Get-DataHealthCursorSignal -Resource charges),$SpotifySignal,$AuditSignal)
     $Projection = [ordered]@{ recentDriveCount=$RecentRawDrives.Count; materializedCount=($RecentRawDrives.Count-$Missing); missingCount=$Missing; pendingCount=$Pending }
     $Rollout = [ordered]@{ tessieWritesEnabled=$DurableTessieWriteEnabled; tessieReadsEnabled=$DurableTessieReadEnabled; readCanaryApproved=$DurableTessieReadCanaryApproved }
     $Alerts = @(Get-DataHealthAlerts -Signals $Signals -SoundtrackProjection $Projection -Rollout $Rollout -RepositoryProvider $Repository.Provider -IsWeb $RuntimeConfig.IsWeb)
@@ -3503,6 +3518,7 @@ function Get-DataHealthSummary {
         integrations = $Signals
         alerts = $Alerts
         soundtrackProjection = $Projection
+        integrityAudit = $LatestAudit
         rollout = $Rollout
     }
 }

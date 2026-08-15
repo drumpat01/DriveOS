@@ -376,6 +376,27 @@ function Get-DriveOSTursoIntegrationSyncCursor {
     return $Rows[0]
 }
 
+function Set-DriveOSTursoIntegrityAuditRun {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Run)
+    $Now = [DateTimeOffset]::UtcNow.ToString('o')
+    $Statements = @(
+        [PSCustomObject]@{ Sql="INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"; Args=@($Run.householdId,$Now,$Now) },
+        [PSCustomObject]@{
+            Sql='INSERT INTO integrity_audit_runs(id,household_id,audit_kind,status,ready_for_read_canary,range_from_utc,range_to_utc,generated_at_utc,completed_at_utc,report_json,created_at_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,ready_for_read_canary=excluded.ready_for_read_canary,range_from_utc=excluded.range_from_utc,range_to_utc=excluded.range_to_utc,generated_at_utc=excluded.generated_at_utc,completed_at_utc=excluded.completed_at_utc,report_json=excluded.report_json;'
+            Args=@($Run.id,$Run.householdId,$Run.auditKind,$Run.status,$(if($Run.readyForReadCanary){1}else{0}),$Run.rangeFromUtc,$Run.rangeToUtc,$Run.generatedAtUtc,$Run.completedAtUtc,($Run.report | ConvertTo-Json -Depth 30 -Compress),$Now)
+        }
+    )
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $Statements
+}
+
+function Get-DriveOSTursoLatestIntegrityAuditRun {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$HouseholdId,[string]$AuditKind)
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT id,audit_kind,status,ready_for_read_canary,range_from_utc,range_to_utc,generated_at_utc,completed_at_utc,report_json FROM integrity_audit_runs WHERE household_id=? AND audit_kind=? ORDER BY completed_at_utc DESC,id DESC LIMIT 1;' -Args @($HouseholdId,$AuditKind))
+    if (-not $Rows.Count) { return $null }
+    $Row = $Rows[0]
+    return [PSCustomObject]@{ id=$Row.id; auditKind=$Row.audit_kind; status=$Row.status; readyForReadCanary=([int]$Row.ready_for_read_canary -eq 1); rangeFromUtc=$Row.range_from_utc; rangeToUtc=$Row.range_to_utc; generatedAtUtc=$Row.generated_at_utc; completedAtUtc=$Row.completed_at_utc; report=($Row.report_json | ConvertFrom-Json) }
+}
+
 function Get-DriveOSTursoHistory {
     param([Parameter(Mandatory=$true)]$Repository)
 
@@ -543,6 +564,8 @@ Export-ModuleMember -Function `
     Get-DriveOSTursoTessieCharges, `
     Get-DriveOSTursoTessieAuditRows, `
     Get-DriveOSTursoIntegrationSyncCursor, `
+    Set-DriveOSTursoIntegrityAuditRun, `
+    Get-DriveOSTursoLatestIntegrityAuditRun, `
     Get-DriveOSTursoHistory, `
     Add-DriveOSTursoHistoryRecord, `
     Get-DriveOSTursoSoundtracks, `

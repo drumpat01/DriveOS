@@ -2,6 +2,8 @@ name: Audit Tessie read readiness
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * *"
 
 permissions:
   contents: read
@@ -18,6 +20,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Compare 30-day Tessie history with Turso
+        id: parity
+        continue-on-error: true
         shell: pwsh
         env:
           DRIVEOS_REPOSITORY_PROVIDER: Turso
@@ -30,8 +34,23 @@ jobs:
           ./tools/Test-JourneyDeckTessieParity.ps1 `
             -Days 30 `
             -MaximumCursorLagMinutes 45 `
-            -OutputPath $reportPath `
-            -RequireReady | Out-Null
+            -OutputPath $reportPath | Out-Null
+      - name: Persist privacy-safe integrity result
+        if: always()
+        shell: pwsh
+        env:
+          DRIVEOS_REPOSITORY_PROVIDER: Turso
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          JOURNEYDECK_TURSO_HTTP_TIMEOUT_SECONDS: "30"
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'journeydeck-tessie-parity.json'
+          if (Test-Path -LiteralPath $reportPath -PathType Leaf) {
+            ./tools/Save-JourneyDeckIntegrityAuditResult.ps1 -ReportPath $reportPath | Out-Null
+          }
+          else {
+            ./tools/Save-JourneyDeckIntegrityAuditResult.ps1 -FailureReason report_missing | Out-Null
+          }
       - name: Publish privacy-safe readiness summary
         if: always()
         shell: pwsh
@@ -67,3 +86,11 @@ jobs:
           path: ${{ runner.temp }}/journeydeck-tessie-parity.json
           if-no-files-found: error
           retention-days: 14
+      - name: Enforce readiness result
+        if: always()
+        shell: pwsh
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP 'journeydeck-tessie-parity.json'
+          if (-not (Test-Path -LiteralPath $reportPath -PathType Leaf)) { throw 'No parity report was produced.' }
+          $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
+          if (-not $report.readyForReadCanary) { throw "Tessie parity audit is $($report.status); database reads must remain disabled." }

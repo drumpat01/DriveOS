@@ -33,6 +33,7 @@ Assert-True ($Server -match "Principal\.Role -ne 'owner'") 'Hosted Data Health i
 Assert-True ($Server -match 'Get-DriveOSIntegrationSyncCursor.+tessie') 'Data Health does not use durable Tessie cursors.'
 Assert-True ($Server -match "Get-DriveOSIntegrationHealthRecord.+spotify") 'Data Health does not use durable Spotify health.'
 Assert-True ($Server -match 'Get-DataHealthAlerts') 'Data Health does not produce owner-visible durable alerts.'
+Assert-True ($Server -match 'Get-DriveOSLatestIntegrityAuditRun') 'Data Health does not read the latest durable integrity audit.'
 $HealthFunction = [regex]::Match($Server, '(?s)function Get-DataHealthSummary\s*\{.*?(?=\r?\n\})').Value
 Assert-True ($HealthFunction -notmatch 'Get-RawDrives|Get-SpotifyRecent|New-TessieClient') 'Data Health can call an external provider from the web request process.'
 Assert-True ($Index -match 'id="dataHealthNav"[^>]*hidden' -and $Index -match 'id="mobileDataHealthNav"[^>]*hidden') 'Owner Data Health navigation must default to hidden on desktop and mobile.'
@@ -53,7 +54,9 @@ $HealthyAlerts = @(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='spotif
 Assert-True ($HealthyAlerts.Count -eq 0) 'Healthy production state should not generate alerts.'
 $ProblemAlerts = @(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='spotify'; name='Spotify'; status='failed'; lastError='worker failed' },[pscustomobject]@{ id='tessie-drives'; name='Tessie drives'; status='stale'; lagMinutes=61 }) -SoundtrackProjection ([pscustomobject]@{ missingCount=2 }) -Rollout ([pscustomobject]@{ tessieWritesEnabled=$false; tessieReadsEnabled=$false; readCanaryApproved=$false }) -RepositoryProvider SQLite -IsWeb $true)
 foreach ($Expected in @('spotify-failed','tessie-drives-stale','soundtracks-missing','database-provider','tessie-writes','tessie-reads','read-canary')) { Assert-True ($ProblemAlerts.id -contains $Expected) "Missing Data Health alert: $Expected" }
+Assert-True (@(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='integrity-audit'; name='Daily integrity audit'; status='stale'; lagMinutes=1600 }) | Where-Object id -eq 'integrity-audit-stale').Count -eq 1) 'A stale durable audit does not create an owner alert.'
 Assert-True ($Index -match 'id="dataHealthAlerts"' -and $Index -match 'id="dataHealthNavAlertCount"' -and $Index -match 'id="mobileDataHealthAlertCount"') 'Data Health alert UI is incomplete on desktop or mobile.'
+Assert-True ($Index -match 'id="dataHealthIntegrityAudit"' -and $Feature -match 'integrityAudit') 'Data Health does not display the durable audit result.'
 Assert-True ($App -match 'dataHealthFeature\.load\(\)') 'Owner navigation does not proactively load durable alert status.'
 
 Write-Host 'Data Health checks passed.' -ForegroundColor Green
