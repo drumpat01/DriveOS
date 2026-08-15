@@ -16,9 +16,9 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("JourneyDeck")]
 [assembly: AssemblyProduct("JourneyDeck")]
 [assembly: AssemblyDescription("Personal Vehicle Intelligence")]
-[assembly: AssemblyVersion("5.2.9.0")]
-[assembly: AssemblyFileVersion("5.2.9.0")]
-[assembly: AssemblyInformationalVersion("5.2.9")]
+[assembly: AssemblyVersion("5.3.0.0")]
+[assembly: AssemblyFileVersion("5.3.0.0")]
+[assembly: AssemblyInformationalVersion("5.3.0")]
 
 namespace DriveOSDesktop
 {
@@ -84,7 +84,7 @@ namespace DriveOSDesktop
             sessionToken = DriveOSSecurityPolicy.CreateSessionToken();
             backendHost = new DriveOSBackendHost();
 
-            Text = "JourneyDeck 5.2";
+            Text = "JourneyDeck 5.3";
             StartPosition = FormStartPosition.CenterScreen;
             MinimumSize = new Size(390, 680);
             ClientSize = new Size(1420, 900);
@@ -144,7 +144,7 @@ namespace DriveOSDesktop
                 workingArea.Top + Math.Max(0, (workingArea.Height - Height) / 2)
             );
 
-            Text = "JourneyDeck 5.2 - Mobile Preview (Esc to exit)";
+            Text = "JourneyDeck 5.3 - Mobile Preview (Esc to exit)";
             browser.Focus();
         }
 
@@ -163,7 +163,7 @@ namespace DriveOSDesktop
                 WindowState = FormWindowState.Maximized;
             }
 
-            Text = "JourneyDeck 5.2";
+            Text = "JourneyDeck 5.3";
             if (browser.CoreWebView2 != null)
             {
                 browser.CoreWebView2.ExecuteScriptAsync("window.scrollTo({ top: 0, behavior: 'instant' });");

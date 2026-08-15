@@ -348,6 +348,48 @@ function Get-DriveOSTursoTessieDrives {
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
 }
 
+function Get-DriveOSTursoJourneyCollections {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$HouseholdId)
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT c.id,c.name,c.description,c.created_at_utc,c.updated_at_utc,d.legacy_drive_id,m.sort_order FROM journey_collections c LEFT JOIN journey_collection_drives m ON m.collection_id=c.id LEFT JOIN drives d ON d.id=m.drive_id WHERE c.household_id=? ORDER BY c.updated_at_utc DESC,c.id,m.sort_order,m.drive_id;' -Args @($HouseholdId))
+    $Collections = @()
+    foreach ($Group in @($Rows | Group-Object id)) {
+        $First = $Group.Group[0]
+        $Collections += [PSCustomObject]@{
+            id=$First.id; name=$First.name; description=$First.description
+            driveIds=@($Group.Group | Where-Object { $_.legacy_drive_id } | ForEach-Object { $_.legacy_drive_id })
+            createdAtUtc=$First.created_at_utc; updatedAtUtc=$First.updated_at_utc
+        }
+    }
+    return @($Collections)
+}
+
+function Set-DriveOSTursoJourneyCollection {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Collection,[string]$HouseholdId)
+    $DriveIds = @($Collection.driveIds)
+    $ExistingOwners = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT household_id FROM journey_collections WHERE id=?;' -Args @($Collection.id))
+    if ($ExistingOwners.Count -and "$($ExistingOwners[0].household_id)" -ne $HouseholdId) { throw 'Collection belongs to another household.' }
+    if ($DriveIds.Count) {
+        $Placeholders = (@(1..$DriveIds.Count | ForEach-Object { '?' }) -join ',')
+        $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT legacy_drive_id FROM drives WHERE household_id=? AND legacy_drive_id IN ($Placeholders);" -Args (@($HouseholdId) + $DriveIds))
+        if ($Rows.Count -ne $DriveIds.Count) { throw 'One or more collection drives no longer exist.' }
+    }
+    $Now = [string]$Collection.updatedAtUtc
+    $Statements = @(
+        [PSCustomObject]@{ Sql="INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"; Args=@($HouseholdId,$Now,$Now) },
+        [PSCustomObject]@{ Sql='INSERT INTO journey_collections(id,household_id,name,description,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,updated_at_utc=excluded.updated_at_utc WHERE journey_collections.household_id=excluded.household_id;'; Args=@($Collection.id,$HouseholdId,$Collection.name,$Collection.description,$Collection.createdAtUtc,$Now) },
+        [PSCustomObject]@{ Sql='DELETE FROM journey_collection_drives WHERE collection_id=? AND EXISTS(SELECT 1 FROM journey_collections WHERE id=? AND household_id=?);'; Args=@($Collection.id,$Collection.id,$HouseholdId) }
+    )
+    for ($Index=0; $Index -lt $DriveIds.Count; $Index++) {
+        $Statements += [PSCustomObject]@{ Sql='INSERT INTO journey_collection_drives(collection_id,drive_id,sort_order,added_at_utc) SELECT ?,id,?,? FROM drives WHERE household_id=? AND legacy_drive_id=?;'; Args=@($Collection.id,$Index,$Now,$HouseholdId,$DriveIds[$Index]) }
+    }
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $Statements
+}
+
+function Remove-DriveOSTursoJourneyCollection {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$CollectionId,[string]$HouseholdId)
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements @([PSCustomObject]@{ Sql='DELETE FROM journey_collections WHERE id=? AND household_id=?;'; Args=@($CollectionId,$HouseholdId) })
+}
+
 function Get-DriveOSTursoTessieCharges {
     param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
@@ -561,6 +603,9 @@ Export-ModuleMember -Function `
     Set-DriveOSTursoTessieSnapshot, `
     Set-DriveOSTursoIntegrationSyncRun, `
     Get-DriveOSTursoTessieDrives, `
+    Get-DriveOSTursoJourneyCollections, `
+    Set-DriveOSTursoJourneyCollection, `
+    Remove-DriveOSTursoJourneyCollection, `
     Get-DriveOSTursoTessieCharges, `
     Get-DriveOSTursoTessieAuditRows, `
     Get-DriveOSTursoIntegrationSyncCursor, `

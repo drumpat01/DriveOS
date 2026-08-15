@@ -26,6 +26,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.PlaceEnrichment.
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Collections.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
@@ -3607,6 +3608,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/wife/collections" {
+                    Send-Json -Stream $Stream -Object @{ collections = @(Get-JourneyCollections -Repository $Repository) }
+                    return
+                }
+
                 "/api/wife/music" {
                     Send-Json -Stream $Stream -Object @{ drives = @(Get-WifeModeMusic) }
                     return
@@ -3667,6 +3673,11 @@ function Handle-Request {
                         windowDays = 365
                         drives     = @(Get-CachedRecentDrives365)
                     }
+                    return
+                }
+
+                "/api/collections" {
+                    Send-Json -Stream $Stream -Object @{ collections = @(Get-JourneyCollections -Repository $Repository) }
                     return
                 }
 
@@ -3886,6 +3897,18 @@ function Handle-Request {
                 "/api/dashboard/layout" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields layout
                     Send-Json -Stream $Stream -Object (Set-DashboardLayout -Candidate $Body.layout)
+                    return
+                }
+
+                "/api/collections/save" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields name
+                    Send-Json -Stream $Stream -Object (Save-JourneyCollection -Repository $Repository -CollectionId $Body.id -Name $Body.name -Description $Body.description -DriveIds @($Body.driveIds))
+                    return
+                }
+
+                "/api/collections/delete" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields collectionId
+                    Send-Json -Stream $Stream -Object (Remove-JourneyCollection -Repository $Repository -CollectionId $Body.collectionId)
                     return
                 }
 
@@ -4349,7 +4372,7 @@ try {
                 }
 
                 if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $WebPrincipal.Mode -ne "full") {
-                    $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/vehicle", "/api/wife/drives", "/api/wife/music", "/api/wife/live")
+                    $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/vehicle", "/api/wife/drives", "/api/wife/collections", "/api/wife/music", "/api/wife/live")
                     $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map", "/api/auth/logout"))
                     if ($Path.StartsWith("/api/") -and -not $WifeApiAllowed) {
                         Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."

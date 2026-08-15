@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Wife Mode · JourneyDeck</title>
   <meta name="theme-color" content="#fff5f8">
-  <link rel="icon" type="image/svg+xml" href="/assets/cherry-blossom.svg?v=5.2.8">
-  <link rel="stylesheet" href="/wife.css?v=5.2.8">
+  <link rel="icon" type="image/svg+xml" href="/assets/cherry-blossom.svg?v=5.3.0">
+  <link rel="stylesheet" href="/wife.css?v=5.3.0">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" defer></script>
-  <script src="/wife.js?v=5.2.8" defer></script>
+  <script src="/wife.js?v=5.3.0" defer></script>
 </head>
 <body>
   <main>
@@ -36,6 +36,8 @@
 
     <section id="tripsView" class="view" aria-labelledby="tripsTitle"><div class="section-heading"><div><p>YOUR TRIPS</p><h2 id="tripsTitle">Recent drives</h2></div></div><div id="wifeTrips" class="trip-list"></div></section>
 
+    <section id="collectionsView" class="view" aria-labelledby="wifeCollectionsTitle"><div class="section-heading"><div><p>CURATED JOURNEYS</p><h2 id="wifeCollectionsTitle">Journey collections</h2></div></div><p class="wife-collections-intro">Shared collections from Full JourneyDeck. Browse them here without changing anything.</p><div id="wifeCollections" class="wife-collections-list"></div></section>
+
     <section id="tripDetailView" class="view trip-detail-view" aria-labelledby="wifeDetailTitle">
       <button id="wifeDetailBack" class="detail-back" type="button" aria-label="Return to recent drives">&larr; Back to trips</button>
       <article class="detail-card">
@@ -61,6 +63,6 @@
     <footer class="wife-footer"><button id="openFull" class="full-button" type="button">Open Full JourneyDeck</button><button id="wifeSignOut" class="wife-sign-out" type="button">Sign out</button></footer>
   </main>
 
-  <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Trips</button><button class="wife-nav-live" data-view="liveView" type="button"><span class="wife-nav-live-dot" aria-hidden="true"></span><span>Live</span></button></nav>
+  <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Trips</button><button data-view="collectionsView" type="button">Collections</button><button class="wife-nav-live" data-view="liveView" type="button"><span class="wife-nav-live-dot" aria-hidden="true"></span><span>Live</span></button></nav>
 </body>
 </html>

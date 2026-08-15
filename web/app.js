@@ -765,6 +765,7 @@ function detectFavoriteRoutes(drives) {
 function clearFavoriteRouteFilter(render = true) {
   state.routeFilterDriveIds = null;
   state.routeFilterLabel = "";
+  state.routeFilterKind = "Favorite route";
 
   const bar = $("driveRouteFilterBar");
   if (bar) bar.hidden = true;
@@ -775,13 +776,27 @@ function clearFavoriteRouteFilter(render = true) {
 function applyFavoriteRouteFilter(route) {
   state.routeFilterDriveIds = new Set(route.driveIds || []);
   state.routeFilterLabel = `${compactLocation(route.startingLocation)} \u2192 ${compactLocation(route.endingLocation)}`;
+  state.routeFilterKind = "Favorite route";
 
   const bar = $("driveRouteFilterBar");
   const label = $("driveRouteFilterLabel");
+  const kind = $("driveRouteFilterKind");
 
   if (label) label.textContent = state.routeFilterLabel;
+  if (kind) kind.textContent = state.routeFilterKind;
   if (bar) bar.hidden = false;
 
+  renderDriveLibrary();
+  $("allDrives")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function applyJourneyCollectionFilter(driveIds, name) {
+  state.routeFilterDriveIds = new Set(driveIds || []);
+  state.routeFilterLabel = name || "Collection";
+  state.routeFilterKind = "Collection";
+  setText("driveRouteFilterLabel", state.routeFilterLabel);
+  setText("driveRouteFilterKind", state.routeFilterKind);
+  if ($("driveRouteFilterBar")) $("driveRouteFilterBar").hidden = false;
   renderDriveLibrary();
   $("allDrives")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -836,6 +851,8 @@ function renderFavoriteRoutes() {
     });
   });
 }
+
+const collectionsFeature = window.DriveOSFeatures.collections.create({ state, api: window.DriveOSApi, applyFilter: applyJourneyCollectionFilter });
 
 function filteredDriveLibrary() {
   const query = $("driveSearchInput")?.value?.trim().toLocaleLowerCase() || "";
@@ -924,7 +941,7 @@ function renderDriveLibrary() {
       ? ` \u00B7 ${state.driveLibraryWindowDays}-day library`
       : "";
 
-    const routeText = state.routeFilterDriveIds ? " \u00B7 favorite route" : "";
+    const routeText = state.routeFilterDriveIds ? ` \u00B7 ${String(state.routeFilterKind || "filtered").toLocaleLowerCase()}` : "";
 
     count.textContent =
       `${visibleDrives.length} of ${state.drives.length} drive${state.drives.length === 1 ? "" : "s"}${windowText}${routeText}`;
@@ -1441,12 +1458,14 @@ async function loadDrives() {
         if (all) all.innerHTML = empty;
         setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
         renderFavoriteRoutes();
+        void collectionsFeature.load();
         dashboardWidgetsFeature?.render();
         return data;
       }
 
       renderFavoriteRoutes();
       scheduleDriveLibraryRender();
+      void collectionsFeature.load();
       dashboardWidgetsFeature?.render();
       return data;
     } catch (error) {

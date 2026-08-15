@@ -114,6 +114,9 @@ const responses = {
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 365, drives },
+  '/api/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
+  '/api/wife/drives': { today: { miles: 24.6, trips: 1 }, drives },
+  '/api/wife/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
   '/api/music/stats': { totalPlays: 1427, topTracks, topArtists, daily: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((label, index) => ({ label, count: 4 + ((index * 7) % 18) })) },
   '/api/statistics': { periodDays: 30, driveCount: 38, totalMiles: 624.8, totalEnergyKWh: 147.3, totalBatteryUsed: 264, averageWhMi: 236, soundtrackSongs: 184 },
   '/api/places': { places: [

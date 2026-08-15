@@ -5,6 +5,7 @@
   { "method": "GET", "path": "/api/spotify/auth-status" },
   { "method": "GET", "path": "/api/music/stats" },
   { "method": "GET", "path": "/api/drives" },
+  { "method": "GET", "path": "/api/collections" },
   { "method": "GET", "path": "/api/statistics" },
   { "method": "GET", "path": "/api/data-health" },
   { "method": "GET", "path": "/api/places" },
@@ -17,6 +18,8 @@
   { "method": "POST", "path": "/api/places/alias" },
   { "method": "POST", "path": "/api/charging/settings" },
   { "method": "POST", "path": "/api/dashboard/layout" },
+  { "method": "POST", "path": "/api/collections/save" },
+  { "method": "POST", "path": "/api/collections/delete" },
   { "method": "POST", "path": "/api/drive/map" },
   { "method": "POST", "path": "/api/drive/share-card" },
   { "method": "POST", "path": "/api/playlist/create" }
