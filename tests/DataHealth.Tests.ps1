@@ -32,6 +32,7 @@ Assert-True ($Server -match '"/api/data-health"') 'Data Health API endpoint is m
 Assert-True ($Server -match "Principal\.Role -ne 'owner'") 'Hosted Data Health is not explicitly restricted to the owner role.'
 Assert-True ($Server -match 'Get-DriveOSIntegrationSyncCursor.+tessie') 'Data Health does not use durable Tessie cursors.'
 Assert-True ($Server -match "Get-DriveOSIntegrationHealthRecord.+spotify") 'Data Health does not use durable Spotify health.'
+Assert-True ($Server -match 'Get-DataHealthAlerts') 'Data Health does not produce owner-visible durable alerts.'
 $HealthFunction = [regex]::Match($Server, '(?s)function Get-DataHealthSummary\s*\{.*?(?=\r?\n\})').Value
 Assert-True ($HealthFunction -notmatch 'Get-RawDrives|Get-SpotifyRecent|New-TessieClient') 'Data Health can call an external provider from the web request process.'
 Assert-True ($Index -match 'id="dataHealthNav"[^>]*hidden' -and $Index -match 'id="mobileDataHealthNav"[^>]*hidden') 'Owner Data Health navigation must default to hidden on desktop and mobile.'
@@ -40,5 +41,19 @@ Assert-True ($Wife -notmatch '(?i)data health') 'Data Health leaked into Wife Mo
 Assert-True ($App -match 'session\.role === "owner"') 'Owner navigation is not role-decorated.'
 Assert-True ($Feature -match '/api/data-health') 'Data Health view does not load its database-only API.'
 Assert-True ($Feature -notmatch '/api/(spotify/sync|tessie)') 'Data Health invokes provider work from the web process.'
+
+$Tokens = $null
+$ParseErrors = $null
+$ServerAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $Root 'DriveOS-Server.ps1'), [ref]$Tokens, [ref]$ParseErrors)
+Assert-True ($ParseErrors.Count -eq 0) 'DriveOS server must parse cleanly.'
+$AlertFunction = $ServerAst.FindAll({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Get-DataHealthAlerts' }, $true) | Select-Object -First 1
+Assert-True ($null -ne $AlertFunction) 'Data Health alert helper is missing.'
+Invoke-Expression $AlertFunction.Extent.Text
+$HealthyAlerts = @(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='spotify'; name='Spotify'; status='healthy' }) -SoundtrackProjection ([pscustomobject]@{ missingCount=0 }) -Rollout ([pscustomobject]@{ tessieWritesEnabled=$true; tessieReadsEnabled=$true; readCanaryApproved=$true }) -RepositoryProvider Turso -IsWeb $true)
+Assert-True ($HealthyAlerts.Count -eq 0) 'Healthy production state should not generate alerts.'
+$ProblemAlerts = @(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='spotify'; name='Spotify'; status='failed'; lastError='worker failed' },[pscustomobject]@{ id='tessie-drives'; name='Tessie drives'; status='stale'; lagMinutes=61 }) -SoundtrackProjection ([pscustomobject]@{ missingCount=2 }) -Rollout ([pscustomobject]@{ tessieWritesEnabled=$false; tessieReadsEnabled=$false; readCanaryApproved=$false }) -RepositoryProvider SQLite -IsWeb $true)
+foreach ($Expected in @('spotify-failed','tessie-drives-stale','soundtracks-missing','database-provider','tessie-writes','tessie-reads','read-canary')) { Assert-True ($ProblemAlerts.id -contains $Expected) "Missing Data Health alert: $Expected" }
+Assert-True ($Index -match 'id="dataHealthAlerts"' -and $Index -match 'id="dataHealthNavAlertCount"' -and $Index -match 'id="mobileDataHealthAlertCount"') 'Data Health alert UI is incomplete on desktop or mobile.'
+Assert-True ($App -match 'dataHealthFeature\.load\(\)') 'Owner navigation does not proactively load durable alert status.'
 
 Write-Host 'Data Health checks passed.' -ForegroundColor Green
