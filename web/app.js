@@ -2,7 +2,7 @@ const $ = window.DriveOSDom.byId;
 const escapeHtml = window.DriveOSDom.escapeHtml;
 const setText = window.DriveOSDom.setText;
 const state = window.DriveOSState;
-const { isTailnetRemote } = window.DriveOSPlatform;
+const { isTailnetRemote, connectionContextLabel } = window.DriveOSPlatform;
 const { initializeMobileNavigationPortal, showView } = window.DriveOSNavigation;
 const purgeOldDriveOSCaches = window.DriveOSPwa.purgeOldCaches;
 const initializePwa = window.DriveOSPwa.initialize;
@@ -74,6 +74,7 @@ function ensureMapLibre() {
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
 document.documentElement.dataset.webBuild = DRIVEOS_WEB_BUILD;
+setText("hostContextFooter", connectionContextLabel());
 
 
 function songArtworkUrl(song) {

@@ -16,6 +16,7 @@ if($DriveListIndex -lt 0 -or $DriveMoreIndex -le $DriveListIndex -or $ChargingIn
 foreach($shareId in @('shareCardButton','shareCardModal','shareCardCanvas','shareCardDownload')){if($index -notmatch ('id="'+$shareId+'"')){throw "Share card control is missing: $shareId"}}
 foreach($commandId in @('commandPaletteButton','commandPalette','commandPaletteInput','commandPaletteResults')){if($index -notmatch ('id="'+$commandId+'"')){throw "Command palette control is missing: $commandId"}}
 foreach($healthId in @('dataHealthNav','mobileDataHealthNav','view-health','dataHealthRefresh','mobileSignOutButton')){if($index -notmatch ('id="'+$healthId+'"')){throw "Data Health or mobile session control is missing: $healthId"}}
+if($index -notmatch 'id="hostContextFooter"' -or $app -notmatch 'setText\("hostContextFooter", connectionContextLabel\(\)\)'){throw 'The footer is not decorated for local and hosted environments.'}
 foreach($dashboardId in @('dashboardCustomizeButton','dashboardCustomizer','dashboardCustomizerList','dashboardWidgetGrid')){if($index -notmatch ('id="'+$dashboardId+'"')){throw "Dashboard customization control is missing: $dashboardId"}}
 foreach($widgetId in @('todayDrivingMiles','dashboardSoundtrack')){if($index -notmatch ('id="'+$widgetId+'"')){throw "Dashboard insight widget is missing: $widgetId"}}
 $commandPalette=Get-Content (Join-Path $Root 'web\features\command-palette.js') -Raw
