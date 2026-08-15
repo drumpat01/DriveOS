@@ -218,6 +218,22 @@ function Set-DriveOSSqliteDashboardLayout {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $sql
 }
 
+function Get-DriveOSSqliteState {
+    param($Repository,[Parameter(Mandatory=$true)][string]$Key)
+    $Sql = "SELECT value_json FROM app_state WHERE key=$(ConvertTo-SqlLiteral $Key);"
+    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql -Json)
+    if (-not $Rows.Count) { return $null }
+    return $Rows[0].value_json | ConvertFrom-Json
+}
+
+function Set-DriveOSSqliteState {
+    param($Repository,[Parameter(Mandatory=$true)][string]$Key,[Parameter(Mandatory=$true)]$Value)
+    $Payload = $Value | ConvertTo-Json -Depth 20 -Compress
+    $UpdatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    $Sql = "INSERT INTO app_state(key,value_json,updated_at) VALUES($(ConvertTo-SqlLiteral $Key),$(ConvertTo-SqlLiteral $Payload),$(ConvertTo-SqlLiteral $UpdatedAt)) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;"
+    $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
+}
+
 function Test-DriveOSSqliteIntegrity {
     param($Repository)
     $rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql 'PRAGMA integrity_check;' -Json)
@@ -238,4 +254,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData

@@ -8152,3 +8152,23 @@ body > .main-nav .nav-button-live .nav-live-dot {
   box-shadow: none !important;
   animation: none !important;
 }
+
+/* JourneyDeck owner-only Data Health Center */
+.header-sign-out { border:1px solid rgba(239,68,68,.28); border-radius:999px; background:transparent; color:#ef7777; padding:8px 12px; font-weight:800; cursor:pointer; }
+.data-health-heading { align-items:end; }
+.data-health-overall { display:flex; align-items:center; gap:14px; margin-bottom:18px; padding:18px 20px; border:1px solid var(--line); border-radius:20px; background:var(--panel); box-shadow:var(--shadow); }
+.data-health-overall strong,.data-health-overall small { display:block; }.data-health-overall strong { font-size:1.05rem; }.data-health-overall small { margin-top:3px; color:var(--muted); }
+.data-health-status-dot { width:13px; height:13px; flex:0 0 auto; border-radius:50%; background:#f59e0b; box-shadow:0 0 0 6px rgba(245,158,11,.12); }
+.status-healthy .data-health-status-dot { background:#22c55e; box-shadow:0 0 0 6px rgba(34,197,94,.12); }.status-failed .data-health-status-dot { background:#ef4444; box-shadow:0 0 0 6px rgba(239,68,68,.12); }
+.data-health-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }.data-health-card { min-width:0; }
+.data-health-card-head { display:flex; justify-content:space-between; align-items:start; gap:10px; }.data-health-card h3,.data-health-panel h3,.data-health-actions h3 { margin:4px 0 0; }
+.data-health-badge { flex:0 0 auto; padding:5px 8px; border-radius:999px; background:rgba(245,158,11,.12); color:#d28a09; font-size:.68rem; font-weight:900; text-transform:uppercase; letter-spacing:.05em; }
+.status-healthy .data-health-badge { background:rgba(34,197,94,.12); color:#159447; }.status-failed .data-health-badge { background:rgba(239,68,68,.12); color:#dc3939; }
+.data-health-card dl { display:grid; gap:10px; margin:20px 0 0; }.data-health-card dl div { display:flex; justify-content:space-between; gap:12px; padding-top:10px; border-top:1px solid var(--line); }
+.data-health-card dt { color:var(--muted); }.data-health-card dd { margin:0; font-weight:750; text-align:right; }.data-health-error { margin:14px 0 0; color:#d15b5b; font-size:.78rem; line-height:1.45; }
+.data-health-detail-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:14px; }.data-health-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin-top:18px; }
+.data-health-metrics div { padding:12px; border-radius:14px; background:color-mix(in srgb,var(--panel) 70%,var(--accent) 5%); }.data-health-metrics span,.data-health-metrics strong { display:block; }.data-health-metrics span { color:var(--muted); font-size:.7rem; }.data-health-metrics strong { margin-top:5px; font-size:1.25rem; }
+.data-health-rollout { margin-top:15px; }.data-health-rollout > div { display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid var(--line); }.data-health-rollout .enabled { color:#159447; }.data-health-rollout .disabled { color:var(--muted); }
+.data-health-actions { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-top:14px; }.data-health-actions p { max-width:680px; margin-bottom:0; color:var(--muted); }.data-health-actions > div:last-child { display:flex; gap:8px; }.data-health-actions a { display:inline-flex; align-items:center; text-decoration:none; }
+@media (max-width:1120px) { .header-sign-out { display:none; }.data-health-grid,.data-health-detail-grid { grid-template-columns:1fr; }.data-health-actions { align-items:stretch; flex-direction:column; }.data-health-actions > div:last-child { display:grid; grid-template-columns:1fr 1fr; }.data-health-actions a { justify-content:center; }.mobile-more-grid .mobile-sign-out { border-color:rgba(239,68,68,.2); color:#ef7777; }.mobile-more-grid .mobile-sign-out > span { background:rgba(239,68,68,.1); color:#ef7777; } }
+@media (max-width:560px) { .data-health-heading { align-items:stretch; }.data-health-heading .secondary-button { width:100%; }.data-health-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.data-health-card dl div { display:block; }.data-health-card dd { margin-top:3px; text-align:left; }.data-health-actions > div:last-child { grid-template-columns:1fr; } }

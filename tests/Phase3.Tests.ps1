@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop';$Root=Split-Path -Parent $PSScriptRoot
 $index=Get-Content (Join-Path $Root 'web\index.html') -Raw
 $scripts=@([regex]::Matches($index,'<script[^>]+src="(/[^"?]+\.js)')|ForEach-Object{$_.Groups[1].Value})
 foreach($src in $scripts){$file=Join-Path (Join-Path $Root 'web') $src.TrimStart('/').Replace('/','\');if(-not(Test-Path -LiteralPath $file)){throw "Missing frontend module: $src"}}
-$required=@('/core/build.js','/core/dom.js','/core/state.js','/core/platform.js','/core/api.js','/components/song-artwork.js','/features/navigation.js','/features/pwa.js','/features/theme.js','/features/ignition.js','/features/places.js','/features/charging.js','/features/recaps.js','/features/refresh.js','/features/drives.js','/features/replay.js','/features/music.js','/features/share-cards.js','/features/command-palette.js','/features/dashboard-customization.js','/features/dashboard-widgets.js','/app.js')
+$required=@('/core/build.js','/core/dom.js','/core/state.js','/core/platform.js','/core/api.js','/components/song-artwork.js','/features/navigation.js','/features/pwa.js','/features/theme.js','/features/ignition.js','/features/places.js','/features/charging.js','/features/recaps.js','/features/refresh.js','/features/drives.js','/features/replay.js','/features/music.js','/features/share-cards.js','/features/command-palette.js','/features/dashboard-customization.js','/features/dashboard-widgets.js','/features/data-health.js','/app.js')
 foreach($src in $required){if($scripts -notcontains $src){throw "Required frontend module is not loaded: $src"}}
 for($i=1;$i -lt $required.Count;$i++){if([array]::IndexOf($scripts,$required[$i-1]) -ge [array]::IndexOf($scripts,$required[$i])){throw "Frontend module order changed near $($required[$i])."}}
 $app=Get-Content (Join-Path $Root 'web\app.js') -Raw
@@ -15,6 +15,7 @@ $DriveListIndex=$index.IndexOf('id="allDrives"');$DriveMoreIndex=$index.IndexOf(
 if($DriveListIndex -lt 0 -or $DriveMoreIndex -le $DriveListIndex -or $ChargingIndex -le $DriveMoreIndex){throw 'Drive list, show-all control, and charging history are not in the required order.'}
 foreach($shareId in @('shareCardButton','shareCardModal','shareCardCanvas','shareCardDownload')){if($index -notmatch ('id="'+$shareId+'"')){throw "Share card control is missing: $shareId"}}
 foreach($commandId in @('commandPaletteButton','commandPalette','commandPaletteInput','commandPaletteResults')){if($index -notmatch ('id="'+$commandId+'"')){throw "Command palette control is missing: $commandId"}}
+foreach($healthId in @('dataHealthNav','mobileDataHealthNav','view-health','dataHealthRefresh','mobileSignOutButton')){if($index -notmatch ('id="'+$healthId+'"')){throw "Data Health or mobile session control is missing: $healthId"}}
 foreach($dashboardId in @('dashboardCustomizeButton','dashboardCustomizer','dashboardCustomizerList','dashboardWidgetGrid')){if($index -notmatch ('id="'+$dashboardId+'"')){throw "Dashboard customization control is missing: $dashboardId"}}
 foreach($widgetId in @('todayDrivingMiles','dashboardSoundtrack')){if($index -notmatch ('id="'+$widgetId+'"')){throw "Dashboard insight widget is missing: $widgetId"}}
 $commandPalette=Get-Content (Join-Path $Root 'web\features\command-palette.js') -Raw

@@ -1786,27 +1786,61 @@ function Invoke-ScheduledSpotifySync {
         throw 'Scheduled Spotify sync is available only in hosted DriveOS.'
     }
 
-    $Items = @(Get-SpotifyRecent -Limit 50)
-    $Added = Save-SpotifyHistory -Items $Items
-    $ArchiveTotal = @(Get-SpotifyHistory).Count
-    $SoundtracksUpdated = 0
     try {
-        # Reconcile the previous day after every successful archive. Delayed
-        # Spotify runs can therefore repair an already-finalized soundtrack.
-        $SoundtracksUpdated = Update-RecentDriveSoundtrackCache -Days 1
+        $AttemptedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        $Items = @(Get-SpotifyRecent -Limit 50)
+        $Added = Save-SpotifyHistory -Items $Items
+        $ArchiveTotal = @(Get-SpotifyHistory).Count
+        $SoundtracksUpdated = 0
+        $ReconciliationError = $null
+        try {
+            # Reconcile the previous day after every successful archive. Delayed
+            # Spotify runs can therefore repair an already-finalized soundtrack.
+            $SoundtracksUpdated = Update-RecentDriveSoundtrackCache -Days 1
+        }
+        catch {
+            $ReconciliationError = $_.Exception.Message
+            Write-DriveOSServerLog "Drive soundtrack reconciliation failed after Spotify sync: $ReconciliationError"
+        }
+        $CompletedAt = [DateTimeOffset]::UtcNow.ToString('o')
+        Set-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify' -Record ([ordered]@{
+            provider = 'spotify'
+            status = if ($ReconciliationError) { 'degraded' } else { 'healthy' }
+            lastAttemptAtUtc = $AttemptedAt
+            lastSuccessAtUtc = $CompletedAt
+            newlyArchived = $Added
+            archiveTotal = $ArchiveTotal
+            soundtracksUpdated = $SoundtracksUpdated
+            lastError = $ReconciliationError
+        })
+        Write-DriveOSServerLog "Scheduled Spotify sync completed: $Added new play(s), $ArchiveTotal archived, $SoundtracksUpdated drive soundtrack(s) reconciled."
+
+        return [PSCustomObject]@{
+            ok = $true
+            newlyArchived = $Added
+            archiveTotal = $ArchiveTotal
+            soundtracksUpdated = $SoundtracksUpdated
+            completedAt = $CompletedAt
+        }
     }
     catch {
-        Write-DriveOSServerLog "Drive soundtrack reconciliation failed after Spotify sync: $($_.Exception.Message)"
-    }
-    $CompletedAt = [DateTimeOffset]::UtcNow.ToString('o')
-    Write-DriveOSServerLog "Scheduled Spotify sync completed: $Added new play(s), $ArchiveTotal archived, $SoundtracksUpdated drive soundtrack(s) reconciled."
-
-    return [PSCustomObject]@{
-        ok = $true
-        newlyArchived = $Added
-        archiveTotal = $ArchiveTotal
-        soundtracksUpdated = $SoundtracksUpdated
-        completedAt = $CompletedAt
+        $SyncError = $_.Exception.Message
+        $Previous = $null
+        try { $Previous = Get-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify' } catch {}
+        try {
+            Set-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify' -Record ([ordered]@{
+                provider = 'spotify'
+                status = 'failed'
+                lastAttemptAtUtc = if ($AttemptedAt) { $AttemptedAt } else { [DateTimeOffset]::UtcNow.ToString('o') }
+                lastSuccessAtUtc = if ($Previous -and $Previous.PSObject.Properties['lastSuccessAtUtc']) { $Previous.lastSuccessAtUtc } else { $null }
+                newlyArchived = 0
+                archiveTotal = if ($Previous -and $Previous.PSObject.Properties['archiveTotal']) { $Previous.archiveTotal } else { $null }
+                soundtracksUpdated = 0
+                lastError = $SyncError
+            })
+        }
+        catch { Write-DriveOSServerLog "Spotify sync health persistence failed: $($_.Exception.Message)" }
+        throw
     }
 }
 
@@ -3335,6 +3369,87 @@ function Get-WifeModeLiveLocation {
     return [ordered]@{ name = $Vehicle.name; latitude = $Vehicle.latitude; longitude = $Vehicle.longitude; heading = $Vehicle.heading; gpsAsOf = $Vehicle.gpsAsOf }
 }
 
+function Get-DataHealthCursorSignal {
+    param([Parameter(Mandatory=$true)][ValidateSet('drives','charges')][string]$Resource)
+
+    $Cursor = Get-DriveOSIntegrationSyncCursor -Repository $Repository -Provider 'tessie' -Resource $Resource
+    if (-not $Cursor) {
+        return [ordered]@{ id="tessie-$Resource"; name="Tessie $Resource"; status='unknown'; lastAttemptAtUtc=$null; lastSuccessAtUtc=$null; highWatermarkUtc=$null; lagMinutes=$null; lastError='No successful sync cursor has been recorded yet.' }
+    }
+
+    $LastSuccess = $null
+    $HighWatermark = $null
+    try { if ($Cursor.last_success_at_utc) { $LastSuccess = [DateTimeOffset]::Parse("$($Cursor.last_success_at_utc)") } } catch {}
+    try { if ($Cursor.high_watermark_utc) { $HighWatermark = [DateTimeOffset]::Parse("$($Cursor.high_watermark_utc)") } } catch {}
+    $FreshnessPoint = if ($HighWatermark) { $HighWatermark } else { $LastSuccess }
+    $LagMinutes = if ($FreshnessPoint) { [Math]::Max(0, [Math]::Round(([DateTimeOffset]::UtcNow - $FreshnessPoint.ToUniversalTime()).TotalMinutes)) } else { $null }
+    $Status = if ($Cursor.last_error) { 'failed' } elseif ($null -eq $LagMinutes) { 'unknown' } elseif ($LagMinutes -gt 45) { 'stale' } else { 'healthy' }
+
+    return [ordered]@{
+        id = "tessie-$Resource"
+        name = "Tessie $Resource"
+        status = $Status
+        lastAttemptAtUtc = $Cursor.last_attempt_at_utc
+        lastSuccessAtUtc = $Cursor.last_success_at_utc
+        highWatermarkUtc = $Cursor.high_watermark_utc
+        lagMinutes = $LagMinutes
+        lastError = $Cursor.last_error
+    }
+}
+
+function Get-DataHealthSummary {
+    $History = @(Get-DriveOSListeningHistory -Repository $Repository)
+    $SpotifyHealth = Get-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify'
+    $LatestPlay = @($History | Sort-Object { try { [DateTimeOffset]::Parse("$($_.played_at)").UtcTicks } catch { 0 } } -Descending | Select-Object -First 1)
+    $SpotifyStatus = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['status']) { "$($SpotifyHealth.status)" } else { 'unknown' }
+    $SpotifyLastSuccess = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['lastSuccessAtUtc']) { $SpotifyHealth.lastSuccessAtUtc } else { $null }
+    $SpotifyLag = $null
+    try { if ($SpotifyLastSuccess) { $SpotifyLag = [Math]::Max(0, [Math]::Round(([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse("$SpotifyLastSuccess").ToUniversalTime()).TotalMinutes)) } } catch {}
+    if ($SpotifyStatus -eq 'healthy' -and $null -ne $SpotifyLag -and $SpotifyLag -gt 45) { $SpotifyStatus = 'stale' }
+
+    $SpotifySignal = [ordered]@{
+        id = 'spotify'
+        name = 'Spotify history + soundtracks'
+        status = $SpotifyStatus
+        lastAttemptAtUtc = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['lastAttemptAtUtc']) { $SpotifyHealth.lastAttemptAtUtc } else { $null }
+        lastSuccessAtUtc = $SpotifyLastSuccess
+        highWatermarkUtc = if ($LatestPlay.Count) { $LatestPlay[0].played_at } else { $null }
+        lagMinutes = $SpotifyLag
+        lastError = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['lastError']) { $SpotifyHealth.lastError } else { 'Waiting for the next scheduled Spotify sync to publish health.' }
+        archiveTotal = $History.Count
+        newlyArchived = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['newlyArchived']) { $SpotifyHealth.newlyArchived } else { $null }
+        soundtracksUpdated = if ($SpotifyHealth -and $SpotifyHealth.PSObject.Properties['soundtracksUpdated']) { $SpotifyHealth.soundtracksUpdated } else { $null }
+    }
+
+    # Health reads the durable projection directly. It never calls Tessie from
+    # the web request process, even if the normal history-read flag is off.
+    $RecentRawDrives = if ($Repository.Provider -in @('SQLite','Turso')) { @(Get-DriveOSTessieDrives -Repository $Repository -Days 1) } else { @() }
+    $SoundtrackRows = @(Get-DriveOSDriveSoundtracks -Repository $Repository)
+    $SoundtrackMap = @{}
+    foreach ($Row in $SoundtrackRows) { if ($Row -and $Row.driveId) { $SoundtrackMap["$($Row.driveId)"] = $Row } }
+    $Missing = 0
+    $Pending = 0
+    foreach ($Drive in $RecentRawDrives) {
+        $DriveId = "$($Drive.started_at)-$($Drive.ended_at)"
+        if (-not $SoundtrackMap.ContainsKey($DriveId)) { $Missing++; continue }
+        $Row = $SoundtrackMap[$DriveId]
+        if ($Row.PSObject.Properties['status'] -and "$($Row.status)" -eq 'pending') { $Pending++ }
+    }
+
+    $Signals = @((Get-DataHealthCursorSignal -Resource drives),(Get-DataHealthCursorSignal -Resource charges),$SpotifySignal)
+    $Statuses = @($Signals | ForEach-Object { $_.status })
+    $Overall = if ($Statuses -contains 'failed') { 'failed' } elseif ($Statuses -contains 'stale' -or $Statuses -contains 'degraded' -or $Missing -gt 0) { 'attention' } elseif ($Statuses -contains 'unknown') { 'warming-up' } else { 'healthy' }
+
+    return [ordered]@{
+        generatedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+        overallStatus = $Overall
+        repositoryProvider = $Repository.Provider
+        integrations = $Signals
+        soundtrackProjection = [ordered]@{ recentDriveCount=$RecentRawDrives.Count; materializedCount=($RecentRawDrives.Count-$Missing); missingCount=$Missing; pendingCount=$Pending }
+        rollout = [ordered]@{ tessieWritesEnabled=$DurableTessieWriteEnabled; tessieReadsEnabled=$DurableTessieReadEnabled; readCanaryApproved=$DurableTessieReadCanaryApproved }
+    }
+}
+
 # ------------------------------------------------------------
 # Router
 # ------------------------------------------------------------
@@ -3484,6 +3599,15 @@ function Handle-Request {
 
                 "/api/statistics" {
                     Send-Json -Stream $Stream -Object (Get-DriveStats)
+                    return
+                }
+
+                "/api/data-health" {
+                    if ($RuntimeConfig.IsWeb -and (-not $Principal -or $Principal.Role -ne 'owner')) {
+                        Send-Json -Stream $Stream -StatusCode 403 -StatusText "Forbidden" -Object @{ error = "Data Health is available only to the owner." }
+                        return
+                    }
+                    Send-Json -Stream $Stream -Object (Get-DataHealthSummary)
                     return
                 }
 
@@ -4145,7 +4269,7 @@ try {
                     continue
                 }
 
-                $WifePostAllowed = $Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map")
+                $WifePostAllowed = $Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map", "/api/auth/logout")
                 if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $Method -eq "POST" -and -not $IsPublicWebRequest -and -not $WifePostAllowed) {
                     Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
                     continue
@@ -4153,7 +4277,7 @@ try {
 
                 if ($WebPrincipal -and $WebPrincipal.Role -eq "wife" -and $WebPrincipal.Mode -ne "full") {
                     $WifeApiAllowed = $Method -eq "GET" -and $Path -in @("/api/auth/session", "/api/wife/summary", "/api/wife/vehicle", "/api/wife/drives", "/api/wife/music", "/api/wife/live")
-                    $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map"))
+                    $WifeApiAllowed = $WifeApiAllowed -or ($Method -eq "POST" -and $Path -in @("/api/wife/mode", "/api/wife/drive/map", "/api/auth/logout"))
                     if ($Path.StartsWith("/api/") -and -not $WifeApiAllowed) {
                         Send-RequestRejected -Stream $Stream -Code 403 -Text "Forbidden" -Message "This feature is only available in owner mode."
                         continue

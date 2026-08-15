@@ -6,6 +6,7 @@
   { "method": "GET", "path": "/api/music/stats" },
   { "method": "GET", "path": "/api/drives" },
   { "method": "GET", "path": "/api/statistics" },
+  { "method": "GET", "path": "/api/data-health" },
   { "method": "GET", "path": "/api/places" },
   { "method": "GET", "path": "/api/charging" },
   { "method": "GET", "path": "/api/dashboard/layout" },

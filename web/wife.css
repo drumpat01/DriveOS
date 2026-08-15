@@ -14,3 +14,5 @@
 .trip-artist-loading::before { content:""; display:inline-block; width:.58rem; height:.58rem; margin-right:6px; border:2px solid color-mix(in srgb,var(--petal) 30%,transparent); border-top-color:var(--petal); border-radius:50%; animation:wife-spin .8s linear infinite; }
 @keyframes wife-spin { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion:reduce) { .trip-artist-loading::before { animation:none; } }
+.wife-footer { display:flex; justify-content:center; align-items:center; gap:10px; margin-bottom:calc(72px + env(safe-area-inset-bottom)); }
+.wife-sign-out { border:1px solid color-mix(in srgb,#ef4444 28%,var(--line)); border-radius:999px; background:transparent; color:#b45353; padding:9px 15px; font-size:.82rem; font-weight:800; }
