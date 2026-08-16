@@ -38,7 +38,7 @@ if ($Check) {
 
 $TextReplacements = @{
     (Join-Path $Root "web\service-worker.js") = @('driveos-shell-[0-9.]+', "driveos-shell-$WebBuild")
-    (Join-Path $Root "web\index.html") = @('/([A-Za-z0-9_/-]+)\.js\?v=[0-9.]+', "/`$1.js?v=$WebBuild")
+    (Join-Path $Root "web\index.html") = @('/([A-Za-z0-9_/-]+)\.(js|css)\?v=[0-9.]+', "/`$1.`$2?v=$WebBuild")
 }
 foreach ($Entry in $TextReplacements.GetEnumerator()) {
     $Current = Get-Content $Entry.Key -Raw
