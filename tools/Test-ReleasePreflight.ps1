@@ -53,6 +53,8 @@ if (-not $SkipTests) {
         'tests\DashboardLayout.Tests.ps1',
         'tests\Assistant.Tests.ps1',
         'tests\ListeningHistoryDedup.Tests.ps1',
+        'tests\LastFmImport.Tests.ps1',
+        'tests\YouTubeMusicImport.Tests.ps1',
         'tests\SoundtrackBackfill.Tests.ps1',
         'tests\DatabaseArchitecture.Tests.ps1',
         'tests\JourneyCollections.Tests.ps1',
