@@ -536,11 +536,18 @@ function Get-SpotifyAccessToken {
 }
 
 function Get-SpotifyRecent {
-    param([int]$Limit = 50)
+    param([int]$Limit = 50,[AllowNull()][string]$Before)
+
+    $Page = Get-SpotifyRecentPage -Limit $Limit -Before $Before
+    return @($Page.items)
+}
+
+function Get-SpotifyRecentPage {
+    param([int]$Limit = 50,[AllowNull()][string]$Before)
 
     $Token = Get-SpotifyAccessToken
     $Client = New-SpotifyClient -AccessToken $Token
-    return Get-SpotifyRecentlyPlayed -Client $Client -Limit $Limit
+    return Get-SpotifyRecentlyPlayedPage -Client $Client -Limit $Limit -Before $Before
 }
 
 function Set-SpotifyHistoryMemoryCache {
@@ -1783,26 +1790,35 @@ function Get-SpotifySummary {
 }
 
 function Invoke-ScheduledSpotifySync {
+    param([switch]$RestartSoundtrackBackfill)
+
     if (-not $RuntimeConfig.IsWeb) {
         throw 'Scheduled Spotify sync is available only in hosted DriveOS.'
     }
 
     try {
         $AttemptedAt = [DateTimeOffset]::UtcNow.ToString('o')
-        $Items = @(Get-SpotifyRecent -Limit 50)
+        $RecentPage = Get-SpotifyRecentPage -Limit 50
+        $Items = @($RecentPage.items | Where-Object { $null -ne $_ })
         $Added = Save-SpotifyHistory -Items $Items
-        $ArchiveTotal = @(Get-SpotifyHistory).Count
         $SoundtracksUpdated = 0
+        $Backfill = $null
         $ReconciliationError = $null
         try {
             # Reconcile the previous day after every successful archive. Delayed
             # Spotify runs can therefore repair an already-finalized soundtrack.
             $SoundtracksUpdated = Update-RecentDriveSoundtrackCache -Days 1
+            $Backfill = Invoke-SoundtrackBackfillStep `
+                -InitialBefore (Get-SpotifyPageBeforeCursor -Page $RecentPage) `
+                -Restart:$RestartSoundtrackBackfill
+            $Added += [int]$Backfill.spotifyPlaysArchivedThisRun
+            $SoundtracksUpdated += [int]$Backfill.drivesProcessedThisRun
         }
         catch {
             $ReconciliationError = $_.Exception.Message
             Write-DriveOSServerLog "Drive soundtrack reconciliation failed after Spotify sync: $ReconciliationError"
         }
+        $ArchiveTotal = @(Get-SpotifyHistory).Count
         $CompletedAt = [DateTimeOffset]::UtcNow.ToString('o')
         Set-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'spotify' -Record ([ordered]@{
             provider = 'spotify'
@@ -1812,6 +1828,7 @@ function Invoke-ScheduledSpotifySync {
             newlyArchived = $Added
             archiveTotal = $ArchiveTotal
             soundtracksUpdated = $SoundtracksUpdated
+            soundtrackBackfill = $Backfill
             lastError = $ReconciliationError
         })
         Write-DriveOSServerLog "Scheduled Spotify sync completed: $Added new play(s), $ArchiveTotal archived, $SoundtracksUpdated drive soundtrack(s) reconciled."
@@ -1821,6 +1838,7 @@ function Invoke-ScheduledSpotifySync {
             newlyArchived = $Added
             archiveTotal = $ArchiveTotal
             soundtracksUpdated = $SoundtracksUpdated
+            soundtrackBackfill = $Backfill
             completedAt = $CompletedAt
         }
     }
@@ -2493,6 +2511,184 @@ function Update-RecentDriveSoundtrackCache {
         $Updated++
     }
     return $Updated
+}
+
+function Get-SpotifyPageBeforeCursor {
+    param($Page)
+
+    if (
+        $Page -and
+        $Page.PSObject.Properties['cursors'] -and
+        $Page.cursors -and
+        $Page.cursors.PSObject.Properties['before'] -and
+        -not [string]::IsNullOrWhiteSpace("$($Page.cursors.before)")
+    ) {
+        return "$($Page.cursors.before)"
+    }
+
+    return $null
+}
+
+function New-SoundtrackBackfillState {
+    param([AllowNull()][string]$InitialBefore)
+
+    $Now = [DateTimeOffset]::UtcNow.ToString('o')
+    return [PSCustomObject]@{
+        version = 1
+        status = 'running'
+        spotifyBefore = $InitialBefore
+        spotifyComplete = [string]::IsNullOrWhiteSpace($InitialBefore)
+        spotifyPagesFetched = 0
+        spotifyPlaysArchived = 0
+        projectionInitialized = $false
+        pendingDriveIds = @()
+        drivesProcessed = 0
+        startedAtUtc = $Now
+        updatedAtUtc = $Now
+        completedAtUtc = $null
+        lastError = $null
+    }
+}
+
+function Get-SoundtrackBackfillState {
+    return Get-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'soundtrack-backfill'
+}
+
+function Save-SoundtrackBackfillState {
+    param([Parameter(Mandatory=$true)]$State)
+    $State.updatedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+    Set-DriveOSIntegrationHealthRecord -Repository $Repository -Provider 'soundtrack-backfill' -Record $State
+}
+
+function Invoke-SoundtrackBackfillStep {
+    param(
+        [AllowNull()][string]$InitialBefore,
+        [switch]$Restart,
+        [ValidateRange(1,10)][int]$MaxSpotifyPages = 2,
+        [ValidateRange(1,100)][int]$DriveBatchSize = 20,
+        [ValidateRange(1,730)][int]$Days = 365
+    )
+
+    $State = Get-SoundtrackBackfillState
+    if (
+        $Restart -or
+        -not $State -or
+        -not $State.PSObject.Properties['version'] -or
+        [int]$State.version -ne 1
+    ) {
+        $State = New-SoundtrackBackfillState -InitialBefore $InitialBefore
+        Save-SoundtrackBackfillState -State $State
+    }
+
+    if ("$($State.status)" -eq 'completed') {
+        return [PSCustomObject]@{
+            status = 'completed'
+            spotifyPagesFetchedThisRun = 0
+            spotifyPlaysArchivedThisRun = 0
+            drivesProcessedThisRun = 0
+            remainingDrives = 0
+        }
+    }
+
+    $PagesThisRun = 0
+    $ArchivedThisRun = 0
+    $DrivesThisRun = 0
+
+    try {
+        while (-not [bool]$State.spotifyComplete -and $PagesThisRun -lt $MaxSpotifyPages) {
+            $Before = "$($State.spotifyBefore)"
+            if ([string]::IsNullOrWhiteSpace($Before)) {
+                $State.spotifyComplete = $true
+                break
+            }
+
+            $Page = Get-SpotifyRecentPage -Limit 50 -Before $Before
+            $Items = @($Page.items | Where-Object { $null -ne $_ })
+            if ($Items.Count -eq 0) {
+                $State.spotifyComplete = $true
+                break
+            }
+
+            $Added = Save-SpotifyHistory -Items $Items
+            $ArchivedThisRun += $Added
+            $PagesThisRun++
+            $State.spotifyPagesFetched = [int]$State.spotifyPagesFetched + 1
+            $State.spotifyPlaysArchived = [int]$State.spotifyPlaysArchived + $Added
+
+            $NextBefore = Get-SpotifyPageBeforeCursor -Page $Page
+            if ([string]::IsNullOrWhiteSpace($NextBefore) -or $NextBefore -eq $Before) {
+                $State.spotifyComplete = $true
+                $State.spotifyBefore = $null
+            }
+            else {
+                $State.spotifyBefore = $NextBefore
+            }
+            Save-SoundtrackBackfillState -State $State
+        }
+
+        if ([bool]$State.spotifyComplete) {
+            $RawDrives = @(Get-RawDrives -Days $Days)
+            if (-not [bool]$State.projectionInitialized) {
+                $State.pendingDriveIds = @($RawDrives | ForEach-Object { "$($_.started_at)-$($_.ended_at)" })
+                $State.projectionInitialized = $true
+                Save-SoundtrackBackfillState -State $State
+            }
+
+            $PendingIds = @($State.pendingDriveIds | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") })
+            $BatchIds = @($PendingIds | Select-Object -First $DriveBatchSize)
+            if ($BatchIds.Count -gt 0) {
+                $RawById = @{}
+                foreach ($RawDrive in $RawDrives) {
+                    $RawById["$($RawDrive.started_at)-$($RawDrive.ended_at)"] = $RawDrive
+                }
+                $History = @(Get-SpotifyHistory)
+                foreach ($DriveId in $BatchIds) {
+                    if ($RawById.ContainsKey($DriveId)) {
+                        $RawDrive = $RawById[$DriveId]
+                        $Start = [DateTimeOffset]::FromUnixTimeSeconds([long]$RawDrive.started_at)
+                        $End = [DateTimeOffset]::FromUnixTimeSeconds([long]$RawDrive.ended_at)
+                        $null = Get-CanonicalDriveSoundtrack -DriveId $DriveId -DriveStart $Start -DriveEnd $End -SpotifyHistory $History -Reconcile -ForcePersist
+                    }
+                    $DrivesThisRun++
+                }
+
+                $Completed = @{}; foreach ($DriveId in $BatchIds) { $Completed[$DriveId] = $true }
+                $State.pendingDriveIds = @($PendingIds | Where-Object { -not $Completed.ContainsKey("$_") })
+                $State.drivesProcessed = [int]$State.drivesProcessed + $DrivesThisRun
+
+                # Public drive models are immutable snapshots. Clear them so
+                # the next request observes the rebuilt soundtrack projection.
+                $script:DriveDataCache.drives365 = $null
+                $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+                $script:DriveDataCache.dashboardDrives = $null
+                $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
+                $script:DriveDataCache.wifeDrives = $null
+                $script:DriveDataCache.wifeDrivesExpiresAt = [DateTimeOffset]::MinValue
+            }
+
+            if (@($State.pendingDriveIds).Count -eq 0) {
+                $State.status = 'completed'
+                $State.completedAtUtc = [DateTimeOffset]::UtcNow.ToString('o')
+            }
+        }
+
+        $State.lastError = $null
+        Save-SoundtrackBackfillState -State $State
+    }
+    catch {
+        $State.status = 'running'
+        $State.lastError = $_.Exception.Message
+        Save-SoundtrackBackfillState -State $State
+        throw
+    }
+
+    return [PSCustomObject]@{
+        status = "$($State.status)"
+        spotifyPagesFetchedThisRun = $PagesThisRun
+        spotifyPlaysArchivedThisRun = $ArchivedThisRun
+        drivesProcessedThisRun = $DrivesThisRun
+        remainingDrives = @($State.pendingDriveIds).Count
+    }
 }
 
 function Convert-RawDrive {
@@ -3751,7 +3947,22 @@ function Handle-Request {
                         }
                         return
                     }
-                    Send-Json -Stream $Stream -Object (Invoke-ScheduledSpotifySync)
+                    $RestartBackfill = $false
+                    if (-not [string]::IsNullOrWhiteSpace($BodyText)) {
+                        try {
+                            $SyncRequest = $BodyText | ConvertFrom-Json
+                            if ($SyncRequest.PSObject.Properties['restartBackfill']) {
+                                $RestartBackfill = [bool]$SyncRequest.restartBackfill
+                            }
+                        }
+                        catch {
+                            Send-Json -Stream $Stream -StatusCode 400 -StatusText "Bad Request" -Object @{
+                                error = "Scheduled sync body must be valid JSON."
+                            }
+                            return
+                        }
+                    }
+                    Send-Json -Stream $Stream -Object (Invoke-ScheduledSpotifySync -RestartSoundtrackBackfill:$RestartBackfill)
                     return
                 }
 

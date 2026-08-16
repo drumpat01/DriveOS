@@ -5,6 +5,12 @@ on:
     - cron: "*/15 * * * *"
       timezone: "America/Chicago"
   workflow_dispatch:
+    inputs:
+      restart_backfill:
+        description: Restart the resumable 365-day Spotify and soundtrack backfill
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -21,13 +27,18 @@ jobs:
         env:
           DRIVEOS_SYNC_URL: ${{ secrets.DRIVEOS_SYNC_URL }}
           DRIVEOS_SYNC_TOKEN: ${{ secrets.DRIVEOS_SYNC_TOKEN }}
+          RESTART_BACKFILL: ${{ inputs.restart_backfill || false }}
         run: |
           test -n "$DRIVEOS_SYNC_URL"
           test -n "$DRIVEOS_SYNC_TOKEN"
+          body='{}'
+          if [ "$RESTART_BACKFILL" = "true" ]; then
+            body='{"restartBackfill":true}'
+          fi
           curl --fail-with-body --silent --show-error \
             --retry 2 --retry-all-errors --max-time 240 \
             --request POST \
             --header "X-DriveOS-Sync-Token: $DRIVEOS_SYNC_TOKEN" \
             --header "Content-Type: application/json" \
-            --data '{}' \
+            --data "$body" \
             "$DRIVEOS_SYNC_URL/api/spotify/sync"

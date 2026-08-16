@@ -1133,7 +1133,7 @@ function driveCard(drive, compact = false) {
       <div class="drive-stat"><span>Distance</span><strong>${drive.miles ?? "--"} mi</strong></div>
       <div class="drive-stat"><span>Duration</span><strong>${drive.durationMinutes ?? "--"} min</strong></div>
       <div class="drive-stat dashboard-secondary-stat"><span>Battery</span><strong>${escapeHtml(batteryText(drive))}</strong></div>
-      <div class="drive-stat dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} songs</strong></div>
+      <div class="drive-stat dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} song${Number(drive.songCount ?? 0) === 1 ? "" : "s"}</strong></div>
       ${compact ? `<button class="view-drive-button v3-drive-play" type="button" data-drive-id="${escapeHtml(drive.id)}" aria-label="Open drive">\u25B6</button>`
                 : `<div class="drive-stat"><span>Energy</span><strong>${drive.energyKWh ?? "--"} kWh</strong></div>
                    <button class="view-drive-button" type="button" data-drive-id="${escapeHtml(drive.id)}">View drive</button>`}
