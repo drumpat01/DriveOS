@@ -29,9 +29,13 @@ finally { if(Test-Path -LiteralPath $Scratch){Remove-Item -LiteralPath $Scratch 
 
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $WifeJs = Get-Content (Join-Path $Root 'web\wife.js') -Raw
+$Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
 Assert-True ($Server -match '"/api/collections"') 'Owner collection read endpoint is missing.'
 Assert-True ($Server -match '"/api/collections/save"' -and $Server -match '"/api/collections/delete"') 'Owner collection mutation endpoints are missing.'
 Assert-True ($Server -match '"/api/wife/collections"') 'Wife Mode collection read endpoint is missing.'
 Assert-True ($WifeJs -match '/api/wife/collections') 'Wife Mode does not load shared collections.'
 Assert-True ($WifeJs -notmatch '/api/collections/(save|delete)') 'Wife Mode contains collection mutation behavior.'
+Assert-True ($Styles -match '\.journey-collections-panel\s*\{[^}]*padding:\s*24px') 'Journey collections panel lacks a safe desktop content inset.'
+Assert-True ($Styles -match '\.journey-collections-panel \.panel-description,[\s\S]*?white-space:\s*normal') 'Journey collections copy can still be clipped instead of wrapping.'
+Assert-True ($Styles -match '@media \(max-width:760px\)[^{]*\{[^}]*\.journey-collections-panel\s*\{\s*padding:\s*18px') 'Journey collections panel lacks a responsive content inset.'
 Write-Host 'Journey Collections checks passed.' -ForegroundColor Green

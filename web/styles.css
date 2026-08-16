@@ -8183,7 +8183,14 @@ body > .main-nav .nav-button-live .nav-live-dot {
 @media (max-width:560px) { .data-health-heading { align-items:stretch; }.data-health-heading .secondary-button { width:100%; }.data-health-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }.data-health-card dl div { display:block; }.data-health-card dd { margin-top:3px; text-align:left; }.data-health-actions > div:last-child { grid-template-columns:1fr; } }
 
 /* Journey collections */
-.journey-collections-panel { margin-top:18px; }.journey-collections-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+.journey-collections-panel { margin-top:18px; padding:24px; }
+.journey-collections-panel .panel-heading,
+.journey-collections-panel .panel-heading > div,
+.journey-collections-grid,
+.journey-collection-card > div:first-child { min-width:0; }
+.journey-collections-panel .panel-description,
+.journey-collection-card p { max-width:100%; overflow-wrap:anywhere; white-space:normal; }
+.journey-collections-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
 .journey-collection-card { display:flex; justify-content:space-between; align-items:center; gap:18px; min-width:0; padding:17px; border:1px solid var(--line); border-radius:17px; background:color-mix(in srgb,var(--panel) 82%,var(--accent) 3%); }
 .journey-collection-card strong { display:block; font-size:1rem; }.journey-collection-card p { margin:5px 0; color:var(--muted); font-size:.78rem; line-height:1.4; }.journey-collection-card span { color:var(--muted); font-size:.72rem; }
 .journey-collection-card-actions { display:flex; flex:0 0 auto; align-items:center; gap:8px; }.journey-collection-modal-card { width:min(780px,calc(100% - 30px)); }
@@ -8191,7 +8198,7 @@ body > .main-nav .nav-button-live .nav-live-dot {
 .journey-collection-drive-heading { display:flex; justify-content:space-between; align-items:center; margin:22px 0 10px; }.journey-collection-drive-list { display:grid; gap:7px; max-height:43vh; overflow:auto; padding-right:4px; }
 .journey-collection-drive-choice { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:11px; padding:11px; border:1px solid var(--line); border-radius:13px; cursor:pointer; }.journey-collection-drive-choice:has(input:checked) { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--panel)); }.journey-collection-drive-choice input { accent-color:var(--accent); }.journey-collection-drive-choice strong,.journey-collection-drive-choice small { display:block; }.journey-collection-drive-choice small { margin-top:3px; color:var(--muted); line-height:1.35; }
 .journey-collection-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:17px; }.danger-button { border:1px solid rgba(239,68,68,.3); border-radius:12px; padding:10px 14px; background:rgba(239,68,68,.08); color:#e45d5d; font-weight:800; cursor:pointer; }.journey-collection-actions .danger-button { margin-right:auto; }
-@media (max-width:760px) { .journey-collections-grid { grid-template-columns:1fr; }.journey-collection-card { align-items:stretch; flex-direction:column; }.journey-collection-card-actions { width:100%; }.journey-collection-card-actions .secondary-button { flex:1; }.journey-collections-panel .panel-heading { align-items:stretch; flex-direction:column; }.journey-collections-panel .panel-heading .primary-button { width:100%; }.journey-collection-modal-card { padding:24px 17px; }.journey-collection-actions { display:grid; grid-template-columns:1fr; }.journey-collection-actions .danger-button { grid-row:2; margin:0; } }
+@media (max-width:760px) { .journey-collections-panel { padding:18px; }.journey-collections-grid { grid-template-columns:1fr; }.journey-collection-card { align-items:stretch; flex-direction:column; }.journey-collection-card-actions { width:100%; }.journey-collection-card-actions .secondary-button { flex:1; }.journey-collections-panel .panel-heading { align-items:stretch; flex-direction:column; }.journey-collections-panel .panel-heading .primary-button { width:100%; }.journey-collection-modal-card { padding:24px 17px; }.journey-collection-actions { display:grid; grid-template-columns:1fr; }.journey-collection-actions .danger-button { grid-row:2; margin:0; } }
 
 /* =====================================================================
    JourneyDeck application UI consistency
