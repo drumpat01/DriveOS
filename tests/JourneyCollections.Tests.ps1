@@ -40,6 +40,8 @@ Assert-True ($WifeJs -notmatch '/api/collections/(save|delete)') 'Wife Mode cont
 Assert-True ($Styles -match '\.journey-collections-panel\s*\{[^}]*padding:\s*24px') 'Journey collections panel lacks a safe desktop content inset.'
 Assert-True ($Styles -match '\.journey-collections-panel \.panel-description,[\s\S]*?white-space:\s*normal') 'Journey collections copy can still be clipped instead of wrapping.'
 Assert-True ($Styles -match '@media \(max-width:760px\)[^{]*\{[^}]*\.journey-collections-panel\s*\{\s*padding:\s*18px') 'Journey collections panel lacks a responsive content inset.'
+Assert-True ($Styles -match '#journeyCollectionModal\s*\{\s*z-index:1300' -and $Styles -match '\.journey-collection-actions\s*\{\s*position:sticky;[^}]*bottom:0') 'Mobile collection actions can still be covered by bottom navigation.'
+Assert-True ($Styles -match '\.journey-collection-modal-card\s*\{[^}]*100dvh' -and $Styles -match 'safe-area-inset-bottom') 'Mobile collection editor does not account for the dynamic viewport and iPhone safe area.'
 Assert-True ($Index -match 'id="journeyStoryModal"' -and $Index -match 'id="journeyStoryMap"' -and $Index -match 'id="journeyStoryPhotos"') 'Collection story modal is missing its photo or map surfaces.'
 Assert-True ($CollectionsJs -match 'collectionMusic' -and $CollectionsJs -match 'albumImage' -and $CollectionsJs -match 'TOP ARTIST') 'Collection story does not derive its top artist.'
 Assert-True ($CollectionsJs -match 'slice\(0,3\)' -and $CollectionsJs -match '/api/collections/attachments/get') 'Collection story does not load its first attached photos.'
