@@ -7,7 +7,7 @@ vm.createContext(context);
 for(const file of ['web/core/dom.js','web/core/state.js','web/core/platform.js','web/core/api.js','web/features/drives.js','web/features/replay.js','web/features/music.js','web/features/data-health.js','web/features/collections.js','web/features/mobility-graph.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
 assert.equal(context.DriveOSDom.escapeHtml(`<Driver's & "Song">`),'&lt;Driver&#039;s &amp; &quot;Song&quot;&gt;');
 context.DriveOSDom.setText('status','ONLINE');assert.equal(elements.get('status').textContent,'ONLINE');
-assert.equal(context.DriveOSState.driveLibraryWindowDays,365);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);
+assert.equal(context.DriveOSState.driveLibraryWindowDays,730);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);
 assert.equal(typeof context.DriveOSFeatures.collections.create,'function','Journey Collections feature module should load independently');
 assert.equal(typeof context.DriveOSFeatures.mobilityGraph.create,'function','Personal Mobility Graph feature module should load independently');
 const graphPositions=context.DriveOSFeatures.mobilityGraph.positions([{id:'home',latitude:32.9,longitude:-97.3},{id:'work',latitude:32.75,longitude:-97.1}]);assert.equal(graphPositions.size,2,'mobility graph should position every place');assert.ok([...graphPositions.values()].every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)),'mobility graph positions must remain finite');

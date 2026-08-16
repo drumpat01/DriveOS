@@ -22,7 +22,7 @@ foreach ($FunctionName in @('Get-SpotifyPageBeforeCursor','New-SoundtrackBackfil
 $script:BackfillState = $null
 $script:ProjectedDriveIds = [System.Collections.Generic.List[string]]::new()
 $script:DriveDataCache = [PSCustomObject]@{
-    drives365 = @('stale'); drives365ExpiresAt = [DateTimeOffset]::UtcNow
+    drives730 = @('stale'); drives730ExpiresAt = [DateTimeOffset]::UtcNow
     dashboardDrives = @('stale'); dashboardDrivesExpiresAt = [DateTimeOffset]::UtcNow
     wifeDrives = @('stale'); wifeDrivesExpiresAt = [DateTimeOffset]::UtcNow
 }
@@ -71,7 +71,7 @@ Assert-Equal $Third.drivesProcessedThisRun 1 'The resumed projection did not pro
 Assert-Equal $Third.remainingDrives 0 'The completed backfill still has pending drives.'
 Assert-Equal $script:BackfillState.status 'completed' 'The backfill was not marked complete.'
 Assert-Equal (@($script:ProjectedDriveIds | Select-Object -Unique).Count) 3 'Each retained drive must receive a canonical soundtrack projection.'
-Assert-True ($null -eq $script:DriveDataCache.drives365) 'The repaired drive snapshot cache was not invalidated.'
+Assert-True ($null -eq $script:DriveDataCache.drives730) 'The repaired drive snapshot cache was not invalidated.'
 
 $NoOp = Invoke-SoundtrackBackfillStep -InitialBefore 'ignored' -MaxSpotifyPages 1 -DriveBatchSize 2
 Assert-Equal $NoOp.drivesProcessedThisRun 0 'A completed backfill must be safe to rerun.'

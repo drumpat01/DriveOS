@@ -133,11 +133,11 @@ const responses = {
   '/api/spotify/auth-status': { authorized: true },
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
-  '/api/drives': { windowDays: 365, drives },
+  '/api/drives': { windowDays: 730, drives },
   '/api/mobility-graph': {
     version: 3,
     generatedAtUtc: '2026-08-16T12:00:00Z',
-    windowDays: 365,
+    windowDays: 730,
     summary: { placeCount: 5, connectionCount: 6, driveCount: 10, totalMiles: 300 },
     nodes: [
       { id: 'place-home', label: 'Home', kind: 'home', category: 'home', categoryConfidence: 'confirmed', categoryReason: 'The saved place name identifies this as Home.', latitude: 39.72, longitude: -104.99, visitCount: 10, arrivals: 5, departures: 5, totalMiles: 300, firstSeenAt: '2026-08-01T12:00:00Z', lastSeenAt: '2026-08-15T12:00:00Z' },
