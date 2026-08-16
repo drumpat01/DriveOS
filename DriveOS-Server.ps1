@@ -3311,15 +3311,13 @@ function Get-DriveStats {
 function Get-AssistantAnswer {
     param([string]$Question)
 
-    # The assistant receives only the application's normalized records. It cannot
-    # execute database text, invoke external models, or alter any stored data.
-    $Charging = Get-ChargingSummary
+    # Search is deliberately bounded to drive records and soundtracks attached
+    # to those drives. Global listening and charging history never enter the
+    # assistant, so every answer means "while driving" by construction.
     return Get-DriveOSAssistantAnswer `
         -Question $Question `
         -Drives @(Get-CachedRecentDrives730) `
-        -History @(Get-SpotifyHistory) `
-        -Places @((Get-PlaceCandidates).places) `
-        -Charges @($Charging.sessions)
+        -Places @((Get-PlaceCandidates).places)
 }
 
 # ------------------------------------------------------------
