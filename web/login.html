@@ -50,6 +50,7 @@
       cursor: pointer;
     }
     button:disabled { opacity: .6; cursor: wait; }
+    .passkey-button { margin-top: 12px; border: 1px solid rgba(130,190,255,.35); background: transparent; color: #dcecff; }
     #message { min-height: 1.4em; margin: 14px 0 0; color: #ffb5b5; }
   </style>
   <script src="/login.js" defer></script>
@@ -77,6 +78,7 @@
         required>
 
       <button id="submitButton" type="submit">Sign in</button>
+      <button id="passkeyButton" class="passkey-button" type="button" hidden>Sign in with Face ID or passkey</button>
       <div id="message" role="alert" aria-live="polite"></div>
     </form>
   </main>

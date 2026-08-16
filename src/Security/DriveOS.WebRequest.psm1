@@ -149,7 +149,7 @@ function Test-DriveOSWebPublicRequest {
     }
 
     if ($Method -eq "POST") {
-        return $Path -eq "/api/auth/login"
+        return $Path -in @("/api/auth/login","/api/auth/passkey/options","/api/auth/passkey/verify")
     }
 
     return $false

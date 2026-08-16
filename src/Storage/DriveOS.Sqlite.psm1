@@ -181,6 +181,25 @@ function Remove-DriveOSSqliteJourneyCollection {
     $null = Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
 }
 
+function Get-DriveOSSqliteJourneyAttachments {
+    param($Repository,[string]$CollectionId,[string]$HouseholdId,[string]$AttachmentId,[switch]$IncludeData)
+    $Fields=if($IncludeData){'id,collection_id,file_name,content_type,byte_length,data_base64,created_at_utc'}else{'id,collection_id,file_name,content_type,byte_length,created_at_utc'}
+    $Where=if($AttachmentId){"id=$(ConvertTo-SqlLiteral $AttachmentId)"}else{"collection_id=$(ConvertTo-SqlLiteral $CollectionId)"}
+    $Rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT $Fields FROM journey_attachments WHERE $Where AND household_id=$(ConvertTo-SqlLiteral $HouseholdId) ORDER BY created_at_utc,id;" -Json)
+    return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;collectionId=$_.collection_id;fileName=$_.file_name;contentType=$_.content_type;byteLength=[int]$_.byte_length;dataBase64=$(if($IncludeData){$_.data_base64}else{$null});createdAtUtc=$_.created_at_utc}})
+}
+
+function Set-DriveOSSqliteJourneyAttachment {
+    param($Repository,$Record,[string]$HouseholdId)
+    $Sql="INSERT INTO journey_attachments(id,household_id,collection_id,file_name,content_type,byte_length,data_base64,created_at_utc) SELECT $(ConvertTo-SqlLiteral $Record.id),$(ConvertTo-SqlLiteral $HouseholdId),$(ConvertTo-SqlLiteral $Record.collectionId),$(ConvertTo-SqlLiteral $Record.fileName),$(ConvertTo-SqlLiteral $Record.contentType),$($Record.byteLength),$(ConvertTo-SqlLiteral $Record.dataBase64),$(ConvertTo-SqlLiteral $Record.createdAtUtc) WHERE EXISTS(SELECT 1 FROM journey_collections WHERE id=$(ConvertTo-SqlLiteral $Record.collectionId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId));"
+    $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
+}
+
+function Remove-DriveOSSqliteJourneyAttachment {
+    param($Repository,[string]$AttachmentId,[string]$HouseholdId)
+    $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "DELETE FROM journey_attachments WHERE id=$(ConvertTo-SqlLiteral $AttachmentId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId);"
+}
+
 function Get-DriveOSSqliteTessieCharges {
     param($Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
@@ -336,4 +355,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Set-DriveOSSqliteReconstructedDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Set-DriveOSSqliteReconstructedDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection,Get-DriveOSSqliteJourneyAttachments,Set-DriveOSSqliteJourneyAttachment,Remove-DriveOSSqliteJourneyAttachment

@@ -200,6 +200,7 @@ function New-DriveOSRepository {
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
         IntegrationHealthPath = Join-Path $DataDirectory 'integration-health.json'
         JourneyCollectionsPath = Join-Path $DataDirectory 'journey-collections.json'
+        PasskeysPath = Join-Path $DataDirectory 'passkeys.json'
         MobilityPreferencesPath = Join-Path $DataDirectory 'mobility-preferences.json'
         ConfigPath = $configPath
         DatabasePath = Join-Path $DataDirectory 'driveos.db'
@@ -581,6 +582,43 @@ function Remove-DriveOSJourneyCollection {
     Write-DriveOSJson -Path $Repository.JourneyCollectionsPath -Value $Records
 }
 
+function Get-DriveOSPasskeyRecord {
+    param([Parameter(Mandatory=$true)]$Repository)
+    if ($Repository.Provider -eq 'SQLite') { return Get-DriveOSSqliteState -Repository $Repository -Key 'passkeys:owner' }
+    if ($Repository.Provider -eq 'Turso') { return Get-DriveOSTursoState -Repository $Repository -Key 'passkeys:owner' }
+    Assert-JsonRepository $Repository
+    return Read-DriveOSJson -Path $Repository.PasskeysPath
+}
+
+function Get-DriveOSJourneyAttachments {
+    param($Repository,[string]$CollectionId,[string]$AttachmentId,[switch]$IncludeData,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){return @(Get-DriveOSSqliteJourneyAttachments -Repository $Repository -CollectionId $CollectionId -AttachmentId $AttachmentId -IncludeData:$IncludeData -HouseholdId $HouseholdId)}
+    if($Repository.Provider -eq 'Turso'){return @(Get-DriveOSTursoJourneyAttachments -Repository $Repository -CollectionId $CollectionId -AttachmentId $AttachmentId -IncludeData:$IncludeData -HouseholdId $HouseholdId)}
+    throw 'Journey attachments require SQLite or Turso storage.'
+}
+
+function Set-DriveOSJourneyAttachment {
+    param($Repository,$Record,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Set-DriveOSSqliteJourneyAttachment -Repository $Repository -Record $Record -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Set-DriveOSTursoJourneyAttachment -Repository $Repository -Record $Record -HouseholdId $HouseholdId;return}
+    throw 'Journey attachments require SQLite or Turso storage.'
+}
+
+function Remove-DriveOSJourneyAttachment {
+    param($Repository,[string]$AttachmentId,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Remove-DriveOSSqliteJourneyAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Remove-DriveOSTursoJourneyAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
+    throw 'Journey attachments require SQLite or Turso storage.'
+}
+
+function Set-DriveOSPasskeyRecord {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Record)
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteState -Repository $Repository -Key 'passkeys:owner' -Value $Record; return }
+    if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoState -Repository $Repository -Key 'passkeys:owner' -Value $Record; return }
+    Assert-JsonRepository $Repository
+    Write-DriveOSJson -Path $Repository.PasskeysPath -Value $Record
+}
+
 function Assert-JsonRepository {
     param($Repository)
 
@@ -619,4 +657,9 @@ Export-ModuleMember -Function `
     Set-DriveOSIntegrationHealthRecord, `
     Get-DriveOSJourneyCollections, `
     Set-DriveOSJourneyCollection, `
-    Remove-DriveOSJourneyCollection
+    Remove-DriveOSJourneyCollection, `
+    Get-DriveOSJourneyAttachments, `
+    Set-DriveOSJourneyAttachment, `
+    Remove-DriveOSJourneyAttachment, `
+    Get-DriveOSPasskeyRecord, `
+    Set-DriveOSPasskeyRecord
