@@ -407,6 +407,24 @@ function Remove-DriveOSTursoJourneyCollection {
     Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements @([PSCustomObject]@{ Sql='DELETE FROM journey_collections WHERE id=? AND household_id=?;'; Args=@($CollectionId,$HouseholdId) })
 }
 
+function Get-DriveOSTursoJourneyAttachments {
+    param($Repository,[string]$CollectionId,[string]$HouseholdId,[string]$AttachmentId,[switch]$IncludeData)
+    $Fields=if($IncludeData){'id,collection_id,file_name,content_type,byte_length,data_base64,created_at_utc'}else{'id,collection_id,file_name,content_type,byte_length,created_at_utc'}
+    if($AttachmentId){$Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT $Fields FROM journey_attachments WHERE id=? AND household_id=? LIMIT 1;" -Args @($AttachmentId,$HouseholdId))}
+    else{$Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT $Fields FROM journey_attachments WHERE collection_id=? AND household_id=? ORDER BY created_at_utc,id;" -Args @($CollectionId,$HouseholdId))}
+    return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;collectionId=$_.collection_id;fileName=$_.file_name;contentType=$_.content_type;byteLength=[int]$_.byte_length;dataBase64=$(if($IncludeData){$_.data_base64}else{$null});createdAtUtc=$_.created_at_utc}})
+}
+
+function Set-DriveOSTursoJourneyAttachment {
+    param($Repository,$Record,[string]$HouseholdId)
+    Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'INSERT INTO journey_attachments(id,household_id,collection_id,file_name,content_type,byte_length,data_base64,created_at_utc) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM journey_collections WHERE id=? AND household_id=?);' -Args @($Record.id,$HouseholdId,$Record.collectionId,$Record.fileName,$Record.contentType,$Record.byteLength,$Record.dataBase64,$Record.createdAtUtc,$Record.collectionId,$HouseholdId)
+}
+
+function Remove-DriveOSTursoJourneyAttachment {
+    param($Repository,[string]$AttachmentId,[string]$HouseholdId)
+    Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'DELETE FROM journey_attachments WHERE id=? AND household_id=?;' -Args @($AttachmentId,$HouseholdId)
+}
+
 function Get-DriveOSTursoTessieCharges {
     param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
@@ -624,6 +642,9 @@ Export-ModuleMember -Function `
     Get-DriveOSTursoJourneyCollections, `
     Set-DriveOSTursoJourneyCollection, `
     Remove-DriveOSTursoJourneyCollection, `
+    Get-DriveOSTursoJourneyAttachments, `
+    Set-DriveOSTursoJourneyAttachment, `
+    Remove-DriveOSTursoJourneyAttachment, `
     Get-DriveOSTursoTessieCharges, `
     Get-DriveOSTursoTessieAuditRows, `
     Get-DriveOSTursoIntegrationSyncCursor, `

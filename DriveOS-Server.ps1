@@ -27,11 +27,13 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1"
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Collections.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Attachments.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityGraph.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityPreferences.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.Passkeys.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebRequest.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.SecretProtection.psm1") -Force
 
@@ -3885,6 +3887,12 @@ function Handle-Request {
                     return
                 }
 
+                "/api/auth/passkey/status" {
+                    $Credential = Get-DriveOSPasskeyRecord -Repository $Repository
+                    Send-Json -Stream $Stream -Object @{ registered = [bool]($Credential -and $Credential.credentialId) }
+                    return
+                }
+
                 "/api/statistics" {
                     Send-Json -Stream $Stream -Object (Get-DriveStats)
                     return
@@ -4119,6 +4127,64 @@ function Handle-Request {
                     return
                 }
 
+                "/api/auth/passkey/options" {
+                    $Credential = Get-DriveOSPasskeyRecord -Repository $Repository
+                    if (-not $Credential -or -not $Credential.credentialId) {
+                        Send-Json -Stream $Stream -Object @{ available=$false }
+                        return
+                    }
+                    $Challenge = New-DriveOSPasskeyChallenge -Purpose authenticate -ClientKey $ClientKey
+                    Send-Json -Stream $Stream -Object @{
+                        available=$true; challengeId=$Challenge.challengeId; challenge=$Challenge.challenge
+                        rpId=([Uri]$RuntimeConfig.PublicUrl).Host; credentialId=$Credential.credentialId
+                    }
+                    return
+                }
+
+                "/api/auth/passkey/verify" {
+                    if (-not (Test-DriveOSLoginAllowed -ClientKey $ClientKey)) {
+                        Send-Json -Stream $Stream -StatusCode 429 -StatusText 'Too Many Requests' -AdditionalHeaders @{ 'Retry-After'='30' } -Object @{error='Too many login attempts. Please wait and try again.'};return
+                    }
+                    $Body=ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields challengeId,credentialId,clientDataJSON,authenticatorData,signature
+                    try{$Challenge=Use-DriveOSPasskeyChallenge -ChallengeId "$($Body.challengeId)" -Purpose authenticate -ClientKey $ClientKey}catch{Register-DriveOSLoginFailure -ClientKey $ClientKey;Send-Json -Stream $Stream -StatusCode 401 -StatusText Unauthorized -Object @{error='Face ID sign-in expired. Try again.'};return}
+                    $Credential=Get-DriveOSPasskeyRecord -Repository $Repository
+                    $Origin=([Uri]$RuntimeConfig.PublicUrl).GetLeftPart([UriPartial]::Authority).TrimEnd('/')
+                    $Valid=$Credential -and (Test-FixedTimeStringEquals "$($Body.credentialId)" "$($Credential.credentialId)") -and (Test-DriveOSPasskeyAssertion -ClientDataJSON "$($Body.clientDataJSON)" -AuthenticatorData "$($Body.authenticatorData)" -Signature "$($Body.signature)" -PublicKeySpki "$($Credential.publicKeySpki)" -ExpectedChallenge $Challenge.challenge -Origin $Origin -RpId ([Uri]$RuntimeConfig.PublicUrl).Host)
+                    if(-not $Valid){Register-DriveOSLoginFailure -ClientKey $ClientKey;Send-Json -Stream $Stream -StatusCode 401 -StatusText Unauthorized -Object @{error='Face ID could not verify this passkey.'};return}
+                    $AuthBytes=ConvertFrom-DriveOSPasskeyBase64Url "$($Body.authenticatorData)";$NewCount=Get-DriveOSPasskeySignCount $AuthBytes
+                    if($NewCount -gt 0 -and [uint32]$Credential.signCount -gt 0 -and $NewCount -le [uint32]$Credential.signCount){Register-DriveOSLoginFailure -ClientKey $ClientKey;Send-Json -Stream $Stream -StatusCode 401 -StatusText Unauthorized -Object @{error='This passkey could not be verified safely.'};return}
+                    $Credential.signCount=$NewCount;$Credential.lastUsedAtUtc=[DateTimeOffset]::UtcNow.ToString('o');Set-DriveOSPasskeyRecord -Repository $Repository -Record $Credential;Clear-DriveOSLoginFailures -ClientKey $ClientKey
+                    $Token=New-DriveOSWebSessionToken -OwnerEmail $WebAuthConfig.OwnerEmail -Role owner -Mode full -AuthSecret $WebAuthConfig.AuthSecret -SessionHours $RuntimeConfig.SessionHours
+                    Send-Json -Stream $Stream -AdditionalHeaders @{'Set-Cookie'=(New-DriveOSWebSessionCookie -Token $Token -SessionHours $RuntimeConfig.SessionHours)} -Object @{authenticated=$true;role='owner'}
+                    return
+                }
+
+                "/api/auth/passkey/register/options" {
+                    $Challenge=New-DriveOSPasskeyChallenge -Purpose register -ClientKey $ClientKey
+                    $Hasher=[Security.Cryptography.SHA256]::Create();try{$UserHash=$Hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($WebAuthConfig.OwnerEmail))}finally{$Hasher.Dispose()};$UserId=ConvertTo-DriveOSPasskeyBase64Url -Bytes $UserHash
+                    Send-Json -Stream $Stream -Object @{challengeId=$Challenge.challengeId;challenge=$Challenge.challenge;rpId=([Uri]$RuntimeConfig.PublicUrl).Host;rpName='JourneyDeck';userId=$UserId;userName=$WebAuthConfig.OwnerEmail}
+                    return
+                }
+
+                "/api/auth/passkey/register/verify" {
+                    $Body=ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields challengeId,credentialId,clientDataJSON,authenticatorData,publicKeySpki
+                    try{$Challenge=Use-DriveOSPasskeyChallenge -ChallengeId "$($Body.challengeId)" -Purpose register -ClientKey $ClientKey}catch{Send-Json -Stream $Stream -StatusCode 400 -StatusText 'Bad Request' -Object @{error=$_.Exception.Message};return}
+                    $Origin=([Uri]$RuntimeConfig.PublicUrl).GetLeftPart([UriPartial]::Authority).TrimEnd('/')
+                    $ClientBytes=Test-DriveOSPasskeyClientData -ClientDataJSON "$($Body.clientDataJSON)" -ExpectedType 'webauthn.create' -ExpectedChallenge $Challenge.challenge -ExpectedOrigin $Origin
+                    try{$AuthBytes=ConvertFrom-DriveOSPasskeyBase64Url "$($Body.authenticatorData)";$KeyBytes=ConvertFrom-DriveOSPasskeyBase64Url "$($Body.publicKeySpki)";$Ecdsa=[Security.Cryptography.ECDsa]::Create();$Read=0;$Ecdsa.ImportSubjectPublicKeyInfo($KeyBytes,[ref]$Read);$Ecdsa.Dispose()}catch{$ClientBytes=$null}
+                    if(-not $ClientBytes -or -not(Test-DriveOSPasskeyAuthenticatorData -AuthenticatorData $AuthBytes -RpId ([Uri]$RuntimeConfig.PublicUrl).Host) -or "$($Body.credentialId)".Length -gt 1024){Send-Json -Stream $Stream -StatusCode 400 -StatusText 'Bad Request' -Object @{error='Passkey registration could not be verified.'};return}
+                    $Record=[PSCustomObject]@{version=1;credentialId="$($Body.credentialId)";publicKeySpki="$($Body.publicKeySpki)";signCount=(Get-DriveOSPasskeySignCount $AuthBytes);transports=@($Body.transports);createdAtUtc=[DateTimeOffset]::UtcNow.ToString('o');lastUsedAtUtc=$null}
+                    Set-DriveOSPasskeyRecord -Repository $Repository -Record $Record
+                    Send-Json -Stream $Stream -Object @{registered=$true}
+                    return
+                }
+
+                "/api/auth/passkey/remove" {
+                    $Empty=[PSCustomObject]@{version=1;credentialId=$null;removedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')};Set-DriveOSPasskeyRecord -Repository $Repository -Record $Empty
+                    Send-Json -Stream $Stream -Object @{registered=$false}
+                    return
+                }
+
                 "/api/mobility/place" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields nodeId
                     Send-Json -Stream $Stream -Object (Set-MobilityPlacePreference -Repository $Repository -Candidate $Body)
@@ -4140,6 +4206,32 @@ function Handle-Request {
                 "/api/collections/delete" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields collectionId
                     Send-Json -Stream $Stream -Object (Remove-JourneyCollection -Repository $Repository -CollectionId $Body.collectionId)
+                    return
+                }
+
+                "/api/collections/attachments/list" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields collectionId
+                    Send-Json -Stream $Stream -Object @{ attachments = @(Get-DriveOSJourneyAttachments -Repository $Repository -CollectionId "$($Body.collectionId)") }
+                    return
+                }
+
+                "/api/collections/attachments/get" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields attachmentId
+                    $Attachment = @(Get-DriveOSJourneyAttachments -Repository $Repository -AttachmentId "$($Body.attachmentId)" -IncludeData) | Select-Object -First 1
+                    if (-not $Attachment) { Send-Json -Stream $Stream -StatusCode 404 -StatusText 'Not Found' -Object @{ error='Attachment was not found.' }; return }
+                    Send-Json -Stream $Stream -Object $Attachment
+                    return
+                }
+
+                "/api/collections/attachments/add" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields collectionId,fileName,contentType,dataBase64
+                    Send-Json -Stream $Stream -Object (Add-JourneyAttachment -Repository $Repository -CollectionId "$($Body.collectionId)" -FileName "$($Body.fileName)" -ContentType "$($Body.contentType)" -DataBase64 "$($Body.dataBase64)")
+                    return
+                }
+
+                "/api/collections/attachments/remove" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields attachmentId
+                    Send-Json -Stream $Stream -Object (Remove-JourneyAttachment -Repository $Repository -AttachmentId "$($Body.attachmentId)")
                     return
                 }
 
@@ -4629,6 +4721,7 @@ try {
             }
 
             $ContentLength = 0
+            $RequestMaxBodyBytes = if ($Method -eq 'POST' -and $Path -eq '/api/collections/attachments/add' -and $WebPrincipal -and $WebPrincipal.Role -eq 'owner') { 3145728 } else { $MaxBodyBytes }
 
             if ($Headers.ContainsKey("content-length")) {
                 if (-not [int]::TryParse(
@@ -4636,7 +4729,7 @@ try {
                     [ref]$ContentLength
                 ) -or
                     $ContentLength -lt 0 -or
-                    $ContentLength -gt $MaxBodyBytes) {
+                    $ContentLength -gt $RequestMaxBodyBytes) {
                     Send-RequestRejected `
                         -Stream $Stream `
                         -Code 413 `

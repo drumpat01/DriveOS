@@ -11,7 +11,7 @@ function Get-DriveOSHttpError {
     $result=[ordered]@{statusCode=500;statusText='Internal Server Error';publicMessage='DriveOS request failed.'}
     if($Message -like '*Spotify token file not found*'){$result.statusCode=401;$result.statusText='Unauthorized';$result.publicMessage='Spotify authorization is required on this computer.'}
     elseif($Message -like '*playlist-modify-private*'){$result.statusCode=403;$result.statusText='Forbidden';$result.publicMessage='Spotify playlist permission is not available. Reauthorize Spotify for DriveOS.'}
-    elseif($Message -like 'Collection *' -or $Message -like 'A collection *' -or $Message -like '* is required*' -or $Message -like '*Request body was empty*' -or $Message -like '*invalid JSON*'){$result.statusCode=400;$result.statusText='Bad Request';$result.publicMessage=$Message}
+    elseif($Message -like 'Collection *' -or $Message -like 'A collection *' -or $Message -like 'Attachment *' -or $Message -like 'Attachments *' -or $Message -like 'This file type *' -or $Message -like 'A journey *' -or $Message -like '* is required*' -or $Message -like '*Request body was empty*' -or $Message -like '*invalid JSON*'){$result.statusCode=400;$result.statusText='Bad Request';$result.publicMessage=$Message}
     return [pscustomobject]$result
 }
 
