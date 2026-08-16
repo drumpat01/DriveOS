@@ -3150,6 +3150,9 @@ liveDriveFeature.bind();
 const dataHealthFeature = window.DriveOSFeatures.dataHealth.create({ api: window.DriveOSApi });
 dataHealthFeature.bind();
 
+const mobilityGraphFeature = window.DriveOSFeatures.mobilityGraph.create({ api: window.DriveOSApi });
+mobilityGraphFeature.bind();
+
 const spotifyConnectButton = $("spotifyConnectButton");
 if (spotifyConnectButton) {
   spotifyConnectButton.addEventListener("click", connectSpotifyOnThisComputer);
@@ -3231,7 +3234,7 @@ document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
 updateClock();
 setInterval(updateClock, 30_000);
 
-const initialView = ["dashboard", "live", "drives", "timeline", "music", "statistics"].includes(requestedInitialView)
+const initialView = ["dashboard", "live", "drives", "graph", "timeline", "music", "statistics"].includes(requestedInitialView)
   ? requestedInitialView
   : "dashboard";
 

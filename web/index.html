@@ -65,7 +65,7 @@
       </div>
 
       <div class="jd-loading-panel">
-        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.3</strong></div>
+        <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.4</strong></div>
         <div class="jd-loading-track"><i></i></div>
         <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
@@ -98,6 +98,7 @@
         <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Dashboard</span><span class="nav-mobile-label">Home</span></button>
         <button class="nav-button nav-button-live" data-view="live"><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
         <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Drives</span></button>
+        <button class="nav-button nav-secondary" data-view="graph">Graph</button>
         <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
         <button class="nav-button nav-secondary" data-view="music">Music</button>
         <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
@@ -115,7 +116,7 @@
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed JourneyDeck web build">5.3.3</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.4.0</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -529,6 +530,40 @@
 
       </section>
 
+      <!-- PERSONAL MOBILITY GRAPH -->
+      <section id="view-graph" class="view">
+        <div class="page-heading mobility-graph-heading">
+          <div>
+            <div class="section-label">YOUR MOVEMENT, CONNECTED</div>
+            <h2>Personal Mobility Graph</h2>
+            <p>A living map of the places that shape your life and the journeys connecting them.</p>
+          </div>
+          <span class="mobility-private-pill">Private to JourneyDeck</span>
+        </div>
+
+        <div id="mobilityGraphSummary" class="mobility-graph-summary" aria-label="Mobility graph summary">
+          <article><span>Places</span><strong>--</strong></article>
+          <article><span>Connections</span><strong>--</strong></article>
+          <article><span>Drives mapped</span><strong>--</strong></article>
+          <article><span>Miles connected</span><strong>--</strong></article>
+        </div>
+
+        <section class="panel mobility-graph-panel" aria-labelledby="mobilityGraphCanvasHeading">
+          <div class="mobility-graph-panel-heading">
+            <div><div class="section-label">365-DAY NETWORK</div><h3 id="mobilityGraphCanvasHeading">The shape of your movement</h3></div>
+            <p id="mobilityGraphStatus" class="muted" role="status">Building your graph&hellip;</p>
+          </div>
+          <div class="mobility-graph-layout">
+            <div id="mobilityGraphCanvas" class="mobility-graph-canvas" aria-live="polite"></div>
+            <aside id="mobilityGraphInspector" class="mobility-graph-inspector" aria-label="Selected place details">
+              <div class="section-label">SELECT A PLACE</div>
+              <h3>Your recurring world</h3>
+              <p>Choose any node to see how often you visit and which places it connects to.</p>
+            </aside>
+          </div>
+        </section>
+      </section>
+
       <!-- MUSIC -->
       <section id="view-music" class="view">
         <div class="page-heading">
@@ -706,7 +741,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">JourneyDeck Web 5.3.3</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.4.0</span>
       <span id="hostContextFooter">Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -715,6 +750,7 @@
     <section class="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="More JourneyDeck views">
       <header><div><span>JOURNEYDECK</span><strong>More</strong></div><button type="button" data-mobile-menu-close aria-label="Close">&times;</button></header>
       <div class="mobile-more-grid">
+        <button type="button" data-mobile-view="graph"><span aria-hidden="true">&#x25C9;</span><strong>Mobility Graph</strong><small>Your places and connections</small></button>
         <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Drives and music together</small></button>
         <button type="button" data-mobile-view="music"><span aria-hidden="true">&#9835;</span><strong>Music</strong><small>Your driving soundtrack</small></button>
         <button type="button" data-mobile-view="statistics"><span aria-hidden="true">&#x2197;</span><strong>Statistics</strong><small>Miles, energy, and recaps</small></button>
@@ -976,30 +1012,31 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.3.3"></script>
-  <script src="/core/dom.js?v=5.3.3"></script>
-  <script src="/core/state.js?v=5.3.3"></script>
-  <script src="/core/platform.js?v=5.3.3"></script>
-  <script src="/core/api.js?v=5.3.3"></script>
-  <script src="/components/song-artwork.js?v=5.3.3"></script>
-  <script src="/features/navigation.js?v=5.3.3"></script>
-  <script src="/features/pwa.js?v=5.3.3"></script>
-  <script src="/features/theme.js?v=5.3.3"></script>
-  <script src="/features/ignition.js?v=5.3.3"></script>
-  <script src="/features/places.js?v=5.3.3"></script>
-  <script src="/features/charging.js?v=5.3.3"></script>
-  <script src="/features/recaps.js?v=5.3.3"></script>
-  <script src="/features/refresh.js?v=5.3.3"></script>
-  <script src="/features/drives.js?v=5.3.3"></script>
-  <script src="/features/replay.js?v=5.3.3"></script>
-  <script src="/features/music.js?v=5.3.3"></script>
-  <script src="/features/share-cards.js?v=5.3.3"></script>
-  <script src="/features/command-palette.js?v=5.3.3"></script>
-  <script src="/features/dashboard-customization.js?v=5.3.3"></script>
-  <script src="/features/dashboard-widgets.js?v=5.3.3"></script>
-  <script src="/features/live-drive.js?v=5.3.3"></script>
-  <script src="/features/data-health.js?v=5.3.3"></script>
-  <script src="/features/collections.js?v=5.3.3"></script>
-  <script src="/app.js?v=5.3.3"></script>
+  <script src="/core/build.js?v=5.4.0"></script>
+  <script src="/core/dom.js?v=5.4.0"></script>
+  <script src="/core/state.js?v=5.4.0"></script>
+  <script src="/core/platform.js?v=5.4.0"></script>
+  <script src="/core/api.js?v=5.4.0"></script>
+  <script src="/components/song-artwork.js?v=5.4.0"></script>
+  <script src="/features/navigation.js?v=5.4.0"></script>
+  <script src="/features/pwa.js?v=5.4.0"></script>
+  <script src="/features/theme.js?v=5.4.0"></script>
+  <script src="/features/ignition.js?v=5.4.0"></script>
+  <script src="/features/places.js?v=5.4.0"></script>
+  <script src="/features/charging.js?v=5.4.0"></script>
+  <script src="/features/recaps.js?v=5.4.0"></script>
+  <script src="/features/refresh.js?v=5.4.0"></script>
+  <script src="/features/drives.js?v=5.4.0"></script>
+  <script src="/features/replay.js?v=5.4.0"></script>
+  <script src="/features/music.js?v=5.4.0"></script>
+  <script src="/features/share-cards.js?v=5.4.0"></script>
+  <script src="/features/command-palette.js?v=5.4.0"></script>
+  <script src="/features/dashboard-customization.js?v=5.4.0"></script>
+  <script src="/features/dashboard-widgets.js?v=5.4.0"></script>
+  <script src="/features/live-drive.js?v=5.4.0"></script>
+  <script src="/features/data-health.js?v=5.4.0"></script>
+  <script src="/features/collections.js?v=5.4.0"></script>
+  <script src="/features/mobility-graph.js?v=5.4.0"></script>
+  <script src="/app.js?v=5.4.0"></script>
 </body>
 </html>

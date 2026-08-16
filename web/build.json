@@ -1,7 +1,7 @@
 {
   "product": "JourneyDeck",
-  "version": "5.3.3",
-  "webBuild": "5.3.3",
+  "version": "5.4.0",
+  "webBuild": "5.4.0",
   "features": [
     "friendly-places",
     "charging-history",
@@ -10,8 +10,9 @@
     "foursquare-business-names",
     "privacy-safe-share-cards",
     "live-drive",
-    "journey-collections"
+    "journey-collections",
+    "personal-mobility-graph"
   ],
-  "css": "/styles.css?v=5.3.3",
-  "js": "/app.js?v=5.3.3"
+  "css": "/styles.css?v=5.4.0",
+  "js": "/app.js?v=5.4.0"
 }
