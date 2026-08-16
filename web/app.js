@@ -852,7 +852,7 @@ function renderFavoriteRoutes() {
   });
 }
 
-const collectionsFeature = window.DriveOSFeatures.collections.create({ state, api: window.DriveOSApi, applyFilter: applyJourneyCollectionFilter });
+const collectionsFeature = window.DriveOSFeatures.collections.create({ state, api: window.DriveOSApi, applyFilter: applyJourneyCollectionFilter, ensureMapLibre });
 
 function filteredDriveLibrary() {
   const query = $("driveSearchInput")?.value?.trim().toLocaleLowerCase() || "";

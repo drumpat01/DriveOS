@@ -30,6 +30,8 @@ finally { if(Test-Path -LiteralPath $Scratch){Remove-Item -LiteralPath $Scratch 
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $WifeJs = Get-Content (Join-Path $Root 'web\wife.js') -Raw
 $Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
+$Index = Get-Content (Join-Path $Root 'web\index.html') -Raw
+$CollectionsJs = Get-Content (Join-Path $Root 'web\features\collections.js') -Raw
 Assert-True ($Server -match '"/api/collections"') 'Owner collection read endpoint is missing.'
 Assert-True ($Server -match '"/api/collections/save"' -and $Server -match '"/api/collections/delete"') 'Owner collection mutation endpoints are missing.'
 Assert-True ($Server -match '"/api/wife/collections"') 'Wife Mode collection read endpoint is missing.'
@@ -38,4 +40,9 @@ Assert-True ($WifeJs -notmatch '/api/collections/(save|delete)') 'Wife Mode cont
 Assert-True ($Styles -match '\.journey-collections-panel\s*\{[^}]*padding:\s*24px') 'Journey collections panel lacks a safe desktop content inset.'
 Assert-True ($Styles -match '\.journey-collections-panel \.panel-description,[\s\S]*?white-space:\s*normal') 'Journey collections copy can still be clipped instead of wrapping.'
 Assert-True ($Styles -match '@media \(max-width:760px\)[^{]*\{[^}]*\.journey-collections-panel\s*\{\s*padding:\s*18px') 'Journey collections panel lacks a responsive content inset.'
+Assert-True ($Index -match 'id="journeyStoryModal"' -and $Index -match 'id="journeyStoryMap"' -and $Index -match 'id="journeyStoryPhotos"') 'Collection story modal is missing its photo or map surfaces.'
+Assert-True ($CollectionsJs -match 'collectionMusic' -and $CollectionsJs -match 'albumImage' -and $CollectionsJs -match 'TOP ARTIST') 'Collection story does not derive its top artist.'
+Assert-True ($CollectionsJs -match 'slice\(0,3\)' -and $CollectionsJs -match '/api/collections/attachments/get') 'Collection story does not load its first attached photos.'
+Assert-True ($CollectionsJs -match 'collectionRoutes' -and $CollectionsJs -match 'collection-routes') 'Collection story map overview is missing.'
+Assert-True ($Styles -match '@media \(max-width:760px\)[\s\S]*?\.journey-story-grid\s*\{\s*grid-template-columns:1fr') 'Collection story is not responsive on mobile.'
 Write-Host 'Journey Collections checks passed.' -ForegroundColor Green
