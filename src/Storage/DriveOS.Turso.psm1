@@ -93,8 +93,8 @@ function Invoke-DriveOSTursoPipeline {
         -Uri "$BaseUrl/v2/pipeline" `
         -Method Post `
         -Headers @{ Authorization = "Bearer $($Repository.TursoAuthToken)" } `
-        -ContentType "application/json" `
-        -Body $Payload `
+        -ContentType "application/json; charset=utf-8" `
+        -Body ([Text.Encoding]::UTF8.GetBytes($Payload)) `
         -TimeoutSec (Get-DriveOSTursoHttpTimeoutSeconds)
 
     $ExecuteResults = @()
@@ -157,7 +157,7 @@ function Invoke-DriveOSTursoTransactionalBatch {
         )
     } | ConvertTo-Json -Depth 30 -Compress
     $BaseUrl = Get-DriveOSTursoHttpUrl -DatabaseUrl $Repository.TursoDatabaseUrl
-    $Response = Invoke-RestMethod -Uri "$BaseUrl/v2/pipeline" -Method Post -Headers @{ Authorization = "Bearer $($Repository.TursoAuthToken)" } -ContentType 'application/json' -Body $Payload -TimeoutSec (Get-DriveOSTursoHttpTimeoutSeconds)
+    $Response = Invoke-RestMethod -Uri "$BaseUrl/v2/pipeline" -Method Post -Headers @{ Authorization = "Bearer $($Repository.TursoAuthToken)" } -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($Payload)) -TimeoutSec (Get-DriveOSTursoHttpTimeoutSeconds)
     $PipelineResult = $Response.results[0]
     if (-not $PipelineResult -or $PipelineResult.type -ne 'ok' -or $PipelineResult.response.type -ne 'batch') {
         $Message = 'Turso transactional batch failed.'
@@ -498,6 +498,22 @@ function Add-DriveOSTursoHistoryRecord {
         -Args @("$($Record.id)", "$($Record.played_at)", $Payload)
 }
 
+function Add-DriveOSTursoHistoryRecords {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][object[]]$Records
+    )
+    $Statements = @($Records | ForEach-Object {
+        $Payload = $_ | ConvertTo-Json -Depth 20 -Compress
+        $Payload = $Payload -replace '[\uD800-\uDFFF]',''
+        [PSCustomObject]@{
+            Sql = 'INSERT OR IGNORE INTO listening_history(id,played_at,payload_json) VALUES(?,?,?);'
+            Args = @("$($_.id)","$($_.played_at)",$Payload)
+        }
+    })
+    Invoke-DriveOSTursoStatementChunks -Repository $Repository -Statements $Statements
+}
+
 function Get-DriveOSTursoSoundtracks {
     param([Parameter(Mandatory=$true)]$Repository)
 
@@ -521,6 +537,24 @@ function Set-DriveOSTursoSoundtrack {
         -Repository $Repository `
         -Sql "INSERT INTO drive_soundtracks(drive_id,drive_started_at,drive_ended_at,status,payload_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET drive_started_at=excluded.drive_started_at,drive_ended_at=excluded.drive_ended_at,status=excluded.status,payload_json=excluded.payload_json,updated_at=excluded.updated_at;" `
         -Args @("$($Record.driveId)", "$($Record.startedAt)", "$($Record.endedAt)", "$($Record.status)", $Payload, $UpdatedAt)
+}
+
+function Set-DriveOSTursoSoundtracks {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)][AllowEmptyCollection()][object[]]$Records
+    )
+    $UpdatedAt = [DateTimeOffset]::UtcNow.ToString('o')
+    $Statements = @($Records | ForEach-Object {
+        $Payload = $_ | ConvertTo-Json -Depth 30 -Compress
+        $Payload = $Payload -replace '[\uD800-\uDFFF]',''
+        [PSCustomObject]@{
+            Sql = 'INSERT INTO drive_soundtracks(drive_id,drive_started_at,drive_ended_at,status,payload_json,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(drive_id) DO UPDATE SET drive_started_at=excluded.drive_started_at,drive_ended_at=excluded.drive_ended_at,status=excluded.status,payload_json=excluded.payload_json,updated_at=excluded.updated_at;'
+            Args = @("$($_.driveId)","$($_.startedAt)","$($_.endedAt)","$($_.status)",$Payload,$UpdatedAt)
+        }
+    })
+    # Soundtrack payloads are larger than history rows; keep request bodies bounded.
+    Invoke-DriveOSTursoStatementChunks -Repository $Repository -Statements $Statements -MaximumStatements 20
 }
 
 function Get-DriveOSTursoAliases {
@@ -652,8 +686,10 @@ Export-ModuleMember -Function `
     Get-DriveOSTursoLatestIntegrityAuditRun, `
     Get-DriveOSTursoHistory, `
     Add-DriveOSTursoHistoryRecord, `
+    Add-DriveOSTursoHistoryRecords, `
     Get-DriveOSTursoSoundtracks, `
     Set-DriveOSTursoSoundtrack, `
+    Set-DriveOSTursoSoundtracks, `
     Get-DriveOSTursoAliases, `
     Set-DriveOSTursoAliases, `
     Get-DriveOSTursoSettings, `

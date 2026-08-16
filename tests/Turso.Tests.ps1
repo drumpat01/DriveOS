@@ -80,10 +80,11 @@ $global:DriveOSTestTursoBodies = New-Object System.Collections.ArrayList
 $global:DriveOSTestTursoTimeouts = New-Object System.Collections.ArrayList
 function global:Invoke-RestMethod {
     param($Uri,$Method,$Headers,$ContentType,$Body,$TimeoutSec)
-    $global:DriveOSTestTursoBody = $Body
-    $null = $global:DriveOSTestTursoBodies.Add($Body)
+    $BodyText = if ($Body -is [byte[]]) { [Text.Encoding]::UTF8.GetString($Body) } else { "$Body" }
+    $global:DriveOSTestTursoBody = $BodyText
+    $null = $global:DriveOSTestTursoBodies.Add($BodyText)
     $null = $global:DriveOSTestTursoTimeouts.Add($TimeoutSec)
-    $Request = $Body | ConvertFrom-Json
+    $Request = $BodyText | ConvertFrom-Json
     $StepCount = @($Request.requests[0].batch.steps).Count
     $StepResults = New-Object object[] $StepCount
     $StepErrors = New-Object object[] $StepCount
