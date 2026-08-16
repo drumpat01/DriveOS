@@ -61,6 +61,30 @@ function Get-DriveOSPasskeySignCount {
     return [uint32](($AuthenticatorData[33]-shl 24)-bor($AuthenticatorData[34]-shl 16)-bor($AuthenticatorData[35]-shl 8)-bor$AuthenticatorData[36])
 }
 
+function New-DriveOSEcdsaFromPasskeySpki {
+    param([byte[]]$PublicKeySpki)
+    # WebAuthn ES256 public keys are returned as a 91-byte SubjectPublicKeyInfo
+    # structure containing the P-256 algorithm identifiers and an uncompressed point.
+    [byte[]]$Prefix=0x30,0x59,0x30,0x13,0x06,0x07,0x2A,0x86,0x48,0xCE,0x3D,0x02,0x01,0x06,0x08,0x2A,0x86,0x48,0xCE,0x3D,0x03,0x01,0x07,0x03,0x42,0x00,0x04
+    if(-not $PublicKeySpki -or $PublicKeySpki.Length -ne 91){return $null}
+    for($Index=0;$Index -lt $Prefix.Length;$Index++){if($PublicKeySpki[$Index] -ne $Prefix[$Index]){return $null}}
+    $Ecdsa=$null
+    try {
+        $Parameters=[Security.Cryptography.ECParameters]::new()
+        $Parameters.Curve=[Security.Cryptography.ECCurve]::CreateFromFriendlyName('nistP256')
+        $Point=[Security.Cryptography.ECPoint]::new()
+        $Point.X=[byte[]]($PublicKeySpki[27..58])
+        $Point.Y=[byte[]]($PublicKeySpki[59..90])
+        $Parameters.Q=$Point
+        $Ecdsa=[Security.Cryptography.ECDsa]::Create()
+        $Ecdsa.ImportParameters($Parameters)
+        return $Ecdsa
+    } catch {
+        if($Ecdsa){$Ecdsa.Dispose()}
+        return $null
+    }
+}
+
 function Test-DriveOSPasskeyAssertion {
     param([string]$ClientDataJSON,[string]$AuthenticatorData,[string]$Signature,[string]$PublicKeySpki,[string]$ExpectedChallenge,[string]$Origin,[string]$RpId)
     $ClientBytes=Test-DriveOSPasskeyClientData -ClientDataJSON $ClientDataJSON -ExpectedType 'webauthn.get' -ExpectedChallenge $ExpectedChallenge -ExpectedOrigin $Origin
@@ -69,8 +93,9 @@ function Test-DriveOSPasskeyAssertion {
     if(-not(Test-DriveOSPasskeyAuthenticatorData -AuthenticatorData $AuthBytes -RpId $RpId)){return $false}
     $Hasher=[Security.Cryptography.SHA256]::Create();try{$ClientHash=$Hasher.ComputeHash($ClientBytes)}finally{$Hasher.Dispose()}
     $Signed=New-Object byte[] ($AuthBytes.Length+$ClientHash.Length);[Array]::Copy($AuthBytes,0,$Signed,0,$AuthBytes.Length);[Array]::Copy($ClientHash,0,$Signed,$AuthBytes.Length,$ClientHash.Length)
-    $Ecdsa=[Security.Cryptography.ECDsa]::Create()
-    try{$Read=0;$Ecdsa.ImportSubjectPublicKeyInfo($KeyBytes,[ref]$Read);return $Ecdsa.VerifyData($Signed,$SignatureBytes,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.DSASignatureFormat]::Rfc3279DerSequence)}catch{return $false}finally{$Ecdsa.Dispose()}
+    $Ecdsa=New-DriveOSEcdsaFromPasskeySpki -PublicKeySpki $KeyBytes
+    if(-not $Ecdsa){return $false}
+    try{return $Ecdsa.VerifyData($Signed,$SignatureBytes,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.DSASignatureFormat]::Rfc3279DerSequence)}catch{return $false}finally{$Ecdsa.Dispose()}
 }
 
-Export-ModuleMember -Function ConvertTo-DriveOSPasskeyBase64Url,ConvertFrom-DriveOSPasskeyBase64Url,New-DriveOSPasskeyChallenge,Use-DriveOSPasskeyChallenge,Test-DriveOSPasskeyClientData,Test-DriveOSPasskeyAuthenticatorData,Get-DriveOSPasskeySignCount,Test-DriveOSPasskeyAssertion
+Export-ModuleMember -Function ConvertTo-DriveOSPasskeyBase64Url,ConvertFrom-DriveOSPasskeyBase64Url,New-DriveOSPasskeyChallenge,Use-DriveOSPasskeyChallenge,Test-DriveOSPasskeyClientData,Test-DriveOSPasskeyAuthenticatorData,Get-DriveOSPasskeySignCount,New-DriveOSEcdsaFromPasskeySpki,Test-DriveOSPasskeyAssertion

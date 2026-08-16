@@ -21,4 +21,10 @@ Assert-True (Test-DriveOSPasskeyAuthenticatorData -AuthenticatorData $Auth -RpId
 Assert-True ((Get-DriveOSPasskeySignCount $Auth) -eq 7) 'Passkey sign counter was decoded incorrectly.'
 $Auth[32]=0x01
 Assert-True (-not (Test-DriveOSPasskeyAuthenticatorData -AuthenticatorData $Auth -RpId $RpId)) 'Authenticator data without user verification was accepted.'
+$Spki=[Convert]::FromBase64String('MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJ6M5y3VEbljXgrtigIk/2JxCEVAX85iihnGmdeBdfZyIEqsW9s6MgGUxSm7eNDgGUBrgbCInq2hQirluohkWNg==')
+$Imported=New-DriveOSEcdsaFromPasskeySpki -PublicKeySpki $Spki
+Assert-True ($null -ne $Imported) 'A valid Safari-compatible P-256 SPKI key was rejected.'
+$Imported.Dispose()
+$Spki[10]=0
+Assert-True ($null -eq (New-DriveOSEcdsaFromPasskeySpki -PublicKeySpki $Spki)) 'A malformed passkey public key was accepted.'
 Write-Host 'Passkey security checks passed.' -ForegroundColor Green
