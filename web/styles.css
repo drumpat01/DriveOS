@@ -8192,3 +8192,365 @@ body > .main-nav .nav-button-live .nav-live-dot {
 .journey-collection-drive-choice { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:11px; padding:11px; border:1px solid var(--line); border-radius:13px; cursor:pointer; }.journey-collection-drive-choice:has(input:checked) { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 8%,var(--panel)); }.journey-collection-drive-choice input { accent-color:var(--accent); }.journey-collection-drive-choice strong,.journey-collection-drive-choice small { display:block; }.journey-collection-drive-choice small { margin-top:3px; color:var(--muted); line-height:1.35; }
 .journey-collection-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:17px; }.danger-button { border:1px solid rgba(239,68,68,.3); border-radius:12px; padding:10px 14px; background:rgba(239,68,68,.08); color:#e45d5d; font-weight:800; cursor:pointer; }.journey-collection-actions .danger-button { margin-right:auto; }
 @media (max-width:760px) { .journey-collections-grid { grid-template-columns:1fr; }.journey-collection-card { align-items:stretch; flex-direction:column; }.journey-collection-card-actions { width:100%; }.journey-collection-card-actions .secondary-button { flex:1; }.journey-collections-panel .panel-heading { align-items:stretch; flex-direction:column; }.journey-collections-panel .panel-heading .primary-button { width:100%; }.journey-collection-modal-card { padding:24px 17px; }.journey-collection-actions { display:grid; grid-template-columns:1fr; }.journey-collection-actions .danger-button { grid-row:2; margin:0; } }
+
+/* =====================================================================
+   JourneyDeck application UI consistency
+   This is the shared authority for application chrome, type hierarchy,
+   controls, and owner Data Health surfaces. Keep it after feature styles.
+   ===================================================================== */
+:root {
+  --ui-control-height: 40px;
+  --ui-control-radius: 12px;
+  --ui-content-radius: 20px;
+  --ui-label-size: .68rem;
+  --ui-body-size: .88rem;
+  --ui-control-size: .76rem;
+  --ui-heading-weight: 750;
+  --ui-control-weight: 700;
+}
+
+body {
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  letter-spacing: 0;
+}
+
+.section-label {
+  font-size: var(--ui-label-size);
+  font-weight: 800;
+  line-height: 1.35;
+  letter-spacing: .12em;
+}
+
+.page-heading h2 {
+  margin: 6px 0 9px;
+  font-size: clamp(2rem, 3.5vw, 3.25rem);
+  font-weight: var(--ui-heading-weight);
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+
+.page-heading p {
+  font-size: .92rem;
+  line-height: 1.55;
+}
+
+.panel-heading h2,
+.panel-heading h3 {
+  font-weight: var(--ui-heading-weight);
+  line-height: 1.15;
+}
+
+.primary-button,
+.secondary-button,
+.refresh-button {
+  min-height: var(--ui-control-height);
+  padding: 0 14px;
+  border-radius: var(--ui-control-radius);
+  font-size: var(--ui-control-size);
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+}
+
+/* The desktop header intentionally uses two calm rows. The complete set of
+   owner navigation and utility controls cannot fit inside the 1580px shell
+   without wrapping individual labels or clipping the session controls. */
+@media (min-width: 1121px) {
+  .topbar {
+    grid-template-columns: max-content minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-items: center !important;
+    gap: 8px 18px !important;
+    padding: 10px 16px !important;
+  }
+
+  .topbar .brand {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  .topbar .main-nav {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .topbar .topbar-right {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    width: auto;
+    max-width: 100%;
+    justify-self: end !important;
+    justify-content: flex-end !important;
+  }
+}
+
+.topbar .main-nav {
+  gap: 4px;
+}
+
+.topbar .nav-button {
+  min-height: var(--ui-control-height);
+  padding: 0 14px;
+  border-radius: var(--ui-control-radius);
+  font-size: .8rem;
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.topbar .nav-button.active {
+  font-weight: var(--ui-control-weight);
+}
+
+.topbar-right {
+  min-width: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
+  padding: 4px 6px;
+}
+
+.topbar-right > * {
+  flex: 0 0 auto;
+}
+
+.header-sign-out {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 78px;
+  min-height: var(--ui-control-height);
+  padding: 0 13px;
+  border-radius: var(--ui-control-radius);
+  font-size: var(--ui-control-size);
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.header-sign-out[hidden] {
+  display: none;
+}
+
+.command-palette-trigger {
+  min-height: var(--ui-control-height);
+  border-radius: var(--ui-control-radius);
+  font-size: var(--ui-control-size);
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+}
+
+.command-trigger-label,
+.command-palette-trigger kbd {
+  font-weight: var(--ui-control-weight);
+}
+
+.app-version,
+.date-time {
+  font-size: .74rem;
+  font-weight: 650;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.theme-switcher {
+  min-height: var(--ui-control-height);
+  padding: 2px;
+  border-radius: var(--ui-control-radius);
+}
+
+.theme-choice {
+  min-height: 34px;
+  padding: 0 9px;
+  border-radius: 10px;
+  font-size: var(--ui-control-size);
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+}
+
+.status-pill {
+  min-height: var(--ui-control-height);
+  padding: 0 11px;
+  font-size: .66rem;
+  font-weight: var(--ui-control-weight);
+  line-height: 1;
+}
+
+/* Data Health panels are generic .panel elements. They need their own content
+   inset so rounded overflow never masks labels, values, or action copy. */
+#view-health,
+.data-health-grid,
+.data-health-detail-grid,
+.data-health-grid > *,
+.data-health-detail-grid > * {
+  min-width: 0;
+}
+
+.data-health-overall,
+.data-health-alerts,
+.data-health-card,
+.data-health-panel,
+.data-health-actions {
+  padding: 21px 22px;
+}
+
+.data-health-overall {
+  border-radius: var(--ui-content-radius);
+}
+
+.data-health-alerts,
+.data-health-card,
+.data-health-panel,
+.data-health-actions {
+  border-radius: var(--ui-content-radius);
+}
+
+.data-health-card-head > div,
+.data-health-alert > div,
+.data-health-actions > div {
+  min-width: 0;
+}
+
+.data-health-alerts h3,
+.data-health-card h3,
+.data-health-panel h3,
+.data-health-actions h3 {
+  font-size: 1.15rem;
+  font-weight: var(--ui-heading-weight);
+  line-height: 1.2;
+  letter-spacing: -.02em;
+}
+
+.data-health-card dl {
+  gap: 0;
+  margin-top: 17px;
+}
+
+.data-health-card dl div {
+  align-items: baseline;
+  padding: 11px 0;
+}
+
+.data-health-card dt,
+.data-health-card dd,
+.data-health-rollout,
+.data-health-actions p {
+  font-size: var(--ui-body-size);
+  line-height: 1.45;
+}
+
+.data-health-card dd {
+  overflow-wrap: anywhere;
+}
+
+.data-health-metrics div {
+  min-width: 0;
+  padding: 14px;
+}
+
+.data-health-metrics span {
+  font-size: .74rem;
+  line-height: 1.35;
+}
+
+.data-health-metrics strong {
+  font-size: 1.18rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.data-health-rollout > div {
+  align-items: baseline;
+  padding: 10px 0;
+}
+
+.data-health-rollout > div > * {
+  min-width: 0;
+}
+
+.data-health-rollout strong {
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.data-health-actions a {
+  min-height: var(--ui-control-height);
+}
+
+@media (max-width: 1120px) {
+  .main-nav.mobile-nav-portal .nav-button,
+  body > .main-nav .nav-button {
+    font-weight: var(--ui-control-weight) !important;
+  }
+
+  .main-nav.mobile-nav-portal .nav-button.active,
+  body > .main-nav .nav-button.active {
+    font-weight: var(--ui-control-weight) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .page-heading {
+    margin: 12px 2px 16px !important;
+  }
+
+  .page-heading h2 {
+    font-size: 1.75rem !important;
+    line-height: 1.08;
+  }
+
+  .page-heading p {
+    font-size: .86rem;
+  }
+
+  .data-health-grid,
+  .data-health-detail-grid {
+    gap: 10px;
+  }
+
+  .data-health-detail-grid,
+  .data-health-actions {
+    margin-top: 10px;
+  }
+
+  .data-health-overall,
+  .data-health-alerts,
+  .data-health-card,
+  .data-health-panel,
+  .data-health-actions {
+    padding: 17px;
+    border-radius: 18px;
+  }
+
+  .data-health-overall {
+    margin-bottom: 10px;
+  }
+
+  .data-health-alerts {
+    gap: 13px;
+    margin-bottom: 10px;
+  }
+
+  .data-health-card-head {
+    gap: 12px;
+  }
+
+  .data-health-metrics {
+    gap: 7px;
+    margin-top: 15px;
+  }
+
+  .data-health-metrics div {
+    padding: 12px;
+  }
+
+  .data-health-actions p {
+    margin-top: 8px;
+  }
+}
