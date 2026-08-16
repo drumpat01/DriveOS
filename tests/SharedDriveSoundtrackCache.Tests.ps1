@@ -5,6 +5,18 @@ function Assert-True([bool]$Condition,[string]$Message) { if (-not $Condition) {
 
 Import-Module (Join-Path $Root 'src\Storage\DriveOS.Storage.psm1') -Force
 Import-Module (Join-Path $Root 'src\Repositories\DriveOS.Repository.psm1') -Force
+Import-Module (Join-Path $Root 'src\Domain\Drives\DriveOS.Drives.psm1') -Force
+
+$RawDriveModel = [PSCustomObject]@{
+    started_at=100; ended_at=200; starting_battery=80; ending_battery=79
+    odometer_distance=1; energy_used=.25; average_speed=20; max_speed=30
+    starting_location='Start'; ending_location='End'
+}
+$NullSafeModel = ConvertTo-DriveOSDrive -Drive $RawDriveModel -Soundtrack @($null)
+Assert-True ($NullSafeModel.songCount -eq 0) 'A null soundtrack entry still creates a phantom song count.'
+Assert-True (@($NullSafeModel.soundtrack).Count -eq 0) 'A null soundtrack entry still reaches the public payload.'
+$ConsistentModel = ConvertTo-DriveOSDrive -Drive $RawDriveModel -Soundtrack @($null,[PSCustomObject]@{track='Real song'})
+Assert-True ($ConsistentModel.songCount -eq @($ConsistentModel.soundtrack).Count) 'Public songCount no longer equals soundtrack length.'
 
 $TestDirectory = Join-Path $env:TEMP "driveos-soundtrack-$([Guid]::NewGuid().ToString('N'))"
 try {
@@ -28,6 +40,7 @@ $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 Assert-True ($Server -match 'Get-CanonicalDriveSoundtrack') 'Canonical soundtrack resolver is missing.'
 Assert-True ($Server -match 'Get-CachedDriveSoundtrack') 'Read-only soundtrack cache accessor is missing.'
 Assert-True ($Server -match 'Invoke-ScheduledSpotifySync[\s\S]+Update-RecentDriveSoundtrackCache -Days 1') 'Scheduled Spotify sync does not reconcile recent drive soundtracks.'
+Assert-True ($Server -match 'Invoke-ScheduledSpotifySync[\s\S]+Invoke-SoundtrackBackfillStep') 'Scheduled Spotify sync does not advance the resumable historical backfill.'
 
 $Tokens = $null
 $ParseErrors = $null
@@ -54,12 +67,15 @@ $CanonicalCalls = @($Ast.FindAll({
     param($Node)
     $Node -is [System.Management.Automation.Language.CommandAst] -and $Node.GetCommandName() -eq 'Get-CanonicalDriveSoundtrack'
 },$true))
-Assert-True ($CanonicalCalls.Count -eq 1) 'A non-background request path can invoke soundtrack reconciliation.'
-$CanonicalParent = $CanonicalCalls[0].Parent
-while ($CanonicalParent -and $CanonicalParent -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) {
-    $CanonicalParent = $CanonicalParent.Parent
-}
-Assert-True ($CanonicalParent.Name -eq 'Update-RecentDriveSoundtrackCache') 'Soundtrack reconciliation escaped the background cache updater.'
+Assert-True ($CanonicalCalls.Count -eq 2) 'Canonical soundtrack reconciliation must stay inside the two background workers.'
+$CanonicalParents = @($CanonicalCalls | ForEach-Object {
+    $Parent = $_.Parent
+    while ($Parent -and $Parent -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $Parent = $Parent.Parent }
+    $Parent.Name
+})
+Assert-True (@($CanonicalParents | Sort-Object -Unique).Count -eq 2) 'Canonical soundtrack reconciliation escaped or duplicated a background worker.'
+Assert-True ($CanonicalParents -contains 'Update-RecentDriveSoundtrackCache') 'Recent soundtrack reconciliation is no longer background-owned.'
+Assert-True ($CanonicalParents -contains 'Invoke-SoundtrackBackfillStep') 'Historical soundtrack reconciliation is no longer background-owned.'
 
 $script:DriveSoundtrackRecordsMemory = @{}
 $script:DriveSoundtrackRecordsLoaded = $true

@@ -1,6 +1,11 @@
 ﻿function ConvertTo-DriveOSDrive {
     param([Parameter(Mandatory=$true)]$Drive,[object[]]$Soundtrack=@(),[string]$StartingLocation,[string]$EndingLocation)
 
+    # PowerShell can bind an empty array argument as a single null object.
+    # Normalize at the domain boundary so the public count and payload always
+    # describe the same real songs.
+    $CleanSoundtrack = @($Soundtrack | Where-Object { $null -ne $_ })
+
     $startUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.started_at)
     $endUtc = [DateTimeOffset]::FromUnixTimeSeconds([long]$Drive.ended_at)
 
@@ -59,7 +64,7 @@
         rawStartingLocation=$Drive.starting_location;rawEndingLocation=$Drive.ending_location;startingLatitude=$Drive.starting_latitude;startingLongitude=$Drive.starting_longitude
         endingLatitude=$Drive.ending_latitude;endingLongitude=$Drive.ending_longitude;tessieTag=$Drive.tag;driverProfile=$Drive.driver_profile
         durationMinutes=$duration;miles=$miles;startingBattery=$Drive.starting_battery;endingBattery=$Drive.ending_battery;batteryUsed=$battery
-        energyKWh=$energy;efficiencyWhMi=$efficiency;averageSpeed=$Drive.average_speed;maxSpeed=$Drive.max_speed;soundtrack=@($Soundtrack);songCount=@($Soundtrack).Count
+        energyKWh=$energy;efficiencyWhMi=$efficiency;averageSpeed=$Drive.average_speed;maxSpeed=$Drive.max_speed;soundtrack=$CleanSoundtrack;songCount=$CleanSoundtrack.Count
     }
 }
 Export-ModuleMember -Function ConvertTo-DriveOSDrive

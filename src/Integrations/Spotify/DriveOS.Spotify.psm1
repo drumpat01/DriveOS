@@ -29,9 +29,30 @@ function Add-SpotifyPlaylistItems {
 }
 
 function Get-SpotifyRecentlyPlayed {
-    param([Parameter(Mandatory=$true)]$Client, [ValidateRange(1,50)][int]$Limit = 50)
-    $response = Invoke-SpotifyGet -Client $Client -PathAndQuery "me/player/recently-played?limit=$Limit"
+    param(
+        [Parameter(Mandatory=$true)]$Client,
+        [ValidateRange(1,50)][int]$Limit = 50,
+        [AllowNull()][string]$Before
+    )
+    $response = Get-SpotifyRecentlyPlayedPage -Client $Client -Limit $Limit -Before $Before
     return @($response.items)
+}
+
+function Get-SpotifyRecentlyPlayedPage {
+    param(
+        [Parameter(Mandatory=$true)]$Client,
+        [ValidateRange(1,50)][int]$Limit = 50,
+        [AllowNull()][string]$Before
+    )
+    $Path = "me/player/recently-played?limit=$Limit"
+    if (-not [string]::IsNullOrWhiteSpace($Before)) {
+        $Cursor = 0L
+        if (-not [long]::TryParse($Before, [ref]$Cursor) -or $Cursor -lt 0) {
+            throw 'Spotify recently-played cursor is invalid.'
+        }
+        $Path += "&before=$Cursor"
+    }
+    return Invoke-SpotifyGet -Client $Client -PathAndQuery $Path
 }
 
 function Find-SpotifyTrack {
@@ -168,4 +189,4 @@ function ConvertTo-DriveOSSpotifyPlay {
     }
 }
 
-Export-ModuleMember -Function New-SpotifyClient,Invoke-SpotifyGet,Invoke-SpotifyPost,Get-SpotifyRecentlyPlayed,Find-SpotifyTrack,Find-SpotifyArtist,Find-SpotifyLatestArtistAlbum,Find-SpotifyAlbum,ConvertTo-DriveOSSpotifyPlay,New-SpotifyPrivatePlaylist,Add-SpotifyPlaylistItems
+Export-ModuleMember -Function New-SpotifyClient,Invoke-SpotifyGet,Invoke-SpotifyPost,Get-SpotifyRecentlyPlayed,Get-SpotifyRecentlyPlayedPage,Find-SpotifyTrack,Find-SpotifyArtist,Find-SpotifyLatestArtistAlbum,Find-SpotifyAlbum,ConvertTo-DriveOSSpotifyPlay,New-SpotifyPrivatePlaylist,Add-SpotifyPlaylistItems
