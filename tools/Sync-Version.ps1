@@ -38,7 +38,9 @@ if ($Check) {
 
 $TextReplacements = @{
     (Join-Path $Root "web\service-worker.js") = @('driveos-shell-[0-9.]+', "driveos-shell-$WebBuild")
-    (Join-Path $Root "web\index.html") = @('/([A-Za-z0-9_/-]+)\.(js|css)\?v=[0-9.]+', "/`$1.`$2?v=$WebBuild")
+    (Join-Path $Root "web\index.html") = @('/([A-Za-z0-9_/-]+)\.(js|css|png|webmanifest)\?v=[0-9.]+', "/`$1.`$2?v=$WebBuild")
+    (Join-Path $Root "web\manifest.webmanifest") = @('/assets/journeydeck-icon-([0-9]+)\.png\?v=[0-9.]+', "/assets/journeydeck-icon-`$1.png?v=$WebBuild")
+    (Join-Path $Root "web\offline.html") = @('/assets/journeydeck-icon-([0-9]+)\.png\?v=[0-9.]+', "/assets/journeydeck-icon-`$1.png?v=$WebBuild")
 }
 foreach ($Entry in $TextReplacements.GetEnumerator()) {
     $Current = Get-Content $Entry.Key -Raw

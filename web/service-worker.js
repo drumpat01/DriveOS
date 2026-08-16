@@ -1,14 +1,13 @@
-const CACHE_NAME = "driveos-shell-5.7.1";
+const CACHE_NAME = "driveos-shell-5.7.2";
 const OFFLINE_URL = "/offline.html";
 
 const SHELL = [
   OFFLINE_URL,
-  "/assets/driveos-logo-v3.png",
-  "/assets/favicon.png",
+  "/assets/journeydeck-mark.svg",
   "/assets/dashboard-model3-rear-hd.png",
-  "/assets/pwa-180.png",
-  "/assets/pwa-192.png",
-  "/assets/pwa-512.png"
+  "/assets/journeydeck-icon-180.png?v=5.7.2",
+  "/assets/journeydeck-icon-192.png?v=5.7.2",
+  "/assets/journeydeck-icon-512.png?v=5.7.2"
 ];
 
 self.addEventListener("install", event => {
