@@ -79,10 +79,10 @@ $script:FoursquareApiKeyForRedaction = $null
 # Expensive Tessie-derived data is reused briefly across the dashboard's
 # back-to-back API calls. This is process-local only and disappears on restart.
 $script:DriveDataCache = @{
-    rawDrives365 = $null
-    rawDrives365ExpiresAt = [DateTimeOffset]::MinValue
-    drives365 = $null
-    drives365ExpiresAt = [DateTimeOffset]::MinValue
+    rawDrives730 = $null
+    rawDrives730ExpiresAt = [DateTimeOffset]::MinValue
+    drives730 = $null
+    drives730ExpiresAt = [DateTimeOffset]::MinValue
     dashboardDrives = $null
     dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
     wifeDrives = $null
@@ -852,8 +852,8 @@ function Save-SpotifyHistory {
 
     if ($NewCount -gt 0) {
         Set-SpotifyHistoryMemoryCache -Records @($UpdatedHistory)
-        $script:DriveDataCache.drives365 = $null
-        $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+        $script:DriveDataCache.drives730 = $null
+        $script:DriveDataCache.drives730ExpiresAt = [DateTimeOffset]::MinValue
         $script:DriveDataCache.dashboardDrives = $null
         $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
         $script:DriveDataCache.wifeDrives = $null
@@ -1521,8 +1521,8 @@ function Save-FoursquareCacheEntries {
 
     # Converted drives contain friendly location names, so refresh that layer
     # only when the persisted place-resolution data changes.
-    $script:DriveDataCache.drives365 = $null
-    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+    $script:DriveDataCache.drives730 = $null
+    $script:DriveDataCache.drives730ExpiresAt = [DateTimeOffset]::MinValue
 }
 
 function Get-FoursquareCacheMap {
@@ -1940,8 +1940,8 @@ function Set-PlaceAlias {
 
     $script:PlaceAliasEntriesCache = @($Entries)
     $script:PlaceAliasEntriesLoaded = $true
-    $script:DriveDataCache.drives365 = $null
-    $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+    $script:DriveDataCache.drives730 = $null
+    $script:DriveDataCache.drives730ExpiresAt = [DateTimeOffset]::MinValue
 
     return [PSCustomObject]@{
         location = $Location
@@ -2080,7 +2080,7 @@ function Get-PlaceCandidates {
     # read while building the candidate list.
     $FoursquareCacheMap = Get-FoursquareCacheMap
 
-    foreach ($Drive in @(Get-CachedRawDrives365)) {
+    foreach ($Drive in @(Get-CachedRawDrives730)) {
         $Endpoints = @(
             [PSCustomObject]@{ location=$Drive.starting_location; latitude=$Drive.starting_latitude; longitude=$Drive.starting_longitude },
             [PSCustomObject]@{ location=$Drive.ending_location; latitude=$Drive.ending_latitude; longitude=$Drive.ending_longitude }
@@ -2244,7 +2244,7 @@ function Get-ChargingSummary {
 
 
 function Get-MonthlyRecaps {
-    $Drives = @(Get-CachedRecentDrives365)
+    $Drives = @(Get-CachedRecentDrives730)
     $Settings = Get-ChargingSettings
     $AliasMap = Get-PlaceAliasMap
     $FoursquareCacheMap = Get-FoursquareCacheMap
@@ -2324,19 +2324,19 @@ function Get-RawDrives {
     return @($Response.results | Sort-Object started_at -Descending)
 }
 
-function Get-CachedRawDrives365 {
+function Get-CachedRawDrives730 {
     $Now = [DateTimeOffset]::UtcNow
 
     if (
-        $script:DriveDataCache.rawDrives365 -and
-        $script:DriveDataCache.rawDrives365ExpiresAt -gt $Now
+        $script:DriveDataCache.rawDrives730 -and
+        $script:DriveDataCache.rawDrives730ExpiresAt -gt $Now
     ) {
-        return @($script:DriveDataCache.rawDrives365)
+        return @($script:DriveDataCache.rawDrives730)
     }
 
-    $RawDrives = @(Get-RawDrives -Days 365)
-    $script:DriveDataCache.rawDrives365 = @($RawDrives)
-    $script:DriveDataCache.rawDrives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    $RawDrives = @(Get-RawDrives -Days 730)
+    $script:DriveDataCache.rawDrives730 = @($RawDrives)
+    $script:DriveDataCache.rawDrives730ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
 
     return $RawDrives
 }
@@ -2660,8 +2660,8 @@ function Invoke-SoundtrackBackfillStep {
 
                 # Public drive models are immutable snapshots. Clear them so
                 # the next request observes the rebuilt soundtrack projection.
-                $script:DriveDataCache.drives365 = $null
-                $script:DriveDataCache.drives365ExpiresAt = [DateTimeOffset]::MinValue
+                $script:DriveDataCache.drives730 = $null
+                $script:DriveDataCache.drives730ExpiresAt = [DateTimeOffset]::MinValue
                 $script:DriveDataCache.dashboardDrives = $null
                 $script:DriveDataCache.dashboardDrivesExpiresAt = [DateTimeOffset]::MinValue
                 $script:DriveDataCache.wifeDrives = $null
@@ -2720,8 +2720,8 @@ function Get-RecentDrives {
     $AliasMap = Get-PlaceAliasMap
     $FoursquareCacheMap = Get-FoursquareCacheMap
 
-    $RawDrives = if ($Days -eq 365) {
-        @(Get-CachedRawDrives365)
+    $RawDrives = if ($Days -eq 730) {
+        @(Get-CachedRawDrives730)
     }
     else {
         @(Get-RawDrives -Days $Days)
@@ -2737,19 +2737,19 @@ function Get-RecentDrives {
     return $Output
 }
 
-function Get-CachedRecentDrives365 {
+function Get-CachedRecentDrives730 {
     $Now = [DateTimeOffset]::UtcNow
 
     if (
-        $script:DriveDataCache.drives365 -and
-        $script:DriveDataCache.drives365ExpiresAt -gt $Now
+        $script:DriveDataCache.drives730 -and
+        $script:DriveDataCache.drives730ExpiresAt -gt $Now
     ) {
-        return @($script:DriveDataCache.drives365)
+        return @($script:DriveDataCache.drives730)
     }
 
-    $Drives = @(Get-RecentDrives -Days 365)
-    $script:DriveDataCache.drives365 = @($Drives)
-    $script:DriveDataCache.drives365ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
+    $Drives = @(Get-RecentDrives -Days 730)
+    $script:DriveDataCache.drives730 = @($Drives)
+    $script:DriveDataCache.drives730ExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
 
     return $Drives
 }
@@ -2765,7 +2765,7 @@ function Get-CachedDashboardDrives {
     }
 
     # The dashboard only needs a handful of recent trips. Avoid forcing the
-    # 365-day Tessie history build just to paint three cards on a cold start.
+    # 730-day history build just to paint three cards on a cold start.
     $Drives = @(Get-RecentDrives -Days 14 | Select-Object -First 10)
     $script:DriveDataCache.dashboardDrives = @($Drives)
     $script:DriveDataCache.dashboardDrivesExpiresAt = $Now.AddSeconds($DriveDataCacheTtlSeconds)
@@ -3047,7 +3047,7 @@ function Get-DriveShareCardData {
     param([string]$DriveId)
     if (-not $DriveId) { throw "driveId is required." }
 
-    $Drive = @(Get-CachedRecentDrives365 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
+    $Drive = @(Get-CachedRecentDrives730 | Where-Object { $_.id -eq $DriveId } | Select-Object -First 1)[0]
     if (-not $Drive) { throw "Drive could not be found." }
 
     $MapData = $null
@@ -3291,7 +3291,7 @@ function Get-MusicStats {
 function Get-DriveStats {
     $Cutoff = [DateTimeOffset]::Now.AddDays(-30)
     $Drives = @(
-        Get-CachedRecentDrives365 |
+        Get-CachedRecentDrives730 |
         Where-Object {
             try {
                 [DateTimeOffset]::Parse("$($_.startedAt)") -ge $Cutoff
@@ -3313,7 +3313,7 @@ function Get-AssistantAnswer {
     $Charging = Get-ChargingSummary
     return Get-DriveOSAssistantAnswer `
         -Question $Question `
-        -Drives @(Get-CachedRecentDrives365) `
+        -Drives @(Get-CachedRecentDrives730) `
         -History @(Get-SpotifyHistory) `
         -Places @((Get-PlaceCandidates).places) `
         -Charges @($Charging.sessions)
@@ -3330,7 +3330,7 @@ function New-DrivePlaylist {
         throw "Spotify permission playlist-modify-private is missing. Run the updated Connect-Spotify.ps1 once, approve access, then try again."
     }
 
-    $Drive = @(Get-CachedRecentDrives365) |
+    $Drive = @(Get-CachedRecentDrives730) |
         Where-Object { $_.id -eq $DriveId } |
         Select-Object -First 1
 
@@ -3868,15 +3868,15 @@ function Handle-Request {
 
                 "/api/drives" {
                     Send-Json -Stream $Stream -Object @{
-                        windowDays = 365
-                        drives     = @(Get-CachedRecentDrives365)
+                        windowDays = 730
+                        drives     = @(Get-CachedRecentDrives730)
                     }
                     return
                 }
 
                 "/api/mobility-graph" {
-                    $Drives = @(Get-CachedRecentDrives365)
-                    Send-Json -Stream $Stream -Object (New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365 -Preferences (Get-MobilityPreferences -Repository $Repository))
+                    $Drives = @(Get-CachedRecentDrives730)
+                    Send-Json -Stream $Stream -Object (New-DriveOSMobilityGraph -Drives $Drives -WindowDays 730 -Preferences (Get-MobilityPreferences -Repository $Repository))
                     return
                 }
 

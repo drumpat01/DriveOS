@@ -17,7 +17,7 @@ Assert-True ($server -notmatch 'full-mode-drive-cache') 'The legacy Full Mode-on
 
 $recentFunction = [regex]::Match(
     $server,
-    '(?s)function Get-RecentDrives\s*\{.*?(?=\r?\nfunction Get-CachedRecentDrives365)'
+    '(?s)function Get-RecentDrives\s*\{.*?(?=\r?\nfunction Get-CachedRecentDrives730)'
 ).Value
 Assert-True ($recentFunction -notmatch 'Get-SpotifyHistory') 'Full Mode still loads Spotify history while serving historical drives.'
 Assert-True ($recentFunction -notmatch 'Get-CanonicalDriveSoundtrack') 'Full Mode still reconciles soundtracks while serving historical drives.'

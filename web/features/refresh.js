@@ -84,7 +84,7 @@
         await afterPaint();
 
         // Main-content wave: paint a tiny recent-drive payload before touching
-        // the 365-day library. This is the dashboard path users actually see.
+        // the 730-day library. This is the dashboard path users actually see.
         await Promise.resolve(tasks.loadDashboardDrives())
           .finally(() => mark("driveos-drives-ready"));
 
@@ -130,7 +130,7 @@
 
         mark("driveos-secondary-ready");
 
-        // Statistics/recaps normally populate the expensive 365-day backend
+        // Statistics/recaps normally populate the expensive 730-day backend
         // cache during the secondary wave. Materialize the full client library
         // only now, or sooner if the user opens the Drives tab.
         await tasks.loadDrives();

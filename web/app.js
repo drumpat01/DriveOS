@@ -1440,7 +1440,7 @@ async function loadDrives() {
     try {
       const data = await getJson("/api/drives");
       state.drives = normalizeDriveCollection(data.drives);
-      state.driveLibraryWindowDays = Number(data.windowDays) || 365;
+      state.driveLibraryWindowDays = Number(data.windowDays) || 730;
       driveLibraryFullyLoaded = true;
 
       const all = $("allDrives");

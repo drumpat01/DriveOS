@@ -66,7 +66,7 @@ first.then(() => {
 
   assert.ok(
     drives > calls.indexOf("recaps"),
-    "The full 365-day drive library should load after secondary views"
+    "The full 730-day drive library should load after secondary views"
   );
 
   assert.equal(button.disabled, false);
