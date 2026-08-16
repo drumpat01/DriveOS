@@ -14,6 +14,9 @@ http {
     server {
         listen 0.0.0.0:${PUBLIC_PORT};
         server_name _;
+        # Attachment JSON contains base64, which is larger than the original
+        # file. DriveOS still enforces a 1.5 MB decoded attachment limit.
+        client_max_body_size 4m;
 
         # Render's health check must never wait behind DriveOS's
         # single-request PowerShell backend.

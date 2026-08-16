@@ -16,6 +16,8 @@ Assert-True (-not (Test-JourneyAttachmentSignature -Bytes ([byte[]](65,0,66)) -C
 
 $Server=Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $Client=Get-Content (Join-Path $Root 'web\features\collections.js') -Raw
+$RenderStart=Get-Content (Join-Path $Root 'render-start.sh') -Raw
 Assert-True ($Server -match '/api/collections/attachments/add' -and $Server -match '3145728') 'Bounded attachment upload endpoint is missing.'
 Assert-True ($Client -match 'MAX_BYTES=1572864' -and $Client -match 'createImageBitmap') 'Client photo compression or size limit is missing.'
+Assert-True ($RenderStart -match 'client_max_body_size 4m') 'Production proxy body limit cannot accept bounded attachment uploads.'
 Write-Host 'Journey attachment checks passed.' -ForegroundColor Green
