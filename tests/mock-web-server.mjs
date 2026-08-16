@@ -135,16 +135,16 @@ const responses = {
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 365, drives },
   '/api/mobility-graph': {
-    version: 1,
+    version: 2,
     generatedAtUtc: '2026-08-16T12:00:00Z',
     windowDays: 365,
     summary: { placeCount: 5, connectionCount: 6, driveCount: 10, totalMiles: 300 },
     nodes: [
-      { id: 'place-home', label: 'Home', kind: 'home', latitude: 39.72, longitude: -104.99, visitCount: 10, arrivals: 5, departures: 5, totalMiles: 300, firstSeenAt: '2026-08-01T12:00:00Z', lastSeenAt: '2026-08-15T12:00:00Z' },
-      { id: 'place-work', label: 'Studio', kind: 'place', latitude: 39.78, longitude: -104.90, visitCount: 6, arrivals: 3, departures: 3, totalMiles: 172, firstSeenAt: '2026-08-02T12:00:00Z', lastSeenAt: '2026-08-14T12:00:00Z' },
-      { id: 'place-coffee', label: 'Demo Coffee', kind: 'place', latitude: 39.75, longitude: -104.95, visitCount: 4, arrivals: 2, departures: 2, totalMiles: 72, firstSeenAt: '2026-08-04T12:00:00Z', lastSeenAt: '2026-08-13T12:00:00Z' },
-      { id: 'place-gym', label: 'Summit Gym', kind: 'place', latitude: 39.74, longitude: -104.92, visitCount: 3, arrivals: 2, departures: 1, totalMiles: 48, firstSeenAt: '2026-08-06T12:00:00Z', lastSeenAt: '2026-08-12T12:00:00Z' },
-      { id: 'place-park', label: 'Lakeview Park', kind: 'place', latitude: 39.80, longitude: -104.97, visitCount: 2, arrivals: 1, departures: 1, totalMiles: 36, firstSeenAt: '2026-08-07T12:00:00Z', lastSeenAt: '2026-08-11T12:00:00Z' }
+      { id: 'place-home', label: 'Home', kind: 'home', category: 'home', categoryConfidence: 'confirmed', categoryReason: 'The saved place name identifies this as Home.', latitude: 39.72, longitude: -104.99, visitCount: 10, arrivals: 5, departures: 5, totalMiles: 300, firstSeenAt: '2026-08-01T12:00:00Z', lastSeenAt: '2026-08-15T12:00:00Z' },
+      { id: 'place-work', label: 'Studio Office', kind: 'place', category: 'work', categoryConfidence: 'high', categoryReason: 'The place name indicates a work or school destination.', latitude: 39.78, longitude: -104.90, visitCount: 6, arrivals: 3, departures: 3, totalMiles: 172, firstSeenAt: '2026-08-02T12:00:00Z', lastSeenAt: '2026-08-14T12:00:00Z' },
+      { id: 'place-coffee', label: 'Demo Coffee', kind: 'place', category: 'dining', categoryConfidence: 'high', categoryReason: 'The place name matches a dining destination.', latitude: 39.75, longitude: -104.95, visitCount: 4, arrivals: 2, departures: 2, totalMiles: 72, firstSeenAt: '2026-08-04T12:00:00Z', lastSeenAt: '2026-08-13T12:00:00Z' },
+      { id: 'place-gym', label: 'Summit Gym', kind: 'place', category: 'wellness', categoryConfidence: 'medium', categoryReason: 'The place name suggests recreation or wellness.', latitude: 39.74, longitude: -104.92, visitCount: 3, arrivals: 2, departures: 1, totalMiles: 48, firstSeenAt: '2026-08-06T12:00:00Z', lastSeenAt: '2026-08-12T12:00:00Z' },
+      { id: 'place-park', label: 'Mom and Dad', kind: 'place', category: 'family', categoryConfidence: 'high', categoryReason: 'The saved place name indicates a family destination.', latitude: 39.80, longitude: -104.97, visitCount: 2, arrivals: 1, departures: 1, totalMiles: 36, firstSeenAt: '2026-08-07T12:00:00Z', lastSeenAt: '2026-08-11T12:00:00Z' }
     ],
     edges: [
       { id: 'edge-1', source: 'place-home', target: 'place-work', driveCount: 4, totalMiles: 98, averageMiles: 24.5, averageMinutes: 42, driveIds: ['demo-drive-1','demo-drive-2','demo-drive-3','demo-drive-4'] },
@@ -153,6 +153,16 @@ const responses = {
       { id: 'edge-4', source: 'place-coffee', target: 'place-gym', driveCount: 1, totalMiles: 8, averageMiles: 8, averageMinutes: 14, driveIds: ['demo-drive-10'] },
       { id: 'edge-5', source: 'place-home', target: 'place-park', driveCount: 1, totalMiles: 18, averageMiles: 18, averageMinutes: 30, driveIds: ['demo-drive-3'] },
       { id: 'edge-6', source: 'place-gym', target: 'place-home', driveCount: 1, totalMiles: 11, averageMiles: 11, averageMinutes: 19, driveIds: ['demo-drive-6'] }
+    ],
+    routines: [
+      { id: 'routine-1', type: 'commute', title: 'Home to Studio Office', narrative: '7 drives, on weekdays, usually in the morning.', source: 'place-home', target: 'place-work', driveCount: 7, bidirectional: true, typicalTime: 'morning', dayPattern: 'on weekdays', confidence: .95, confidenceLabel: 'high' },
+      { id: 'routine-2', type: 'round-trip', title: 'Home to Demo Coffee', narrative: '3 drives, most often on Saturday, usually in the morning.', source: 'place-home', target: 'place-coffee', driveCount: 3, bidirectional: true, typicalTime: 'morning', dayPattern: 'most often on Saturday', confidence: .77, confidenceLabel: 'medium' }
+    ],
+    periodComparison: { periodDays: 30, recent: { driveCount: 10, totalMiles: 300, placeCount: 5 }, prior: { driveCount: 8, totalMiles: 247, placeCount: 4 } },
+    changeInsights: [
+      { type: 'activity-change', direction: 'up', title: 'Your driving activity is up', narrative: '10 drives in the recent 30 days versus 8 before that (25% up).', confidence: 'high' },
+      { type: 'place-diversity', direction: 'up', title: 'Your world is widening', narrative: '5 active places recently versus 4 in the prior period.', confidence: 'high' },
+      { type: 'emerging-place', direction: 'new', title: 'Summit Gym entered your recent world', narrative: 'This place appears in the recent 30-day period but not the previous one.', confidence: 'medium' }
     ]
   },
   '/api/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
