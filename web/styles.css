@@ -8597,7 +8597,7 @@ textarea {
   }
 }
 
-/* JourneyDeck 5.9.2: final mobile navigation and collection action authority. */
+/* JourneyDeck 5.9.3: final mobile navigation and collection action authority. */
 @media (max-width:760px) {
   .app-shell { padding-bottom:calc(52px + env(safe-area-inset-bottom)) !important; }
   .main-nav.mobile-nav-portal,
@@ -8616,15 +8616,19 @@ textarea {
   #journeyCollectionModal,
   .journey-story-modal { z-index:2147483100 !important; }
   .journey-story-modal-card { max-height:calc(100dvh - 12px); padding-bottom:0; }
+  #journeyStoryContent { padding-bottom:calc(76px + env(safe-area-inset-bottom)); }
   .journey-story-actions {
-    position:sticky;
+    position:fixed;
     z-index:6;
+    left:max(6px,env(safe-area-inset-left));
+    right:max(6px,env(safe-area-inset-right));
     bottom:0;
     display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1fr);
     gap:8px;
-    margin-top:14px;
-    padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    margin:0;
+    padding:10px 14px max(10px,env(safe-area-inset-bottom));
+    border-top:1px solid var(--line);
     background:linear-gradient(180deg,rgba(248,252,253,.96),#f8fcfd 24%);
     box-shadow:0 -14px 26px rgba(20,53,67,.1);
   }
