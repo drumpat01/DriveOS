@@ -10,7 +10,7 @@ $VersionParts = $Version.Split('.')
 $DisplayVersion = "$($VersionParts[0]).$($VersionParts[1])"
 
 $Expected = @{
-    (Join-Path $Root "web\build.json") = "{`n  `"product`": `"JourneyDeck`",`n  `"version`": `"$Version`",`n  `"webBuild`": `"$WebBuild`",`n  `"features`": [`n    `"friendly-places`",`n    `"charging-history`",`n    `"monthly-recap`",`n    `"lastfm-history`",`n    `"foursquare-business-names`",`n    `"privacy-safe-share-cards`",`n    `"live-drive`",`n    `"journey-collections`",`n    `"personal-mobility-graph`",`n    `"google-timeline-import`",`n    `"journey-attachments`",`n    `"passkey-sign-in`"`n  ],`n  `"css`": `"/styles.css?v=$WebBuild`",`n  `"js`": `"/app.js?v=$WebBuild`"`n}`n"
+    (Join-Path $Root "web\build.json") = "{`n  `"product`": `"JourneyDeck`",`n  `"version`": `"$Version`",`n  `"webBuild`": `"$WebBuild`",`n  `"features`": [`n    `"friendly-places`",`n    `"charging-history`",`n    `"monthly-recap`",`n    `"lastfm-history`",`n    `"foursquare-business-names`",`n    `"privacy-safe-share-cards`",`n    `"live-drive`",`n    `"journey-collections`",`n    `"journey-collection-stories`",`n    `"personal-mobility-graph`",`n    `"google-timeline-import`",`n    `"journey-attachments`",`n    `"passkey-sign-in`"`n  ],`n  `"css`": `"/styles.css?v=$WebBuild`",`n  `"js`": `"/app.js?v=$WebBuild`"`n}`n"
     (Join-Path $Root "web\core\build.js") = "(function () {`n  window.DriveOSBuild = Object.freeze({ version: `"$Version`", webBuild: `"$WebBuild`" });`n  document.documentElement.dataset.webBuild = window.DriveOSBuild.webBuild;`n})();`n"
 }
 
