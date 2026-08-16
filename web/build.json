@@ -1,7 +1,7 @@
 {
   "product": "JourneyDeck",
-  "version": "5.6.2",
-  "webBuild": "5.6.2",
+  "version": "5.7.0",
+  "webBuild": "5.7.0",
   "features": [
     "friendly-places",
     "charging-history",
@@ -11,8 +11,9 @@
     "privacy-safe-share-cards",
     "live-drive",
     "journey-collections",
-    "personal-mobility-graph"
+    "personal-mobility-graph",
+    "google-timeline-import"
   ],
-  "css": "/styles.css?v=5.6.2",
-  "js": "/app.js?v=5.6.2"
+  "css": "/styles.css?v=5.7.0",
+  "js": "/app.js?v=5.7.0"
 }

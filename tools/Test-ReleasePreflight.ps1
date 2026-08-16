@@ -57,6 +57,7 @@ if (-not $SkipTests) {
         'tests\DatabaseArchitecture.Tests.ps1',
         'tests\JourneyCollections.Tests.ps1',
         'tests\MobilityGraph.Tests.ps1',
+        'tests\TimelineImport.Tests.ps1',
         'tests\TessieIngestion.Tests.ps1',
         'tests\TessieReadiness.Tests.ps1',
         'tests\TursoRehearsal.Tests.ps1',
