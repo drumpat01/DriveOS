@@ -22,6 +22,7 @@ foreach($widgetId in @('todayDrivingMiles','dashboardSoundtrack')){if($index -no
 $commandPalette=Get-Content (Join-Path $Root 'web\features\command-palette.js') -Raw
 if($commandPalette -notmatch 'event\.ctrlKey' -or $commandPalette -notmatch 'ArrowDown' -or $index -notmatch 'Answers use your saved JourneyDeck records'){throw 'Command palette keyboard or privacy behavior is missing.'}
 if($commandPalette -notmatch 'looksLikeQuestion' -or $commandPalette -notmatch 'matches\.concat\(askItem\)' -or $commandPalette -notmatch 'relevance\(a, query\)'){throw 'Direct search matches must stay ahead of assistant answers for short queries.'}
+if($commandPalette -notmatch 'Scope: while driving' -or $commandPalette -notmatch 'filters\?\.rangeLabel'){throw 'Assistant answers do not expose their driving-only scope and interpreted date range.'}
 $dashboardCustomization=Get-Content (Join-Path $Root 'web\features\dashboard-customization.js') -Raw
 foreach($capability in @('localStorage','dashboard-size-compact','pinned','hidden','draggable','dashboard-widget-drag-handle','bindWidgetDropEvents','dashboard-widget-resize-handle','nearestSize','pointerdown','positions','blankDropPosition','dashboardGridDropPreview')){if($dashboardCustomization -notmatch [regex]::Escape($capability)){throw "Dashboard customization capability is missing: $capability"}}
 $dashboardWidgets=Get-Content (Join-Path $Root 'web\features\dashboard-widgets.js') -Raw

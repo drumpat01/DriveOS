@@ -1,7 +1,7 @@
 {
   "product": "JourneyDeck",
-  "version": "5.9.5",
-  "webBuild": "5.9.5",
+  "version": "5.9.6",
+  "webBuild": "5.9.6",
   "features": [
     "friendly-places",
     "charging-history",
@@ -9,6 +9,7 @@
     "lastfm-history",
     "youtube-music-history-import",
     "spotify-extended-history-import",
+    "driving-only-assistant",
     "foursquare-business-names",
     "privacy-safe-share-cards",
     "live-drive",
@@ -19,6 +20,6 @@
     "journey-attachments",
     "passkey-sign-in"
   ],
-  "css": "/styles.css?v=5.9.5",
-  "js": "/app.js?v=5.9.5"
+  "css": "/styles.css?v=5.9.6",
+  "js": "/app.js?v=5.9.6"
 }

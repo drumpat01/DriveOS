@@ -171,9 +171,11 @@
         title.textContent = assistantAnswer.answer || "No answer available.";
         const detail = document.createElement("p");
         const evidence = Array.isArray(assistantAnswer.evidence) ? assistantAnswer.evidence : [];
+        const rangeLabel = assistantAnswer.filters?.rangeLabel;
+        const scopeLabel = assistantAnswer.filters?.scope === "while_driving" ? "Scope: while driving." : "";
         detail.textContent = evidence.length
-          ? `Based on ${evidence.length} evidence item${evidence.length === 1 ? "" : "s"}. ${assistantAnswer.filters?.periodDays ? `Period: last ${assistantAnswer.filters.periodDays} days.` : ""}`
-          : "No matching records were needed for this answer.";
+          ? `Based on ${evidence.length} evidence item${evidence.length === 1 ? "" : "s"}. ${scopeLabel} ${rangeLabel ? `Period: ${rangeLabel}.` : ""}`.trim()
+          : `${scopeLabel} ${rangeLabel ? `Period: ${rangeLabel}.` : "No matching driving records were needed for this answer."}`.trim();
         answer.append(label, title, detail);
 
         if (evidence.length) {
