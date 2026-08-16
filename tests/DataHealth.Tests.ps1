@@ -27,6 +27,7 @@ $Index = Get-Content (Join-Path $Root 'web\index.html') -Raw
 $Wife = Get-Content (Join-Path $Root 'web\wife.html') -Raw
 $App = Get-Content (Join-Path $Root 'web\app.js') -Raw
 $Feature = Get-Content (Join-Path $Root 'web\features\data-health.js') -Raw
+$Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
 
 Assert-True ($Server -match '"/api/data-health"') 'Data Health API endpoint is missing.'
 Assert-True ($Server -match "Principal\.Role -ne 'owner'") 'Hosted Data Health is not explicitly restricted to the owner role.'
@@ -42,6 +43,10 @@ Assert-True ($Wife -notmatch '(?i)data health') 'Data Health leaked into Wife Mo
 Assert-True ($App -match 'session\.role === "owner"') 'Owner navigation is not role-decorated.'
 Assert-True ($Feature -match '/api/data-health') 'Data Health view does not load its database-only API.'
 Assert-True ($Feature -notmatch '/api/(spotify/sync|tessie)') 'Data Health invokes provider work from the web process.'
+Assert-True ($Styles -match 'JourneyDeck application UI consistency') 'The shared application UI consistency layer is missing.'
+Assert-True ($Styles -match '(?s)\.data-health-overall,\s*\.data-health-alerts,\s*\.data-health-card,\s*\.data-health-panel,\s*\.data-health-actions\s*\{[^}]*padding:\s*21px 22px') 'Data Health panels can render content against their clipped rounded edges.'
+Assert-True ($Styles -match '(?s)\.header-sign-out\s*\{[^}]*border-radius:\s*var\(--ui-control-radius\)[^}]*white-space:\s*nowrap') 'The desktop sign-out control can collapse into a wrapped circle.'
+Assert-True ($Styles -match '(?s)@media \(min-width:\s*1121px\)\s*\{\s*\.topbar\s*\{[^}]*grid-template-rows:\s*auto auto') 'The desktop header does not reserve a stable utility row.'
 
 $Tokens = $null
 $ParseErrors = $null

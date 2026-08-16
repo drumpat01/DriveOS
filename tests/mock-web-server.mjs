@@ -106,6 +106,26 @@ const routePoints = Array.from({ length: 18 }, (_, index) => ({
 }));
 
 const responses = {
+  '/api/auth/session': { authenticated: true, role: 'owner' },
+  '/api/data-health': {
+    overallStatus: 'healthy',
+    generatedAtUtc: '2026-08-15T19:00:00Z',
+    repositoryProvider: 'Turso',
+    alerts: [],
+    integrations: [
+      { id: 'tessie-drives', name: 'Tessie drives', status: 'healthy', lastSuccessAtUtc: '2026-08-15T18:53:00Z', highWatermarkUtc: '2026-08-15T18:53:00Z', lagMinutes: 8 },
+      { id: 'tessie-charges', name: 'Tessie charges', status: 'healthy', lastSuccessAtUtc: '2026-08-15T18:53:00Z', highWatermarkUtc: '2026-08-15T18:53:00Z', lagMinutes: 8 },
+      { id: 'spotify', name: 'Spotify history + soundtracks', status: 'healthy', lastSuccessAtUtc: '2026-08-15T18:45:00Z', highWatermarkUtc: '2026-08-15T16:52:00Z', lagMinutes: 16 },
+      { id: 'integrity-audit', name: 'Daily integrity audit', status: 'healthy', lastSuccessAtUtc: '2026-08-15T15:21:00Z', highWatermarkUtc: '2026-08-15T19:52:00Z', lagMinutes: 219 }
+    ],
+    soundtrackProjection: { recentDriveCount: 30, materializedCount: 30, missingCount: 0, pendingCount: 0 },
+    rollout: { tessieWritesEnabled: true, tessieReadsEnabled: true, readCanaryApproved: true },
+    integrityAudit: {
+      status: 'ready',
+      completedAtUtc: '2026-08-15T15:21:00Z',
+      report: { resources: { drives: { passed: true }, charges: { passed: true } } }
+    }
+  },
   '/api/status': { driveOS: 'online', tessie: true, spotify: true, lastfm: true, lastfmUsername: 'demo-listener', foursquare: true, foursquareCached: 7, playlistScope: true },
   '/api/vehicle': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 0, shiftState: 'P', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
   '/api/vehicle/live': { name: 'Aurora', state: 'online', battery: 72, rangeMiles: 185, charging: 'Disconnected', chargeLimit: 80, insideTempF: 72, outsideTempF: 76, latitude: 39.7392, longitude: -104.9903, heading: 194, speedMph: 38, shiftState: 'D', gpsAsOf: 1786377600, odometerMiles: 14096.49 },
