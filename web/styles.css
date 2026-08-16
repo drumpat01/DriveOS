@@ -8517,6 +8517,10 @@ textarea {
 }
 
 @media (max-width: 1120px) {
+  .topbar .header-sign-out {
+    display: none;
+  }
+
   .main-nav.mobile-nav-portal .nav-button,
   body > .main-nav .nav-button {
     font-weight: var(--ui-control-weight) !important;

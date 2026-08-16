@@ -46,6 +46,7 @@ Assert-True ($Feature -notmatch '/api/(spotify/sync|tessie)') 'Data Health invok
 Assert-True ($Styles -match 'JourneyDeck application UI consistency') 'The shared application UI consistency layer is missing.'
 Assert-True ($Styles -match '(?s)\.data-health-overall,\s*\.data-health-alerts,\s*\.data-health-card,\s*\.data-health-panel,\s*\.data-health-actions\s*\{[^}]*padding:\s*21px 22px') 'Data Health panels can render content against their clipped rounded edges.'
 Assert-True ($Styles -match '(?s)\.header-sign-out\s*\{[^}]*border-radius:\s*var\(--ui-control-radius\)[^}]*white-space:\s*nowrap') 'The desktop sign-out control can collapse into a wrapped circle.'
+Assert-True ($Styles -match '(?s)@media \(max-width:\s*1120px\)\s*\{\s*\.topbar \.header-sign-out\s*\{[^}]*display:\s*none') 'The desktop sign-out control remains visible in the mobile header.'
 Assert-True ($Styles -match '(?s)@media \(min-width:\s*1121px\)\s*\{\s*\.topbar\s*\{[^}]*grid-template-rows:\s*auto auto') 'The desktop header does not reserve a stable utility row.'
 
 $Tokens = $null
