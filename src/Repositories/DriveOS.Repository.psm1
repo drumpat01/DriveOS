@@ -200,6 +200,7 @@ function New-DriveOSRepository {
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
         IntegrationHealthPath = Join-Path $DataDirectory 'integration-health.json'
         JourneyCollectionsPath = Join-Path $DataDirectory 'journey-collections.json'
+        MobilityPreferencesPath = Join-Path $DataDirectory 'mobility-preferences.json'
         ConfigPath = $configPath
         DatabasePath = Join-Path $DataDirectory 'driveos.db'
         SqliteExecutable = $sqliteExecutable
@@ -484,6 +485,22 @@ function Set-DriveOSDashboardLayoutRecord {
     Write-DriveOSJson -Path $Repository.DashboardLayoutPath -Value $LayoutRecord
 }
 
+function Get-DriveOSMobilityPreferencesRecord {
+    param([Parameter(Mandatory=$true)]$Repository)
+    if ($Repository.Provider -eq 'SQLite') { return Get-DriveOSSqliteState -Repository $Repository -Key 'mobility-preferences' }
+    if ($Repository.Provider -eq 'Turso') { return Get-DriveOSTursoState -Repository $Repository -Key 'mobility-preferences' }
+    Assert-JsonRepository $Repository
+    return Read-DriveOSJson -Path $Repository.MobilityPreferencesPath
+}
+
+function Set-DriveOSMobilityPreferencesRecord {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Preferences)
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteState -Repository $Repository -Key 'mobility-preferences' -Value $Preferences; return }
+    if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoState -Repository $Repository -Key 'mobility-preferences' -Value $Preferences; return }
+    Assert-JsonRepository $Repository
+    Write-DriveOSJson -Path $Repository.MobilityPreferencesPath -Value $Preferences
+}
+
 function Get-DriveOSIntegrationHealthRecord {
     param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)][string]$Provider)
     $Key = "integration-health:$Provider"
@@ -564,6 +581,8 @@ Export-ModuleMember -Function `
     Set-DriveOSChargingSettingsRecord, `
     Get-DriveOSDashboardLayoutRecord, `
     Set-DriveOSDashboardLayoutRecord, `
+    Get-DriveOSMobilityPreferencesRecord, `
+    Set-DriveOSMobilityPreferencesRecord, `
     Get-DriveOSIntegrationHealthRecord, `
     Set-DriveOSIntegrationHealthRecord, `
     Get-DriveOSJourneyCollections, `

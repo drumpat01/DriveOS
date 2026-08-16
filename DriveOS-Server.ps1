@@ -28,6 +28,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1")
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Collections.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityGraph.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityPreferences.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
@@ -3875,7 +3876,7 @@ function Handle-Request {
 
                 "/api/mobility-graph" {
                     $Drives = @(Get-CachedRecentDrives365)
-                    Send-Json -Stream $Stream -Object (New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365)
+                    Send-Json -Stream $Stream -Object (New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365 -Preferences (Get-MobilityPreferences -Repository $Repository))
                     return
                 }
 
@@ -4115,6 +4116,18 @@ function Handle-Request {
                 "/api/dashboard/layout" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields layout
                     Send-Json -Stream $Stream -Object (Set-DashboardLayout -Candidate $Body.layout)
+                    return
+                }
+
+                "/api/mobility/place" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields nodeId
+                    Send-Json -Stream $Stream -Object (Set-MobilityPlacePreference -Repository $Repository -Candidate $Body)
+                    return
+                }
+
+                "/api/mobility/routine" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields routineId,status
+                    Send-Json -Stream $Stream -Object (Set-MobilityRoutinePreference -Repository $Repository -Candidate $Body)
                     return
                 }
 

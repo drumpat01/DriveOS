@@ -123,7 +123,8 @@ function New-DriveOSMobilityGraph {
     param(
         [object[]]$Drives = @(),
         [ValidateRange(1,730)][int]$WindowDays = 365,
-        [DateTimeOffset]$AsOfUtc = [DateTimeOffset]::UtcNow
+        [DateTimeOffset]$AsOfUtc = [DateTimeOffset]::UtcNow,
+        [AllowNull()]$Preferences = $null
     )
 
     $Nodes = [Collections.ArrayList]::new()
@@ -222,10 +223,25 @@ function New-DriveOSMobilityGraph {
         $Edge.driveIds.Add($DriveId)
     }
 
+    $PlaceOverrides = @{}
+    foreach ($Override in @((Get-DriveOSMobilityGraphValue $Preferences 'places'))) {
+        $OverrideId = "$(Get-DriveOSMobilityGraphValue $Override 'nodeId')"
+        if ($OverrideId) { $PlaceOverrides[$OverrideId] = $Override }
+    }
+    $AllowedCategories = @('home','work','family','errands','dining','wellness','other')
     $PublicNodes = @($Nodes | ForEach-Object {
         $Identity = Get-DriveOSMobilityCategory -Label $_.label -VisitCount $_.driveIds.Count
+        $Override = if ($PlaceOverrides.ContainsKey($_.id)) { $PlaceOverrides[$_.id] } else { $null }
+        $OverrideName = "$(Get-DriveOSMobilityGraphValue $Override 'name')".Trim()
+        $OverrideCategory = "$(Get-DriveOSMobilityGraphValue $Override 'category')".Trim().ToLowerInvariant()
+        $IsManual = $null -ne $Override -and ($OverrideName -or $AllowedCategories -contains $OverrideCategory)
+        $EffectiveCategory = if($AllowedCategories -contains $OverrideCategory){$OverrideCategory}else{$Identity.category}
         [PSCustomObject]@{
-            id=$_.id;label=$_.label;kind=$_.kind;category=$Identity.category;categoryConfidence=$Identity.confidence;categoryReason=$Identity.reason;latitude=$_.latitude;longitude=$_.longitude
+            id=$_.id;label=if($OverrideName){$OverrideName}else{$_.label};originalLabel=$_.label;kind=if($EffectiveCategory -eq 'home'){'home'}else{'place'}
+            category=$EffectiveCategory
+            categoryConfidence=if($IsManual){'manual'}else{$Identity.confidence}
+            categoryReason=if($IsManual){'You assigned this place identity.'}else{$Identity.reason}
+            manualOverride=$IsManual;latitude=$_.latitude;longitude=$_.longitude
             visitCount=$_.driveIds.Count;arrivals=$_.arrivals;departures=$_.departures
             totalMiles=[Math]::Round($_.miles,1);firstSeenAt=$_.firstSeenAt;lastSeenAt=$_.lastSeenAt
         }
@@ -254,6 +270,12 @@ function New-DriveOSMobilityGraph {
         if (-not $Group.directions.ContainsKey($Direction)) { $Group.directions[$Direction] = 0 }
         $Group.directions[$Direction]++
     }
+    $RoutineOverrides = @{}
+    foreach ($Override in @((Get-DriveOSMobilityGraphValue $Preferences 'routines'))) {
+        $OverrideId = "$(Get-DriveOSMobilityGraphValue $Override 'routineId')"
+        if ($OverrideId) { $RoutineOverrides[$OverrideId] = $Override }
+    }
+    $AllowedRoutineTypes = @('commute','school-run','family-visit','errand-loop','custom')
     $Routines = @($RouteGroups.Values | Where-Object { $_.drives.Count -ge 3 } | ForEach-Object {
         $Group = $_; $NodeA = $NodeMap[$Group.a]; $NodeB = $NodeMap[$Group.b]
         $Hours = @(); $Days = @()
@@ -266,13 +288,20 @@ function New-DriveOSMobilityGraph {
         $TimeBand = Get-DriveOSMobilityTimeBand -Hours $Hours
         $DayPattern = Get-DriveOSMobilityDayPattern -Days $Days
         $ConfidenceScore = [Math]::Min(0.98,0.48 + ($Group.drives.Count * 0.07) + $(if($Bidirectional){0.08}else{0}))
+        $RoutineId = Get-DriveOSMobilityId -Kind 'routine' -Key "$($Group.a)|$($Group.b)"
+        $Override = if ($RoutineOverrides.ContainsKey($RoutineId)) { $RoutineOverrides[$RoutineId] } else { $null }
+        $OverrideStatus = "$(Get-DriveOSMobilityGraphValue $Override 'status')".Trim().ToLowerInvariant()
+        if ($OverrideStatus -notin @('confirmed','dismissed')) { $OverrideStatus = 'suggested' }
+        $OverrideType = "$(Get-DriveOSMobilityGraphValue $Override 'type')".Trim().ToLowerInvariant()
+        $CustomName = "$(Get-DriveOSMobilityGraphValue $Override 'customName')".Trim()
+        $EffectiveType = if ($OverrideStatus -eq 'confirmed' -and $AllowedRoutineTypes -contains $OverrideType) { $OverrideType } else { $Type }
         [PSCustomObject]@{
-            id=Get-DriveOSMobilityId -Kind 'routine' -Key "$($Group.a)|$($Group.b)"
-            type=$Type;title="$($NodeA.label) to $($NodeB.label)"
+            id=$RoutineId;type=$EffectiveType;inferredType=$Type;title=if($EffectiveType -eq 'custom' -and $CustomName){$CustomName}else{"$($NodeA.label) to $($NodeB.label)"}
             narrative="$($Group.drives.Count) drives, $DayPattern, usually in the $TimeBand."
             source=$Group.a;target=$Group.b;driveCount=$Group.drives.Count;bidirectional=$Bidirectional
             typicalTime=$TimeBand;dayPattern=$DayPattern;confidence=[Math]::Round($ConfidenceScore,2)
             confidenceLabel=if($ConfidenceScore -ge .8){'high'}elseif($ConfidenceScore -ge .65){'medium'}else{'early signal'}
+            confirmationStatus=$OverrideStatus;customName=$CustomName;manualOverride=($OverrideStatus -ne 'suggested')
         }
     } | Sort-Object @{Expression='driveCount';Descending=$true} | Select-Object -First 6)
 
@@ -302,7 +331,7 @@ function New-DriveOSMobilityGraph {
     }
 
     return [PSCustomObject]@{
-        version=2
+        version=3
         generatedAtUtc=$AsOfUtc.ToString('o')
         windowDays=$WindowDays
         summary=[PSCustomObject]@{
