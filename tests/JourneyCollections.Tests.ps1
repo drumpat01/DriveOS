@@ -42,6 +42,8 @@ Assert-True ($Styles -match '\.journey-collections-panel \.panel-description,[\s
 Assert-True ($Styles -match '@media \(max-width:760px\)[^{]*\{[^}]*\.journey-collections-panel\s*\{\s*padding:\s*18px') 'Journey collections panel lacks a responsive content inset.'
 Assert-True ($Styles -match '#journeyCollectionModal\s*\{\s*z-index:1300' -and $Styles -match '\.journey-collection-actions\s*\{\s*position:sticky;[^}]*bottom:0') 'Mobile collection actions can still be covered by bottom navigation.'
 Assert-True ($Styles -match '\.journey-collection-modal-card\s*\{[^}]*100dvh' -and $Styles -match 'safe-area-inset-bottom') 'Mobile collection editor does not account for the dynamic viewport and iPhone safe area.'
+Assert-True ($Styles -match 'JourneyDeck 5\.9\.2:[\s\S]*?min-height:calc\(44px \+ env\(safe-area-inset-bottom\)\)' -and $Styles -match 'min-height:44px !important') 'Final mobile navigation is still using the legacy two-line height.'
+Assert-True ($Styles -match 'JourneyDeck 5\.9\.2:[\s\S]*?\.journey-story-actions\s*\{[^}]*position:sticky;[^}]*grid-template-columns:minmax\(0,1fr\) minmax\(0,1fr\)') 'Collection story actions are not side-by-side and sticky on mobile.'
 Assert-True ($Index -match 'id="journeyStoryModal"' -and $Index -match 'id="journeyStoryMap"' -and $Index -match 'id="journeyStoryPhotos"') 'Collection story modal is missing its photo or map surfaces.'
 Assert-True ($CollectionsJs -match 'collectionMusic' -and $CollectionsJs -match 'albumImage' -and $CollectionsJs -match 'TOP ARTIST') 'Collection story does not derive its top artist.'
 Assert-True ($CollectionsJs -match 'slice\(0,3\)' -and $CollectionsJs -match '/api/collections/attachments/get') 'Collection story does not load its first attached photos.'
