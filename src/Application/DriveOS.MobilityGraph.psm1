@@ -41,6 +41,71 @@ function Get-DriveOSMobilityLocationKey {
     return (($Label.Trim().ToLowerInvariant() -replace '[^\p{L}\p{Nd}]+',' ') -replace '\s+',' ').Trim()
 }
 
+function Get-DriveOSMobilityCategory {
+    param([string]$Label,[int]$VisitCount)
+    $Key = Get-DriveOSMobilityLocationKey -Label $Label
+    $Category = 'other'; $Confidence = 'low'; $Reason = 'Not enough evidence to infer a role yet.'
+    if ($Key -eq 'home' -or $Key -match '(^| )home($| )') {
+        $Category = 'home'; $Confidence = 'confirmed'; $Reason = 'The saved place name identifies this as Home.'
+    }
+    elseif ($Key -match '(^| )(work|office|school|campus|academy|high school|elementary|middle school)($| )') {
+        $Category = 'work'; $Confidence = 'high'; $Reason = 'The place name indicates a work or school destination.'
+    }
+    elseif ($Key -match '(^| )(mom|dad|mother|father|parent|family|grandma|grandmother|grandpa|grandfather|aunt|uncle|sister|brother)($| )') {
+        $Category = 'family'; $Confidence = 'high'; $Reason = 'The saved place name indicates a family destination.'
+    }
+    elseif ($Key -match '(^| )(market|grocery|store|shop|shopping|mall|pharmacy|target|walmart|costco|sam s|gas|hardware|bank|post office)($| )') {
+        $Category = 'errands'; $Confidence = 'high'; $Reason = 'The place name matches a common errand destination.'
+    }
+    elseif ($Key -match '(^| )(restaurant|cafe|coffee|bar|grill|kitchen|diner|bakery)($| )') {
+        $Category = 'dining'; $Confidence = 'high'; $Reason = 'The place name matches a dining destination.'
+    }
+    elseif ($Key -match '(^| )(gym|fitness|park|trail|lake|recreation)($| )') {
+        $Category = 'wellness'; $Confidence = 'medium'; $Reason = 'The place name suggests recreation or wellness.'
+    }
+    elseif ($VisitCount -ge 4) {
+        $Category = 'routine'; $Confidence = 'medium'; $Reason = 'Frequent visits make this part of your recurring world.'
+    }
+    return [PSCustomObject]@{ category=$Category; confidence=$Confidence; reason=$Reason }
+}
+
+function Get-DriveOSMobilityTimeBand {
+    param([int[]]$Hours = @())
+    if (-not $Hours -or $Hours.Count -eq 0) { return 'varied times' }
+    $Bands = @{'morning'=0;'afternoon'=0;'evening'=0;'late night'=0}
+    foreach ($Hour in $Hours) {
+        if ($Hour -ge 5 -and $Hour -lt 12) { $Bands.morning++ }
+        elseif ($Hour -ge 12 -and $Hour -lt 17) { $Bands.afternoon++ }
+        elseif ($Hour -ge 17 -and $Hour -lt 22) { $Bands.evening++ }
+        else { $Bands.'late night'++ }
+    }
+    return "$(($Bands.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key)"
+}
+
+function ConvertTo-DriveOSMobilityLocalTime {
+    param([Parameter(Mandatory=$true)][DateTimeOffset]$Moment)
+    foreach ($TimeZoneId in @('America/Chicago','Central Standard Time')) {
+        try {
+            $TimeZone = [TimeZoneInfo]::FindSystemTimeZoneById($TimeZoneId)
+            return [TimeZoneInfo]::ConvertTime($Moment,$TimeZone)
+        }
+        catch { continue }
+    }
+    return $Moment.ToLocalTime()
+}
+
+function Get-DriveOSMobilityDayPattern {
+    param([int[]]$Days = @())
+    if (-not $Days -or $Days.Count -eq 0) { return 'across the week' }
+    $Weekdays = @($Days | Where-Object { $_ -ge 1 -and $_ -le 5 }).Count
+    $Weekends = $Days.Count - $Weekdays
+    if (($Weekdays / $Days.Count) -ge 0.7) { return 'on weekdays' }
+    if (($Weekends / $Days.Count) -ge 0.7) { return 'on weekends' }
+    $Names = @('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday')
+    $TopDay = $Days | Group-Object | Sort-Object Count -Descending | Select-Object -First 1
+    return "most often on $($Names[[int]$TopDay.Name])"
+}
+
 function Find-DriveOSMobilityNode {
     param([object[]]$Nodes,[string]$Label,$Latitude,$Longitude)
     $LocationKey = Get-DriveOSMobilityLocationKey -Label $Label
@@ -55,11 +120,16 @@ function Find-DriveOSMobilityNode {
 }
 
 function New-DriveOSMobilityGraph {
-    param([object[]]$Drives = @(),[ValidateRange(1,730)][int]$WindowDays = 365)
+    param(
+        [object[]]$Drives = @(),
+        [ValidateRange(1,730)][int]$WindowDays = 365,
+        [DateTimeOffset]$AsOfUtc = [DateTimeOffset]::UtcNow
+    )
 
     $Nodes = [Collections.ArrayList]::new()
     $Edges = @{}
     $IncludedDriveIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $IncludedDrives = [Collections.Generic.List[object]]::new()
     $TotalMiles = 0.0
 
     foreach ($Drive in @($Drives | Where-Object { $null -ne $_ } | Sort-Object { "$(Get-DriveOSMobilityGraphValue $_ 'startedAt')" })) {
@@ -87,8 +157,9 @@ function New-DriveOSMobilityGraph {
                 $CoordinateKey = if ($null -ne $Endpoint.latitude -and $null -ne $Endpoint.longitude) {
                     '{0:F3},{1:F3}' -f $Endpoint.latitude,$Endpoint.longitude
                 } else { 'no-coordinate' }
+                $IdentityKey = if ($CoordinateKey -ne 'no-coordinate') { $CoordinateKey } else { $LocationKey }
                 $Node = [PSCustomObject]@{
-                    id = Get-DriveOSMobilityId -Kind 'place' -Key "$LocationKey|$CoordinateKey"
+                    id = Get-DriveOSMobilityId -Kind 'place' -Key $IdentityKey
                     locationKey = $LocationKey
                     label = $Endpoint.label
                     kind = if ($LocationKey -eq 'home') { 'home' } else { 'place' }
@@ -122,6 +193,7 @@ function New-DriveOSMobilityGraph {
         $null = $IncludedDriveIds.Add($DriveId)
         $ResolvedNodes[0].miles += $Miles
         $ResolvedNodes[1].miles += $Miles
+        $IncludedDrives.Add([PSCustomObject]@{ id=$DriveId;startedAt="$(Get-DriveOSMobilityGraphValue $Drive 'startedAt')";miles=$Miles;source=$ResolvedNodes[0].id;target=$ResolvedNodes[1].id })
 
         $EdgeKey = "$($ResolvedNodes[0].id)>$($ResolvedNodes[1].id)"
         if (-not $Edges.ContainsKey($EdgeKey)) {
@@ -151,8 +223,9 @@ function New-DriveOSMobilityGraph {
     }
 
     $PublicNodes = @($Nodes | ForEach-Object {
+        $Identity = Get-DriveOSMobilityCategory -Label $_.label -VisitCount $_.driveIds.Count
         [PSCustomObject]@{
-            id=$_.id;label=$_.label;kind=$_.kind;latitude=$_.latitude;longitude=$_.longitude
+            id=$_.id;label=$_.label;kind=$_.kind;category=$Identity.category;categoryConfidence=$Identity.confidence;categoryReason=$Identity.reason;latitude=$_.latitude;longitude=$_.longitude
             visitCount=$_.driveIds.Count;arrivals=$_.arrivals;departures=$_.departures
             totalMiles=[Math]::Round($_.miles,1);firstSeenAt=$_.firstSeenAt;lastSeenAt=$_.lastSeenAt
         }
@@ -167,9 +240,70 @@ function New-DriveOSMobilityGraph {
         }
     } | Sort-Object @{Expression='driveCount';Descending=$true},@{Expression='lastDrivenAt';Descending=$true})
 
+    $NodeMap = @{}; foreach ($Node in $PublicNodes) { $NodeMap[$Node.id] = $Node }
+    $RouteGroups = @{}
+    foreach ($Drive in $IncludedDrives) {
+        $Pair = @($Drive.source,$Drive.target) | Sort-Object
+        $PairKey = "$($Pair[0])|$($Pair[1])"
+        if (-not $RouteGroups.ContainsKey($PairKey)) {
+            $RouteGroups[$PairKey] = [PSCustomObject]@{ a=$Pair[0];b=$Pair[1];drives=[Collections.Generic.List[object]]::new();directions=@{} }
+        }
+        $Group = $RouteGroups[$PairKey]
+        $Group.drives.Add($Drive)
+        $Direction = "$($Drive.source)>$($Drive.target)"
+        if (-not $Group.directions.ContainsKey($Direction)) { $Group.directions[$Direction] = 0 }
+        $Group.directions[$Direction]++
+    }
+    $Routines = @($RouteGroups.Values | Where-Object { $_.drives.Count -ge 3 } | ForEach-Object {
+        $Group = $_; $NodeA = $NodeMap[$Group.a]; $NodeB = $NodeMap[$Group.b]
+        $Hours = @(); $Days = @()
+        foreach ($Drive in $Group.drives) {
+            try { $Moment = ConvertTo-DriveOSMobilityLocalTime ([DateTimeOffset]::Parse($Drive.startedAt)); $Hours += $Moment.Hour; $Days += [int]$Moment.DayOfWeek } catch {}
+        }
+        $Bidirectional = $Group.directions.Keys.Count -gt 1
+        $Categories = @($NodeA.category,$NodeB.category)
+        $Type = if ($Bidirectional -and $Categories -contains 'home' -and $Categories -contains 'work') { 'commute' } elseif ($Bidirectional) { 'round-trip' } else { 'frequent-route' }
+        $TimeBand = Get-DriveOSMobilityTimeBand -Hours $Hours
+        $DayPattern = Get-DriveOSMobilityDayPattern -Days $Days
+        $ConfidenceScore = [Math]::Min(0.98,0.48 + ($Group.drives.Count * 0.07) + $(if($Bidirectional){0.08}else{0}))
+        [PSCustomObject]@{
+            id=Get-DriveOSMobilityId -Kind 'routine' -Key "$($Group.a)|$($Group.b)"
+            type=$Type;title="$($NodeA.label) to $($NodeB.label)"
+            narrative="$($Group.drives.Count) drives, $DayPattern, usually in the $TimeBand."
+            source=$Group.a;target=$Group.b;driveCount=$Group.drives.Count;bidirectional=$Bidirectional
+            typicalTime=$TimeBand;dayPattern=$DayPattern;confidence=[Math]::Round($ConfidenceScore,2)
+            confidenceLabel=if($ConfidenceScore -ge .8){'high'}elseif($ConfidenceScore -ge .65){'medium'}else{'early signal'}
+        }
+    } | Sort-Object @{Expression='driveCount';Descending=$true} | Select-Object -First 6)
+
+    $RecentStart = $AsOfUtc.AddDays(-30); $PriorStart = $AsOfUtc.AddDays(-60)
+    $Recent = @($IncludedDrives | Where-Object { try { $Moment=[DateTimeOffset]::Parse($_.startedAt); $Moment -ge $RecentStart -and $Moment -le $AsOfUtc } catch { $false } })
+    $Prior = @($IncludedDrives | Where-Object { try { $Moment=[DateTimeOffset]::Parse($_.startedAt); $Moment -ge $PriorStart -and $Moment -lt $RecentStart } catch { $false } })
+    function Get-PeriodSnapshot($PeriodDrives) {
+        $Places=[Collections.Generic.HashSet[string]]::new();$Miles=0.0
+        foreach($Drive in @($PeriodDrives)){ $null=$Places.Add($Drive.source);$null=$Places.Add($Drive.target);$Miles+=$Drive.miles }
+        return [PSCustomObject]@{driveCount=@($PeriodDrives).Count;totalMiles=[Math]::Round($Miles,1);placeCount=$Places.Count;placeIds=@($Places)}
+    }
+    $RecentSnapshot=Get-PeriodSnapshot $Recent;$PriorSnapshot=Get-PeriodSnapshot $Prior
+    $ChangeInsights=[Collections.Generic.List[object]]::new()
+    if ($PriorSnapshot.driveCount -eq 0) {
+        $ChangeInsights.Add([PSCustomObject]@{type='baseline-building';direction='neutral';title='Building your comparison baseline';narrative='JourneyDeck needs activity in both 30-day periods before calling a change.';confidence='insufficient evidence'})
+    }
+    else {
+        $DriveDelta=$RecentSnapshot.driveCount-$PriorSnapshot.driveCount
+        $DrivePercent=[Math]::Round(($DriveDelta/[Math]::Max(1,$PriorSnapshot.driveCount))*100,0)
+        $Direction=if($DriveDelta -gt 0){'up'}elseif($DriveDelta -lt 0){'down'}else{'stable'}
+        $ChangeInsights.Add([PSCustomObject]@{type='activity-change';direction=$Direction;title=if($Direction -eq 'stable'){'Your driving rhythm is steady'}else{"Your driving activity is $Direction"};narrative="$($RecentSnapshot.driveCount) drives in the recent 30 days versus $($PriorSnapshot.driveCount) before that ($([Math]::Abs($DrivePercent))% $Direction).";confidence='high'})
+        $PlaceDelta=$RecentSnapshot.placeCount-$PriorSnapshot.placeCount
+        $ChangeInsights.Add([PSCustomObject]@{type='place-diversity';direction=if($PlaceDelta -gt 0){'up'}elseif($PlaceDelta -lt 0){'down'}else{'stable'};title=if($PlaceDelta -gt 0){'Your world is widening'}elseif($PlaceDelta -lt 0){'Your world is concentrating'}else{'Your place mix is stable'};narrative="$($RecentSnapshot.placeCount) active places recently versus $($PriorSnapshot.placeCount) in the prior period.";confidence='high'})
+        $PriorPlaces=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase);foreach($Id in $PriorSnapshot.placeIds){$null=$PriorPlaces.Add($Id)}
+        $Emerging=@($RecentSnapshot.placeIds | Where-Object {-not $PriorPlaces.Contains($_)} | ForEach-Object {$NodeMap[$_]} | Where-Object {$null-ne $_} | Sort-Object visitCount -Descending | Select-Object -First 1)
+        if($Emerging.Count){$ChangeInsights.Add([PSCustomObject]@{type='emerging-place';direction='new';title="$($Emerging[0].label) entered your recent world";narrative='This place appears in the recent 30-day period but not the previous one.';confidence='medium'})}
+    }
+
     return [PSCustomObject]@{
-        version=1
-        generatedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')
+        version=2
+        generatedAtUtc=$AsOfUtc.ToString('o')
         windowDays=$WindowDays
         summary=[PSCustomObject]@{
             placeCount=$PublicNodes.Count
@@ -179,6 +313,9 @@ function New-DriveOSMobilityGraph {
         }
         nodes=$PublicNodes
         edges=$PublicEdges
+        routines=$Routines
+        periodComparison=[PSCustomObject]@{periodDays=30;recent=$RecentSnapshot;prior=$PriorSnapshot}
+        changeInsights=@($ChangeInsights)
     }
 }
 
