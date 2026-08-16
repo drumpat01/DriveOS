@@ -1,14 +1,16 @@
 const fs=require('fs');const path=require('path');const vm=require('vm');const assert=require('assert');
 const root=path.resolve(__dirname,'..');
 const elements=new Map([['status',{textContent:''}]]);
-const context={console,Map,Promise,setTimeout,clearTimeout,URL,location:{hostname:'127.0.0.1'},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelectorAll:()=>[]},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
+const context={console,Map,Promise,setTimeout,clearTimeout,URL,Intl,location:{hostname:'127.0.0.1',hash:''},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelectorAll:()=>[],addEventListener(){}},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
 context.window=context;context.window.navigator=context.navigator;context.window.location=context.location;context.window.matchMedia=()=>({matches:false});
 vm.createContext(context);
-for(const file of ['web/core/dom.js','web/core/state.js','web/core/platform.js','web/core/api.js','web/features/drives.js','web/features/replay.js','web/features/music.js','web/features/data-health.js','web/features/collections.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
+for(const file of ['web/core/dom.js','web/core/state.js','web/core/platform.js','web/core/api.js','web/features/drives.js','web/features/replay.js','web/features/music.js','web/features/data-health.js','web/features/collections.js','web/features/mobility-graph.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
 assert.equal(context.DriveOSDom.escapeHtml(`<Driver's & "Song">`),'&lt;Driver&#039;s &amp; &quot;Song&quot;&gt;');
 context.DriveOSDom.setText('status','ONLINE');assert.equal(elements.get('status').textContent,'ONLINE');
 assert.equal(context.DriveOSState.driveLibraryWindowDays,365);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);
 assert.equal(typeof context.DriveOSFeatures.collections.create,'function','Journey Collections feature module should load independently');
+assert.equal(typeof context.DriveOSFeatures.mobilityGraph.create,'function','Personal Mobility Graph feature module should load independently');
+const graphPositions=context.DriveOSFeatures.mobilityGraph.positions([{id:'home',latitude:32.9,longitude:-97.3},{id:'work',latitude:32.75,longitude:-97.1}]);assert.equal(graphPositions.size,2,'mobility graph should position every place');assert.ok([...graphPositions.values()].every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)),'mobility graph positions must remain finite');
 assert.equal(context.DriveOSPlatform.isTailnetRemote(),false);assert.equal(context.DriveOSPlatform.isStandalonePwa(),false);
 assert.equal(context.DriveOSPlatform.connectionContextLabel(),'Local only \u00b7 127.0.0.1','desktop should retain its local-only footer');
 assert.equal(context.DriveOSPlatform.connectionContextLabel('journeydeck.me'),'Hosted securely \u00b7 journeydeck.me','production should identify its hosted context');

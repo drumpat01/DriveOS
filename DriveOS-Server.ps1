@@ -27,6 +27,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.ShareCards.psm1"
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Collections.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityGraph.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebAuth.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Security\DriveOS.WebSession.psm1") -Force
@@ -3869,6 +3870,12 @@ function Handle-Request {
                         windowDays = 365
                         drives     = @(Get-CachedRecentDrives365)
                     }
+                    return
+                }
+
+                "/api/mobility-graph" {
+                    $Drives = @(Get-CachedRecentDrives365)
+                    Send-Json -Stream $Stream -Object (New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365)
                     return
                 }
 

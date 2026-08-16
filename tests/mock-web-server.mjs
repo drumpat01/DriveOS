@@ -134,6 +134,27 @@ const responses = {
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 365, drives },
+  '/api/mobility-graph': {
+    version: 1,
+    generatedAtUtc: '2026-08-16T12:00:00Z',
+    windowDays: 365,
+    summary: { placeCount: 5, connectionCount: 6, driveCount: 10, totalMiles: 300 },
+    nodes: [
+      { id: 'place-home', label: 'Home', kind: 'home', latitude: 39.72, longitude: -104.99, visitCount: 10, arrivals: 5, departures: 5, totalMiles: 300, firstSeenAt: '2026-08-01T12:00:00Z', lastSeenAt: '2026-08-15T12:00:00Z' },
+      { id: 'place-work', label: 'Studio', kind: 'place', latitude: 39.78, longitude: -104.90, visitCount: 6, arrivals: 3, departures: 3, totalMiles: 172, firstSeenAt: '2026-08-02T12:00:00Z', lastSeenAt: '2026-08-14T12:00:00Z' },
+      { id: 'place-coffee', label: 'Demo Coffee', kind: 'place', latitude: 39.75, longitude: -104.95, visitCount: 4, arrivals: 2, departures: 2, totalMiles: 72, firstSeenAt: '2026-08-04T12:00:00Z', lastSeenAt: '2026-08-13T12:00:00Z' },
+      { id: 'place-gym', label: 'Summit Gym', kind: 'place', latitude: 39.74, longitude: -104.92, visitCount: 3, arrivals: 2, departures: 1, totalMiles: 48, firstSeenAt: '2026-08-06T12:00:00Z', lastSeenAt: '2026-08-12T12:00:00Z' },
+      { id: 'place-park', label: 'Lakeview Park', kind: 'place', latitude: 39.80, longitude: -104.97, visitCount: 2, arrivals: 1, departures: 1, totalMiles: 36, firstSeenAt: '2026-08-07T12:00:00Z', lastSeenAt: '2026-08-11T12:00:00Z' }
+    ],
+    edges: [
+      { id: 'edge-1', source: 'place-home', target: 'place-work', driveCount: 4, totalMiles: 98, averageMiles: 24.5, averageMinutes: 42, driveIds: ['demo-drive-1','demo-drive-2','demo-drive-3','demo-drive-4'] },
+      { id: 'edge-2', source: 'place-work', target: 'place-home', driveCount: 3, totalMiles: 75, averageMiles: 25, averageMinutes: 44, driveIds: ['demo-drive-5','demo-drive-6','demo-drive-7'] },
+      { id: 'edge-3', source: 'place-home', target: 'place-coffee', driveCount: 2, totalMiles: 24, averageMiles: 12, averageMinutes: 21, driveIds: ['demo-drive-8','demo-drive-9'] },
+      { id: 'edge-4', source: 'place-coffee', target: 'place-gym', driveCount: 1, totalMiles: 8, averageMiles: 8, averageMinutes: 14, driveIds: ['demo-drive-10'] },
+      { id: 'edge-5', source: 'place-home', target: 'place-park', driveCount: 1, totalMiles: 18, averageMiles: 18, averageMinutes: 30, driveIds: ['demo-drive-3'] },
+      { id: 'edge-6', source: 'place-gym', target: 'place-home', driveCount: 1, totalMiles: 11, averageMiles: 11, averageMinutes: 19, driveIds: ['demo-drive-6'] }
+    ]
+  },
   '/api/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
   '/api/wife/drives': { today: { miles: 24.6, trips: 1 }, drives },
   '/api/wife/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
