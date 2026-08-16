@@ -296,6 +296,37 @@ function Get-DriveOSTessieDrives {
     throw 'Durable Tessie history reads require SQLite or Turso.'
 }
 
+function Save-DriveOSReconstructedDrives {
+    param(
+        [Parameter(Mandatory=$true)]$Repository,
+        [Parameter(Mandatory=$true)]$Plan,
+        [string]$HouseholdId='household_primary'
+    )
+    if ($Repository.Provider -eq 'Json') { throw 'Reconstructed drive persistence requires SQLite or Turso.' }
+    $Now = [DateTimeOffset]::UtcNow.ToString('o')
+    $VehicleId = New-DriveOSStableDataId -Entity 'vehicle' -ProviderKey 'google_timeline:primary'
+    $Rows = foreach ($Record in @($Plan.records)) {
+        [PSCustomObject]@{
+            id=New-DriveOSStableDataId -Entity 'drive' -ProviderKey "google_timeline:$($Record.providerDriveId)"
+            providerDriveId=$Record.providerDriveId; legacyDriveId=$Record.legacyDriveId
+            startedAtUtc=$Record.startedAtUtc; endedAtUtc=$Record.endedAtUtc
+            startedAtEpoch=$Record.startedAtEpoch; endedAtEpoch=$Record.endedAtEpoch
+            startingLocation=$Record.startingLocation; endingLocation=$Record.endingLocation
+            startingLatitude=$Record.startingLatitude; startingLongitude=$Record.startingLongitude
+            endingLatitude=$Record.endingLatitude; endingLongitude=$Record.endingLongitude
+            distanceMiles=$Record.distanceMiles; rawPayloadJson=$Record.rawPayloadJson
+        }
+    }
+    $Batch = [PSCustomObject]@{
+        householdId=$HouseholdId; observedAtUtc=$Now; vehicleId=$VehicleId
+        providerVehicleId='timeline-primary'; displayName='Historical vehicle'; records=@($Rows)
+    }
+    if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteReconstructedDrives -Repository $Repository -Batch $Batch }
+    elseif ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoReconstructedDrives -Repository $Repository -Batch $Batch }
+    else { throw 'Unsupported reconstructed drive repository.' }
+    return [PSCustomObject]@{ persisted=$true; records=@($Rows).Count; provider='google_timeline' }
+}
+
 function Get-DriveOSTessieCharges {
     param([Parameter(Mandatory=$true)]$Repository,[ValidateRange(1,730)][int]$Days=365)
     $FromEpoch = [DateTimeOffset]::UtcNow.AddDays(-$Days).ToUnixTimeSeconds()
@@ -566,6 +597,7 @@ Export-ModuleMember -Function `
     New-DriveOSIntegrationSyncRun, `
     Set-DriveOSIntegrationSyncRun, `
     Get-DriveOSTessieDrives, `
+    Save-DriveOSReconstructedDrives, `
     Get-DriveOSTessieCharges, `
     Get-DriveOSIntegrationSyncCursor, `
     Get-DriveOSTessieAuditRows, `

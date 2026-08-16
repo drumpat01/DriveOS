@@ -344,8 +344,25 @@ function Set-DriveOSTursoIntegrationSyncRun {
 
 function Get-DriveOSTursoTessieDrives {
     param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
-    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM drives WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline') AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
+}
+
+function Set-DriveOSTursoReconstructedDrives {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Batch)
+    $Now=[string]$Batch.observedAtUtc
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements @(
+        [PSCustomObject]@{ Sql="INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;"; Args=@($Batch.householdId,$Now,$Now) },
+        [PSCustomObject]@{ Sql="INSERT INTO vehicles(id,household_id,provider,provider_vehicle_id,vin,display_name,observed_at_utc,raw_payload_json,created_at_utc,updated_at_utc) VALUES(?,?,'google_timeline',?,NULL,?,?,'{`"source`":`"google_timeline`"}',?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,observed_at_utc=excluded.observed_at_utc,updated_at_utc=excluded.updated_at_utc;"; Args=@($Batch.vehicleId,$Batch.householdId,$Batch.providerVehicleId,$Batch.displayName,$Now,$Now,$Now) }
+    )
+    $Statements=@()
+    foreach($Drive in @($Batch.records)){
+        $Statements += [PSCustomObject]@{
+            Sql="INSERT INTO drives(id,household_id,vehicle_id,provider,provider_drive_id,legacy_drive_id,started_at_utc,ended_at_utc,started_at_epoch,ended_at_epoch,starting_location,ending_location,starting_latitude,starting_longitude,ending_latitude,ending_longitude,starting_battery,ending_battery,distance_miles,energy_used_kwh,average_speed_mph,max_speed_mph,tessie_tag,driver_profile,raw_payload_json,source_updated_at_utc,created_at_utc,updated_at_utc) VALUES(?,?,?,'google_timeline',?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,NULL,NULL,NULL,'Reconstructed','Google Timeline',?,NULL,?,?) ON CONFLICT(id) DO UPDATE SET raw_payload_json=excluded.raw_payload_json,distance_miles=excluded.distance_miles,updated_at_utc=excluded.updated_at_utc;"
+            Args=@($Drive.id,$Batch.householdId,$Batch.vehicleId,$Drive.providerDriveId,$Drive.legacyDriveId,$Drive.startedAtUtc,$Drive.endedAtUtc,$Drive.startedAtEpoch,$Drive.endedAtEpoch,$Drive.startingLocation,$Drive.endingLocation,$Drive.startingLatitude,$Drive.startingLongitude,$Drive.endingLatitude,$Drive.endingLongitude,$Drive.distanceMiles,$Drive.rawPayloadJson,$Now,$Now)
+        }
+    }
+    Invoke-DriveOSTursoStatementChunks -Repository $Repository -Statements $Statements
 }
 
 function Get-DriveOSTursoJourneyCollections {
@@ -603,6 +620,7 @@ Export-ModuleMember -Function `
     Set-DriveOSTursoTessieSnapshot, `
     Set-DriveOSTursoIntegrationSyncRun, `
     Get-DriveOSTursoTessieDrives, `
+    Set-DriveOSTursoReconstructedDrives, `
     Get-DriveOSTursoJourneyCollections, `
     Set-DriveOSTursoJourneyCollection, `
     Remove-DriveOSTursoJourneyCollection, `

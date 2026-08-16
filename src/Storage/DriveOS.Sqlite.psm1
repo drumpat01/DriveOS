@@ -118,8 +118,22 @@ function Set-DriveOSSqliteIntegrationSyncRun {
 
 function Get-DriveOSSqliteTessieDrives {
     param($Repository,[long]$FromEpoch)
-    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM drives WHERE provider='tessie' AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
+    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline') AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
+}
+
+function Set-DriveOSSqliteReconstructedDrives {
+    param($Repository,$Batch)
+    $Now=[string]$Batch.observedAtUtc
+    $Sql=New-Object System.Collections.Generic.List[string]
+    $Sql.Add('PRAGMA foreign_keys=ON;');$Sql.Add('BEGIN IMMEDIATE;')
+    $Sql.Add("INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $Batch.householdId),'Primary household',$(ConvertTo-SqlLiteral $Now),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;")
+    $Sql.Add("INSERT INTO vehicles(id,household_id,provider,provider_vehicle_id,vin,display_name,observed_at_utc,raw_payload_json,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $Batch.vehicleId),$(ConvertTo-SqlLiteral $Batch.householdId),'google_timeline',$(ConvertTo-SqlLiteral $Batch.providerVehicleId),NULL,$(ConvertTo-SqlLiteral $Batch.displayName),$(ConvertTo-SqlLiteral $Now),'{`"source`":`"google_timeline`"}',$(ConvertTo-SqlLiteral $Now),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name,observed_at_utc=excluded.observed_at_utc,updated_at_utc=excluded.updated_at_utc;")
+    foreach($Drive in @($Batch.records)){
+        $Values=@($Drive.id,$Batch.householdId,$Batch.vehicleId,'google_timeline',$Drive.providerDriveId,$Drive.legacyDriveId,$Drive.startedAtUtc,$Drive.endedAtUtc,$Drive.startedAtEpoch,$Drive.endedAtEpoch,$Drive.startingLocation,$Drive.endingLocation,$Drive.startingLatitude,$Drive.startingLongitude,$Drive.endingLatitude,$Drive.endingLongitude,$null,$null,$Drive.distanceMiles,$null,$null,$null,'Reconstructed','Google Timeline',$Drive.rawPayloadJson,$null,$Now,$Now)|ForEach-Object{ConvertTo-SqlLiteral $_}
+        $Sql.Add("INSERT INTO drives(id,household_id,vehicle_id,provider,provider_drive_id,legacy_drive_id,started_at_utc,ended_at_utc,started_at_epoch,ended_at_epoch,starting_location,ending_location,starting_latitude,starting_longitude,ending_latitude,ending_longitude,starting_battery,ending_battery,distance_miles,energy_used_kwh,average_speed_mph,max_speed_mph,tessie_tag,driver_profile,raw_payload_json,source_updated_at_utc,created_at_utc,updated_at_utc) VALUES($($Values -join ',')) ON CONFLICT(id) DO UPDATE SET raw_payload_json=excluded.raw_payload_json,distance_miles=excluded.distance_miles,updated_at_utc=excluded.updated_at_utc;")
+    }
+    $Sql.Add('COMMIT;');$null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($Sql -join "`n")
 }
 
 function Get-DriveOSSqliteJourneyCollections {
@@ -322,4 +336,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Set-DriveOSSqliteReconstructedDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection
