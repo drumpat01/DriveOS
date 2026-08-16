@@ -606,15 +606,16 @@ function Test-CrossProviderListeningDuplicate {
     $CandidateSource = Get-ListeningRecordSource -Record $Candidate
     $ExistingSource = Get-ListeningRecordSource -Record $ExistingRecord
 
-    # Only collapse the old Last.fm/Spotify overlap. Never collapse two Spotify
-    # plays, so genuine repeat listens remain intact.
+    # Only collapse alternate-provider/Spotify overlap. Never collapse two
+    # Spotify plays, so genuine repeat listens remain intact.
     if ($CandidateSource -eq $ExistingSource) {
         return $false
     }
 
     if (
         @($CandidateSource, $ExistingSource) -notcontains "spotify" -or
-        @($CandidateSource, $ExistingSource) -notcontains "lastfm"
+        (@($CandidateSource, $ExistingSource) -notcontains "lastfm" -and
+         @($CandidateSource, $ExistingSource) -notcontains "youtube_music")
     ) {
         return $false
     }

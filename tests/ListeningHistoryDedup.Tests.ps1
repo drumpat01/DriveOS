@@ -41,6 +41,8 @@ function New-Play {
 $Records = @(
     New-Play -Source lastfm -Track 'Same Song' -Artist 'The Artist' -OffsetSeconds 0
     New-Play -Source spotify -Track 'Same Song' -Artist 'The Artist' -OffsetSeconds 120
+    New-Play -Source youtube_music -Track 'YouTube Twin' -Artist 'The Artist' -OffsetSeconds 400
+    New-Play -Source spotify -Track 'YouTube Twin' -Artist 'The Artist' -OffsetSeconds 460
     New-Play -Source spotify -Track 'Repeat Song' -Artist 'The Artist' -OffsetSeconds 1000
     New-Play -Source spotify -Track 'Repeat Song' -Artist 'The Artist' -OffsetSeconds 1060
     New-Play -Source lastfm -Track 'Far Apart' -Artist 'The Artist' -OffsetSeconds 2000
@@ -50,9 +52,11 @@ $Records = @(
 )
 
 $Result = @(Remove-CrossProviderListeningDuplicates -Records $Records)
-Assert-True ($Result.Count -eq 7) 'Cross-provider de-duplication changed the number of visible listening events.'
+Assert-True ($Result.Count -eq 8) 'Cross-provider de-duplication changed the number of visible listening events.'
 $SameSong = @($Result | Where-Object track -eq 'Same Song')
 Assert-True ($SameSong.Count -eq 1 -and $SameSong[0].source -eq 'spotify') 'Spotify no longer replaces its matching legacy Last.fm event.'
+$YouTubeTwin = @($Result | Where-Object track -eq 'YouTube Twin')
+Assert-True ($YouTubeTwin.Count -eq 1 -and $YouTubeTwin[0].source -eq 'spotify') 'Spotify does not replace its matching YouTube Music event.'
 Assert-True (@($Result | Where-Object track -eq 'Repeat Song').Count -eq 2) 'Same-provider repeat listens were collapsed.'
 Assert-True (@($Result | Where-Object track -eq 'Far Apart').Count -eq 2) 'Events outside the 12-minute maximum window were collapsed.'
 Assert-True (@($Result | Where-Object track -eq 'Artist Matters').Count -eq 2) 'Different artists with the same title were collapsed.'
