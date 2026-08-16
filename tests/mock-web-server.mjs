@@ -135,7 +135,7 @@ const responses = {
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 365, drives },
   '/api/mobility-graph': {
-    version: 2,
+    version: 3,
     generatedAtUtc: '2026-08-16T12:00:00Z',
     windowDays: 365,
     summary: { placeCount: 5, connectionCount: 6, driveCount: 10, totalMiles: 300 },

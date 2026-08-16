@@ -13,7 +13,7 @@ $Drives = @(
     [PSCustomObject]@{id='six';startedAt='2026-08-04T12:00:00Z';startingLocation='Home';endingLocation='Work';startingLatitude=32.90;startingLongitude=-97.30;endingLatitude=32.75;endingLongitude=-97.10;miles=19;durationMinutes=34;efficiencyWhMi=248}
 )
 $Graph = New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365 -AsOfUtc ([DateTimeOffset]'2026-08-16T00:00:00Z')
-Assert-Equal $Graph.version 2 'Mobility intelligence contract version changed.'
+Assert-Equal $Graph.version 3 'Mobility correction contract version changed.'
 Assert-Equal $Graph.summary.placeCount 3 'Nearby repeated endpoints were not clustered into stable places.'
 Assert-Equal $Graph.summary.connectionCount 3 'Directed mobility connections were not aggregated correctly.'
 Assert-Equal $Graph.summary.driveCount 6 'Mobility graph drive coverage is incorrect.'
@@ -32,6 +32,18 @@ Assert-Equal $Graph.routines[0].typicalTime 'morning' 'Routine time bands must u
 Assert-Equal $Graph.periodComparison.recent.driveCount 4 'Recent comparison window is incorrect.'
 Assert-Equal $Graph.periodComparison.prior.driveCount 2 'Prior comparison window is incorrect.'
 Assert-True (@($Graph.changeInsights | Where-Object type -eq 'activity-change').Count -eq 1) 'Activity change insight is missing.'
+$WorkNode = @($Graph.nodes | Where-Object label -eq 'Work')[0]
+$Commute = $Graph.routines[0]
+$CorrectedGraph = New-DriveOSMobilityGraph -Drives $Drives -WindowDays 365 -AsOfUtc ([DateTimeOffset]'2026-08-16T00:00:00Z') -Preferences ([PSCustomObject]@{
+    places = @([PSCustomObject]@{nodeId=$WorkNode.id;name="Nicholas's School";category='family'})
+    routines = @([PSCustomObject]@{routineId=$Commute.id;status='confirmed';type='school-run';customName=''})
+})
+$CorrectedPlace = @($CorrectedGraph.nodes | Where-Object id -eq $WorkNode.id)[0]
+Assert-Equal $CorrectedPlace.label "Nicholas's School" 'Manual place name did not override inference.'
+Assert-Equal $CorrectedPlace.category 'family' 'Manual place category did not override inference.'
+Assert-Equal $CorrectedPlace.categoryConfidence 'manual' 'Manual place identity is not labeled as manual.'
+Assert-Equal $CorrectedGraph.routines[0].type 'school-run' 'Confirmed routine type did not override inference.'
+Assert-Equal $CorrectedGraph.routines[0].confirmationStatus 'confirmed' 'Routine confirmation state was not applied.'
 $IdentityGraph = New-DriveOSMobilityGraph -Drives @(
     [PSCustomObject]@{id='errand';startedAt='2026-08-10T18:00:00Z';startingLocation='Mom and Dad';endingLocation='Target Grocery Store';miles=3;durationMinutes=8}
 ) -AsOfUtc ([DateTimeOffset]'2026-08-16T00:00:00Z')
