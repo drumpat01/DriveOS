@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>JourneyDeck</title>
-  <meta name="theme-color" content="#eef6f8">
+  <meta name="theme-color" content="#090712">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="JourneyDeck">
@@ -16,6 +16,7 @@
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
   <link rel="stylesheet" href="/styles.css?v=5.9.6">
+  <link rel="stylesheet" href="/beta-theme.css?v=5.9.6">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -89,16 +90,16 @@
       <div class="brand">
         <img class="brand-logo" src="/assets/journeydeck-mark.svg" alt="JourneyDeck route mark">
         <div class="brand-copy">
-          <div class="eyebrow">PERSONAL VEHICLE INTELLIGENCE</div>
+          <div class="eyebrow">DRIVE JOURNAL <span class="beta-release-badge">BETA</span></div>
           <h1>JOURNEY<span>DECK</span></h1>
         </div>
       </div>
 
       <nav class="main-nav" aria-label="JourneyDeck">
-        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Dashboard</span><span class="nav-mobile-label">Home</span></button>
+        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
         <button class="nav-button nav-button-live" data-view="live"><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
-        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Drives</span></button>
-        <button class="nav-button nav-secondary" data-view="graph">Graph</button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Journeys</span></button>
+        <button class="nav-button nav-secondary" data-view="graph">Atlas</button>
         <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
         <button class="nav-button nav-secondary" data-view="music">Music</button>
         <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
@@ -1030,6 +1031,7 @@
         <aside class="share-card-controls">
           <div class="section-label">CARD STYLE</div>
           <label class="share-card-field"><span>Theme</span><select id="shareCardTheme">
+            <option value="cinematic" selected>Cinematic route</option>
             <option value="electric">Electric night</option>
             <option value="sunset">Sunset drive</option>
             <option value="paper">Clean paper</option>
