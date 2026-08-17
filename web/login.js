@@ -6,10 +6,10 @@
   const decode=value=>Uint8Array.from(atob(value.replace(/-/g,"+").replace(/_/g,"/").padEnd(Math.ceil(value.length/4)*4,"=")),c=>c.charCodeAt(0));
   const encode=value=>btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/g,"");
 
-  // Production passkeys verify the exact journeydeck.me origin. The beta uses
-  // the same secure account via password, but must not offer a passkey flow
-  // that the production verifier will correctly reject for beta.journeydeck.me.
-  if(window.PublicKeyCredential&&navigator.credentials&&!location.hostname.startsWith("beta."))passkeyButton.hidden=false;
+  // Production passkeys verify the exact journeydeck.me origin. Beta and local
+  // Tailscale previews use the same account via password, but must not offer a
+  // passkey flow that the production verifier will correctly reject.
+  if(window.PublicKeyCredential&&navigator.credentials&&location.hostname==="journeydeck.me")passkeyButton.hidden=false;
   passkeyButton.addEventListener("click",async()=>{message.textContent="";passkeyButton.disabled=true;try{
     const optionResponse=await fetch("/api/auth/passkey/options",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:"{}"});const options=await optionResponse.json();
     if(!options.available){message.textContent="Sign in with your password, then enable Face ID in Data Health.";return;}

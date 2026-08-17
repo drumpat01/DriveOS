@@ -16,9 +16,15 @@ const MIME = new Map([
   [".woff", "font/woff"], [".woff2", "font/woff2"]
 ]);
 const HOP_HEADERS = new Set(["connection", "content-encoding", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
+const SESSION_COOKIE_NAME = "DriveOSSession";
+
+function hasSessionCookie(req) {
+  const cookie = String(req.headers.cookie || "");
+  return cookie.split(";").some(part => part.trim().startsWith(`${SESSION_COOKIE_NAME}=`));
+}
 
 function securityHeaders(res) {
-  res.setHeader("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://journeydeck.me https://*.spotify.com; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://journeydeck.me https://*.spotify.com https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "no-referrer");
@@ -85,14 +91,39 @@ export function createBetaLiveProxyServer({ upstreamUrl = process.env.DRIVEOS_BE
         if (location) res.setHeader("Location", location.replace(upstream.origin, ""));
         res.setHeader("Cache-Control", "no-store");
         res.writeHead(response.status);
-        if (response.body) Readable.fromWeb(response.body).pipe(res);
-        else res.end();
+        if (response.body) {
+          const responseStream = Readable.fromWeb(response.body);
+          // An upstream timeout can arrive after headers have been forwarded.
+          // Always consume the stream error so one slow API response cannot
+          // terminate the entire local beta preview process.
+          responseStream.on("error", () => {
+            if (!res.destroyed) res.destroy();
+          });
+          res.on("close", () => {
+            if (!responseStream.destroyed) responseStream.destroy();
+          });
+          responseStream.pipe(res);
+        } else res.end();
         console.log(`${req.method} ${requestUrl.pathname} -> ${response.status} (${Date.now() - started}ms)`);
       } catch (error) {
         const status = error.statusCode || 502;
         res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: status === 413 ? error.message : "JourneyDeck live service is temporarily unavailable." }));
       }
+      return;
+    }
+
+    // Production protects the application shell and redirects anonymous users
+    // to sign in. The beta serves local frontend files, so it must reproduce
+    // that boundary itself or the shell loads with every API request returning
+    // 401 and no way to establish a beta-host session.
+    if (
+      req.method === "GET" &&
+      ["/", "/index.html", "/wife", "/wife.html"].includes(requestUrl.pathname) &&
+      !hasSessionCookie(req)
+    ) {
+      res.writeHead(302, { Location: "/login", "Cache-Control": "no-store" });
+      res.end();
       return;
     }
 
