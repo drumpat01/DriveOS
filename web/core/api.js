@@ -2,7 +2,12 @@
   async function request(path, options) {
     const response = await fetch(path, { cache: "no-store", ...options });
     const body = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+    if (!response.ok) {
+      if (response.status === 401) {
+        window.location.replace("/login");
+      }
+      throw new Error(body.error || `Request failed (${response.status})`);
+    }
     return body;
   }
   window.DriveOSApi = {

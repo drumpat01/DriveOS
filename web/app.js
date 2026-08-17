@@ -18,6 +18,7 @@ let driveLibraryExpanded = false;
 let driveTimelineDays = 7;
 let driveTimelineLoaded = false;
 let driveTimelineLoadPromise = null;
+const driveTimelineRouteCache = new Map();
 
 function ensureMapLibre() {
   if (window.maplibregl) {
@@ -71,6 +72,8 @@ function ensureMapLibre() {
   return mapLibreLoadPromise;
 }
 
+window.JourneyDeckMaps = Object.freeze({ ensureMapLibre });
+
 const DRIVEOS_WEB_BUILD = window.DriveOSBuild.webBuild;
 window.DRIVEOS_WEB_BUILD = DRIVEOS_WEB_BUILD;
 document.documentElement.dataset.webBuild = DRIVEOS_WEB_BUILD;
@@ -101,11 +104,11 @@ const apiLoadingRegions = Object.freeze({
   },
   "/api/drives/recent": {
     selector: '[data-dashboard-widget="drives"]',
-    label: "Loading recent drives\u2026"
+    label: "Loading recent journeys\u2026"
   },
   "/api/drives": {
     selector: "#view-drives",
-    label: "Loading full drive library\u2026"
+    label: "Loading full Journey Library\u2026"
   },
   "/api/music/stats": {
     selector: "#view-music",
@@ -134,8 +137,8 @@ const backgroundActivityLabels = Object.freeze({
   "/api/status": "Checking status",
   "/api/vehicle": "Loading vehicle",
   "/api/spotify/recent": "Loading Spotify",
-  "/api/drives/recent": "Loading recent drives",
-  "/api/drives": "Loading drives",
+  "/api/drives/recent": "Loading recent journeys",
+  "/api/drives": "Loading journeys",
   "/api/music/stats": "Loading music stats",
   "/api/statistics": "Loading statistics",
   "/api/places": "Loading places",
@@ -179,7 +182,7 @@ function renderBackgroundActivity() {
     text.textContent = "Idle";
     count.hidden = true;
     count.textContent = "";
-    monitor.title = "No DriveOS API requests are running";
+    monitor.title = "No JourneyDeck requests are running";
     return;
   }
 
@@ -414,13 +417,14 @@ function renderVehicleLocation(vehicle) {
   if (!vehicleLocationMap) {
     vehicleLocationMap = new maplibregl.Map({
       container,
-      style: "https://tiles.openfreemap.org/styles/liberty",
+      style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
       center: coordinates,
       zoom: 13.5,
       attributionControl: false,
       scrollZoom: false,
       pitchWithRotate: false
     });
+    window.JourneyDeckMapTheme?.attach(vehicleLocationMap);
     const marker = document.createElement("div");
     marker.className = "vehicle-location-marker";
     marker.innerHTML = '<span class="vehicle-location-arrow">&#x25B2;</span>';
@@ -547,7 +551,7 @@ async function loadSpotify() {
     state.spotifyAuthorized = false;
     const spotifyConnectButton = $("spotifyConnectButton");
     if (spotifyConnectButton) spotifyConnectButton.hidden = false;
-    list.innerHTML = `<div class="empty-state"><h3>Connect Spotify</h3><p>Authorize Spotify on this computer, then DriveOS will recover the recent listening history Spotify still exposes.</p></div>`;
+    list.innerHTML = `<div class="empty-state"><h3>Connect Spotify</h3><p>Authorize Spotify on this computer, then JourneyDeck will recover the recent listening history Spotify still exposes.</p></div>`;
     setText("archiveAdded", "Spotify authorization required");
     return null;
   }
@@ -818,7 +822,7 @@ function renderFavoriteRoutes() {
     container.innerHTML = `
       <div class="favorite-routes-empty">
         <strong>No repeated routes detected yet</strong>
-        <span>DriveOS groups trips when both endpoints are within about 0.75 miles, or their Tessie addresses match.</span>
+        <span>JourneyDeck groups journeys when both endpoints are within about 0.75 miles, or their Tessie addresses match.</span>
       </div>`;
     return;
   }
@@ -836,11 +840,11 @@ function renderFavoriteRoutes() {
           <span class="favorite-route-arrow">\u2192</span>
           <strong>${escapeHtml(compactLocation(route.endingLocation) || "Unknown destination")}</strong>
           <div class="favorite-route-meta">
-            ${route.count} drives \u00B7 ${escapeHtml(avgMiles)} \u00B7 ${escapeHtml(avgMinutes)} \u00B7 ${escapeHtml(efficiency)}
+            ${route.count} journeys \u00B7 ${escapeHtml(avgMiles)} \u00B7 ${escapeHtml(avgMinutes)} \u00B7 ${escapeHtml(efficiency)}
           </div>
           <div class="favorite-route-last">Last driven ${escapeHtml(route.lastDrivenLabel || "recently")}</div>
         </div>
-        <button class="secondary-button favorite-route-button" type="button" data-favorite-route="${escapeHtml(route.id)}">Show drives</button>
+        <button class="secondary-button favorite-route-button" type="button" data-favorite-route="${escapeHtml(route.id)}">Show journeys</button>
       </article>`;
   }).join("");
 
@@ -944,7 +948,7 @@ function renderDriveLibrary() {
     const routeText = state.routeFilterDriveIds ? ` \u00B7 ${String(state.routeFilterKind || "filtered").toLocaleLowerCase()}` : "";
 
     count.textContent =
-      `${visibleDrives.length} of ${state.drives.length} drive${state.drives.length === 1 ? "" : "s"}${windowText}${routeText}`;
+      `${visibleDrives.length} of ${state.drives.length} journe${state.drives.length === 1 ? "y" : "ys"}${windowText}${routeText}`;
   }
 
   const hasMore = drives.length > 10;
@@ -952,12 +956,12 @@ function renderDriveLibrary() {
   if (moreButton) {
     moreButton.textContent = driveLibraryExpanded
       ? "Show most recent 10"
-      : `Show all ${drives.length} drives`;
+      : `Show all ${drives.length} journeys`;
     moreButton.setAttribute("aria-expanded", driveLibraryExpanded ? "true" : "false");
   }
   if (moreSummary) {
     moreSummary.textContent = driveLibraryExpanded
-      ? `Showing all ${drives.length} matching drives`
+      ? `Showing all ${drives.length} matching journeys`
       : `Showing the most recent ${visibleDrives.length}`;
   }
 
@@ -965,8 +969,8 @@ function renderDriveLibrary() {
     container.innerHTML = `
       <div class="empty-state">
         <div class="empty-mark">\u2197</div>
-        <h3>No Tessie drives yet</h3>
-        <p>Your next completed drive will appear here automatically.</p>
+        <h3>No Tessie journeys yet</h3>
+        <p>Your next completed journey will appear here automatically.</p>
       </div>`;
     return;
   }
@@ -975,7 +979,7 @@ function renderDriveLibrary() {
     container.innerHTML = `
       <div class="empty-state drive-search-empty">
         <div class="empty-mark">\u2315</div>
-        <h3>No drives match these filters</h3>
+        <h3>No journeys match these filters</h3>
         <p>Try a different destination, song, artist, date, or distance range.</p>
         <button id="driveEmptyReset" class="secondary-button" type="button">Reset filters</button>
       </div>`;
@@ -1095,6 +1099,12 @@ cityFromLocation = drivesFeature.cityFromLocation;
 money = drivesFeature.money;
 locationDisplay = drivesFeature.locationDisplay;
 
+function displayMiles(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return number.toFixed(1).replace(/\.0$/, "");
+}
+
 function driveCard(drive, compact = false) {
   const route = driveRouteText(drive);
   const startLocation = String(drive.startingLocation || "").trim();
@@ -1105,7 +1115,7 @@ function driveCard(drive, compact = false) {
 
   const dashboardRoute = compact && (startCity || endCity)
     ? `
-      <div class="dashboard-route-cities" aria-label="Drive route">
+      <div class="dashboard-route-cities" aria-label="Journey route">
         <span class="dashboard-route-city">${escapeHtml(startCity || "Unknown")}</span>
         <span class="dashboard-route-city-arrow" aria-hidden="true">\u2192</span>
         <span class="dashboard-route-city">${escapeHtml(endCity || "Unknown")}</span>
@@ -1113,7 +1123,7 @@ function driveCard(drive, compact = false) {
     : "";
 
   return `
-    <article class="drive-card${compact ? " dashboard-drive-card" : ""}" data-drive-card-id="${escapeHtml(drive.id)}" tabindex="0" role="button" aria-label="Open drive details">
+    <article class="drive-card${compact ? " dashboard-drive-card" : ""}" data-drive-card-id="${escapeHtml(drive.id)}" tabindex="0" role="button" aria-label="Open journey details">
       <div class="drive-main">
         <div class="drive-main-heading">
           <strong>${escapeHtml(compact ? drive.shortDateLabel : drive.dateLabel)}</strong>
@@ -1130,13 +1140,13 @@ function driveCard(drive, compact = false) {
 
         ${drive.tessieTag ? `<div class="drive-tag">${escapeHtml(drive.tessieTag)}</div>` : ""}
       </div>
-      <div class="drive-stat"><span>Distance</span><strong>${drive.miles ?? "--"} mi</strong></div>
+      <div class="drive-stat"><span>Distance</span><strong>${displayMiles(drive.miles)} mi</strong></div>
       <div class="drive-stat"><span>Duration</span><strong>${drive.durationMinutes ?? "--"} min</strong></div>
       <div class="drive-stat dashboard-secondary-stat"><span>Battery</span><strong>${escapeHtml(batteryText(drive))}</strong></div>
       <div class="drive-stat dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} song${Number(drive.songCount ?? 0) === 1 ? "" : "s"}</strong></div>
-      ${compact ? `<button class="view-drive-button v3-drive-play" type="button" data-drive-id="${escapeHtml(drive.id)}" aria-label="Open drive">\u25B6</button>`
+      ${compact ? `<button class="view-drive-button v3-drive-play" type="button" data-drive-id="${escapeHtml(drive.id)}" aria-label="Open journey">\u25B6</button>`
                 : `<div class="drive-stat"><span>Energy</span><strong>${drive.energyKWh ?? "--"} kWh</strong></div>
-                   <button class="view-drive-button" type="button" data-drive-id="${escapeHtml(drive.id)}">View drive</button>`}
+                   <button class="view-drive-button" type="button" data-drive-id="${escapeHtml(drive.id)}">View journey</button>`}
     </article>`;
 }
 
@@ -1202,7 +1212,7 @@ function renderPlaces() {
       <div class="place-name-copy">
         <strong>${escapeHtml(place.label || compactLocation(place.location) || "Location")}</strong>
         <span>${escapeHtml(place.location)}</span>
-        <small>${place.uses} drive endpoint${place.uses === 1 ? "" : "s"}</small>
+        <small>${place.uses} journey endpoint${place.uses === 1 ? "" : "s"}</small>
       </div>
       <div class="place-name-edit">
         <input data-place-label="${index}" type="text" maxlength="64" value="${escapeHtml(place.label || "")}" placeholder="Name this place" aria-label="Friendly name for ${escapeHtml(place.location)}">
@@ -1300,21 +1310,21 @@ function renderMonthlyRecap() {
     return;
   }
 
-  const route = recap.favoriteRoute ? recap.favoriteRoute.replace(" -> ", " \u2192 ") : "Not enough drives";
+  const route = recap.favoriteRoute ? recap.favoriteRoute.replace(" -> ", " \u2192 ") : "Not enough journeys";
   container.innerHTML = `
     <div class="recap-hero">
-      <div><span>${escapeHtml(recap.monthLabel)}</span><strong>${recap.miles ?? 0} miles</strong><small>${recap.driveCount} drive${recap.driveCount === 1 ? "" : "s"}</small></div>
+      <div><span>${escapeHtml(recap.monthLabel)}</span><strong>${recap.miles ?? 0} miles</strong><small>${recap.driveCount} journe${recap.driveCount === 1 ? "y" : "ys"}</small></div>
       <div class="recap-efficiency"><span>Average efficiency</span><strong>${recap.averageWhMi ?? "--"}<small> Wh/mi</small></strong></div>
     </div>
     <div class="recap-grid">
-      <article><span>Drive energy</span><strong>${recap.driveEnergyKWh ?? 0}<small> kWh</small></strong></article>
+      <article><span>Journey energy</span><strong>${recap.driveEnergyKWh ?? 0}<small> kWh</small></strong></article>
       <article><span>Charging</span><strong>${recap.chargingEnergyKWh ?? 0}<small> kWh</small></strong><small>${recap.chargingSessions} sessions</small></article>
       <article><span>Charging cost</span><strong>${recap.chargingCost == null ? "--" : money(recap.chargingCost)}</strong><small>${recap.chargingKnownCostSessions} costed sessions</small></article>
       <article><span>Soundtrack plays</span><strong>${recap.soundtrackPlays ?? 0}</strong><small>${recap.uniqueSongs ?? 0} unique songs</small></article>
       <article class="recap-wide"><span>Favorite route</span><strong>${escapeHtml(route)}</strong><small>${recap.favoriteRouteCount || 0} trips</small></article>
-      <article><span>Longest drive</span><strong>${recap.longestDriveMiles == null ? "--" : `${recap.longestDriveMiles} mi`}</strong><small>${escapeHtml(recap.longestDriveDate || "")}</small></article>
+      <article><span>Longest journey</span><strong>${recap.longestDriveMiles == null ? "--" : `${recap.longestDriveMiles} mi`}</strong><small>${escapeHtml(recap.longestDriveDate || "")}</small></article>
       <article><span>Top track</span><strong>${escapeHtml(recap.topTrack || "--")}</strong><small>${escapeHtml(recap.topTrackArtist || "")}${recap.topTrackPlays ? ` \u00B7 ${recap.topTrackPlays} plays` : ""}</small></article>
-      <article><span>Top artist</span><strong>${escapeHtml(recap.topArtist || "--")}</strong><small>${recap.topArtistPlays || 0} drive plays</small></article>
+      <article><span>Top artist</span><strong>${escapeHtml(recap.topArtist || "--")}</strong><small>${recap.topArtistPlays || 0} journey plays</small></article>
     </div>`;
 }
 
@@ -1396,8 +1406,8 @@ function renderDashboardDrives(drives) {
     dashboard.innerHTML = `
       <div class="empty-state">
         <div class="empty-mark">\u2197</div>
-        <h3>No recent Tessie drives</h3>
-        <p>Your next completed drive will appear here automatically.</p>
+        <h3>No recent Tessie journeys</h3>
+        <p>Your next completed journey will appear here automatically.</p>
       </div>`;
     dashboardWidgetsFeature?.render();
     return;
@@ -1426,7 +1436,7 @@ async function loadDashboardDrives() {
   } catch (error) {
     const dashboard = $("dashboardDrives");
     if (dashboard) {
-      dashboard.innerHTML = `<div class="empty-state"><h3>Recent drives unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+      dashboard.innerHTML = `<div class="empty-state"><h3>Recent journeys unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
     }
     dashboardWidgetsFeature?.render();
     return null;
@@ -1451,12 +1461,12 @@ async function loadDrives() {
         const empty = `
           <div class="empty-state">
             <div class="empty-mark">\u2197</div>
-            <h3>No Tessie drives yet</h3>
-            <p>Your next completed drive will appear here automatically.</p>
+            <h3>No Tessie journeys yet</h3>
+            <p>Your next completed journey will appear here automatically.</p>
           </div>`;
 
         if (all) all.innerHTML = empty;
-        setText("driveSearchCount", `0 drives \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 drives");
+        setText("driveSearchCount", `0 journeys \u00B7 ${state.driveLibraryWindowDays}-day library`, "0 journeys");
         renderFavoriteRoutes();
         void collectionsFeature.load();
         dashboardWidgetsFeature?.render();
@@ -1471,7 +1481,7 @@ async function loadDrives() {
     } catch (error) {
       const all = $("allDrives");
       if (all) {
-        all.innerHTML = `<div class="empty-state"><h3>Drive history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
+        all.innerHTML = `<div class="empty-state"><h3>Journey history unavailable</h3><p>${escapeHtml(error.message)}</p></div>`;
       }
       return null;
     } finally {
@@ -1510,6 +1520,41 @@ function timelineDuration(minutes) {
   const mins = total % 60;
   return mins ? `${hours} hr ${mins} min` : `${hours} hr`;
 }
+function normalizedTimelineRoutePath(points) {
+  const route = (points || []).filter(point => Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)));
+  if (route.length < 2) return "";
+  const step = Math.max(1, Math.ceil(route.length / 42));
+  const sampled = route.filter((_, index) => index % step === 0);
+  if (sampled[sampled.length - 1] !== route[route.length - 1]) sampled.push(route[route.length - 1]);
+  const xs = sampled.map(point => Number(point.longitude));
+  const ys = sampled.map(point => Number(point.latitude));
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const width = Math.max(.000001, maxX - minX), height = Math.max(.000001, maxY - minY);
+  return sampled.map((point, index) => {
+    const x = 8 + (Number(point.longitude) - minX) / width * 104;
+    const y = 58 - (Number(point.latitude) - minY) / height * 48;
+    return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+}
+async function hydrateTimelineRoutePreviews() {
+  const previews = [...document.querySelectorAll("[data-timeline-route]")].slice(0, 30);
+  await Promise.allSettled(previews.map(async preview => {
+    const driveId = preview.dataset.timelineRoute;
+    if (!driveTimelineRouteCache.has(driveId)) driveTimelineRouteCache.set(driveId, postJson("/api/drive/map", { driveId }).catch(() => null));
+    const mapData = await driveTimelineRouteCache.get(driveId);
+    if (!preview.isConnected) return;
+    const path = normalizedTimelineRoutePath(mapData?.routePoints);
+    const svg = preview.querySelector("svg");
+    if (!svg) return;
+    if (!path) {
+      preview.classList.add("route-unavailable");
+      svg.innerHTML = '<path class="timeline-route-empty" d="M12 50 C32 14 78 52 108 12"/>';
+      return;
+    }
+    svg.innerHTML = `<path class="timeline-route-glow" d="${path}"/><path class="timeline-route-line" d="${path}"/>`;
+    preview.classList.add("is-ready");
+  }));
+}
 function timelineRangeStart(days) {
   const start = new Date();
   if (days <= 1) start.setHours(0, 0, 0, 0);
@@ -1533,7 +1578,7 @@ function buildDriveTimelineEvents(days = 7) {
       type: "drive",
       at: start,
       drive,
-      title: driveRouteText(drive) || "Drive",
+      title: driveRouteText(drive) || "Journey",
       detail: [
         drive.miles != null ? `${drive.miles} mi` : null,
         drive.durationMinutes != null ? timelineDuration(drive.durationMinutes) : null,
@@ -1598,15 +1643,17 @@ function timelineEventMarkup(event) {
         <span class="drive-timeline-time">${escapeHtml(time)}</span>
         <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
         <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
-        <span class="drive-timeline-action">Open drive \u2192</span>
+        <span class="drive-timeline-route-preview" data-timeline-route="${escapeHtml(event.drive.id)}"><svg viewBox="0 0 120 66" role="img" aria-label="Journey route preview"><path class="timeline-route-loading" d="M12 50 C32 14 78 52 108 12"/></svg><small>Route overview</small></span>
       </button>`;
   }
   if (event.type === "song") {
+    const album = event.song.album || event.song.albumName || "Album unavailable";
     return `
       <article class="drive-timeline-event drive-timeline-event-song">
         <span class="drive-timeline-time">${escapeHtml(time)}</span>
         <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
         <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
+        <div class="drive-timeline-track-preview">${songArtworkMarkup(event.song,"drive-timeline-artwork")}<div><strong>${escapeHtml(event.song.track || "Unknown track")}</strong><small>${escapeHtml(event.song.artist || "Unknown artist")}</small><em>${escapeHtml(album)}</em></div></div>
       </article>`;
   }
   return `
@@ -1639,7 +1686,7 @@ function renderDriveTimeline() {
   setText("timelineSongCount", songs.length, "0");
 
   if (!events.length) {
-    container.innerHTML = `<div class="empty-state"><h3>No timeline activity in this range</h3><p>Try a longer range, or refresh DriveOS after your next drive.</p></div>`;
+    container.innerHTML = `<div class="empty-state"><h3>No timeline activity in this range</h3><p>Try a longer range, or refresh JourneyDeck after your next journey.</p></div>`;
     return;
   }
 
@@ -1652,6 +1699,8 @@ function renderDriveTimeline() {
         <div class="drive-timeline-day-events">${dayEvents.map(timelineEventMarkup).join("")}</div>
       </section>`;
   }).join("");
+
+  void hydrateTimelineRoutePreviews();
 
   container.querySelectorAll("[data-timeline-drive]").forEach(button => {
     button.addEventListener("click", () => {
@@ -1666,7 +1715,7 @@ function setDriveTimelineLoading(active) {
   if (active) {
     region.classList.add("driveos-loading-region");
     region.setAttribute("aria-busy", "true");
-    region.dataset.loadingLabel = "Loading Drive Timeline\u2026";
+    region.dataset.loadingLabel = "Loading Journey Timeline\u2026";
   } else {
     region.classList.remove("driveos-loading-region");
     region.removeAttribute("aria-busy");
@@ -1747,9 +1796,9 @@ function musicByLocationData(query, windowMinutes = 15) {
       if (seen.has(key)) return;
       seen.add(key);
 
-      let locationLabel = "Matched drive location";
+      let locationLabel = "Matched journey location";
       if (nearStart && nearEnd) locationLabel = "Near start + destination";
-      else if (nearStart) locationLabel = `Near ${compactLocation(drive.startingLocation) || "drive start"}`;
+      else if (nearStart) locationLabel = `Near ${compactLocation(drive.startingLocation) || "journey start"}`;
       else if (nearEnd) locationLabel = `Near ${compactLocation(drive.endingLocation) || "destination"}`;
 
       plays.push({
@@ -1810,17 +1859,17 @@ function renderMusicLocationResults(data) {
   if (!container) return;
 
   if (!data.matchingDrives.length) {
-    if (status) status.textContent = `No Tessie drive origins or destinations matched \u201C${data.query}\u201D.`;
+    if (status) status.textContent = `No Tessie journey origins or destinations matched \u201C${data.query}\u201D.`;
     container.innerHTML = `
       <div class="empty-state location-empty">
-        <h3>No matching drive locations</h3>
-        <p>Try a city, street, neighborhood, or destination text that appears in your Drive Library.</p>
+        <h3>No matching journey locations</h3>
+        <p>Try a city, street, neighborhood, or destination text that appears in your Journey Library.</p>
       </div>`;
     return;
   }
 
   if (status) {
-    status.textContent = `${data.plays.length} plays near ${data.matchingDrives.length} matching drive${data.matchingDrives.length === 1 ? "" : "s"} \u00B7 ${data.windowMinutes}-minute start/end window`;
+    status.textContent = `${data.plays.length} plays near ${data.matchingDrives.length} matching journe${data.matchingDrives.length === 1 ? "y" : "ys"} \u00B7 ${data.windowMinutes}-minute start/end window`;
   }
 
   const trackRows = data.topTracks.length
@@ -1853,12 +1902,12 @@ function renderMusicLocationResults(data) {
         <span>${escapeHtml(song.artist)} \u00B7 ${escapeHtml(song.locationLabel)}</span>
         <small>${escapeHtml(song.driveDate || "")} ${escapeHtml(song.time || "")}</small>
       </div>
-      <button class="text-button location-open-drive" type="button" data-location-drive="${escapeHtml(song.driveId)}">Open drive \u2192</button>
+      <button class="text-button location-open-drive" type="button" data-location-drive="${escapeHtml(song.driveId)}">Open journey \u2192</button>
     </div>`).join("");
 
   container.innerHTML = `
     <div class="location-summary-grid">
-      <div><span>Matching drives</span><strong>${data.matchingDrives.length}</strong></div>
+      <div><span>Matching journeys</span><strong>${data.matchingDrives.length}</strong></div>
       <div><span>Located plays</span><strong>${data.plays.length}</strong></div>
       <div><span>Unique tracks</span><strong>${data.uniqueTracks}</strong></div>
     </div>
@@ -1993,14 +2042,48 @@ function metric(label, value) {
   return `<div class="detail-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
+function renderJourneyPlaceEditor(drive) {
+  const target = $("journeyPlaceEditor");
+  if (!target) return;
+  const endpoints = [
+    { key: "start", role: "Start", location: String(drive.rawStartingLocation || drive.startingLocation || "").trim(), label: String(drive.startingLocation || "").trim() },
+    { key: "end", role: "Destination", location: String(drive.rawEndingLocation || drive.endingLocation || "").trim(), label: String(drive.endingLocation || "").trim() }
+  ];
+  target.innerHTML = `<div class="journey-place-editor-heading"><div><span class="section-label">JOURNEY PLACES</span><strong>Name an unknown or incorrect place</strong></div><small>Names apply anywhere this Tessie address appears.</small></div><div class="journey-place-editor-grid">${endpoints.map(endpoint => {
+    const canEdit = endpoint.location && !/^unknown\b/i.test(endpoint.location);
+    const currentAlias = endpoint.label && endpoint.label !== endpoint.location ? endpoint.label : "";
+    return `<div class="journey-place-row" data-journey-place="${endpoint.key}"><div><span>${endpoint.role}</span><strong>${escapeHtml(endpoint.label || endpoint.location || "Unknown location")}</strong><small>${escapeHtml(endpoint.location || "Tessie did not provide an address")}</small></div><label><span class="sr-only">Name ${endpoint.role.toLowerCase()} place</span><input maxlength="64" value="${escapeHtml(currentAlias)}" placeholder="Name this place" ${canEdit ? "" : "disabled"}></label><button class="secondary-button compact" type="button" ${canEdit ? "" : "disabled"}>Save name</button><em role="status"></em></div>`;
+  }).join("")}</div>`;
+  target.querySelectorAll("[data-journey-place]").forEach((row, index) => {
+    const endpoint = endpoints[index];
+    const button = row.querySelector("button");
+    const input = row.querySelector("input");
+    const status = row.querySelector("em");
+    button?.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Saving\u2026";
+      try {
+        await savePlaceAlias(endpoint.location, input.value.trim());
+        status.textContent = "Saved";
+        row.querySelector("strong").textContent = input.value.trim() || endpoint.location;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+}
+
 function openDriveModal(drive) {
   state.selectedDrive = drive;
 
   setText("modalDriveDate", drive.dateLabel);
   setText("modalDriveTime", `${drive.startTime} \u2192 ${drive.endTime}`);
+  renderJourneyPlaceEditor(drive);
 
   $("modalMetrics").innerHTML = [
-    metric("Distance", `${drive.miles ?? "--"} mi`),
+    metric("Distance", `${displayMiles(drive.miles)} mi`),
     metric("Duration", `${drive.durationMinutes ?? "--"} min`),
     metric("Battery", batteryText(drive)),
     metric("Energy", `${drive.energyKWh ?? "--"} kWh`),
@@ -2032,7 +2115,7 @@ function openDriveModal(drive) {
                  rel="noopener noreferrer">\u25B6 Play on Spotify</a>` : ""}
           </div>
         </div>`).join("")
-    : `<div class="empty-state"><h3>No archived Spotify matches</h3><p>DriveOS only knows songs it has already captured in the local Spotify archive.</p></div>`;
+    : `<div class="empty-state"><h3>No archived Spotify matches</h3><p>JourneyDeck only knows songs it has already captured in the local Spotify archive.</p></div>`;
 
   $("playlistButton").disabled = songs.length === 0;
   $("shareCardButton").disabled = false;
@@ -2047,7 +2130,7 @@ function openDriveModal(drive) {
   clearMapMusicNearby();
   setText("modalMessage", "");
   setText("driveMapStatus", "Loading Tessie GPS history\u2026");
-  setText("replayTrack", "Loading drive replay\u2026");
+  setText("replayTrack", "Loading journey replay\u2026");
   setText("replayArtist", "\u2014");
   setText("replayAlbum", "");
   setText("replayClock", "--:--:--");
@@ -2056,7 +2139,7 @@ function openDriveModal(drive) {
   setText("replayElapsed", "0:00");
   setText("replayRemaining", "-0:00");
   $("replayScrubber").value = "0";
-  $("replayPlayPause").textContent = "\u25B6 Replay drive";
+  $("replayPlayPause").textContent = "\u25B6 Replay journey";
   $("replayPlayPause").disabled = true;
   $("replayScrubber").disabled = true;
   updateReplayArtwork(null);
@@ -2357,12 +2440,17 @@ async function renderDriveMap(data) {
   if (!routePoints.length) {
     $("driveMap").classList.add("map-unavailable");
     $("driveMap").textContent =
-      data.message || "Tessie did not return route GPS points for this drive.";
+      data.message || "Tessie did not return route GPS points for this journey.";
     setText("driveMapStatus", "No route GPS available");
     $("replayPlayPause").disabled = true;
     $("replayScrubber").disabled = true;
     return;
   }
+
+  // Replay telemetry is useful even when the basemap CDN is unavailable.
+  // Populate time, speed and battery as soon as Tessie's route arrives instead
+  // of making those values wait for MapLibre's load event.
+  initializeReplay();
 
   if (!window.maplibregl) {
     setText("driveMapStatus", "Loading map library\u2026");
@@ -2386,11 +2474,12 @@ async function renderDriveMap(data) {
 
   const map = new maplibregl.Map({
     container: "driveMap",
-    style: "https://tiles.openfreemap.org/styles/liberty",
+    style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
     center: [first.longitude, first.latitude],
     zoom: 12,
     attributionControl: true
   });
+  window.JourneyDeckMapTheme?.attach(map);
 
   state.driveMap = map;
 
@@ -2433,9 +2522,10 @@ async function renderDriveMap(data) {
         "line-cap": "round"
       },
       paint: {
-        "line-color": "#071016",
-        "line-width": 8,
-        "line-opacity": 0.48
+        "line-color": "#ff3d75",
+        "line-width": 16,
+        "line-blur": 9,
+        "line-opacity": 0.52
       }
     });
 
@@ -2448,14 +2538,14 @@ async function renderDriveMap(data) {
         "line-cap": "round"
       },
       paint: {
-        "line-color": "#7be7ff",
-        "line-width": 4,
+        "line-color": "#ff684f",
+        "line-width": 5,
         "line-opacity": 0.95
       }
     });
 
-    addTerminalMarker(map, data.startMarker, "start", "Drive start");
-    addTerminalMarker(map, data.endMarker, "end", "Drive end");
+    addTerminalMarker(map, data.startMarker, "start", "Journey start");
+    addTerminalMarker(map, data.endMarker, "end", "Journey end");
 
     songMarkers.forEach(marker => {
       if (marker.latitude == null || marker.longitude == null) return;
@@ -2502,7 +2592,8 @@ async function renderDriveMap(data) {
       `${routePoints.length} route points \u00B7 ${locatedSongs}/${songMarkers.length} songs located`
     );
 
-    initializeReplay();
+    createReplayMarker();
+    updateReplayUi(state.replayCurrentDriveMs || routeTimestampMs(routePoints[0]), false);
   });
 
   map.on("error", event => {
@@ -2816,7 +2907,7 @@ function stopReplay(resetButton = true) {
   }
 
   if (resetButton) {
-    $("replayPlayPause").textContent = "\u25B6 Replay drive";
+    $("replayPlayPause").textContent = "\u25B6 Replay journey";
   }
 }
 
@@ -3127,6 +3218,7 @@ void dashboardCustomizationFeature.bind();
 dashboardWidgetsFeature = window.DriveOSFeatures.dashboardWidgets.create({
   state,
   artworkMarkup: songArtworkMarkup,
+  api: window.DriveOSApi,
   actions: {
     refresh: () => refreshAll(),
     openShareCard: drive => shareCardsFeature.open(drive),
@@ -3150,7 +3242,7 @@ liveDriveFeature.bind();
 const dataHealthFeature = window.DriveOSFeatures.dataHealth.create({ api: window.DriveOSApi });
 dataHealthFeature.bind();
 
-const mobilityGraphFeature = window.DriveOSFeatures.mobilityGraph.create({ api: window.DriveOSApi });
+const mobilityGraphFeature = window.DriveOSFeatures.mobilityGraph.create({ api: window.DriveOSApi, state });
 mobilityGraphFeature.bind();
 
 const spotifyConnectButton = $("spotifyConnectButton");
@@ -3168,6 +3260,7 @@ async function signOut() {
   buttons.forEach(button => { button.disabled = true; });
   try {
     await window.DriveOSApi.post("/api/auth/logout", {});
+    try { localStorage.removeItem("journeydeck-saved-place-labels-v1"); } catch {}
     location.replace("/login");
   } catch {
     buttons.forEach(button => { button.disabled = false; });
@@ -3233,6 +3326,13 @@ document.querySelectorAll("[data-foursquare-configure]").forEach(button => {
 
 updateClock();
 setInterval(updateClock, 30_000);
+
+// Keep the overview genuinely live while it is on screen. Tessie vehicle state
+// and Spotify's most recent archived play are refreshed without a full-page sync.
+setInterval(() => {
+  if (document.hidden || !$('view-dashboard')?.classList.contains('active-view')) return;
+  void Promise.allSettled([loadVehicle(), loadSpotify(), loadDashboardDrives()]);
+}, 60_000);
 
 const initialView = ["dashboard", "live", "drives", "graph", "timeline", "music", "statistics"].includes(requestedInitialView)
   ? requestedInitialView

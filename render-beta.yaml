@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: journeydeck-beta
+    runtime: docker
+    plan: free
+    region: ohio
+    branch: codex/beta-cinematic
+    autoDeployTrigger: commit
+    healthCheckPath: /
+    envVars:
+      - key: DRIVEOS_BETA_LIVE_PROXY
+        value: "true"
+      - key: DRIVEOS_BETA_UPSTREAM
+        value: https://journeydeck.me
+      - key: DRIVEOS_BETA_DEMO
+        value: "false"
+      - key: TZ
+        value: America/Chicago

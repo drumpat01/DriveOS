@@ -26,7 +26,7 @@ Assert-True ($wifeHtml -notmatch '(?i)charging|notification|data health') 'Wife 
 Assert-True ($wifeHtml -match 'id="wifeSignOut"') 'Wife Mode mobile sign-out is missing.'
 Assert-True ($wifeJs -match '/api/auth/logout') 'Wife Mode sign-out does not clear the hosted session.'
 Assert-True ($wifeHtml -match 'tripDetailView') 'Wife Mode read-only drive overview is missing.'
-Assert-True ($wifeHtml -match 'WIFE MODE.*DRIVE OVERVIEW') 'Wife Mode detail branding is missing.'
+Assert-True ($wifeHtml -match 'WIFE MODE.*JOURNEY OVERVIEW') 'Wife Mode detail branding is missing.'
 Assert-True ($wifeHtml -notmatch '(?i)shareCardButton|playlistButton|place-name-edit') 'Wife Mode exposes an owner drive action.'
 Assert-True ($wifeHtml -match 'wifeDriveMap') 'Wife Mode drive map is missing.'
 Assert-True ($wifeHtml -match 'wifeDetailMusic') 'Wife Mode soundtrack list is missing.'

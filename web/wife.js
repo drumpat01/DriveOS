@@ -19,7 +19,7 @@
           ? '<span class="trip-artist trip-artist-loading">Music loading&hellip;</span>'
           : "";
       return `<button class="trip" type="button" data-wife-drive-id="${escape(drive.id)}" aria-label="Open read-only overview for ${escape(drive.shortDateLabel || drive.dateLabel)}"><strong>${escape(drive.shortDateLabel || drive.dateLabel)}</strong><span class="trip-route">${escape(drive.startingLocation || "Start")} &rarr; ${escape(drive.endingLocation || "Destination")}</span><span class="trip-meta">${escape(drive.miles ?? 0)} mi &middot; ${escape(drive.durationMinutes ?? 0)} min</span>${artist}</button>`;
-    }).join("") || '<article class="trip"><strong>No recent trips yet</strong><span class="trip-meta">Trips will appear here after a drive.</span></article>';
+    }).join("") || '<article class="trip"><strong>No recent journeys yet</strong><span class="trip-meta">Journeys will appear here after your next trip.</span></article>';
   };
   let drives = [];
   let collections = [];
@@ -32,7 +32,7 @@
       const members = new Set(collection.driveIds || []);
       const collectionDrives = drives.filter((drive) => members.has(drive.id));
       const trips = collectionDrives.map((drive) => `<button class="trip wife-collection-trip" type="button" data-wife-drive-id="${escape(drive.id)}"><strong>${escape(drive.shortDateLabel || drive.dateLabel)}</strong><span class="trip-route">${escape(drive.startingLocation || "Start")} &rarr; ${escape(drive.endingLocation || "Destination")}</span><span class="trip-meta">${escape(drive.miles ?? 0)} mi &middot; ${escape(drive.durationMinutes ?? 0)} min</span></button>`).join("");
-      return `<article class="wife-collection"><div class="wife-collection-heading"><div><strong>${escape(collection.name)}</strong><p>${escape(collection.description || "A shared journey collection")}</p></div><span>${members.size} drive${members.size === 1 ? "" : "s"}</span></div><div class="trip-list">${trips || '<div class="wife-collection-empty">No available drives in this collection.</div>'}</div></article>`;
+      return `<article class="wife-collection"><div class="wife-collection-heading"><div><strong>${escape(collection.name)}</strong><p>${escape(collection.description || "A shared journey collection")}</p></div><span>${members.size} journe${members.size === 1 ? "y" : "ys"}</span></div><div class="trip-list">${trips || '<div class="wife-collection-empty">No available journeys in this collection.</div>'}</div></article>`;
     }).join("") : '<article class="wife-collection"><strong>No collections yet</strong><p>Collections created in Full JourneyDeck will appear here.</p></article>';
   };
   const detailMetric = (label, value) => `<div class="detail-metric"><span>${escape(label)}</span><strong>${escape(value)}</strong></div>`;
@@ -40,7 +40,7 @@
   const renderDriveDetail = () => {
     const drive = drives.find((item) => String(item.id) === String(selectedDriveId));
     if (!drive) return;
-    $("wifeDetailTitle").textContent = drive.dateLabel || "Drive overview";
+    $("wifeDetailTitle").textContent = drive.dateLabel || "Journey overview";
     $("wifeDetailTime").textContent = `${drive.startTime || ""} → ${drive.endTime || ""}`;
     $("wifeDetailStart").textContent = drive.startingLocation || "Start";
     $("wifeDetailEnd").textContent = drive.endingLocation || "Destination";
@@ -59,13 +59,13 @@
       const spotify = safeHttpsUrl(song.spotifyUrl);
       const telemetry = [song.speed != null ? `${song.speed} mph` : "", song.battery != null ? `${song.battery}% battery` : "", song.offsetSeconds != null ? `GPS +/-${song.offsetSeconds}s` : "GPS unavailable"].filter(Boolean).join(" &middot; ");
       return `<article class="wife-song"><span class="wife-song-time">${escape(song.time || "")}</span>${artwork ? `<img class="wife-song-art" src="${escape(artwork)}" alt="">` : '<span class="wife-song-art" aria-hidden="true"></span>'}<span class="wife-song-number">${escape(song.index)}</span><div class="wife-song-copy"><strong>${escape(song.track || "Unknown song")}</strong><span>${escape(song.artist || "Unknown artist")}</span><span>${telemetry}</span>${spotify ? `<a href="${escape(spotify)}" target="_blank" rel="noopener noreferrer">&#9654; Play on Spotify</a>` : ""}</div></article>`;
-    }).join("") : '<div class="detail-music-summary"><strong>No matched songs for this drive</strong><span>JourneyDeck did not find archived Spotify plays in this drive window.</span></div>';
+    }).join("") : '<div class="detail-music-summary"><strong>No matched songs for this journey</strong><span>JourneyDeck did not find archived Spotify plays in this journey window.</span></div>';
   };
   const addWifeTerminalMarker = (map, point, type) => {
     if (point?.latitude == null || point?.longitude == null) return;
     const element = document.createElement("span");
     element.className = `wife-terminal-marker ${type}`;
-    element.setAttribute("aria-label", type === "end" ? "Drive end" : "Drive start");
+    element.setAttribute("aria-label", type === "end" ? "Journey end" : "Journey start");
     new window.maplibregl.Marker({ element, anchor: "center" }).setLngLat([point.longitude, point.latitude]).addTo(map);
   };
   const renderWifeDriveMap = (data) => {
@@ -74,7 +74,7 @@
     renderWifeSongs(songs);
     if (detailMap) { detailMap.remove(); detailMap = null; }
     if (!route.length || !window.maplibregl) {
-      $("wifeDriveMap").innerHTML = `<span>${escape(data.message || "Route map is unavailable for this drive.")}</span>`;
+      $("wifeDriveMap").innerHTML = `<span>${escape(data.message || "Route map is unavailable for this journey.")}</span>`;
       $("wifeDriveMapStatus").textContent = "No route GPS available";
       return;
     }
@@ -106,14 +106,14 @@
   };
   const loadWifeDriveMap = async (driveId) => {
     $("wifeDriveMapStatus").textContent = "Loading route...";
-    $("wifeDriveMap").innerHTML = "<span>Loading drive map...</span>";
+    $("wifeDriveMap").innerHTML = "<span>Loading journey map...</span>";
     $("wifeDetailMusic").innerHTML = '<div class="detail-music-summary"><strong>Loading songs...</strong></div>';
     try {
       const data = await request("/api/wife/drive/map", { method: "POST", body: JSON.stringify({ driveId }) });
       if (String(selectedDriveId) !== String(driveId)) return;
       renderWifeDriveMap(data);
     } catch {
-      $("wifeDriveMap").innerHTML = "<span>Drive map could not load right now.</span>";
+      $("wifeDriveMap").innerHTML = "<span>Journey map could not load right now.</span>";
       $("wifeDriveMapStatus").textContent = "Map unavailable";
       $("wifeDetailMusic").innerHTML = '<div class="detail-music-summary"><strong>Song list could not load right now</strong></div>';
     }
@@ -154,7 +154,7 @@
   $("themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("journeydeck-wife-theme", document.documentElement.dataset.theme); });
   document.documentElement.dataset.theme = localStorage.getItem("journeydeck-wife-theme") || "light";
   $("openFull").addEventListener("click", async () => { try { $("openFull").disabled = true; await request("/api/wife/mode", { method: "POST", body: JSON.stringify({ mode: "full" }) }); location.replace("/"); } catch { $("openFull").disabled = false; } });
-  $("wifeSignOut").addEventListener("click", async () => { try { $("wifeSignOut").disabled = true; await request("/api/auth/logout", { method: "POST", body: "{}" }); location.replace("/login"); } catch { $("wifeSignOut").disabled = false; } });
+  $("wifeSignOut").addEventListener("click", async () => { try { $("wifeSignOut").disabled = true; await request("/api/auth/logout", { method: "POST", body: "{}" }); try { localStorage.removeItem("journeydeck-saved-place-labels-v1"); } catch {} location.replace("/login"); } catch { $("wifeSignOut").disabled = false; } });
   void (async () => {
     let failures = 0;
     let vehicleReady = false;
@@ -167,7 +167,7 @@
       $("wifeRange").textContent = vehicle.rangeMiles == null ? "- mi" : `${Math.round(vehicle.rangeMiles)} mi`;
       $("wifeUpdated").textContent = displayUpdated(vehicle.gpsAsOf);
       vehicleReady = true;
-      if (!drivesReady) setStatus("Car ready - loading trips...");
+      if (!drivesReady) setStatus("Car ready - loading journeys...");
     }).catch(() => { failures += 1; $("wifeUpdated").textContent = "Car status is taking longer than usual"; });
 
     const drivesPromise = request("/api/wife/drives").then((data) => {
@@ -184,7 +184,7 @@
 
     await Promise.allSettled([vehiclePromise, drivesPromise, collectionsPromise]);
     renderCollections();
-    setStatus(failures ? "Core drive data ready" : "Drive data ready", "ready");
+    setStatus(failures ? "Core journey data ready" : "Journey data ready", "ready");
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     void request("/api/wife/music").then((data) => {

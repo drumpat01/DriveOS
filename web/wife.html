@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Wife Mode · JourneyDeck</title>
   <meta name="theme-color" content="#fff5f8">
-  <link rel="icon" type="image/svg+xml" href="/assets/cherry-blossom.svg?v=5.4.0">
-  <link rel="stylesheet" href="/wife.css?v=5.4.0">
+  <link rel="icon" type="image/svg+xml" href="/assets/cherry-blossom.svg?v=5.9.52">
+  <link rel="stylesheet" href="/wife.css?v=5.9.52">
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" defer></script>
-  <script src="/wife.js?v=5.4.0" defer></script>
+  <script src="/wife.js?v=5.9.52" defer></script>
 </head>
 <body>
   <main>
@@ -17,10 +17,10 @@
       <a href="/wife" class="brand" aria-label="JourneyDeck Wife Mode"><img src="/assets/cherry-blossom.svg" alt=""><span>JOURNEY<strong>DECK</strong><small><b>WIFE MODE</b></small></span></a>
       <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle color theme">☼</button>
     </header>
-    <div id="wifeLoadStatus" class="load-status" role="status" aria-live="polite"><i></i><span>Loading your drive</span></div>
+    <div id="wifeLoadStatus" class="load-status" role="status" aria-live="polite"><i></i><span>Loading your journey</span></div>
 
     <section class="hero" aria-labelledby="wifeGreeting">
-      <p>YOUR DRIVE</p>
+      <p>YOUR JOURNEY</p>
       <h1 id="wifeGreeting">Ready when you are</h1>
       <span id="wifeUpdated">Updating your car…</span>
     </section>
@@ -30,25 +30,25 @@
         <div><p id="wifeVehicleName">Your car</p><strong id="wifeBattery">—%</strong><span>Battery</span></div>
         <div class="range"><strong id="wifeRange">— mi</strong><span>Estimated range</span></div>
       </article>
-      <section class="today-card" aria-labelledby="todayTitle"><p>TODAY</p><h2 id="todayTitle">Today’s driving</h2><div class="stat-row"><div><strong id="wifeTodayMiles">—</strong><span>Miles</span></div><div><strong id="wifeTodayTrips">—</strong><span>Trips</span></div></div></section>
-      <section class="recent"><div class="section-heading"><div><p>RECENT</p><h2>Recent trips</h2></div><button class="text-button" type="button" data-view="tripsView">See all</button></div><div id="wifeRecentHome" class="trip-list"></div></section>
+      <section class="today-card" aria-labelledby="todayTitle"><p>TODAY</p><h2 id="todayTitle">Today’s driving</h2><div class="stat-row"><div><strong id="wifeTodayMiles">—</strong><span>Miles</span></div><div><strong id="wifeTodayTrips">—</strong><span>Journeys</span></div></div></section>
+      <section class="recent"><div class="section-heading"><div><p>RECENT</p><h2>Recent journeys</h2></div><button class="text-button" type="button" data-view="tripsView">See all</button></div><div id="wifeRecentHome" class="trip-list"></div></section>
     </section>
 
-    <section id="tripsView" class="view" aria-labelledby="tripsTitle"><div class="section-heading"><div><p>YOUR TRIPS</p><h2 id="tripsTitle">Recent drives</h2></div></div><div id="wifeTrips" class="trip-list"></div></section>
+    <section id="tripsView" class="view" aria-labelledby="tripsTitle"><div class="section-heading"><div><p>YOUR JOURNEYS</p><h2 id="tripsTitle">Recent journeys</h2></div></div><div id="wifeTrips" class="trip-list"></div></section>
 
     <section id="collectionsView" class="view" aria-labelledby="wifeCollectionsTitle"><div class="section-heading"><div><p>CURATED JOURNEYS</p><h2 id="wifeCollectionsTitle">Journey collections</h2></div></div><p class="wife-collections-intro">Shared collections from Full JourneyDeck. Browse them here without changing anything.</p><div id="wifeCollections" class="wife-collections-list"></div></section>
 
     <section id="tripDetailView" class="view trip-detail-view" aria-labelledby="wifeDetailTitle">
-      <button id="wifeDetailBack" class="detail-back" type="button" aria-label="Return to recent drives">&larr; Back to trips</button>
+      <button id="wifeDetailBack" class="detail-back" type="button" aria-label="Return to recent journeys">&larr; Back to journeys</button>
       <article class="detail-card">
-        <div class="detail-kicker">WIFE MODE &middot; DRIVE OVERVIEW</div>
-        <h2 id="wifeDetailTitle">Drive overview</h2>
+        <div class="detail-kicker">WIFE MODE &middot; JOURNEY OVERVIEW</div>
+        <h2 id="wifeDetailTitle">Journey overview</h2>
         <p id="wifeDetailTime" class="detail-time"></p>
-        <div class="detail-route" aria-label="Drive route"><span id="wifeDetailStart">Start</span><i aria-hidden="true">&rarr;</i><span id="wifeDetailEnd">Destination</span></div>
+        <div class="detail-route" aria-label="Journey route"><span id="wifeDetailStart">Start</span><i aria-hidden="true">&rarr;</i><span id="wifeDetailEnd">Destination</span></div>
         <div id="wifeDetailMetrics" class="detail-metrics"></div>
         <section class="wife-drive-map-section" aria-labelledby="wifeDriveMapTitle">
-          <div class="wife-map-heading"><div><p>DRIVE MAP</p><h3 id="wifeDriveMapTitle">Route + song locations</h3></div><span id="wifeDriveMapStatus">Loading route&hellip;</span></div>
-          <div id="wifeDriveMap" class="wife-drive-map"><span>Loading drive map&hellip;</span></div>
+          <div class="wife-map-heading"><div><p>JOURNEY MAP</p><h3 id="wifeDriveMapTitle">Route + song locations</h3></div><span id="wifeDriveMapStatus">Loading route&hellip;</span></div>
+          <div id="wifeDriveMap" class="wife-drive-map"><span>Loading journey map&hellip;</span></div>
           <div class="wife-map-legend"><span><i class="wife-legend-route"></i> Route</span><span><i class="wife-legend-song">1</i> Song</span><span><i class="wife-legend-start"></i> Start</span><span><i class="wife-legend-end"></i> End</span></div>
         </section>
         <section class="detail-music" aria-labelledby="wifeDetailMusicTitle">
@@ -63,6 +63,6 @@
     <footer class="wife-footer"><button id="openFull" class="full-button" type="button">Open Full JourneyDeck</button><button id="wifeSignOut" class="wife-sign-out" type="button">Sign out</button></footer>
   </main>
 
-  <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Trips</button><button data-view="collectionsView" type="button">Collections</button><button class="wife-nav-live" data-view="liveView" type="button"><span class="wife-nav-live-dot" aria-hidden="true"></span><span>Live</span></button></nav>
+  <nav class="bottom-nav" aria-label="Wife Mode navigation"><button class="active" data-view="homeView" type="button">Home</button><button data-view="tripsView" type="button">Journeys</button><button data-view="collectionsView" type="button">Collections</button><button class="wife-nav-live" data-view="liveView" type="button"><span class="wife-nav-live-dot" aria-hidden="true"></span><span>Live</span></button></nav>
 </body>
 </html>

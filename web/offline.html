@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#eef6f8">
+  <meta name="theme-color" content="#05040e">
   <title>JourneyDeck - Computer Offline</title>
   <style>
-    :root { color-scheme: light; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    :root { color-scheme: dark; font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -15,22 +15,23 @@
       place-items: center;
       padding: 28px;
       background:
-        radial-gradient(circle at 15% 0%, rgba(14,178,194,.12), transparent 30rem),
-        linear-gradient(180deg, #f9fcfd, #eaf3f5);
-      color: #10283a;
+        radial-gradient(circle at 85% 0%, rgba(154,70,245,.18), transparent 30rem),
+        radial-gradient(circle at 10% 80%, rgba(255,79,95,.12), transparent 28rem),
+        #05040e;
+      color: #f7f2fb;
     }
     main {
       width: min(460px, 100%);
       padding: 34px;
-      border: 1px solid rgba(33,83,101,.12);
+      border: 1px solid rgba(255,91,89,.22);
       border-radius: 26px;
-      background: rgba(255,255,255,.88);
-      box-shadow: 0 28px 70px rgba(47,84,99,.12);
+      background: rgba(13,7,25,.9);
+      box-shadow: 0 28px 70px rgba(0,0,0,.5);
       text-align: center;
     }
     img { width: 86px; height: 86px; border-radius: 24px; }
     h1 { margin: 20px 0 8px; font-size: 2rem; }
-    p { color: #667e89; line-height: 1.55; }
+    p { color: #9c92aa; line-height: 1.55; }
     a {
       display: inline-flex;
       align-items: center;
@@ -39,7 +40,7 @@
       min-height: 48px;
       padding: 0 22px;
       border-radius: 14px;
-      background: linear-gradient(135deg, #0da6bd, #13c99a);
+      background: linear-gradient(135deg, #ff9749, #ff315f);
       color: white;
       font: inherit;
       font-weight: 800;
@@ -49,7 +50,7 @@
 </head>
 <body>
   <main>
-    <img src="/assets/journeydeck-icon-192.png?v=5.9.6" alt="JourneyDeck">
+    <img src="/assets/journeydeck-cinematic-192.png?v=5.9.7" alt="JourneyDeck">
     <h1>JourneyDeck is unavailable</h1>
     <p>Your desktop may be asleep, JourneyDeck may not be running, or this phone may not be connected to Tailscale.</p>
     <a href="/">Try again</a>

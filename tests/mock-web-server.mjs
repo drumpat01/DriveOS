@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'web');
 const projectRoot = path.resolve(root, '..');
 const port = Number(process.env.DRIVEOS_TEST_PORT || 8790);
+const host = String(process.env.DRIVEOS_TEST_HOST || '127.0.0.1');
 
 function demoArtwork(label, start, end) {
   const artwork = [
@@ -228,4 +229,4 @@ http.createServer((req, res) => {
   }
   res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
   fs.createReadStream(file).pipe(res);
-}).listen(port, '127.0.0.1', () => console.log(`DriveOS mock server listening on ${port}`));
+}).listen(port, host, () => console.log(`DriveOS mock server listening on ${host}:${port}`));

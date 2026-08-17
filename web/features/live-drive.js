@@ -86,7 +86,7 @@
         container.innerHTML = "";
         map = new maplibregl.Map({
           container,
-          style: "https://tiles.openfreemap.org/styles/liberty",
+          style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
           center: coordinates,
           zoom: 15,
           bearing: Number(heading) || 0,
@@ -96,6 +96,7 @@
           dragRotate: false,
           pitchWithRotate: false
         });
+        window.JourneyDeckMapTheme?.attach(map);
         const markerElement = document.createElement("div");
         markerElement.className = "live-drive-marker";
         markerElement.innerHTML = '<span aria-hidden="true">&#x25B2;</span>';
@@ -118,9 +119,15 @@
         container.innerHTML = '<div class="live-drive-music-empty">No recent Spotify play</div>';
         return;
       }
+      const album = track.album || track.albumName || "Unknown album";
       container.innerHTML = `
         ${artworkMarkup(track, "live-drive-artwork")}
-        <div><span>RECENTLY PLAYED</span><strong>${escapeHtml(track.track || "Unknown track")}</strong><small>${escapeHtml(track.artist || "Unknown artist")}</small></div>`;
+        <div class="live-drive-music-copy">
+          <span>RECENTLY PLAYED</span>
+          <strong>${escapeHtml(track.track || "Unknown track")}</strong>
+          <small class="live-drive-music-artist">${escapeHtml(track.artist || "Unknown artist")}</small>
+          <small class="live-drive-music-album">${escapeHtml(album)}</small>
+        </div>`;
     }
 
     async function refreshVehicle() {

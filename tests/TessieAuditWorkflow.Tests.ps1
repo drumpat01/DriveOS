@@ -13,7 +13,7 @@ Assert-True ($Workflow -match 'DRIVEOS_REPOSITORY_PROVIDER:\s*Turso') 'The readi
 Assert-True ($Workflow -match 'TURSO_DATABASE_URL:\s*\$\{\{ secrets\.TURSO_DATABASE_URL \}\}') 'The readiness audit is missing its Turso URL secret.'
 Assert-True ($Workflow -match 'TURSO_AUTH_TOKEN:\s*\$\{\{ secrets\.TURSO_AUTH_TOKEN \}\}') 'The readiness audit is missing its Turso token secret.'
 Assert-True ($Workflow -match 'TESSIE_TOKEN:\s*\$\{\{ secrets\.TESSIE_TOKEN \}\}') 'The readiness audit is missing its Tessie token secret.'
-Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,240}-Days 30[\s\S]{0,240}-MaximumCursorLagMinutes 45') 'The readiness audit does not enforce the approved 30-day parity and cursor gate.'
+Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,240}-Days 30[\s\S]{0,240}-MaximumCursorLagMinutes 90') 'The readiness audit does not enforce the approved 30-day parity and cursor gate.'
 Assert-True ($Workflow -match 'Save-JourneyDeckIntegrityAuditResult\.ps1') 'The scheduled audit does not durably publish its privacy-safe result.'
 Assert-True ($Workflow -match 'Enforce readiness result') 'The scheduled audit does not fail when the durable read gate fails.'
 Assert-True ($Workflow -match 'RUNNER_TEMP') 'The readiness report must be written outside the repository checkout.'

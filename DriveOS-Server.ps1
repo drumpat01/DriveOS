@@ -74,8 +74,8 @@ $FoursquareConfigFile = Join-Path $DataDirectory "foursquare-config.json"
 $FoursquareCacheFile = Join-Path $DataDirectory "foursquare-place-cache.json"
 $FoursquareUsageFile = Join-Path $DataDirectory "foursquare-usage.json"
 $ChargingSettingsFile = Join-Path $DataDirectory "charging-settings.json"
-$FoursquareDailyLimit = 10
-$FoursquareMonthlyLimit = 250
+$FoursquareDailyLimit = 500
+$FoursquareMonthlyLimit = 500
 $script:FoursquareApiKeyForRedaction = $null
 
 # Expensive Tessie-derived data is reused briefly across the dashboard's
@@ -1647,19 +1647,16 @@ function Resolve-FoursquareCandidatePlaces {
     $NewMatches = 0
     $Client = New-FoursquareClient -ApiKey $Configuration.apiKey
 
-    foreach ($Candidate in @(Select-DriveOSPlaceLookupCandidates -Candidates $Candidates -Limit 25)) {
+    foreach ($Candidate in @(Select-DriveOSPlaceLookupCandidates -Candidates $Candidates -Limit 500)) {
         $Key = Get-DriveOSPlaceCacheKey -Location $Candidate.location -Latitude $Candidate.latitude -Longitude $Candidate.longitude
         if (-not $Key) { continue }
 
         if ($Map.ContainsKey($Key)) {
             $Existing = $Map[$Key]
             if ($Existing.status -eq 'matched') { continue }
-            if ($Existing.status -eq 'none') {
-                try {
-                    if ([datetime]$Existing.resolvedAt -gt (Get-Date).AddDays(-30)) { continue }
-                }
-                catch {}
-            }
+            # A completed miss is also a completed one-time lookup. It remains
+            # persisted until an owner deliberately clears the cache.
+            if ($Existing.status -eq 'none') { continue }
         }
 
         if (-not (Register-FoursquareApiCall)) { break }
@@ -1667,17 +1664,25 @@ function Resolve-FoursquareCandidatePlaces {
         try {
             $Places = @(Search-FoursquarePlaces -Client $Client `
                 -Latitude ([double]$Candidate.latitude) -Longitude ([double]$Candidate.longitude) `
-                -RadiusMeters 100 -Limit 5)
-            $Match = Select-DriveOSFoursquareMatch -Places $Places -MaximumDistanceMeters 60
+                -RadiusMeters 250 -Limit 5)
+            $BusinessMatch = Select-DriveOSFoursquareMatch -Places $Places -MaximumDistanceMeters 75
+            $AddressMatch = @($Places | Where-Object {
+                -not [string]::IsNullOrWhiteSpace([string]$_.address) -and
+                $null -ne $_.distanceMeters -and [double]$_.distanceMeters -le 250
+            } | Sort-Object distanceMeters | Select-Object -First 1)[0]
+            $Match = if ($BusinessMatch) { $BusinessMatch } else { $AddressMatch }
+            $ResolvedName = if ($BusinessMatch) { [string]$BusinessMatch.name } elseif ($AddressMatch) { [string]$AddressMatch.address } else { $null }
             $Entry = [PSCustomObject]@{
                 key = $Key
                 location = [string]$Candidate.location
                 latitude = [double]$Candidate.latitude
                 longitude = [double]$Candidate.longitude
-                status = if ($Match) { 'matched' } else { 'none' }
-                name = if ($Match) { [string]$Match.name } else { $null }
+                status = if ($ResolvedName) { 'matched' } else { 'none' }
+                name = $ResolvedName
+                address = if ($Match) { [string]$Match.address } else { $null }
                 fsqPlaceId = if ($Match) { [string]$Match.id } else { $null }
                 category = if ($Match) { [string]$Match.category } else { $null }
+                resolutionType = if ($BusinessMatch) { 'business' } elseif ($AddressMatch) { 'address' } else { 'unresolved' }
                 distanceMeters = if ($Match) { [double]$Match.distanceMeters } else { $null }
                 resolvedAt = (Get-Date).ToString('o')
             }
@@ -1691,7 +1696,7 @@ function Resolve-FoursquareCandidatePlaces {
             $Map[$Key] = $Entry
             Save-FoursquareCacheEntries -Entries @($Entries)
             Set-FoursquareLastError -Message $null
-            if ($Match) { $NewMatches++ }
+            if ($ResolvedName) { $NewMatches++ }
         }
         catch {
             Write-DriveOSServerLog "Foursquare place search failed: $($_.Exception.Message)"
@@ -2074,8 +2079,9 @@ function Set-DashboardLayout {
 }
 
 function Get-PlaceCandidates {
-    $Counts = @{}
-    $Coordinates = @{}
+    param([switch]$Enrich)
+
+    $PlaceRecords = @{}
     $AliasMap = Get-PlaceAliasMap
 
     # Load the persisted Foursquare cache once for this entire request.
@@ -2091,41 +2097,59 @@ function Get-PlaceCandidates {
         foreach ($Endpoint in $Endpoints) {
             $Value = "$($Endpoint.location)".Trim()
             if (-not $Value) { continue }
-            if (-not $Counts.ContainsKey($Value)) { $Counts[$Value] = 0 }
-            $Counts[$Value]++
-            if (-not $Coordinates.ContainsKey($Value) -and $null -ne $Endpoint.latitude -and $null -ne $Endpoint.longitude) {
-                $Coordinates[$Value] = [PSCustomObject]@{
-                    latitude = [double]$Endpoint.latitude
-                    longitude = [double]$Endpoint.longitude
+            $Latitude = if ($null -ne $Endpoint.latitude) { [double]$Endpoint.latitude } else { $null }
+            $Longitude = if ($null -ne $Endpoint.longitude) { [double]$Endpoint.longitude } else { $null }
+            $Key = Get-DriveOSPlaceCacheKey -Location $Value -Latitude $Latitude -Longitude $Longitude
+            if (-not $Key) { continue }
+            $GenericImported = $Value -match '^(Google Timeline location|Unknown (start|destination|location))$'
+            $GroupKey = if ($GenericImported -and $null -ne $Latitude -and $null -ne $Longitude) {
+                'timeline:' + [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:F3},{1:F3}', $Latitude, $Longitude)
+            }
+            else { $Key }
+
+            # Timeline imports commonly use the same placeholder for thousands
+            # of distinct coordinates. Grouping by the cache key keeps each
+            # repeated physical place independent for one-time enrichment.
+            if (-not $PlaceRecords.ContainsKey($GroupKey)) {
+                $PlaceRecords[$GroupKey] = [PSCustomObject]@{
+                    key = $Key
+                    location = $Value
+                    uses = 0
+                    latitude = $Latitude
+                    longitude = $Longitude
                 }
             }
+            $PlaceRecords[$GroupKey].uses++
         }
     }
 
-    $Places = @($Counts.Keys | ForEach-Object {
-        $Location = [string]$_
-        $Coordinate = if ($Coordinates.ContainsKey($Location)) { $Coordinates[$Location] } else { $null }
-        $ManualLabel = if ($AliasMap.ContainsKey($Location)) { [string]$AliasMap[$Location] } else { "" }
+    $Places = @($PlaceRecords.Values | ForEach-Object {
+        $Record = $_
+        $Location = [string]$Record.location
+        $GenericImported = $Location -match '^(Google Timeline location|Unknown (start|destination|location))$'
+        $ManualLabel = if ((-not $GenericImported) -and $AliasMap.ContainsKey($Location)) { [string]$AliasMap[$Location] } else { "" }
         $Business = Get-FoursquareCachedPlace -Location $Location `
-            -Latitude $(if ($Coordinate) { $Coordinate.latitude } else { $null }) `
-            -Longitude $(if ($Coordinate) { $Coordinate.longitude } else { $null }) `
+            -Latitude $Record.latitude `
+            -Longitude $Record.longitude `
             -CacheMap $FoursquareCacheMap
         [PSCustomObject]@{
+            key = [string]$Record.key
             location = $Location
             label = $ManualLabel
             manualLabel = $ManualLabel
             businessName = if ($Business) { [string]$Business.name } else { $null }
+            businessAddress = if ($Business -and $Business.PSObject.Properties['address']) { [string]$Business.address } else { $null }
             businessCategory = if ($Business) { [string]$Business.category } else { $null }
             businessDistanceMeters = if ($Business) { $Business.distanceMeters } else { $null }
             displayName = if ($ManualLabel) { $ManualLabel } elseif ($Business) { [string]$Business.name } else { $Location }
-            source = if ($ManualLabel) { 'manual' } elseif ($Business) { 'foursquare' } else { 'tessie' }
-            uses = [int]$Counts[$Location]
-            latitude = if ($Coordinate) { $Coordinate.latitude } else { $null }
-            longitude = if ($Coordinate) { $Coordinate.longitude } else { $null }
+            source = if ($ManualLabel) { 'manual' } elseif ($Business -and $Business.PSObject.Properties['provider'] -and $Business.provider) { [string]$Business.provider } elseif ($Business) { 'foursquare' } else { 'tessie' }
+            uses = [int]$Record.uses
+            latitude = $Record.latitude
+            longitude = $Record.longitude
         }
     })
 
-    $NewMatches = Resolve-FoursquareCandidatePlaces -Candidates $Places
+    $NewMatches = if ($Enrich) { Resolve-FoursquareCandidatePlaces -Candidates $Places } else { 0 }
     if ($NewMatches -gt 0) {
         # Refresh once only when the resolver actually persisted new matches.
         $FoursquareCacheMap = Get-FoursquareCacheMap
@@ -2135,10 +2159,11 @@ function Get-PlaceCandidates {
             if ($Key -and $FoursquareCacheMap.ContainsKey($Key) -and $FoursquareCacheMap[$Key].status -eq 'matched') {
                 $Business = $FoursquareCacheMap[$Key]
                 $Place.businessName = [string]$Business.name
+                $Place.businessAddress = if ($Business.PSObject.Properties['address']) { [string]$Business.address } else { $null }
                 $Place.businessCategory = [string]$Business.category
                 $Place.businessDistanceMeters = $Business.distanceMeters
                 $Place.displayName = [string]$Business.name
-                $Place.source = 'foursquare'
+                $Place.source = if ($Business.PSObject.Properties['provider'] -and $Business.provider) { [string]$Business.provider } else { 'foursquare' }
             }
         }
     }
@@ -2553,6 +2578,44 @@ function New-SoundtrackBackfillState {
         completedAtUtc = $null
         lastError = $null
     }
+}
+
+function Get-AtlasPlaceEnrichment {
+    $Places = @(Get-FoursquareCacheEntries | Where-Object { $_.status -eq 'matched' } | ForEach-Object {
+        $Provider = if ($_.PSObject.Properties['provider'] -and $_.provider) { [string]$_.provider } else { 'foursquare' }
+        [PSCustomObject]@{
+            key = [string]$_.key
+            latitude = $_.latitude
+            longitude = $_.longitude
+            name = [string]$_.name
+            address = if ($_.PSObject.Properties['address']) { [string]$_.address } else { $null }
+            category = [string]$_.category
+            distanceMeters = $_.distanceMeters
+            resolvedAt = [string]$_.resolvedAt
+            source = $Provider
+            attribution = if ($_.PSObject.Properties['attribution']) { [string]$_.attribution } else { $null }
+        }
+    })
+
+    return [PSCustomObject]@{
+        version = 1
+        persisted = $true
+        places = $Places
+        foursquare = Get-FoursquareConnectionStatus
+    }
+}
+
+function Invoke-AtlasPlaceEnrichmentScan {
+    # This bounded pass writes every lookup outcome to the database-backed
+    # Foursquare cache. Later Atlas loads only read the compact projection.
+    $Before = @(Get-FoursquareCacheEntries).Count
+    $Result = Get-PlaceCandidates -Enrich
+    $Snapshot = Get-AtlasPlaceEnrichment
+    $After = @(Get-FoursquareCacheEntries).Count
+    $Snapshot | Add-Member -NotePropertyName scanned -NotePropertyValue $true
+    $Snapshot | Add-Member -NotePropertyName candidates -NotePropertyValue @($Result.places).Count
+    $Snapshot | Add-Member -NotePropertyName imported -NotePropertyValue ([Math]::Max(0, $After - $Before))
+    return $Snapshot
 }
 
 function Get-SoundtrackBackfillState {
@@ -3911,6 +3974,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/atlas/places" {
+                    Send-Json -Stream $Stream -Object (Get-AtlasPlaceEnrichment)
+                    return
+                }
+
                 "/api/charging" {
                     Send-Json -Stream $Stream -Object (Get-ChargingSummary)
                     return
@@ -4114,6 +4182,11 @@ function Handle-Request {
                     return
                 }
 
+                "/api/atlas/places/scan" {
+                    Send-Json -Stream $Stream -Object (Invoke-AtlasPlaceEnrichmentScan)
+                    return
+                }
+
                 "/api/charging/settings" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText
                     Send-Json -Stream $Stream -Object (Set-ChargingSettings -ElectricityRateCents $Body.electricityRateCents)
@@ -4187,6 +4260,12 @@ function Handle-Request {
                 "/api/mobility/place" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields nodeId
                     Send-Json -Stream $Stream -Object (Set-MobilityPlacePreference -Repository $Repository -Candidate $Body)
+                    return
+                }
+
+                "/api/mobility/place-geofence" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields latitude,longitude,radiusFeet,name,category
+                    Send-Json -Stream $Stream -Object (Set-MobilityPlaceGeofence -Repository $Repository -Candidate $Body)
                     return
                 }
 

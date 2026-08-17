@@ -63,6 +63,7 @@ foreach ($Expected in @('spotify-failed','tessie-drives-stale','soundtracks-miss
 Assert-True (@(Get-DataHealthAlerts -Signals @([pscustomobject]@{ id='integrity-audit'; name='Daily integrity audit'; status='stale'; lagMinutes=1600 }) | Where-Object id -eq 'integrity-audit-stale').Count -eq 1) 'A stale durable audit does not create an owner alert.'
 Assert-True ($Index -match 'id="dataHealthAlerts"' -and $Index -match 'id="dataHealthNavAlertCount"' -and $Index -match 'id="mobileDataHealthAlertCount"') 'Data Health alert UI is incomplete on desktop or mobile.'
 Assert-True ($Index -match 'id="dataHealthIntegrityAudit"' -and $Feature -match 'integrityAudit') 'Data Health does not display the durable audit result.'
+Assert-True ($Feature -notmatch 'auditMeetsCurrentPolicy' -and $Feature -notmatch 'integrity-audit-failed.*filter') 'Data Health must render the authoritative audit result without client-side recovery overrides.'
 Assert-True ($App -match 'dataHealthFeature\.load\(\)') 'Owner navigation does not proactively load durable alert status.'
 
 Write-Host 'Data Health checks passed.' -ForegroundColor Green

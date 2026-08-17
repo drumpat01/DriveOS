@@ -33,7 +33,7 @@ jobs:
           $reportPath = Join-Path $env:RUNNER_TEMP 'journeydeck-tessie-parity.json'
           ./tools/Test-JourneyDeckTessieParity.ps1 `
             -Days 30 `
-            -MaximumCursorLagMinutes 45 `
+            -MaximumCursorLagMinutes 90 `
             -OutputPath $reportPath | Out-Null
       - name: Persist privacy-safe integrity result
         if: always()

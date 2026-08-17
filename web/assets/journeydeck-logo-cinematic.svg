@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 330" role="img" aria-labelledby="title desc">
+  <title id="title">JourneyDeck</title>
+  <desc id="desc">JourneyDeck wordmark with the circular pulse journey icon.</desc>
+  <defs>
+    <linearGradient id="wordmark" x1="360" y1="70" x2="1340" y2="280" gradientUnits="userSpaceOnUse"><stop stop-color="#ff9749"/><stop offset=".48" stop-color="#ff704b"/><stop offset="1" stop-color="#ff315f"/></linearGradient>
+    <filter id="textGlow" x="-20%" y="-60%" width="140%" height="220%"><feGaussianBlur stdDeviation="7" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <image href="journeydeck-icon-cinematic.svg" x="18" y="10" width="310" height="310"/>
+  <text x="365" y="232" fill="url(#wordmark)" font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif" font-size="184" font-weight="500" letter-spacing="-3" filter="url(#textGlow)">JourneyDeck</text>
+</svg>

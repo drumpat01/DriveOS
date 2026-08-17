@@ -1,21 +1,24 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>JourneyDeck</title>
-  <meta name="theme-color" content="#eef6f8">
+  <meta name="theme-color" content="#05040e">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="JourneyDeck">
-  <link rel="icon" type="image/png" sizes="192x192" href="/assets/journeydeck-icon-192.png?v=5.9.6">
-  <link rel="shortcut icon" type="image/png" href="/assets/journeydeck-icon-192.png?v=5.9.6">
-  <link rel="apple-touch-icon" sizes="180x180" href="/assets/journeydeck-icon-180.png?v=5.9.6">
-  <link rel="manifest" href="/manifest.webmanifest?v=5.9.6">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/journeydeck-cinematic-192.png?v=5.9.52">
+  <link rel="shortcut icon" type="image/png" href="/assets/journeydeck-cinematic-192.png?v=5.9.52">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/journeydeck-cinematic-180.png?v=5.9.52">
+  <link rel="manifest" href="/manifest.webmanifest?v=5.9.52">
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=5.9.6">
+  <link rel="stylesheet" href="/styles.css?v=5.9.52">
+  <link rel="stylesheet" href="/beta-theme.css?v=5.9.52">
+  <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.52">
+  <link rel="stylesheet" href="/reference-dashboard.css?v=5.9.52">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -53,11 +56,7 @@
     <main class="jd-launch-content">
       <div class="jd-launch-kicker"><span></span> PERSONAL DRIVING ATLAS</div>
       <div class="jd-launch-lockup">
-        <div class="jd-route-mark" aria-hidden="true">
-          <i class="jd-mark-card jd-mark-card-back"></i>
-          <i class="jd-mark-card jd-mark-card-front"></i>
-          <svg viewBox="0 0 76 76"><path d="M16 58c10-4 8-26 21-27 12-1 11 15 23 11"/><circle cx="16" cy="58" r="4"/><circle cx="60" cy="42" r="4"/></svg>
-        </div>
+        <div class="jd-route-mark jd-cinematic-launch-mark" aria-hidden="true"><img src="/assets/journeydeck-icon-cinematic.svg" alt=""></div>
         <div>
           <div class="jd-launch-title"><span>JOURNEY</span><strong>DECK</strong></div>
           <p>Every mile, beautifully remembered.</p>
@@ -67,7 +66,7 @@
       <div class="jd-loading-panel">
         <div class="jd-loading-topline"><span id="ignitionSystemText">FINDING YOUR PLACE ON THE ROAD</span><strong id="ignitionVersion">5.9</strong></div>
         <div class="jd-loading-track"><i></i></div>
-        <div class="jd-loading-steps" aria-hidden="true"><span>DRIVE</span><span>MAP</span><span>REMEMBER</span></div>
+        <div class="jd-loading-steps" aria-hidden="true"><span>JOURNEY</span><span>MAP</span><span>REMEMBER</span></div>
       </div>
     </main>
 
@@ -87,22 +86,23 @@
 <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="/assets/journeydeck-mark.svg" alt="JourneyDeck route mark">
+        <img class="brand-logo" src="/assets/journeydeck-icon-cinematic.svg" alt="JourneyDeck pulse journey mark">
         <div class="brand-copy">
-          <div class="eyebrow">PERSONAL VEHICLE INTELLIGENCE</div>
+          <div class="eyebrow">JOURNEY JOURNAL <span class="beta-release-badge">BETA</span></div>
           <h1>JOURNEY<span>DECK</span></h1>
         </div>
       </div>
 
       <nav class="main-nav" aria-label="JourneyDeck">
-        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Dashboard</span><span class="nav-mobile-label">Home</span></button>
-        <button class="nav-button nav-button-live" data-view="live"><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
-        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Drives</span></button>
-        <button class="nav-button nav-secondary" data-view="graph">Graph</button>
-        <button class="nav-button nav-secondary" data-view="timeline">Timeline</button>
-        <button class="nav-button nav-secondary" data-view="music">Music</button>
-        <button class="nav-button nav-secondary" data-view="statistics">Statistics</button>
-        <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden>Data Health <span id="dataHealthNavAlertCount" class="data-health-nav-alert" hidden></span></button>
+        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
+        <button class="nav-button nav-button-live" data-view="live"><span class="nav-mobile-icon" aria-hidden="true">&#x25B2;</span><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Journeys</span></button>
+        <button class="nav-button nav-secondary" data-view="graph"><span class="nav-mobile-icon" aria-hidden="true">&#x25DF;</span><span>Atlas</span></button>
+        <button class="nav-button nav-secondary" data-view="timeline"><span class="nav-mobile-icon" aria-hidden="true">&#x25F4;</span><span>Timeline</span></button>
+        <button class="nav-button nav-secondary" data-view="music"><span class="nav-mobile-icon" aria-hidden="true">&#x266B;</span><span>Music</span></button>
+        <button class="nav-button nav-secondary" data-view="statistics"><span class="nav-mobile-icon" aria-hidden="true">&#x2726;</span><span>Statistics</span></button>
+        <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden><span class="nav-mobile-icon" aria-hidden="true">&#x2713;</span><span>Data Health</span> <span id="dataHealthNavAlertCount" class="data-health-nav-alert" hidden></span></button>
+        <button id="sidebarSearchButton" class="nav-button nav-secondary sidebar-search-button" type="button"><span class="nav-mobile-icon" aria-hidden="true">&#x2315;</span><span>Search</span></button>
         <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true">&#x2022;&#x2022;&#x2022;</span><span>More</span></button>
       </nav>
 
@@ -116,7 +116,7 @@
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed JourneyDeck web build">5.9.6</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.9.52</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -150,6 +150,175 @@
     <main>
       <!-- DASHBOARD -->
       <section id="view-dashboard" class="view active-view">
+        <section class="reference-dashboard" aria-label="JourneyDeck overview">
+          <div class="reference-dashboard-glow" aria-hidden="true"></div>
+
+          <header class="ref-hero">
+            <div class="ref-hero-map" aria-hidden="true">
+              <svg class="ref-map-streets" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
+                <g class="ref-map-street-minor">
+                  <path d="M284 0 265 430M339 0 329 430M392 0 401 430M451 0 470 430M503 0 544 430"/>
+                  <path d="M227 28 560 51M210 75 560 100M204 126 560 148M194 180 560 195M184 231 560 245M169 286 560 302M154 344 560 358M139 399 560 416"/>
+                  <path d="M255 0 560 298M198 39 529 430M325 0 560 187M224 215 429 430"/>
+                </g>
+                <g class="ref-map-street-major">
+                  <path d="M210 -10C279 68 287 128 263 196s-6 148 86 244"/>
+                  <path d="M164 308c108-62 234-77 410-41"/>
+                </g>
+              </svg>
+              <svg class="ref-route-art" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
+                <defs>
+                  <linearGradient id="refRouteGradient" x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0" stop-color="#ff315f"/><stop offset=".53" stop-color="#ff4b55"/><stop offset="1" stop-color="#ff9c47"/>
+                  </linearGradient>
+                  <filter id="refRouteGlow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="11" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <path class="ref-route-halo" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
+                <path class="ref-route-line" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
+                <g class="ref-route-marker" transform="translate(348 377)"><circle r="21"/><path d="M0-11 10 9 0 5-10 9Z"/></g>
+              </svg>
+            </div>
+
+            <div class="ref-brand-lockup">
+              <img src="/assets/journeydeck-cinematic-192.png?v=5.9.52" alt="">
+              <strong>JourneyDeck</strong>
+            </div>
+            <button class="ref-live-pill" type="button" data-go-view="live"><i></i> LIVE</button>
+
+            <div class="ref-title-lockup">
+              <span>OPEN</span><span>ROADS</span><em>Eloise</em>
+            </div>
+
+            <div class="ref-battery-block" aria-label="Vehicle battery and range">
+              <div><strong data-ref-battery>72</strong><span>%</span><i aria-hidden="true">&#x26A1;</i></div>
+              <div class="ref-battery-bars" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+              <strong><span data-ref-range>185</span> <small>mi</small></strong>
+              <small>RANGE</small>
+            </div>
+            <img class="ref-hero-car" src="/assets/journeydeck-model3-front-v3.png" alt="Pearl white electric sedan" loading="eager" decoding="async">
+          </header>
+
+          <section class="ref-music-card" aria-label="Last played on Spotify">
+            <div class="ref-album-art" data-ref-album aria-hidden="true"><span>JOURNEY<br>DECK</span><i></i><b></b></div>
+            <div class="ref-track-copy">
+              <span>LAST PLAYED ON SPOTIFY</span>
+              <strong data-ref-track>Loading soundtrack</strong>
+              <em data-ref-artist>Loading Spotify archive</em>
+              <div class="ref-waveform" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <div class="ref-track-time"><span data-ref-elapsed>0:00</span><span>RECENT</span></div>
+            </div>
+          </section>
+
+          <aside class="ref-desktop-overview" aria-label="Live vehicle overview">
+            <header><div><span>LIVE VEHICLE</span><strong>Eloise</strong></div><i></i></header>
+            <div class="ref-vehicle-status">
+              <div><span>STATUS</span><strong data-ref-vehicle-state>Checking Tessie</strong></div>
+              <div><span>CHARGE LIMIT</span><strong><b data-ref-charge-limit>--</b>%</strong></div>
+              <div><span>INSIDE</span><strong><b data-ref-inside-temp>--</b>&deg;</strong></div>
+              <div><span>OUTSIDE</span><strong><b data-ref-outside-temp>--</b>&deg;</strong></div>
+            </div>
+            <div class="ref-desktop-route">
+              <span>NEWEST JOURNEY</span>
+              <strong><b data-ref-latest-origin>Loading</b><i>&#x2192;</i><b data-ref-latest-destination>Recent journey</b></strong>
+              <small data-ref-latest-meta>Waiting for Tessie journey data</small>
+              <button type="button" data-dashboard-action="latest">Open journey <span>&#x203A;</span></button>
+            </div>
+          </aside>
+
+          <section class="ref-driving-card" aria-label="Today's driving summary">
+            <div class="ref-driving-summary">
+              <span>TODAY'S DRIVING</span>
+              <strong data-ref-miles>38.4<small> mi</small></strong>
+            </div>
+            <div class="ref-driving-facts">
+              <div><strong data-ref-trips>3</strong><span>journeys</span></div>
+              <div><strong data-ref-time>1h 14m</strong><span>time</span></div>
+            </div>
+            <div class="ref-driving-chart" aria-label="Driving activity across the day">
+              <svg viewBox="0 0 405 72" preserveAspectRatio="none" aria-hidden="true">
+                <defs><linearGradient id="refChartLine" x1="0" x2="1"><stop stop-color="#2b8bc7"/><stop offset="1" stop-color="#37b8ed"/></linearGradient></defs>
+                <path data-ref-hourly-line d=""/>
+                <g data-ref-hourly-points></g>
+              </svg>
+              <div class="ref-chart-bars" aria-hidden="true"></div>
+              <div class="ref-chart-axis"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
+            </div>
+            <div class="ref-score-ring" aria-label="Live average efficiency">
+              <svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="38"/><circle class="ref-score-progress" cx="45" cy="45" r="38"/></svg>
+              <i>&#x2311;</i><span>Average</span><strong data-ref-efficiency>--</strong><small>Wh/mi</small>
+            </div>
+          </section>
+
+          <section class="ref-actions" aria-label="Quick actions">
+            <button class="ref-action ref-sync" type="button" data-dashboard-action="refresh">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M38 16A17 17 0 1 0 40 28"/><path d="m31 8 8 8-11 3"/></svg><strong>Sync</strong><span>Latest journey</span>
+            </button>
+            <button class="ref-action ref-replay" type="button" data-dashboard-action="latest">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="18"/><path d="m20 16 13 8-13 8Z"/></svg><strong>Replay</strong><span>Your journey</span>
+            </button>
+            <button class="ref-action ref-share" type="button" data-dashboard-action="share">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="13" width="32" height="25" rx="3"/><path d="M14 20h12M14 25h10M14 30h8M33 8v12M27 14h12"/></svg><strong>Share Card</strong><span>Create &amp; send</span>
+            </button>
+            <button class="ref-action ref-find" type="button" data-dashboard-action="search">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="m30 30 11 11M21 13v16M13 21h16"/></svg><strong>Search</strong><span>Ask about any journey</span>
+            </button>
+          </section>
+
+          <section class="ref-bottom-grid">
+            <article class="ref-journeys-card">
+              <header><strong>RECENT JOURNEYS</strong><button type="button" data-go-view="drives">View all <span>&#x203A;</span></button></header>
+              <button class="ref-journey-row" type="button" data-reference-drive="0">
+                <i class="ref-place-icon">&#x2302;</i><span><small data-ref-journey-origin>Loading</small><strong data-ref-journey-destination>Recent journey</strong><em data-ref-journey-meta>Loading live journey data</em></span>
+                <svg class="route-loading" viewBox="0 0 74 54" aria-hidden="true"><text x="37" y="31" text-anchor="middle">&#x2026;</text></svg>
+              </button>
+              <button class="ref-journey-row" type="button" data-reference-drive="1">
+                <i class="ref-place-icon">&#x2302;</i><span><small data-ref-journey-origin>Loading</small><strong data-ref-journey-destination>Recent journey</strong><em data-ref-journey-meta>Loading live journey data</em></span>
+                <svg class="route-loading" viewBox="0 0 74 54" aria-hidden="true"><text x="37" y="31" text-anchor="middle">&#x2026;</text></svg>
+              </button>
+            </article>
+
+            <article class="ref-health-card">
+              <header><strong>DATA HEALTH</strong></header>
+              <button type="button" data-reference-health="tessie"><i class="ref-service-icon tessie">T</i><span><strong>Tessie</strong><small data-ref-tessie>Connected</small></span><b>&#x2713;</b></button>
+              <button type="button" data-reference-health="spotify"><i class="ref-service-icon spotify">&#x266B;</i><span><strong>Spotify</strong><small data-ref-spotify>Connected</small></span><b>&#x2713;</b></button>
+              <button type="button" data-go-view="music"><i class="ref-service-icon places">&#x25C9;</i><span><strong>Places</strong><small>Local archive</small></span><b>&#x2713;</b></button>
+            </article>
+          </section>
+
+          <section class="ref-desktop-insights" aria-label="Journey insights and shortcuts">
+            <article class="ref-week-card">
+              <header><span>THIS WEEK</span><button type="button" data-go-view="statistics">Full statistics &#x203A;</button></header>
+              <div><strong data-ref-week-miles>--</strong><span>miles driven</span></div>
+              <div><strong data-ref-week-drives>--</strong><span>journeys</span></div>
+              <div><strong data-ref-week-time>--</strong><span>on the road</span></div>
+              <div><strong data-ref-week-songs>--</strong><span>songs matched</span></div>
+            </article>
+            <article class="ref-explore-card">
+              <header><span>EXPLORE YOUR ROAD</span><small>Jump back into your archive</small></header>
+              <div>
+                <button type="button" data-go-view="timeline"><i>&#x25F4;</i><span><strong>Timeline</strong><small>Every journey in order</small></span></button>
+                <button type="button" data-go-view="graph"><i>&#x259F;</i><span><strong>Mobility Atlas</strong><small>Patterns across places</small></span></button>
+                <button type="button" data-go-view="music"><i>&#x266B;</i><span><strong>Journey Music</strong><small>Your road soundtrack</small></span></button>
+                <button type="button" data-dashboard-action="recap"><i>&#x2726;</i><span><strong>Insights</strong><small>Monthly recaps</small></span></button>
+              </div>
+            </article>
+          </section>
+
+          <nav class="ref-tool-dock" aria-label="JourneyDeck tools">
+            <button type="button" data-go-view="timeline"><i>&#x25F4;</i><span>Timeline</span></button>
+            <button type="button" data-go-view="graph"><i>&#x259F;</i><span>Mobility<br>Graph</span></button>
+            <button type="button" data-dashboard-action="recap"><i>&#x2726;</i><span>Insights &amp;<br>Recaps</span></button>
+            <button type="button" data-go-view="drives"><i>&#x25A3;</i><span>Collections</span></button>
+            <button type="button" data-go-view="drives"><i>&#x21AF;</i><span>Charging</span></button>
+            <button type="button" data-go-view="music"><i>&#x25C9;</i><span>Places</span></button>
+            <button type="button" data-dashboard-action="search"><i>&#x2315;</i><span>Search</span></button>
+          </nav>
+        </section>
+
         <div class="dashboard-customize-bar">
           <div>
             <div class="section-label">YOUR JOURNEYDECK</div>
@@ -280,16 +449,23 @@
               <span id="todayDrivingStatus">No trips recorded yet today</span>
             </div>
             <div class="today-driving-grid">
-              <div><span>Drive time</span><strong id="todayDrivingTime">0 min</strong></div>
+              <div><span>Journey time</span><strong id="todayDrivingTime">0 min</strong></div>
               <div><span>Efficiency</span><strong id="todayDrivingEfficiency">--</strong></div>
               <div><span>Trips</span><strong id="todayDrivingTrips">0</strong></div>
               <div><span>Songs</span><strong id="todayDrivingSongs">0</strong></div>
             </div>
+            <div class="today-driving-visual" aria-hidden="true">
+              <div class="today-driving-chart">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <span class="today-driving-line"></span>
+              </div>
+              <div class="today-driving-score"><span>82</span><small>Smooth<br>score</small></div>
+            </div>
           </article>
 
-          <article class="panel dashboard-widget drive-soundtrack-widget" data-dashboard-widget="soundtrack" data-dashboard-title="Drive soundtrack" data-dashboard-default-size="compact">
+          <article class="panel dashboard-widget drive-soundtrack-widget" data-dashboard-widget="soundtrack" data-dashboard-title="Journey soundtrack" data-dashboard-default-size="compact">
             <div class="panel-heading">
-              <div><div class="section-label spotify-label">RECENT DRIVES</div><h2>Drive soundtrack</h2></div>
+              <div><div class="section-label spotify-label">RECENT JOURNEYS</div><h2>Journey soundtrack</h2></div>
               <div class="dashboard-widget-symbol soundtrack-symbol" aria-hidden="true">&#x266B;</div>
             </div>
             <div id="dashboardSoundtrack" class="dashboard-soundtrack-content">
@@ -303,32 +479,42 @@
               <div class="dashboard-widget-symbol" aria-hidden="true">&#x2726;</div>
             </div>
             <div class="dashboard-quick-actions">
-              <button type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong data-mobile-label="Refresh">Refresh data</strong><small>Sync everything</small></button>
-              <button type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong data-mobile-label="Share">Create share card</strong><small>Latest drive</small></button>
-              <button type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong data-mobile-label="Search">Open search</strong><small>Find anything</small></button>
-              <button type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x2192;</span><strong data-mobile-label="Latest">Latest drive</strong><small>Open details</small></button>
-              <button type="button" data-dashboard-action="recap"><span aria-hidden="true">&#x2606;</span><strong data-mobile-label="Recap">Start a recap</strong><small>Review your month</small></button>
+              <button class="action-sync" type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong data-mobile-label="Sync">Sync</strong><small>Latest journey</small></button>
+              <button class="action-replay" type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x25B7;</span><strong data-mobile-label="Replay">Replay</strong><small>Your journey</small></button>
+              <button class="action-share" type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong data-mobile-label="Share">Share Card</strong><small>Create &amp; send</small></button>
+              <button class="action-search" type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong data-mobile-label="Search">Search</strong><small>Search journeys</small></button>
             </div>
           </article>
 
-        <section class="panel drives-panel v3-flight-recorder dashboard-widget" data-dashboard-widget="drives" data-dashboard-title="Recent drives" data-dashboard-default-size="wide">
+        <section class="panel drives-panel v3-flight-recorder dashboard-widget" data-dashboard-widget="drives" data-dashboard-title="Recent journeys" data-dashboard-default-size="wide">
           <div class="panel-heading drives-heading">
             <div>
               <div class="section-label">FLIGHT RECORDER</div>
-              <h2>Recent drives</h2>
+              <h2>Recent journeys</h2>
             </div>
-            <button type="button" class="text-button" data-go-view="drives">View all drives &#x2192;</button>
+            <button type="button" class="text-button" data-go-view="drives">View all journeys &#x2192;</button>
           </div>
           <div id="dashboardDrives" class="drive-content"></div>
         </section>
 
         <section class="stats-grid v3-intelligence-grid dashboard-widget dashboard-status-widget" data-dashboard-widget="status" data-dashboard-title="Connection status" data-dashboard-default-size="wide">
-          <article class="stat-card"><span>JourneyDeck</span><strong id="driveOSStatus">ONLINE</strong></article>
-          <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
-          <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
-          <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
+          <div class="dashboard-status-heading"><span>DATA HEALTH</span><strong>Everything that powers your journeys</strong></div>
+          <article class="stat-card stat-journeydeck"><span>JourneyDeck</span><strong id="driveOSStatus">ONLINE</strong></article>
+          <article class="stat-card stat-tessie"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
+          <article class="stat-card stat-spotify"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
+          <article class="stat-card stat-playlist"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
         </section>
         </section>
+
+        <nav class="journeydeck-action-dock" aria-label="JourneyDeck tools">
+          <button type="button" data-go-view="timeline"><span>&#x25F4;</span><strong>Timeline</strong></button>
+          <button type="button" data-go-view="graph"><span>&#x259F;</span><strong>Mobility<br>Graph</strong></button>
+          <button type="button" data-dashboard-action="recap"><span>&#x2726;</span><strong>Insights &amp;<br>Recaps</strong></button>
+          <button type="button" data-go-view="drives"><span>&#x25A3;</span><strong>Collections</strong></button>
+          <button type="button" data-go-view="drives"><span>&#x21AF;</span><strong>Charging</strong></button>
+          <button type="button" data-go-view="music"><span>&#x25C9;</span><strong>Places</strong></button>
+          <button type="button" data-dashboard-action="search"><span>&#x2315;</span><strong>Search</strong></button>
+        </nav>
       </section>
 
       <!-- LIVE DRIVE -->
@@ -336,7 +522,7 @@
         <div id="liveDriveShell" class="live-drive-shell">
           <header class="live-drive-header">
             <div>
-              <div class="live-drive-kicker"><span></span> LIVE DRIVE</div>
+          <div class="live-drive-kicker"><span></span> LIVE JOURNEY</div>
               <h2 id="liveDriveVehicle">Vehicle</h2>
             </div>
             <div class="live-drive-header-actions">
@@ -347,7 +533,7 @@
 
           <div class="live-drive-stage">
             <div id="liveDriveMap" class="live-drive-map" aria-label="Live vehicle location map">
-              <div class="live-drive-map-message">Open Live Drive to connect</div>
+              <div class="live-drive-map-message">Open Live Journey to connect</div>
             </div>
             <div class="live-drive-overlay live-drive-speed-card">
               <span id="liveDriveState">Waiting</span>
@@ -375,13 +561,13 @@
         <div class="page-heading">
           <div>
             <div class="section-label">FLIGHT RECORDER</div>
-            <h2>Drive library</h2>
-            <p>Search your Tessie drives by city or state. Open advanced search for dates, mileage, music, and sorting.</p>
+            <h2>Journey Library</h2>
+            <p>Search your Tessie journeys by city or state. Open advanced search for dates, mileage, music, and sorting.</p>
           </div>
           <button id="refreshButton" class="primary-button" type="button">Refresh data</button>
         </div>
 
-        <section class="drive-search-panel panel" aria-label="Drive library search">
+        <section class="drive-search-panel panel" aria-label="Journey Library search">
           <div class="drive-search-primary">
             <label class="drive-search-box">
               <span class="search-icon" aria-hidden="true">&#x2315;</span>
@@ -391,12 +577,12 @@
                 autocomplete="off"
                 spellcheck="false"
                 placeholder="Enter a city or state&#x2026;"
-                aria-label="Search drives by city or state">
-              <button id="driveSearchClear" class="search-clear-button" type="button" title="Clear search" aria-label="Clear drive search">&#xD7;</button>
+                aria-label="Search journeys by city or state">
+              <button id="driveSearchClear" class="search-clear-button" type="button" title="Clear search" aria-label="Clear journey search">&#xD7;</button>
             </label>
 
             <div class="drive-search-actions">
-              <div id="driveSearchCount" class="drive-search-count">Loading drive library&#x2026;</div>
+              <div id="driveSearchCount" class="drive-search-count">Loading Journey Library&#x2026;</div>
               <button
                 id="driveAdvancedToggle"
                 class="secondary-button drive-advanced-toggle"
@@ -469,7 +655,7 @@
             <div>
               <div class="section-label">AUTOMATIC PATTERNS</div>
               <h3 id="favoriteRoutesHeading">Favorite routes</h3>
-              <p class="panel-description">Repeated origin &#x2192; destination patterns detected from your Drive Library.</p>
+              <p class="panel-description">Repeated origin &#x2192; destination patterns detected from your Journey Library.</p>
             </div>
             <span id="favoriteRoutesStatus" class="muted">Analyzing routes&#x2026;</span>
           </div>
@@ -481,7 +667,7 @@
             <div>
               <div class="section-label">CURATED JOURNEYS</div>
               <h3 id="journeyCollectionsHeading">Journey collections</h3>
-              <p class="panel-description">Group saved drives for vacations, milestones, commutes, or any story you want to revisit.</p>
+              <p class="panel-description">Group saved journeys for vacations, milestones, commutes, or any story you want to revisit.</p>
             </div>
             <button id="newJourneyCollection" class="primary-button" type="button">New collection</button>
           </div>
@@ -496,14 +682,14 @@
             class="primary-button"
             type="button"
             aria-haspopup="dialog"
-            aria-controls="placeNamesModal">Name the places you drive</button>
+            aria-controls="placeNamesModal">Name your journey places</button>
         </div>
 
         <div id="allDrives" class="drive-stack"></div>
 
         <div id="driveLibraryMore" class="drive-library-more" hidden>
           <span id="driveLibraryMoreSummary" class="muted"></span>
-          <button id="driveLibraryMoreButton" class="secondary-button" type="button" aria-expanded="false">Show all drives</button>
+          <button id="driveLibraryMoreButton" class="secondary-button" type="button" aria-expanded="false">Show all journeys</button>
         </div>
 
         <section class="panel charging-panel drive-library-charging" aria-labelledby="chargingHeading">
@@ -544,7 +730,7 @@
         <div id="mobilityGraphSummary" class="mobility-graph-summary" aria-label="Mobility graph summary">
           <article><span>Places</span><strong>--</strong></article>
           <article><span>Connections</span><strong>--</strong></article>
-          <article><span>Drives mapped</span><strong>--</strong></article>
+          <article><span>Journeys mapped</span><strong>--</strong></article>
           <article><span>Miles connected</span><strong>--</strong></article>
         </div>
 
@@ -555,10 +741,14 @@
           </div>
           <div class="mobility-graph-layout">
             <div id="mobilityGraphCanvas" class="mobility-graph-canvas" aria-live="polite"></div>
-            <aside id="mobilityGraphInspector" class="mobility-graph-inspector" aria-label="Selected place details">
-              <div class="section-label">SELECT A PLACE</div>
-              <h3>Your recurring world</h3>
-              <p>Choose any node to see how often you visit and which places it connects to.</p>
+            <aside id="mobilityGraphInspector" class="mobility-graph-inspector" aria-label="Atlas insights and selected place details">
+              <section class="mobility-change-sidebar" aria-labelledby="mobilityChangesHeading">
+                <div class="section-label">HOW YOUR WORLD IS CHANGING</div>
+                <h3 id="mobilityChangesHeading">Recent 30 days vs. the 30 before</h3>
+                <p class="panel-description">Three useful changes from your recent movement.</p>
+                <div id="mobilityChanges" class="mobility-change-list"></div>
+              </section>
+              <div id="mobilityPlaceInspector" class="mobility-place-inspector" hidden></div>
             </aside>
           </div>
         </section>
@@ -567,14 +757,8 @@
           <section class="panel mobility-intelligence-panel" aria-labelledby="mobilityRoutinesHeading">
             <div class="section-label">RECURRING PATTERNS</div>
             <h3 id="mobilityRoutinesHeading">The rhythms JourneyDeck recognizes</h3>
-            <p class="panel-description">Only patterns supported by repeated drives appear here.</p>
+            <p class="panel-description">Only patterns supported by repeated journeys appear here.</p>
             <div id="mobilityRoutines" class="mobility-routine-list"></div>
-          </section>
-          <section class="panel mobility-intelligence-panel" aria-labelledby="mobilityChangesHeading">
-            <div class="section-label">HOW YOUR WORLD IS CHANGING</div>
-            <h3 id="mobilityChangesHeading">Recent 30 days vs. the 30 before</h3>
-            <p class="panel-description">Directional observations, not judgments or predictions.</p>
-            <div id="mobilityChanges" class="mobility-change-list"></div>
           </section>
         </div>
       </section>
@@ -607,7 +791,7 @@
             <div>
               <div class="section-label spotify-label">MUSIC BY LOCATION</div>
               <h3>What do you hear around a place?</h3>
-              <p class="panel-description">Search a city, neighborhood, street, or destination from Tessie drive locations.</p>
+              <p class="panel-description">Search a city, neighborhood, street, or destination from Tessie journey locations.</p>
             </div>
           </div>
 
@@ -630,7 +814,7 @@
           </form>
 
           <div id="musicLocationStatus" class="music-location-status">
-            JourneyDeck uses Tessie start/end addresses for text searches. Click a drive map for GPS-precise song locations on that trip.
+            JourneyDeck uses Tessie start/end addresses for text searches. Click a journey map for GPS-precise song locations on that journey.
           </div>
 
           <div id="musicLocationResults" class="music-location-results"></div>
@@ -652,8 +836,8 @@
         <div class="page-heading drive-timeline-heading">
           <div>
             <div class="section-label">VEHICLE JOURNAL</div>
-            <h2>Drive Timeline</h2>
-            <p>One chronological view of drives, charging, music, and the places where Eloise spent time.</p>
+            <h2>Journey Timeline</h2>
+            <p>One chronological view of journeys, charging, music, and the places where Eloise spent time.</p>
           </div>
           <div class="timeline-range-control" role="group" aria-label="Timeline range">
             <button class="secondary-button timeline-range-button" type="button" data-timeline-days="1">Today</button>
@@ -664,7 +848,7 @@
 
         <section class="panel drive-timeline-summary-panel">
           <div class="drive-timeline-summary">
-            <div><span>Drives</span><strong id="timelineDriveCount">--</strong></div>
+            <div><span>Journeys</span><strong id="timelineDriveCount">--</strong></div>
             <div><span>Miles</span><strong id="timelineMiles">--</strong></div>
             <div><span>Charging</span><strong id="timelineChargeCount">--</strong></div>
             <div><span>Songs</span><strong id="timelineSongCount">--</strong></div>
@@ -687,12 +871,12 @@
         </div>
 
         <div class="big-stats">
-          <article class="big-stat"><span>Drives</span><strong id="statDriveCount">--</strong></article>
+          <article class="big-stat"><span>Journeys</span><strong id="statDriveCount">--</strong></article>
           <article class="big-stat"><span>Miles</span><strong id="statMiles">--</strong></article>
           <article class="big-stat"><span>Energy</span><strong><span id="statEnergy">--</span><small> kWh</small></strong></article>
           <article class="big-stat"><span>Avg efficiency</span><strong><span id="statEfficiency">--</span><small> Wh/mi</small></strong></article>
           <article class="big-stat"><span>Battery used</span><strong><span id="statBattery">--</span><small>%</small></strong></article>
-          <article class="big-stat"><span>Drive soundtrack plays</span><strong id="statSongs">--</strong></article>
+          <article class="big-stat"><span>Journey soundtrack plays</span><strong id="statSongs">--</strong></article>
         </div>
 
 
@@ -715,7 +899,7 @@
           <div>
             <div class="section-label">OWNER ONLY</div>
             <h2>Data Health Center</h2>
-            <p>See what JourneyDeck has safely stored, when each provider last synced, and whether recent drives have soundtrack records.</p>
+            <p>See what JourneyDeck has safely stored, when each provider last synced, and whether recent journeys have soundtrack records.</p>
           </div>
           <button id="dataHealthRefresh" class="secondary-button" type="button">Refresh status</button>
         </div>
@@ -730,7 +914,7 @@
         <div id="dataHealthIntegrations" class="data-health-grid"></div>
         <div class="data-health-detail-grid">
           <article class="panel data-health-panel">
-            <div class="section-label">DRIVE SOUNDTRACKS</div>
+            <div class="section-label">JOURNEY SOUNDTRACKS</div>
             <h3>Reconciliation coverage</h3>
             <div id="dataHealthSoundtracks" class="data-health-metrics"></div>
           </article>
@@ -763,7 +947,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">JourneyDeck Web 5.9.6</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.9.52</span>
       <span id="hostContextFooter">Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -773,7 +957,7 @@
       <header><div><span>JOURNEYDECK</span><strong>More</strong></div><button type="button" data-mobile-menu-close aria-label="Close">&times;</button></header>
       <div class="mobile-more-grid">
         <button type="button" data-mobile-view="graph"><span aria-hidden="true">&#x25C9;</span><strong>Mobility Graph</strong><small>Your places and connections</small></button>
-        <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Drives and music together</small></button>
+        <button type="button" data-mobile-view="timeline"><span aria-hidden="true">&#x231A;</span><strong>Timeline</strong><small>Journeys and music together</small></button>
         <button type="button" data-mobile-view="music"><span aria-hidden="true">&#9835;</span><strong>Music</strong><small>Your driving soundtrack</small></button>
         <button type="button" data-mobile-view="statistics"><span aria-hidden="true">&#x2197;</span><strong>Statistics</strong><small>Miles, energy, and recaps</small></button>
         <button id="mobileDataHealthNav" type="button" data-mobile-view="health" hidden><span aria-hidden="true">&#x2713;</span><strong>Data Health <span id="mobileDataHealthAlertCount" class="data-health-nav-alert" hidden></span></strong><small>Sync and database status</small></button>
@@ -810,7 +994,7 @@
       <button class="modal-close" type="button" data-close-place-modal aria-label="Close place editor">&#xD7;</button>
 
       <div class="section-label">FRIENDLY PLACES</div>
-      <h2 id="placeNamesModalHeading">Name the places you drive</h2>
+      <h2 id="placeNamesModalHeading">Name your journey places</h2>
       <p class="modal-subtitle">Give repeated Tessie locations names such as Home, Work, School, or Gym. JourneyDeck keeps the original address for search and maps.</p>
       <div class="foursquare-place-source">
         <div>
@@ -843,12 +1027,12 @@
         <section class="journey-story-grid">
           <div class="journey-story-map-panel">
             <div class="journey-story-section-heading"><div><span class="section-label">MAP OVERVIEW</span><h3>Your routes together</h3></div><span id="journeyStoryMapStatus" class="muted"></span></div>
-            <div id="journeyStoryMap" class="journey-story-map" aria-label="Map overview of drives in this collection"></div>
+            <div id="journeyStoryMap" class="journey-story-map" aria-label="Map overview of journeys in this collection"></div>
           </div>
           <aside id="journeyStoryArtist" class="journey-story-artist"></aside>
         </section>
-        <section class="journey-story-drive-section"><div class="journey-story-section-heading"><div><span class="section-label">IN THIS COLLECTION</span><h3>Drives</h3></div></div><div id="journeyStoryDrives" class="journey-story-drives"></div></section>
-        <div class="journey-story-actions"><button id="journeyStoryShowDrives" class="primary-button" type="button">Show these drives</button><button id="journeyStoryManage" class="secondary-button" type="button">Manage collection</button></div>
+        <section class="journey-story-drive-section"><div class="journey-story-section-heading"><div><span class="section-label">IN THIS COLLECTION</span><h3>Journeys</h3></div></div><div id="journeyStoryDrives" class="journey-story-drives"></div></section>
+        <div class="journey-story-actions"><button id="journeyStoryShowDrives" class="primary-button" type="button">Show these journeys</button><button id="journeyStoryManage" class="secondary-button" type="button">Manage collection</button></div>
       </div>
     </article>
   </div>
@@ -860,7 +1044,7 @@
       <button class="modal-close" type="button" data-close-collection-modal aria-label="Close collection editor">&#xD7;</button>
       <div class="section-label">JOURNEY COLLECTION</div>
       <h2 id="journeyCollectionModalHeading">New collection</h2>
-      <p class="modal-subtitle">Choose existing drives. Your underlying journey, route, and soundtrack data never changes.</p>
+      <p class="modal-subtitle">Choose existing journeys. Your underlying journey, route, and soundtrack data never changes.</p>
       <form id="journeyCollectionForm">
         <input id="journeyCollectionId" type="hidden">
         <label class="journey-collection-field"><span>Name</span><input id="journeyCollectionName" maxlength="80" required placeholder="Summer road trip"></label>
@@ -870,7 +1054,7 @@
           <div id="journeyAttachmentList" class="journey-attachment-list"></div>
           <p id="journeyAttachmentMessage" class="modal-message" role="status" aria-live="polite"></p>
         </section>
-        <div class="journey-collection-drive-heading"><strong>Select drives</strong><span id="journeyCollectionSelectionCount" class="muted">0 selected</span></div>
+        <div class="journey-collection-drive-heading"><strong>Select journeys</strong><span id="journeyCollectionSelectionCount" class="muted">0 selected</span></div>
         <div id="journeyCollectionDriveList" class="journey-collection-drive-list"></div>
         <p id="journeyCollectionMessage" class="modal-message" role="status" aria-live="polite"></p>
         <div class="journey-collection-actions"><button id="deleteJourneyCollection" class="danger-button" type="button" hidden>Delete collection</button><button class="primary-button" type="submit">Save collection</button></div>
@@ -878,15 +1062,17 @@
     </article>
   </div>
 
-  <!-- DRIVE DETAILS -->
+  <!-- JOURNEY DETAILS -->
   <div id="driveModal" class="modal" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal></div>
     <article class="modal-card">
       <button class="modal-close" type="button" data-close-modal>&#xD7;</button>
 
-      <div class="section-label">DRIVE DETAILS</div>
-      <h2 id="modalDriveDate">Drive</h2>
+      <div class="section-label">JOURNEY DETAILS</div>
+      <h2 id="modalDriveDate">Journey</h2>
       <p id="modalDriveTime" class="modal-subtitle"></p>
+
+      <section id="journeyPlaceEditor" class="journey-place-editor" aria-label="Name this journey's places"></section>
 
       <div id="modalMetrics" class="detail-metrics"></div>
 
@@ -894,13 +1080,13 @@
       <section class="drive-map-section">
         <div class="map-heading">
           <div>
-            <div class="section-label map-label">DRIVE MAP</div>
+            <div class="section-label map-label">JOURNEY MAP</div>
             <h3>Route + song locations</h3>
           </div>
           <div id="driveMapStatus" class="map-status">Waiting for GPS&#x2026;</div>
         </div>
 
-        <div id="driveMap" class="drive-map" aria-label="Interactive map of the selected drive"></div>
+        <div id="driveMap" class="drive-map" aria-label="Interactive map of the selected journey"></div>
 
         <div class="map-legend">
           <span><i class="legend-line"></i> Eloise's recorded route</span>
@@ -976,10 +1162,10 @@
 
           <div class="replay-controls">
             <button id="replayRestart" class="replay-icon-button" type="button" title="Restart replay">&#x21BA;</button>
-            <button id="replayPlayPause" class="replay-play-button" type="button">&#x25B6; Replay drive</button>
+            <button id="replayPlayPause" class="replay-play-button" type="button">&#x25B6; Replay journey</button>
 
             <div class="replay-scrubber-wrap">
-              <input id="replayScrubber" class="replay-scrubber" type="range" min="0" max="1000" value="0" aria-label="Drive replay position">
+              <input id="replayScrubber" class="replay-scrubber" type="range" min="0" max="1000" value="0" aria-label="Journey replay position">
               <div class="replay-time-labels">
                 <span id="replayElapsed">0:00</span>
                 <span id="replayRemaining">-0:00</span>
@@ -1021,17 +1207,18 @@
     <div class="modal-backdrop" data-close-share-card></div>
     <article class="modal-card share-card-modal-card">
       <button class="modal-close" type="button" data-close-share-card aria-label="Close share card">&#xD7;</button>
-      <div class="section-label">DRIVE MEMORY</div>
-      <h2 id="shareCardHeading">Create a shareable drive card</h2>
+      <div class="section-label">JOURNEY MEMORY</div>
+      <h2 id="shareCardHeading">Create a shareable journey card</h2>
       <p class="modal-subtitle">Choose the details to show, then save or share a polished image.</p>
       <div id="shareCardLoading" class="share-card-loading">Preparing a privacy-safe route&#x2026;</div>
       <div id="shareCardWorkspace" class="share-card-workspace" hidden>
-        <div class="share-card-preview"><canvas id="shareCardCanvas" width="1080" height="1350" aria-label="Preview of the shareable drive card"></canvas></div>
+        <div class="share-card-preview"><canvas id="shareCardCanvas" width="1080" height="1350" aria-label="Preview of the shareable journey card"></canvas></div>
         <aside class="share-card-controls">
           <div class="section-label">CARD STYLE</div>
           <label class="share-card-field"><span>Theme</span><select id="shareCardTheme">
+            <option value="cinematic" selected>Cinematic route</option>
             <option value="electric">Electric night</option>
-            <option value="sunset">Sunset drive</option>
+            <option value="sunset">Sunset journey</option>
             <option value="paper">Clean paper</option>
           </select></label>
           <label class="share-card-field"><span>Map</span><select id="shareCardMapStyle">
@@ -1068,32 +1255,35 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.9.6"></script>
-  <script src="/core/dom.js?v=5.9.6"></script>
-  <script src="/core/state.js?v=5.9.6"></script>
-  <script src="/core/platform.js?v=5.9.6"></script>
-  <script src="/core/api.js?v=5.9.6"></script>
-  <script src="/components/song-artwork.js?v=5.9.6"></script>
-  <script src="/features/navigation.js?v=5.9.6"></script>
-  <script src="/features/pwa.js?v=5.9.6"></script>
-  <script src="/features/theme.js?v=5.9.6"></script>
-  <script src="/features/ignition.js?v=5.9.6"></script>
-  <script src="/features/places.js?v=5.9.6"></script>
-  <script src="/features/charging.js?v=5.9.6"></script>
-  <script src="/features/recaps.js?v=5.9.6"></script>
-  <script src="/features/refresh.js?v=5.9.6"></script>
-  <script src="/features/drives.js?v=5.9.6"></script>
-  <script src="/features/replay.js?v=5.9.6"></script>
-  <script src="/features/music.js?v=5.9.6"></script>
-  <script src="/features/share-cards.js?v=5.9.6"></script>
-  <script src="/features/command-palette.js?v=5.9.6"></script>
-  <script src="/features/dashboard-customization.js?v=5.9.6"></script>
-  <script src="/features/dashboard-widgets.js?v=5.9.6"></script>
-  <script src="/features/live-drive.js?v=5.9.6"></script>
-  <script src="/features/data-health.js?v=5.9.6"></script>
-  <script src="/features/passkeys.js?v=5.9.6"></script>
-  <script src="/features/collections.js?v=5.9.6"></script>
-  <script src="/features/mobility-graph.js?v=5.9.6"></script>
-  <script src="/app.js?v=5.9.6"></script>
+  <script src="/core/build.js?v=5.9.52"></script>
+  <script src="/core/dom.js?v=5.9.52"></script>
+  <script src="/core/state.js?v=5.9.52"></script>
+  <script src="/core/platform.js?v=5.9.52"></script>
+  <script src="/core/api.js?v=5.9.52"></script>
+  <script src="/components/song-artwork.js?v=5.9.52"></script>
+  <script src="/features/beta-map-theme.js?v=5.9.52"></script>
+  <script src="/features/navigation.js?v=5.9.52"></script>
+  <script src="/features/pwa.js?v=5.9.52"></script>
+  <script src="/features/theme.js?v=5.9.52"></script>
+  <script src="/features/loader-concepts.js?v=5.9.52"></script>
+  <script src="/features/ignition.js?v=5.9.52"></script>
+  <script src="/features/places.js?v=5.9.52"></script>
+  <script src="/features/charging.js?v=5.9.52"></script>
+  <script src="/features/recaps.js?v=5.9.52"></script>
+  <script src="/features/refresh.js?v=5.9.52"></script>
+  <script src="/features/drives.js?v=5.9.52"></script>
+  <script src="/features/replay.js?v=5.9.52"></script>
+  <script src="/features/music.js?v=5.9.52"></script>
+  <script src="/features/share-cards.js?v=5.9.52"></script>
+  <script src="/features/command-palette.js?v=5.9.52"></script>
+  <script src="/features/dashboard-customization.js?v=5.9.52"></script>
+  <script src="/features/dashboard-widgets.js?v=5.9.52"></script>
+  <script src="/features/live-drive.js?v=5.9.52"></script>
+  <script src="/features/data-health.js?v=5.9.52"></script>
+  <script src="/features/passkeys.js?v=5.9.52"></script>
+  <script src="/features/collections.js?v=5.9.52"></script>
+  <script src="/features/mobility-graph.js?v=5.9.52"></script>
+  <script src="/features/reference-dashboard.js?v=5.9.52"></script>
+  <script src="/app.js?v=5.9.52"></script>
 </body>
 </html>

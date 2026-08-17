@@ -27,8 +27,9 @@
     function signalMarkup(signal) {
       const error = signal.lastError ? `<p class="data-health-error">${escapeHtml(signal.lastError)}</p>` : "";
       const lag = signal.lagMinutes == null ? "Freshness pending" : `${Math.round(signal.lagMinutes)} min behind`;
+      const displayName = String(signal.name || '').replace(/Tessie drives/gi, 'Tessie journeys');
       return `<article class="panel data-health-card status-${escapeHtml(signal.status)}">
-        <div class="data-health-card-head"><div><div class="section-label">INTEGRATION</div><h3>${escapeHtml(signal.name)}</h3></div><span class="data-health-badge">${escapeHtml(statusCopy[signal.status] || signal.status)}</span></div>
+        <div class="data-health-card-head"><div><div class="section-label">INTEGRATION</div><h3>${escapeHtml(displayName)}</h3></div><span class="data-health-badge">${escapeHtml(statusCopy[signal.status] || signal.status)}</span></div>
         <dl><div><dt>Last success</dt><dd>${escapeHtml(formatTime(signal.lastSuccessAtUtc))}</dd></div><div><dt>Provider watermark</dt><dd>${escapeHtml(formatTime(signal.highWatermarkUtc))}</dd></div><div><dt>Freshness</dt><dd>${escapeHtml(lag)}</dd></div></dl>${error}
       </article>`;
     }
@@ -58,18 +59,21 @@
     }
 
     function render(data) {
-      const overall = $("dataHealthOverall");
-      const overallLabel = statusCopy[data.overallStatus] || data.overallStatus;
-      overall.className = `data-health-overall status-${data.overallStatus}`;
-      overall.innerHTML = `<span class="data-health-status-dot" aria-hidden="true"></span><div><strong>${escapeHtml(overallLabel)}</strong><small>Checked ${escapeHtml(formatTime(data.generatedAtUtc))} from ${escapeHtml(data.repositoryProvider)}.</small></div>`;
+      const audit = data.integrityAudit;
       const alerts = data.alerts || [];
+      const integrations = data.integrations || [];
+      const overallStatus = data.overallStatus;
+      const overall = $("dataHealthOverall");
+      const overallLabel = statusCopy[overallStatus] || overallStatus;
+      overall.className = `data-health-overall status-${overallStatus}`;
+      overall.innerHTML = `<span class="data-health-status-dot" aria-hidden="true"></span><div><strong>${escapeHtml(overallLabel)}</strong><small>Checked ${escapeHtml(formatTime(data.generatedAtUtc))} from ${escapeHtml(data.repositoryProvider)}.</small></div>`;
       renderAlerts(alerts);
       renderAlertNavigation(alerts);
-      $("dataHealthIntegrations").innerHTML = (data.integrations || []).map(signalMarkup).join("");
+      $("dataHealthIntegrations").innerHTML = integrations.map(signalMarkup).join("");
 
       const projection = data.soundtrackProjection || {};
       $("dataHealthSoundtracks").innerHTML = [
-        ["Recent drives", projection.recentDriveCount ?? 0],
+        ["Recent journeys", projection.recentDriveCount ?? 0],
         ["Materialized", projection.materializedCount ?? 0],
         ["Missing", projection.missingCount ?? 0],
         ["Pending", projection.pendingCount ?? 0]
@@ -78,17 +82,18 @@
       const rollout = data.rollout || {};
       $("dataHealthRollout").innerHTML = `<p><strong>${escapeHtml(data.repositoryProvider)}</strong> is the active repository.</p>${flag("Tessie worker writes", rollout.tessieWritesEnabled)}${flag("Database history reads", rollout.tessieReadsEnabled)}${flag("Read canary approved", rollout.readCanaryApproved)}`;
 
-      const audit = data.integrityAudit;
       const auditReport = audit?.report || {};
       const auditDrives = auditReport.resources?.drives || {};
       const auditCharges = auditReport.resources?.charges || {};
+      const cursorCheck = (auditReport.checks || []).find(check => check.name === 'cursor-readiness');
       const auditTarget = $("dataHealthIntegrityAudit");
       if (auditTarget) {
         auditTarget.innerHTML = [
           ["Last result", audit ? (statusCopy[audit.status] || audit.status) : "Waiting"],
           ["Completed", audit ? formatTime(audit.completedAtUtc) : "Not yet"],
-          ["Drive parity", auditDrives.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
-          ["Charge parity", auditCharges.passed === true ? "Passed" : audit ? "Failed" : "Pending"]
+          ["Journey parity", auditDrives.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
+          ["Charge parity", auditCharges.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
+          ["Cursor policy", !audit ? "Pending" : cursorCheck?.passed === true ? "Passed" : "Failed"]
         ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
       }
     }

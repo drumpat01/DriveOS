@@ -71,6 +71,7 @@ try {
     if ($FoursquarePlace.id -ne 'place1' -or $FoursquarePlace.name -ne 'Coffee Shop' -or $FoursquarePlace.category -ne 'Coffee Shop') {
         throw "Foursquare provider mapping failed"
     }
+    if ($FoursquarePlace.address -ne '123 Main St') { throw "Foursquare formatted address mapping failed" }
     $Match = Select-DriveOSFoursquareMatch -Places @(
         [pscustomobject]@{name='Too Far';distanceMeters=70},
         [pscustomobject]@{name='Nearby';distanceMeters=22}
@@ -81,7 +82,7 @@ try {
         [pscustomobject]@{location='Business';manualLabel='';uses=5;latitude=32;longitude=-97},
         [pscustomobject]@{location='One off';manualLabel='';uses=1;latitude=32;longitude=-97}
     ))
-    if ($LookupCandidates.Count -ne 1 -or $LookupCandidates[0].location -ne 'Business') { throw "Foursquare privacy candidate filtering failed" }
+    if ($LookupCandidates.Count -ne 2 -or $LookupCandidates.location -notcontains 'Business' -or $LookupCandidates.location -notcontains 'One off') { throw "Foursquare full import candidate filtering failed" }
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage ([pscustomobject]@{
         day=(Get-Date).ToString('yyyy-MM-dd');dayCount=10;month=(Get-Date).ToString('yyyy-MM');monthCount=20
     }) -DailyLimit 10 -MonthlyLimit 250
@@ -98,8 +99,11 @@ try {
         throw "Spotify artwork status validation must suppress its response object."
     }
     if ($ServerSource -notmatch 'Last.fm active integration was retired') { throw "Last.fm retirement compatibility marker is missing" }
-    if ($ServerSource -notmatch 'FoursquareDailyLimit\s*=\s*10' -or $ServerSource -notmatch 'FoursquareMonthlyLimit\s*=\s*250') {
-        throw "Foursquare free-tier guardrails are missing"
+    if ($ServerSource -notmatch 'FoursquareDailyLimit\s*=\s*500' -or $ServerSource -notmatch 'FoursquareMonthlyLimit\s*=\s*500') {
+        throw "Foursquare current free-tier guardrails are missing"
+    }
+    if ($ServerSource -notmatch '"/api/atlas/places"' -or $ServerSource -notmatch '"/api/atlas/places/scan"') {
+        throw "Atlas one-time Foursquare enrichment endpoints are missing"
     }
 
     & (Join-Path $Root "tools\Sync-Version.ps1") -Check

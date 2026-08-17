@@ -10,7 +10,7 @@ $app=Get-Content (Join-Path $Root 'web\app.js') -Raw
 if($app -notmatch 'toLocaleDateString\("en-US"' -or $app -notmatch 'month:\s*"2-digit"' -or $app -notmatch 'year:\s*"numeric"'){throw 'Desktop header date is not using compact MM/DD/YYYY formatting.'}
 foreach($legacy in @('function initializePwa','function showView','function applyDriveOSTheme','function runDriveOSIgnition','const state = {')){if($app.Contains($legacy)){throw "Extracted frontend implementation returned to app.js: $legacy"}}
 foreach($modalId in @('openPlaceNamesModal','placeNamesModal','placeNamesList')){if($index -notmatch ('id="'+$modalId+'"')){throw "Friendly places modal control is missing: $modalId"}}
-if($index -notmatch 'id="openPlaceNamesModal"[\s\S]{0,220}>Name the places you drive</button>'){throw 'Friendly places is not exposed as the compact drive-library action.'}
+if($index -notmatch 'id="openPlaceNamesModal"[\s\S]{0,220}>Name your journey places</button>'){throw 'Friendly places is not exposed as the compact Journey Library action.'}
 $DriveListIndex=$index.IndexOf('id="allDrives"');$DriveMoreIndex=$index.IndexOf('id="driveLibraryMore"');$ChargingIndex=$index.IndexOf('id="chargingHeading"')
 if($DriveListIndex -lt 0 -or $DriveMoreIndex -le $DriveListIndex -or $ChargingIndex -le $DriveMoreIndex){throw 'Drive list, show-all control, and charging history are not in the required order.'}
 foreach($shareId in @('shareCardButton','shareCardModal','shareCardCanvas','shareCardDownload')){if($index -notmatch ('id="'+$shareId+'"')){throw "Share card control is missing: $shareId"}}
@@ -31,7 +31,7 @@ if($index -notmatch 'Home privacy is locked on'){throw 'Share-card Home privacy 
 if($index -notmatch '>Share to X<'){throw 'Share-card X action is missing.'}
 $shareCards=Get-Content (Join-Path $Root 'web\features\share-cards.js') -Raw
 if($shareCards -notmatch 'https://x\.com/intent/tweet'){throw 'Official X Web Intent fallback is missing.'}
-if($shareCards -notmatch 'tiles\.openfreemap\.org/styles/liberty'){throw 'Share-card map overview is missing.'}
+if($shareCards -notmatch 'JourneyDeckMapTheme' -or $shareCards -notmatch 'tiles\.openfreemap\.org/styles/dark'){throw 'Share-card dark map overview is missing.'}
 if($index -notmatch 'data-close-place-modal'){throw 'Friendly places modal backdrop/close control is missing.'}
 foreach($searchId in @('driveSearchInput','driveAdvancedToggle','driveAdvancedFilters')){if($index -notmatch ('id="'+$searchId+'"')){throw "Drive search control is missing: $searchId"}}
 if($index -notmatch 'id="driveAdvancedFilters"[^>]*hidden'){throw 'Advanced drive filters must be collapsed initially.'}
@@ -48,7 +48,7 @@ if($styles -notmatch '(?s):root\[data-theme="dark"\] \.vehicle-charge-summary \.
 if($styles -notmatch '100dvh - 215px' -or $styles -notmatch 'command-mobile-note' -or $styles -notmatch 'safe-area-inset-top'){throw 'The command palette mobile layout is missing.'}
 foreach($mobilePolish in @('data-mobile-label','dashboard-drive-card \{ grid-template-columns: minmax\(0,1fr\) minmax\(0,1fr\) 38px','charging-rate-editor \{ display: grid','background-activity-monitor\.idle \{ display: none','data-theme="light"\] \.live-drive-shell','data-theme="light"\] \.live-drive-overlay')){if(($index + $styles) -notmatch $mobilePolish){throw "Mobile JourneyDeck polish is missing: $mobilePolish"}}
 $webBuild = (Get-Content (Join-Path $root 'version.json') -Raw | ConvertFrom-Json).webBuild
-if($index -notmatch "rel=`"shortcut icon`"[^>]+journeydeck-icon-192\.png\?v=$([regex]::Escape($webBuild))" -or $index -notmatch "apple-touch-icon[^>]+journeydeck-icon-180\.png\?v=$([regex]::Escape($webBuild))"){throw 'Safari favicon and home-screen icon declarations are stale.'}
+if($index -notmatch "rel=`"shortcut icon`"[^>]+journeydeck-cinematic-192\.png\?v=$([regex]::Escape($webBuild))" -or $index -notmatch "apple-touch-icon[^>]+journeydeck-cinematic-180\.png\?v=$([regex]::Escape($webBuild))"){throw 'Safari favicon and home-screen icon declarations are stale.'}
 if($styles -notmatch '(?s)\.dashboard-size-wide\.vehicle-panel \.vehicle-car-art\.vehicle-car-model3\.vehicle-car-photo\s*\{[^}]*width:\s*100%\s*!important[^}]*height:\s*100%\s*!important[^}]*object-fit:\s*contain' -or $styles -notmatch 'vehicle-hero-visual::before'){throw 'Wide dashboard vehicle artwork framing is missing.'}
 if($index -notmatch 'id="vehicleLocationMap"' -or $app -notmatch 'renderVehicleLocation' -or $styles -notmatch '(?s)\.dashboard-size-wide\.vehicle-panel \.vehicle-dashboard-main\s*\{[^}]*grid-template-columns:'){throw 'Wide vehicle live-location panel is missing.'}
 $desktopHost=Get-Content (Join-Path $Root 'desktop\Program.cs') -Raw;$ignition=Get-Content (Join-Path $Root 'web\features\ignition.js') -Raw
