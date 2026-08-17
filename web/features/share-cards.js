@@ -429,14 +429,13 @@
         try {
           map = new maplibregl.Map({
             container,
-            style: selection("shareCardTheme", "cinematic") === "cinematic"
-              ? "https://tiles.openfreemap.org/styles/dark"
-              : "https://tiles.openfreemap.org/styles/liberty",
+            style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
             interactive: false,
             attributionControl: false,
             preserveDrawingBuffer: true,
             fadeDuration: 0
           });
+          window.JourneyDeckMapTheme?.attach(map);
           map.once("load", () => {
             const coordinates = points.map(point => [Number(point.longitude), Number(point.latitude)]);
             map.addSource("share-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } } });

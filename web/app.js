@@ -414,13 +414,14 @@ function renderVehicleLocation(vehicle) {
   if (!vehicleLocationMap) {
     vehicleLocationMap = new maplibregl.Map({
       container,
-      style: "https://tiles.openfreemap.org/styles/liberty",
+      style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
       center: coordinates,
       zoom: 13.5,
       attributionControl: false,
       scrollZoom: false,
       pitchWithRotate: false
     });
+    window.JourneyDeckMapTheme?.attach(vehicleLocationMap);
     const marker = document.createElement("div");
     marker.className = "vehicle-location-marker";
     marker.innerHTML = '<span class="vehicle-location-arrow">&#x25B2;</span>';
@@ -1095,6 +1096,12 @@ cityFromLocation = drivesFeature.cityFromLocation;
 money = drivesFeature.money;
 locationDisplay = drivesFeature.locationDisplay;
 
+function displayMiles(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return number.toFixed(1).replace(/\.0$/, "");
+}
+
 function driveCard(drive, compact = false) {
   const route = driveRouteText(drive);
   const startLocation = String(drive.startingLocation || "").trim();
@@ -1130,7 +1137,7 @@ function driveCard(drive, compact = false) {
 
         ${drive.tessieTag ? `<div class="drive-tag">${escapeHtml(drive.tessieTag)}</div>` : ""}
       </div>
-      <div class="drive-stat"><span>Distance</span><strong>${drive.miles ?? "--"} mi</strong></div>
+      <div class="drive-stat"><span>Distance</span><strong>${displayMiles(drive.miles)} mi</strong></div>
       <div class="drive-stat"><span>Duration</span><strong>${drive.durationMinutes ?? "--"} min</strong></div>
       <div class="drive-stat dashboard-secondary-stat"><span>Battery</span><strong>${escapeHtml(batteryText(drive))}</strong></div>
       <div class="drive-stat dashboard-secondary-stat"><span>Soundtrack</span><strong>${drive.songCount ?? 0} song${Number(drive.songCount ?? 0) === 1 ? "" : "s"}</strong></div>
@@ -2000,7 +2007,7 @@ function openDriveModal(drive) {
   setText("modalDriveTime", `${drive.startTime} \u2192 ${drive.endTime}`);
 
   $("modalMetrics").innerHTML = [
-    metric("Distance", `${drive.miles ?? "--"} mi`),
+    metric("Distance", `${displayMiles(drive.miles)} mi`),
     metric("Duration", `${drive.durationMinutes ?? "--"} min`),
     metric("Battery", batteryText(drive)),
     metric("Energy", `${drive.energyKWh ?? "--"} kWh`),
@@ -2386,11 +2393,12 @@ async function renderDriveMap(data) {
 
   const map = new maplibregl.Map({
     container: "driveMap",
-    style: "https://tiles.openfreemap.org/styles/liberty",
+    style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
     center: [first.longitude, first.latitude],
     zoom: 12,
     attributionControl: true
   });
+  window.JourneyDeckMapTheme?.attach(map);
 
   state.driveMap = map;
 
@@ -2433,9 +2441,10 @@ async function renderDriveMap(data) {
         "line-cap": "round"
       },
       paint: {
-        "line-color": "#071016",
-        "line-width": 8,
-        "line-opacity": 0.48
+        "line-color": "#ff3d75",
+        "line-width": 16,
+        "line-blur": 9,
+        "line-opacity": 0.52
       }
     });
 
@@ -2448,8 +2457,8 @@ async function renderDriveMap(data) {
         "line-cap": "round"
       },
       paint: {
-        "line-color": "#7be7ff",
-        "line-width": 4,
+        "line-color": "#ff684f",
+        "line-width": 5,
         "line-opacity": 0.95
       }
     });

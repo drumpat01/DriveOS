@@ -86,7 +86,7 @@
         container.innerHTML = "";
         map = new maplibregl.Map({
           container,
-          style: "https://tiles.openfreemap.org/styles/liberty",
+          style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
           center: coordinates,
           zoom: 15,
           bearing: Number(heading) || 0,
@@ -96,6 +96,7 @@
           dragRotate: false,
           pitchWithRotate: false
         });
+        window.JourneyDeckMapTheme?.attach(map);
         const markerElement = document.createElement("div");
         markerElement.className = "live-drive-marker";
         markerElement.innerHTML = '<span aria-hidden="true">&#x25B2;</span>';

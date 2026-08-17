@@ -17,6 +17,7 @@
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
   <link rel="stylesheet" href="/styles.css?v=5.9.6">
   <link rel="stylesheet" href="/beta-theme.css?v=5.9.6">
+  <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.6">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -286,6 +287,13 @@
               <div><span>Trips</span><strong id="todayDrivingTrips">0</strong></div>
               <div><span>Songs</span><strong id="todayDrivingSongs">0</strong></div>
             </div>
+            <div class="today-driving-visual" aria-hidden="true">
+              <div class="today-driving-chart">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                <span class="today-driving-line"></span>
+              </div>
+              <div class="today-driving-score"><span>82</span><small>Smooth<br>score</small></div>
+            </div>
           </article>
 
           <article class="panel dashboard-widget drive-soundtrack-widget" data-dashboard-widget="soundtrack" data-dashboard-title="Drive soundtrack" data-dashboard-default-size="compact">
@@ -304,11 +312,10 @@
               <div class="dashboard-widget-symbol" aria-hidden="true">&#x2726;</div>
             </div>
             <div class="dashboard-quick-actions">
-              <button type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong data-mobile-label="Refresh">Refresh data</strong><small>Sync everything</small></button>
-              <button type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong data-mobile-label="Share">Create share card</strong><small>Latest drive</small></button>
-              <button type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong data-mobile-label="Search">Open search</strong><small>Find anything</small></button>
-              <button type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x2192;</span><strong data-mobile-label="Latest">Latest drive</strong><small>Open details</small></button>
-              <button type="button" data-dashboard-action="recap"><span aria-hidden="true">&#x2606;</span><strong data-mobile-label="Recap">Start a recap</strong><small>Review your month</small></button>
+              <button class="action-sync" type="button" data-dashboard-action="refresh"><span aria-hidden="true">&#x21BB;</span><strong data-mobile-label="Sync">Sync</strong><small>Latest drive</small></button>
+              <button class="action-replay" type="button" data-dashboard-action="latest"><span aria-hidden="true">&#x25B7;</span><strong data-mobile-label="Replay">Replay</strong><small>Your drive</small></button>
+              <button class="action-share" type="button" data-dashboard-action="share"><span aria-hidden="true">&#x25A3;</span><strong data-mobile-label="Share">Share Card</strong><small>Create &amp; send</small></button>
+              <button class="action-search" type="button" data-dashboard-action="search"><span aria-hidden="true">&#x2315;</span><strong data-mobile-label="Find">Find Drive</strong><small>Search trips</small></button>
             </div>
           </article>
 
@@ -324,12 +331,23 @@
         </section>
 
         <section class="stats-grid v3-intelligence-grid dashboard-widget dashboard-status-widget" data-dashboard-widget="status" data-dashboard-title="Connection status" data-dashboard-default-size="wide">
-          <article class="stat-card"><span>JourneyDeck</span><strong id="driveOSStatus">ONLINE</strong></article>
-          <article class="stat-card"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
-          <article class="stat-card"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
-          <article class="stat-card"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
+          <div class="dashboard-status-heading"><span>DATA HEALTH</span><strong>Everything that powers your journeys</strong></div>
+          <article class="stat-card stat-journeydeck"><span>JourneyDeck</span><strong id="driveOSStatus">ONLINE</strong></article>
+          <article class="stat-card stat-tessie"><span>Tessie</span><strong id="tessieStatus">--</strong></article>
+          <article class="stat-card stat-spotify"><span>Spotify</span><strong id="spotifyStatus">--</strong></article>
+          <article class="stat-card stat-playlist"><span>Playlist access</span><strong id="playlistStatus">--</strong></article>
         </section>
         </section>
+
+        <nav class="journeydeck-action-dock" aria-label="JourneyDeck tools">
+          <button type="button" data-go-view="timeline"><span>&#x25F4;</span><strong>Timeline</strong></button>
+          <button type="button" data-go-view="graph"><span>&#x259F;</span><strong>Mobility<br>Graph</strong></button>
+          <button type="button" data-dashboard-action="recap"><span>&#x2726;</span><strong>Insights &amp;<br>Recaps</strong></button>
+          <button type="button" data-go-view="drives"><span>&#x25A3;</span><strong>Collections</strong></button>
+          <button type="button" data-go-view="drives"><span>&#x21AF;</span><strong>Charging</strong></button>
+          <button type="button" data-go-view="music"><span>&#x25C9;</span><strong>Places</strong></button>
+          <button type="button" data-dashboard-action="search"><span>&#x2315;</span><strong>Search</strong></button>
+        </nav>
       </section>
 
       <!-- LIVE DRIVE -->
@@ -1076,6 +1094,7 @@
   <script src="/core/platform.js?v=5.9.6"></script>
   <script src="/core/api.js?v=5.9.6"></script>
   <script src="/components/song-artwork.js?v=5.9.6"></script>
+  <script src="/features/beta-map-theme.js?v=5.9.6"></script>
   <script src="/features/navigation.js?v=5.9.6"></script>
   <script src="/features/pwa.js?v=5.9.6"></script>
   <script src="/features/theme.js?v=5.9.6"></script>

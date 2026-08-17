@@ -1,0 +1,555 @@
+/* JourneyDeck 6 beta, pass two — mockup-first component system. */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {
+  --jd-black: #030207;
+  --jd-black-2: #07050d;
+  --jd-card: #0d0918;
+  --jd-card-2: #140b24;
+  --jd-stroke: rgba(173, 76, 255, .23);
+  --jd-hot: #ff534c;
+  --jd-orange: #ff8a4e;
+  --jd-magenta: #ee3f87;
+  --jd-purple: #963cff;
+  --jd-blue: #159dea;
+  --jd-cream: #fff8ef;
+  --jd-dim: #9387a5;
+}
+
+html, body {
+  background-color: var(--jd-black) !important;
+  background-image:
+    radial-gradient(circle at 50% -8%, rgba(111,34,210,.22), transparent 30rem),
+    radial-gradient(circle at -8% 44%, rgba(255,48,100,.12), transparent 28rem),
+    linear-gradient(#05030a, #090511 48%, #030207) !important;
+}
+
+body::before {
+  opacity: .18 !important;
+  background-size: 54px 54px !important;
+}
+
+/* One authoritative surface language. This intentionally reaches old utility
+   panels, overlays, editors and menus that retained the teal production skin. */
+:root[data-theme] .panel,
+:root[data-theme] .modal-card,
+:root[data-theme] .dashboard-customizer,
+:root[data-theme] .command-palette-card,
+:root[data-theme] .mobile-more-sheet,
+:root[data-theme] .drive-search-panel,
+:root[data-theme] .favorite-routes-panel,
+:root[data-theme] .journey-collections-panel,
+:root[data-theme] .charging-panel,
+:root[data-theme] .mobility-graph-panel,
+:root[data-theme] .mobility-intelligence-panel,
+:root[data-theme] .music-panel,
+:root[data-theme] .timeline-panel,
+:root[data-theme] .analytics-panel,
+:root[data-theme] .data-health-panel,
+:root[data-theme] .data-health-card,
+:root[data-theme] .data-health-overall,
+:root[data-theme] .data-health-actions {
+  border-color: var(--jd-stroke) !important;
+  background:
+    linear-gradient(140deg, rgba(255,255,255,.035), transparent 34%),
+    linear-gradient(150deg, rgba(18,9,33,.98), rgba(5,4,12,.99)) !important;
+  box-shadow: 0 28px 75px rgba(0,0,0,.45), inset 0 1px rgba(255,255,255,.035) !important;
+}
+
+.section-label { color: var(--jd-hot) !important; }
+.spotify-label { color: #c15cff !important; }
+.panel-heading h2,
+.panel-heading h3,
+.map-heading h3,
+.modal-card > h2,
+.live-drive-header h2 {
+  font-family: var(--jd-display) !important;
+  font-weight: 400 !important;
+  letter-spacing: .015em !important;
+  text-transform: uppercase;
+}
+
+/* Dashboard title rail */
+.dashboard-customize-bar {
+  min-height: 64px;
+  margin: 0 0 18px !important;
+  padding: 9px 10px 9px 17px !important;
+  border: 1px solid rgba(151,61,255,.18);
+  border-radius: 20px;
+  background: linear-gradient(105deg, rgba(36,13,54,.78), rgba(8,5,18,.92));
+  box-shadow: inset 4px 0 var(--jd-hot), 0 16px 40px rgba(0,0,0,.22);
+}
+
+.dashboard-customize-bar .section-label { font-size: .7rem; }
+.dashboard-customize-bar > div > span { color: #746980 !important; }
+#dashboardCustomizeButton {
+  min-height: 42px;
+  padding-inline: 18px;
+  border-color: rgba(255,83,76,.34) !important;
+  border-radius: 14px !important;
+  background: linear-gradient(135deg, rgba(255,83,76,.18), rgba(150,60,255,.2)) !important;
+  color: var(--jd-cream) !important;
+}
+
+/* Customizer becomes a true poster-dark editor instead of the teal settings UI. */
+.dashboard-customizer {
+  position: relative;
+  overflow: hidden;
+  padding: 22px !important;
+  border-radius: 25px !important;
+}
+.dashboard-customizer::before {
+  content: "LAYOUT / 01";
+  position: absolute;
+  top: 18px;
+  right: 22px;
+  color: rgba(255,83,76,.35);
+  font: 400 1.1rem/1 var(--jd-display);
+  letter-spacing: .08em;
+}
+.dashboard-customizer-heading { align-items: end !important; margin-bottom: 18px !important; padding-right: 90px; }
+.dashboard-customizer-heading strong { color: var(--jd-cream) !important; font: 400 1.65rem/1 var(--jd-display); text-transform: uppercase; }
+.dashboard-customizer-heading span { margin-top: 6px; color: var(--jd-dim) !important; }
+#dashboardResetLayout { border-radius: 999px !important; }
+.dashboard-customizer-list { gap: 10px !important; }
+.dashboard-customizer-row {
+  min-height: 68px !important;
+  border-color: rgba(151,61,255,.18) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(105deg, rgba(255,255,255,.025), rgba(151,61,255,.04)) !important;
+}
+.dashboard-customizer-row:hover { border-color: rgba(255,83,76,.38) !important; }
+.dashboard-customizer-row > strong { color: var(--jd-cream) !important; font-size: .82rem !important; }
+.dashboard-drag-handle { color: #b45aff !important; }
+.dashboard-icon-button,
+.dashboard-size-select {
+  border-color: rgba(151,61,255,.28) !important;
+  background: #0a0711 !important;
+  color: #d8c5ea !important;
+}
+.dashboard-toggle-label { color: #c9bdd2 !important; }
+.dashboard-toggle-label input { accent-color: var(--jd-hot) !important; }
+.dashboard-editing .dashboard-widget { outline-color: rgba(255,83,76,.55) !important; }
+.dashboard-editing .dashboard-widget-drag-handle {
+  border-color: rgba(255,83,76,.45) !important;
+  background: #0a0611 !important;
+  color: var(--jd-hot) !important;
+}
+
+/* The mockup's large hero, with the route and vehicle carrying the composition. */
+.vehicle-panel {
+  min-height: 620px !important;
+  border-radius: 30px !important;
+  background:
+    radial-gradient(circle at 72% 21%, rgba(142,47,255,.27), transparent 31%),
+    radial-gradient(circle at 29% 62%, rgba(255,45,103,.18), transparent 36%),
+    linear-gradient(145deg, #1b0a27, #090511 62%, #030207) !important;
+}
+.vehicle-panel::before {
+  content: "J";
+  position: absolute;
+  z-index: -1;
+  right: 3%;
+  top: 3%;
+  color: rgba(255,255,255,.025);
+  font: 400 28rem/.8 var(--jd-display);
+}
+.vehicle-panel::after { color: rgba(255,83,76,.11) !important; }
+.vehicle-panel .mini-pill {
+  min-width: 92px;
+  padding: 11px 15px;
+  border-color: rgba(255,83,76,.38) !important;
+  background: rgba(255,83,76,.09) !important;
+  color: #ff8378 !important;
+  letter-spacing: .13em;
+}
+.vehicle-hero-visual {
+  overflow: hidden;
+  border: 1px solid rgba(255,83,76,.16);
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 42% 83%, rgba(255,48,106,.27), transparent 48%),
+    linear-gradient(170deg, #0c0715, #04030a) !important;
+  box-shadow: inset 0 -70px 100px rgba(0,0,0,.5), 0 24px 55px rgba(0,0,0,.32);
+}
+.vehicle-hero-visual::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(120deg, transparent 48%, rgba(168,52,255,.07) 49%, transparent 50%),
+    linear-gradient(rgba(255,83,76,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,83,76,.025) 1px, transparent 1px);
+  background-size: auto, 32px 32px, 32px 32px;
+}
+.battery-number { text-shadow: 0 0 45px rgba(255,83,76,.24) !important; }
+.vehicle-panel .metric-grid {
+  border-radius: 20px;
+  background: rgba(3,2,8,.72) !important;
+}
+.vehicle-panel .metric { min-height: 86px; }
+
+/* Audio card gets the album-player treatment used in the mockup. */
+.spotify-panel { border-radius: 30px !important; }
+.spotify-panel::after {
+  content: "";
+  position: absolute;
+  inset: auto 26px 22px 26px;
+  height: 2px;
+  opacity: .45;
+  background: linear-gradient(90deg, transparent, var(--jd-purple), var(--jd-magenta), var(--jd-hot), transparent);
+}
+
+/* New compact telemetry composition, including a graphic rather than text boxes only. */
+.today-driving-widget,
+.drive-soundtrack-widget,
+.quick-actions-widget { border-radius: 25px !important; }
+.today-driving-widget {
+  min-height: 360px !important;
+  background:
+    radial-gradient(circle at 91% 10%, rgba(255,83,76,.25), transparent 34%),
+    linear-gradient(145deg,#1c0b21,#07050e 72%) !important;
+}
+.today-driving-primary { margin-bottom: 10px !important; }
+.today-driving-grid { grid-template-columns: repeat(4,minmax(0,1fr)) !important; gap: 6px !important; }
+.today-driving-grid > div {
+  padding: 8px !important;
+  border: 0 !important;
+  border-left: 1px solid rgba(151,61,255,.2) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+.today-driving-visual { display: grid; grid-template-columns: 1fr 78px; align-items: end; gap: 14px; margin-top: 17px; }
+.today-driving-chart {
+  position: relative;
+  display: flex;
+  height: 70px;
+  align-items: end;
+  gap: 5px;
+  padding: 0 5px 8px;
+  border-bottom: 1px solid rgba(21,157,234,.28);
+}
+.today-driving-chart i { flex: 1; border-radius: 4px 4px 1px 1px; background: linear-gradient(#ff765d,#ef3f83 55%,#7139e8); box-shadow: 0 0 10px rgba(238,63,135,.2); }
+.today-driving-chart i:nth-child(1) { height: 12%; }.today-driving-chart i:nth-child(2) { height: 18%; }.today-driving-chart i:nth-child(3) { height: 15%; }.today-driving-chart i:nth-child(4) { height: 28%; }.today-driving-chart i:nth-child(5) { height: 33%; }.today-driving-chart i:nth-child(6) { height: 24%; }.today-driving-chart i:nth-child(7) { height: 58%; }.today-driving-chart i:nth-child(8) { height: 43%; }.today-driving-chart i:nth-child(9) { height: 74%; }.today-driving-chart i:nth-child(10) { height: 52%; }.today-driving-chart i:nth-child(11) { height: 88%; }.today-driving-chart i:nth-child(12) { height: 62%; }
+.today-driving-line { position: absolute; inset: 12px 1px 22px; border-top: 2px solid #159dea; border-radius: 50%; transform: skewY(-5deg); filter: drop-shadow(0 0 5px #159dea); }
+.today-driving-score {
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,#0b0714 56%,transparent 58%), conic-gradient(var(--jd-hot) 0 24%, transparent 24% 30%, var(--jd-purple) 30% 82%, rgba(255,255,255,.08) 82%);
+  box-shadow: 0 0 28px rgba(151,61,255,.18);
+  text-align: center;
+}
+.today-driving-score span { color: #d47aff; font: 400 1.2rem/1 var(--jd-display); }
+.today-driving-score small { margin-top: 3px; color: #a59aac; font-size: .48rem; line-height: 1.05; }
+
+/* Four new action objects; these are controls, not repainted list rows. */
+.quick-actions-widget { grid-column: 1 / -1 !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+.quick-actions-widget .panel-heading { display: none; }
+.dashboard-quick-actions { grid-template-columns: repeat(4,minmax(0,1fr)) !important; gap: 10px !important; margin: 0 !important; }
+.dashboard-quick-actions button {
+  position: relative;
+  display: flex !important;
+  min-height: 134px !important;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 4px !important;
+  overflow: hidden;
+  padding: 18px !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 22px !important;
+  background: #120a1b !important;
+  color: #fff !important;
+  isolation: isolate;
+}
+.dashboard-quick-actions button::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  opacity: .92;
+  background: radial-gradient(circle at 28% 10%, rgba(255,255,255,.18), transparent 33%), linear-gradient(145deg,var(--tile-a),var(--tile-b));
+}
+.dashboard-quick-actions .action-sync { --tile-a:#9c273d; --tile-b:#351228; }
+.dashboard-quick-actions .action-replay { --tile-a:#6c24bd; --tile-b:#15113f; }
+.dashboard-quick-actions .action-share { --tile-a:#0c6394; --tile-b:#0b2244; }
+.dashboard-quick-actions .action-search { --tile-a:#8a3029; --tile-b:#251022; }
+.dashboard-quick-actions button > span {
+  position: absolute;
+  top: 15px;
+  left: 16px;
+  display: grid !important;
+  width: 49px !important;
+  height: 49px !important;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 50% !important;
+  background: rgba(7,4,13,.26) !important;
+  color: #fff !important;
+  font-size: 1.8rem !important;
+}
+.dashboard-quick-actions button strong { font-size: .86rem !important; }
+.dashboard-quick-actions button strong::after { display: none !important; content: none !important; }
+.dashboard-quick-actions button small { color: rgba(255,255,255,.66) !important; }
+
+/* Recent journeys + data health mirror the paired lower widgets in the mockup. */
+.drives-panel { border-radius: 25px !important; }
+.dashboard-status-widget {
+  position: relative;
+  display: grid !important;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 0 !important;
+  overflow: hidden;
+  padding: 19px !important;
+  border: 1px solid rgba(21,157,234,.2) !important;
+  border-radius: 25px;
+  background:
+    radial-gradient(circle at 100% 0, rgba(21,157,234,.2), transparent 43%),
+    linear-gradient(145deg,#07152a,#07050e 70%) !important;
+}
+.dashboard-status-heading { grid-column: 1 / -1; display: grid; gap: 4px; padding: 0 4px 14px; }
+.dashboard-status-heading span { color: #30c5ff; font-size: .63rem; font-weight: 900; letter-spacing: .15em; }
+.dashboard-status-heading strong { color: #8e8797; font-size: .68rem; }
+.dashboard-status-widget .stat-card {
+  position: relative;
+  min-height: 68px;
+  padding: 12px 38px 12px 40px !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(21,157,234,.1) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.dashboard-status-widget .stat-card::before {
+  content: "J";
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg,var(--jd-hot),var(--jd-purple));
+  color: #fff;
+  font: 400 .9rem/1 var(--jd-display);
+}
+.dashboard-status-widget .stat-tessie::before { content:"T"; background:linear-gradient(135deg,#167ac8,#1ec8ff); }
+.dashboard-status-widget .stat-spotify::before { content:"S"; background:linear-gradient(135deg,#722cff,#d841e9); }
+.dashboard-status-widget .stat-playlist::before { content:"P"; background:linear-gradient(135deg,#e83975,#ff704e); }
+.dashboard-status-widget .stat-card::after {
+  content: "✓";
+  position: absolute;
+  right: 8px;
+  top: 22px;
+  color: #22aef3;
+  font-weight: 900;
+}
+.dashboard-status-widget .stat-card span { color: #dcd4e2; }
+.dashboard-status-widget .stat-card strong { color: #6ddefd !important; font: 800 .55rem/1 sans-serif !important; }
+
+/* A new utility dock based directly on the approved mockup. */
+.journeydeck-action-dock {
+  display: grid;
+  grid-template-columns: repeat(7,minmax(0,1fr));
+  gap: 4px;
+  margin-top: 14px;
+  padding: 13px 12px 10px;
+  border: 1px solid rgba(151,61,255,.24);
+  border-radius: 27px 27px 18px 18px;
+  background: radial-gradient(circle at 45% 0,rgba(151,61,255,.2),transparent 35%),rgba(9,5,18,.96);
+  box-shadow: 0 24px 65px rgba(0,0,0,.46), inset 0 1px rgba(255,255,255,.04);
+}
+.journeydeck-action-dock button {
+  display: grid;
+  min-height: 72px;
+  place-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: #897aa7;
+  text-align: center;
+  cursor: pointer;
+}
+.journeydeck-action-dock button:hover { background: rgba(151,61,255,.09); color: #fff; }
+.journeydeck-action-dock button:first-child { border: 1px solid rgba(255,83,76,.36); color: var(--jd-hot); background: rgba(255,83,76,.07); }
+.journeydeck-action-dock button span { font-size: 1.45rem; line-height: 1; }
+.journeydeck-action-dock button strong { font-size: .58rem; line-height: 1.05; }
+
+/* Command palette */
+.command-palette-backdrop { background: rgba(2,1,6,.82) !important; backdrop-filter: blur(16px) !important; }
+:root[data-theme] .command-palette-card {
+  border-color: rgba(151,61,255,.3) !important;
+  border-radius: 25px !important;
+  background: #07050d !important;
+  box-shadow: 0 38px 120px rgba(0,0,0,.7), 0 0 70px rgba(151,61,255,.08) !important;
+}
+:root[data-theme] .command-palette-search { border-color: rgba(151,61,255,.22) !important; color: var(--jd-hot) !important; }
+:root[data-theme] .command-palette-search input { background: transparent !important; color: var(--jd-cream) !important; }
+:root[data-theme] .command-palette-search input::placeholder { color: #776b83 !important; }
+:root[data-theme] .command-group-label,
+:root[data-theme] .command-result-type { color: #a96cff !important; }
+:root[data-theme] .command-result { color: var(--jd-cream) !important; border-radius: 15px; }
+:root[data-theme] .command-result:hover,
+:root[data-theme] .command-result.selected { background: linear-gradient(90deg,rgba(255,83,76,.12),rgba(151,61,255,.09)) !important; box-shadow: inset 3px 0 var(--jd-hot) !important; }
+:root[data-theme] .command-result-icon { border-color: rgba(151,61,255,.28) !important; background: rgba(151,61,255,.08) !important; color: #c578ff !important; }
+:root[data-theme] .command-result-copy strong { color: var(--jd-cream) !important; }
+:root[data-theme] .command-result-copy span,
+:root[data-theme] .command-empty { color: #84798d !important; }
+:root[data-theme] .command-palette-footer { border-color: rgba(151,61,255,.18) !important; background: #0a0612 !important; color: #766b81 !important; }
+
+/* More sheet */
+.mobile-more-backdrop { background: rgba(1,0,4,.82) !important; backdrop-filter: blur(16px) !important; }
+.mobile-more-sheet {
+  border-color: rgba(151,61,255,.3) !important;
+  background: linear-gradient(150deg,#170a24,#07050d 68%) !important;
+  box-shadow: 0 35px 110px rgba(0,0,0,.68) !important;
+}
+.mobile-more-sheet header { border-color: rgba(151,61,255,.18) !important; }
+.mobile-more-sheet header span { color: var(--jd-hot) !important; }
+.mobile-more-grid button {
+  border-color: rgba(151,61,255,.16) !important;
+  background: rgba(255,255,255,.025) !important;
+}
+.mobile-more-grid button > span { background: linear-gradient(135deg,rgba(255,83,76,.12),rgba(151,61,255,.16)) !important; color: #ca75ff !important; }
+.mobile-more-grid button:hover { border-color: rgba(255,83,76,.38) !important; background: rgba(255,83,76,.07) !important; }
+.mobile-more-grid small { color: #82778b !important; }
+.mobile-more-grid .mobile-sign-out { border-color: rgba(255,83,76,.25) !important; }
+
+/* Live Drive is now the same product, with black telemetry cards and hot route energy. */
+.live-drive-shell {
+  border-color: rgba(151,61,255,.25) !important;
+  background: #030207 !important;
+  box-shadow: 0 35px 100px rgba(0,0,0,.58) !important;
+}
+.live-drive-header {
+  border-color: rgba(151,61,255,.16) !important;
+  background: radial-gradient(circle at 85% 0,rgba(151,61,255,.21),transparent 38%),linear-gradient(105deg,#14081f,#05030a) !important;
+}
+.live-drive-kicker { color: var(--jd-hot) !important; }
+.live-drive-kicker span { background: linear-gradient(90deg,var(--jd-hot),var(--jd-orange)) !important; box-shadow: 0 0 14px var(--jd-hot) !important; }
+.live-drive-connection { border-color: rgba(255,83,76,.35) !important; color: #ff8174 !important; background: rgba(255,83,76,.08) !important; }
+.live-drive-stage { background: radial-gradient(circle at 50% 22%,rgba(151,61,255,.16),transparent 42%),#030207 !important; }
+.live-drive-overlay { border-color: rgba(151,61,255,.2) !important; background: rgba(9,5,17,.9) !important; }
+.live-drive-speed-card span { color: var(--jd-hot) !important; }
+.live-drive-speed-card strong { font-family: var(--jd-display); font-weight: 400; }
+.live-drive-telemetry > div { border-color: rgba(151,61,255,.13) !important; }
+.live-drive-telemetry span,
+.live-drive-music span { color: #af6fff !important; }
+.live-drive-map,
+.vehicle-location-map,
+.drive-map,
+.journey-story-map,
+.share-card-map-renderer {
+  background: #010104 !important;
+}
+.live-drive-map { border-color: rgba(255,83,76,.18) !important; background-image: none !important; }
+.live-drive-map::after { background: radial-gradient(circle at 50% 50%,transparent 40%,rgba(2,1,6,.72)) !important; }
+.live-drive-map .maplibregl-canvas,
+.drive-map .maplibregl-canvas,
+.vehicle-location-map .maplibregl-canvas,
+.journey-story-map .maplibregl-canvas { filter: none !important; }
+.live-drive-marker { border-color:#fff !important; background:linear-gradient(135deg,var(--jd-hot),var(--jd-orange)) !important; box-shadow:0 0 0 8px rgba(255,83,76,.14),0 0 34px rgba(255,83,76,.55) !important; }
+.live-drive-marker span { color:#15050a !important; }
+.live-drive-safety { background:#030207 !important; color:#776b80 !important; }
+
+/* Drive detail poster */
+#driveModal .modal-card {
+  border-color: rgba(255,83,76,.24) !important;
+  background:
+    radial-gradient(circle at 78% 0,rgba(151,61,255,.3),transparent 31rem),
+    linear-gradient(150deg,#180923,#030207 58%) !important;
+}
+#driveModal .modal-card::before {
+  content:"JOURNEY / MEMORY";
+  position:absolute;
+  right:34px;
+  top:34px;
+  color:rgba(255,83,76,.34);
+  font:400 1rem/1 var(--jd-display);
+  letter-spacing:.12em;
+}
+.detail-metrics { background:#08050f !important; }
+.detail-metrics > div { border-color:rgba(151,61,255,.16) !important; }
+.drive-map-section { border-color:rgba(151,61,255,.2) !important; background:#05030b !important; }
+.drive-map { filter:none !important; border:1px solid rgba(255,83,76,.17); }
+.maplibregl-ctrl-group { overflow:hidden; border:1px solid rgba(151,61,255,.22) !important; border-radius:13px !important; background:#090611 !important; box-shadow:0 12px 30px rgba(0,0,0,.45) !important; }
+.maplibregl-ctrl-group button { background-color:#090611 !important; color:#fff !important; }
+.maplibregl-ctrl-attrib { background:rgba(3,2,7,.82) !important; color:#8f839b !important; }
+.maplibregl-ctrl-attrib a { color:#c570ff !important; }
+.map-legend { color:#8c8196 !important; }
+.map-click-hint { color:#c66cff !important; }
+.map-privacy { color:#776d80 !important; }
+.replay-panel { background:radial-gradient(circle at 12% 0,rgba(151,61,255,.22),transparent 36%),#08050f !important; }
+
+/* Inputs and minor surfaces that previously exposed the production palette. */
+:root[data-theme] input,
+:root[data-theme] select,
+:root[data-theme] textarea {
+  border-color: rgba(151,61,255,.24) !important;
+  background-color: #08050f !important;
+  color: var(--jd-cream) !important;
+}
+:root[data-theme] .secondary-button,
+:root[data-theme] .text-button {
+  border-color: rgba(151,61,255,.28) !important;
+  background: rgba(151,61,255,.08) !important;
+  color: #d6b9f5 !important;
+}
+
+@media (min-width: 1101px) {
+  .drives-panel.dashboard-size-wide { grid-column: span 7 / span 7 !important; }
+  .dashboard-status-widget.dashboard-size-wide { grid-column: span 5 / span 5 !important; }
+}
+
+@media (max-width: 760px) {
+  .app-shell { padding-inline: 8px !important; }
+  .dashboard-customize-bar { min-height: 57px; padding: 7px 7px 7px 13px !important; }
+  #dashboardCustomizeButton { min-height: 40px; padding-inline: 12px; font-size: .68rem; }
+  .dashboard-customizer { padding: 16px !important; }
+  .dashboard-customizer::before { display:none; }
+  .dashboard-customizer-heading { align-items:flex-start !important; padding-right:0; }
+  .dashboard-customizer-heading strong { font-size:1.35rem; }
+  .dashboard-customizer-row { grid-template-columns:24px minmax(90px,1fr) 92px !important; grid-template-rows:auto auto; min-height:78px !important; padding:10px !important; }
+  .dashboard-customizer-row .dashboard-order-buttons { display:none; }
+  .dashboard-customizer-row .dashboard-toggle-label { grid-row:2; }
+  .dashboard-customizer-row .dashboard-size-select { grid-column:3; grid-row:1 / 3; }
+
+  .vehicle-panel { padding:18px !important; border-radius:24px !important; }
+  .vehicle-panel::before { font-size:15rem; }
+  .vehicle-panel::after { font-size:5.2rem !important; }
+  .vehicle-hero-visual { min-height:285px !important; border-radius:20px; }
+  .vehicle-panel .metric { min-height:76px; }
+  .today-driving-widget { min-height:350px !important; }
+  .today-driving-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  .today-driving-visual { grid-template-columns:1fr 66px; }
+  .today-driving-score { width:64px; height:64px; }
+
+  .dashboard-quick-actions { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+  .dashboard-quick-actions button { min-height:128px !important; border-radius:19px !important; }
+  .dashboard-status-widget { grid-template-columns:1fr !important; }
+  .dashboard-status-heading { grid-column:1 !important; }
+  .dashboard-status-widget .stat-card { min-height:60px; }
+
+  .journeydeck-action-dock { grid-template-columns:repeat(7,68px); overflow-x:auto; justify-content:start; padding-bottom:12px; border-radius:23px; scrollbar-width:none; }
+  .journeydeck-action-dock::-webkit-scrollbar { display:none; }
+  .journeydeck-action-dock button { min-height:64px; }
+
+  .command-palette { padding-top:calc(72px + env(safe-area-inset-top)) !important; }
+  :root[data-theme] .command-palette-card { border-radius:22px !important; }
+  .mobile-more-sheet { border-radius:26px !important; }
+  .mobile-more-grid button { min-height:70px !important; border-radius:18px !important; }
+
+  .live-drive-shell { border-radius:24px !important; }
+  .live-drive-stage { background:#030207 !important; }
+  .live-drive-speed-card strong { font-size:4.4rem !important; }
+  .live-drive-map { border-radius:20px !important; }
+
+  #driveModal .modal-card::before { display:none; }
+  #driveModal .modal-card { border-radius:24px !important; }
+  .drive-map-section { margin-inline:-4px; padding:14px !important; border-radius:21px !important; }
+  .drive-map { min-height:390px !important; border-radius:18px !important; }
+}

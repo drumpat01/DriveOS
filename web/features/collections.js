@@ -55,7 +55,8 @@
       if(!routes.length){mapElement.classList.add("map-unavailable");mapElement.textContent="No route coordinates are available for these drives.";status.textContent="No map data";return;}
       try{
         const maplibre=await ensureMapLibre();
-        storyMap=new maplibre.Map({container:mapElement,style:"https://tiles.openfreemap.org/styles/liberty",center:routes[0][0],zoom:9,attributionControl:true});
+        storyMap=new maplibre.Map({container:mapElement,style:window.JourneyDeckMapTheme?.style||"https://tiles.openfreemap.org/styles/dark",center:routes[0][0],zoom:9,attributionControl:true});
+        window.JourneyDeckMapTheme?.attach(storyMap);
         storyMap.addControl(new maplibre.NavigationControl({showCompass:false}),"top-right");
         storyMap.on("load",()=>{
           storyMap.addSource("collection-routes",{type:"geojson",data:{type:"FeatureCollection",features:routes.map((coordinates,index)=>({type:"Feature",properties:{index},geometry:{type:"LineString",coordinates}}))}});
