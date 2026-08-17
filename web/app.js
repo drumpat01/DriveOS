@@ -3260,6 +3260,7 @@ async function signOut() {
   buttons.forEach(button => { button.disabled = true; });
   try {
     await window.DriveOSApi.post("/api/auth/logout", {});
+    try { localStorage.removeItem("journeydeck-saved-place-labels-v1"); } catch {}
     location.replace("/login");
   } catch {
     buttons.forEach(button => { button.disabled = false; });

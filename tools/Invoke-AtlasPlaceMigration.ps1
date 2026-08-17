@@ -69,6 +69,8 @@ try {
     $CacheMap = @{}; foreach ($Entry in @($Entries)) { if ($Entry.key) { $CacheMap[[string]$Entry.key] = $Entry } }
     $UsageRecord = Get-DriveOSTursoState -Repository $Repository -Key 'foursquare-usage'
     $Usage = Get-DriveOSFoursquareUsageWindow -Usage $UsageRecord -DailyLimit 500 -MonthlyLimit 500
+    $StartingMonthCount = [int]$Usage.monthCount
+    $NewUsage = [PSCustomObject]@{version=1;day=$Usage.day;dayCount=[int]$Usage.dayCount;month=$Usage.month;monthCount=[int]$Usage.monthCount;lastError=$null;lastErrorAt=$null;updatedAt=[DateTimeOffset]::UtcNow.ToString('o')}
     $CallBudget = if ($AllowBillableCalls) { $MaxCalls } else { [Math]::Min($MaxCalls,[int]$Usage.monthRemaining) }
     $Client = New-FoursquareClient -ApiKey $ApiKey
     $Calls = 0; $Resolved = 0; $Addresses = 0; $Businesses = 0; $Manual = 0; $Misses = 0
@@ -85,6 +87,11 @@ try {
         }
         if ($Calls -ge $CallBudget) { break }
 
+        # Reserve and durably record each provider call before issuing it. If
+        # the process is interrupted, a rerun cannot reuse the same free-call
+        # allowance and accidentally cross the non-billable boundary.
+        $NewUsage = [PSCustomObject]@{version=1;day=$Usage.day;dayCount=([int]$Usage.dayCount+$Calls+1);month=$Usage.month;monthCount=([int]$Usage.monthCount+$Calls+1);lastError=$null;lastErrorAt=$null;updatedAt=[DateTimeOffset]::UtcNow.ToString('o')}
+        Set-DriveOSTursoState -Repository $Repository -Key 'foursquare-usage' -Value $NewUsage
         $Places = @(Search-FoursquarePlaces -Client $Client -Latitude $Cluster.latitude -Longitude $Cluster.longitude -RadiusMeters 250 -Limit 5)
         $Business = Select-DriveOSFoursquareMatch -Places $Places -MaximumDistanceMeters 75
         $AddressPlace = @($Places | Where-Object { $_.address -and $null -ne $_.distanceMeters -and [double]$_.distanceMeters -le 250 } | Sort-Object distanceMeters | Select-Object -First 1)[0]
@@ -101,10 +108,8 @@ try {
     }
 
     Set-DriveOSTursoState -Repository $Repository -Key 'foursquare-cache' -Value ([PSCustomObject]@{version=1;updatedAt=[DateTimeOffset]::UtcNow.ToString('o');entries=@($Entries)})
-    $NewUsage = [PSCustomObject]@{version=1;day=$Usage.day;dayCount=([int]$Usage.dayCount+$Calls);month=$Usage.month;monthCount=([int]$Usage.monthCount+$Calls);lastError=$null;lastErrorAt=$null;updatedAt=[DateTimeOffset]::UtcNow.ToString('o')}
-    Set-DriveOSTursoState -Repository $Repository -Key 'foursquare-usage' -Value $NewUsage
     $Remaining = @($OrderedClusters | Where-Object { -not $CacheMap.ContainsKey((Get-DriveOSPlaceCacheKey -Location 'Google Timeline location' -Latitude $_.latitude -Longitude $_.longitude)) }).Count
-    $BillableCalls = [Math]::Max(0,[int]$NewUsage.monthCount-500) - [Math]::Max(0,[int]$Usage.monthCount-500)
+    $BillableCalls = [Math]::Max(0,[int]$NewUsage.monthCount-500) - [Math]::Max(0,$StartingMonthCount-500)
     [PSCustomObject]@{uniqueClusters=$Clusters.Count;providerCalls=$Calls;resolved=$Resolved;businesses=$Businesses;addresses=$Addresses;manual=$Manual;misses=$Misses;remaining=$Remaining;freeCallsRemaining=[Math]::Max(0,500-$NewUsage.monthCount);billableCalls=$BillableCalls;estimatedChargeUsd=[Math]::Round($BillableCalls*0.015,2)}
 }
 finally {

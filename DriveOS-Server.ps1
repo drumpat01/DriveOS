@@ -2079,6 +2079,8 @@ function Set-DashboardLayout {
 }
 
 function Get-PlaceCandidates {
+    param([switch]$Enrich)
+
     $PlaceRecords = @{}
     $AliasMap = Get-PlaceAliasMap
 
@@ -2147,7 +2149,7 @@ function Get-PlaceCandidates {
         }
     })
 
-    $NewMatches = Resolve-FoursquareCandidatePlaces -Candidates $Places
+    $NewMatches = if ($Enrich) { Resolve-FoursquareCandidatePlaces -Candidates $Places } else { 0 }
     if ($NewMatches -gt 0) {
         # Refresh once only when the resolver actually persisted new matches.
         $FoursquareCacheMap = Get-FoursquareCacheMap
@@ -2607,7 +2609,7 @@ function Invoke-AtlasPlaceEnrichmentScan {
     # This bounded pass writes every lookup outcome to the database-backed
     # Foursquare cache. Later Atlas loads only read the compact projection.
     $Before = @(Get-FoursquareCacheEntries).Count
-    $Result = Get-PlaceCandidates
+    $Result = Get-PlaceCandidates -Enrich
     $Snapshot = Get-AtlasPlaceEnrichment
     $After = @(Get-FoursquareCacheEntries).Count
     $Snapshot | Add-Member -NotePropertyName scanned -NotePropertyValue $true

@@ -58,34 +58,11 @@
       target.innerHTML = alerts.map((alert) => `<section class="data-health-alert severity-${escapeHtml(alert.severity || 'warning')}"><span class="data-health-alert-icon" aria-hidden="true">${alert.severity === 'critical' ? '!' : '&#9888;'}</span><div><strong>${escapeHtml(alert.title)}</strong><p>${escapeHtml(alert.message)}</p></div></section>`).join('');
     }
 
-    function auditMeetsCurrentPolicy(audit, integrations = []) {
-      const report = audit?.report || {};
-      if (report.resources?.drives?.passed !== true || report.resources?.charges?.passed !== true) return false;
-      const cursorCheck = (report.checks || []).find(check => check.name === 'cursor-readiness');
-      if (cursorCheck?.passed === false && Number(report.maximumCursorLagMinutes) === 45) {
-        // This persisted result is the Aug 17 false failure verified at 64.8
-        // minutes. Re-evaluate it under the current 90-minute queue-tolerant gate.
-        return true;
-      }
-      if (String(report.status || audit?.status) === 'not_ready' && /^2026-08-17/.test(String(audit?.completedAtUtc || report.generatedAtUtc || ''))) {
-        // The durable API intentionally redacts cursor details. The archived
-        // privacy-safe artifact for this exact run records the measured 64.8
-        // minute lag, which passes the corrected 90-minute policy.
-        return true;
-      }
-      const generated = new Date(report.generatedAtUtc || audit?.completedAtUtc || 0).getTime();
-      const signal = integrations.find(item => item.id === 'integrity-audit' || item.name === 'Daily integrity audit');
-      const watermark = new Date(report.auditRange?.toUtc || report.auditRange?.to || signal?.highWatermarkUtc || 0).getTime();
-      if (!Number.isFinite(generated) || !Number.isFinite(watermark) || !generated || !watermark) return false;
-      return (generated - watermark) / 60000 <= 90;
-    }
-
     function render(data) {
       const audit = data.integrityAudit;
-      const auditRecovered = auditMeetsCurrentPolicy(audit, data.integrations || []);
-      const alerts = (data.alerts || []).filter(alert => !(auditRecovered && alert.id === 'integrity-audit-failed'));
-      const integrations = (data.integrations || []).map(signal => auditRecovered && signal.id === 'integrity-audit' ? { ...signal, status: 'healthy', lastError: null, lastSuccessAtUtc: audit.completedAtUtc, lagMinutes: 0 } : signal);
-      const overallStatus = auditRecovered && alerts.length === 0 ? 'healthy' : data.overallStatus;
+      const alerts = data.alerts || [];
+      const integrations = data.integrations || [];
+      const overallStatus = data.overallStatus;
       const overall = $("dataHealthOverall");
       const overallLabel = statusCopy[overallStatus] || overallStatus;
       overall.className = `data-health-overall status-${overallStatus}`;
@@ -108,14 +85,15 @@
       const auditReport = audit?.report || {};
       const auditDrives = auditReport.resources?.drives || {};
       const auditCharges = auditReport.resources?.charges || {};
+      const cursorCheck = (auditReport.checks || []).find(check => check.name === 'cursor-readiness');
       const auditTarget = $("dataHealthIntegrityAudit");
       if (auditTarget) {
         auditTarget.innerHTML = [
-          ["Last result", auditRecovered ? "Ready" : audit ? (statusCopy[audit.status] || audit.status) : "Waiting"],
+          ["Last result", audit ? (statusCopy[audit.status] || audit.status) : "Waiting"],
           ["Completed", audit ? formatTime(audit.completedAtUtc) : "Not yet"],
           ["Journey parity", auditDrives.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
           ["Charge parity", auditCharges.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
-          ["Cursor policy", auditRecovered ? "Passed (90 min)" : "Failed"]
+          ["Cursor policy", !audit ? "Pending" : cursorCheck?.passed === true ? "Passed" : "Failed"]
         ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
       }
     }

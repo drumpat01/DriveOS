@@ -105,7 +105,11 @@ Assert-True ($Frontend -match 'moments when Home anchored your journey' -and $Fr
 Assert-True ($Frontend -match 'placeSaveQueue' -and $Frontend -match 'applySavedCardLabel' -and $Frontend -notmatch "saveCardPlace[^{]*\{[^}]+await mutate") 'Card place labels must save serially in place without rebuilding Atlas after each correction.'
 Assert-True ($Frontend -match 'sourceLabel:aLabel,targetLabel:bLabel') 'Generated recurring patterns must retain resolved display labels for reliable editing.'
 Assert-True ($Frontend -match "api\.post\('/api/mobility/place-geofence'" -and $Frontend -match 'radiusFeet:200') 'Coordinate-backed card labels must persist as stable place geofences.'
-Assert-True ($Frontend -match 'savedPlaceLabelsStorageKey' -and $Frontend -match 'endpoint not found') 'Local beta place labels need a refresh-safe compatibility path when the hosted geofence endpoint is unavailable.'
+Assert-True ($Frontend -match '/api/mobility/place-geofence' -and $Frontend -match '/api/atlas/places') 'Atlas place labels must use durable authenticated APIs.'
+Assert-True ($Frontend -notmatch 'localStorage\.setItem\(savedPlaceLabelsStorageKey') 'Precise Atlas place labels must not be duplicated into persistent browser storage.'
+Assert-True ($Server -match 'function Get-PlaceCandidates\s*\{\s*param\(\[switch\]\$Enrich\)' -and $Server -match 'Get-PlaceCandidates -Enrich') 'Provider enrichment must require the explicit Atlas scan path.'
+$Migration = Get-Content (Join-Path $Root 'tools\Invoke-AtlasPlaceMigration.ps1') -Raw
+Assert-True ($Migration -match 'Set-DriveOSTursoState[^\r\n]+foursquare-usage[^\r\n]+\$NewUsage\s*\r?\n\s*\$Places\s*=') 'Atlas migration must reserve each provider call durably before issuing it.'
 Assert-True ($Frontend -match 'routineSaveQueue' -and $Frontend -match "routineIds\.forEach\(rememberReviewedRoutine\)[\s\S]+renderIntelligence\(\)[\s\S]+api\.post\('/api/mobility/routine'" -and $Frontend -notmatch 'reviewRoutine[^{]*\{[^}]+await load') 'Routine reviews must disappear optimistically and sync serially without rebuilding Atlas.'
 Assert-True ($Frontend -match 'routineIds\.forEach\(forgetReviewedRoutine\)' -and $Frontend -match 'Save failed.+ready to retry') 'Failed routine writes must restore the card so the review is never silently lost.'
 Assert-True ($Frontend -match 'function deduplicateRoutines' -and $Frontend -match 'relatedRoutineIds' -and $Frontend -match 'for\(const id of routineIds\)') 'Equivalent imported routine cards must consolidate and persist one review across every underlying routine.'

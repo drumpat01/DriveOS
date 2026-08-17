@@ -23,6 +23,29 @@ function hasSessionCookie(req) {
   return cookie.split(";").some(part => part.trim().startsWith(`${SESSION_COOKIE_NAME}=`));
 }
 
+async function hasValidSession(req, upstream) {
+  if (!hasSessionCookie(req)) return false;
+  try {
+    const response = await fetch(new URL("/api/auth/session", upstream), {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        cookie: String(req.headers.cookie || ""),
+        "user-agent": String(req.headers["user-agent"] || "JourneyDeck beta proxy")
+      },
+      redirect: "manual",
+      signal: AbortSignal.timeout(10_000)
+    });
+    if (!response.ok) return false;
+    const session = await response.json();
+    return session?.authenticated === true;
+  } catch {
+    // The protected shell must fail closed when the session authority cannot
+    // be reached or returns an invalid response.
+    return false;
+  }
+}
+
 function securityHeaders(res) {
   res.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://journeydeck.me https://*.spotify.com https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'");
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -117,14 +140,19 @@ export function createBetaLiveProxyServer({ upstreamUrl = process.env.DRIVEOS_BE
     // to sign in. The beta serves local frontend files, so it must reproduce
     // that boundary itself or the shell loads with every API request returning
     // 401 and no way to establish a beta-host session.
-    if (
-      req.method === "GET" &&
-      ["/", "/index.html", "/wife", "/wife.html"].includes(requestUrl.pathname) &&
-      !hasSessionCookie(req)
-    ) {
-      res.writeHead(302, { Location: "/login", "Cache-Control": "no-store" });
-      res.end();
+    if (!["GET", "HEAD"].includes(req.method || "GET")) {
+      res.writeHead(405, { Allow: "GET, HEAD", "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+      res.end("Method not allowed");
       return;
+    }
+
+    if (["/", "/index.html", "/wife", "/wife.html"].includes(requestUrl.pathname)) {
+      const authenticated = await hasValidSession(req, upstream);
+      if (!authenticated) {
+        res.writeHead(302, { Location: "/login", "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
     }
 
     let pathname = requestUrl.pathname;
