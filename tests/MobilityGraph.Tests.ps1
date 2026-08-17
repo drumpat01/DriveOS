@@ -107,6 +107,7 @@ Assert-True ($Frontend -match 'sourceLabel:aLabel,targetLabel:bLabel') 'Generate
 Assert-True ($Frontend -match "api\.post\('/api/mobility/place-geofence'" -and $Frontend -match 'radiusFeet:200') 'Coordinate-backed card labels must persist as stable place geofences.'
 Assert-True ($Frontend -match '/api/mobility/place-geofence' -and $Frontend -match '/api/atlas/places') 'Atlas place labels must use durable authenticated APIs.'
 Assert-True ($Frontend -notmatch 'localStorage\.setItem\(savedPlaceLabelsStorageKey') 'Precise Atlas place labels must not be duplicated into persistent browser storage.'
+Assert-True ($Frontend -match 'mapDrives=retainedDrives' -and $Frontend -match 'representativeJourneyFeatures\(mapDrives,200\)') 'Atlas representative lines must use the complete journey response instead of mutable dashboard state.'
 Assert-True ($Server -match 'function Get-PlaceCandidates\s*\{\s*param\(\[switch\]\$Enrich\)' -and $Server -match 'Get-PlaceCandidates -Enrich') 'Provider enrichment must require the explicit Atlas scan path.'
 $Migration = Get-Content (Join-Path $Root 'tools\Invoke-AtlasPlaceMigration.ps1') -Raw
 Assert-True ($Migration -match 'Set-DriveOSTursoState[^\r\n]+foursquare-usage[^\r\n]+\$NewUsage\s*\r?\n\s*\$Places\s*=') 'Atlas migration must reserve each provider call durably before issuing it.'
