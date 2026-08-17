@@ -25,6 +25,11 @@ try {
     $Saved = Set-MobilityRoutinePreference -Repository $Repository -Candidate ([PSCustomObject]@{routineId='routine-0123456789ab';status='confirmed';type='custom';customName='Morning school loop'})
     Assert-Equal $Saved.routines.Count 1 'Updating a routine confirmation created a duplicate.'
     Assert-Equal $Saved.routines[0].customName 'Morning school loop' 'Custom routine name was not persisted.'
+    $Saved = Set-MobilityPlaceGeofence -Repository $Repository -Candidate ([PSCustomObject]@{latitude=35.123456;longitude=-96.654321;radiusFeet=200;name='Home';category='home'})
+    Assert-Equal $Saved.placeGeofences.Count 1 'Home geofence was not persisted.'
+    Assert-Equal $Saved.placeGeofences[0].radiusFeet 200 'Home geofence radius changed during persistence.'
+    $Saved = Set-MobilityPlacePreference -Repository $Repository -Candidate ([PSCustomObject]@{nodeId='place-0123456789ab';name='Nicholas School';category='family'})
+    Assert-Equal $Saved.placeGeofences.Count 1 'A node correction discarded the saved Home geofence.'
     try { Set-MobilityPlacePreference -Repository $Repository -Candidate ([PSCustomObject]@{nodeId='forged';name='Bad';category='home'}); throw 'Expected invalid place ID failure.' } catch { Assert-True ($_.Exception.Message -match 'valid mobility place ID') 'Forged place ID did not fail safely.' }
     try { Set-MobilityRoutinePreference -Repository $Repository -Candidate ([PSCustomObject]@{routineId='routine-0123456789ab';status='confirmed';type='custom';customName='' }); throw 'Expected custom name failure.' } catch { Assert-True ($_.Exception.Message -match 'Custom routine name') 'Empty custom routine name did not fail safely.' }
 }
@@ -36,8 +41,8 @@ $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $Frontend = Get-Content (Join-Path $Root 'web\features\mobility-graph.js') -Raw
 Assert-True ($RepositorySource -match "Get-DriveOSTursoState.+mobility-preferences") 'Turso mobility preferences do not use durable app state.'
 Assert-True ($RepositorySource -match "Get-DriveOSSqliteState.+mobility-preferences") 'SQLite mobility preferences do not use durable app state.'
-Assert-True ($Server -match '"/api/mobility/place"' -and $Server -match '"/api/mobility/routine"') 'Mobility correction endpoints are missing.'
+Assert-True ($Server -match '"/api/mobility/place"' -and $Server -match '"/api/mobility/place-geofence"' -and $Server -match '"/api/mobility/routine"') 'Mobility correction endpoints are missing.'
 Assert-True ($PreferenceSource -match "'home','work','family','errands','dining','wellness','other'") 'Place category validation is missing.'
-Assert-True ($PreferenceSource -match "'commute','school-run','family-visit','errand-loop','custom'") 'Routine type validation is missing.'
+Assert-True ($PreferenceSource -match "'commute','school-run','family-visit','errand-loop','frequent-route','custom'") 'Routine type validation is missing.'
 Assert-True ($Frontend -match 'Save identity' -and $Frontend -match 'Is this a routine') 'Mobility correction controls are missing.'
 Write-Host 'Mobility preference persistence and controls checks passed.' -ForegroundColor Green

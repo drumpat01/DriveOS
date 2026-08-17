@@ -110,11 +110,16 @@ function Find-DriveOSMobilityNode {
     param([object[]]$Nodes,[string]$Label,$Latitude,$Longitude)
     $LocationKey = Get-DriveOSMobilityLocationKey -Label $Label
     foreach ($Node in @($Nodes)) {
-        if ($Node.locationKey -eq $LocationKey) { return $Node }
-        if ($null -ne $Latitude -and $null -ne $Longitude -and $null -ne $Node.latitude -and $null -ne $Node.longitude) {
-            $Distance = Get-DriveOSMobilityDistanceMiles -LatitudeA $Latitude -LongitudeA $Longitude -LatitudeB $Node.latitude -LongitudeB $Node.longitude
-            if ($Distance -le 0.2) { return $Node }
+        if ($null -ne $Latitude -and $null -ne $Longitude) {
+            # A coordinate-less legacy placeholder must never absorb later
+            # Timeline endpoints merely because their generic labels match.
+            if ($null -ne $Node.latitude -and $null -ne $Node.longitude) {
+                $Distance = Get-DriveOSMobilityDistanceMiles -LatitudeA $Latitude -LongitudeA $Longitude -LatitudeB $Node.latitude -LongitudeB $Node.longitude
+                if ($Distance -le 0.2) { return $Node }
+            }
+            continue
         }
+        if ($Node.locationKey -eq $LocationKey) { return $Node }
     }
     return $null
 }
@@ -145,10 +150,14 @@ function New-DriveOSMobilityGraph {
         $StartLongitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $Drive 'startingLongitude')
         $EndLatitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $Drive 'endingLatitude')
         $EndLongitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $Drive 'endingLongitude')
+        $StartAddress = "$(Get-DriveOSMobilityGraphValue $Drive 'rawStartingLocation')".Trim()
+        $EndAddress = "$(Get-DriveOSMobilityGraphValue $Drive 'rawEndingLocation')".Trim()
+        if (-not $StartAddress) { $StartAddress = $StartLabel }
+        if (-not $EndAddress) { $EndAddress = $EndLabel }
 
         $EndpointSpecs = @(
-            [PSCustomObject]@{ label=$StartLabel; latitude=$StartLatitude; longitude=$StartLongitude; direction='departure' },
-            [PSCustomObject]@{ label=$EndLabel; latitude=$EndLatitude; longitude=$EndLongitude; direction='arrival' }
+            [PSCustomObject]@{ label=$StartLabel; address=$StartAddress; latitude=$StartLatitude; longitude=$StartLongitude; direction='departure' },
+            [PSCustomObject]@{ label=$EndLabel; address=$EndAddress; latitude=$EndLatitude; longitude=$EndLongitude; direction='arrival' }
         )
         $ResolvedNodes = @()
         foreach ($Endpoint in $EndpointSpecs) {
@@ -163,6 +172,7 @@ function New-DriveOSMobilityGraph {
                     id = Get-DriveOSMobilityId -Kind 'place' -Key $IdentityKey
                     locationKey = $LocationKey
                     label = $Endpoint.label
+                    address = $Endpoint.address
                     kind = if ($LocationKey -eq 'home') { 'home' } else { 'place' }
                     latitude = $Endpoint.latitude
                     longitude = $Endpoint.longitude
@@ -175,6 +185,7 @@ function New-DriveOSMobilityGraph {
                 }
                 $null = $Nodes.Add($Node)
             }
+            elseif ($Endpoint.address -and ((-not $Node.address) -or ($Node.address -eq $Node.label -and $Endpoint.address -ne $Endpoint.label))) { $Node.address = $Endpoint.address }
             if ($Endpoint.direction -eq 'arrival') { $Node.arrivals++ } else { $Node.departures++ }
             $null = $Node.driveIds.Add($DriveId)
             $StartedAt = "$(Get-DriveOSMobilityGraphValue $Drive 'startedAt')"
@@ -228,16 +239,93 @@ function New-DriveOSMobilityGraph {
         $OverrideId = "$(Get-DriveOSMobilityGraphValue $Override 'nodeId')"
         if ($OverrideId) { $PlaceOverrides[$OverrideId] = $Override }
     }
+    $PlaceGeofences = @((Get-DriveOSMobilityGraphValue $Preferences 'placeGeofences') | Where-Object { $null -ne $_ })
+    $HomeGeofences = @($PlaceGeofences | Where-Object {
+        "$(Get-DriveOSMobilityGraphValue $_ 'category')".Trim().ToLowerInvariant() -eq 'home' -or
+        (Get-DriveOSMobilityLocationKey -Label "$(Get-DriveOSMobilityGraphValue $_ 'name')") -eq 'home'
+    })
+    $HomeNodes = @($Nodes | Where-Object {
+        $CandidateNode = $_
+        if ($CandidateNode.locationKey -eq 'home') { return $true }
+        if ($null -eq $CandidateNode.latitude -or $null -eq $CandidateNode.longitude) { return $false }
+        return @($HomeGeofences | Where-Object {
+            $FenceLatitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $_ 'latitude')
+            $FenceLongitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $_ 'longitude')
+            $RadiusFeet = [double](Get-DriveOSMobilityGraphValue $_ 'radiusFeet')
+            $null -ne $FenceLatitude -and $null -ne $FenceLongitude -and $RadiusFeet -gt 0 -and
+            (Get-DriveOSMobilityDistanceMiles -LatitudeA $CandidateNode.latitude -LongitudeA $CandidateNode.longitude -LatitudeB $FenceLatitude -LongitudeB $FenceLongitude) -le ($RadiusFeet / 5280.0)
+        }).Count -gt 0
+    })
+    if ($HomeNodes.Count -gt 1) {
+        $LocatedHomeNodes = @($HomeNodes | Where-Object { $null -ne $_.latitude -and $null -ne $_.longitude })
+        $CanonicalCandidates = if ($LocatedHomeNodes.Count) { $LocatedHomeNodes } else { $HomeNodes }
+        $CanonicalHome = @($CanonicalCandidates | Sort-Object @{Expression={$_.driveIds.Count};Descending=$true} | Select-Object -First 1)[0]
+        $CanonicalHome.label = 'Home'
+        $CanonicalHome.locationKey = 'home'
+        $CanonicalHome.kind = 'home'
+        $NodeRemap = @{}
+        foreach ($DuplicateHome in @($HomeNodes | Where-Object { $_.id -ne $CanonicalHome.id })) {
+            $NodeRemap[$DuplicateHome.id] = $CanonicalHome.id
+            foreach ($DriveId in @($DuplicateHome.driveIds)) { $null = $CanonicalHome.driveIds.Add($DriveId) }
+            $CanonicalHome.arrivals += $DuplicateHome.arrivals
+            $CanonicalHome.departures += $DuplicateHome.departures
+            $CanonicalHome.miles += $DuplicateHome.miles
+            if (-not $CanonicalHome.firstSeenAt -or ($DuplicateHome.firstSeenAt -and $DuplicateHome.firstSeenAt -lt $CanonicalHome.firstSeenAt)) { $CanonicalHome.firstSeenAt = $DuplicateHome.firstSeenAt }
+            if (-not $CanonicalHome.lastSeenAt -or ($DuplicateHome.lastSeenAt -and $DuplicateHome.lastSeenAt -gt $CanonicalHome.lastSeenAt)) { $CanonicalHome.lastSeenAt = $DuplicateHome.lastSeenAt }
+            if ((-not $CanonicalHome.address -or $CanonicalHome.address -eq $CanonicalHome.label) -and $DuplicateHome.address) { $CanonicalHome.address = $DuplicateHome.address }
+            $null = $Nodes.Remove($DuplicateHome)
+        }
+        foreach ($Drive in $IncludedDrives) {
+            if ($NodeRemap.ContainsKey($Drive.source)) { $Drive.source = $NodeRemap[$Drive.source] }
+            if ($NodeRemap.ContainsKey($Drive.target)) { $Drive.target = $NodeRemap[$Drive.target] }
+        }
+        $MergedEdges = @{}
+        foreach ($ExistingEdge in @($Edges.Values)) {
+            $Source = if ($NodeRemap.ContainsKey($ExistingEdge.source)) { $NodeRemap[$ExistingEdge.source] } else { $ExistingEdge.source }
+            $Target = if ($NodeRemap.ContainsKey($ExistingEdge.target)) { $NodeRemap[$ExistingEdge.target] } else { $ExistingEdge.target }
+            if ($Source -eq $Target) { continue }
+            $EdgeKey = "$Source>$Target"
+            if (-not $MergedEdges.ContainsKey($EdgeKey)) {
+                $MergedEdges[$EdgeKey] = [PSCustomObject]@{
+                    id=Get-DriveOSMobilityId -Kind 'connection' -Key $EdgeKey
+                    source=$Source;target=$Target;driveCount=0;totalMiles=0.0;totalMinutes=0.0
+                    efficiencyTotal=0.0;efficiencyCount=0;firstDrivenAt=$null;lastDrivenAt=$null
+                    driveIds=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                }
+            }
+            $MergedEdge = $MergedEdges[$EdgeKey]
+            $MergedEdge.driveCount += $ExistingEdge.driveCount
+            $MergedEdge.totalMiles += $ExistingEdge.totalMiles
+            $MergedEdge.totalMinutes += $ExistingEdge.totalMinutes
+            $MergedEdge.efficiencyTotal += $ExistingEdge.efficiencyTotal
+            $MergedEdge.efficiencyCount += $ExistingEdge.efficiencyCount
+            foreach ($DriveId in @($ExistingEdge.driveIds)) { $null = $MergedEdge.driveIds.Add($DriveId) }
+            if (-not $MergedEdge.firstDrivenAt -or ($ExistingEdge.firstDrivenAt -and $ExistingEdge.firstDrivenAt -lt $MergedEdge.firstDrivenAt)) { $MergedEdge.firstDrivenAt = $ExistingEdge.firstDrivenAt }
+            if (-not $MergedEdge.lastDrivenAt -or ($ExistingEdge.lastDrivenAt -and $ExistingEdge.lastDrivenAt -gt $MergedEdge.lastDrivenAt)) { $MergedEdge.lastDrivenAt = $ExistingEdge.lastDrivenAt }
+        }
+        $Edges = $MergedEdges
+    }
     $AllowedCategories = @('home','work','family','errands','dining','wellness','other')
     $PublicNodes = @($Nodes | ForEach-Object {
+        $CandidateNode = $_
         $Identity = Get-DriveOSMobilityCategory -Label $_.label -VisitCount $_.driveIds.Count
-        $Override = if ($PlaceOverrides.ContainsKey($_.id)) { $PlaceOverrides[$_.id] } else { $null }
+        $GeofenceOverride = $null
+        if ($null -ne $_.latitude -and $null -ne $_.longitude) {
+            $GeofenceOverride = @($PlaceGeofences | Where-Object {
+                $RadiusFeet = [double](Get-DriveOSMobilityGraphValue $_ 'radiusFeet')
+                $FenceLatitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $_ 'latitude')
+                $FenceLongitude = ConvertTo-DriveOSMobilityCoordinate (Get-DriveOSMobilityGraphValue $_ 'longitude')
+                $null -ne $FenceLatitude -and $null -ne $FenceLongitude -and $RadiusFeet -gt 0 -and
+                (Get-DriveOSMobilityDistanceMiles -LatitudeA $CandidateNode.latitude -LongitudeA $CandidateNode.longitude -LatitudeB $FenceLatitude -LongitudeB $FenceLongitude) -le ($RadiusFeet / 5280.0)
+            } | Sort-Object { [double](Get-DriveOSMobilityGraphValue $_ 'radiusFeet') } | Select-Object -First 1)[0]
+        }
+        $Override = if ($PlaceOverrides.ContainsKey($_.id)) { $PlaceOverrides[$_.id] } else { $GeofenceOverride }
         $OverrideName = "$(Get-DriveOSMobilityGraphValue $Override 'name')".Trim()
         $OverrideCategory = "$(Get-DriveOSMobilityGraphValue $Override 'category')".Trim().ToLowerInvariant()
         $IsManual = $null -ne $Override -and ($OverrideName -or $AllowedCategories -contains $OverrideCategory)
         $EffectiveCategory = if($AllowedCategories -contains $OverrideCategory){$OverrideCategory}else{$Identity.category}
         [PSCustomObject]@{
-            id=$_.id;label=if($OverrideName){$OverrideName}else{$_.label};originalLabel=$_.label;kind=if($EffectiveCategory -eq 'home'){'home'}else{'place'}
+            id=$_.id;label=if($OverrideName){$OverrideName}else{$_.label};originalLabel=$_.label;address=$_.address;kind=if($EffectiveCategory -eq 'home'){'home'}else{'place'}
             category=$EffectiveCategory
             categoryConfidence=if($IsManual){'manual'}else{$Identity.confidence}
             categoryReason=if($IsManual){'You assigned this place identity.'}else{$Identity.reason}
@@ -275,8 +363,11 @@ function New-DriveOSMobilityGraph {
         $OverrideId = "$(Get-DriveOSMobilityGraphValue $Override 'routineId')"
         if ($OverrideId) { $RoutineOverrides[$OverrideId] = $Override }
     }
-    $AllowedRoutineTypes = @('commute','school-run','family-visit','errand-loop','custom')
-    $Routines = @($RouteGroups.Values | Where-Object { $_.drives.Count -ge 3 } | ForEach-Object {
+    $AllowedRoutineTypes = @('commute','school-run','family-visit','errand-loop','frequent-route','custom')
+    $Routines = @($RouteGroups.Values | Where-Object {
+        $_.drives.Count -ge 3 -and $_.a -ne $_.b -and
+        -not ($NodeMap[$_.a].category -eq 'home' -and $NodeMap[$_.b].category -eq 'home')
+    } | ForEach-Object {
         $Group = $_; $NodeA = $NodeMap[$Group.a]; $NodeB = $NodeMap[$Group.b]
         $Hours = @(); $Days = @()
         foreach ($Drive in $Group.drives) {
@@ -297,13 +388,14 @@ function New-DriveOSMobilityGraph {
         $EffectiveType = if ($OverrideStatus -eq 'confirmed' -and $AllowedRoutineTypes -contains $OverrideType) { $OverrideType } else { $Type }
         [PSCustomObject]@{
             id=$RoutineId;type=$EffectiveType;inferredType=$Type;title=if($EffectiveType -eq 'custom' -and $CustomName){$CustomName}else{"$($NodeA.label) to $($NodeB.label)"}
-            narrative="$($Group.drives.Count) drives, $DayPattern, usually in the $TimeBand."
+            narrative="$($Group.drives.Count) journeys, $DayPattern, usually in the $TimeBand."
             source=$Group.a;target=$Group.b;driveCount=$Group.drives.Count;bidirectional=$Bidirectional
+            sourceAddress=$NodeA.address;targetAddress=$NodeB.address
             typicalTime=$TimeBand;dayPattern=$DayPattern;confidence=[Math]::Round($ConfidenceScore,2)
             confidenceLabel=if($ConfidenceScore -ge .8){'high'}elseif($ConfidenceScore -ge .65){'medium'}else{'early signal'}
             confirmationStatus=$OverrideStatus;customName=$CustomName;manualOverride=($OverrideStatus -ne 'suggested')
         }
-    } | Sort-Object @{Expression='driveCount';Descending=$true} | Select-Object -First 6)
+    } | Sort-Object @{Expression='driveCount';Descending=$true},title | Select-Object -First 250)
 
     $RecentStart = $AsOfUtc.AddDays(-30); $PriorStart = $AsOfUtc.AddDays(-60)
     $Recent = @($IncludedDrives | Where-Object { try { $Moment=[DateTimeOffset]::Parse($_.startedAt); $Moment -ge $RecentStart -and $Moment -le $AsOfUtc } catch { $false } })
@@ -322,7 +414,7 @@ function New-DriveOSMobilityGraph {
         $DriveDelta=$RecentSnapshot.driveCount-$PriorSnapshot.driveCount
         $DrivePercent=[Math]::Round(($DriveDelta/[Math]::Max(1,$PriorSnapshot.driveCount))*100,0)
         $Direction=if($DriveDelta -gt 0){'up'}elseif($DriveDelta -lt 0){'down'}else{'stable'}
-        $ChangeInsights.Add([PSCustomObject]@{type='activity-change';direction=$Direction;title=if($Direction -eq 'stable'){'Your driving rhythm is steady'}else{"Your driving activity is $Direction"};narrative="$($RecentSnapshot.driveCount) drives in the recent 30 days versus $($PriorSnapshot.driveCount) before that ($([Math]::Abs($DrivePercent))% $Direction).";confidence='high'})
+        $ChangeInsights.Add([PSCustomObject]@{type='activity-change';direction=$Direction;title=if($Direction -eq 'stable'){'Your journey rhythm is steady'}else{"Your journey activity is $Direction"};narrative="$($RecentSnapshot.driveCount) journeys in the recent 30 days versus $($PriorSnapshot.driveCount) before that ($([Math]::Abs($DrivePercent))% $Direction).";confidence='high'})
         $PlaceDelta=$RecentSnapshot.placeCount-$PriorSnapshot.placeCount
         $ChangeInsights.Add([PSCustomObject]@{type='place-diversity';direction=if($PlaceDelta -gt 0){'up'}elseif($PlaceDelta -lt 0){'down'}else{'stable'};title=if($PlaceDelta -gt 0){'Your world is widening'}elseif($PlaceDelta -lt 0){'Your world is concentrating'}else{'Your place mix is stable'};narrative="$($RecentSnapshot.placeCount) active places recently versus $($PriorSnapshot.placeCount) in the prior period.";confidence='high'})
         $PriorPlaces=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase);foreach($Id in $PriorSnapshot.placeIds){$null=$PriorPlaces.Add($Id)}
@@ -343,6 +435,9 @@ function New-DriveOSMobilityGraph {
         nodes=$PublicNodes
         edges=$PublicEdges
         routines=$Routines
+        placeGeofences=@($PlaceGeofences | ForEach-Object {
+            [PSCustomObject]@{name="$(Get-DriveOSMobilityGraphValue $_ 'name')";category="$(Get-DriveOSMobilityGraphValue $_ 'category')";latitude=Get-DriveOSMobilityGraphValue $_ 'latitude';longitude=Get-DriveOSMobilityGraphValue $_ 'longitude';radiusFeet=Get-DriveOSMobilityGraphValue $_ 'radiusFeet'}
+        })
         periodComparison=[PSCustomObject]@{periodDays=30;recent=$RecentSnapshot;prior=$PriorSnapshot}
         changeInsights=@($ChangeInsights)
     }

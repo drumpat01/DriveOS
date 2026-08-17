@@ -7,7 +7,11 @@ function Get-DriveOSPlaceCacheKey {
         $Longitude = $null
     )
 
-    $Normalized = if (-not [string]::IsNullOrWhiteSpace($Location)) {
+    $GenericLocation = [string]::IsNullOrWhiteSpace($Location) -or $Location.Trim() -match '^(Google Timeline location|Unknown (start|destination|location))$'
+    $Normalized = if ($GenericLocation -and $null -ne $Latitude -and $null -ne $Longitude) {
+        [string]::Format([Globalization.CultureInfo]::InvariantCulture, "{0:F4},{1:F4}", [double]$Latitude, [double]$Longitude)
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($Location)) {
         ($Location.Trim().ToLowerInvariant() -replace '\s+', ' ')
     }
     elseif ($null -ne $Latitude -and $null -ne $Longitude) {
@@ -26,12 +30,12 @@ function Get-DriveOSPlaceCacheKey {
 function Select-DriveOSPlaceLookupCandidates {
     param(
         [object[]]$Candidates = @(),
-        [ValidateRange(1,100)][int]$Limit = 25
+        [ValidateRange(1,500)][int]$Limit = 500
     )
 
     return @($Candidates |
         Where-Object {
-            [int]$_.uses -ge 2 -and
+            [int]$_.uses -ge 1 -and
             [string]::IsNullOrWhiteSpace([string]$_.manualLabel) -and
             $null -ne $_.latitude -and $null -ne $_.longitude -and
             [double]$_.latitude -ge -90 -and [double]$_.latitude -le 90 -and
