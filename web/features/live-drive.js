@@ -119,9 +119,15 @@
         container.innerHTML = '<div class="live-drive-music-empty">No recent Spotify play</div>';
         return;
       }
+      const album = track.album || track.albumName || "Unknown album";
       container.innerHTML = `
         ${artworkMarkup(track, "live-drive-artwork")}
-        <div><span>RECENTLY PLAYED</span><strong>${escapeHtml(track.track || "Unknown track")}</strong><small>${escapeHtml(track.artist || "Unknown artist")}</small></div>`;
+        <div class="live-drive-music-copy">
+          <span>RECENTLY PLAYED</span>
+          <strong>${escapeHtml(track.track || "Unknown track")}</strong>
+          <small class="live-drive-music-artist">${escapeHtml(track.artist || "Unknown artist")}</small>
+          <small class="live-drive-music-album">${escapeHtml(album)}</small>
+        </div>`;
     }
 
     async function refreshVehicle() {

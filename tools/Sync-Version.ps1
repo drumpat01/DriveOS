@@ -41,6 +41,9 @@ $TextReplacements = @{
     (Join-Path $Root "web\index.html") = @('/([A-Za-z0-9_/-]+)\.(js|css|png|webmanifest)\?v=[0-9.]+', "/`$1.`$2?v=$WebBuild")
     (Join-Path $Root "web\manifest.webmanifest") = @('/assets/journeydeck-icon-([0-9]+)\.png\?v=[0-9.]+', "/assets/journeydeck-icon-`$1.png?v=$WebBuild")
     (Join-Path $Root "web\offline.html") = @('/assets/journeydeck-icon-([0-9]+)\.png\?v=[0-9.]+', "/assets/journeydeck-icon-`$1.png?v=$WebBuild")
+    (Join-Path $Root "web\wife.html") = @('/([A-Za-z0-9_/-]+)\.(js|css|svg)\?v=[0-9.]+', "/`$1.`$2?v=$WebBuild")
+    (Join-Path $Root "web\loading-preview.html") = @('\?v=[0-9.]+', "?v=$WebBuild")
+    (Join-Path $Root "web\features\loader-concepts.js") = @('/loading-preview\.css\?v=[0-9.]+', "/loading-preview.css?v=$WebBuild")
 }
 foreach ($Entry in $TextReplacements.GetEnumerator()) {
     $Current = Get-Content $Entry.Key -Raw

@@ -1,8 +1,6 @@
 (function () {
   const byId = id => document.getElementById(id);
   const all = selector => [...document.querySelectorAll(selector)];
-  let elapsedSeconds = 84;
-  let playerTimer = null;
 
   function dashboardIsActive() {
     return byId("view-dashboard")?.classList.contains("active-view");
@@ -10,6 +8,12 @@
 
   function syncBodyMode() {
     document.body.classList.toggle("reference-dashboard-active", Boolean(dashboardIsActive()));
+  }
+
+  function syncToolDock(view = dashboardIsActive() ? "dashboard" : "") {
+    all(".ref-tool-dock [data-go-view]").forEach(button => {
+      button.classList.toggle("active", button.dataset.goView === view);
+    });
   }
 
   function numericText(element, fallback) {
@@ -35,6 +39,7 @@
     const track = featured.querySelector(".v3-featured-title")?.textContent?.trim();
     const artist = featured.querySelector(".v3-featured-artist")?.textContent?.trim();
     const artwork = featured.querySelector("img")?.getAttribute("src");
+    const playedTime = featured.querySelector(".v3-featured-time")?.textContent?.trim();
     if (track) all("[data-ref-track]").forEach(node => { node.textContent = track; });
     if (artist) all("[data-ref-artist]").forEach(node => { node.textContent = artist; });
     const album = document.querySelector("[data-ref-album]");
@@ -42,8 +47,7 @@
       album.style.backgroundImage = `linear-gradient(145deg, rgba(20, 5, 42, .14), rgba(255, 49, 95, .16)), url(${JSON.stringify(artwork)})`;
       album.classList.add("has-live-artwork");
     }
-    const button = document.querySelector("[data-reference-player]");
-    if (button && track) button.setAttribute("aria-label", `${button.classList.contains("is-playing") ? "Pause" : "Play"} ${track}`);
+    if (playedTime) all("[data-ref-elapsed]").forEach(node => { node.textContent = playedTime; });
   }
 
   function syncToday() {
@@ -55,6 +59,10 @@
     all("[data-ref-trips]").forEach(node => { node.textContent = trips; });
     all("[data-ref-time]").forEach(node => { node.textContent = time; });
     all("[data-ref-efficiency]").forEach(node => { node.textContent = efficiency; });
+    const efficiencyValue = Number(String(byId("todayDrivingEfficiency")?.textContent || "").match(/[\d,.]+/)?.[0]?.replace(",", ""));
+    const efficiencyScore = Number.isFinite(efficiencyValue) ? Math.max(0, Math.min(1, (400 - efficiencyValue) / 250)) : 0;
+    const progress = document.querySelector(".ref-score-progress");
+    if (progress) progress.style.strokeDashoffset = String(239 * (1 - efficiencyScore));
   }
 
   function syncJourneys() {
@@ -64,7 +72,7 @@
       if (!source) return;
       const cities = [...source.querySelectorAll(".dashboard-route-city")];
       const origin = cities[0]?.textContent?.trim() || "Journey";
-      const destination = cities[1]?.textContent?.trim() || "Recent drive";
+      const destination = cities[1]?.textContent?.trim() || "Recent journey";
       const stats = [...source.querySelectorAll(".drive-stat strong")].map(node => node.textContent.trim());
       const time = source.querySelector(".drive-main-heading span")?.textContent?.trim().split("→")[0]?.trim() || "";
       const originNode = row.querySelector("[data-ref-journey-origin]");
@@ -83,32 +91,19 @@
     all("[data-ref-range]").forEach(node => { node.textContent = range; });
     all("[data-ref-tessie]").forEach(node => { node.textContent = connectionLabel(byId("tessieStatus")); });
     all("[data-ref-spotify]").forEach(node => { node.textContent = connectionLabel(byId("spotifyStatus")); });
+    all("[data-ref-vehicle-state]").forEach(node => { node.textContent = sourceText("vehicleState", "Checking Tessie"); });
+    all("[data-ref-charge-limit]").forEach(node => { node.textContent = numericText(byId("chargeLimit"), "--"); });
+    all("[data-ref-inside-temp]").forEach(node => { node.textContent = numericText(byId("insideTemp"), "--"); });
+    all("[data-ref-outside-temp]").forEach(node => { node.textContent = numericText(byId("outsideTemp"), "--"); });
+    const batteryLevel = Math.max(0, Math.min(100, Number(battery) || 0));
+    all(".ref-battery-bars b").forEach((bar, index, bars) => {
+      const segmentStart = index * (100 / bars.length);
+      const fill = Math.max(0, Math.min(100, (batteryLevel - segmentStart) / (100 / bars.length) * 100));
+      bar.style.setProperty("--segment-fill", `${fill}%`);
+    });
     syncMusic();
     syncToday();
     syncJourneys();
-  }
-
-  function formatTime(value) {
-    const minutes = Math.floor(value / 60);
-    const seconds = String(value % 60).padStart(2, "0");
-    return `${minutes}:${seconds}`;
-  }
-
-  function setPlayerState(playing) {
-    const button = document.querySelector("[data-reference-player]");
-    const card = document.querySelector(".ref-music-card");
-    if (!button || !card) return;
-    button.classList.toggle("is-playing", playing);
-    card.classList.toggle("is-paused", !playing);
-    const track = document.querySelector("[data-ref-track]")?.textContent?.trim() || "recent track";
-    button.setAttribute("aria-label", `${playing ? "Pause" : "Play"} ${track}`);
-    window.clearInterval(playerTimer);
-    playerTimer = null;
-    if (!playing) return;
-    playerTimer = window.setInterval(() => {
-      elapsedSeconds = elapsedSeconds >= 238 ? 0 : elapsedSeconds + 1;
-      all("[data-ref-elapsed]").forEach(node => { node.textContent = formatTime(elapsedSeconds); });
-    }, 1000);
   }
 
   function openReferenceDrive(index) {
@@ -126,11 +121,10 @@
 
     document.addEventListener("journeydeck:viewchange", event => {
       document.body.classList.toggle("reference-dashboard-active", event.detail?.view === "dashboard");
+      syncToolDock(event.detail?.view || "");
     });
 
-    document.querySelector("[data-reference-player]")?.addEventListener("click", event => {
-      setPlayerState(!event.currentTarget.classList.contains("is-playing"));
-    });
+    syncToolDock();
 
     all("[data-reference-drive]").forEach(button => {
       button.addEventListener("click", () => openReferenceDrive(Number(button.dataset.referenceDrive) || 0));
@@ -143,15 +137,13 @@
       });
     });
 
-    const sourceNodes = ["batteryValue", "rangeMiles", "tessieStatus", "spotifyStatus", "todayDrivingMiles", "todayDrivingTrips", "todayDrivingTime", "todayDrivingEfficiency", "trackList", "dashboardDrives"]
+    const sourceNodes = ["batteryValue", "rangeMiles", "chargeLimit", "insideTemp", "outsideTemp", "vehicleState", "tessieStatus", "spotifyStatus", "todayDrivingMiles", "todayDrivingTrips", "todayDrivingTime", "todayDrivingEfficiency", "trackList", "dashboardDrives"]
       .map(byId)
       .filter(Boolean);
     if (sourceNodes.length) {
       const observer = new MutationObserver(syncLiveData);
       sourceNodes.forEach(node => observer.observe(node, { childList: true, characterData: true, subtree: true }));
     }
-
-    setPlayerState(true);
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind, { once: true });

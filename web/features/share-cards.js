@@ -183,7 +183,7 @@
       ctx.fillStyle = theme.accent;
       ctx.font = '800 25px "Arial Narrow", "Segoe UI", sans-serif';
       ctx.letterSpacing = "5px";
-      ctx.fillText("JOURNEYDECK  /  DRIVE MEMORY", 66, 68);
+      ctx.fillText("JOURNEYDECK  /  JOURNEY MEMORY", 66, 68);
       ctx.letterSpacing = "0px";
 
       ctx.fillStyle = theme.text;
@@ -249,7 +249,7 @@
       const musicX = artwork ? 282 : 86;
       ctx.fillStyle = theme.accent;
       ctx.font = '800 18px "Segoe UI", sans-serif';
-      ctx.fillText("DRIVE SOUNDTRACK", musicX, 975);
+      ctx.fillText("JOURNEY SOUNDTRACK", musicX, 975);
       ctx.fillStyle = theme.text;
       ctx.font = '900 43px Impact, "Arial Narrow", sans-serif';
       drawWrappedText(ctx, String(card.featured?.track || "THE ROAD, REMEMBERED").toUpperCase(), musicX, 1030, 700, 46, 1);
@@ -486,8 +486,8 @@
     }
 
     function filename() {
-      const title = String(state.shareCardData?.title || "drive").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      return `journeydeck-${title || "drive"}.png`;
+      const title = String(state.shareCardData?.title || "journey").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      return `journeydeck-${title || "journey"}.png`;
     }
 
     async function download() {

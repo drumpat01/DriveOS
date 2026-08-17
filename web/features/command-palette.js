@@ -2,7 +2,7 @@
   const $ = window.DriveOSDom.byId;
 
   function create({ state, actions, api }) {
-    const groupOrder = ["Actions", "Drives", "Places", "Songs", "Settings"];
+    const groupOrder = ["Actions", "Journeys", "Places", "Songs", "Settings"];
     let results = [];
     let selectedIndex = 0;
     let returnFocus = null;
@@ -30,37 +30,37 @@
     }
 
     function driveTitle(drive) {
-      return drive.dateLabel || drive.shortDateLabel || "Drive";
+      return drive.dateLabel || drive.shortDateLabel || "Journey";
     }
 
     function driveRoute(drive) {
-      const start = drive.startingLocation || drive.rawStartingLocation || "Drive start";
-      const end = drive.endingLocation || drive.rawEndingLocation || "Drive end";
+      const start = drive.startingLocation || drive.rawStartingLocation || "Journey start";
+      const end = drive.endingLocation || drive.rawEndingLocation || "Journey end";
       return `${start} \u2192 ${end}`;
     }
 
     function buildResults() {
       const items = [
         { group: "Actions", icon: "\u2726", title: "Refresh driving and music data", detail: "Sync Tessie, Spotify, and Last.fm", type: "Action", run: actions.refresh },
-        { group: "Actions", icon: "\u2197", title: "Open drive library", detail: "Browse and filter your complete drive history", type: "Action", run: () => actions.showView("drives") },
+        { group: "Actions", icon: "\u2197", title: "Open Journey Library", detail: "Browse and filter your complete journey history", type: "Action", run: () => actions.showView("drives") },
         { group: "Actions", icon: "\u266B", title: "Explore music by location", detail: "Find songs connected to the places you drive", type: "Action", run: () => actions.showView("music") },
-        { group: "Actions", icon: "\u25A3", title: "Create a share card", detail: "Build a privacy-safe recap from your latest drive", type: "Action", disabled: !state.drives.length, run: () => actions.openShareCard(state.drives[0]) }
+        { group: "Actions", icon: "\u25A3", title: "Create a share card", detail: "Build a privacy-safe recap from your latest journey", type: "Action", disabled: !state.drives.length, run: () => actions.openShareCard(state.drives[0]) }
       ];
 
       (state.drives || []).slice(0, 80).forEach(drive => {
         const soundtrack = (drive.soundtrack || []).filter(Boolean).map(song => `${song.track || ""} ${song.artist || ""}`).join(" ");
         items.push({
-          group: "Drives", icon: "\u2197", title: driveTitle(drive),
+          group: "Journeys", icon: "\u2197", title: driveTitle(drive),
           detail: `${driveRoute(drive)} \u00B7 ${drive.miles ?? "--"} mi \u00B7 ${drive.durationMinutes ?? "--"} min`,
-          type: "Drive", terms: soundtrack, run: () => actions.openDrive(drive)
+          type: "Journey", terms: soundtrack, run: () => actions.openDrive(drive)
         });
       });
 
       (state.placeCandidates || []).slice(0, 60).forEach(place => {
-        const title = place.displayName || place.manualLabel || place.label || place.location || "Drive location";
+        const title = place.displayName || place.manualLabel || place.label || place.location || "Journey location";
         items.push({
           group: "Places", icon: "\u25CF", title,
-          detail: `${place.uses || 0} drive endpoint${Number(place.uses) === 1 ? "" : "s"}${place.businessCategory ? ` \u00B7 ${place.businessCategory}` : ""}`,
+          detail: `${place.uses || 0} journey endpoint${Number(place.uses) === 1 ? "" : "s"}${place.businessCategory ? ` \u00B7 ${place.businessCategory}` : ""}`,
           type: "Place", terms: place.location || "", run: actions.openPlaces
         });
       });
@@ -101,7 +101,7 @@
         const naturalQuestion = String($("commandPaletteInput")?.value || "").trim();
         const askItem = naturalQuestion.length >= 3 ? [{
           group: "Ask JourneyDeck", icon: "✦", title: `Ask JourneyDeck: ${naturalQuestion}`,
-          detail: "Answer using your saved drives, music, places, and charging records", type: "Answer",
+          detail: "Answer using your saved journeys, music, places, and charging records", type: "Answer",
           run: () => ask(naturalQuestion)
         }] : [];
         const matches = all.sort((a, b) => {
@@ -112,7 +112,7 @@
           ? askItem.concat(matches)
           : matches.concat(askItem)).slice(0, 30);
       }
-      const limits = { Actions: 4, Drives: 3, Places: 2, Songs: 3, Settings: 3 };
+      const limits = { Actions: 4, Journeys: 3, Places: 2, Songs: 3, Settings: 3 };
       const counts = {};
       return all.filter(item => {
         counts[item.group] = (counts[item.group] || 0) + 1;
@@ -183,12 +183,12 @@
           evidenceList.className = "command-answer-evidence";
           evidence.slice(0, 5).forEach(item => {
             const chip = document.createElement("span");
-            if (item.type === "drive") chip.textContent = `${item.date || "Drive"} · ${item.miles ?? "--"} mi · ${item.route || "Route unavailable"}`;
+            if (item.type === "drive") chip.textContent = `${item.date || "Journey"} · ${item.miles ?? "--"} mi · ${item.route || "Route unavailable"}`;
             else if (item.type === "track") chip.textContent = `${item.track || "Track"}${item.artist ? ` · ${item.artist}` : ""}${item.plays ? ` · ${item.plays} plays` : ""}`;
             else if (item.type === "artist") chip.textContent = `${item.artist || "Artist"} · ${item.plays || 0} plays`;
             else if (item.type === "place") chip.textContent = `${item.name || "Place"} · ${item.uses || 0} endpoints`;
             else if (item.type === "charging") chip.textContent = `${item.sessions || 0} sessions · ${item.energyAddedKWh || 0} kWh`;
-            else if (item.type === "drives") chip.textContent = `${item.count || 0} drives${item.miles != null ? ` · ${item.miles} mi` : ""}${item.efficiencyWhMi != null ? ` · ${item.efficiencyWhMi} Wh/mi` : ""}`;
+            else if (item.type === "drives") chip.textContent = `${item.count || 0} journe${Number(item.count) === 1 ? "y" : "ys"}${item.miles != null ? ` · ${item.miles} mi` : ""}${item.efficiencyWhMi != null ? ` · ${item.efficiencyWhMi} Wh/mi` : ""}`;
             else chip.textContent = "JourneyDeck record";
             evidenceList.appendChild(chip);
           });
@@ -221,7 +221,7 @@
       if (!results.length) {
         const empty = document.createElement("div");
         empty.className = "command-empty";
-        empty.textContent = "No drives, places, songs, settings, or actions match that search.";
+        empty.textContent = "No journeys, places, songs, settings, or actions match that search.";
         container.appendChild(empty);
         return;
       }
@@ -301,6 +301,7 @@
 
     function bind() {
       $("commandPaletteButton")?.addEventListener("click", open);
+      $("sidebarSearchButton")?.addEventListener("click", open);
       $("commandPaletteInput")?.addEventListener("input", () => { assistantAnswer = null; selectedIndex = 0; render(); });
       $("commandPalette")?.addEventListener("click", event => {
         if (event.target.closest("[data-close-command-palette]")) close();

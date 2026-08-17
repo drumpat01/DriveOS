@@ -555,7 +555,7 @@ body::before {
 }
 
 /* 5.9.7 cinematic identity — approved circle/pulse mark. */
-.topbar .brand-logo { background:#05040e !important; box-shadow:0 0 20px rgba(255,79,95,.16) !important; }
+.topbar .brand-logo { padding:0 !important; background:#05040e !important; box-shadow:0 0 20px rgba(255,79,95,.16) !important; filter:none !important; object-fit:contain; }
 .topbar .brand h1,
 .topbar .brand h1 span {
   color:#ff704b !important;
@@ -571,3 +571,445 @@ body::before {
 .journeydeck-launch .jd-launch-title strong { color:#ff5b59; }
 .journeydeck-launch .jd-loading-track i { background:linear-gradient(90deg,#9a46f5,#ff315f 52%,#ff9749); box-shadow:0 0 18px rgba(255,79,95,.6); }
 .journeydeck-launch .jd-loading-topline strong { color:#ff9749; }
+
+/* Desktop navigation becomes a persistent rail; compact/mobile navigation is
+   still handled by the bottom navigation rules in styles.css. */
+@media (min-width: 768px) {
+  .app-shell {
+    width:min(1500px,calc(100% - 250px)) !important;
+    margin:18px 20px 30px 230px !important;
+  }
+  .topbar {
+    position:fixed !important;
+    z-index:900;
+    top:16px !important;
+    bottom:16px;
+    left:16px;
+    display:flex !important;
+    width:198px;
+    height:auto;
+    margin:0 !important;
+    padding:16px 12px !important;
+    flex-direction:column;
+    align-items:stretch !important;
+    gap:8px !important;
+    overflow:hidden;
+  }
+  .topbar .brand {
+    display:flex;
+    align-self:stretch;
+    min-width:0;
+    padding:2px 5px 8px;
+    border-bottom:1px solid rgba(155,81,255,.16);
+  }
+  .topbar .brand-copy { min-width:0; }
+  .topbar .brand h1 { font-size:1.12rem !important; }
+  .topbar .main-nav {
+    display:flex !important;
+    width:100%;
+    padding:3px 6px;
+    flex-direction:column;
+    align-items:stretch;
+    gap:2px;
+  }
+  .topbar .nav-button {
+    display:flex !important;
+    width:100%;
+    min-height:35px;
+    justify-content:flex-start;
+    text-align:left;
+  }
+  .topbar .nav-mobile-icon { display:inline-grid !important; width:24px; place-items:center; color:#b067ff; font-size:1.05rem; }
+  .topbar .nav-live-dot { display:none; }
+  .topbar .mobile-more-button { display:none !important; }
+  :root[data-theme] .topbar-right {
+    display:flex;
+    width:100%;
+    margin-top:auto;
+    padding:7px 0 0;
+    flex-direction:column;
+    align-items:stretch;
+    gap:4px;
+    border-top:1px solid rgba(155,81,255,.16) !important;
+  }
+  .topbar-right > * { width:100%; }
+  .topbar-right .command-palette-trigger { display:none !important; }
+  .header-sign-out,
+  .desktop-mobile-preview,
+  .desktop-wife-preview,
+  .return-wife-mode { justify-content:center; }
+  .app-version,
+  .date-time { text-align:center; }
+  .topbar-right { padding:10px !important; border:1px solid rgba(155,81,255,.2) !important; border-radius:16px; background:rgba(155,81,255,.055) !important; }
+  .topbar-right .header-sign-out { min-height:34px; }
+  .topbar-right .status-pill { min-height:31px; }
+  .sidebar-search-button { order:20; }
+}
+
+@media (min-width:768px) and (max-width:1020px) {
+  .app-shell { width:calc(100% - 205px) !important; margin-left:190px !important; }
+  .topbar { left:12px; width:164px; padding-inline:9px !important; }
+  .topbar .brand-logo { width:38px !important; height:38px !important; }
+  .topbar .brand h1 { font-size:.94rem !important; }
+  .topbar .eyebrow { display:none; }
+  .topbar .nav-button { min-height:39px; padding-inline:9px; font-size:.73rem; }
+}
+
+/* Pass 5.9.20: one disciplined sidebar column and no remaining teal utility skin. */
+@media (min-width:768px) {
+  .topbar .nav-button {
+    display:grid !important;
+    grid-template-columns:24px minmax(0,1fr) auto;
+    align-items:center;
+    column-gap:9px;
+    justify-content:stretch;
+  }
+  .topbar .main-nav .nav-button.nav-button-live {
+    display:grid !important;
+    grid-template-columns:24px minmax(0,1fr) auto !important;
+    gap:0 9px !important;
+  }
+  .topbar .main-nav .nav-button-live .nav-live-dot { display:none !important; }
+  .topbar .nav-mobile-icon {
+    width:24px !important;
+    min-width:24px;
+    justify-self:center;
+    text-align:center;
+  }
+  .topbar .nav-button > span:not(.nav-mobile-icon):not(.data-health-nav-alert) { min-width:0; text-align:left; }
+  .topbar .data-health-nav-alert { justify-self:end; }
+  .topbar .mobile-more-button { display:none !important; }
+  .topbar .nav-button.active::after {
+    background:linear-gradient(90deg,var(--jd-hot),var(--jd-purple)) !important;
+    box-shadow:0 0 12px rgba(255,83,76,.42) !important;
+  }
+  :root[data-theme] .topbar .topbar-right {
+    border-color:rgba(166,76,255,.34) !important;
+    background:
+      radial-gradient(circle at 100% 0,rgba(255,83,76,.18),transparent 48%),
+      linear-gradient(145deg,rgba(40,15,65,.94),rgba(11,6,22,.98)) !important;
+    box-shadow:inset 0 1px rgba(255,255,255,.045),0 12px 32px rgba(0,0,0,.28) !important;
+  }
+  .topbar-right .header-sign-out {
+    border-color:rgba(255,83,76,.38) !important;
+    background:linear-gradient(135deg,rgba(255,83,76,.22),rgba(150,60,255,.24)) !important;
+    color:var(--jd-cream) !important;
+  }
+  :root[data-theme] .topbar-right .status-pill,
+  :root[data-theme] .topbar-right .status-pill.ok {
+    border-color:rgba(166,76,255,.35) !important;
+    background:rgba(166,76,255,.12) !important;
+    color:#e5cfff !important;
+  }
+  :root[data-theme] .topbar-right .status-pill .status-dot,
+  :root[data-theme] .topbar-right .status-pill.ok .status-dot {
+    background:var(--jd-orange) !important;
+    box-shadow:0 0 12px rgba(255,138,78,.8) !important;
+  }
+}
+
+/* Persistent API activity chip: violet at rest, coral/orange while working. */
+.background-activity-monitor,
+:root[data-theme] .background-activity-monitor {
+  display:inline-flex !important;
+  border-color:rgba(166,76,255,.38) !important;
+  background:linear-gradient(135deg,rgba(31,12,51,.97),rgba(10,6,19,.97)) !important;
+  box-shadow:0 10px 30px rgba(0,0,0,.4),0 0 22px rgba(166,76,255,.12) !important;
+  color:#e9d9f8 !important;
+}
+.background-activity-monitor.idle { opacity:.9 !important; }
+.background-activity-monitor.idle .background-activity-indicator {
+  background:#a64cff !important;
+  box-shadow:0 0 0 3px rgba(166,76,255,.15),0 0 13px rgba(166,76,255,.75) !important;
+}
+.background-activity-monitor.busy {
+  border-color:rgba(255,83,76,.52) !important;
+  box-shadow:0 10px 32px rgba(0,0,0,.44),0 0 24px rgba(255,83,76,.18) !important;
+}
+.background-activity-monitor.busy .background-activity-indicator {
+  border-color:rgba(255,138,78,.3) !important;
+  border-top-color:var(--jd-hot) !important;
+  color:var(--jd-hot) !important;
+}
+.background-activity-count {
+  background:linear-gradient(135deg,rgba(166,76,255,.28),rgba(255,83,76,.2)) !important;
+  color:#fff2ed !important;
+}
+
+/* Journey Timeline: each event family gets a deliberate new-theme identity. */
+.timeline-range-control,
+.drive-timeline-summary-panel,
+.drive-timeline-event {
+  border-color:rgba(166,76,255,.22) !important;
+}
+.timeline-range-button.active {
+  border-color:rgba(255,83,76,.48) !important;
+  background:linear-gradient(135deg,rgba(255,83,76,.22),rgba(150,60,255,.25)) !important;
+  color:var(--jd-cream) !important;
+}
+.drive-timeline-summary > div {
+  border-color:rgba(166,76,255,.22) !important;
+  background:linear-gradient(145deg,rgba(166,76,255,.11),rgba(255,83,76,.045)) !important;
+}
+.drive-timeline-summary > div:nth-child(2n) { background:linear-gradient(145deg,rgba(255,83,76,.1),rgba(255,138,78,.045)) !important; }
+.drive-timeline-summary strong { color:#f5eaff !important; }
+.drive-timeline-day-events::before { background:linear-gradient(to bottom,rgba(166,76,255,.62),rgba(255,83,76,.12)) !important; }
+.drive-timeline-event {
+  background:linear-gradient(110deg,rgba(166,76,255,.08),rgba(10,6,18,.94) 38%) !important;
+}
+button.drive-timeline-event:hover { border-color:rgba(255,83,76,.5) !important; }
+.drive-timeline-node { color:#fff !important; border-color:rgba(166,76,255,.7) !important; background:#5f20aa !important; box-shadow:0 0 14px rgba(166,76,255,.28); }
+.drive-timeline-event-drive .drive-timeline-node { border-color:#ff685f !important; background:#b92f3c !important; }
+.drive-timeline-event-charge .drive-timeline-node { border-color:#ffad5e !important; background:#a94d22 !important; }
+.drive-timeline-event-song .drive-timeline-node { border-color:#d775ff !important; background:#7526ae !important; }
+.drive-timeline-event-stop .drive-timeline-node { border-color:#ff5d9b !important; background:#9b245c !important; }
+
+/* Statistics and recap tiles now use the coral/violet/orange family exclusively. */
+.big-stat,
+.recap-grid > article,
+.recap-hero,
+:root[data-theme="dark"] .big-stat,
+:root[data-theme="dark"] .recap-grid > article,
+:root[data-theme="dark"] .recap-hero {
+  border-color:rgba(166,76,255,.25) !important;
+  background:linear-gradient(145deg,rgba(166,76,255,.105),rgba(12,7,22,.96) 58%,rgba(255,83,76,.045)) !important;
+  box-shadow:inset 0 1px rgba(255,255,255,.035),0 16px 42px rgba(0,0,0,.2) !important;
+}
+.big-stat:nth-child(3n+2),
+.recap-grid > article:nth-child(3n+2) { border-color:rgba(255,83,76,.25) !important; background:linear-gradient(145deg,rgba(255,83,76,.095),rgba(12,7,22,.96) 62%,rgba(255,138,78,.04)) !important; }
+.big-stat:nth-child(3n),
+.recap-grid > article:nth-child(3n) { border-color:rgba(255,138,78,.24) !important; background:linear-gradient(145deg,rgba(255,138,78,.08),rgba(12,7,22,.96) 62%,rgba(166,76,255,.05)) !important; }
+.big-stat strong,
+.recap-grid strong,
+.recap-hero strong { color:#fff4eb !important; }
+:root[data-theme] .recap-month-control select {
+  border-color:rgba(166,76,255,.42) !important;
+  background:linear-gradient(135deg,rgba(166,76,255,.15),rgba(255,83,76,.08)),#0c0716 !important;
+  color:#f5eaff !important;
+}
+
+/* Legacy graph fallback and intelligence chips, retained for sparse datasets. */
+.mobility-node { color:#a64cff !important; }
+.mobility-node.category-home { color:#ff534c !important; }
+.mobility-node.category-work { color:#8270ff !important; }
+.mobility-node.category-routine { color:#ff315f !important; }
+.mobility-category.category-home { background:#b92f3c !important; }
+.mobility-category.category-work { background:#5f3eb4 !important; }
+.mobility-category.category-routine { background:#a12b66 !important; }
+.mobility-change-direction { background:rgba(166,76,255,.14) !important; color:#c985ff !important; }
+.mobility-change-card.direction-up .mobility-change-direction,
+.mobility-change-card.direction-new .mobility-change-direction { background:rgba(255,83,76,.14) !important; color:#ff746d !important; }
+.mobility-private-pill {
+  border-color:rgba(166,76,255,.36) !important;
+  background:linear-gradient(135deg,rgba(166,76,255,.14),rgba(255,83,76,.08)) !important;
+  color:#d9b7ff !important;
+}
+
+/* Pass 5.9.25: Atlas review queue and consistently purple intelligence cards. */
+.mobility-routine-list { grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px !important; }
+.mobility-routine-card,
+.mobility-routine-card.status-confirmed,
+.mobility-routine-card.status-dismissed {
+  opacity:1 !important;
+  border:1px solid rgba(255,106,61,.58) !important;
+  background:linear-gradient(145deg,rgba(91,34,151,.3),rgba(21,9,38,.97) 58%,rgba(117,49,190,.18)) !important;
+  color:#ead9ff !important;
+  box-shadow:inset 0 1px rgba(255,255,255,.045),0 14px 34px rgba(19,5,38,.28) !important;
+}
+.mobility-routine-card h4,
+.mobility-routine-card p,
+.mobility-routine-card address,
+.mobility-routine-card small,
+.mobility-routine-card .mobility-pattern-type,
+.mobility-routine-card .mobility-confidence,
+.mobility-routine-card label { color:#d9b8ff !important; }
+.mobility-routine-card h4 { color:#f7efff !important; }
+.mobility-routine-editor {
+  border-color:rgba(255,106,61,.46) !important;
+  background:rgba(113,46,184,.13) !important;
+}
+.mobility-routine-editor select,
+.mobility-routine-editor input,
+.mobility-routine-editor .primary-button,
+.mobility-routine-editor .secondary-button {
+  border-color:rgba(255,126,72,.5) !important;
+  background:linear-gradient(135deg,rgba(126,48,204,.38),rgba(53,20,91,.62)) !important;
+  color:#f4eaff !important;
+}
+.mobility-routine-card.is-saving { opacity:.48 !important; transform:scale(.985); pointer-events:none; }
+
+/* Favorite routes and hand-built collections now use one card surface. */
+.favorite-route-card,
+.journey-collection-card,
+:root[data-theme] .favorite-route-card,
+:root[data-theme] .journey-collection-card {
+  border-color:rgba(166,76,255,.25) !important;
+  background:linear-gradient(145deg,rgba(166,76,255,.105),rgba(12,7,22,.96) 62%,rgba(255,83,76,.04)) !important;
+  box-shadow:inset 0 1px rgba(255,255,255,.035),0 14px 34px rgba(0,0,0,.2) !important;
+}
+.favorite-route-rank { background:rgba(166,76,255,.18) !important; color:#c986ff !important; }
+.favorite-route-arrow { color:#a967ff !important; }
+
+/* Use the same title accent as the other dashboard widgets. */
+.dashboard-status-heading span { color:var(--jd-hot) !important; }
+
+/* Give desktop navigation more visual weight without widening the rail. */
+@media (min-width:1021px) {
+  .topbar .main-nav .nav-button,
+  .topbar .main-nav .nav-button.nav-button-live {
+    grid-template-columns:30px minmax(0,1fr) auto !important;
+    column-gap:12px !important;
+    padding-inline:10px 6px !important;
+    font-size:.84rem !important;
+  }
+  .topbar .nav-mobile-icon {
+    width:30px !important;
+    min-width:30px !important;
+    font-size:1.28rem !important;
+  }
+}
+
+/* Live Spotify gets a full-width desktop treatment with square artwork. */
+@media (min-width:761px) {
+  .live-drive-stage {
+    grid-template-rows:178px minmax(300px,1fr) 112px !important;
+    grid-template-areas:"speed telemetry" "map map" "music music" !important;
+  }
+  .live-drive-music {
+    width:min(760px,calc(100% - 230px)) !important;
+    min-height:104px;
+    gap:20px !important;
+    padding:10px 16px !important;
+  }
+  .live-drive-artwork { width:84px !important; height:84px !important; flex:0 0 84px; border-radius:16px !important; }
+  .live-drive-music-copy { gap:4px !important; }
+  .live-drive-music strong { font-size:1.16rem !important; }
+  .live-drive-music-artist { color:#d7c3e9 !important; font-size:.84rem !important; }
+  .live-drive-music-album { display:block; color:#a987c7 !important; font-size:.75rem !important; }
+  .live-drive-gps { position:absolute !important; right:25px; bottom:48px; }
+}
+@media (max-width:760px) {
+  .live-drive-music { min-height:78px; }
+  .live-drive-artwork { width:62px !important; height:62px !important; flex:0 0 62px; }
+  .live-drive-music-album { display:none !important; }
+}
+
+/* Timeline cards use the open right edge for music context and route previews. */
+.drive-timeline-event {
+  grid-template-columns:58px 40px minmax(0,1fr) minmax(210px,280px) !important;
+  gap:8px !important;
+  min-height:88px !important;
+}
+.drive-timeline-track-preview {
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr);
+  align-items:center;
+  gap:11px;
+  min-width:0;
+  padding:7px;
+  border:1px solid rgba(174,104,255,.25);
+  border-radius:13px;
+  background:rgba(126,48,204,.09);
+}
+.drive-timeline-artwork { width:58px !important; height:58px !important; aspect-ratio:1; border-radius:10px !important; object-fit:cover; }
+.drive-timeline-track-preview > div { display:grid; min-width:0; gap:2px; }
+.drive-timeline-track-preview strong,
+.drive-timeline-track-preview small,
+.drive-timeline-track-preview em { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.drive-timeline-track-preview strong { color:#f7efff; font-size:.76rem; }
+.drive-timeline-track-preview small { color:#d2b5ed; font-size:.68rem; }
+.drive-timeline-track-preview em { color:#9f7dbb; font-size:.62rem; font-style:normal; }
+.drive-timeline-route-preview {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  height:66px;
+  padding:6px 8px;
+  border:1px solid rgba(174,104,255,.25);
+  border-radius:13px;
+  background:radial-gradient(circle at 60% 42%,rgba(126,48,204,.2),transparent 62%),#0b0714;
+}
+.drive-timeline-route-preview svg { width:100%; height:52px; overflow:visible; }
+.timeline-route-loading,.timeline-route-empty { fill:none; stroke:#65427f; stroke-width:2; stroke-dasharray:4 5; }
+.timeline-route-glow { fill:none; stroke:rgba(188,91,255,.32); stroke-width:9; stroke-linecap:round; stroke-linejoin:round; filter:blur(2px); }
+.timeline-route-line { fill:none; stroke:#c16cff; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; filter:drop-shadow(0 0 3px #8f37df); }
+.drive-timeline-route-preview small { color:#a987c7; font-size:.58rem; white-space:nowrap; }
+
+@media (max-width:700px) {
+  .mobility-routine-list { grid-template-columns:1fr; }
+  .drive-timeline-event {
+    grid-template-columns:38px 28px minmax(0,1fr) 92px !important;
+    min-height:82px !important;
+    padding:8px 8px 8px 4px !important;
+  }
+  .drive-timeline-time { padding-right:3px !important; font-size:.62rem !important; }
+  .drive-timeline-event-copy strong { font-size:.76rem; }
+  .drive-timeline-event-copy span { font-size:.66rem; }
+  .drive-timeline-track-preview { grid-template-columns:42px minmax(0,1fr); gap:6px; padding:5px; }
+  .drive-timeline-artwork { width:42px !important; height:42px !important; border-radius:8px !important; }
+  .drive-timeline-track-preview strong { font-size:.62rem; }
+  .drive-timeline-track-preview small { font-size:.57rem; }
+  .drive-timeline-track-preview em { display:none; }
+  .drive-timeline-route-preview { display:block; height:54px; padding:4px; }
+  .drive-timeline-route-preview svg { height:44px; }
+  .drive-timeline-route-preview small { display:none; }
+}
+
+/* Atlas enrichment pass: the recurring-pattern queue owns the reclaimed
+   desktop width, while the change summary is a compact three-card panel. */
+@media (min-width:901px) {
+  .mobility-intelligence-grid {
+    grid-template-columns:minmax(0,1.85fr) minmax(280px,.7fr) !important;
+    align-items:start !important;
+  }
+  .mobility-intelligence-panel { align-self:start; }
+  .mobility-intelligence-panel:first-child .mobility-routine-list {
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  .mobility-intelligence-panel:last-child {
+    height:auto !important;
+    min-height:0 !important;
+  }
+}
+
+/* Atlas migration: changes live beside the map; rhythms own the lower width. */
+.mobility-intelligence-grid { grid-template-columns:minmax(0,1fr) !important; }
+.mobility-change-sidebar {
+  padding-bottom:18px;
+  border-bottom:1px solid rgba(174,104,255,.25);
+}
+.mobility-change-sidebar h3 { margin:6px 0 0; }
+.mobility-change-sidebar .panel-description { margin:7px 0 14px; }
+.mobility-place-inspector { margin-top:18px; }
+.mobility-home-summary { display:grid; justify-items:start; gap:6px; padding:18px; border:1px solid rgba(176,92,255,.34); border-radius:16px; background:linear-gradient(145deg,rgba(92,35,138,.24),rgba(22,10,42,.92)); }
+.mobility-home-summary h3 { margin:0; color:#f4eaff; }
+.mobility-home-summary strong { margin-top:4px; color:#ff6964; font-family:var(--display-font); font-size:3.4rem; line-height:.9; }
+.mobility-home-summary span { color:#c8a8dd; font-size:.72rem; }
+.mobility-card-place-labeler {
+  margin-top:12px;
+  padding:10px 12px;
+  border:1px solid rgba(255,106,61,.42);
+  border-radius:13px;
+  background:rgba(113,46,184,.1);
+}
+.mobility-card-place-labeler summary { color:#d9b8ff; font-size:.7rem; font-weight:800; cursor:pointer; }
+.mobility-card-place-labeler > div { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:end; gap:8px; margin-top:9px; }
+.mobility-card-place-labeler label { display:grid; gap:4px; color:#b99bd4 !important; font-size:.62rem; }
+.mobility-card-place-labeler input {
+  min-width:0;
+  padding:8px 9px;
+  border:1px solid rgba(255,126,72,.46);
+  border-radius:9px;
+  background:#10091d;
+  color:#f4eaff;
+}
+.mobility-place-save-status { display:block; min-height:1em; margin-top:9px; color:#c9a7e8; font-size:.62rem; }
+.mobility-place-save-status.is-error { color:#ff7771; }
+@media (min-width:901px) {
+  .mobility-intelligence-panel:first-child .mobility-routine-list { grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+@media (max-width:1180px) and (min-width:701px) {
+  .mobility-intelligence-panel:first-child .mobility-routine-list { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}

@@ -48,34 +48,36 @@
 
     const status = byId("ignitionSystemText");
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    const minimumDuration = reduced ? 180 : 520;
+    const conceptDuration = Number(window.JourneyDeckLoader?.current?.duration) || 3600;
+    const minimumDuration = reduced ? 180 : Math.max(3000, conceptDuration);
     const readyTimeout = reduced ? 450 : SOFT_READY_TIMEOUT_MS;
 
     document.body.classList.add("ignition-active");
 
     if (reduced) {
-      updateStatus(status, "LOADING DRIVE AND MUSIC DATA");
+      updateStatus(status, "LOADING JOURNEY AND MUSIC DATA");
     } else {
       [
         [180, "LINKING VEHICLE TELEMETRY"],
-        [420, "MAPPING DRIVE MEMORY"],
+        [420, "MAPPING JOURNEY MEMORY"],
         [700, "REFRESHING MUSIC ARTWORK"]
       ].forEach(([wait, message]) => {
         window.setTimeout(() => updateStatus(status, message), wait);
       });
     }
 
-    // The app now renders useful dashboard data progressively. Do not keep
-    // the full-screen ignition layer up while secondary views finish loading.
+    // Data loads behind the launch sequence, but an early-ready dashboard must
+    // never cut off the selected JourneyDeck animation before its full cycle.
     const readyOrSoftTimeout = Promise.race([
       startupReady,
       delay(readyTimeout)
     ]);
 
-    running = Promise.all([
+    const animationReady = Promise.resolve(window.JourneyDeckLoader?.ready).catch(() => {});
+    running = animationReady.then(() => Promise.all([
       delay(minimumDuration),
       readyOrSoftTimeout
-    ]).then(() => {
+    ])).then(() => {
       updateStatus(status, "VEHICLE INTELLIGENCE ONLINE");
       finish(ignition);
     });
