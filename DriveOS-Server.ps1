@@ -2820,6 +2820,26 @@ function Get-CachedRecentDrives730 {
     return $Drives
 }
 
+function Get-AtlasJourneyProjection {
+    param([object[]]$Drives)
+
+    return @($Drives | ForEach-Object {
+        [PSCustomObject]@{
+            id                    = $_.id
+            startedAt             = $_.startedAt
+            driverProfile         = $_.driverProfile
+            startingLocation      = $_.startingLocation
+            rawStartingLocation   = $_.rawStartingLocation
+            startingLatitude      = $_.startingLatitude
+            startingLongitude     = $_.startingLongitude
+            endingLocation        = $_.endingLocation
+            rawEndingLocation     = $_.rawEndingLocation
+            endingLatitude        = $_.endingLatitude
+            endingLongitude       = $_.endingLongitude
+        }
+    })
+}
+
 function Get-CachedDashboardDrives {
     $Now = [DateTimeOffset]::UtcNow
 
@@ -3934,6 +3954,14 @@ function Handle-Request {
                     Send-Json -Stream $Stream -Object @{
                         windowDays = 730
                         drives     = @(Get-CachedRecentDrives730)
+                    }
+                    return
+                }
+
+                "/api/atlas/journeys" {
+                    Send-Json -Stream $Stream -Object @{
+                        windowDays = 730
+                        journeys   = @(Get-AtlasJourneyProjection -Drives @(Get-CachedRecentDrives730))
                     }
                     return
                 }

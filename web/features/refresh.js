@@ -130,11 +130,15 @@
 
         mark("driveos-secondary-ready");
 
-        // Statistics/recaps normally populate the expensive 730-day backend
-        // cache during the secondary wave. Materialize the full client library
-        // only now, or sooner if the user opens the Drives tab.
-        await tasks.loadDrives();
-        mark("driveos-library-ready");
+        // Atlas and the dashboard do not need the multi-megabyte journey
+        // library. Fetch it only while a library-backed view is visible; the
+        // Journey Library and Timeline also request it when opened directly.
+        const libraryViewVisible = ["view-drives", "view-timeline"]
+          .some(id => document.getElementById?.(id)?.classList?.contains("active-view"));
+        if (libraryViewVisible) {
+          await tasks.loadDrives();
+          mark("driveos-library-ready");
+        }
 
         // Last.fm can be comparatively expensive. Run it only after every
         // visible/secondary panel has finished and the browser is idle.

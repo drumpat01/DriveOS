@@ -2,6 +2,7 @@
   "use strict";
 
   const style = "https://tiles.openfreemap.org/styles/dark";
+  const openFreeMapGlyph = /^https:\/\/tiles\.openfreemap\.org\/fonts\/[^/]+\/(\d+-\d+\.pbf)(?:\?.*)?$/i;
   const protectedPrefixes = ["drive-route", "share-route", "share-song", "share-terminal", "collection-route"];
 
   function protectedLayer(layer) {
@@ -90,5 +91,15 @@
     return map;
   }
 
-  window.JourneyDeckMapTheme = Object.freeze({ style, apply, attach });
+  function transformRequest(url, resourceType) {
+    const match = resourceType === "Glyphs" && String(url || "").match(openFreeMapGlyph);
+    if (match) return { url: `https://tiles.openfreemap.org/fonts/Noto%20Sans%20Regular/${match[1]}` };
+    return { url };
+  }
+
+  function options(configuration) {
+    return { ...configuration, transformRequest };
+  }
+
+  window.JourneyDeckMapTheme = Object.freeze({ style, apply, attach, transformRequest, options });
 })();

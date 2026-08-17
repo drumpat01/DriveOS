@@ -427,14 +427,15 @@
         };
         const timeout = setTimeout(() => finish(null), 9000);
         try {
-          map = new maplibregl.Map({
+          const mapOptions = {
             container,
             style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
             interactive: false,
             attributionControl: false,
             preserveDrawingBuffer: true,
             fadeDuration: 0
-          });
+          };
+          map = new maplibregl.Map(window.JourneyDeckMapTheme?.options(mapOptions) || mapOptions);
           window.JourneyDeckMapTheme?.attach(map);
           map.once("load", () => {
             const coordinates = points.map(point => [Number(point.longitude), Number(point.latitude)]);

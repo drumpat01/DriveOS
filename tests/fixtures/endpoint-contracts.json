@@ -5,6 +5,7 @@
   { "method": "GET", "path": "/api/spotify/auth-status" },
   { "method": "GET", "path": "/api/music/stats" },
   { "method": "GET", "path": "/api/drives" },
+  { "method": "GET", "path": "/api/atlas/journeys" },
   { "method": "GET", "path": "/api/mobility-graph" },
   { "method": "GET", "path": "/api/collections" },
   { "method": "GET", "path": "/api/statistics" },

@@ -92,6 +92,7 @@ $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $Index = Get-Content (Join-Path $Root 'web\index.html') -Raw
 Assert-True ($Server -match 'DriveOS\.MobilityGraph\.psm1') 'Mobility graph application module is not loaded.'
 Assert-True ($Server -match '"/api/mobility-graph"') 'Mobility graph read endpoint is missing.'
+Assert-True ($Server -match '"/api/atlas/journeys"' -and $Server -match 'function Get-AtlasJourneyProjection') 'Atlas compact journey endpoint is missing.'
 Assert-True ($Server -match 'New-DriveOSMobilityGraph\s+-Drives\s+\$Drives') 'Mobility graph endpoint does not project the retained drive cache.'
 Assert-True ($Index -match 'id="view-graph"') 'Mobility graph view is missing.'
 Assert-True ($Index -match 'id="mobilityRoutines"') 'Recurring pattern intelligence is missing from the graph view.'
@@ -107,7 +108,10 @@ Assert-True ($Frontend -match 'sourceLabel:aLabel,targetLabel:bLabel') 'Generate
 Assert-True ($Frontend -match "api\.post\('/api/mobility/place-geofence'" -and $Frontend -match 'radiusFeet:200') 'Coordinate-backed card labels must persist as stable place geofences.'
 Assert-True ($Frontend -match '/api/mobility/place-geofence' -and $Frontend -match '/api/atlas/places') 'Atlas place labels must use durable authenticated APIs.'
 Assert-True ($Frontend -notmatch 'localStorage\.setItem\(savedPlaceLabelsStorageKey') 'Precise Atlas place labels must not be duplicated into persistent browser storage.'
-Assert-True ($Frontend -match 'mapDrives=retainedDrives' -and $Frontend -match 'representativeJourneyFeatures\(mapDrives,200\)') 'Atlas representative lines must use the complete journey response instead of mutable dashboard state.'
+Assert-True ($Frontend -match "api\.get\('/api/atlas/journeys'" -and $Frontend -notmatch "const journeys=api\.get\('/api/drives'" -and $Frontend -match 'mapDrives=retainedJourneys' -and $Frontend -match 'representativeJourneyFeatures\(mapDrives,200\)') 'Atlas must use its compact journey response for representative lines instead of downloading full journey records.'
+Assert-True ($Server -match 'Get-AtlasJourneyProjection[\s\S]+startingLatitude[\s\S]+endingLongitude' -and $Server -notmatch 'Get-AtlasJourneyProjection[\s\S]{0,1200}soundtrack') 'Atlas journey projection must retain map fields without exposing soundtrack payloads.'
+$MapTheme = Get-Content (Join-Path $Root 'web\features\beta-map-theme.js') -Raw
+Assert-True ($MapTheme -match 'Noto%20Sans%20Regular' -and $MapTheme -match 'resourceType === "Glyphs"' -and $Frontend -match 'JourneyDeckMapTheme\?\.options\(mapOptions\)') 'Atlas must rewrite unsupported OpenFreeMap glyph stacks to the supported Noto Sans font.'
 Assert-True ($Server -match 'function Get-PlaceCandidates\s*\{\s*param\(\[switch\]\$Enrich\)' -and $Server -match 'Get-PlaceCandidates -Enrich') 'Provider enrichment must require the explicit Atlas scan path.'
 $Migration = Get-Content (Join-Path $Root 'tools\Invoke-AtlasPlaceMigration.ps1') -Raw
 Assert-True ($Migration -match 'Set-DriveOSTursoState[^\r\n]+foursquare-usage[^\r\n]+\$NewUsage\s*\r?\n\s*\$Places\s*=') 'Atlas migration must reserve each provider call durably before issuing it.'
