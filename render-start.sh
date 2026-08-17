@@ -4,6 +4,14 @@ set -euo pipefail
 PUBLIC_PORT="${PORT:-10000}"
 BACKEND_PORT="10001"
 
+# The isolated visual beta uses only the repository's fictional demo dataset.
+# It never receives production credentials or reads personal journey data.
+if [[ "${DRIVEOS_BETA_DEMO:-false}" == "true" ]]; then
+    export DRIVEOS_TEST_PORT="${PUBLIC_PORT}"
+    export DRIVEOS_TEST_HOST="0.0.0.0"
+    exec node ./tests/mock-web-server.mjs
+fi
+
 cat > /etc/nginx/nginx.conf <<EOF
 events {}
 
