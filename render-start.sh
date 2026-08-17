@@ -4,8 +4,16 @@ set -euo pipefail
 PUBLIC_PORT="${PORT:-10000}"
 BACKEND_PORT="10001"
 
-# The isolated visual beta uses only the repository's fictional demo dataset.
-# It never receives production credentials or reads personal journey data.
+# The live beta keeps its own frontend while securely forwarding authenticated
+# API requests to the production JourneyDeck backend. Credentials remain in the
+# production service and are never copied into the beta environment.
+if [[ "${DRIVEOS_BETA_LIVE_PROXY:-false}" == "true" ]]; then
+    export DRIVEOS_BETA_PORT="${PUBLIC_PORT}"
+    export DRIVEOS_BETA_HOST="0.0.0.0"
+    exec node ./tools/beta-live-proxy.mjs
+fi
+
+# Optional isolated visual mode using only fictional repository demo data.
 if [[ "${DRIVEOS_BETA_DEMO:-false}" == "true" ]]; then
     export DRIVEOS_TEST_PORT="${PUBLIC_PORT}"
     export DRIVEOS_TEST_HOST="0.0.0.0"

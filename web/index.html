@@ -200,17 +200,17 @@
           </header>
 
           <section class="ref-music-card" aria-label="Now playing">
-            <div class="ref-album-art" aria-hidden="true"><span>NOVA<br>LANE</span><i></i><b></b></div>
+            <div class="ref-album-art" data-ref-album aria-hidden="true"><span>JOURNEY<br>DECK</span><i></i><b></b></div>
             <div class="ref-track-copy">
               <span>NOW PLAYING</span>
-              <strong data-ref-track>Open Roads</strong>
-              <em data-ref-artist>Nova Lane</em>
+              <strong data-ref-track>Loading soundtrack</strong>
+              <em data-ref-artist>Live Spotify archive</em>
               <div class="ref-waveform" aria-hidden="true">
                 <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
               </div>
-              <div class="ref-track-time"><span data-ref-elapsed>1:24</span><span>3:58</span></div>
+              <div class="ref-track-time"><span data-ref-elapsed>0:00</span><span>RECENT</span></div>
             </div>
-            <button class="ref-play-button is-playing" type="button" data-reference-player aria-label="Pause Open Roads"><span></span></button>
+            <button class="ref-play-button is-playing" type="button" data-reference-player aria-label="Pause recent track"><span></span></button>
           </section>
 
           <section class="ref-driving-card" aria-label="Today's driving summary">
@@ -231,9 +231,9 @@
               <div class="ref-chart-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
               <div class="ref-chart-axis"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
             </div>
-            <div class="ref-score-ring" aria-label="Smooth score 82">
+            <div class="ref-score-ring" aria-label="Live average efficiency">
               <svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="38"/><circle class="ref-score-progress" cx="45" cy="45" r="38"/></svg>
-              <i>&#x2311;</i><span>Smooth</span><strong>82</strong><small>Score</small>
+              <i>&#x2311;</i><span>Average</span><strong data-ref-efficiency>--</strong><small>Wh/mi</small>
             </div>
           </section>
 
@@ -256,11 +256,11 @@
             <article class="ref-journeys-card">
               <header><strong>RECENT JOURNEYS</strong><button type="button" data-go-view="drives">View all <span>&#x203A;</span></button></header>
               <button class="ref-journey-row" type="button" data-reference-drive="0">
-                <i class="ref-place-icon">&#x2302;</i><span><small>Home</small><strong>North Loop Coffee</strong><em>18.7 mi&nbsp; &#x2022;&nbsp; 32m&nbsp; &#x2022;&nbsp; 9:14 AM</em></span>
+                <i class="ref-place-icon">&#x2302;</i><span><small data-ref-journey-origin>Loading</small><strong data-ref-journey-destination>Recent journey</strong><em data-ref-journey-meta>Loading live drive data</em></span>
                 <svg viewBox="0 0 74 54" aria-hidden="true"><path class="thumb-roads" d="M3 8 71 44M11 51 48 3M0 30 74 22"/><path class="thumb-route" d="M10 45C19 32 22 41 31 26s23-5 35-19"/><circle cx="66" cy="7" r="3"/></svg>
               </button>
               <button class="ref-journey-row" type="button" data-reference-drive="1">
-                <i class="ref-place-icon">&#x2302;</i><span><small>Home</small><strong>Downtown</strong><em>9.6 mi&nbsp; &#x2022;&nbsp; 17m&nbsp; &#x2022;&nbsp; 8:02 AM</em></span>
+                <i class="ref-place-icon">&#x2302;</i><span><small data-ref-journey-origin>Loading</small><strong data-ref-journey-destination>Recent journey</strong><em data-ref-journey-meta>Loading live drive data</em></span>
                 <svg viewBox="0 0 74 54" aria-hidden="true"><path class="thumb-roads" d="M3 8 71 44M11 51 48 3M0 30 74 22"/><path class="thumb-route" d="M6 42c9-1 15-17 25-13 8 3 11-14 20-15s9 10 17 2"/><circle cx="68" cy="16" r="3"/></svg>
               </button>
             </article>
@@ -269,7 +269,7 @@
               <header><strong>DATA HEALTH</strong></header>
               <button type="button" data-reference-health="tessie"><i class="ref-service-icon tessie">T</i><span><strong>Tessie</strong><small data-ref-tessie>Connected</small></span><b>&#x2713;</b></button>
               <button type="button" data-reference-health="spotify"><i class="ref-service-icon spotify">&#x266B;</i><span><strong>Spotify</strong><small data-ref-spotify>Connected</small></span><b>&#x2713;</b></button>
-              <button type="button" data-go-view="music"><i class="ref-service-icon places">&#x25C9;</i><span><strong>Places</strong><small>Connected</small></span><b>&#x2713;</b></button>
+              <button type="button" data-go-view="music"><i class="ref-service-icon places">&#x25C9;</i><span><strong>Places</strong><small>Local archive</small></span><b>&#x2713;</b></button>
             </article>
           </section>
 

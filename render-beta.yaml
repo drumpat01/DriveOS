@@ -8,7 +8,11 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /
     envVars:
-      - key: DRIVEOS_BETA_DEMO
+      - key: DRIVEOS_BETA_LIVE_PROXY
         value: "true"
+      - key: DRIVEOS_BETA_UPSTREAM
+        value: https://journeydeck.me
+      - key: DRIVEOS_BETA_DEMO
+        value: "false"
       - key: TZ
         value: America/Chicago

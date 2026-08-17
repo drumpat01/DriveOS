@@ -139,6 +139,8 @@ body.reference-dashboard-active #view-dashboard { padding: 0; }
 .ref-album-art span { position:absolute; z-index:3; top:7%; left:7%; color:#ff8b77; font-size:clamp(7px,1.8cqw,10px); font-weight:800; line-height:.9; }
 .ref-album-art i { position:absolute; left:12%; right:12%; bottom:24%; height:1px; background:#ff5471; transform:rotate(7deg); }
 .ref-album-art b { position:absolute; z-index:4; left:46%; bottom:21%; width:12%; height:7%; border-radius:45%; background:#050511; box-shadow:0 0 5px #ff315f; }
+.ref-album-art.has-live-artwork { background-position:center; background-size:cover; }
+.ref-album-art.has-live-artwork::after, .ref-album-art.has-live-artwork span, .ref-album-art.has-live-artwork i, .ref-album-art.has-live-artwork b { display:none; }
 .ref-track-copy { position: relative; align-self: stretch; min-width: 0; display:flex; flex-direction:column; justify-content:center; }
 .ref-track-copy > span { color:var(--ref-coral); font-size:clamp(7px,2cqw,11px); font-weight:800; letter-spacing:.09em; }
 .ref-track-copy > strong { margin-top:3px; overflow:hidden; color:#f5f1f9; font-size:clamp(16px,4.4cqw,25px); font-weight:500; line-height:1.05; text-overflow:ellipsis; white-space:nowrap; }

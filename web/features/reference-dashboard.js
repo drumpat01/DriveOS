@@ -19,9 +19,61 @@
 
   function connectionLabel(element) {
     const value = String(element?.textContent || "").trim().toLowerCase();
-    if (!value || value === "--" || value.includes("checking")) return "Connected";
+    if (!value || value === "--" || value.includes("checking")) return "Checking";
     if (value.includes("connect") || value.includes("online") || value.includes("ready")) return "Connected";
     return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  function sourceText(id, fallback) {
+    const value = String(byId(id)?.textContent || "").trim();
+    return value && value !== "--" ? value : fallback;
+  }
+
+  function syncMusic() {
+    const featured = byId("trackList")?.querySelector(".v3-now-playing");
+    if (!featured) return;
+    const track = featured.querySelector(".v3-featured-title")?.textContent?.trim();
+    const artist = featured.querySelector(".v3-featured-artist")?.textContent?.trim();
+    const artwork = featured.querySelector("img")?.getAttribute("src");
+    if (track) all("[data-ref-track]").forEach(node => { node.textContent = track; });
+    if (artist) all("[data-ref-artist]").forEach(node => { node.textContent = artist; });
+    const album = document.querySelector("[data-ref-album]");
+    if (album && artwork) {
+      album.style.backgroundImage = `linear-gradient(145deg, rgba(20, 5, 42, .14), rgba(255, 49, 95, .16)), url(${JSON.stringify(artwork)})`;
+      album.classList.add("has-live-artwork");
+    }
+    const button = document.querySelector("[data-reference-player]");
+    if (button && track) button.setAttribute("aria-label", `${button.classList.contains("is-playing") ? "Pause" : "Play"} ${track}`);
+  }
+
+  function syncToday() {
+    const miles = numericText(byId("todayDrivingMiles"), "0");
+    const trips = numericText(byId("todayDrivingTrips"), "0");
+    const time = sourceText("todayDrivingTime", "0 min");
+    const efficiency = numericText(byId("todayDrivingEfficiency"), "--");
+    all("[data-ref-miles]").forEach(node => { node.innerHTML = `${miles}<small> mi</small>`; });
+    all("[data-ref-trips]").forEach(node => { node.textContent = trips; });
+    all("[data-ref-time]").forEach(node => { node.textContent = time; });
+    all("[data-ref-efficiency]").forEach(node => { node.textContent = efficiency; });
+  }
+
+  function syncJourneys() {
+    const sourceCards = all("#dashboardDrives .dashboard-drive-card");
+    all("[data-reference-drive]").forEach((row, index) => {
+      const source = sourceCards[index];
+      if (!source) return;
+      const cities = [...source.querySelectorAll(".dashboard-route-city")];
+      const origin = cities[0]?.textContent?.trim() || "Journey";
+      const destination = cities[1]?.textContent?.trim() || "Recent drive";
+      const stats = [...source.querySelectorAll(".drive-stat strong")].map(node => node.textContent.trim());
+      const time = source.querySelector(".drive-main-heading span")?.textContent?.trim().split("→")[0]?.trim() || "";
+      const originNode = row.querySelector("[data-ref-journey-origin]");
+      const destinationNode = row.querySelector("[data-ref-journey-destination]");
+      const metaNode = row.querySelector("[data-ref-journey-meta]");
+      if (originNode) originNode.textContent = origin;
+      if (destinationNode) destinationNode.textContent = destination;
+      if (metaNode) metaNode.textContent = [stats[0], stats[1], time].filter(Boolean).join(" · ");
+    });
   }
 
   function syncLiveData() {
@@ -31,6 +83,9 @@
     all("[data-ref-range]").forEach(node => { node.textContent = range; });
     all("[data-ref-tessie]").forEach(node => { node.textContent = connectionLabel(byId("tessieStatus")); });
     all("[data-ref-spotify]").forEach(node => { node.textContent = connectionLabel(byId("spotifyStatus")); });
+    syncMusic();
+    syncToday();
+    syncJourneys();
   }
 
   function formatTime(value) {
@@ -45,7 +100,8 @@
     if (!button || !card) return;
     button.classList.toggle("is-playing", playing);
     card.classList.toggle("is-paused", !playing);
-    button.setAttribute("aria-label", `${playing ? "Pause" : "Play"} Open Roads`);
+    const track = document.querySelector("[data-ref-track]")?.textContent?.trim() || "recent track";
+    button.setAttribute("aria-label", `${playing ? "Pause" : "Play"} ${track}`);
     window.clearInterval(playerTimer);
     playerTimer = null;
     if (!playing) return;
@@ -87,7 +143,7 @@
       });
     });
 
-    const sourceNodes = ["batteryValue", "rangeMiles", "tessieStatus", "spotifyStatus"]
+    const sourceNodes = ["batteryValue", "rangeMiles", "tessieStatus", "spotifyStatus", "todayDrivingMiles", "todayDrivingTrips", "todayDrivingTime", "todayDrivingEfficiency", "trackList", "dashboardDrives"]
       .map(byId)
       .filter(Boolean);
     if (sourceNodes.length) {
