@@ -553,3 +553,21 @@ body::before {
   .drive-map-section { margin-inline:-4px; padding:14px !important; border-radius:21px !important; }
   .drive-map { min-height:390px !important; border-radius:18px !important; }
 }
+
+/* 5.9.7 cinematic identity — approved circle/pulse mark. */
+.topbar .brand-logo { background:#05040e !important; box-shadow:0 0 20px rgba(255,79,95,.16) !important; }
+.topbar .brand h1,
+.topbar .brand h1 span {
+  color:#ff704b !important;
+  background:linear-gradient(90deg,#ff9749,#ff704b 52%,#ff315f) !important;
+  -webkit-background-clip:text !important;
+  background-clip:text !important;
+  -webkit-text-fill-color:transparent !important;
+}
+.jd-cinematic-launch-mark img { width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 0 18px rgba(255,79,95,.25)); }
+.journeydeck-launch .jd-launch-kicker { color:rgba(255,151,111,.82); }
+.journeydeck-launch .jd-launch-kicker span { background:#ff5b59; box-shadow:0 0 0 0 rgba(255,91,89,.65); }
+.journeydeck-launch .jd-launch-title span { color:#fff5ed; }
+.journeydeck-launch .jd-launch-title strong { color:#ff5b59; }
+.journeydeck-launch .jd-loading-track i { background:linear-gradient(90deg,#9a46f5,#ff315f 52%,#ff9749); box-shadow:0 0 18px rgba(255,79,95,.6); }
+.journeydeck-launch .jd-loading-topline strong { color:#ff9749; }

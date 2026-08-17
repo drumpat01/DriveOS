@@ -102,7 +102,7 @@ body.reference-dashboard-active #view-dashboard { padding: 0; }
 
 .ref-brand-lockup { position: absolute; z-index: 4; top: 2.5%; left: 2.8%; display: flex; align-items: center; gap: 8px; }
 .ref-brand-lockup img { width: clamp(29px, 8cqw, 44px); height: clamp(29px, 8cqw, 44px); border-radius: 11px; box-shadow: 0 0 20px rgba(255,72,88,.22); }
-.ref-brand-lockup strong { color: #eeeaf3; font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; font-size: clamp(16px, 4.1cqw, 24px); font-weight: 500; letter-spacing: -.02em; }
+.ref-brand-lockup strong { color:#ff704b; background:linear-gradient(90deg,#ff9749,#ff704b 52%,#ff315f); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; font-family:Impact,Haettenschweiler,"Arial Narrow Bold",sans-serif; font-size:clamp(16px,4.1cqw,24px); font-weight:500; letter-spacing:-.02em; }
 
 .ref-live-pill { position: absolute; z-index: 5; top: 3%; right: 1.8%; display: flex; align-items: center; gap: 7px; min-height: clamp(29px, 7.7cqw, 42px); padding: 0 clamp(11px, 3cqw, 17px); color: #f2eaf2; border: 1px solid rgba(255,79,91,.25); border-radius: 12px; background: rgba(9,8,22,.73); font-size: clamp(9px, 2.3cqw, 13px); font-weight: 800; letter-spacing: .13em; cursor: pointer; backdrop-filter: blur(12px); }
 .ref-live-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--ref-coral); box-shadow: 0 0 10px var(--ref-coral); animation: ref-pulse 1.8s ease-in-out infinite; }
