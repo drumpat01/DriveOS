@@ -62,7 +62,8 @@ export function createBetaLiveProxyServer({ upstreamUrl = process.env.DRIVEOS_BE
         }
         headers.set("x-forwarded-host", String(req.headers.host || "beta.journeydeck.me"));
         headers.set("x-forwarded-proto", "https");
-        if (req.socket.remoteAddress) headers.set("x-forwarded-for", req.socket.remoteAddress);
+        const forwardedFor = String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "");
+        if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
         if (req.headers.origin) headers.set("origin", upstream.origin);
         if (req.headers.referer) headers.set("referer", `${upstream.origin}/`);
 

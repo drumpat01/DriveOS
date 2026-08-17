@@ -13,7 +13,7 @@ test("beta serves its frontend and proxies authenticated API traffic", async t =
   const upstream = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    seen.push({ url: req.url, method: req.method, cookie: req.headers.cookie, body: Buffer.concat(chunks).toString() });
+    seen.push({ url: req.url, method: req.method, cookie: req.headers.cookie, forwardedFor: req.headers["x-forwarded-for"], body: Buffer.concat(chunks).toString() });
     if (req.url === "/api/auth/login") {
       res.writeHead(200, { "Content-Type": "application/json", "Set-Cookie": "New-DriveOSWebSessionCookie=live; Path=/; HttpOnly; Secure; SameSite=Strict" });
       res.end('{"ok":true}');
@@ -32,9 +32,10 @@ test("beta serves its frontend and proxies authenticated API traffic", async t =
   assert.match(await page.text(), /reference-dashboard/);
   assert.equal(seen.length, 0, "frontend must be served from the beta build");
 
-  const api = await fetch(`${betaUrl}/api/status`, { headers: { cookie: "New-DriveOSWebSessionCookie=abc" } });
+  const api = await fetch(`${betaUrl}/api/status`, { headers: { cookie: "New-DriveOSWebSessionCookie=abc", "x-forwarded-for": "203.0.113.8" } });
   assert.deepEqual(await api.json(), { live: true });
   assert.equal(seen[0].cookie, "New-DriveOSWebSessionCookie=abc");
+  assert.equal(seen[0].forwardedFor, "203.0.113.8");
 
   const login = await fetch(`${betaUrl}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: '{"password":"example"}' });
   assert.equal(login.status, 200);
