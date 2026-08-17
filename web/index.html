@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/styles.css?v=5.9.6">
   <link rel="stylesheet" href="/beta-theme.css?v=5.9.6">
   <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.6">
+  <link rel="stylesheet" href="/reference-dashboard.css?v=5.9.7">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -152,6 +153,141 @@
     <main>
       <!-- DASHBOARD -->
       <section id="view-dashboard" class="view active-view">
+        <section class="reference-dashboard" aria-label="JourneyDeck overview">
+          <div class="reference-dashboard-glow" aria-hidden="true"></div>
+
+          <header class="ref-hero">
+            <div class="ref-hero-map" aria-hidden="true">
+              <svg class="ref-map-streets" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
+                <g class="ref-map-street-minor">
+                  <path d="M284 0 265 430M339 0 329 430M392 0 401 430M451 0 470 430M503 0 544 430"/>
+                  <path d="M227 28 560 51M210 75 560 100M204 126 560 148M194 180 560 195M184 231 560 245M169 286 560 302M154 344 560 358M139 399 560 416"/>
+                  <path d="M255 0 560 298M198 39 529 430M325 0 560 187M224 215 429 430"/>
+                </g>
+                <g class="ref-map-street-major">
+                  <path d="M210 -10C279 68 287 128 263 196s-6 148 86 244"/>
+                  <path d="M164 308c108-62 234-77 410-41"/>
+                </g>
+              </svg>
+              <svg class="ref-route-art" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
+                <defs>
+                  <linearGradient id="refRouteGradient" x1="0" y1="1" x2="1" y2="0">
+                    <stop offset="0" stop-color="#ff315f"/><stop offset=".53" stop-color="#ff4b55"/><stop offset="1" stop-color="#ff9c47"/>
+                  </linearGradient>
+                  <filter id="refRouteGlow" x="-100%" y="-100%" width="300%" height="300%">
+                    <feGaussianBlur stdDeviation="11" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+                  </filter>
+                </defs>
+                <path class="ref-route-halo" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
+                <path class="ref-route-line" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
+                <g class="ref-route-marker" transform="translate(348 377)"><circle r="21"/><path d="M0-11 10 9 0 5-10 9Z"/></g>
+              </svg>
+            </div>
+
+            <div class="ref-brand-lockup">
+              <img src="/assets/journeydeck-icon-192.png" alt="">
+              <strong>JourneyDeck</strong>
+            </div>
+            <button class="ref-live-pill" type="button" data-go-view="live"><i></i> LIVE</button>
+
+            <div class="ref-title-lockup">
+              <span>OPEN</span><span>ROADS</span><em>Nova Lane</em>
+            </div>
+
+            <div class="ref-battery-block" aria-label="Vehicle battery and range">
+              <div><strong data-ref-battery>72</strong><span>%</span><i aria-hidden="true">&#x26A1;</i></div>
+              <div class="ref-battery-bars" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b><b></b></div>
+              <strong><span data-ref-range>185</span> <small>mi</small></strong>
+              <small>RANGE</small>
+            </div>
+            <img class="ref-hero-car" src="/assets/journeydeck-model3-front-v3.png" alt="Pearl white electric sedan" loading="eager" decoding="async">
+          </header>
+
+          <section class="ref-music-card" aria-label="Now playing">
+            <div class="ref-album-art" aria-hidden="true"><span>NOVA<br>LANE</span><i></i><b></b></div>
+            <div class="ref-track-copy">
+              <span>NOW PLAYING</span>
+              <strong data-ref-track>Open Roads</strong>
+              <em data-ref-artist>Nova Lane</em>
+              <div class="ref-waveform" aria-hidden="true">
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <div class="ref-track-time"><span data-ref-elapsed>1:24</span><span>3:58</span></div>
+            </div>
+            <button class="ref-play-button is-playing" type="button" data-reference-player aria-label="Pause Open Roads"><span></span></button>
+          </section>
+
+          <section class="ref-driving-card" aria-label="Today's driving summary">
+            <div class="ref-driving-summary">
+              <span>TODAY'S DRIVING</span>
+              <strong data-ref-miles>38.4<small> mi</small></strong>
+            </div>
+            <div class="ref-driving-facts">
+              <div><strong data-ref-trips>3</strong><span>drives</span></div>
+              <div><strong data-ref-time>1h 14m</strong><span>time</span></div>
+            </div>
+            <div class="ref-driving-chart" aria-label="Driving activity across the day">
+              <svg viewBox="0 0 405 72" preserveAspectRatio="none" aria-hidden="true">
+                <defs><linearGradient id="refChartLine" x1="0" x2="1"><stop stop-color="#2b8bc7"/><stop offset="1" stop-color="#37b8ed"/></linearGradient></defs>
+                <path d="M2 52 35 49 69 52 103 47 137 50 171 38 205 42 239 29 273 36 307 22 339 34 373 16 403 22"/>
+                <g><circle cx="2" cy="52" r="2"/><circle cx="69" cy="52" r="2"/><circle cx="137" cy="50" r="2"/><circle cx="205" cy="42" r="2"/><circle cx="273" cy="36" r="2"/><circle cx="339" cy="34" r="2"/><circle cx="403" cy="22" r="2"/></g>
+              </svg>
+              <div class="ref-chart-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="ref-chart-axis"><span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span></div>
+            </div>
+            <div class="ref-score-ring" aria-label="Smooth score 82">
+              <svg viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="38"/><circle class="ref-score-progress" cx="45" cy="45" r="38"/></svg>
+              <i>&#x2311;</i><span>Smooth</span><strong>82</strong><small>Score</small>
+            </div>
+          </section>
+
+          <section class="ref-actions" aria-label="Quick actions">
+            <button class="ref-action ref-sync" type="button" data-dashboard-action="refresh">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M38 16A17 17 0 1 0 40 28"/><path d="m31 8 8 8-11 3"/></svg><strong>Sync</strong><span>Latest drive</span>
+            </button>
+            <button class="ref-action ref-replay" type="button" data-dashboard-action="latest">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="18"/><path d="m20 16 13 8-13 8Z"/></svg><strong>Replay</strong><span>Your drive</span>
+            </button>
+            <button class="ref-action ref-share" type="button" data-dashboard-action="share">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="13" width="32" height="25" rx="3"/><path d="M14 20h12M14 25h10M14 30h8M33 8v12M27 14h12"/></svg><strong>Share Card</strong><span>Create &amp; send</span>
+            </button>
+            <button class="ref-action ref-find" type="button" data-dashboard-action="search">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="m30 30 11 11M21 13v16M13 21h16"/></svg><strong>Find Drive</strong><span>Search trips</span>
+            </button>
+          </section>
+
+          <section class="ref-bottom-grid">
+            <article class="ref-journeys-card">
+              <header><strong>RECENT JOURNEYS</strong><button type="button" data-go-view="drives">View all <span>&#x203A;</span></button></header>
+              <button class="ref-journey-row" type="button" data-reference-drive="0">
+                <i class="ref-place-icon">&#x2302;</i><span><small>Home</small><strong>North Loop Coffee</strong><em>18.7 mi&nbsp; &#x2022;&nbsp; 32m&nbsp; &#x2022;&nbsp; 9:14 AM</em></span>
+                <svg viewBox="0 0 74 54" aria-hidden="true"><path class="thumb-roads" d="M3 8 71 44M11 51 48 3M0 30 74 22"/><path class="thumb-route" d="M10 45C19 32 22 41 31 26s23-5 35-19"/><circle cx="66" cy="7" r="3"/></svg>
+              </button>
+              <button class="ref-journey-row" type="button" data-reference-drive="1">
+                <i class="ref-place-icon">&#x2302;</i><span><small>Home</small><strong>Downtown</strong><em>9.6 mi&nbsp; &#x2022;&nbsp; 17m&nbsp; &#x2022;&nbsp; 8:02 AM</em></span>
+                <svg viewBox="0 0 74 54" aria-hidden="true"><path class="thumb-roads" d="M3 8 71 44M11 51 48 3M0 30 74 22"/><path class="thumb-route" d="M6 42c9-1 15-17 25-13 8 3 11-14 20-15s9 10 17 2"/><circle cx="68" cy="16" r="3"/></svg>
+              </button>
+            </article>
+
+            <article class="ref-health-card">
+              <header><strong>DATA HEALTH</strong></header>
+              <button type="button" data-reference-health="tessie"><i class="ref-service-icon tessie">T</i><span><strong>Tessie</strong><small data-ref-tessie>Connected</small></span><b>&#x2713;</b></button>
+              <button type="button" data-reference-health="spotify"><i class="ref-service-icon spotify">&#x266B;</i><span><strong>Spotify</strong><small data-ref-spotify>Connected</small></span><b>&#x2713;</b></button>
+              <button type="button" data-go-view="music"><i class="ref-service-icon places">&#x25C9;</i><span><strong>Places</strong><small>Connected</small></span><b>&#x2713;</b></button>
+            </article>
+          </section>
+
+          <nav class="ref-tool-dock" aria-label="JourneyDeck tools">
+            <button class="active" type="button" data-go-view="timeline"><i>&#x25F4;</i><span>Timeline</span></button>
+            <button type="button" data-go-view="graph"><i>&#x259F;</i><span>Mobility<br>Graph</span></button>
+            <button type="button" data-dashboard-action="recap"><i>&#x2726;</i><span>Insights &amp;<br>Recaps</span></button>
+            <button type="button" data-go-view="drives"><i>&#x25A3;</i><span>Collections</span></button>
+            <button type="button" data-go-view="drives"><i>&#x21AF;</i><span>Charging</span></button>
+            <button type="button" data-go-view="music"><i>&#x25C9;</i><span>Places</span></button>
+            <button type="button" data-dashboard-action="search"><i>&#x2315;</i><span>Search</span></button>
+          </nav>
+        </section>
+
         <div class="dashboard-customize-bar">
           <div>
             <div class="section-label">YOUR JOURNEYDECK</div>
@@ -1115,6 +1251,7 @@
   <script src="/features/passkeys.js?v=5.9.6"></script>
   <script src="/features/collections.js?v=5.9.6"></script>
   <script src="/features/mobility-graph.js?v=5.9.6"></script>
+  <script src="/features/reference-dashboard.js?v=5.9.7"></script>
   <script src="/app.js?v=5.9.6"></script>
 </body>
 </html>
