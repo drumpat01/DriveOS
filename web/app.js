@@ -863,6 +863,36 @@ function renderFavoriteRoutes() {
 
 const collectionsFeature = window.DriveOSFeatures.collections.create({ state, api: window.DriveOSApi, applyFilter: applyJourneyCollectionFilter, ensureMapLibre });
 
+document.addEventListener("journeydeck:addtocollection", event => {
+  collectionsFeature.open();
+  const driveId = event.detail?.driveId;
+  if (!driveId) return;
+  window.setTimeout(() => {
+    const input = document.querySelector(`#journeyCollectionDriveList input[value="${CSS.escape(driveId)}"]`);
+    if (!input) return;
+    input.checked = true;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, 0);
+});
+
+document.addEventListener("journeydeck:editcollection", event => {
+  const requestedName = String(event.detail?.collectionName || "").trim();
+  const collection = state.collections.find(item => String(item.name || "").toLocaleLowerCase() === requestedName.toLocaleLowerCase());
+  collectionsFeature.open(collection || null);
+  if (collection || !requestedName) return;
+  window.setTimeout(() => {
+    const name = $("journeyCollectionName");
+    if (name) name.value = requestedName;
+    setText("journeyCollectionModalHeading", "Edit collection");
+  }, 0);
+});
+
+document.addEventListener("journeydeck:openjourney", event => {
+  const driveId = event.detail?.driveId;
+  const drive = state.drives.find(item => item.id === driveId) || event.detail?.drive;
+  if (drive) openDriveModal(drive);
+});
+
 function filteredDriveLibrary() {
   const query = $("driveSearchInput")?.value?.trim().toLocaleLowerCase() || "";
   const terms = query.split(/\s+/).filter(Boolean);
@@ -1457,6 +1487,7 @@ async function loadDrives() {
       state.drives = normalizeDriveCollection(data.drives);
       state.driveLibraryWindowDays = Number(data.windowDays) || 730;
       driveLibraryFullyLoaded = true;
+      window.DriveOSFeatures.moments?.setJourneys(state.drives);
 
       const all = $("allDrives");
 

@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="/beta-theme.css?v=5.9.54">
   <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.54">
   <link rel="stylesheet" href="/reference-dashboard.css?v=5.9.54">
+  <link rel="stylesheet" href="/moments.css?v=5.9.54-memory-modal">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -96,7 +97,7 @@
       <nav class="main-nav" aria-label="JourneyDeck">
         <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h5v-5h3v5h5v-9.5"/></svg></span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
         <button class="nav-button nav-button-live" data-view="live"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.25"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.7 4.7a10.3 10.3 0 0 0 0 14.6M19.3 4.7a10.3 10.3 0 0 1 0 14.6"/></svg></span><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
-        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17.5 9.5 8l5 5L19 5.5"/><circle cx="5" cy="17.5" r="2"/><circle cx="9.5" cy="8" r="2"/><circle cx="14.5" cy="13" r="2"/><circle cx="19" cy="5.5" r="2"/></svg></span><span>Journeys</span></button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17.5 9.5 8l5 5L19 5.5"/><circle cx="5" cy="17.5" r="2"/><circle cx="9.5" cy="8" r="2"/><circle cx="14.5" cy="13" r="2"/><circle cx="19" cy="5.5" r="2"/></svg></span><span>Moments</span></button>
         <button class="nav-button nav-secondary" data-view="graph"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 6.5 5-2.5 7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5z"/><path d="M8.5 4v13.5M15.5 6.5V20"/></svg></span><span>Atlas</span></button>
         <button class="nav-button nav-secondary" data-view="timeline"><span class="nav-mobile-icon" aria-hidden="true">&#x25F4;</span><span>Timeline</span></button>
         <button class="nav-button nav-secondary" data-view="music"><span class="nav-mobile-icon" aria-hidden="true">&#x266B;</span><span>Music</span></button>
@@ -547,8 +548,98 @@
         </div>
       </section>
 
-      <!-- DRIVES -->
-      <section id="view-drives" class="view">
+      <!-- MOMENTS -->
+      <section id="view-drives" class="view moments-page" aria-labelledby="momentsPageTitle">
+        <header class="moments-heading">
+          <h2 id="momentsPageTitle">MOMENTS</h2>
+          <p>The chapters made from your journeys.</p>
+          <nav class="moments-hierarchy" aria-label="Moments hierarchy">
+            <span class="active">MEMORIES</span><i aria-hidden="true">&#x2192;</i><span>COLLECTIONS</span><i aria-hidden="true">&#x2192;</i><span>JOURNEYS</span>
+          </nav>
+        </header>
+
+        <section class="moments-memory-section" aria-labelledby="momentsMemoriesHeading">
+          <h3 id="momentsMemoriesHeading" class="moments-level-label">MEMORIES</h3>
+          <div class="moments-memory-carousel" role="region" aria-roledescription="carousel" aria-label="JourneyDeck memories">
+            <button class="moments-carousel-arrow moments-carousel-previous" type="button" aria-label="Previous memory">&#x2039;</button>
+            <div class="moments-memory-viewport">
+              <div class="moments-memory-track">
+                <button class="moments-memory-card" type="button" data-memory-index="0" aria-label="Select Everyday Life">
+                  <img src="/assets/moments/everyday-life.jpg?v=2" alt="City lights at dusk" decoding="async">
+                  <span class="moments-memory-copy"><strong>Everyday Life</strong><small>4 collections</small><small>27 journeys</small></span>
+                </button>
+                <button class="moments-memory-card" type="button" data-memory-index="1" aria-label="Select Weekend Escapes">
+                  <img src="/assets/moments/weekend-escapes.jpg?v=2" alt="A coastal mountain road at sunset" decoding="async">
+                  <span class="moments-memory-copy"><strong>Weekend Escapes</strong><small>5 collections</small><small>31 journeys</small></span>
+                </button>
+                <button class="moments-memory-card is-selected" type="button" data-memory-index="2" aria-label="Summer 2026, selected" aria-current="true">
+                  <img src="/assets/moments/summer-2026.jpg?v=2" alt="A quiet dock beneath a sunset" decoding="async" fetchpriority="high">
+                  <span class="moments-memory-copy"><strong>Summer 2026</strong><small>3 collections &middot; 18 journeys</small></span>
+                </button>
+                <button class="moments-memory-card" type="button" data-memory-index="3" aria-label="Select Sunday Drives">
+                  <img src="/assets/moments/sunday-drives.jpg?v=2" alt="A winding mountain road at sunset" decoding="async">
+                  <span class="moments-memory-copy"><strong>Sunday Drives</strong><small>4 collections</small><small>24 journeys</small></span>
+                </button>
+                <button class="moments-memory-card" type="button" data-memory-index="4" aria-label="Select Road Trips">
+                  <img src="/assets/moments/road-trips.jpg?v=2" alt="An open road beneath a glowing sky" decoding="async">
+                  <span class="moments-memory-copy"><strong>Road Trips</strong><small>6 collections</small><small>40 journeys</small></span>
+                </button>
+                <button class="moments-memory-card is-suggested" type="button" data-memory-index="5" aria-label="Select suggested Texas Weekends memory">
+                  <img src="/assets/moments/texas-weekends.jpg?v=2" alt="A Texas city at sunset" decoding="async" loading="lazy">
+                  <span class="moments-suggested-badge">SUGGESTED</span>
+                  <span class="moments-memory-copy"><strong>Texas Weekends</strong><small>3 collections</small><small>15 journeys</small></span>
+                </button>
+                <button class="moments-memory-card is-suggested" type="button" data-memory-index="6" aria-label="Select suggested Golden Hour Drives memory">
+                  <img src="/assets/moments/golden-hour-memory.jpg?v=2" alt="A glowing road at golden hour" decoding="async" loading="lazy">
+                  <span class="moments-suggested-badge">SUGGESTED</span>
+                  <span class="moments-memory-copy"><strong>Golden Hour Drives</strong><small>2 collections</small><small>10 journeys</small></span>
+                </button>
+              </div>
+            </div>
+            <button class="moments-carousel-arrow moments-carousel-next" type="button" aria-label="Next memory">&#x203A;</button>
+            <div class="moments-carousel-dots" role="tablist" aria-label="Choose a memory"></div>
+          </div>
+        </section>
+
+        <section class="moments-collections-section" aria-labelledby="momentsCollectionsHeading">
+          <div class="moments-level-heading">
+            <h3 id="momentsCollectionsHeading" class="moments-level-label">COLLECTIONS IN <span data-selected-memory>SUMMER 2026</span></h3>
+            <button class="moments-text-action" type="button" data-moments-new-collection>+ New collection</button>
+          </div>
+          <div class="moments-collection-grid">
+            <button class="moments-collection-card" type="button" data-collection-name="Mountain weekends">
+              <img src="/assets/moments/mountain-weekends.jpg?v=2" alt="Mountain road at sunset" loading="lazy" decoding="async">
+              <span><strong>Mountain weekends</strong><small>6 journeys</small></span><i aria-hidden="true">&#x203A;</i>
+            </button>
+            <button class="moments-collection-card" type="button" data-collection-name="Favorite night drives">
+              <img src="/assets/moments/favorite-night-drives.jpg?v=2" alt="Night drive toward a city" loading="lazy" decoding="async">
+              <span><strong>Favorite night drives</strong><small>7 journeys</small></span><i aria-hidden="true">&#x203A;</i>
+            </button>
+            <button class="moments-collection-card is-suggested" type="button" data-collection-name="Golden hour drives">
+              <img src="/assets/moments/golden-hour-collection.jpg?v=2" alt="Golden coastal road" loading="lazy" decoding="async">
+              <b>SUGGESTED</b><span><strong>Golden hour drives</strong><small>4 journeys</small></span><i aria-hidden="true">&#x203A;</i>
+            </button>
+          </div>
+        </section>
+
+        <section class="moments-journeys-section" aria-labelledby="momentsJourneysHeading">
+          <div class="moments-level-heading">
+            <h3 id="momentsJourneysHeading" class="moments-level-label">JOURNEYS <span>&mdash; NEWEST FIRST</span></h3>
+            <button class="moments-text-action" type="button" data-moments-view-all>View all journeys &#x2192;</button>
+          </div>
+          <div class="moments-journey-table" role="table" aria-label="Recent journeys">
+            <div class="moments-journey-header" role="row">
+              <span role="columnheader">DATE &amp; TIME</span><span role="columnheader">ROUTE</span><span role="columnheader">DISTANCE</span><span role="columnheader">DURATION</span><span role="columnheader">ADD TO COLLECTION</span>
+            </div>
+            <div id="momentsJourneyRows" class="moments-journey-rows" role="rowgroup"></div>
+          </div>
+        </section>
+
+        <div id="momentsStatus" class="moments-status" role="status" aria-live="polite" hidden></div>
+      </section>
+
+      <!-- Legacy Journey Library remains available to the data layer but is not a navigable view. -->
+      <section id="view-journey-library" class="view journey-library-legacy" aria-hidden="true">
         <div class="page-heading">
           <div>
             <div class="section-label">FLIGHT RECORDER</div>
@@ -1053,6 +1144,80 @@
     </article>
   </div>
 
+  <!-- MEMORY DETAILS -->
+  <div id="memoryDetailsModal" class="modal memory-details-modal" role="dialog" aria-modal="true" aria-labelledby="memoryDetailsHeading" aria-hidden="true">
+    <div class="modal-backdrop" data-close-memory-modal></div>
+    <article class="modal-card memory-details-modal-card">
+      <button class="modal-close" type="button" data-close-memory-modal aria-label="Close memory details">&#xD7;</button>
+
+      <div id="memoryDetailsView">
+        <header class="memory-details-hero">
+          <img id="memoryDetailsCover" alt="">
+          <div class="memory-details-hero-copy">
+            <div class="section-label">MEMORY DETAILS</div>
+            <h2 id="memoryDetailsHeading">Memory</h2>
+            <p id="memoryDetailsSummary">A chapter made from your collections and journeys.</p>
+          </div>
+        </header>
+
+        <div class="memory-details-stats" aria-label="Memory summary">
+          <article><span>Miles driven</span><strong id="memoryDetailsMiles">0 mi</strong></article>
+          <article><span>Journeys</span><strong id="memoryDetailsJourneyCount">0</strong></article>
+          <article><span>Collections</span><strong id="memoryDetailsCollectionCount">0</strong></article>
+          <article><span>Photos</span><strong id="memoryDetailsPhotoCount">0</strong></article>
+        </div>
+
+        <div class="memory-details-content-grid">
+          <section class="memory-details-panel">
+            <div class="section-label">NOTES</div>
+            <p id="memoryDetailsNotes"></p>
+          </section>
+          <section class="memory-details-panel">
+            <div class="section-label">PHOTOS</div>
+            <div id="memoryDetailsPhotos" class="memory-details-photos"></div>
+          </section>
+        </div>
+
+        <section class="memory-details-collections-section">
+          <div class="memory-details-section-heading">
+            <div><div class="section-label">COLLECTIONS</div><h3>Inside this memory</h3></div>
+            <span id="memoryDetailsCollectionLabel" class="muted"></span>
+          </div>
+          <div id="memoryDetailsCollections" class="memory-details-collections"></div>
+        </section>
+
+        <footer class="memory-details-footer">
+          <span>Local preview draft &middot; changes last for this browser session</span>
+          <button id="memoryEditButton" class="primary-button" type="button">Edit memory</button>
+        </footer>
+      </div>
+
+      <form id="memoryEditForm" class="memory-edit-form" hidden>
+        <div class="section-label">EDIT MEMORY</div>
+        <h2>Edit memory</h2>
+        <p class="modal-subtitle">Update its story, photos, and the collections it holds.</p>
+
+        <label class="memory-edit-field"><span>Memory name</span><input id="memoryEditTitle" maxlength="80" required></label>
+        <label class="memory-edit-field"><span>Notes</span><textarea id="memoryEditNotes" maxlength="1200" rows="5" placeholder="What made this memory special?"></textarea></label>
+
+        <section class="memory-edit-section">
+          <div class="memory-details-section-heading"><div><div class="section-label">COLLECTIONS</div><h3>Organize this memory</h3></div></div>
+          <div id="memoryEditCollections" class="memory-edit-collections"></div>
+          <div class="memory-edit-add-row"><input id="memoryEditCollectionInput" maxlength="80" placeholder="Collection name"><button id="memoryEditAddCollection" class="secondary-button" type="button">Add collection</button></div>
+        </section>
+
+        <section class="memory-edit-section">
+          <div class="memory-details-section-heading"><div><div class="section-label">PHOTOS</div><h3>Add personal pictures</h3></div><label class="secondary-button memory-photo-picker">Add photos<input id="memoryEditPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div>
+          <div id="memoryEditPhotos" class="memory-edit-photos"></div>
+          <p class="memory-edit-help">Up to 6 photos, 8 MB each. Photos stay in this browser session in the localhost preview.</p>
+        </section>
+
+        <p id="memoryEditMessage" class="modal-message" role="status" aria-live="polite"></p>
+        <div class="memory-edit-actions"><button id="memoryEditCancel" class="secondary-button" type="button">Cancel</button><button class="primary-button" type="submit">Save changes</button></div>
+      </form>
+    </article>
+  </div>
+
   <!-- JOURNEY DETAILS -->
   <div id="driveModal" class="modal" aria-hidden="true">
     <div class="modal-backdrop" data-close-modal></div>
@@ -1282,6 +1447,7 @@
   <script src="/features/data-health.js?v=5.9.54"></script>
   <script src="/features/passkeys.js?v=5.9.54"></script>
   <script src="/features/collections.js?v=5.9.54"></script>
+  <script src="/features/moments.js?v=5.9.54-memory-modal"></script>
   <script src="/features/mobility-graph.js?v=5.9.54"></script>
   <script src="/features/reference-dashboard.js?v=5.9.54"></script>
   <script src="/app.js?v=5.9.54"></script>
