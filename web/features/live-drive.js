@@ -13,6 +13,7 @@
     let lastVehicle = null;
 
     const validCoordinate = (value, maximum) => Number.isFinite(Number(value)) && Math.abs(Number(value)) <= maximum;
+    const hasNumber = value => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
     const gpsDate = value => {
       const numeric = Number(value);
       if (!Number.isFinite(numeric)) return null;
@@ -54,6 +55,12 @@
       setText("liveDriveRange", Number.isFinite(Number(vehicle.rangeMiles)) ? `${Math.round(Number(vehicle.rangeMiles))} mi` : "--");
       setText("liveDriveHeading", headingLabel(vehicle.heading));
       setText("liveDriveGear", vehicle.shiftState || (status === "Parked" ? "P" : "--"));
+      setText("liveDriveCharging", vehicle.charging || "Not charging");
+      setText("liveDriveChargeLimit", hasNumber(vehicle.chargeLimit) ? `${Math.round(Number(vehicle.chargeLimit))}%` : "--");
+      setText("liveDriveInsideTemp", hasNumber(vehicle.insideTempF) ? `${Math.round(Number(vehicle.insideTempF))}\u00B0` : "--");
+      setText("liveDriveOutsideTemp", hasNumber(vehicle.outsideTempF) ? `${Math.round(Number(vehicle.outsideTempF))}\u00B0` : "--");
+      setText("liveDriveOdometer", hasNumber(vehicle.odometerMiles) ? `${Math.round(Number(vehicle.odometerMiles)).toLocaleString()} mi` : "--");
+      setText("liveDriveFeedStatus", "Tessie live");
       setText("liveDriveGps", updated ? `GPS ${updated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}` : "Latest Tessie position");
 
       const shell = $("liveDriveShell");
@@ -140,6 +147,7 @@
         setText("liveDriveConnection", "LIVE");
       } catch (error) {
         setText("liveDriveConnection", "RECONNECTING");
+        setText("liveDriveFeedStatus", "Connection delayed");
         setText("liveDriveGps", error.message || "Vehicle unavailable");
       } finally {
         requestPending = false;
@@ -155,6 +163,7 @@
       if (active) return;
       active = true;
       setText("liveDriveConnection", "CONNECTING");
+      setText("liveDriveFeedStatus", "Connecting");
       void refreshVehicle();
       void refreshMusic();
       vehicleTimer = window.setInterval(refreshVehicle, 10_000);

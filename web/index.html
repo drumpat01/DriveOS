@@ -8,17 +8,17 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="JourneyDeck">
-  <link rel="icon" type="image/png" sizes="192x192" href="/assets/journeydeck-cinematic-192.png?v=5.9.52">
-  <link rel="shortcut icon" type="image/png" href="/assets/journeydeck-cinematic-192.png?v=5.9.52">
-  <link rel="apple-touch-icon" sizes="180x180" href="/assets/journeydeck-cinematic-180.png?v=5.9.52">
-  <link rel="manifest" href="/manifest.webmanifest?v=5.9.52">
+  <link rel="icon" type="image/png" sizes="192x192" href="/assets/journeydeck-cinematic-192.png?v=5.9.53">
+  <link rel="shortcut icon" type="image/png" href="/assets/journeydeck-cinematic-192.png?v=5.9.53">
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/journeydeck-cinematic-180.png?v=5.9.53">
+  <link rel="manifest" href="/manifest.webmanifest?v=5.9.53">
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=5.9.52">
-  <link rel="stylesheet" href="/beta-theme.css?v=5.9.52">
-  <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.52">
-  <link rel="stylesheet" href="/reference-dashboard.css?v=5.9.52">
+  <link rel="stylesheet" href="/styles.css?v=5.9.53">
+  <link rel="stylesheet" href="/beta-theme.css?v=5.9.53">
+  <link rel="stylesheet" href="/beta-theme-v2.css?v=5.9.53">
+  <link rel="stylesheet" href="/reference-dashboard.css?v=5.9.53">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -94,16 +94,16 @@
       </div>
 
       <nav class="main-nav" aria-label="JourneyDeck">
-        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true">&#x2302;</span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
-        <button class="nav-button nav-button-live" data-view="live"><span class="nav-mobile-icon" aria-hidden="true">&#x25B2;</span><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
-        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true">&#x2197;</span><span>Journeys</span></button>
-        <button class="nav-button nav-secondary" data-view="graph"><span class="nav-mobile-icon" aria-hidden="true">&#x25DF;</span><span>Atlas</span></button>
+        <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h5v-5h3v5h5v-9.5"/></svg></span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
+        <button class="nav-button nav-button-live" data-view="live"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.25"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.7 4.7a10.3 10.3 0 0 0 0 14.6M19.3 4.7a10.3 10.3 0 0 1 0 14.6"/></svg></span><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17.5 9.5 8l5 5L19 5.5"/><circle cx="5" cy="17.5" r="2"/><circle cx="9.5" cy="8" r="2"/><circle cx="14.5" cy="13" r="2"/><circle cx="19" cy="5.5" r="2"/></svg></span><span>Journeys</span></button>
+        <button class="nav-button nav-secondary" data-view="graph"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 6.5 5-2.5 7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5z"/><path d="M8.5 4v13.5M15.5 6.5V20"/></svg></span><span>Atlas</span></button>
         <button class="nav-button nav-secondary" data-view="timeline"><span class="nav-mobile-icon" aria-hidden="true">&#x25F4;</span><span>Timeline</span></button>
         <button class="nav-button nav-secondary" data-view="music"><span class="nav-mobile-icon" aria-hidden="true">&#x266B;</span><span>Music</span></button>
         <button class="nav-button nav-secondary" data-view="statistics"><span class="nav-mobile-icon" aria-hidden="true">&#x2726;</span><span>Statistics</span></button>
         <button id="dataHealthNav" class="nav-button nav-secondary" data-view="health" hidden><span class="nav-mobile-icon" aria-hidden="true">&#x2713;</span><span>Data Health</span> <span id="dataHealthNavAlertCount" class="data-health-nav-alert" hidden></span></button>
         <button id="sidebarSearchButton" class="nav-button nav-secondary sidebar-search-button" type="button"><span class="nav-mobile-icon" aria-hidden="true">&#x2315;</span><span>Search</span></button>
-        <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true">&#x2022;&#x2022;&#x2022;</span><span>More</span></button>
+        <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></span><span>More</span></button>
       </nav>
 
       <div class="topbar-right">
@@ -116,7 +116,7 @@
           <span class="command-trigger-label">Search</span>
           <kbd>Ctrl K</kbd>
         </button>
-        <div class="app-version" title="Installed JourneyDeck web build">5.9.52</div>
+        <div class="app-version" title="Installed JourneyDeck web build">5.9.53</div>
 
         <div class="theme-switcher" role="group" aria-label="Color theme">
           <button id="themeDarkButton"
@@ -154,41 +154,16 @@
           <div class="reference-dashboard-glow" aria-hidden="true"></div>
 
           <header class="ref-hero">
-            <div class="ref-hero-map" aria-hidden="true">
-              <svg class="ref-map-streets" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
-                <g class="ref-map-street-minor">
-                  <path d="M284 0 265 430M339 0 329 430M392 0 401 430M451 0 470 430M503 0 544 430"/>
-                  <path d="M227 28 560 51M210 75 560 100M204 126 560 148M194 180 560 195M184 231 560 245M169 286 560 302M154 344 560 358M139 399 560 416"/>
-                  <path d="M255 0 560 298M198 39 529 430M325 0 560 187M224 215 429 430"/>
-                </g>
-                <g class="ref-map-street-major">
-                  <path d="M210 -10C279 68 287 128 263 196s-6 148 86 244"/>
-                  <path d="M164 308c108-62 234-77 410-41"/>
-                </g>
-              </svg>
-              <svg class="ref-route-art" viewBox="0 0 560 430" preserveAspectRatio="xMidYMid slice">
-                <defs>
-                  <linearGradient id="refRouteGradient" x1="0" y1="1" x2="1" y2="0">
-                    <stop offset="0" stop-color="#ff315f"/><stop offset=".53" stop-color="#ff4b55"/><stop offset="1" stop-color="#ff9c47"/>
-                  </linearGradient>
-                  <filter id="refRouteGlow" x="-100%" y="-100%" width="300%" height="300%">
-                    <feGaussianBlur stdDeviation="11" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-                  </filter>
-                </defs>
-                <path class="ref-route-halo" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
-                <path class="ref-route-line" d="M434 -22C423 39 492 52 465 107c-21 43-104 33-104 91 0 43 73 49 72 96-1 33-41 56-85 83"/>
-                <g class="ref-route-marker" transform="translate(348 377)"><circle r="21"/><path d="M0-11 10 9 0 5-10 9Z"/></g>
-              </svg>
-            </div>
+            <img class="ref-hero-road" src="/assets/journeydeck-dashboard-road-hero-v1.png?v=5.9.53" alt="Pearl white Model 3 on a glowing orange road" loading="eager" decoding="async">
 
-            <div class="ref-brand-lockup">
-              <img src="/assets/journeydeck-cinematic-192.png?v=5.9.52" alt="">
+            <button class="ref-brand-lockup" type="button" aria-label="JourneyDeck">
+              <img src="/assets/journeydeck-cinematic-192.png?v=5.9.53" alt="">
               <strong>JourneyDeck</strong>
-            </div>
+            </button>
             <button class="ref-live-pill" type="button" data-go-view="live"><i></i> LIVE</button>
 
             <div class="ref-title-lockup">
-              <span>OPEN</span><span>ROADS</span><em>Eloise</em>
+              <span>TESLA</span><span>MODEL 3</span><em>Eloise</em>
             </div>
 
             <div class="ref-battery-block" aria-label="Vehicle battery and range">
@@ -197,8 +172,9 @@
               <strong><span data-ref-range>185</span> <small>mi</small></strong>
               <small>RANGE</small>
             </div>
-            <img class="ref-hero-car" src="/assets/journeydeck-model3-front-v3.png" alt="Pearl white electric sedan" loading="eager" decoding="async">
           </header>
+
+          <div class="ref-activity-slot" data-ref-activity-slot aria-label="Dashboard background activity"></div>
 
           <section class="ref-music-card" aria-label="Last played on Spotify">
             <div class="ref-album-art" data-ref-album aria-hidden="true"><span>JOURNEY<br>DECK</span><i></i><b></b></div>
@@ -307,6 +283,11 @@
               </div>
             </article>
           </section>
+
+          <div class="ref-about-row" aria-label="About JourneyDeck">
+            <span>About JourneyDeck</span>
+            <strong data-ref-build>5.9.53</strong>
+          </div>
 
           <nav class="ref-tool-dock" aria-label="JourneyDeck tools">
             <button type="button" data-go-view="timeline"><i>&#x25F4;</i><span>Timeline</span></button>
@@ -545,11 +526,21 @@
               <div><span>RANGE</span><strong id="liveDriveRange">--</strong></div>
               <div><span>HEADING</span><strong id="liveDriveHeading">--</strong></div>
               <div><span>GEAR</span><strong id="liveDriveGear">--</strong></div>
+              <div class="live-drive-telemetry-extra"><span>CHARGE</span><strong id="liveDriveCharging">--</strong></div>
+              <div class="live-drive-telemetry-extra"><span>CHARGE LIMIT</span><strong id="liveDriveChargeLimit">--</strong></div>
+              <div class="live-drive-telemetry-extra"><span>INSIDE</span><strong id="liveDriveInsideTemp">--</strong></div>
+              <div class="live-drive-telemetry-extra"><span>OUTSIDE</span><strong id="liveDriveOutsideTemp">--</strong></div>
             </div>
-            <div id="liveDriveMusic" class="live-drive-overlay live-drive-music">
-              <div class="live-drive-music-empty">Waiting for Spotify</div>
+            <div class="live-drive-bottom">
+              <div id="liveDriveMusic" class="live-drive-overlay live-drive-music">
+                <div class="live-drive-music-empty">Waiting for Spotify</div>
+              </div>
+              <div class="live-drive-overlay live-drive-feed" aria-label="Live data feed status">
+                <div><span>VEHICLE DATA</span><strong id="liveDriveFeedStatus">CONNECTING</strong></div>
+                <div><span>ODOMETER</span><strong id="liveDriveOdometer">--</strong></div>
+                <div><span>LAST POSITION</span><strong id="liveDriveGps">Latest Tessie position</strong></div>
+              </div>
             </div>
-            <div id="liveDriveGps" class="live-drive-gps">Latest Tessie position</div>
           </div>
 
           <p class="live-drive-safety">JourneyDeck is for glanceable trip awareness. Keep your attention on the road and do not interact while driving.</p>
@@ -947,7 +938,7 @@
     </main>
 
     <footer>
-      <span id="webBuildFooter">JourneyDeck Web 5.9.52</span>
+      <span id="webBuildFooter">JourneyDeck Web 5.9.53</span>
       <span id="hostContextFooter">Local only &#xB7; 127.0.0.1</span>
     </footer>
   </div>
@@ -1146,14 +1137,23 @@
 
             <div class="replay-vehicle-state" data-replay-telemetry-build="3.1.7">
               <div class="replay-telemetry-cell replay-telemetry-time">
+                <span class="replay-telemetry-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><path d="M12 7v5l3 2"></path></svg>
+                </span>
                 <span class="replay-telemetry-label">Time</span>
-                <strong id="replayClock" class="replay-telemetry-value">--:--:--</strong>
+                <strong id="replayClock" class="replay-telemetry-value">--:--</strong>
               </div>
               <div class="replay-telemetry-cell">
+                <span class="replay-telemetry-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5.6 16a8 8 0 1 1 12.8 0"></path><path d="m12 12 4-3"></path><path d="M7 16h10"></path></svg>
+                </span>
                 <span class="replay-telemetry-label">Speed</span>
                 <strong class="replay-telemetry-value"><span id="replaySpeed">--</span><span class="replay-telemetry-unit"> mph</span></strong>
               </div>
               <div class="replay-telemetry-cell">
+                <span class="replay-telemetry-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="4" y="7" width="15" height="10" rx="2"></rect><path d="M21 10v4"></path><path d="M7 10h8"></path></svg>
+                </span>
                 <span class="replay-telemetry-label">Battery</span>
                 <strong class="replay-telemetry-value"><span id="replayBattery">--</span><span class="replay-telemetry-unit">%</span></strong>
               </div>
@@ -1173,7 +1173,7 @@
             </div>
 
             <label class="replay-speed-label">
-              Speed
+              <span class="replay-speed-caption">Speed</span>
               <select id="replayRate" class="replay-rate">
                 <option value="1">1&#215;</option>
                 <option value="2">2&#215;</option>
@@ -1255,35 +1255,35 @@
   </div>
   <div id="shareCardMapRenderer" class="share-card-map-renderer" aria-hidden="true"></div>
 
-  <script src="/core/build.js?v=5.9.52"></script>
-  <script src="/core/dom.js?v=5.9.52"></script>
-  <script src="/core/state.js?v=5.9.52"></script>
-  <script src="/core/platform.js?v=5.9.52"></script>
-  <script src="/core/api.js?v=5.9.52"></script>
-  <script src="/components/song-artwork.js?v=5.9.52"></script>
-  <script src="/features/beta-map-theme.js?v=5.9.52"></script>
-  <script src="/features/navigation.js?v=5.9.52"></script>
-  <script src="/features/pwa.js?v=5.9.52"></script>
-  <script src="/features/theme.js?v=5.9.52"></script>
-  <script src="/features/loader-concepts.js?v=5.9.52"></script>
-  <script src="/features/ignition.js?v=5.9.52"></script>
-  <script src="/features/places.js?v=5.9.52"></script>
-  <script src="/features/charging.js?v=5.9.52"></script>
-  <script src="/features/recaps.js?v=5.9.52"></script>
-  <script src="/features/refresh.js?v=5.9.52"></script>
-  <script src="/features/drives.js?v=5.9.52"></script>
-  <script src="/features/replay.js?v=5.9.52"></script>
-  <script src="/features/music.js?v=5.9.52"></script>
-  <script src="/features/share-cards.js?v=5.9.52"></script>
-  <script src="/features/command-palette.js?v=5.9.52"></script>
-  <script src="/features/dashboard-customization.js?v=5.9.52"></script>
-  <script src="/features/dashboard-widgets.js?v=5.9.52"></script>
-  <script src="/features/live-drive.js?v=5.9.52"></script>
-  <script src="/features/data-health.js?v=5.9.52"></script>
-  <script src="/features/passkeys.js?v=5.9.52"></script>
-  <script src="/features/collections.js?v=5.9.52"></script>
-  <script src="/features/mobility-graph.js?v=5.9.52"></script>
-  <script src="/features/reference-dashboard.js?v=5.9.52"></script>
-  <script src="/app.js?v=5.9.52"></script>
+  <script src="/core/build.js?v=5.9.53"></script>
+  <script src="/core/dom.js?v=5.9.53"></script>
+  <script src="/core/state.js?v=5.9.53"></script>
+  <script src="/core/platform.js?v=5.9.53"></script>
+  <script src="/core/api.js?v=5.9.53"></script>
+  <script src="/components/song-artwork.js?v=5.9.53"></script>
+  <script src="/features/beta-map-theme.js?v=5.9.53"></script>
+  <script src="/features/navigation.js?v=5.9.53"></script>
+  <script src="/features/pwa.js?v=5.9.53"></script>
+  <script src="/features/theme.js?v=5.9.53"></script>
+  <script src="/features/loader-concepts.js?v=5.9.53"></script>
+  <script src="/features/ignition.js?v=5.9.53"></script>
+  <script src="/features/places.js?v=5.9.53"></script>
+  <script src="/features/charging.js?v=5.9.53"></script>
+  <script src="/features/recaps.js?v=5.9.53"></script>
+  <script src="/features/refresh.js?v=5.9.53"></script>
+  <script src="/features/drives.js?v=5.9.53"></script>
+  <script src="/features/replay.js?v=5.9.53"></script>
+  <script src="/features/music.js?v=5.9.53"></script>
+  <script src="/features/share-cards.js?v=5.9.53"></script>
+  <script src="/features/command-palette.js?v=5.9.53"></script>
+  <script src="/features/dashboard-customization.js?v=5.9.53"></script>
+  <script src="/features/dashboard-widgets.js?v=5.9.53"></script>
+  <script src="/features/live-drive.js?v=5.9.53"></script>
+  <script src="/features/data-health.js?v=5.9.53"></script>
+  <script src="/features/passkeys.js?v=5.9.53"></script>
+  <script src="/features/collections.js?v=5.9.53"></script>
+  <script src="/features/mobility-graph.js?v=5.9.53"></script>
+  <script src="/features/reference-dashboard.js?v=5.9.53"></script>
+  <script src="/app.js?v=5.9.53"></script>
 </body>
 </html>

@@ -179,7 +179,9 @@ function renderBackgroundActivity() {
   if (total <= 0) {
     monitor.classList.remove("busy");
     monitor.classList.add("idle");
-    text.textContent = "Idle";
+    text.textContent = monitor.classList.contains("ref-dashboard-activity")
+      ? "All caught up"
+      : "Idle";
     count.hidden = true;
     count.textContent = "";
     monitor.title = "No JourneyDeck requests are running";
@@ -198,7 +200,9 @@ function renderBackgroundActivity() {
   text.textContent = backgroundActivityLabel(currentPath);
 
   count.hidden = total <= 1;
-  count.textContent = total > 1 ? String(total) : "";
+  count.textContent = total > 1
+    ? (monitor.classList.contains("ref-dashboard-activity") ? `${total} activities` : String(total))
+    : "";
 
   monitor.title = activeEntries
     .map(([path, value]) =>
@@ -2134,7 +2138,7 @@ function openDriveModal(drive) {
   setText("replayTrack", "Loading journey replay\u2026");
   setText("replayArtist", "\u2014");
   setText("replayAlbum", "");
-  setText("replayClock", "--:--:--");
+  setText("replayClock", "--:--");
   setText("replaySpeed", "--");
   setText("replayBattery", "--");
   setText("replayElapsed", "0:00");
@@ -2846,9 +2850,9 @@ function updateReplayUi(ms, followMap = false) {
     }
 
     const clock = new Date(clamped).toLocaleTimeString([], {
-      hour: "numeric",
+      hour: "2-digit",
       minute: "2-digit",
-      second: "2-digit"
+      hour12: true
     });
 
     setText("replayClock", clock);
