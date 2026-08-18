@@ -69,5 +69,6 @@ test("legacy compatibility is explicit, passes reads, and blocks production writ
     const read = await runtime.app.inject({ method: "GET", url: "/api/status", headers: auth }); assert.equal(read.statusCode, 200); assert.equal(JSON.parse(read.body).compatible, true);
     const computedRead = await runtime.app.inject({ method: "POST", url: "/api/drive/share-card", headers: writeHeaders, payload: { driveId: "fixture" } }); assert.equal(computedRead.statusCode, 200);
     const write = await runtime.app.inject({ method: "POST", url: "/api/layout", headers: writeHeaders, payload: {} }); assert.equal(write.statusCode, 503); assert.equal(requests, 2);
+    const retiredAtlas = await runtime.app.inject({ method: "GET", url: "/api/atlas/journeys", headers: auth }); assert.equal(retiredAtlas.statusCode, 410); assert.equal(requests, 2);
   } finally { await runtime.app.close(); await new Promise<void>(resolve => upstream.close(() => resolve())); fixture.cleanup(); }
 });
