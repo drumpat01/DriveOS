@@ -20,7 +20,7 @@ Assert-True ($Repository -match "Turso") "Repository abstraction must support Tu
 Assert-True ($Server -match "Initialize-DriveOSTurso") "Server must initialize Turso."
 Assert-True ($Server -match '"spotify-token"') "Spotify tokens must use persistent hosted state."
 Assert-True ($Server -match '"spotify-oauth-state"') "Spotify OAuth state must use persistent hosted state."
-Assert-True ($Render -match 'plan:\s*starter') "Render service must use the paid Starter instance."
+Assert-True ($Render -match 'plan:\s*standard') "Render service must use the Standard instance with 2 GB of memory."
 Assert-True ($Render -match 'region:\s*ohio') "Render service should use Ohio."
 Assert-True ($Render -match '(?m)^\s*disk:' -and $Render -match 'mountPath:\s*/var/data/atlas') "Render must persist the derived Atlas read model on its isolated disk."
 Assert-True ($Render -match 'healthCheckPath:\s*/readyz') "Render must wait for a valid Atlas snapshot before going live."
@@ -30,4 +30,4 @@ Assert-True ($Render -match 'libsql://driveos-drumpat01\.aws-us-east-2\.turso\.i
 Assert-True ($Docker -match 'DRIVEOS_REPOSITORY_PROVIDER=Turso') "Docker must default to Turso."
 Assert-True (-not ($Docker -match 'sqlite3')) "Hosted container should not install SQLite."
 
-Write-Host "DriveOS Starter web deployment checks passed." -ForegroundColor Green
+Write-Host "DriveOS Standard web deployment checks passed." -ForegroundColor Green
