@@ -26,6 +26,8 @@ services:
         sync: false
       - key: DRIVEOS_NODE_LOG_LEVEL
         value: info
+      - key: DRIVEOS_ATLAS_REFRESH_SECONDS
+        value: "900"
       - key: DRIVEOS_REPOSITORY_PROVIDER
         value: Turso
       - key: TZ

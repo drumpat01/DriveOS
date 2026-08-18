@@ -15,4 +15,7 @@ Assert-True ($Blueprint -match 'mountPath:\s*/var/data/atlas') 'The canary lacks
 Assert-True ($Blueprint -match 'branch:\s*codex/atlas-node-hybrid') 'The canary must not deploy from main before promotion.'
 Assert-True ($Initializer -match 'TURSO_DATABASE_URL' -and $Initializer -match 'TURSO_AUTH_TOKEN') 'Canary initialization must use the durable source.'
 Assert-True ($Initializer -match 'private-import-' -and $Initializer -match 'Remove-Item -LiteralPath \$PrivateSnapshot') 'Private bootstrap material must be deleted.'
+$Refresh = Get-Content (Join-Path $Root 'tools\Sync-AtlasNodeSource.ps1') -Raw
+Assert-True ($Start -match 'Sync-AtlasNodeSource\.ps1') 'Hosted Atlas lacks continuous source refresh.'
+Assert-True ($Refresh -match 'private-sync-' -and $Refresh -match 'Remove-Item -LiteralPath \$PrivateSnapshot') 'Private refresh material must be deleted.'
 Write-Host 'JourneyDeck Atlas canary deployment checks passed.' -ForegroundColor Green

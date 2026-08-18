@@ -6,8 +6,26 @@ services:
     region: ohio
     branch: main
     autoDeployTrigger: commit
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
+    disk:
+      name: atlas-production-data
+      mountPath: /var/data/atlas
+      sizeGB: 1
     envVars:
+      - key: DRIVEOS_ATLAS_NODE_CANARY
+        value: "true"
+      - key: DRIVEOS_NODE_DATABASE
+        value: /var/data/atlas/journeydeck.db
+      - key: DRIVEOS_NODE_DATA_ROOT
+        value: /var/data/atlas
+      - key: DRIVEOS_NODE_HOUSEHOLD_ID
+        value: household_primary
+      - key: DRIVEOS_NODE_PUBLIC_ORIGIN
+        value: https://journeydeck.me
+      - key: DRIVEOS_PUBLIC_URL
+        value: https://journeydeck.me
+      - key: DRIVEOS_ATLAS_REFRESH_SECONDS
+        value: "900"
       - key: DRIVEOS_MODE
         value: web
       - key: TZ
