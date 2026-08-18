@@ -15,7 +15,7 @@ $Expected = @{
 }
 
 foreach ($Entry in $Expected.GetEnumerator()) {
-    $Current = if (Test-Path $Entry.Key) { Get-Content $Entry.Key -Raw } else { "" }
+    $Current = if (Test-Path $Entry.Key) { Get-Content $Entry.Key -Raw -Encoding UTF8 } else { "" }
     if ($Check) {
         if (($Current -replace "`r`n", "`n") -ne ($Entry.Value -replace "`r`n", "`n")) { throw "Generated version file is stale: $($Entry.Key)" }
     } else {
@@ -24,7 +24,7 @@ foreach ($Entry in $Expected.GetEnumerator()) {
 }
 
 $ProgramPath = Join-Path $Root "desktop\Program.cs"
-$Program = Get-Content $ProgramPath -Raw
+$Program = Get-Content $ProgramPath -Raw -Encoding UTF8
 $UpdatedProgram = $Program `
     -replace 'AssemblyVersion\("[0-9.]+"\)', "AssemblyVersion(`"$Version.0`")" `
     -replace 'AssemblyFileVersion\("[0-9.]+"\)', "AssemblyFileVersion(`"$Version.0`")" `
@@ -46,7 +46,7 @@ $TextReplacements = @{
     (Join-Path $Root "web\features\loader-concepts.js") = @('/loading-preview\.css\?v=[0-9.]+', "/loading-preview.css?v=$WebBuild")
 }
 foreach ($Entry in $TextReplacements.GetEnumerator()) {
-    $Current = Get-Content $Entry.Key -Raw
+    $Current = Get-Content $Entry.Key -Raw -Encoding UTF8
     $Updated = $Current -replace $Entry.Value[0], $Entry.Value[1]
     if ($Check) {
         if ($Updated -ne $Current) { throw "Version reference is stale: $($Entry.Key)" }
@@ -56,7 +56,7 @@ foreach ($Entry in $TextReplacements.GetEnumerator()) {
 }
 
 $IndexPath = Join-Path $Root "web\index.html"
-$Index = Get-Content $IndexPath -Raw
+$Index = Get-Content $IndexPath -Raw -Encoding UTF8
 $UpdatedIndex = [regex]::Replace(
     $Index,
     '(<div class="app-version"[^>]*>)[0-9.]+(</div>)',

@@ -5,7 +5,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { legacyForwardingContext } from "./legacy-forwarding.js";
 
 const hop = new Set(["connection", "content-encoding", "content-length", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]);
-const safeReadPostPaths = new Set(["/api/drive/map", "/api/drive/share-card", "/api/collections/attachments/list", "/api/collections/attachments/get", "/api/assistant/query"]);
+const safeReadPostPaths = new Set(["/api/drive/map", "/api/drive/share-card", "/api/collections/attachments/list", "/api/collections/attachments/get", "/api/memories/attachments/list", "/api/memories/attachments/get", "/api/assistant/query"]);
 
 export async function proxyLegacy(req: FastifyRequest, reply: FastifyReply, upstream: string, readOnly = true, forwardedOrigin = "") {
   if (!upstream) return reply.code(503).send({ error: "This API remains in the documented PowerShell compatibility boundary, but no local compatibility upstream is configured." });

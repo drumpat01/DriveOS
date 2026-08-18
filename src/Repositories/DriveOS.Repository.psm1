@@ -200,6 +200,8 @@ function New-DriveOSRepository {
         DashboardLayoutPath = Join-Path $DataDirectory 'dashboard-layout.json'
         IntegrationHealthPath = Join-Path $DataDirectory 'integration-health.json'
         JourneyCollectionsPath = Join-Path $DataDirectory 'journey-collections.json'
+        MemoriesPath = Join-Path $DataDirectory 'memories.json'
+        MemorySuggestionsPath = Join-Path $DataDirectory 'memory-suggestions.json'
         PasskeysPath = Join-Path $DataDirectory 'passkeys.json'
         MobilityPreferencesPath = Join-Path $DataDirectory 'mobility-preferences.json'
         ConfigPath = $configPath
@@ -561,7 +563,7 @@ function Get-DriveOSJourneyCollections {
     if ($Repository.Provider -eq 'SQLite') { return @(Get-DriveOSSqliteJourneyCollections -Repository $Repository -HouseholdId $HouseholdId) }
     if ($Repository.Provider -eq 'Turso') { return @(Get-DriveOSTursoJourneyCollections -Repository $Repository -HouseholdId $HouseholdId) }
     Assert-JsonRepository $Repository
-    return @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @())
+    return @(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @()))
 }
 
 function Set-DriveOSJourneyCollection {
@@ -569,7 +571,7 @@ function Set-DriveOSJourneyCollection {
     if ($Repository.Provider -eq 'SQLite') { Set-DriveOSSqliteJourneyCollection -Repository $Repository -Collection $Collection -HouseholdId $HouseholdId; return }
     if ($Repository.Provider -eq 'Turso') { Set-DriveOSTursoJourneyCollection -Repository $Repository -Collection $Collection -HouseholdId $HouseholdId; return }
     Assert-JsonRepository $Repository
-    $Records = @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @() | Where-Object { "$($_.id)" -ne "$($Collection.id)" })
+    $Records = @(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @()) | Where-Object { "$($_.id)" -ne "$($Collection.id)" })
     Write-DriveOSJson -Path $Repository.JourneyCollectionsPath -Value @($Records + $Collection)
 }
 
@@ -578,7 +580,7 @@ function Remove-DriveOSJourneyCollection {
     if ($Repository.Provider -eq 'SQLite') { Remove-DriveOSSqliteJourneyCollection -Repository $Repository -CollectionId $CollectionId -HouseholdId $HouseholdId; return }
     if ($Repository.Provider -eq 'Turso') { Remove-DriveOSTursoJourneyCollection -Repository $Repository -CollectionId $CollectionId -HouseholdId $HouseholdId; return }
     Assert-JsonRepository $Repository
-    $Records = @(Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @() | Where-Object { "$($_.id)" -ne $CollectionId })
+    $Records = @(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.JourneyCollectionsPath -Default @()) | Where-Object { "$($_.id)" -ne $CollectionId })
     Write-DriveOSJson -Path $Repository.JourneyCollectionsPath -Value $Records
 }
 
@@ -609,6 +611,90 @@ function Remove-DriveOSJourneyAttachment {
     if($Repository.Provider -eq 'SQLite'){Remove-DriveOSSqliteJourneyAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
     if($Repository.Provider -eq 'Turso'){Remove-DriveOSTursoJourneyAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
     throw 'Journey attachments require SQLite or Turso storage.'
+}
+
+function ConvertTo-DriveOSRecordArray {
+    param([AllowNull()]$Value)
+    if($null -eq $Value){return}
+    if($Value -is [Array]){foreach($Item in $Value){Write-Output $Item};return}
+    Write-Output $Value
+}
+
+function Get-DriveOSMemories {
+    param([Parameter(Mandatory=$true)]$Repository,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){return @(Get-DriveOSSqliteMemories -Repository $Repository -HouseholdId $HouseholdId)}
+    if($Repository.Provider -eq 'Turso'){return @(Get-DriveOSTursoMemories -Repository $Repository -HouseholdId $HouseholdId)}
+    Assert-JsonRepository $Repository
+    return @(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemoriesPath -Default @()))
+}
+
+function Set-DriveOSMemory {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)]$Memory,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Set-DriveOSSqliteMemory -Repository $Repository -Memory $Memory -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Set-DriveOSTursoMemory -Repository $Repository -Memory $Memory -HouseholdId $HouseholdId;return}
+    Assert-JsonRepository $Repository
+    $Records=@(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemoriesPath -Default @())|Where-Object{"$($_.id)" -ne "$($Memory.id)"})
+    Write-DriveOSJson -Path $Repository.MemoriesPath -Value @($Records+$Memory)
+}
+
+function Remove-DriveOSMemory {
+    param([Parameter(Mandatory=$true)]$Repository,[Parameter(Mandatory=$true)][string]$MemoryId,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Remove-DriveOSSqliteMemory -Repository $Repository -MemoryId $MemoryId -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Remove-DriveOSTursoMemory -Repository $Repository -MemoryId $MemoryId -HouseholdId $HouseholdId;return}
+    Assert-JsonRepository $Repository
+    $Records=@(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemoriesPath -Default @())|Where-Object{"$($_.id)" -ne $MemoryId})
+    Write-DriveOSJson -Path $Repository.MemoriesPath -Value $Records
+}
+
+function Get-DriveOSMemoryAttachments {
+    param($Repository,[string]$MemoryId,[string]$AttachmentId,[switch]$IncludeData,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){return @(Get-DriveOSSqliteMemoryAttachments -Repository $Repository -MemoryId $MemoryId -AttachmentId $AttachmentId -IncludeData:$IncludeData -HouseholdId $HouseholdId)}
+    if($Repository.Provider -eq 'Turso'){return @(Get-DriveOSTursoMemoryAttachments -Repository $Repository -MemoryId $MemoryId -AttachmentId $AttachmentId -IncludeData:$IncludeData -HouseholdId $HouseholdId)}
+    throw 'Memory attachments require SQLite or Turso storage.'
+}
+
+function Set-DriveOSMemoryAttachment {
+    param($Repository,$Record,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Set-DriveOSSqliteMemoryAttachment -Repository $Repository -Record $Record -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Set-DriveOSTursoMemoryAttachment -Repository $Repository -Record $Record -HouseholdId $HouseholdId;return}
+    throw 'Memory attachments require SQLite or Turso storage.'
+}
+
+function Remove-DriveOSMemoryAttachment {
+    param($Repository,[string]$AttachmentId,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Remove-DriveOSSqliteMemoryAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Remove-DriveOSTursoMemoryAttachment -Repository $Repository -AttachmentId $AttachmentId -HouseholdId $HouseholdId;return}
+    throw 'Memory attachments require SQLite or Turso storage.'
+}
+
+function Get-DriveOSMemorySuggestions {
+    param($Repository,[string]$Status='suggested',[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){return @(Get-DriveOSSqliteMemorySuggestions -Repository $Repository -Status $Status -HouseholdId $HouseholdId)}
+    if($Repository.Provider -eq 'Turso'){return @(Get-DriveOSTursoMemorySuggestions -Repository $Repository -Status $Status -HouseholdId $HouseholdId)}
+    Assert-JsonRepository $Repository
+    return @(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemorySuggestionsPath -Default @())|Where-Object{"$($_.status)" -eq $Status})
+}
+
+function Set-DriveOSMemorySuggestion {
+    param($Repository,$Suggestion,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Set-DriveOSSqliteMemorySuggestion -Repository $Repository -Suggestion $Suggestion -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Set-DriveOSTursoMemorySuggestion -Repository $Repository -Suggestion $Suggestion -HouseholdId $HouseholdId;return}
+    Assert-JsonRepository $Repository
+    $Records=@(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemorySuggestionsPath -Default @()))
+    $Existing=@($Records|Where-Object{"$($_.suggestionKey)" -eq "$($Suggestion.suggestionKey)"}|Select-Object -First 1)
+    if($Existing.Count){$Suggestion.status=$Existing[0].status;$Suggestion.createdAtUtc=$Existing[0].createdAtUtc}
+    $Records=@($Records|Where-Object{"$($_.suggestionKey)" -ne "$($Suggestion.suggestionKey)"})
+    Write-DriveOSJson -Path $Repository.MemorySuggestionsPath -Value @($Records+$Suggestion)
+}
+
+function Set-DriveOSMemorySuggestionStatus {
+    param($Repository,[string]$SuggestionId,[string]$Status,[string]$HouseholdId='household_primary')
+    if($Repository.Provider -eq 'SQLite'){Set-DriveOSSqliteMemorySuggestionStatus -Repository $Repository -SuggestionId $SuggestionId -Status $Status -HouseholdId $HouseholdId;return}
+    if($Repository.Provider -eq 'Turso'){Set-DriveOSTursoMemorySuggestionStatus -Repository $Repository -SuggestionId $SuggestionId -Status $Status -HouseholdId $HouseholdId;return}
+    Assert-JsonRepository $Repository
+    $Records=@(ConvertTo-DriveOSRecordArray (Read-DriveOSJson -Path $Repository.MemorySuggestionsPath -Default @()))
+    foreach($Record in $Records){if("$($Record.id)" -eq $SuggestionId){$Record.status=$Status;$Record.updatedAtUtc=[DateTimeOffset]::UtcNow.ToString('o')}}
+    Write-DriveOSJson -Path $Repository.MemorySuggestionsPath -Value $Records
 }
 
 function Set-DriveOSPasskeyRecord {
@@ -661,5 +747,14 @@ Export-ModuleMember -Function `
     Get-DriveOSJourneyAttachments, `
     Set-DriveOSJourneyAttachment, `
     Remove-DriveOSJourneyAttachment, `
+    Get-DriveOSMemories, `
+    Set-DriveOSMemory, `
+    Remove-DriveOSMemory, `
+    Get-DriveOSMemoryAttachments, `
+    Set-DriveOSMemoryAttachment, `
+    Remove-DriveOSMemoryAttachment, `
+    Get-DriveOSMemorySuggestions, `
+    Set-DriveOSMemorySuggestion, `
+    Set-DriveOSMemorySuggestionStatus, `
     Get-DriveOSPasskeyRecord, `
     Set-DriveOSPasskeyRecord

@@ -45,6 +45,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\JourneyCollections.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\Memories.Tests.ps1')
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\MobilityGraph.Tests.ps1')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tests\MobilityPreferences.Tests.ps1')

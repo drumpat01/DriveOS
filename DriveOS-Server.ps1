@@ -28,6 +28,7 @@ Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Assistant.psm1")
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.TessieReadiness.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Collections.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Attachments.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.Memories.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityGraph.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Application\DriveOS.MobilityPreferences.psm1") -Force
 Import-Module (Join-Path $PSScriptRoot "src\Http\DriveOS.Http.psm1") -Force
@@ -3980,6 +3981,16 @@ function Handle-Request {
                     return
                 }
 
+                "/api/memories" {
+                    $Collections = @(Get-JourneyCollections -Repository $Repository)
+                    $Suggestions = @(Update-JourneyMemorySuggestions -Repository $Repository -Collections $Collections -Drives @(Get-CachedRecentDrives730))
+                    Send-Json -Stream $Stream -Object @{
+                        memories = @(Get-JourneyMemories -Repository $Repository)
+                        suggestions = $Suggestions
+                    }
+                    return
+                }
+
                 "/api/auth/passkey/status" {
                     $Credential = Get-DriveOSPasskeyRecord -Repository $Repository
                     Send-Json -Stream $Stream -Object @{ registered = [bool]($Credential -and $Credential.credentialId) }
@@ -4348,6 +4359,54 @@ function Handle-Request {
                 "/api/collections/attachments/remove" {
                     $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields attachmentId
                     Send-Json -Stream $Stream -Object (Remove-JourneyAttachment -Repository $Repository -AttachmentId "$($Body.attachmentId)")
+                    return
+                }
+
+                "/api/memories/save" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields name,collectionIds
+                    $MemoryId = if ($Body.PSObject.Properties['id']) { "$($Body.id)" } else { $null }
+                    $Notes = if ($Body.PSObject.Properties['notes']) { "$($Body.notes)" } else { '' }
+                    $ArtworkKey = if ($Body.PSObject.Properties['artworkKey']) { "$($Body.artworkKey)" } else { 'summer-2026' }
+                    $SuggestionId = if ($Body.PSObject.Properties['suggestionId']) { "$($Body.suggestionId)" } else { $null }
+                    Send-Json -Stream $Stream -Object (Save-JourneyMemory -Repository $Repository -MemoryId $MemoryId -Name "$($Body.name)" -Notes $Notes -ArtworkKey $ArtworkKey -CollectionIds @($Body.collectionIds) -SuggestionId $SuggestionId)
+                    return
+                }
+
+                "/api/memories/delete" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields memoryId
+                    Send-Json -Stream $Stream -Object (Remove-JourneyMemory -Repository $Repository -MemoryId "$($Body.memoryId)")
+                    return
+                }
+
+                "/api/memories/suggestions/status" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields suggestionId,status
+                    Send-Json -Stream $Stream -Object (Set-JourneyMemorySuggestionStatus -Repository $Repository -SuggestionId "$($Body.suggestionId)" -Status "$($Body.status)")
+                    return
+                }
+
+                "/api/memories/attachments/list" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields memoryId
+                    Send-Json -Stream $Stream -Object @{ attachments = @(Get-DriveOSMemoryAttachments -Repository $Repository -MemoryId "$($Body.memoryId)") }
+                    return
+                }
+
+                "/api/memories/attachments/get" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields attachmentId
+                    $Attachment = @(Get-DriveOSMemoryAttachments -Repository $Repository -AttachmentId "$($Body.attachmentId)" -IncludeData) | Select-Object -First 1
+                    if (-not $Attachment) { Send-Json -Stream $Stream -StatusCode 404 -StatusText 'Not Found' -Object @{ error='Memory photo was not found.' }; return }
+                    Send-Json -Stream $Stream -Object $Attachment
+                    return
+                }
+
+                "/api/memories/attachments/add" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields memoryId,fileName,contentType,dataBase64
+                    Send-Json -Stream $Stream -Object (Add-JourneyMemoryAttachment -Repository $Repository -MemoryId "$($Body.memoryId)" -FileName "$($Body.fileName)" -ContentType "$($Body.contentType)" -DataBase64 "$($Body.dataBase64)")
+                    return
+                }
+
+                "/api/memories/attachments/remove" {
+                    $Body = ConvertFrom-DriveOSRequestBody -BodyText $BodyText -RequiredFields attachmentId
+                    Send-Json -Stream $Stream -Object (Remove-JourneyMemoryAttachment -Repository $Repository -AttachmentId "$($Body.attachmentId)")
                     return
                 }
 
@@ -4837,7 +4896,7 @@ try {
             }
 
             $ContentLength = 0
-            $RequestMaxBodyBytes = if ($Method -eq 'POST' -and $Path -eq '/api/collections/attachments/add' -and $WebPrincipal -and $WebPrincipal.Role -eq 'owner') { 3145728 } else { $MaxBodyBytes }
+            $RequestMaxBodyBytes = if ($Method -eq 'POST' -and $Path -in @('/api/collections/attachments/add','/api/memories/attachments/add') -and $WebPrincipal -and $WebPrincipal.Role -eq 'owner') { 3145728 } else { $MaxBodyBytes }
 
             if ($Headers.ContainsKey("content-length")) {
                 if (-not [int]::TryParse(
