@@ -1,7 +1,7 @@
 {
   "product": "JourneyDeck",
-  "version": "5.9.53",
-  "webBuild": "5.9.53",
+  "version": "5.9.54",
+  "webBuild": "5.9.54",
   "features": [
     "friendly-places",
     "charging-history",
@@ -20,6 +20,6 @@
     "journey-attachments",
     "passkey-sign-in"
   ],
-  "css": "/styles.css?v=5.9.53",
-  "js": "/app.js?v=5.9.53"
+  "css": "/styles.css?v=5.9.54",
+  "js": "/app.js?v=5.9.54"
 }

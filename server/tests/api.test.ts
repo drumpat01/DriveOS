@@ -64,7 +64,7 @@ test("snapshot rebuild runs off the request thread and preserves the last valid 
 test("legacy compatibility is explicit, passes reads, and blocks production writes", async () => {
   let requests = 0;
   const seen: Array<{ url?: string; host?: string; forwardedHost?: string; origin?: string }> = [];
-  const upstream = http.createServer((req, res) => { requests++; seen.push({ url: req.url, host: req.headers.host, forwardedHost: String(req.headers["x-forwarded-host"] || ""), origin: req.headers.origin }); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ compatible: true, method: req.method })); });
+  const upstream = http.createServer((req, res) => { requests++; seen.push({ url: req.url, host: req.headers.host, forwardedHost: String(req.headers["x-forwarded-host"] || ""), origin: req.headers.origin }); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(req.url === "/api/auth/session" ? { authenticated: true, role: "owner", email: "owner@example.com" } : { compatible: true, method: req.method })); });
   await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve)); const address = upstream.address(); if (!address || typeof address === "string") throw new Error("Mock upstream failed.");
   const previewOrigin = "https://preview.journeydeck.test";
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: `http://127.0.0.1:${address.port}`, legacyReadOnly: true, publicOrigin: previewOrigin });
@@ -73,13 +73,17 @@ test("legacy compatibility is explicit, passes reads, and blocks production writ
     const computedRead = await runtime.app.inject({ method: "POST", url: "/api/drive/share-card", headers: { ...auth, origin: previewOrigin }, payload: { driveId: "fixture" } }); assert.equal(computedRead.statusCode, 200);
     const login = await runtime.app.inject({ method: "POST", url: "/api/auth/login", headers: { host: "preview.journeydeck.test", origin: previewOrigin }, payload: { email: "owner@example.com", password: "test" } }); assert.equal(login.statusCode, 200);
     const passkey = await runtime.app.inject({ method: "POST", url: "/api/auth/passkey/options", headers: { host: "preview.journeydeck.test", origin: previewOrigin }, payload: {} }); assert.equal(passkey.statusCode, 200);
-    const upstreamHost = `127.0.0.1:${address.port}`;
     assert.deepEqual(seen.slice(-2), [
-      { url: "/api/auth/login", host: upstreamHost, forwardedHost: "preview.journeydeck.test", origin: `http://127.0.0.1:${address.port}` },
-      { url: "/api/auth/passkey/options", host: upstreamHost, forwardedHost: "preview.journeydeck.test", origin: `http://127.0.0.1:${address.port}` }
+      { url: "/api/auth/login", host: "preview.journeydeck.test", forwardedHost: "preview.journeydeck.test", origin: previewOrigin },
+      { url: "/api/auth/passkey/options", host: "preview.journeydeck.test", forwardedHost: "preview.journeydeck.test", origin: previewOrigin }
     ]);
-    const write = await runtime.app.inject({ method: "POST", url: "/api/layout", headers: { ...auth, origin: previewOrigin }, payload: {} }); assert.equal(write.statusCode, 503); assert.equal(requests, 4);
-    const retiredAtlas = await runtime.app.inject({ method: "GET", url: "/api/atlas/journeys", headers: auth }); assert.equal(retiredAtlas.statusCode, 410); assert.equal(requests, 4);
+    const sessionRead = await runtime.app.inject({ method: "GET", url: "/api/status", headers: { cookie: "DriveOSSession=production-host-regression" } }); assert.equal(sessionRead.statusCode, 200);
+    assert.deepEqual(seen.slice(-2), [
+      { url: "/api/auth/session", host: "preview.journeydeck.test", forwardedHost: "preview.journeydeck.test", origin: undefined },
+      { url: "/api/status", host: "preview.journeydeck.test", forwardedHost: "preview.journeydeck.test", origin: undefined }
+    ]);
+    const write = await runtime.app.inject({ method: "POST", url: "/api/layout", headers: { ...auth, origin: previewOrigin }, payload: {} }); assert.equal(write.statusCode, 503); assert.equal(requests, 6);
+    const retiredAtlas = await runtime.app.inject({ method: "GET", url: "/api/atlas/journeys", headers: auth }); assert.equal(retiredAtlas.statusCode, 410); assert.equal(requests, 6);
   } finally { await runtime.app.close(); await new Promise<void>(resolve => upstream.close(() => resolve())); fixture.cleanup(); }
 });
 
