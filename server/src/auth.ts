@@ -21,10 +21,10 @@ function localToken(token: string, secret: string): Principal | null {
   } catch { return null; }
 }
 
-export async function authenticate(req: FastifyRequest, options: { allowTestAuth: boolean; legacyUpstream: string; localSessionSecret?: string }): Promise<Principal | null> {
+export async function authenticate(req: FastifyRequest, options: { allowTestAuth: boolean; trustTailscaleHeaders: boolean; legacyUpstream: string; localSessionSecret?: string }): Promise<Principal | null> {
   if (options.allowTestAuth && ["owner", "wife"].includes(String(req.headers["x-journeydeck-test-auth"]))) { const role = String(req.headers["x-journeydeck-test-auth"]) as "owner" | "wife"; return { subject: "local-test", role, mode: role === "wife" ? "wife" : "full" }; }
   const tailscale = String(req.headers["tailscale-user-login"] || "").trim();
-  if (tailscale && tailscale.length <= 512) return { subject: tailscale.toLowerCase(), role: "owner", mode: "full" };
+  if (options.trustTailscaleHeaders && tailscale && tailscale.length <= 512) return { subject: tailscale.toLowerCase(), role: "owner", mode: "full" };
   const token = cookie(req, "DriveOSSession"); if (!token) return null;
   if (options.localSessionSecret) { const principal = localToken(token, options.localSessionSecret); if (principal) return principal; }
   const cached = validationCache.get(token); if (cached && cached.expires > Date.now()) return cached.principal;

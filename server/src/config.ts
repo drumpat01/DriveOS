@@ -19,5 +19,6 @@ export const config = Object.freeze({
   legacyReadOnly: process.env.DRIVEOS_NODE_LEGACY_READ_ONLY !== "false",
   publicOrigin: process.env.DRIVEOS_NODE_PUBLIC_ORIGIN || "https://superredux.tail1babbd.ts.net:8443",
   allowTestAuth: process.env.DRIVEOS_NODE_TEST_AUTH === "true",
+  trustTailscaleHeaders: process.env.DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS === "true",
   householdId: process.env.DRIVEOS_NODE_HOUSEHOLD_ID || "household_primary"
 });
