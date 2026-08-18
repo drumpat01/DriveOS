@@ -32,7 +32,7 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
       if (!["GET", "HEAD"].includes(req.method)) { const origin = String(req.headers.origin || ""); if (origin && origin !== cfg.publicOrigin && !(cfg.allowTestAuth && origin === "http://127.0.0.1")) return reply.code(403).send({ error: "Request origin validation failed." }); }
       return;
     }
-    req.principal = await authenticate(req, { allowTestAuth: cfg.allowTestAuth, legacyUpstream: cfg.legacyUpstream, localSessionSecret: process.env.DRIVEOS_NODE_SESSION_SECRET });
+    req.principal = await authenticate(req, { allowTestAuth: cfg.allowTestAuth, trustTailscaleHeaders: cfg.trustTailscaleHeaders, legacyUpstream: cfg.legacyUpstream, localSessionSecret: process.env.DRIVEOS_NODE_SESSION_SECRET });
     if (!req.principal) { if (req.url.startsWith("/api/")) return reply.code(401).send({ error: "Authentication required." }); return reply.redirect("/login"); }
     if (!["GET", "HEAD"].includes(req.method)) {
       const origin = String(req.headers.origin || ""); if (origin && origin !== cfg.publicOrigin && !(cfg.allowTestAuth && origin === "http://127.0.0.1")) return reply.code(403).send({ error: "Request origin validation failed." });

@@ -28,6 +28,7 @@ $Environment = @{
     DRIVEOS_NODE_LEGACY_READ_ONLY = 'true'
     DRIVEOS_NODE_PUBLIC_ORIGIN = 'https://superredux.tail1babbd.ts.net:8443'
     DRIVEOS_NODE_LOG_LEVEL = 'info'
+    DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS = 'true'
 }
 $Process = Start-Process -FilePath $Node -ArgumentList @('server\dist\index.js') -WorkingDirectory $Root -WindowStyle Hidden -RedirectStandardOutput (Join-Path $LogDirectory 'stdout.log') -RedirectStandardError (Join-Path $LogDirectory 'stderr.log') -Environment $Environment -PassThru
 [IO.File]::WriteAllText($PidPath, "$($Process.Id)", [Text.UTF8Encoding]::new($false))

@@ -75,6 +75,7 @@ Inspect `GET /readyz` or authenticated `GET /api/atlas/snapshot/status` for `rea
 - `DRIVEOS_NODE_LEGACY_READ_ONLY`
 - `DRIVEOS_NODE_LOG_LEVEL`
 - `DRIVEOS_NODE_TEST_AUTH` (automated tests only)
+- `DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS` (private local proxy only; never enable on a public origin)
 
 Never commit values for these variables. Private database files, backups, logs, build output, and benchmark artifacts are ignored.
 
