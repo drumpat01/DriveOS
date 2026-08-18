@@ -20,6 +20,7 @@ Assert-Equal $Migrations[4].Version 5 'Journey attachment migration must remain 
 Assert-Equal $Migrations[5].Version 6 'Atlas read-model migration must remain sixth.'
 Assert-Equal $Migrations[6].Version 7 'Memories migration must remain seventh.'
 $SchemaSql = @($Migrations | ForEach-Object { Get-Content -LiteralPath $_.Path -Raw }) -join "`n"
+Assert-True (-not ($SchemaSql -match '(?im)^\s*PRAGMA\s+optimize\s*;')) 'Shared migrations must not send transaction-unsafe PRAGMA optimize to Turso.'
 foreach ($Table in @('schema_migrations','households','app_users','household_members','user_preferences','vehicles','drives','charging_sessions','integration_sync_cursors','integration_sync_runs','durable_rollups','integrity_audit_runs','journey_collections','journey_collection_drives','journey_attachments','memories','memory_collections','memory_attachments','memory_suggestions','atlas_snapshots','atlas_place_details','atlas_pattern_candidates','atlas_pattern_reviews','atlas_place_labels','atlas_snapshot_state')) {
     if ($Table -eq 'schema_migrations') { continue }
     Assert-True ($SchemaSql -match "CREATE TABLE IF NOT EXISTS $Table") "Shared schema is missing $Table."

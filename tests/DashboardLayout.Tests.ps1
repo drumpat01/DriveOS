@@ -36,11 +36,21 @@ finally {
 
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $Frontend = Get-Content (Join-Path $Root 'web\features\dashboard-customization.js') -Raw
+$ReferenceDashboard = Get-Content (Join-Path $Root 'web\features\reference-dashboard.js') -Raw
+$App = Get-Content (Join-Path $Root 'web\app.js') -Raw
+$Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
 Assert-True ($Server -match 'ConvertTo-SafeDashboardLayout') 'Server-side dashboard layout validation is missing.'
 Assert-True ($Server -match 'Get-DriveOSDashboardLayoutRecord') 'Dashboard layout read endpoint is not repository-backed.'
 Assert-True ($Server -match 'Set-DriveOSDashboardLayoutRecord') 'Dashboard layout write endpoint is not repository-backed.'
 Assert-True ($Frontend -match '/api/dashboard/layout') 'Frontend dashboard sync endpoint is missing.'
 Assert-True ($Frontend -match 'offline.*saved on this device') 'Offline dashboard fallback is missing.'
 Assert-True ($Frontend -match 'remoteTime\s*>=\s*localTime') 'Dashboard conflict resolution is missing.'
+foreach ($Setter in @('setStatus','setVehicle','setSpotify','setDrives')) {
+    Assert-True ($ReferenceDashboard -match "function $Setter\(") "Reference dashboard is missing the direct $Setter live-data binding."
+    Assert-True ($App -match "DriveOSReferenceDashboard\?\.$Setter\(") "Application API loaders do not publish $Setter data to the reference dashboard."
+}
+Assert-True ($Styles -match 'Cinematic five-button mobile navigation shared by local, Tailnet, and production') 'The production mobile navigation contract is missing.'
+Assert-True (-not ($Styles -match ':root\.local-host \.main-nav\.mobile-nav-portal')) 'The cinematic mobile navigation is still limited to localhost.'
+Assert-True ($Styles -match 'grid-template-columns:repeat\(5,minmax\(0,1fr\)\)') 'The mobile navigation must retain five equal actions.'
 
 Write-Host 'DriveOS dashboard layout sync checks passed.' -ForegroundColor Green

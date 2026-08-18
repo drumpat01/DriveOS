@@ -353,6 +353,7 @@ async function loadStatus() {
 
     setText("playlistStatus", status.playlistScope ? "READY" : "REAUTHORIZE");
     $("playlistStatus").className = status.playlistScope ? "ok-text" : "warn-text";
+    window.DriveOSReferenceDashboard?.setStatus(status);
   } catch (error) {
     $("connectionPill").classList.remove("ok");
     $("connectionPill").classList.add("bad");
@@ -460,6 +461,7 @@ async function loadVehicle() {
     setText("insideTemp", v.insideTempF);
     setText("outsideTemp", v.outsideTempF);
     renderVehicleLocation(v);
+    window.DriveOSReferenceDashboard?.setVehicle(v);
 
     const battery = Number(v.battery);
     $("batteryFill").style.width =
@@ -541,6 +543,7 @@ async function loadSpotify() {
     }
 
     state.spotifyAuthorized = true;
+    window.DriveOSReferenceDashboard?.setSpotify(data);
     const spotifyConnectButton = $("spotifyConnectButton");
     if (spotifyConnectButton) spotifyConnectButton.hidden = true;
 
@@ -558,6 +561,7 @@ async function loadSpotify() {
     if (spotifyConnectButton) spotifyConnectButton.hidden = false;
     list.innerHTML = `<div class="empty-state"><h3>Connect Spotify</h3><p>Authorize Spotify on this computer, then JourneyDeck will recover the recent listening history Spotify still exposes.</p></div>`;
     setText("archiveAdded", "Spotify authorization required");
+    window.DriveOSReferenceDashboard?.setSpotify({ recent: [] });
     return null;
   }
 }
@@ -1436,6 +1440,8 @@ function scheduleDriveLibraryRender() {
 function renderDashboardDrives(drives) {
   const dashboard = $("dashboardDrives");
   if (!dashboard) return;
+
+  window.DriveOSReferenceDashboard?.setDrives(drives);
 
   if (!drives.length) {
     dashboard.innerHTML = `

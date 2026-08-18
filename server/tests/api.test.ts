@@ -61,6 +61,26 @@ test("snapshot rebuild runs off the request thread and preserves the last valid 
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
+test("readiness fails when the compatibility API is unavailable", async () => {
+  const upstream = http.createServer((_req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); });
+  await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve));
+  const address = upstream.address(); if (!address || typeof address === "string") throw new Error("Mock upstream failed.");
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: `http://127.0.0.1:${address.port}` });
+  try {
+    const ready = await runtime.app.inject({ method: "GET", url: "/readyz" });
+    assert.equal(ready.statusCode, 200);
+    assert.equal(JSON.parse(ready.body).legacyCompatibilityReachable, true);
+    await new Promise<void>(resolve => upstream.close(() => resolve()));
+    const unavailable = await runtime.app.inject({ method: "GET", url: "/readyz" });
+    assert.equal(unavailable.statusCode, 503);
+    assert.equal(JSON.parse(unavailable.body).legacyCompatibilityReachable, false);
+  } finally {
+    await runtime.app.close().catch(() => {});
+    if (upstream.listening) await new Promise<void>(resolve => upstream.close(() => resolve()));
+    fixture.cleanup();
+  }
+});
+
 test("legacy compatibility is explicit, passes reads, and blocks production writes", async () => {
   let requests = 0;
   const seen: Array<{ url?: string; host?: string; forwardedHost?: string; origin?: string }> = [];
