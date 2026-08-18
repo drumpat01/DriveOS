@@ -10,7 +10,7 @@ export async function proxyLegacy(req: FastifyRequest, reply: FastifyReply, upst
   const requestPath = req.url.split("?")[0];
   if (readOnly && !["GET", "HEAD"].includes(req.method) && !req.url.startsWith("/api/auth/") && !safeReadPostPaths.has(requestPath)) return reply.code(503).send({ error: "The local compatibility adapter is read-only. This write was not sent to the production service." });
   const url = new URL(req.url, upstream), headers: Record<string, string> = {};
-  for (const name of ["accept", "accept-language", "content-type", "cookie", "user-agent"]) { const value = req.headers[name]; if (value) headers[name] = String(value); }
+  for (const name of ["accept", "accept-language", "content-type", "cookie", "user-agent", "x-driveos-sync-token"]) { const value = req.headers[name]; if (value) headers[name] = String(value); }
   const trustedOrigin = forwardedOrigin || new URL(upstream).origin;
   const trustedPublicUrl = new URL(trustedOrigin);
   headers.host = trustedPublicUrl.host;

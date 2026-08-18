@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import compress from "@fastify/compress";
 import staticPlugin from "@fastify/static";
 import { AtlasStore } from "./atlas-store.js";
-import { authenticate, type Principal } from "./auth.js";
+import { authenticate, authenticateScheduledSync, type Principal } from "./auth.js";
 import { applyMigrations, openDatabase } from "./database.js";
 import { proxyLegacy } from "./legacy-proxy.js";
 import { config as defaultConfig } from "./config.js";
@@ -12,6 +12,7 @@ declare module "fastify" { interface FastifyRequest { principal: Principal | nul
 
 const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/manifest.webmanifest", "/favicon.ico"]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
+const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
   "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'",
   "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer",
@@ -21,13 +22,17 @@ const securityHeaders = {
 export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   const cfg = { ...defaultConfig, ...overrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root);
-  const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
+  const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
   app.addHook("onSend", async (_req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); return payload; });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
+    if (requestPath === scheduledSyncPath) {
+      if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
+      return;
+    }
     if (publicAuthPaths.has(requestPath)) {
       if (!["GET", "HEAD"].includes(req.method)) { const origin = String(req.headers.origin || ""); if (origin && origin !== cfg.publicOrigin && !(cfg.allowTestAuth && origin === "http://127.0.0.1")) return reply.code(403).send({ error: "Request origin validation failed." }); }
       return;
