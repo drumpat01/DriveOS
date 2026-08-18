@@ -80,3 +80,16 @@ test("legacy compatibility is explicit, passes reads, and blocks production writ
     const retiredAtlas = await runtime.app.inject({ method: "GET", url: "/api/atlas/journeys", headers: auth }); assert.equal(retiredAtlas.statusCode, 410); assert.equal(requests, 4);
   } finally { await runtime.app.close(); await new Promise<void>(resolve => upstream.close(() => resolve())); fixture.cleanup(); }
 });
+
+test("scheduled Spotify sync requires the shared secret and preserves it across the compatibility boundary", async () => {
+  const scheduledSyncSecret = "test-scheduled-sync-secret-0123456789";
+  let receivedToken = "";
+  const upstream = http.createServer((req, res) => { receivedToken = String(req.headers["x-driveos-sync-token"] || ""); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ synced: true })); });
+  await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve)); const address = upstream.address(); if (!address || typeof address === "string") throw new Error("Mock upstream failed.");
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: `http://127.0.0.1:${address.port}`, legacyReadOnly: false, publicOrigin: "https://journeydeck.me", scheduledSyncSecret });
+  try {
+    const missing = await runtime.app.inject({ method: "POST", url: "/api/spotify/sync", payload: {} }); assert.equal(missing.statusCode, 401); assert.equal(receivedToken, "");
+    const wrong = await runtime.app.inject({ method: "POST", url: "/api/spotify/sync", headers: { "x-driveos-sync-token": `${scheduledSyncSecret}-wrong` }, payload: {} }); assert.equal(wrong.statusCode, 401); assert.equal(receivedToken, "");
+    const valid = await runtime.app.inject({ method: "POST", url: "/api/spotify/sync", headers: { "x-driveos-sync-token": scheduledSyncSecret }, payload: {} }); assert.equal(valid.statusCode, 200); assert.equal(receivedToken, scheduledSyncSecret);
+  } finally { await runtime.app.close(); await new Promise<void>(resolve => upstream.close(() => resolve())); fixture.cleanup(); }
+});

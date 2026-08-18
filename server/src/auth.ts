@@ -10,6 +10,13 @@ function cookie(req: FastifyRequest, name: string) {
 
 function base64url(value: string) { return Buffer.from(value, "base64url"); }
 
+export function authenticateScheduledSync(req: FastifyRequest, expectedSecret: string) {
+  const candidate = String(req.headers["x-driveos-sync-token"] || "");
+  if (req.method !== "POST" || Buffer.byteLength(expectedSecret) < 32 || !candidate || Buffer.byteLength(candidate) > 512) return false;
+  const provided = Buffer.from(candidate), expected = Buffer.from(expectedSecret);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
 function localToken(token: string, secret: string): Principal | null {
   try {
     const [version, payload, signature] = token.split("."); if (version !== "v1" || !payload || !signature || Buffer.byteLength(secret) < 32) return null;
