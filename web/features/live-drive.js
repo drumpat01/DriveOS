@@ -84,7 +84,7 @@
       const coordinates = [longitude, latitude];
       if (!map) {
         container.innerHTML = "";
-        map = new maplibregl.Map({
+        const mapOptions = {
           container,
           style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
           center: coordinates,
@@ -95,7 +95,8 @@
           scrollZoom: false,
           dragRotate: false,
           pitchWithRotate: false
-        });
+        };
+        map = new maplibregl.Map(window.JourneyDeckMapTheme?.options(mapOptions) || mapOptions);
         window.JourneyDeckMapTheme?.attach(map);
         const markerElement = document.createElement("div");
         markerElement.className = "live-drive-marker";

@@ -4,6 +4,29 @@ set -euo pipefail
 PUBLIC_PORT="${PORT:-10000}"
 BACKEND_PORT="10001"
 
+if [[ "${DRIVEOS_ATLAS_NODE_CANARY:-false}" == "true" ]]; then
+    export PORT="${BACKEND_PORT}"
+    pwsh -NoLogo -NoProfile -File ./DriveOS-Server.ps1 &
+    LEGACY_PID=$!
+    trap 'kill "${LEGACY_PID}" 2>/dev/null || true' EXIT INT TERM
+
+    export DRIVEOS_NODE_HOST="0.0.0.0"
+    export DRIVEOS_NODE_PORT="${PUBLIC_PORT}"
+    export DRIVEOS_NODE_LEGACY_UPSTREAM="http://127.0.0.1:${BACKEND_PORT}"
+    export DRIVEOS_NODE_LEGACY_READ_ONLY="false"
+    export DRIVEOS_NODE_SESSION_SECRET="${DRIVEOS_AUTH_SECRET:-}"
+    pwsh -NoLogo -NoProfile -File ./tools/Initialize-AtlasNodeCanary.ps1
+    (
+        while true; do
+            sleep "${DRIVEOS_ATLAS_REFRESH_SECONDS:-900}"
+            pwsh -NoLogo -NoProfile -File ./tools/Sync-AtlasNodeSource.ps1 || echo "Atlas source refresh failed; retaining the last valid snapshot." >&2
+        done
+    ) &
+    REFRESH_PID=$!
+    trap 'kill "${LEGACY_PID}" "${REFRESH_PID}" 2>/dev/null || true' EXIT INT TERM
+    exec node ./server/dist/index.js
+fi
+
 # The live beta keeps its own frontend while securely forwarding authenticated
 # API requests to the production JourneyDeck backend. Credentials remain in the
 # production service and are never copied into the beta environment.

@@ -13,7 +13,7 @@ const context = {
   clearTimeout,
   setInterval: () => 1,
   clearInterval,
-  document: { body: { contains: () => true, classList: { add() {}, remove() {} } } },
+  document: { body: { contains: () => true, classList: { add() {}, remove() {} } }, getElementById: () => null },
   window: null
 };
 context.window = context;
@@ -64,10 +64,7 @@ first.then(() => {
     );
   }
 
-  assert.ok(
-    drives > calls.indexOf("recaps"),
-    "The full 730-day drive library should load after secondary views"
-  );
+  assert.equal(drives, -1, "Dashboard and Atlas startup must not download the full 730-day journey library");
 
   assert.equal(button.disabled, false);
   assert.equal(button.textContent, "Refresh data");

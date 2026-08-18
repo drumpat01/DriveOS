@@ -415,7 +415,7 @@ function renderVehicleLocation(vehicle) {
   container.querySelector(".vehicle-location-message")?.remove();
   const coordinates = [longitude, latitude];
   if (!vehicleLocationMap) {
-    vehicleLocationMap = new maplibregl.Map({
+    const mapOptions = {
       container,
       style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
       center: coordinates,
@@ -423,7 +423,8 @@ function renderVehicleLocation(vehicle) {
       attributionControl: false,
       scrollZoom: false,
       pitchWithRotate: false
-    });
+    };
+    vehicleLocationMap = new maplibregl.Map(window.JourneyDeckMapTheme?.options(mapOptions) || mapOptions);
     window.JourneyDeckMapTheme?.attach(vehicleLocationMap);
     const marker = document.createElement("div");
     marker.className = "vehicle-location-marker";
@@ -2472,13 +2473,14 @@ async function renderDriveMap(data) {
 
   const first = routePoints[0];
 
-  const map = new maplibregl.Map({
+  const mapOptions = {
     container: "driveMap",
     style: window.JourneyDeckMapTheme?.style || "https://tiles.openfreemap.org/styles/dark",
     center: [first.longitude, first.latitude],
     zoom: 12,
     attributionControl: true
-  });
+  };
+  const map = new maplibregl.Map(window.JourneyDeckMapTheme?.options(mapOptions) || mapOptions);
   window.JourneyDeckMapTheme?.attach(map);
 
   state.driveMap = map;
