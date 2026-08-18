@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: journeydeck-atlas-canary
+    runtime: docker
+    plan: starter
+    region: ohio
+    branch: codex/atlas-node-hybrid
+    autoDeployTrigger: commit
+    healthCheckPath: /readyz
+    disk:
+      name: atlas-canary-data
+      mountPath: /var/data/atlas
+      sizeGB: 1
+    envVars:
+      - key: DRIVEOS_ATLAS_NODE_CANARY
+        value: "true"
+      - key: DRIVEOS_NODE_DATABASE
+        value: /var/data/atlas/journeydeck.db
+      - key: DRIVEOS_NODE_DATA_ROOT
+        value: /var/data/atlas
+      - key: DRIVEOS_NODE_HOUSEHOLD_ID
+        value: household_primary
+      - key: DRIVEOS_NODE_PUBLIC_ORIGIN
+        sync: false
+      - key: DRIVEOS_PUBLIC_URL
+        sync: false
+      - key: DRIVEOS_NODE_LOG_LEVEL
+        value: info
+      - key: DRIVEOS_REPOSITORY_PROVIDER
+        value: Turso
+      - key: TZ
+        value: America/Chicago
+      - key: TURSO_DATABASE_URL
+        value: libsql://driveos-drumpat01.aws-us-east-2.turso.io
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: DRIVEOS_OWNER_EMAIL
+        sync: false
+      - key: DRIVEOS_PASSWORD_HASH
+        sync: false
+      - key: DRIVEOS_WIFE_USERNAME
+        sync: false
+      - key: DRIVEOS_WIFE_PASSWORD_HASH
+        sync: false
+      - key: DRIVEOS_AUTH_SECRET
+        sync: false
+      - key: DRIVEOS_ENCRYPTION_KEY
+        sync: false
+      - key: TESSIE_TOKEN
+        sync: false
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: FOURSQUARE_API_KEY
+        sync: false

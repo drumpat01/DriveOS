@@ -95,3 +95,13 @@ The authenticated real-sized local snapshot returned one 38.9 KB transferred boo
 ## Rollback
 
 `Rollback-AtlasNodeLocal.ps1` validates and stops only the recorded Node process, then restores the previous local proxy on port 8791. The verified pre-Atlas database remains under `data\atlas-node-dev\backups`. No rollback command changes production, DNS, or Turso.
+
+## Hosted canary and promotion
+
+`render-atlas-canary.yaml` defines a separate paid canary service. It does not replace the `driveos` production service. The canary compiles on Node 24, keeps its SQLite read model and Atlas writes on a Render persistent disk, initializes that disk from a count-verified read-only Turso export, and runs the existing PowerShell server behind the Node front door for compatibility routes.
+
+Set both `DRIVEOS_NODE_PUBLIC_ORIGIN` and `DRIVEOS_PUBLIC_URL` to the canary's exact HTTPS origin. Copy the existing production secrets into the canary through Render; never add their values to the blueprint. A first boot is ready only after `/readyz` reports an active Atlas snapshot.
+
+Before promotion, verify login, `/api/atlas/bootstrap`, label and pattern writes, `/api/atlas/snapshot/status`, dashboard, Replay, Share Card, Timeline, Collections, Data Health, and Wife Mode on the canary. Promotion is a separate reviewed change that moves the Node entrypoint and persistent disk settings into `render.yaml`. Rollback leaves `render.yaml` on the PowerShell entrypoint or reverts that promotion commit; the current production service and Turso are not modified by canary creation.
+
+The initial hosted slice imports Turso only when the persistent database is absent. It is therefore a canary gate, not yet the final continuous-ingestion architecture. Production promotion must add an atomic incremental Turso refresh before the Node service becomes the primary live runtime.

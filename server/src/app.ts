@@ -54,7 +54,7 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   app.post<{ Params: { id: string }; Body: { type?: string; customName?: string } }>("/api/atlas/patterns/:id/confirm", { schema: { body: { type: "object", additionalProperties: false, properties: { type: { type: "string", maxLength: 40 }, customName: { type: "string", maxLength: 60 } } }, response: { 200: savedSchema } } }, async (req, reply) => store.reviewPattern(req.params.id, "confirmed", req.body?.type || "frequent-route", req.body?.customName) || reply.code(404).send({ error: "Pattern was not found." }));
   app.post<{ Params: { id: string } }>("/api/atlas/patterns/:id/dismiss", { schema: { response: { 200: savedSchema } } }, async (req, reply) => store.reviewPattern(req.params.id, "dismissed") || reply.code(404).send({ error: "Pattern was not found." }));
   app.post("/api/atlas/snapshot/rebuild", async (_req, reply) => { void store.rebuildNow(); return reply.code(202).send({ accepted: true }); });
-  app.all("/api/*", async (req, reply) => proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly));
+  app.all("/api/*", async (req, reply) => proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin));
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: false, index: false, decorateReply: true });
   app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));

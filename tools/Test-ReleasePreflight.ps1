@@ -68,6 +68,7 @@ if (-not $SkipTests) {
         'tests\TursoRehearsal.Tests.ps1',
         'tests\TessieParity.Tests.ps1',
         'tests\SpotifyScheduledSync.Tests.ps1',
+        'tests\AtlasCanaryDeployment.Tests.ps1',
         'tests\WebDeployment.Tests.ps1'
     )) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root $Test)
