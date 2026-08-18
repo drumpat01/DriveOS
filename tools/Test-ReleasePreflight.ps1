@@ -60,6 +60,7 @@ if (-not $SkipTests) {
         'tests\DatabaseArchitecture.Tests.ps1',
         'tests\JourneyCollections.Tests.ps1',
         'tests\JourneyAttachments.Tests.ps1',
+        'tests\Memories.Tests.ps1',
         'tests\Passkeys.Tests.ps1',
         'tests\MobilityGraph.Tests.ps1',
         'tests\TimelineImport.Tests.ps1',

@@ -425,6 +425,38 @@ function Remove-DriveOSTursoJourneyAttachment {
     Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'DELETE FROM journey_attachments WHERE id=? AND household_id=?;' -Args @($AttachmentId,$HouseholdId)
 }
 
+function Get-DriveOSTursoMemories {
+    param($Repository,[string]$HouseholdId)
+    $Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT m.id,m.name,m.notes,m.artwork_key,m.created_at_utc,m.updated_at_utc,c.id AS collection_id,mc.sort_order FROM memories m LEFT JOIN memory_collections mc ON mc.memory_id=m.id LEFT JOIN journey_collections c ON c.id=mc.collection_id WHERE m.household_id=? ORDER BY m.updated_at_utc DESC,m.id,mc.sort_order,c.id;' -Args @($HouseholdId));$Result=@()
+    foreach($Group in @($Rows|Group-Object id)){$First=$Group.Group[0];$Result += [PSCustomObject]@{id=$First.id;name=$First.name;notes=$First.notes;artworkKey=$First.artwork_key;collectionIds=@($Group.Group|Where-Object collection_id|ForEach-Object collection_id);createdAtUtc=$First.created_at_utc;updatedAtUtc=$First.updated_at_utc}}
+    return @($Result)
+}
+
+function Set-DriveOSTursoMemory {
+    param($Repository,$Memory,[string]$HouseholdId)
+    $CollectionIds=@($Memory.collectionIds);if($CollectionIds.Count){$Placeholders=(@(1..$CollectionIds.Count|ForEach-Object{'?'})-join ',');$Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT id FROM journey_collections WHERE household_id=? AND id IN ($Placeholders);" -Args (@($HouseholdId)+$CollectionIds));if($Rows.Count -ne $CollectionIds.Count){throw 'One or more memory collections no longer exist.'}}
+    $Now=[string]$Memory.updatedAtUtc;$Statements=@([PSCustomObject]@{Sql="INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES(?,'Primary household',?,?) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;";Args=@($HouseholdId,$Now,$Now)},[PSCustomObject]@{Sql='INSERT INTO memories(id,household_id,name,notes,artwork_key,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,updated_at_utc=excluded.updated_at_utc WHERE memories.household_id=excluded.household_id;';Args=@($Memory.id,$HouseholdId,$Memory.name,$Memory.notes,$Memory.artworkKey,$Memory.createdAtUtc,$Now)},[PSCustomObject]@{Sql='DELETE FROM memory_collections WHERE memory_id=? AND EXISTS(SELECT 1 FROM memories WHERE id=? AND household_id=?);';Args=@($Memory.id,$Memory.id,$HouseholdId)})
+    for($Index=0;$Index -lt $CollectionIds.Count;$Index++){$Statements += [PSCustomObject]@{Sql='INSERT INTO memory_collections(memory_id,collection_id,sort_order,added_at_utc) SELECT ?,id,?,? FROM journey_collections WHERE household_id=? AND id=?;';Args=@($Memory.id,$Index,$Now,$HouseholdId,$CollectionIds[$Index])}}
+    Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements $Statements
+}
+
+function Remove-DriveOSTursoMemory { param($Repository,[string]$MemoryId,[string]$HouseholdId) Invoke-DriveOSTursoTransactionalBatch -Repository $Repository -Statements @([PSCustomObject]@{Sql='DELETE FROM memories WHERE id=? AND household_id=?;';Args=@($MemoryId,$HouseholdId)}) }
+
+function Get-DriveOSTursoMemoryAttachments {
+    param($Repository,[string]$MemoryId,[string]$HouseholdId,[string]$AttachmentId,[switch]$IncludeData)
+    $Fields=if($IncludeData){'id,memory_id,file_name,content_type,byte_length,data_base64,created_at_utc'}else{'id,memory_id,file_name,content_type,byte_length,created_at_utc'};if($AttachmentId){$Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT $Fields FROM memory_attachments WHERE id=? AND household_id=? LIMIT 1;" -Args @($AttachmentId,$HouseholdId))}else{$Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT $Fields FROM memory_attachments WHERE memory_id=? AND household_id=? ORDER BY created_at_utc,id;" -Args @($MemoryId,$HouseholdId))}
+    return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;memoryId=$_.memory_id;fileName=$_.file_name;contentType=$_.content_type;byteLength=[int]$_.byte_length;dataBase64=$(if($IncludeData){$_.data_base64}else{$null});createdAtUtc=$_.created_at_utc}})
+}
+function Set-DriveOSTursoMemoryAttachment { param($Repository,$Record,[string]$HouseholdId) Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'INSERT INTO memory_attachments(id,household_id,memory_id,file_name,content_type,byte_length,data_base64,created_at_utc) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM memories WHERE id=? AND household_id=?);' -Args @($Record.id,$HouseholdId,$Record.memoryId,$Record.fileName,$Record.contentType,$Record.byteLength,$Record.dataBase64,$Record.createdAtUtc,$Record.memoryId,$HouseholdId) }
+function Remove-DriveOSTursoMemoryAttachment { param($Repository,[string]$AttachmentId,[string]$HouseholdId) Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'DELETE FROM memory_attachments WHERE id=? AND household_id=?;' -Args @($AttachmentId,$HouseholdId) }
+
+function Get-DriveOSTursoMemorySuggestions {
+    param($Repository,[string]$HouseholdId,[string]$Status='suggested')
+    $Rows=@(Invoke-DriveOSTursoQuery -Repository $Repository -Sql 'SELECT id,kind,suggestion_key,title,description,payload_json,status,created_at_utc,updated_at_utc FROM memory_suggestions WHERE household_id=? AND status=? ORDER BY kind,updated_at_utc DESC,id;' -Args @($HouseholdId,$Status));return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;kind=$_.kind;suggestionKey=$_.suggestion_key;title=$_.title;description=$_.description;payload=$($_.payload_json|ConvertFrom-Json);status=$_.status;createdAtUtc=$_.created_at_utc;updatedAtUtc=$_.updated_at_utc}})
+}
+function Set-DriveOSTursoMemorySuggestion { param($Repository,$Suggestion,[string]$HouseholdId) $Payload=$Suggestion.payload|ConvertTo-Json -Depth 12 -Compress;Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'INSERT INTO memory_suggestions(id,household_id,kind,suggestion_key,title,description,payload_json,status,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(household_id,suggestion_key) DO UPDATE SET title=excluded.title,description=excluded.description,payload_json=excluded.payload_json,updated_at_utc=excluded.updated_at_utc;' -Args @($Suggestion.id,$HouseholdId,$Suggestion.kind,$Suggestion.suggestionKey,$Suggestion.title,$Suggestion.description,$Payload,$Suggestion.status,$Suggestion.createdAtUtc,$Suggestion.updatedAtUtc) }
+function Set-DriveOSTursoMemorySuggestionStatus { param($Repository,[string]$SuggestionId,[string]$Status,[string]$HouseholdId) Invoke-DriveOSTursoExecute -Repository $Repository -Sql 'UPDATE memory_suggestions SET status=?,updated_at_utc=? WHERE id=? AND household_id=?;' -Args @($Status,[DateTimeOffset]::UtcNow.ToString('o'),$SuggestionId,$HouseholdId) }
+
 function Get-DriveOSTursoTessieCharges {
     param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
@@ -679,6 +711,15 @@ Export-ModuleMember -Function `
     Get-DriveOSTursoJourneyAttachments, `
     Set-DriveOSTursoJourneyAttachment, `
     Remove-DriveOSTursoJourneyAttachment, `
+    Get-DriveOSTursoMemories, `
+    Set-DriveOSTursoMemory, `
+    Remove-DriveOSTursoMemory, `
+    Get-DriveOSTursoMemoryAttachments, `
+    Set-DriveOSTursoMemoryAttachment, `
+    Remove-DriveOSTursoMemoryAttachment, `
+    Get-DriveOSTursoMemorySuggestions, `
+    Set-DriveOSTursoMemorySuggestion, `
+    Set-DriveOSTursoMemorySuggestionStatus, `
     Get-DriveOSTursoTessieCharges, `
     Get-DriveOSTursoTessieAuditRows, `
     Get-DriveOSTursoIntegrationSyncCursor, `

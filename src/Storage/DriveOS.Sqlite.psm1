@@ -200,6 +200,50 @@ function Remove-DriveOSSqliteJourneyAttachment {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "DELETE FROM journey_attachments WHERE id=$(ConvertTo-SqlLiteral $AttachmentId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId);"
 }
 
+function Get-DriveOSSqliteMemories {
+    param($Repository,[string]$HouseholdId)
+    $Sql="SELECT m.id,m.name,m.notes,m.artwork_key,m.created_at_utc,m.updated_at_utc,c.id AS collection_id,mc.sort_order FROM memories m LEFT JOIN memory_collections mc ON mc.memory_id=m.id LEFT JOIN journey_collections c ON c.id=mc.collection_id WHERE m.household_id=$(ConvertTo-SqlLiteral $HouseholdId) ORDER BY m.updated_at_utc DESC,m.id,mc.sort_order,c.id;"
+    $Rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql -Json)
+    $Result=@();foreach($Group in @($Rows|Group-Object id)){$First=$Group.Group[0];$Result += [PSCustomObject]@{id=$First.id;name=$First.name;notes=$First.notes;artworkKey=$First.artwork_key;collectionIds=@($Group.Group|Where-Object collection_id|ForEach-Object collection_id);createdAtUtc=$First.created_at_utc;updatedAtUtc=$First.updated_at_utc}}
+    return @($Result)
+}
+
+function Set-DriveOSSqliteMemory {
+    param($Repository,$Memory,[string]$HouseholdId)
+    $CollectionIds=@($Memory.collectionIds);$Now=[string]$Memory.updatedAtUtc
+    if($CollectionIds.Count){$IdList=@($CollectionIds|ForEach-Object{ConvertTo-SqlLiteral "$_"})-join ',';$Rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT id FROM journey_collections WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND id IN ($IdList);" -Json);if($Rows.Count -ne $CollectionIds.Count){throw 'One or more memory collections no longer exist.'}}
+    $Sql=[Collections.Generic.List[string]]::new();$Sql.Add('PRAGMA foreign_keys=ON;');$Sql.Add('BEGIN IMMEDIATE;')
+    $Sql.Add("INSERT INTO households(id,display_name,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $HouseholdId),'Primary household',$(ConvertTo-SqlLiteral $Now),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET updated_at_utc=excluded.updated_at_utc;")
+    $Sql.Add("INSERT INTO memories(id,household_id,name,notes,artwork_key,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $Memory.id),$(ConvertTo-SqlLiteral $HouseholdId),$(ConvertTo-SqlLiteral $Memory.name),$(ConvertTo-SqlLiteral $Memory.notes),$(ConvertTo-SqlLiteral $Memory.artworkKey),$(ConvertTo-SqlLiteral $Memory.createdAtUtc),$(ConvertTo-SqlLiteral $Now)) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,updated_at_utc=excluded.updated_at_utc WHERE memories.household_id=excluded.household_id;")
+    $Sql.Add("DELETE FROM memory_collections WHERE memory_id=$(ConvertTo-SqlLiteral $Memory.id) AND EXISTS(SELECT 1 FROM memories WHERE id=$(ConvertTo-SqlLiteral $Memory.id) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId));")
+    for($Index=0;$Index -lt $CollectionIds.Count;$Index++){$Sql.Add("INSERT INTO memory_collections(memory_id,collection_id,sort_order,added_at_utc) SELECT $(ConvertTo-SqlLiteral $Memory.id),id,$Index,$(ConvertTo-SqlLiteral $Now) FROM journey_collections WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND id=$(ConvertTo-SqlLiteral $CollectionIds[$Index]);")}
+    $Sql.Add('COMMIT;');$null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($Sql -join "`n")
+}
+
+function Remove-DriveOSSqliteMemory { param($Repository,[string]$MemoryId,[string]$HouseholdId) $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "PRAGMA foreign_keys=ON; BEGIN IMMEDIATE; DELETE FROM memories WHERE id=$(ConvertTo-SqlLiteral $MemoryId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId); COMMIT;" }
+
+function Get-DriveOSSqliteMemoryAttachments {
+    param($Repository,[string]$MemoryId,[string]$HouseholdId,[string]$AttachmentId,[switch]$IncludeData)
+    $Fields=if($IncludeData){'id,memory_id,file_name,content_type,byte_length,data_base64,created_at_utc'}else{'id,memory_id,file_name,content_type,byte_length,created_at_utc'};$Where=if($AttachmentId){"id=$(ConvertTo-SqlLiteral $AttachmentId)"}else{"memory_id=$(ConvertTo-SqlLiteral $MemoryId)"}
+    $Rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT $Fields FROM memory_attachments WHERE $Where AND household_id=$(ConvertTo-SqlLiteral $HouseholdId) ORDER BY created_at_utc,id;" -Json)
+    return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;memoryId=$_.memory_id;fileName=$_.file_name;contentType=$_.content_type;byteLength=[int]$_.byte_length;dataBase64=$(if($IncludeData){$_.data_base64}else{$null});createdAtUtc=$_.created_at_utc}})
+}
+
+function Set-DriveOSSqliteMemoryAttachment { param($Repository,$Record,[string]$HouseholdId) $Sql="INSERT INTO memory_attachments(id,household_id,memory_id,file_name,content_type,byte_length,data_base64,created_at_utc) SELECT $(ConvertTo-SqlLiteral $Record.id),$(ConvertTo-SqlLiteral $HouseholdId),$(ConvertTo-SqlLiteral $Record.memoryId),$(ConvertTo-SqlLiteral $Record.fileName),$(ConvertTo-SqlLiteral $Record.contentType),$($Record.byteLength),$(ConvertTo-SqlLiteral $Record.dataBase64),$(ConvertTo-SqlLiteral $Record.createdAtUtc) WHERE EXISTS(SELECT 1 FROM memories WHERE id=$(ConvertTo-SqlLiteral $Record.memoryId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId));";$null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql }
+function Remove-DriveOSSqliteMemoryAttachment { param($Repository,[string]$AttachmentId,[string]$HouseholdId) $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "DELETE FROM memory_attachments WHERE id=$(ConvertTo-SqlLiteral $AttachmentId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId);" }
+
+function Get-DriveOSSqliteMemorySuggestions {
+    param($Repository,[string]$HouseholdId,[string]$Status='suggested')
+    $Rows=@(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT id,kind,suggestion_key,title,description,payload_json,status,created_at_utc,updated_at_utc FROM memory_suggestions WHERE household_id=$(ConvertTo-SqlLiteral $HouseholdId) AND status=$(ConvertTo-SqlLiteral $Status) ORDER BY kind,updated_at_utc DESC,id;" -Json)
+    return @($Rows|ForEach-Object{[PSCustomObject]@{id=$_.id;kind=$_.kind;suggestionKey=$_.suggestion_key;title=$_.title;description=$_.description;payload=$($_.payload_json|ConvertFrom-Json);status=$_.status;createdAtUtc=$_.created_at_utc;updatedAtUtc=$_.updated_at_utc}})
+}
+
+function Set-DriveOSSqliteMemorySuggestion {
+    param($Repository,$Suggestion,[string]$HouseholdId)
+    $Payload=$Suggestion.payload|ConvertTo-Json -Depth 12 -Compress;$Sql="INSERT INTO memory_suggestions(id,household_id,kind,suggestion_key,title,description,payload_json,status,created_at_utc,updated_at_utc) VALUES($(ConvertTo-SqlLiteral $Suggestion.id),$(ConvertTo-SqlLiteral $HouseholdId),$(ConvertTo-SqlLiteral $Suggestion.kind),$(ConvertTo-SqlLiteral $Suggestion.suggestionKey),$(ConvertTo-SqlLiteral $Suggestion.title),$(ConvertTo-SqlLiteral $Suggestion.description),$(ConvertTo-SqlLiteral $Payload),$(ConvertTo-SqlLiteral $Suggestion.status),$(ConvertTo-SqlLiteral $Suggestion.createdAtUtc),$(ConvertTo-SqlLiteral $Suggestion.updatedAtUtc)) ON CONFLICT(household_id,suggestion_key) DO UPDATE SET title=excluded.title,description=excluded.description,payload_json=excluded.payload_json,updated_at_utc=excluded.updated_at_utc;";$null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql $Sql
+}
+function Set-DriveOSSqliteMemorySuggestionStatus { param($Repository,[string]$SuggestionId,[string]$Status,[string]$HouseholdId) $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "UPDATE memory_suggestions SET status=$(ConvertTo-SqlLiteral $Status),updated_at_utc=$(ConvertTo-SqlLiteral ([DateTimeOffset]::UtcNow.ToString('o'))) WHERE id=$(ConvertTo-SqlLiteral $SuggestionId) AND household_id=$(ConvertTo-SqlLiteral $HouseholdId);" }
+
 function Get-DriveOSSqliteTessieCharges {
     param($Repository,[long]$FromEpoch)
     $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM charging_sessions WHERE provider='tessie' AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
@@ -355,4 +399,4 @@ function Import-DriveOSSqliteData {
     $null=Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql ($sql -join "`n")
 }
 
-Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Set-DriveOSSqliteReconstructedDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection,Get-DriveOSSqliteJourneyAttachments,Set-DriveOSSqliteJourneyAttachment,Remove-DriveOSSqliteJourneyAttachment
+Export-ModuleMember -Function Invoke-DriveOSSqlite,Initialize-DriveOSSqlite,Set-DriveOSSqliteTessieSnapshot,Set-DriveOSSqliteIntegrationSyncRun,Get-DriveOSSqliteTessieDrives,Set-DriveOSSqliteReconstructedDrives,Get-DriveOSSqliteTessieCharges,Get-DriveOSSqliteTessieAuditRows,Get-DriveOSSqliteIntegrationSyncCursor,Get-DriveOSSqliteHistory,Add-DriveOSSqliteHistoryRecord,Get-DriveOSSqliteSoundtracks,Set-DriveOSSqliteSoundtrack,Get-DriveOSSqliteAliases,Set-DriveOSSqliteAliases,Get-DriveOSSqliteSettings,Set-DriveOSSqliteSettings,Get-DriveOSSqliteDashboardLayout,Set-DriveOSSqliteDashboardLayout,Get-DriveOSSqliteState,Set-DriveOSSqliteState,Set-DriveOSSqliteIntegrityAuditRun,Get-DriveOSSqliteLatestIntegrityAuditRun,Test-DriveOSSqliteIntegrity,Import-DriveOSSqliteData,Get-DriveOSSqliteJourneyCollections,Set-DriveOSSqliteJourneyCollection,Remove-DriveOSSqliteJourneyCollection,Get-DriveOSSqliteJourneyAttachments,Set-DriveOSSqliteJourneyAttachment,Remove-DriveOSSqliteJourneyAttachment,Get-DriveOSSqliteMemories,Set-DriveOSSqliteMemory,Remove-DriveOSSqliteMemory,Get-DriveOSSqliteMemoryAttachments,Set-DriveOSSqliteMemoryAttachment,Remove-DriveOSSqliteMemoryAttachment,Get-DriveOSSqliteMemorySuggestions,Set-DriveOSSqliteMemorySuggestion,Set-DriveOSSqliteMemorySuggestionStatus
