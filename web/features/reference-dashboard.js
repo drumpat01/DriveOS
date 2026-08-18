@@ -1,6 +1,12 @@
 (function () {
   const byId = id => document.getElementById(id);
   const all = selector => [...document.querySelectorAll(selector)];
+  let activityHome = null;
+  let activityMonitor = null;
+  let logoHoldTimer = 0;
+  let logoHoldActivated = false;
+  let logoHoldStartX = 0;
+  let logoHoldStartY = 0;
 
   function dashboardIsActive() {
     return byId("view-dashboard")?.classList.contains("active-view");
@@ -8,6 +14,104 @@
 
   function syncBodyMode() {
     document.body.classList.toggle("reference-dashboard-active", Boolean(dashboardIsActive()));
+  }
+
+  function mobileDashboardIsActive() {
+    return dashboardIsActive() && window.matchMedia("(max-width: 767px)").matches;
+  }
+
+  function syncActivityCopy(inDashboard) {
+    if (!activityMonitor) return;
+    const text = byId("backgroundActivityText");
+    const count = byId("backgroundActivityCount");
+    if (activityMonitor.classList.contains("idle")) {
+      if (text) text.textContent = inDashboard ? "All caught up" : "Idle";
+      return;
+    }
+    if (!count || count.hidden) return;
+    const total = Number.parseInt(count.textContent, 10);
+    if (!Number.isFinite(total)) return;
+    count.textContent = inDashboard ? `${total} activities` : String(total);
+  }
+
+  function syncActivityPlacement() {
+    activityMonitor ||= byId("backgroundActivityMonitor");
+    const slot = document.querySelector("[data-ref-activity-slot]");
+    if (!activityMonitor || !slot) return;
+    if (!activityHome) {
+      activityHome = document.createComment("background activity home");
+      activityMonitor.parentNode?.insertBefore(activityHome, activityMonitor);
+    }
+    const useDashboardSlot = mobileDashboardIsActive();
+    if (useDashboardSlot && activityMonitor.parentElement !== slot) slot.appendChild(activityMonitor);
+    if (!useDashboardSlot && activityHome.parentNode && activityMonitor.parentElement === slot) {
+      activityHome.parentNode.insertBefore(activityMonitor, activityHome.nextSibling);
+    }
+    activityMonitor.classList.toggle("ref-dashboard-activity", useDashboardSlot);
+    syncActivityCopy(useDashboardSlot);
+  }
+
+  function openAnimationLab() {
+    const build = encodeURIComponent(window.DriveOSBuild?.webBuild || "current");
+    window.location.assign(`/loading-preview.html?v=${build}`);
+  }
+
+  function cancelLogoHold() {
+    window.clearTimeout(logoHoldTimer);
+    logoHoldTimer = 0;
+    document.querySelector(".ref-hero")?.classList.remove("is-holding");
+  }
+
+  function beginLogoHold(event) {
+    if (event.type === "pointerdown" && event.button !== 0) return;
+    if (event.target?.closest?.(".ref-live-pill")) return;
+    cancelLogoHold();
+    logoHoldActivated = false;
+    const point = event.touches?.[0] || event;
+    logoHoldStartX = Number(point.clientX) || 0;
+    logoHoldStartY = Number(point.clientY) || 0;
+    const hero = event.currentTarget;
+    hero.classList.add("is-holding");
+    logoHoldTimer = window.setTimeout(() => {
+      logoHoldActivated = true;
+      hero.classList.remove("is-holding");
+      navigator.vibrate?.(35);
+      openAnimationLab();
+    }, 1500);
+  }
+
+  function trackLogoHold(event) {
+    if (!logoHoldTimer) return;
+    const point = event.touches?.[0] || event;
+    if (Math.hypot((Number(point.clientX) || 0) - logoHoldStartX, (Number(point.clientY) || 0) - logoHoldStartY) > 12) {
+      cancelLogoHold();
+    }
+  }
+
+  function bindAnimationLabHold() {
+    const hero = document.querySelector(".ref-hero");
+    if (!hero || hero.dataset.animationHoldBound === "true") return;
+    hero.dataset.animationHoldBound = "true";
+    if ("PointerEvent" in window) {
+      hero.addEventListener("pointerdown", beginLogoHold);
+      hero.addEventListener("pointermove", trackLogoHold, { passive: true });
+      ["pointerup", "pointercancel", "pointerleave"].forEach(type => hero.addEventListener(type, cancelLogoHold));
+    } else {
+      hero.addEventListener("touchstart", beginLogoHold, { passive: true });
+      hero.addEventListener("touchmove", trackLogoHold, { passive: true });
+      ["touchend", "touchcancel"].forEach(type => hero.addEventListener(type, cancelLogoHold));
+    }
+    hero.addEventListener("contextmenu", event => event.preventDefault());
+    hero.addEventListener("click", event => {
+      if (!logoHoldActivated) return;
+      event.preventDefault();
+      logoHoldActivated = false;
+    });
+  }
+
+  function syncBuildLabel() {
+    const build = window.DriveOSBuild?.webBuild || document.documentElement.dataset.webBuild || "current";
+    all("[data-ref-build]").forEach(node => { node.textContent = build; });
   }
 
   function syncToolDock(view = dashboardIsActive() ? "dashboard" : "") {
@@ -118,11 +222,16 @@
   function bind() {
     syncBodyMode();
     syncLiveData();
+    syncBuildLabel();
+    syncActivityPlacement();
+    bindAnimationLabHold();
 
     document.addEventListener("journeydeck:viewchange", event => {
       document.body.classList.toggle("reference-dashboard-active", event.detail?.view === "dashboard");
       syncToolDock(event.detail?.view || "");
+      syncActivityPlacement();
     });
+    window.addEventListener("resize", syncActivityPlacement, { passive: true });
 
     syncToolDock();
 

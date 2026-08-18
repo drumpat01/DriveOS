@@ -6,13 +6,24 @@
     const height = 1350;
     let artwork = null;
     let mapArtwork = null;
-    let vehicleArtwork = null;
+    let mapLoadRevision = 0;
+    let previewRevision = 0;
+    let previewTimer = 0;
+    let pendingMapRefresh = false;
+    const preferenceKey = "journeydeck-share-card-preferences-v1";
 
     const themes = Object.freeze({
       cinematic: { bg1: "#080611", bg2: "#160a25", bg3: "#05040c", text: "#fff8f1", muted: "#aa94b8", accent: "#ff5b50", accent2: "#9b51ff", panel: "rgba(24,13,43,.88)", mapTint: "rgba(9,4,18,.44)", backdropVeil: "rgba(6,3,14,.5)", footer: "#9d86ae", routeStart: "#9b51ff", routeEnd: "#ffad5c", routeGlow: "#ff3d75" },
-      electric: { bg1: "#07131d", bg2: "#0b2330", bg3: "#061019", text: "#f4fbff", muted: "#9eb8c5", accent: "#83e8ff", accent2: "#86f1c5", panel: "rgba(255,255,255,.055)", mapTint: "rgba(2,14,21,.22)", backdropVeil: "rgba(3,13,20,.38)", footer: "#7e9ba8" },
-      sunset: { bg1: "#241025", bg2: "#542532", bg3: "#171124", text: "#fff7f0", muted: "#e4b7ad", accent: "#ffbd76", accent2: "#ff8e7a", panel: "rgba(255,244,228,.075)", mapTint: "rgba(39,7,28,.28)", backdropVeil: "rgba(34,8,27,.36)", footer: "#d2a6a3" },
-      paper: { bg1: "#f7f4ec", bg2: "#e8eef0", bg3: "#f5f1e8", text: "#102832", muted: "#58727a", accent: "#087f91", accent2: "#168763", panel: "rgba(10,53,65,.075)", mapTint: "rgba(238,244,241,.18)", backdropVeil: "rgba(244,244,238,.44)", footer: "#60777c" }
+      electric: { bg1: "#07131d", bg2: "#0b2330", bg3: "#061019", text: "#f4fbff", muted: "#9eb8c5", accent: "#83e8ff", accent2: "#86f1c5", panel: "rgba(255,255,255,.055)", mapTint: "rgba(2,14,21,.22)", backdropVeil: "rgba(3,13,20,.38)", footer: "#7e9ba8", routeStart: "#83e8ff", routeEnd: "#86f1c5", routeGlow: "#28b8ff" },
+      sunset: { bg1: "#241025", bg2: "#542532", bg3: "#171124", text: "#fff7f0", muted: "#e4b7ad", accent: "#ffbd76", accent2: "#ff8e7a", panel: "rgba(255,244,228,.075)", mapTint: "rgba(39,7,28,.28)", backdropVeil: "rgba(34,8,27,.36)", footer: "#d2a6a3", routeStart: "#ff8e7a", routeEnd: "#ffcf82", routeGlow: "#ff6a7e" },
+      paper: { bg1: "#f7f4ec", bg2: "#e8eef0", bg3: "#f5f1e8", text: "#102832", muted: "#58727a", accent: "#087f91", accent2: "#168763", panel: "rgba(10,53,65,.075)", mapTint: "rgba(238,244,241,.38)", backdropVeil: "rgba(244,244,238,.44)", footer: "#60777c", routeStart: "#087f91", routeEnd: "#168763", routeGlow: "#36a6a3" }
+    });
+
+    const allowedPreferences = Object.freeze({
+      theme: Object.keys(themes),
+      mapStyle: ["street", "dim", "route"],
+      artwork: ["album", "backdrop", "none"],
+      stats: ["distance", "duration", "efficiency", "songs", "artist"]
     });
 
     function selection(id, fallback) {
@@ -21,6 +32,31 @@
 
     function activeTheme() {
       return themes[selection("shareCardTheme", "cinematic")] || themes.cinematic;
+    }
+
+    function currentPreferences() {
+      return {
+        theme: selection("shareCardTheme", "cinematic"),
+        mapStyle: selection("shareCardMapStyle", "street"),
+        artwork: selection("shareCardArtwork", "album"),
+        stats: [...document.querySelectorAll("[data-share-stat]:checked")].map(input => input.value)
+      };
+    }
+
+    function savePreferences() {
+      try { localStorage.setItem(preferenceKey, JSON.stringify(currentPreferences())); } catch {}
+    }
+
+    function restorePreferences() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(preferenceKey) || "null");
+        if (!saved || typeof saved !== "object") return;
+        [["shareCardTheme", "theme"], ["shareCardMapStyle", "mapStyle"], ["shareCardArtwork", "artwork"]].forEach(([id, key]) => {
+          const control = $(id);
+          if (control && allowedPreferences[key].includes(saved[key])) control.value = saved[key];
+        });
+        if (Array.isArray(saved.stats)) document.querySelectorAll("[data-share-stat]").forEach(input => { input.checked = saved.stats.includes(input.value); });
+      } catch {}
     }
 
     function roundRect(ctx, x, y, w, h, radius) {
@@ -79,7 +115,7 @@
       return choices.map(key => values[key]).filter(Boolean).slice(0, 5);
     }
 
-    function drawRoute(ctx, card, box) {
+    function drawRoute(ctx, card, box, showLabels = true) {
       const theme = activeTheme();
       const mapStyle = selection("shareCardMapStyle", "street");
       ctx.save();
@@ -156,22 +192,35 @@
       }
       ctx.restore();
 
-      ctx.fillStyle = theme.text;
-      ctx.font = '700 25px "Segoe UI", sans-serif';
-      ctx.textAlign = "left";
-      drawWrappedText(ctx, card.startLabel, box.x + 34, box.y + box.h - 46, box.w * .4, 29, 2);
-      ctx.textAlign = "right";
-      drawWrappedText(ctx, card.endLabel, box.x + box.w - 34, box.y + 44, box.w * .4, 29, 2);
-      ctx.textAlign = "left";
+      if (showLabels) {
+        ctx.fillStyle = theme.text;
+        ctx.font = '700 25px "Segoe UI", sans-serif';
+        ctx.textAlign = "left";
+        drawWrappedText(ctx, card.startLabel, box.x + 34, box.y + box.h - 46, box.w * .4, 29, 2);
+        ctx.textAlign = "right";
+        drawWrappedText(ctx, card.endLabel, box.x + box.w - 34, box.y + 44, box.w * .4, 29, 2);
+        ctx.textAlign = "left";
+      }
     }
 
     function renderCinematic(ctx, card, theme) {
+      const artworkStyle = selection("shareCardArtwork", "album");
       const background = ctx.createLinearGradient(0, 0, width, height);
       background.addColorStop(0, "#07050e");
       background.addColorStop(.48, "#160921");
       background.addColorStop(1, "#05040b");
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, width, height);
+
+      if (artwork && artworkStyle === "backdrop") {
+        ctx.save();
+        ctx.globalAlpha = .22;
+        ctx.filter = "blur(48px) saturate(1.35)";
+        drawImageCover(ctx, artwork, 0, 0, width, height, 100);
+        ctx.restore();
+        ctx.fillStyle = theme.backdropVeil;
+        ctx.fillRect(0, 0, width, height);
+      }
 
       const glow = ctx.createRadialGradient(880, 160, 10, 880, 160, 520);
       glow.addColorStop(0, "rgba(155,81,255,.34)");
@@ -190,38 +239,32 @@
       ctx.font = '900 84px Impact, "Arial Narrow", sans-serif';
       drawWrappedText(ctx, String(card.title || "OPEN ROAD").toUpperCase(), 64, 162, 600, 80, 2);
 
-      const stats = card.stats || {};
-      ctx.fillStyle = theme.accent;
-      ctx.font = '900 112px Impact, "Arial Narrow", sans-serif';
-      ctx.fillText(String(stats.miles ?? "--"), 64, 386);
-      ctx.font = '900 45px Impact, "Arial Narrow", sans-serif';
-      ctx.fillText("MI", 292, 386);
-      ctx.fillStyle = theme.text;
-      ctx.font = '900 112px Impact, "Arial Narrow", sans-serif';
-      ctx.fillText(String(stats.durationMinutes ?? "--"), 390, 386);
-      ctx.font = '900 45px Impact, "Arial Narrow", sans-serif';
-      ctx.fillText("MIN", 568, 386);
-
-      drawRoute(ctx, card, { x: 690, y: 74, w: 330, h: 330 });
+      const stats = selectedStats(card);
+      const statGap = 12;
+      const statWidth = (952 - Math.max(0, stats.length - 1) * statGap) / Math.max(1, stats.length);
+      stats.forEach((entry, index) => {
+        const x = 64 + index * (statWidth + statGap);
+        ctx.fillStyle = "rgba(22,10,38,.7)";
+        roundRect(ctx, x, 296, statWidth, 108, 18); ctx.fill();
+        ctx.strokeStyle = "rgba(255,91,80,.2)"; ctx.lineWidth = 2;
+        roundRect(ctx, x, 296, statWidth, 108, 18); ctx.stroke();
+        ctx.fillStyle = theme.accent;
+        ctx.font = '800 15px "Segoe UI", sans-serif';
+        drawWrappedText(ctx, entry[0], x + 15, 327, statWidth - 30, 18, 1);
+        ctx.fillStyle = theme.text;
+        ctx.font = '900 27px Impact, "Arial Narrow", sans-serif';
+        drawWrappedText(ctx, entry[1], x + 15, 374, statWidth - 30, 30, 1);
+      });
 
       ctx.save();
       roundRect(ctx, 54, 440, 972, 455, 32);
       ctx.clip();
-      if (vehicleArtwork) drawImageCover(ctx, vehicleArtwork, 54, 440, 972, 455);
-      else {
-        const road = ctx.createLinearGradient(54, 440, 1026, 895);
-        road.addColorStop(0, "#1b0d2d"); road.addColorStop(1, "#080714");
-        ctx.fillStyle = road; ctx.fillRect(54, 440, 972, 455);
-      }
+      drawRoute(ctx, card, { x: 54, y: 440, w: 972, h: 455 }, false);
       const photoVeil = ctx.createLinearGradient(54, 440, 54, 895);
       photoVeil.addColorStop(0, "rgba(5,3,12,.06)");
       photoVeil.addColorStop(.66, "rgba(5,3,12,.12)");
       photoVeil.addColorStop(1, "rgba(5,3,12,.72)");
       ctx.fillStyle = photoVeil; ctx.fillRect(54, 440, 972, 455);
-      ctx.strokeStyle = "rgba(255,61,117,.34)"; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.moveTo(95, 816); ctx.bezierCurveTo(340, 675, 626, 912, 1000, 610); ctx.stroke();
-      ctx.strokeStyle = "rgba(255,91,80,.9)"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(95, 816); ctx.bezierCurveTo(340, 675, 626, 912, 1000, 610); ctx.stroke();
       ctx.restore();
 
       ctx.fillStyle = theme.accent2;
@@ -243,10 +286,10 @@
       roundRect(ctx, 54, 930, 972, 220, 28); ctx.fill();
       ctx.strokeStyle = "rgba(155,81,255,.34)"; ctx.lineWidth = 2;
       roundRect(ctx, 54, 930, 972, 220, 28); ctx.stroke();
-      if (artwork) {
+      if (artwork && artworkStyle === "album") {
         ctx.save(); roundRect(ctx, 76, 952, 176, 176, 21); ctx.clip(); ctx.drawImage(artwork, 76, 952, 176, 176); ctx.restore();
       }
-      const musicX = artwork ? 282 : 86;
+      const musicX = artwork && artworkStyle === "album" ? 282 : 86;
       ctx.fillStyle = theme.accent;
       ctx.font = '800 18px "Segoe UI", sans-serif';
       ctx.fillText("JOURNEY SOUNDTRACK", musicX, 975);
@@ -395,23 +438,17 @@
       });
     }
 
-    function loadVehicleArtwork() {
-      vehicleArtwork = null;
-      return new Promise(resolve => {
-        const image = new Image();
-        image.onload = () => { vehicleArtwork = image; resolve(); };
-        image.onerror = () => resolve();
-        image.src = "/assets/dashboard-model3-rear-dark-hd.jpg";
-      });
-    }
-
     function loadMapArtwork(card) {
-      mapArtwork = null;
+      const requestRevision = ++mapLoadRevision;
+      const theme = activeTheme();
       const points = (card?.route?.mapPoints || []).filter(point =>
         Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude))
       );
       const container = $("shareCardMapRenderer");
-      if (!container || points.length < 2 || typeof maplibregl === "undefined") return Promise.resolve();
+      if (!container || points.length < 2 || typeof maplibregl === "undefined") {
+        if (requestRevision === mapLoadRevision) mapArtwork = null;
+        return Promise.resolve();
+      }
       container.innerHTML = "";
 
       return new Promise(resolve => {
@@ -420,7 +457,7 @@
         const finish = image => {
           if (settled) return;
           settled = true;
-          mapArtwork = image || null;
+          if (requestRevision === mapLoadRevision) mapArtwork = image || null;
           try { map?.remove(); } catch {}
           container.innerHTML = "";
           resolve();
@@ -441,12 +478,12 @@
             const coordinates = points.map(point => [Number(point.longitude), Number(point.latitude)]);
             map.addSource("share-route", { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates } } });
             const cinematic = selection("shareCardTheme", "cinematic") === "cinematic";
-            map.addLayer({ id: "share-route-glow", type: "line", source: "share-route", paint: { "line-color": cinematic ? "#ff3d75" : "#16d6b0", "line-width": cinematic ? 24 : 14, "line-blur": cinematic ? 12 : 2, "line-opacity": .64 } });
+            map.addLayer({ id: "share-route-glow", type: "line", source: "share-route", paint: { "line-color": theme.routeGlow || theme.accent, "line-width": cinematic ? 24 : 14, "line-blur": cinematic ? 12 : 2, "line-opacity": .64 } });
             map.addLayer({ id: "share-route-shadow", type: "line", source: "share-route", paint: { "line-color": "rgba(2,5,14,.82)", "line-width": 14, "line-blur": 2 } });
-            map.addLayer({ id: "share-route-line", type: "line", source: "share-route", paint: { "line-color": cinematic ? "#ff7159" : "#16d6b0", "line-width": 7 } });
+            map.addLayer({ id: "share-route-line", type: "line", source: "share-route", paint: { "line-color": theme.accent, "line-width": 7 } });
             map.addSource("share-terminals", { type: "geojson", data: { type: "FeatureCollection", features: [coordinates[0], coordinates[coordinates.length - 1]].map((coordinate, index) => ({ type: "Feature", properties: { kind: index }, geometry: { type: "Point", coordinates: coordinate } })) } });
             map.addLayer({ id: "share-terminal-halo", type: "circle", source: "share-terminals", paint: { "circle-radius": 11, "circle-color": "#f7ffff" } });
-            map.addLayer({ id: "share-terminals", type: "circle", source: "share-terminals", paint: { "circle-radius": 7, "circle-color": ["case", ["==", ["get", "kind"], 0], cinematic ? "#9b51ff" : "#09b4c8", cinematic ? "#ffad5c" : "#20d49e"] } });
+            map.addLayer({ id: "share-terminals", type: "circle", source: "share-terminals", paint: { "circle-radius": 7, "circle-color": ["case", ["==", ["get", "kind"], 0], theme.routeStart || theme.accent2, theme.routeEnd || theme.accent] } });
             const songFeatures = (card.route?.songMarkers || []).filter(marker =>
               Number.isFinite(Number(marker.latitude)) && Number.isFinite(Number(marker.longitude))
             ).map(marker => ({
@@ -457,7 +494,7 @@
             if (songFeatures.length) {
               map.addSource("share-songs", { type: "geojson", data: { type: "FeatureCollection", features: songFeatures } });
               map.addLayer({ id: "share-song-shadow", type: "circle", source: "share-songs", paint: { "circle-radius": 16, "circle-translate": [0, 3], "circle-color": "rgba(1,13,18,.58)", "circle-blur": .18 } });
-              map.addLayer({ id: "share-song-markers", type: "circle", source: "share-songs", paint: { "circle-radius": 13, "circle-color": cinematic ? "#ff5b50" : "#2bd6a3", "circle-stroke-width": 2, "circle-stroke-color": "#06161a" } });
+              map.addLayer({ id: "share-song-markers", type: "circle", source: "share-songs", paint: { "circle-radius": 13, "circle-color": theme.accent, "circle-stroke-width": 2, "circle-stroke-color": "#06161a" } });
               map.addLayer({ id: "share-song-numbers", type: "symbol", source: "share-songs", layout: { "text-field": ["to-string", ["get", "index"]], "text-size": 13, "text-allow-overlap": true, "text-ignore-placement": true }, paint: { "text-color": "#041316", "text-halo-color": "rgba(255,255,255,.18)", "text-halo-width": .5 } });
             }
             const bounds = coordinates.reduce((value, coordinate) => value.extend(coordinate), new maplibregl.LngLatBounds(coordinates[0], coordinates[0]));
@@ -478,6 +515,32 @@
           map.on("error", () => {});
         } catch { clearTimeout(timeout); finish(null); }
       });
+    }
+
+    async function updatePreview(refreshMap = false) {
+      savePreferences();
+      const revision = ++previewRevision;
+      render();
+      if (!refreshMap || !state.shareCardData) return;
+      const message = $("shareCardMessage");
+      if (message) message.textContent = "Updating the route map to match this theme…";
+      await loadMapArtwork(state.shareCardData);
+      if (revision !== previewRevision || !state.shareCardData) return;
+      render();
+      if (message?.textContent === "Updating the route map to match this theme…") message.textContent = "";
+    }
+
+    function queuePreviewUpdate(refreshMap = false) {
+      pendingMapRefresh = pendingMapRefresh || refreshMap;
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(() => {
+        const shouldRefreshMap = pendingMapRefresh;
+        pendingMapRefresh = false;
+        void updatePreview(shouldRefreshMap).catch(error => {
+          const message = $("shareCardMessage");
+          if (message) message.textContent = error.message || "JourneyDeck could not update this card.";
+        });
+      }, 40);
     }
 
     function canvasBlob() {
@@ -526,7 +589,8 @@
       try {
         const card = await api.post("/api/drive/share-card", { driveId: drive.id });
         state.shareCardData = card;
-        await Promise.all([loadArtwork(card), loadMapArtwork(card), loadVehicleArtwork()]);
+        restorePreferences();
+        await Promise.all([loadArtwork(card), loadMapArtwork(card)]);
         $("shareCardPrivacy").textContent = card.privacy.note;
         $("shareCardHomeStatus").textContent = card.privacy.homeProtected
           ? "Home replaced with Saginaw, TX"
@@ -542,14 +606,19 @@
     function close() {
       const modal = $("shareCardModal");
       modal.classList.remove("open"); modal.setAttribute("aria-hidden", "true");
-      state.shareCardData = null; artwork = null; mapArtwork = null; vehicleArtwork = null;
+      clearTimeout(previewTimer);
+      previewRevision += 1;
+      mapLoadRevision += 1;
+      state.shareCardData = null; artwork = null; mapArtwork = null;
     }
 
     function bind() {
+      restorePreferences();
       $("shareCardButton")?.addEventListener("click", () => open(state.selectedDrive));
       document.querySelectorAll("[data-close-share-card]").forEach(item => item.addEventListener("click", close));
-      document.querySelectorAll("[data-share-stat]").forEach(input => input.addEventListener("change", render));
-      ["shareCardTheme", "shareCardMapStyle", "shareCardArtwork"].forEach(id => $(id)?.addEventListener("change", render));
+      document.querySelectorAll("[data-share-stat]").forEach(input => ["input", "change"].forEach(eventName => input.addEventListener(eventName, () => queuePreviewUpdate(false))));
+      ["shareCardMapStyle", "shareCardArtwork"].forEach(id => ["input", "change"].forEach(eventName => $(id)?.addEventListener(eventName, () => queuePreviewUpdate(false))));
+      ["input", "change"].forEach(eventName => $("shareCardTheme")?.addEventListener(eventName, () => queuePreviewUpdate(true)));
       $("shareCardDownload")?.addEventListener("click", () => download().catch(error => { $("shareCardMessage").textContent = error.message; }));
       $("shareCardNativeButton")?.addEventListener("click", () => shareToX().catch(error => {
         if (error?.name !== "AbortError") $("shareCardMessage").textContent = error.message || "Sharing was not available.";
