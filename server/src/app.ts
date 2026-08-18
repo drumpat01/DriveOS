@@ -1,10 +1,13 @@
 import Fastify from "fastify";
+import http from "node:http";
+import https from "node:https";
 import compress from "@fastify/compress";
 import staticPlugin from "@fastify/static";
 import { AtlasStore } from "./atlas-store.js";
 import { authenticate, authenticateScheduledSync, type Principal } from "./auth.js";
 import { applyMigrations, openDatabase } from "./database.js";
 import { proxyLegacy } from "./legacy-proxy.js";
+import { legacyForwardingContext } from "./legacy-forwarding.js";
 import { config as defaultConfig } from "./config.js";
 import { bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
 
@@ -19,12 +22,18 @@ const securityHeaders = {
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"
 };
 
-async function compatibilityReady(upstream: string) {
+async function compatibilityReady(upstream: string, publicOrigin: string) {
   if (!upstream) return true;
-  try {
-    const response = await fetch(new URL("/healthz", upstream), { signal: AbortSignal.timeout(1500) });
-    return response.ok;
-  } catch { return false; }
+  const url = new URL("/healthz", upstream), forwarding = legacyForwardingContext(upstream, publicOrigin);
+  return await new Promise<boolean>(resolve => {
+    const client = url.protocol === "https:" ? https : http;
+    const request = client.get(url, { headers: { host: forwarding.forwardedHost, "x-forwarded-host": forwarding.forwardedHost, "x-forwarded-proto": forwarding.forwardedProtocol } }, response => {
+      response.resume();
+      resolve(Boolean(response.statusCode && response.statusCode >= 200 && response.statusCode < 400));
+    });
+    request.setTimeout(1500, () => request.destroy(new Error("Compatibility readiness timed out.")));
+    request.on("error", () => resolve(false));
+  });
 }
 
 export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
@@ -54,7 +63,7 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   });
   app.get("/healthz", async () => ({ ok: true, mode: "node-hybrid", database: "local-sqlite", legacyCompatibilityConfigured: Boolean(cfg.legacyUpstream), legacyCompatibilityReadOnly: cfg.legacyReadOnly }));
   app.get("/readyz", async (_req, reply) => {
-    const atlas = store.status(), legacyCompatibilityReachable = await compatibilityReady(cfg.legacyUpstream);
+    const atlas = store.status(), legacyCompatibilityReachable = await compatibilityReady(cfg.legacyUpstream, cfg.publicOrigin);
     const ready = atlas.ready && legacyCompatibilityReachable;
     return reply.code(ready ? 200 : 503).send({ ok: ready, atlas, legacyCompatibilityReachable });
   });
