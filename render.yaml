@@ -2,7 +2,7 @@ services:
   - type: web
     name: driveos
     runtime: docker
-    plan: starter
+    plan: standard
     region: ohio
     branch: main
     autoDeployTrigger: commit
