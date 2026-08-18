@@ -3696,14 +3696,14 @@ function Get-DataHealthAlerts {
         $Name = if ($Signal.name) { "$($Signal.name)" } else { 'Background worker' }
         $Id = if ($Signal.id) { "$($Signal.id)" } else { 'integration' }
         if ($Status -eq 'failed') {
-            $Alerts += [ordered]@{ id="$Id-failed"; severity='critical'; title=if($Id -eq 'integrity-audit'){'Daily integrity audit failed'}else{"$Name sync failed"}; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The latest background worker attempt did not complete successfully.' } }
+            $Alerts += [ordered]@{ id="$Id-failed"; severity='critical'; title="$Name sync failed"; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The latest background worker attempt did not complete successfully.' } }
         }
         elseif ($Status -eq 'stale') {
             $Lag = if ($null -ne $Signal.lagMinutes) { " ($([Math]::Round([double]$Signal.lagMinutes)) minutes behind)" } else { '' }
-            $Alerts += [ordered]@{ id="$Id-stale"; severity='warning'; title="$Name is late"; message=if($Id -eq 'integrity-audit'){'No successful integrity audit has been recorded in the last 26 hours.'}else{"The durable sync cursor is outside the expected 45-minute window$Lag."} }
+            $Alerts += [ordered]@{ id="$Id-stale"; severity='warning'; title=if($Id -eq 'integrity-audit'){'Integrity audit is overdue'}else{"$Name is late"}; message=if($Id -eq 'integrity-audit'){'The optional 30-day parity check has not passed in the last 30 days. Run it manually after migrations, imports, or suspected data loss.'}else{"The durable sync cursor is outside the expected 45-minute window$Lag."} }
         }
         elseif ($Status -eq 'unknown') {
-            $Alerts += [ordered]@{ id="$Id-unknown"; severity='warning'; title="$Name has no successful sync"; message='JourneyDeck is waiting for this worker to publish durable health data.' }
+            $Alerts += [ordered]@{ id="$Id-unknown"; severity='warning'; title=if($Id -eq 'integrity-audit'){'Integrity audit has not been run'}else{"$Name has no successful sync"}; message=if($Id -eq 'integrity-audit'){'Run the optional parity audit manually after migrations, imports, or suspected data loss.'}else{'JourneyDeck is waiting for this worker to publish durable health data.'} }
         }
         elseif ($Status -eq 'degraded' -or $Status -eq 'attention') {
             $Alerts += [ordered]@{ id="$Id-attention"; severity='warning'; title="$Name needs attention"; message=if ($Signal.lastError) { "$($Signal.lastError)" } else { 'The integration reported a degraded state.' } }
@@ -3775,16 +3775,19 @@ function Get-DataHealthSummary {
     $LatestAudit = Get-DriveOSLatestIntegrityAuditRun -Repository $Repository -AuditKind 'tessie-parity'
     $AuditLag = $null
     try { if ($LatestAudit -and $LatestAudit.completedAtUtc) { $AuditLag = [Math]::Max(0,[Math]::Round(([DateTimeOffset]::UtcNow - [DateTimeOffset]::Parse("$($LatestAudit.completedAtUtc)").ToUniversalTime()).TotalMinutes)) } } catch {}
-    $AuditStatus = if (-not $LatestAudit) { 'unknown' } elseif ($LatestAudit.status -ne 'ready' -or -not $LatestAudit.readyForReadCanary) { 'failed' } elseif ($null -eq $AuditLag -or $AuditLag -gt 1560) { 'stale' } else { 'healthy' }
+    # The parity audit is an on-demand diagnostic, not a live availability
+    # gate. Cursor freshness above remains the source of truth for routine
+    # Tessie health. A non-passing or 30-day-old audit is advisory.
+    $AuditStatus = if (-not $LatestAudit) { 'unknown' } elseif ($LatestAudit.status -ne 'ready' -or -not $LatestAudit.readyForReadCanary) { 'attention' } elseif ($null -eq $AuditLag -or $AuditLag -gt 43200) { 'stale' } else { 'healthy' }
     $AuditSignal = [ordered]@{
         id = 'integrity-audit'
-        name = 'Daily integrity audit'
+        name = 'Integrity audit'
         status = $AuditStatus
         lastAttemptAtUtc = if($LatestAudit){$LatestAudit.generatedAtUtc}else{$null}
         lastSuccessAtUtc = if($LatestAudit -and $LatestAudit.readyForReadCanary){$LatestAudit.completedAtUtc}else{$null}
         highWatermarkUtc = if($LatestAudit){$LatestAudit.rangeToUtc}else{$null}
         lagMinutes = $AuditLag
-        lastError = if(-not $LatestAudit){'No durable integrity audit result has been recorded yet.'}elseif($AuditStatus -eq 'failed'){'The latest durable parity audit did not approve database reads.'}else{$null}
+        lastError = if(-not $LatestAudit){'No durable integrity audit result has been recorded yet.'}elseif($AuditStatus -eq 'attention'){'The latest manual parity audit did not pass. Live cursor health remains authoritative.'}else{$null}
     }
 
     $Signals = @((Get-DataHealthCursorSignal -Resource drives),(Get-DataHealthCursorSignal -Resource charges),$SpotifySignal,$AuditSignal)
