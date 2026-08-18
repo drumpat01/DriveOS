@@ -91,32 +91,33 @@ Assert-Equal $HomeLoopGraph.routines.Count 0 'A Home-to-Home recurring pattern m
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
 $Index = Get-Content (Join-Path $Root 'web\index.html') -Raw
 Assert-True ($Server -match 'DriveOS\.MobilityGraph\.psm1') 'Mobility graph application module is not loaded.'
-Assert-True ($Server -match '"/api/mobility-graph"') 'Mobility graph read endpoint is missing.'
-Assert-True ($Server -match '"/api/atlas/journeys"' -and $Server -match 'function Get-AtlasJourneyProjection') 'Atlas compact journey endpoint is missing.'
-Assert-True ($Server -match 'New-DriveOSMobilityGraph\s+-Drives\s+\$Drives') 'Mobility graph endpoint does not project the retained drive cache.'
 Assert-True ($Index -match 'id="view-graph"') 'Mobility graph view is missing.'
 Assert-True ($Index -match 'id="mobilityRoutines"') 'Recurring pattern intelligence is missing from the graph view.'
 Assert-True ($Index -match 'id="mobilityChanges"') 'Change intelligence is missing from the graph view.'
 Assert-True ($Index -match 'features/mobility-graph\.js') 'Mobility graph frontend module is not loaded.'
 $Frontend = Get-Content (Join-Path $Root 'web\features\mobility-graph.js') -Raw
-Assert-True ($Frontend -match "api\.get\('/api/atlas/places'" -and $Frontend -notmatch "api\.post\('/api/atlas/places/scan'") 'Atlas must read persisted enrichment without starting provider calls during page load.'
-Assert-True ($Frontend -match 'changeInsights\)\?graph\.changeInsights:\[\]\)\.slice\(0,3\)') 'Atlas change insights are not capped at three cards.'
-Assert-True ($Frontend -match 'removeImportedPlaceArtifacts' -and $Frontend -match 'data-save-card-place') 'Atlas must hide unresolved import artifacts and support card relabeling.'
-Assert-True ($Frontend -match 'moments when Home anchored your journey' -and $Frontend -match 'function consolidateHomeNodes') 'Home must be consolidated locally and render as one compact informational count instead of a repeated identity editor.'
-Assert-True ($Frontend -match 'placeSaveQueue' -and $Frontend -match 'applySavedCardLabel' -and $Frontend -notmatch "saveCardPlace[^{]*\{[^}]+await mutate") 'Card place labels must save serially in place without rebuilding Atlas after each correction.'
-Assert-True ($Frontend -match 'sourceLabel:aLabel,targetLabel:bLabel') 'Generated recurring patterns must retain resolved display labels for reliable editing.'
-Assert-True ($Frontend -match "api\.post\('/api/mobility/place-geofence'" -and $Frontend -match 'radiusFeet:200') 'Coordinate-backed card labels must persist as stable place geofences.'
-Assert-True ($Frontend -match '/api/mobility/place-geofence' -and $Frontend -match '/api/atlas/places') 'Atlas place labels must use durable authenticated APIs.'
-Assert-True ($Frontend -notmatch 'localStorage\.setItem\(savedPlaceLabelsStorageKey') 'Precise Atlas place labels must not be duplicated into persistent browser storage.'
-Assert-True ($Frontend -match "api\.get\('/api/atlas/journeys'" -and $Frontend -notmatch "const journeys=api\.get\('/api/drives'" -and $Frontend -match 'mapDrives=retainedJourneys' -and $Frontend -match 'representativeJourneyFeatures\(mapDrives,200\)') 'Atlas must use its compact journey response for representative lines instead of downloading full journey records.'
-Assert-True ($Server -match 'Get-AtlasJourneyProjection[\s\S]+startingLatitude[\s\S]+endingLongitude' -and $Server -notmatch 'Get-AtlasJourneyProjection[\s\S]{0,1200}soundtrack') 'Atlas journey projection must retain map fields without exposing soundtrack payloads.'
+$NodeApp = Get-Content (Join-Path $Root 'server\src\app.ts') -Raw
+$SnapshotBuilder = Get-Content (Join-Path $Root 'server\src\snapshot-builder.ts') -Raw
+$AtlasStore = Get-Content (Join-Path $Root 'server\src\atlas-store.ts') -Raw
+Assert-True ($NodeApp -match '"/api/atlas/bootstrap"' -and $NodeApp -match '"/api/atlas/places/:id"' -and $NodeApp -match '"/api/atlas/patterns"' -and $NodeApp -match '"/api/atlas/snapshot/status"') 'The Node Atlas read API is incomplete.'
+Assert-True ($NodeApp -match '"/api/atlas/places/label"' -and $NodeApp -match 'patterns/:id/confirm' -and $NodeApp -match 'patterns/:id/dismiss') 'The Node Atlas persistence API is incomplete.'
+Assert-True ($Frontend -match "api\.get\('/api/atlas/bootstrap'") 'Atlas must load its persisted bootstrap snapshot.'
+Assert-True (([regex]::Matches($Frontend,'/api/atlas/bootstrap')).Count -eq 1) 'Atlas startup must make exactly one bootstrap request.'
+Assert-True ($Frontend -notmatch '/api/atlas/journeys|/api/mobility-graph|/api/drives|buildImportedJourneyRoutines|representativeJourneyFeatures') 'Atlas must not download journeys or reconstruct its graph in the browser.'
+Assert-True ($Frontend -match "addSource\('mobility-connections'" -and $Frontend -match "addSource\('mobility-places'" -and $Frontend -match 'cluster:true' -and $Frontend -notmatch 'new\s+maplibregl\.Marker') 'Atlas must render prepared GeoJSON through clustered MapLibre layers, not DOM markers.'
+Assert-True ($Frontend -match 'api/atlas/places/\$\{encodeURIComponent\(node\.id\)\}' -and $Frontend -match 'Loading place details') 'Atlas place details must load only after selection.'
+Assert-True ($Frontend -match 'changeInsights\|\|\[\]\)\.slice\(0,3\)') 'Atlas change insights are not capped at three cards.'
+Assert-True ($Frontend -match 'data-save-card-place' -and $Frontend -match 'moments when Home anchored your journey') 'Atlas must retain card relabeling and the compact Home summary.'
+Assert-True ($Frontend -match 'placeSaveQueue' -and $Frontend -match '/api/atlas/places/label') 'Card place labels must serialize through the local Atlas write API.'
+Assert-True ($Frontend -match 'routineSaveQueue' -and $Frontend -match '/api/atlas/patterns/' -and $Frontend -match "api\.get\('/api/atlas/patterns\?limit=10'") 'Recurring-pattern reviews must serialize and refill the ten-card queue.'
+Assert-True ($Frontend -notmatch 'localStorage') 'Atlas must not persist private places or review state in browser storage.'
+Assert-True ($SnapshotBuilder -match 'representativeLines\(visibleMapped, 200\)' -and $SnapshotBuilder -match 'slice\(0, 10\)' -and $SnapshotBuilder -match 'changeInsights') 'The materialized snapshot does not enforce 200 lines, ten patterns, and three insights.'
+Assert-True ($SnapshotBuilder -match 'coordinateLabel' -and $SnapshotBuilder -match 'importedLabel' -and $SnapshotBuilder -match 'source\.category === "home" && target\.category === "home"') 'Snapshot generation must suppress coordinate/import placeholders and Home-to-Home journeys.'
+Assert-True ($AtlasStore -match 'new Worker' -and $AtlasStore -match 'patchBootstrap' -and $AtlasStore -match 'scheduleRebuild') 'Atlas writes must patch immediately and rebuild in a background worker.'
 $MapTheme = Get-Content (Join-Path $Root 'web\features\beta-map-theme.js') -Raw
-Assert-True ($MapTheme -match 'Noto%20Sans%20Regular' -and $MapTheme -match 'resourceType === "Glyphs"' -and $Frontend -match 'JourneyDeckMapTheme\?\.options\(mapOptions\)') 'Atlas must rewrite unsupported OpenFreeMap glyph stacks to the supported Noto Sans font.'
+Assert-True ($MapTheme -match 'Noto%20Sans%20Regular' -and $MapTheme -match 'resourceType === "Glyphs"' -and $Frontend -match 'JourneyDeckMapTheme\?\.options\(options\)') 'Atlas must rewrite unsupported OpenFreeMap glyph stacks to the supported Noto Sans font.'
 Assert-True ($Server -match 'function Get-PlaceCandidates\s*\{\s*param\(\[switch\]\$Enrich\)' -and $Server -match 'Get-PlaceCandidates -Enrich') 'Provider enrichment must require the explicit Atlas scan path.'
 $Migration = Get-Content (Join-Path $Root 'tools\Invoke-AtlasPlaceMigration.ps1') -Raw
 Assert-True ($Migration -match 'Set-DriveOSTursoState[^\r\n]+foursquare-usage[^\r\n]+\$NewUsage\s*\r?\n\s*\$Places\s*=') 'Atlas migration must reserve each provider call durably before issuing it.'
-Assert-True ($Frontend -match 'routineSaveQueue' -and $Frontend -match "routineIds\.forEach\(rememberReviewedRoutine\)[\s\S]+renderIntelligence\(\)[\s\S]+api\.post\('/api/mobility/routine'" -and $Frontend -notmatch 'reviewRoutine[^{]*\{[^}]+await load') 'Routine reviews must disappear optimistically and sync serially without rebuilding Atlas.'
-Assert-True ($Frontend -match 'routineIds\.forEach\(forgetReviewedRoutine\)' -and $Frontend -match 'Save failed.+ready to retry') 'Failed routine writes must restore the card so the review is never silently lost.'
-Assert-True ($Frontend -match 'function deduplicateRoutines' -and $Frontend -match 'relatedRoutineIds' -and $Frontend -match 'for\(const id of routineIds\)') 'Equivalent imported routine cards must consolidate and persist one review across every underlying routine.'
 Assert-True ($Index -match 'mobilityGraphInspector[\s\S]+mobilityChanges') 'Change insights are not positioned in the Atlas sidebar.'
 Write-Host 'Personal Mobility Graph checks passed.' -ForegroundColor Green

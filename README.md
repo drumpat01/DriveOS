@@ -156,7 +156,7 @@ See [SECURITY.md](SECURITY.md) for the security model and reporting guidance.
 
 ## Development and testing
 
-DriveOS 5.0 is built with a PowerShell backend, a modular HTML/CSS/JavaScript interface, and a C# WebView2 desktop host. No Node package installation is required for normal use.
+JourneyDeck's hybrid local-development architecture uses a Node.js/TypeScript web service and persisted Atlas read model while retaining PowerShell for ingestion and maintenance. The installed desktop release keeps its existing compatibility path. See [Atlas Node/TypeScript local architecture](docs/atlas-node-hybrid.md) for startup, migrations, tests, performance results, diagnostics, and rollback.
 
 Run the project's automated checks from PowerShell:
 

@@ -12,6 +12,8 @@ cache/
 .cache/
 artifacts/
 desktop/packages/
+node_modules/
+server/dist/
 
 *.pfx
 *.p12

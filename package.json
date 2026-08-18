@@ -1,0 +1,35 @@
+{
+  "name": "journeydeck",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run check:server && npm run lint:server && npm run test:server && npm run test:atlas-performance",
+    "build:server": "tsc -p server/tsconfig.json",
+    "check:server": "tsc -p server/tsconfig.json --noEmit",
+    "lint:server": "eslint \"server/**/*.ts\"",
+    "test:server": "node --test --import tsx server/tests/*.test.ts",
+    "test:atlas-performance": "npm run build:server && node --import tsx server/tools/benchmark-atlas.ts",
+    "seed:atlas": "node --import tsx server/tools/seed-development.ts",
+    "migrate:atlas": "node --import tsx server/tools/migrate.ts up",
+    "rollback:atlas": "node --import tsx server/tools/migrate.ts down",
+    "rebuild:atlas": "node --import tsx server/tools/rebuild-atlas.ts",
+    "start:server": "node server/dist/index.js",
+    "dev:server": "tsx server/src/index.ts"
+  },
+  "dependencies": {
+    "@fastify/compress": "^8.3.0",
+    "@fastify/static": "^10.1.3",
+    "fastify": "^5.6.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/node": "^24.5.0",
+    "eslint": "^9.36.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.1"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
