@@ -7,6 +7,10 @@
   let logoHoldActivated = false;
   let logoHoldStartX = 0;
   let logoHoldStartY = 0;
+  let liveStatus = null;
+  let liveVehicle = null;
+  let liveSpotify = null;
+  let liveDrives = null;
 
   function dashboardIsActive() {
     return byId("view-dashboard")?.classList.contains("active-view");
@@ -137,6 +141,121 @@
     return value && value !== "--" ? value : fallback;
   }
 
+  function formatMinutes(value) {
+    const minutes = Math.max(0, Math.round(Number(value) || 0));
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const remainder = minutes % 60;
+    return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
+  }
+
+  function localDateKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function driveDateKey(drive) {
+    if (drive?.dateIso) return String(drive.dateIso).slice(0, 10);
+    const date = new Date(drive?.startedAt || drive?.endedAt || 0);
+    return Number.isNaN(date.getTime()) ? "" : localDateKey(date);
+  }
+
+  function renderStatus(status) {
+    if (!status) return;
+    all("[data-ref-tessie]").forEach(node => { node.textContent = status.tessie ? "Connected" : "Unavailable"; });
+    all("[data-ref-spotify]").forEach(node => { node.textContent = status.spotify ? "Connected" : "Connect"; });
+  }
+
+  function renderVehicle(vehicle) {
+    if (!vehicle) return;
+    const battery = Number.isFinite(Number(vehicle.battery)) ? String(Math.round(Number(vehicle.battery))) : "--";
+    const range = Number.isFinite(Number(vehicle.rangeMiles)) ? String(Math.round(Number(vehicle.rangeMiles))) : "--";
+    all("[data-ref-battery]").forEach(node => { node.textContent = battery; });
+    all("[data-ref-range]").forEach(node => { node.textContent = range; });
+    all("[data-ref-vehicle-state]").forEach(node => { node.textContent = String(vehicle.state || "Unavailable"); });
+    all("[data-ref-charge-limit]").forEach(node => { node.textContent = Number.isFinite(Number(vehicle.chargeLimit)) ? String(Math.round(Number(vehicle.chargeLimit))) : "--"; });
+    all("[data-ref-inside-temp]").forEach(node => { node.textContent = Number.isFinite(Number(vehicle.insideTempF)) ? String(Math.round(Number(vehicle.insideTempF))) : "--"; });
+    all("[data-ref-outside-temp]").forEach(node => { node.textContent = Number.isFinite(Number(vehicle.outsideTempF)) ? String(Math.round(Number(vehicle.outsideTempF))) : "--"; });
+    const batteryLevel = Math.max(0, Math.min(100, Number(battery) || 0));
+    all(".ref-battery-bars b").forEach((bar, index, bars) => {
+      const segmentStart = index * (100 / bars.length);
+      const fill = Math.max(0, Math.min(100, (batteryLevel - segmentStart) / (100 / bars.length) * 100));
+      bar.style.setProperty("--segment-fill", `${fill}%`);
+    });
+  }
+
+  function renderSpotify(data) {
+    const featured = Array.isArray(data?.recent) ? data.recent.find(Boolean) : null;
+    if (!featured) {
+      all("[data-ref-track]").forEach(node => { node.textContent = "No recent Spotify plays"; });
+      all("[data-ref-artist]").forEach(node => { node.textContent = "Play something to update this card"; });
+      return;
+    }
+    all("[data-ref-track]").forEach(node => { node.textContent = featured.track || "Unknown track"; });
+    all("[data-ref-artist]").forEach(node => { node.textContent = featured.artist || "Unknown artist"; });
+    all("[data-ref-elapsed]").forEach(node => { node.textContent = featured.time || "Recent"; });
+    const album = document.querySelector("[data-ref-album]");
+    if (album && featured.albumImage) {
+      album.style.backgroundImage = `linear-gradient(145deg, rgba(20, 5, 42, .14), rgba(255, 49, 95, .16)), url(${JSON.stringify(String(featured.albumImage))})`;
+      album.classList.add("has-live-artwork");
+    }
+  }
+
+  function renderDriveData(drives) {
+    const collection = Array.isArray(drives) ? drives.filter(Boolean) : [];
+    const sorted = [...collection].sort((left, right) => new Date(right.endedAt || right.startedAt || 0) - new Date(left.endedAt || left.startedAt || 0));
+    const today = collection.filter(drive => driveDateKey(drive) === localDateKey());
+    const miles = today.reduce((total, drive) => total + (Number(drive.miles) || 0), 0);
+    const minutes = today.reduce((total, drive) => total + (Number(drive.durationMinutes) || 0), 0);
+    const energy = today.reduce((total, drive) => total + (Number(drive.energyKWh) || 0), 0);
+    const weightedEfficiency = today.reduce((total, drive) => total + (Number(drive.efficiencyWhMi) || 0) * (Number(drive.miles) || 0), 0);
+    const efficiency = miles > 0 ? Math.round(energy > 0 ? energy * 1000 / miles : weightedEfficiency / miles) : null;
+    const milesLabel = miles.toFixed(1).replace(/\.0$/, "");
+    all("[data-ref-miles]").forEach(node => { node.innerHTML = `${milesLabel}<small> mi</small>`; });
+    all("[data-ref-trips]").forEach(node => { node.textContent = String(today.length); });
+    all("[data-ref-time]").forEach(node => { node.textContent = formatMinutes(minutes); });
+    all("[data-ref-efficiency]").forEach(node => { node.textContent = efficiency == null ? "--" : String(efficiency); });
+
+    const progress = document.querySelector(".ref-score-progress");
+    const efficiencyScore = efficiency == null ? 0 : Math.max(0, Math.min(1, (400 - efficiency) / 250));
+    if (progress) progress.style.strokeDashoffset = String(239 * (1 - efficiencyScore));
+
+    const latest = sorted[0];
+    if (latest) {
+      all("[data-ref-latest-origin]").forEach(node => { node.textContent = latest.startingLocation || "Journey start"; });
+      all("[data-ref-latest-destination]").forEach(node => { node.textContent = latest.endingLocation || "Journey end"; });
+      all("[data-ref-latest-meta]").forEach(node => {
+        node.textContent = [latest.shortDateLabel || latest.dateLabel, Number.isFinite(Number(latest.miles)) ? `${Number(latest.miles).toFixed(1)} mi` : null, Number.isFinite(Number(latest.durationMinutes)) ? formatMinutes(latest.durationMinutes) : null].filter(Boolean).join(" · ");
+      });
+    }
+
+    all("[data-reference-drive]").forEach((row, index) => {
+      const drive = sorted[index];
+      if (!drive) return;
+      const originNode = row.querySelector("[data-ref-journey-origin]");
+      const destinationNode = row.querySelector("[data-ref-journey-destination]");
+      const metaNode = row.querySelector("[data-ref-journey-meta]");
+      if (originNode) originNode.textContent = drive.startingLocation || "Journey";
+      if (destinationNode) destinationNode.textContent = drive.endingLocation || "Recent journey";
+      if (metaNode) metaNode.textContent = [Number.isFinite(Number(drive.miles)) ? `${Number(drive.miles).toFixed(1)} mi` : null, Number.isFinite(Number(drive.durationMinutes)) ? formatMinutes(drive.durationMinutes) : null, drive.startTime || null].filter(Boolean).join(" · ");
+    });
+
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+    const week = collection.filter(drive => new Date(drive.startedAt || drive.endedAt || 0) >= weekStart);
+    const weekMiles = week.reduce((total, drive) => total + (Number(drive.miles) || 0), 0);
+    const weekMinutes = week.reduce((total, drive) => total + (Number(drive.durationMinutes) || 0), 0);
+    const weekSongs = week.reduce((total, drive) => total + (Number(drive.songCount) || (drive.soundtrack || []).length), 0);
+    all("[data-ref-week-miles]").forEach(node => { node.textContent = weekMiles.toFixed(1).replace(/\.0$/, ""); });
+    all("[data-ref-week-drives]").forEach(node => { node.textContent = String(week.length); });
+    all("[data-ref-week-time]").forEach(node => { node.textContent = formatMinutes(weekMinutes); });
+    all("[data-ref-week-songs]").forEach(node => { node.textContent = String(weekSongs); });
+  }
+
   function syncMusic() {
     const featured = byId("trackList")?.querySelector(".v3-now-playing");
     if (!featured) return;
@@ -189,6 +308,10 @@
   }
 
   function syncLiveData() {
+    if (liveStatus) renderStatus(liveStatus);
+    if (liveVehicle) renderVehicle(liveVehicle);
+    if (liveSpotify) renderSpotify(liveSpotify);
+    if (liveDrives) renderDriveData(liveDrives);
     const battery = numericText(byId("batteryValue"), "72");
     const range = numericText(byId("rangeMiles"), "185");
     all("[data-ref-battery]").forEach(node => { node.textContent = battery; });
@@ -205,9 +328,31 @@
       const fill = Math.max(0, Math.min(100, (batteryLevel - segmentStart) / (100 / bars.length) * 100));
       bar.style.setProperty("--segment-fill", `${fill}%`);
     });
-    syncMusic();
-    syncToday();
-    syncJourneys();
+    if (!liveSpotify) syncMusic();
+    if (!liveDrives) {
+      syncToday();
+      syncJourneys();
+    }
+  }
+
+  function setStatus(status) {
+    liveStatus = status || null;
+    renderStatus(liveStatus);
+  }
+
+  function setVehicle(vehicle) {
+    liveVehicle = vehicle || null;
+    renderVehicle(liveVehicle);
+  }
+
+  function setSpotify(data) {
+    liveSpotify = data || { recent: [] };
+    renderSpotify(liveSpotify);
+  }
+
+  function setDrives(drives) {
+    liveDrives = Array.isArray(drives) ? drives.filter(Boolean) : [];
+    renderDriveData(liveDrives);
   }
 
   function openReferenceDrive(index) {
@@ -254,6 +399,8 @@
       sourceNodes.forEach(node => observer.observe(node, { childList: true, characterData: true, subtree: true }));
     }
   }
+
+  window.DriveOSReferenceDashboard = Object.freeze({ setStatus, setVehicle, setSpotify, setDrives, refresh: syncLiveData });
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind, { once: true });
   else bind();

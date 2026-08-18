@@ -58,5 +58,3 @@ CREATE TABLE IF NOT EXISTS memory_suggestions(
 
 CREATE INDEX IF NOT EXISTS ix_memory_suggestions_household_status
     ON memory_suggestions(household_id,status,kind,updated_at_utc DESC,id);
-
-PRAGMA optimize;

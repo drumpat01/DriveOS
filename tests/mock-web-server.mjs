@@ -135,6 +135,7 @@ const responses = {
   '/api/lastfm/status': { configured: true, username: 'demo-listener' },
   '/api/foursquare/status': { configured: true, cachedCount: 7, todayUsed: 2, todayLimit: 10, monthUsed: 18, monthLimit: 250 },
   '/api/drives': { windowDays: 730, drives },
+  '/api/drives/recent': { windowDays: 14, limited: true, drives },
   '/api/atlas/journeys': { windowDays: 730, journeys: drives.map(({ id, startedAt, driverProfile, startingLocation, rawStartingLocation, startingLatitude, startingLongitude, endingLocation, rawEndingLocation, endingLatitude, endingLongitude }) => ({ id, startedAt, driverProfile, startingLocation, rawStartingLocation, startingLatitude, startingLongitude, endingLocation, rawEndingLocation, endingLatitude, endingLongitude })) },
   '/api/mobility-graph': {
     version: 3,

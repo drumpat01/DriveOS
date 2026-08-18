@@ -15,6 +15,8 @@ Assert-True ($Blueprint -match 'healthCheckPath:\s*/readyz') 'The canary must ga
 Assert-True ($Blueprint -match 'mountPath:\s*/var/data/atlas') 'The canary lacks durable snapshot storage.'
 Assert-True ($Blueprint -match 'branch:\s*codex/atlas-node-hybrid') 'The canary must not deploy from main before promotion.'
 Assert-True ($Start -match 'node ./server/dist/refresh-hosted-snapshot\.js') 'Hosted Atlas lacks compiled continuous source refresh.'
+Assert-True ($Start -match 'compatibility server exited with status' -and $Start -match 'while true') 'The compatibility API process must restart after an unexpected exit.'
+Assert-True ($Start -match 'LEGACY_CHILD' -and $Start -match "trap '.*kill") 'The compatibility API supervisor must clean up its child process.'
 Assert-True ($TursoClient -match 'TURSO_DATABASE_URL' -and $TursoClient -match 'TURSO_AUTH_TOKEN' -and $TursoClient -match '/v2/pipeline') 'Hosted refresh must use authenticated Turso pipeline queries.'
 Assert-True ($Refresh -match 'before !== after' -and $Refresh -match 'drives\.length !== after') 'Hosted refresh lacks source consistency checks.'
 Assert-True ($Refresh -match 'BEGIN IMMEDIATE' -and $Refresh -match 'ROLLBACK') 'Hosted refresh must update the local snapshot transactionally.'

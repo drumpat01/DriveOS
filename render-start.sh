@@ -6,7 +6,19 @@ BACKEND_PORT="10001"
 
 if [[ "${DRIVEOS_ATLAS_NODE_CANARY:-false}" == "true" ]]; then
     export PORT="${BACKEND_PORT}"
-    pwsh -NoLogo -NoProfile -File ./DriveOS-Server.ps1 &
+    (
+        set +e
+        LEGACY_CHILD=""
+        trap '[[ -n "${LEGACY_CHILD}" ]] && kill "${LEGACY_CHILD}" 2>/dev/null || true; exit 0' INT TERM
+        while true; do
+            pwsh -NoLogo -NoProfile -File ./DriveOS-Server.ps1 &
+            LEGACY_CHILD=$!
+            LEGACY_EXIT=0
+            wait "${LEGACY_CHILD}" || LEGACY_EXIT=$?
+            echo "JourneyDeck compatibility server exited with status ${LEGACY_EXIT}; restarting in 2 seconds." >&2
+            sleep 2
+        done
+    ) &
     LEGACY_PID=$!
     trap 'kill "${LEGACY_PID}" 2>/dev/null || true' EXIT INT TERM
 

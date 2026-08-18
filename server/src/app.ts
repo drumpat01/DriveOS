@@ -19,6 +19,14 @@ const securityHeaders = {
   "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"
 };
 
+async function compatibilityReady(upstream: string) {
+  if (!upstream) return true;
+  try {
+    const response = await fetch(new URL("/healthz", upstream), { signal: AbortSignal.timeout(1500) });
+    return response.ok;
+  } catch { return false; }
+}
+
 export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   const cfg = { ...defaultConfig, ...overrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root);
@@ -45,7 +53,11 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     }
   });
   app.get("/healthz", async () => ({ ok: true, mode: "node-hybrid", database: "local-sqlite", legacyCompatibilityConfigured: Boolean(cfg.legacyUpstream), legacyCompatibilityReadOnly: cfg.legacyReadOnly }));
-  app.get("/readyz", async (_req, reply) => { const status = store.status(); return reply.code(status.ready ? 200 : 503).send({ ok: status.ready, atlas: status }); });
+  app.get("/readyz", async (_req, reply) => {
+    const atlas = store.status(), legacyCompatibilityReachable = await compatibilityReady(cfg.legacyUpstream);
+    const ready = atlas.ready && legacyCompatibilityReachable;
+    return reply.code(ready ? 200 : 503).send({ ok: ready, atlas, legacyCompatibilityReachable });
+  });
   app.get("/api/auth/session", async req => ({ authenticated: true, role: req.principal!.role, mode: req.principal!.mode }));
   app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => { const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot; });
   app.get<{ Params: { id: string } }>("/api/atlas/places/:id", { schema: { response: { 200: placeDetailSchema } } }, async (req, reply) => { const detail = store.place(req.params.id); return detail || reply.code(404).send({ error: "Place was not found." }); });

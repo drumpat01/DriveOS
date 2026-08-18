@@ -8673,18 +8673,18 @@ textarea {
   }
 }
 
-/* Local/Tailnet preview mobile navigation concept 7. Production keeps the shipped bar. */
+/* Cinematic five-button mobile navigation shared by local, Tailnet, and production. */
 @media (max-width:767px) {
-  :root.local-host .app-shell {
+  :root .app-shell {
     padding-bottom:calc(102px + env(safe-area-inset-bottom)) !important;
   }
 
-  :root.local-host body.reference-dashboard-active .app-shell {
+  :root body.reference-dashboard-active .app-shell {
     padding-bottom:calc(102px + env(safe-area-inset-bottom)) !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal,
-  :root.local-host body > .main-nav {
+  :root .main-nav.mobile-nav-portal,
+  :root body > .main-nav {
     top:auto !important;
     right:max(12px,env(safe-area-inset-right)) !important;
     bottom:calc(10px + env(safe-area-inset-bottom)) !important;
@@ -8705,10 +8705,10 @@ textarea {
     -webkit-backdrop-filter:blur(24px) saturate(1.25) !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button,
-  :root.local-host body > .main-nav .nav-button,
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.nav-button-live,
-  :root.local-host body > .main-nav .nav-button.nav-button-live {
+  :root .main-nav.mobile-nav-portal .nav-button,
+  :root body > .main-nav .nav-button,
+  :root .main-nav.mobile-nav-portal .nav-button.nav-button-live,
+  :root body > .main-nav .nav-button.nav-button-live {
     position:relative !important;
     display:grid !important;
     grid-template-rows:30px 16px !important;
@@ -8728,40 +8728,40 @@ textarea {
     transition:color .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.nav-secondary,
-  :root.local-host body > .main-nav .nav-button.nav-secondary {
+  :root .main-nav.mobile-nav-portal .nav-button.nav-secondary,
+  :root body > .main-nav .nav-button.nav-secondary {
     display:none !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.nav-secondary[data-view="graph"],
-  :root.local-host body > .main-nav .nav-button.nav-secondary[data-view="graph"] {
+  :root .main-nav.mobile-nav-portal .nav-button.nav-secondary[data-view="graph"],
+  :root body > .main-nav .nav-button.nav-secondary[data-view="graph"] {
     display:grid !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button:hover,
-  :root.local-host .main-nav.mobile-nav-portal .nav-button:focus-visible,
-  :root.local-host body > .main-nav .nav-button:hover,
-  :root.local-host body > .main-nav .nav-button:focus-visible {
+  :root .main-nav.mobile-nav-portal .nav-button:hover,
+  :root .main-nav.mobile-nav-portal .nav-button:focus-visible,
+  :root body > .main-nav .nav-button:hover,
+  :root body > .main-nav .nav-button:focus-visible {
     color:#f2e6f7 !important;
     background:rgba(255,255,255,.04) !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button:focus-visible,
-  :root.local-host body > .main-nav .nav-button:focus-visible {
+  :root .main-nav.mobile-nav-portal .nav-button:focus-visible,
+  :root body > .main-nav .nav-button:focus-visible {
     outline:2px solid rgba(255,125,65,.9) !important;
     outline-offset:2px !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.active,
-  :root.local-host body > .main-nav .nav-button.active {
+  :root .main-nav.mobile-nav-portal .nav-button.active,
+  :root body > .main-nav .nav-button.active {
     border-color:rgba(255,113,56,.78) !important;
     background:linear-gradient(180deg,rgba(255,112,55,.22),rgba(122,38,137,.2)) !important;
     box-shadow:0 0 10px rgba(255,91,45,.75),0 0 25px rgba(255,91,45,.42),inset 0 0 18px rgba(255,123,63,.16) !important;
     color:#ff8b4f !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.active::after,
-  :root.local-host body > .main-nav .nav-button.active::after {
+  :root .main-nav.mobile-nav-portal .nav-button.active::after,
+  :root body > .main-nav .nav-button.active::after {
     top:auto !important;
     right:24% !important;
     bottom:3px !important;
@@ -8772,8 +8772,8 @@ textarea {
     box-shadow:0 0 9px rgba(255,95,47,.95) !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-mobile-icon,
-  :root.local-host body > .main-nav .nav-mobile-icon {
+  :root .main-nav.mobile-nav-portal .nav-mobile-icon,
+  :root body > .main-nav .nav-mobile-icon {
     display:grid !important;
     width:30px !important;
     height:30px !important;
@@ -8781,8 +8781,8 @@ textarea {
     color:currentColor !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-mobile-icon svg,
-  :root.local-host body > .main-nav .nav-mobile-icon svg {
+  :root .main-nav.mobile-nav-portal .nav-mobile-icon svg,
+  :root body > .main-nav .nav-mobile-icon svg {
     width:25px !important;
     height:25px !important;
     overflow:visible !important;
@@ -8793,23 +8793,23 @@ textarea {
     stroke-linejoin:round !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button.active .nav-mobile-icon,
-  :root.local-host body > .main-nav .nav-button.active .nav-mobile-icon {
+  :root .main-nav.mobile-nav-portal .nav-button.active .nav-mobile-icon,
+  :root body > .main-nav .nav-button.active .nav-mobile-icon {
     filter:drop-shadow(0 0 6px rgba(255,103,48,.95)) !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-desktop-label,
-  :root.local-host body > .main-nav .nav-desktop-label {
+  :root .main-nav.mobile-nav-portal .nav-desktop-label,
+  :root body > .main-nav .nav-desktop-label {
     display:none !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-mobile-label,
-  :root.local-host body > .main-nav .nav-mobile-label {
+  :root .main-nav.mobile-nav-portal .nav-mobile-label,
+  :root body > .main-nav .nav-mobile-label {
     display:inline !important;
   }
 
-  :root.local-host .main-nav.mobile-nav-portal .nav-button-live .nav-live-dot,
-  :root.local-host body > .main-nav .nav-button-live .nav-live-dot {
+  :root .main-nav.mobile-nav-portal .nav-button-live .nav-live-dot,
+  :root body > .main-nav .nav-button-live .nav-live-dot {
     position:absolute !important;
     bottom:10px !important;
     left:calc(50% - 23px) !important;
@@ -8821,6 +8821,6 @@ textarea {
 }
 
 @media (max-width:767px) and (prefers-reduced-motion:reduce) {
-  :root.local-host .main-nav.mobile-nav-portal .nav-button,
-  :root.local-host body > .main-nav .nav-button { transition:none !important; }
+  :root .main-nav.mobile-nav-portal .nav-button,
+  :root body > .main-nav .nav-button { transition:none !important; }
 }
