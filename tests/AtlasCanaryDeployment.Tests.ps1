@@ -5,7 +5,8 @@ function Assert-True([bool]$Condition,[string]$Message) { if (-not $Condition) {
 $Docker = Get-Content (Join-Path $Root 'Dockerfile') -Raw
 $Start = Get-Content (Join-Path $Root 'render-start.sh') -Raw
 $Blueprint = Get-Content (Join-Path $Root 'render-atlas-canary.yaml') -Raw
-$Initializer = Get-Content (Join-Path $Root 'tools\Initialize-AtlasNodeCanary.ps1') -Raw
+$Refresh = Get-Content (Join-Path $Root 'server\src\refresh-hosted-snapshot.ts') -Raw
+$TursoClient = Get-Content (Join-Path $Root 'server\src\turso-client.ts') -Raw
 Assert-True ($Docker -match 'FROM node:24-') 'Atlas canary must build and run on Node 24.'
 Assert-True ($Docker -match 'npm run build:server') 'The production image must compile the Node service.'
 Assert-True ($Start -match 'DRIVEOS_ATLAS_NODE_CANARY') 'The container lacks an explicit canary entrypoint.'
@@ -13,9 +14,8 @@ Assert-True ($Start -match 'server/dist/index\.js') 'The canary entrypoint does 
 Assert-True ($Blueprint -match 'healthCheckPath:\s*/readyz') 'The canary must gate health on Atlas readiness.'
 Assert-True ($Blueprint -match 'mountPath:\s*/var/data/atlas') 'The canary lacks durable snapshot storage.'
 Assert-True ($Blueprint -match 'branch:\s*codex/atlas-node-hybrid') 'The canary must not deploy from main before promotion.'
-Assert-True ($Initializer -match 'TURSO_DATABASE_URL' -and $Initializer -match 'TURSO_AUTH_TOKEN') 'Canary initialization must use the durable source.'
-Assert-True ($Initializer -match 'private-import-' -and $Initializer -match 'Remove-Item -LiteralPath \$PrivateSnapshot') 'Private bootstrap material must be deleted.'
-$Refresh = Get-Content (Join-Path $Root 'tools\Sync-AtlasNodeSource.ps1') -Raw
-Assert-True ($Start -match 'Sync-AtlasNodeSource\.ps1') 'Hosted Atlas lacks continuous source refresh.'
-Assert-True ($Refresh -match 'private-sync-' -and $Refresh -match 'Remove-Item -LiteralPath \$PrivateSnapshot') 'Private refresh material must be deleted.'
+Assert-True ($Start -match 'node ./server/dist/refresh-hosted-snapshot\.js') 'Hosted Atlas lacks compiled continuous source refresh.'
+Assert-True ($TursoClient -match 'TURSO_DATABASE_URL' -and $TursoClient -match 'TURSO_AUTH_TOKEN' -and $TursoClient -match '/v2/pipeline') 'Hosted refresh must use authenticated Turso pipeline queries.'
+Assert-True ($Refresh -match 'before !== after' -and $Refresh -match 'drives\.length !== after') 'Hosted refresh lacks source consistency checks.'
+Assert-True ($Refresh -match 'BEGIN IMMEDIATE' -and $Refresh -match 'ROLLBACK') 'Hosted refresh must update the local snapshot transactionally.'
 Write-Host 'JourneyDeck Atlas canary deployment checks passed.' -ForegroundColor Green

@@ -15,11 +15,11 @@ if [[ "${DRIVEOS_ATLAS_NODE_CANARY:-false}" == "true" ]]; then
     export DRIVEOS_NODE_LEGACY_UPSTREAM="http://127.0.0.1:${BACKEND_PORT}"
     export DRIVEOS_NODE_LEGACY_READ_ONLY="false"
     export DRIVEOS_NODE_SESSION_SECRET="${DRIVEOS_AUTH_SECRET:-}"
-    pwsh -NoLogo -NoProfile -File ./tools/Initialize-AtlasNodeCanary.ps1
+    node ./server/dist/refresh-hosted-snapshot.js
     (
         while true; do
             sleep "${DRIVEOS_ATLAS_REFRESH_SECONDS:-900}"
-            pwsh -NoLogo -NoProfile -File ./tools/Sync-AtlasNodeSource.ps1 || echo "Atlas source refresh failed; retaining the last valid snapshot." >&2
+            node ./server/dist/refresh-hosted-snapshot.js || echo "Atlas source refresh failed; retaining the last valid snapshot." >&2
         done
     ) &
     REFRESH_PID=$!
