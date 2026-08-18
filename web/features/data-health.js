@@ -86,6 +86,8 @@
       const auditDrives = auditReport.resources?.drives || {};
       const auditCharges = auditReport.resources?.charges || {};
       const cursorCheck = (auditReport.checks || []).find(check => check.name === 'cursor-readiness');
+      const persistedCursors = auditReport.cursors || [];
+      const cursorPassed = cursorCheck?.passed === true || (persistedCursors.length > 0 && persistedCursors.every(cursor => cursor.passed === true));
       const auditTarget = $("dataHealthIntegrityAudit");
       if (auditTarget) {
         auditTarget.innerHTML = [
@@ -93,7 +95,7 @@
           ["Completed", audit ? formatTime(audit.completedAtUtc) : "Not yet"],
           ["Journey parity", auditDrives.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
           ["Charge parity", auditCharges.passed === true ? "Passed" : audit ? "Failed" : "Pending"],
-          ["Cursor policy", !audit ? "Pending" : cursorCheck?.passed === true ? "Passed" : "Failed"]
+          ["Cursor policy", !audit ? "Pending" : cursorPassed ? "Passed" : "Failed"]
         ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
       }
     }

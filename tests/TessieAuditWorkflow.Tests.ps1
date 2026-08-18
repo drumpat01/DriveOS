@@ -7,15 +7,15 @@ $Workflow = Get-Content (Join-Path $Root '.github\workflows\tessie-readiness-aud
 $Publisher = Get-Content (Join-Path $Root 'tools\Save-JourneyDeckIntegrityAuditResult.ps1') -Raw
 
 Assert-True ($Workflow -match '(?m)^\s*workflow_dispatch:\s*$') 'The production readiness audit must support an explicit manual run.'
-Assert-True ($Workflow -match '(?m)^\s*schedule:\s*$' -and $Workflow -match 'cron:\s*"23 6 \* \* \*"') 'The durable parity audit must run daily outside request paths.'
+Assert-True ($Workflow -notmatch '(?m)^\s*schedule:\s*$' -and $Workflow -notmatch 'cron:') 'The parity audit must remain on-demand and must not run on a schedule.'
 Assert-True ($Workflow -match "if:\s*vars\.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'") 'The readiness audit is not coupled to the active durable writer.'
 Assert-True ($Workflow -match 'DRIVEOS_REPOSITORY_PROVIDER:\s*Turso') 'The readiness audit does not force the production Turso provider.'
 Assert-True ($Workflow -match 'TURSO_DATABASE_URL:\s*\$\{\{ secrets\.TURSO_DATABASE_URL \}\}') 'The readiness audit is missing its Turso URL secret.'
 Assert-True ($Workflow -match 'TURSO_AUTH_TOKEN:\s*\$\{\{ secrets\.TURSO_AUTH_TOKEN \}\}') 'The readiness audit is missing its Turso token secret.'
 Assert-True ($Workflow -match 'TESSIE_TOKEN:\s*\$\{\{ secrets\.TESSIE_TOKEN \}\}') 'The readiness audit is missing its Tessie token secret.'
 Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,240}-Days 30[\s\S]{0,240}-MaximumCursorLagMinutes 90') 'The readiness audit does not enforce the approved 30-day parity and cursor gate.'
-Assert-True ($Workflow -match 'Save-JourneyDeckIntegrityAuditResult\.ps1') 'The scheduled audit does not durably publish its privacy-safe result.'
-Assert-True ($Workflow -match 'Enforce readiness result') 'The scheduled audit does not fail when the durable read gate fails.'
+Assert-True ($Workflow -match 'Save-JourneyDeckIntegrityAuditResult\.ps1') 'The manual audit does not durably publish its privacy-safe result.'
+Assert-True ($Workflow -match 'Enforce readiness result') 'The manual audit does not fail when its parity gate fails.'
 Assert-True ($Workflow -match 'RUNNER_TEMP') 'The readiness report must be written outside the repository checkout.'
 Assert-True ($Workflow -match 'Test-JourneyDeckTessieParity\.ps1[\s\S]{0,300}\| Out-Null') 'Detailed parity report objects must not be emitted to the Actions log.'
 Assert-True ($Workflow -match 'actions/checkout@v7') 'The readiness audit checkout action must use the Node 24 runtime.'
