@@ -62,14 +62,16 @@ test("snapshot rebuild runs off the request thread and preserves the last valid 
 });
 
 test("readiness fails when the compatibility API is unavailable", async () => {
-  const upstream = http.createServer((_req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); });
+  let healthHost = "";
+  const upstream = http.createServer((req, res) => { healthHost = String(req.headers.host || ""); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true })); });
   await new Promise<void>(resolve => upstream.listen(0, "127.0.0.1", resolve));
   const address = upstream.address(); if (!address || typeof address === "string") throw new Error("Mock upstream failed.");
-  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: `http://127.0.0.1:${address.port}` });
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: `http://127.0.0.1:${address.port}`, publicOrigin: "https://journeydeck.me" });
   try {
     const ready = await runtime.app.inject({ method: "GET", url: "/readyz" });
     assert.equal(ready.statusCode, 200);
     assert.equal(JSON.parse(ready.body).legacyCompatibilityReachable, true);
+    assert.equal(healthHost, "journeydeck.me");
     await new Promise<void>(resolve => upstream.close(() => resolve()));
     const unavailable = await runtime.app.inject({ method: "GET", url: "/readyz" });
     assert.equal(unavailable.statusCode, 503);
