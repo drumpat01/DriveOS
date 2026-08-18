@@ -11,7 +11,7 @@ import { bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } f
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
 const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/manifest.webmanifest", "/favicon.ico"]);
-const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkeys/options", "/api/auth/passkeys/verify"]);
+const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const securityHeaders = {
   "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'",
   "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer",
