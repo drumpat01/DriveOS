@@ -57,7 +57,7 @@
     host.style.setProperty("--coral","#ff405f");
     host.style.setProperty("--purple","#8f43e8");
     const shadow=host.attachShadow({mode:"open"});
-    shadow.innerHTML=`<link rel="stylesheet" href="/loading-preview.css?v=5.9.55"><style>:host{display:block;width:100%;height:100%;background:#090511;color:#fff7f2}.loader-stage{width:100%;height:100%;min-height:100%;border:0;border-radius:0}.loader-stage::after{box-shadow:inset 0 0 120px rgba(4,1,8,.42)}@media(prefers-reduced-motion:reduce){.loader-stage::before{content:"LOADING JOURNEYDECK"}}</style>${selected.markup}`;
+    shadow.innerHTML=`<link rel="stylesheet" href="/loading-preview.css?v=6.0.0"><style>:host{display:block;width:100%;height:100%;background:#090511;color:#fff7f2}.loader-stage{width:100%;height:100%;min-height:100%;border:0;border-radius:0}.loader-stage::after{box-shadow:inset 0 0 120px rgba(4,1,8,.42)}@media(prefers-reduced-motion:reduce){.loader-stage::before{content:"LOADING JOURNEYDECK"}}</style>${selected.markup}`;
     const stylesheet=shadow.querySelector('link[rel="stylesheet"]');
     const ready=new Promise(resolve=>{
       if(stylesheet?.sheet){resolve();return;}
