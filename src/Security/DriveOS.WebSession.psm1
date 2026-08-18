@@ -202,15 +202,16 @@ function New-DriveOSWebSessionCookie {
         [string]$Token,
 
         [ValidateRange(1, 720)]
-        [int]$SessionHours = 24
+        [int]$SessionHours = 24,
+
+        [bool]$Persist = $true
     )
 
     $MaxAge = $SessionHours * 3600
 
-    return (
-        "$script:DriveOSSessionCookieName=$Token; " +
-        "Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=$MaxAge"
-    )
+    $Cookie = "$script:DriveOSSessionCookieName=$Token; Path=/; HttpOnly; Secure; SameSite=Strict"
+    if ($Persist) { $Cookie += "; Max-Age=$MaxAge" }
+    return $Cookie
 }
 
 function New-DriveOSWebSessionClearCookie {

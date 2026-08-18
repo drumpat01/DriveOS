@@ -4101,6 +4101,10 @@ function Handle-Request {
 
                     $Email = "$($Body.email)".Trim().ToLowerInvariant()
                     $PasswordText = "$($Body.password)"
+                    $RememberMe = (
+                        $Body.PSObject.Properties['rememberMe'] -and
+                        $Body.rememberMe -eq $true
+                    )
                     $SecurePassword = ConvertTo-SecureString `
                         $PasswordText `
                         -AsPlainText `
@@ -4134,16 +4138,19 @@ function Handle-Request {
 
                     Clear-DriveOSLoginFailures -ClientKey $ClientKey
 
+                    $LoginSessionHours = if ($RememberMe) { 720 } else { $RuntimeConfig.SessionHours }
+
                     $Token = New-DriveOSWebSessionToken `
                         -OwnerEmail $(if ($Role -eq "wife") { $WebAuthConfig.WifeUsername } else { $WebAuthConfig.OwnerEmail }) `
                         -Role $Role `
                         -Mode $(if ($Role -eq "wife") { "wife" } else { "full" }) `
                         -AuthSecret $WebAuthConfig.AuthSecret `
-                        -SessionHours $RuntimeConfig.SessionHours
+                        -SessionHours $LoginSessionHours
 
                     $Cookie = New-DriveOSWebSessionCookie `
                         -Token $Token `
-                        -SessionHours $RuntimeConfig.SessionHours
+                        -SessionHours $LoginSessionHours `
+                        -Persist:$RememberMe
 
                     Send-Json `
                         -Stream $Stream `

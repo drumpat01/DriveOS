@@ -204,6 +204,21 @@ http.createServer((req, res) => {
     });
     return;
   }
+  if (url.pathname === '/api/auth/login' && req.method === 'POST') {
+    let requestBody = '';
+    req.on('data', chunk => { requestBody += chunk; });
+    req.on('end', () => {
+      const login = JSON.parse(requestBody || '{}');
+      const persistent = login.rememberMe === true ? '; Max-Age=2592000' : '';
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Set-Cookie': `DriveOSSession=localhost-preview; Path=/; HttpOnly; SameSite=Strict${persistent}`
+      });
+      res.end(JSON.stringify({ authenticated: true, role: 'owner' }));
+    });
+    return;
+  }
   if (url.pathname.startsWith('/api/spotify/artwork/')) {
     const artwork = ['driveos-logo-v3.png', 'DriveOS-Icon-v2.png', 'favicon.png'];
     const match = url.pathname.match(/(\d+)$/);

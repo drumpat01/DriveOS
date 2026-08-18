@@ -114,6 +114,19 @@ Assert-True `
     ($Cookie -match 'Max-Age=86400') `
     "Session cookie expiration is incorrect."
 
+$BrowserSessionCookie = New-DriveOSWebSessionCookie `
+    -Token $Token `
+    -SessionHours 24 `
+    -Persist:$false
+
+Assert-True `
+    ($BrowserSessionCookie -notmatch 'Max-Age') `
+    "A non-remembered login must expire when the browser session ends."
+
+Assert-True `
+    ($BrowserSessionCookie -match 'HttpOnly; Secure; SameSite=Strict') `
+    "A browser-session cookie must retain all security attributes."
+
 $ClearCookie = New-DriveOSWebSessionClearCookie
 
 Assert-True `
