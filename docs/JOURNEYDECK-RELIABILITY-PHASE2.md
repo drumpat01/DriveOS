@@ -2,11 +2,11 @@
 
 JourneyDeck treats background integrity evidence as durable product data. Normal web requests never call Tessie, Spotify, or Turso's management API.
 
-## Daily integrity audit
+## On-demand integrity audit
 
-The `Audit Tessie read readiness` workflow runs daily at 06:23 UTC and remains manually dispatchable. It compares the approved 30-day Tessie window with normalized Turso history, checks both sync cursors, writes a redacted aggregate result to `integrity_audit_runs`, and then fails the workflow when read readiness is not approved. Stored reports exclude VINs, locations, provider payloads, record identifiers, and mismatch examples.
+The `Audit Tessie read readiness` workflow is manually dispatchable after migrations, imports, sync changes, or suspected data loss. It compares the approved 30-day Tessie window with normalized Turso history, checks both sync cursors, writes a redacted aggregate result to `integrity_audit_runs`, and then fails the workflow when its parity proof is not approved. Stored reports exclude VINs, locations, provider payloads, record identifiers, and mismatch examples.
 
-Owner-only Data Health reads the latest durable result. An absent or failed result creates an alert; a successful result older than 26 hours is stale. Wife Mode has neither navigation nor API access to Data Health.
+Owner-only Data Health reads the latest durable result. Routine health is governed by the live journey and charge cursors. An absent, unsuccessful, or successful result older than 30 days creates an advisory warning and does not turn the entire site red. Wife Mode has neither navigation nor API access to Data Health.
 
 ## Weekly restore rehearsal
 
@@ -26,9 +26,9 @@ The workflow never prints or archives credentials, URLs, application rows, or th
 Phase 2 is operationally complete after all of the following are true:
 
 1. Migration 3 is applied in production and Data Health can read the latest audit without request-path provider work.
-2. Two consecutive scheduled daily integrity audits pass, at least 24 hours apart.
+2. An on-demand integrity audit passes after any migration, import, or material sync change.
 3. One exact-commit weekly restore rehearsal passes with schema parity, row-count parity, `integrity_check=ok`, and independently confirmed cleanup.
 4. Wife Mode runtime verification confirms Data Health remains inaccessible and mobile sign-out remains visible.
-5. Rollback is rehearsed by disabling only the two new schedules; existing durable reads, provider ingestion, and all user-visible history remain unchanged.
+5. Rollback is rehearsed by disabling the restore-rehearsal schedule; existing durable reads, provider ingestion, and all user-visible history remain unchanged.
 
 After those gates pass, reliability work moves to monitoring rather than feature blocking. The next user-facing slice should be selected independently; good candidates are route favorites/navigation improvements, recap sharing, or search refinements. Last.fm is not a JourneyDeck data source and should not be reintroduced.
