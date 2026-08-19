@@ -57,13 +57,23 @@
     host.style.setProperty("--coral","#ff405f");
     host.style.setProperty("--purple","#8f43e8");
     const shadow=host.attachShadow({mode:"open"});
-    shadow.innerHTML=`<link rel="stylesheet" href="/loading-preview.css?v=6.0.1"><style>:host{display:block;width:100%;height:100%;background:#090511;color:#fff7f2}.loader-stage{width:100%;height:100%;min-height:100%;border:0;border-radius:0}.loader-stage::after{box-shadow:inset 0 0 120px rgba(4,1,8,.42)}@media(prefers-reduced-motion:reduce){.loader-stage::before{content:"LOADING JOURNEYDECK"}}</style>${selected.markup}`;
+    shadow.innerHTML=`<style>:host{display:block;width:100%;height:100%;background:#090511;color:#fff7f2}.loader-stage{width:100%;height:100%;min-height:100%;border:0;border-radius:0;visibility:hidden}:host([data-loader-visual-ready="true"]) .loader-stage{visibility:visible}.loader-stage::after{box-shadow:inset 0 0 120px rgba(4,1,8,.42)}@media(prefers-reduced-motion:reduce){.loader-stage::before{content:"LOADING JOURNEYDECK"}}</style><link rel="stylesheet" href="/loading-preview.css?v=6.0.1">${selected.markup}`;
     const stylesheet=shadow.querySelector('link[rel="stylesheet"]');
     const ready=new Promise(resolve=>{
-      if(stylesheet?.sheet){resolve();return;}
-      stylesheet?.addEventListener("load",resolve,{once:true});
-      stylesheet?.addEventListener("error",resolve,{once:true});
-      if(!stylesheet)resolve();
+      let settled=false;
+      let timeoutId=null;
+      const settle=reveal=>{
+        if(settled)return;
+        settled=true;
+        if(timeoutId!==null)window.clearTimeout(timeoutId);
+        if(reveal)host.dataset.loaderVisualReady="true";
+        resolve();
+      };
+      if(stylesheet?.sheet){settle(true);return;}
+      stylesheet?.addEventListener("load",()=>settle(true),{once:true});
+      stylesheet?.addEventListener("error",()=>settle(false),{once:true});
+      if(!stylesheet){settle(false);return;}
+      timeoutId=window.setTimeout(()=>settle(false),2000);
     });
     host.dataset.loaderConcept=selected.id;
     host.dataset.loaderName=selected.name;
