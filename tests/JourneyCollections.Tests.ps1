@@ -32,6 +32,8 @@ $WifeJs = Get-Content (Join-Path $Root 'web\wife.js') -Raw
 $Styles = Get-Content (Join-Path $Root 'web\styles.css') -Raw
 $Index = Get-Content (Join-Path $Root 'web\index.html') -Raw
 $CollectionsJs = Get-Content (Join-Path $Root 'web\features\collections.js') -Raw
+$MomentsJs = Get-Content (Join-Path $Root 'web\features\moments.js') -Raw
+$AppJs = Get-Content (Join-Path $Root 'web\app.js') -Raw
 Assert-True ($Server -match '"/api/collections"') 'Owner collection read endpoint is missing.'
 Assert-True ($Server -match '"/api/collections/save"' -and $Server -match '"/api/collections/delete"') 'Owner collection mutation endpoints are missing.'
 Assert-True ($Server -match '"/api/wife/collections"') 'Wife Mode collection read endpoint is missing.'
@@ -48,5 +50,10 @@ Assert-True ($Index -match 'id="journeyStoryModal"' -and $Index -match 'id="jour
 Assert-True ($CollectionsJs -match 'collectionMusic' -and $CollectionsJs -match 'albumImage' -and $CollectionsJs -match 'TOP ARTIST') 'Collection story does not derive its top artist.'
 Assert-True ($CollectionsJs -match 'slice\(0,3\)' -and $CollectionsJs -match '/api/collections/attachments/get') 'Collection story does not load its first attached photos.'
 Assert-True ($CollectionsJs -match 'collectionRoutes' -and $CollectionsJs -match 'collection-routes') 'Collection story map overview is missing.'
+Assert-True ($MomentsJs.Contains('journeydeck:opencollection') -and -not $MomentsJs.Contains('journeydeck:editcollection')) 'A Collection click on Moments still bypasses its overview and opens the editor.'
+Assert-True ($AppJs.Contains('journeydeck:opencollection') -and $AppJs.Contains('collectionsFeature.openStory')) 'Collection overview events are not routed to the read-only Collection window.'
+Assert-True ($AppJs.Contains('event.target.closest("[data-close-journey-story]")') -and $AppJs.Contains('collectionsFeature.closeStory()')) 'Layered Collection Overview cannot reliably return to its parent modal.'
+Assert-True ($Index.Contains('id="journeyStoryManage"') -and $Index.Contains('Edit collection')) 'Collection overview is missing its explicit Edit collection action.'
+Assert-True (-not $CollectionsJs.Contains('data-edit-collection')) 'The Collections list still exposes a direct editor shortcut instead of opening the overview first.'
 Assert-True ($Styles -match '@media \(max-width:760px\)[\s\S]*?\.journey-story-grid\s*\{\s*grid-template-columns:1fr') 'Collection story is not responsive on mobile.'
 Write-Host 'Journey Collections checks passed.' -ForegroundColor Green

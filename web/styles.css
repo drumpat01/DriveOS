@@ -637,6 +637,7 @@ h1 span { color: var(--accent); font-weight: 400; }
 
 .modal-close {
   position: absolute;
+  z-index: 20;
   top: 18px;
   right: 20px;
   width: 38px;
@@ -648,6 +649,50 @@ h1 span { color: var(--accent); font-weight: 400; }
   font-size: 1.5rem;
   cursor: pointer;
 }
+
+/* Optical centering authority for X glyphs inside circular controls. */
+.modal-close,
+#pwaInstallDismiss,
+.mobile-more-sheet header button,
+.moments-search-close,
+.moments-create-photos button,
+.memory-edit-photos figure > button {
+  display: grid;
+  padding: 0;
+  place-items: center;
+  font-size: 0 !important;
+  line-height: 0;
+}
+#pwaInstallDismiss,
+.mobile-more-sheet header button { position: relative; }
+.modal-close::before,
+.modal-close::after,
+#pwaInstallDismiss::before,
+#pwaInstallDismiss::after,
+.mobile-more-sheet header button::before,
+.mobile-more-sheet header button::after,
+.moments-search-close::before,
+.moments-search-close::after,
+.moments-create-photos button::before,
+.moments-create-photos button::after,
+.memory-edit-photos figure > button::before,
+.memory-edit-photos figure > button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.modal-close::after,
+#pwaInstallDismiss::after,
+.mobile-more-sheet header button::after,
+.moments-search-close::after,
+.moments-create-photos button::after,
+.memory-edit-photos figure > button::after { transform: translate(-50%, -50%) rotate(-45deg); }
 
 .modal-card > h2 {
   margin: 8px 0 3px;
@@ -8640,7 +8685,8 @@ textarea {
   .main-nav.mobile-nav-portal .nav-button.active::after,
   body > .main-nav .nav-button.active::after { height:2px !important; }
   #journeyCollectionModal,
-  .journey-story-modal { z-index:2147483100 !important; }
+  .journey-story-modal { z-index:2147483150 !important; }
+  #journeyCollectionModal { z-index:2147483175 !important; }
   .journey-story-modal-card { max-height:calc(100dvh - 12px); padding-bottom:0; }
   #journeyStoryContent { padding-bottom:calc(76px + env(safe-area-inset-bottom)); }
   .journey-story-actions {

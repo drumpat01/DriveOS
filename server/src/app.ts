@@ -82,7 +82,12 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   app.post("/api/atlas/snapshot/rebuild", async (_req, reply) => { void store.rebuildNow(); return reply.code(202).send({ accepted: true }); });
   app.all("/api/atlas/*", async (_req, reply) => reply.code(410).send({ error: "The legacy Atlas API has been retired. Use the persisted Atlas snapshot API." }));
   app.all("/api/*", async (req, reply) => proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin));
-  await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: false, index: false, decorateReply: true });
+  // Keep one sandboxed wildcard route rooted at web/. With wildcard disabled,
+  // Fastify snapshots the file list during startup; a refreshed HTML shell can
+  // then reference newly deployed CSS, JS, or artwork that the running process
+  // has no route for. The wildcard handler resolves each request against the
+  // same fixed root, so atomic web asset updates become visible immediately.
+  await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
   app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
   app.addHook("onClose", async () => { store.close(); database.close(); });
