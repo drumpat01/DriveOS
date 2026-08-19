@@ -1473,6 +1473,7 @@ async function loadDashboardDrives() {
     if (!driveLibraryFullyLoaded) {
       state.drives = recent;
       state.driveLibraryWindowDays = Number(data.windowDays) || 14;
+      window.DriveOSFeatures.moments?.setJourneys(recent);
       renderFavoriteRoutes();
     }
 
@@ -1540,6 +1541,11 @@ async function loadDrives() {
 
 document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("click", () => {
   if (!driveLibraryFullyLoaded) {
+    void loadDrives();
+  }
+});
+document.addEventListener("journeydeck:viewchange", event => {
+  if (event.detail?.view === "drives" && !driveLibraryFullyLoaded) {
     void loadDrives();
   }
 });
