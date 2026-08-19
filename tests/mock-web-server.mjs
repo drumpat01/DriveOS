@@ -204,6 +204,36 @@ const mime = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascri
 
 http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname.startsWith('/api/atlas/')) {
+    const body = [];
+    req.on('data', chunk => body.push(chunk));
+    req.on('end', () => {
+      const upstream = http.request({
+        hostname: '127.0.0.1',
+        port: Number(process.env.DRIVEOS_ATLAS_PORT || 8791),
+        path: `${url.pathname}${url.search}`,
+        method: req.method,
+        headers: {
+          accept: 'application/json',
+          'content-type': req.headers['content-type'] || 'application/json',
+          'tailscale-user-login': 'localhost-preview'
+        }
+      }, upstreamResponse => {
+        res.writeHead(upstreamResponse.statusCode || 502, {
+          'Content-Type': upstreamResponse.headers['content-type'] || 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+          ...(upstreamResponse.headers.etag ? { ETag: upstreamResponse.headers.etag } : {})
+        });
+        upstreamResponse.pipe(res);
+      });
+      upstream.on('error', error => {
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: `Local Atlas is unavailable: ${error.message}` }));
+      });
+      upstream.end(body.length ? Buffer.concat(body) : undefined);
+    });
+    return;
+  }
   if (url.pathname === '/api/assistant/query') {
     let requestBody = '';
     req.on('data', chunk => { requestBody += chunk; });

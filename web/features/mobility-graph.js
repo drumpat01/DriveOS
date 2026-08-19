@@ -23,7 +23,7 @@
   }
 
   function create({api}){
-    let graph=null,loaded=false,loading=null,selectedId=null,mobilityMap=null,placeSaveQueue=Promise.resolve(),routineSaveQueue=Promise.resolve();
+    let graph=null,loaded=false,loading=null,selectedId=null,mobilityMap=null,journeyMapRequest=0,journeyMapTimer=null,placeSaveQueue=Promise.resolve(),routineSaveQueue=Promise.resolve();
     const nodeMap=()=>new Map((graph?.nodes||[]).map(node=>[node.id,node]));
     const setStatus=text=>{const status=document.getElementById('mobilityGraphStatus');if(status)status.textContent=text;};
 
@@ -35,7 +35,7 @@
 
     async function inspect(node){
       const inspector=document.getElementById('mobilityPlaceInspector');if(!inspector||!graph)return;inspector.hidden=false;
-      if(node.category==='home'){inspector.innerHTML=`<div class="mobility-home-summary"><div class="section-label">HOME</div><h3>${escape(node.label||'Home')}</h3><strong>${number(node.visitCount)}</strong><span>moments when Home anchored your journey</span></div>`;return;}
+      if(node.category==='home'){const homeJourneyCount=Number(graph.summary?.homeJourneyCount);inspector.innerHTML=`<div class="mobility-home-summary"><h3>${escape(node.label||'Home')}</h3><strong>${number(Number.isFinite(homeJourneyCount)?homeJourneyCount:node.visitCount)}</strong><span>journeys recorded going to or from Home</span></div>`;return;}
       inspector.innerHTML=`<div class="section-label">MOBILITY PLACE</div><h3>${escape(node.label)}</h3><p class="mobility-place-address">Loading place details…</p>`;
       try{
         const detail=await api.get(`/api/atlas/places/${encodeURIComponent(node.id)}`);if(selectedId!==node.id)return;
@@ -48,10 +48,21 @@
 
     function select(nodeId){selectedId=nodeId;updateSelectedLayer();const node=nodeMap().get(nodeId);if(node)void inspect(node);}
 
+    async function loadJourneyMap(map){
+      const request=++journeyMapRequest,bounds=map.getBounds(),zoom=map.getZoom(),query=new URLSearchParams({west:String(bounds.getWest()),south:String(bounds.getSouth()),east:String(bounds.getEast()),north:String(bounds.getNorth()),zoom:String(zoom)});
+      try{
+        const result=await api.get(`/api/atlas/map?${query}`);if(request!==journeyMapRequest||mobilityMap!==map)return;
+        map.getSource('mobility-connections')?.setData(result.data||{type:'FeatureCollection',features:[]});
+        const shown=number(result.returned),total=number(result.totalInView);setStatus(result.mode==='journeys'?`${shown}${result.truncated?` of ${total}`:''} visible journeys · pan or zoom to explore`:`${shown} travel corridors · ${total} journeys in view · zoom in for individual journeys`);
+      }catch(error){if(request===journeyMapRequest&&mobilityMap===map)setStatus(`Journey detail unavailable · ${error.message}`);}
+    }
+
+    function scheduleJourneyMap(map,delay=120){clearTimeout(journeyMapTimer);journeyMapTimer=setTimeout(()=>void loadJourneyMap(map),delay);}
+
     function addMapLayers(map){
       map.addSource('mobility-connections',{type:'geojson',data:graph.representativeLines});
-      map.addLayer({id:'mobility-connections-glow',type:'line',source:'mobility-connections',paint:{'line-color':['match',['get','palette'],0,'#ff6a61',1,'#b765ff','#ff9f43'],'line-width':['interpolate',['linear'],['zoom'],3,4,12,7],'line-opacity':.24,'line-blur':4}});
-      map.addLayer({id:'mobility-connections-line',type:'line',source:'mobility-connections',paint:{'line-color':['match',['get','palette'],0,'#ff756d',1,'#c078ff','#ffad55'],'line-width':['interpolate',['linear'],['zoom'],3,2.8,12,4.2],'line-opacity':.82}});
+      map.addLayer({id:'mobility-connections-glow',type:'line',source:'mobility-connections',paint:{'line-color':['match',['get','kind'],'journey','#ff6a61','corridor','#b765ff',['match',['get','palette'],0,'#ff6a61',1,'#b765ff','#ff9f43']],'line-width':['interpolate',['linear'],['coalesce',['get','journeyCount'],1],1,3,10,6,100,11],'line-opacity':['match',['get','kind'],'journey',.14,.24],'line-blur':4}});
+      map.addLayer({id:'mobility-connections-line',type:'line',source:'mobility-connections',paint:{'line-color':['match',['get','kind'],'journey','#ff756d','corridor','#c078ff',['match',['get','palette'],0,'#ff756d',1,'#c078ff','#ffad55']],'line-width':['match',['get','kind'],'journey',['interpolate',['linear'],['zoom'],11,1.2,16,2.4],['interpolate',['linear'],['coalesce',['get','journeyCount'],1],1,1.5,10,2.6,100,5]],'line-opacity':['match',['get','kind'],'journey',.62,.78]}});
       map.addSource('mobility-places',{type:'geojson',data:placeGeoJson(),cluster:true,clusterMaxZoom:10,clusterRadius:42});
       map.addLayer({id:'mobility-place-clusters',type:'circle',source:'mobility-places',filter:['has','point_count'],paint:{'circle-color':'#6d2fa8','circle-radius':['step',['get','point_count'],15,25,20,75,27],'circle-stroke-color':'#ff8b4d','circle-stroke-width':2.5,'circle-opacity':.9}});
       map.addLayer({id:'mobility-place-cluster-count',type:'symbol',source:'mobility-places',filter:['has','point_count'],layout:{'text-field':['get','point_count_abbreviated'],'text-size':11},paint:{'text-color':'#fff5ff'}});
@@ -61,16 +72,17 @@
       map.on('click','mobility-places',event=>{const id=event.features?.[0]?.properties?.placeId;if(id)select(id);});map.on('click','mobility-place-labels',event=>{const id=event.features?.[0]?.properties?.placeId;if(id)select(id);});
       map.on('click','mobility-place-clusters',event=>{const coordinate=event.features?.[0]?.geometry?.coordinates;if(coordinate)map.easeTo({center:coordinate,zoom:Math.min(map.getZoom()+2,13)});});
       for(const layer of ['mobility-places','mobility-place-labels','mobility-place-clusters']){map.on('mouseenter',layer,()=>{map.getCanvas().style.cursor='pointer';});map.on('mouseleave',layer,()=>{map.getCanvas().style.cursor='';});}
+      map.on('moveend',()=>scheduleJourneyMap(map));
     }
 
     async function renderGeographicMap(canvas){
-      mobilityMap?.remove();mobilityMap=null;canvas.innerHTML='<div class="mobility-map" data-mobility-map aria-label="Interactive map of your journey places"></div><div class="mobility-graph-help">Drag to move · scroll or use controls to zoom</div><div class="mobility-place-attribution">Place labels © OpenStreetMap contributors · ODbL</div>';
+      clearTimeout(journeyMapTimer);journeyMapRequest++;mobilityMap?.remove();mobilityMap=null;canvas.innerHTML='<div class="mobility-map" data-mobility-map aria-label="Interactive map of your journey places"></div><div class="mobility-graph-help">Drag to move · zoom in to reveal individual journeys</div><div class="mobility-place-attribution">Place labels © OpenStreetMap contributors · ODbL</div>';
       try{
         const maplibregl=await window.JourneyDeckMaps.ensureMapLibre();if(!canvas.isConnected||!graph)return;
         const nodes=graph.nodes.filter(node=>validCoordinate(Number(node.latitude),Number(node.longitude))),first=nodes[0];
         const options={container:canvas.querySelector('[data-mobility-map]'),style:window.JourneyDeckMapTheme?.style||'https://tiles.openfreemap.org/styles/dark',center:first?[Number(first.longitude),Number(first.latitude)]:[-97,32.8],zoom:9,attributionControl:true};
         const map=new maplibregl.Map(window.JourneyDeckMapTheme?.options(options)||options);window.JourneyDeckMapTheme?.attach(map);mobilityMap=map;map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
-        map.on('load',()=>{if(mobilityMap!==map)return;addMapLayers(map);const bounds=new maplibregl.LngLatBounds();nodes.forEach(node=>bounds.extend([Number(node.longitude),Number(node.latitude)]));graph.representativeLines.features.forEach(feature=>feature.geometry.coordinates.forEach(coordinate=>bounds.extend(coordinate)));if(!bounds.isEmpty())map.fitBounds(bounds,{padding:60,maxZoom:12,duration:0});setStatus(`${number(graph.representativeLines.features.length)} representative journey lines · ${number(graph.summary.driveCount)} journeys total`);});
+        map.on('load',()=>{if(mobilityMap!==map)return;addMapLayers(map);const bounds=new maplibregl.LngLatBounds();nodes.forEach(node=>bounds.extend([Number(node.longitude),Number(node.latitude)]));graph.representativeLines.features.forEach(feature=>feature.geometry.coordinates.forEach(coordinate=>bounds.extend(coordinate)));if(!bounds.isEmpty())map.fitBounds(bounds,{padding:60,maxZoom:12,duration:0});scheduleJourneyMap(map,0);});
       }catch(error){canvas.innerHTML=`<div class="empty-state"><h3>Mobility map unavailable</h3><p>${escape(error.message)}</p></div>`;}
     }
 

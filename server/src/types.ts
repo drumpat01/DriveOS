@@ -51,9 +51,25 @@ export type AtlasBootstrap = {
   schemaVersion: number;
   generatedAtUtc: string;
   sourceWatermark: string;
-  summary: { placeCount: number; connectionCount: number; journeyCount: number; totalMiles: number };
+  summary: { placeCount: number; connectionCount: number; journeyCount: number; homeJourneyCount: number; totalMiles: number };
   places: AtlasPlace[];
   representativeLines: { type: "FeatureCollection"; features: Array<{ type: "Feature"; properties: { distanceMiles: number; palette: number }; geometry: { type: "LineString"; coordinates: [[number, number], [number, number]] } }> };
   patterns: AtlasPattern[];
   changeInsights: Array<{ type: string; direction: string; title: string; narrative: string; confidence: string }>;
+};
+
+export type AtlasMapFeature = {
+  type: "Feature";
+  properties: { kind: "corridor" | "journey"; journeyCount: number; distanceMiles: number; journeyId?: string; startedAt?: string };
+  geometry: { type: "LineString"; coordinates: [[number, number], [number, number]] };
+};
+
+export type AtlasMapResponse = {
+  mode: "corridors" | "journeys";
+  zoom: number;
+  totalInView: number;
+  returned: number;
+  truncated: boolean;
+  bounds: { west: number; south: number; east: number; north: number };
+  data: { type: "FeatureCollection"; features: AtlasMapFeature[] };
 };
