@@ -1,11 +1,32 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { createApp } from "../src/app.js";
 import { fixtureDatabase, root } from "./helpers.js";
 
 const auth = { "x-journeydeck-test-auth": "owner" };
 const writeHeaders = { ...auth, origin: "http://127.0.0.1" };
+
+test("static web assets added after startup are served from the fixed web root", async () => {
+  const fixture = fixtureDatabase(), webRoot = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-static-"));
+  const runtime = await createApp({ databasePath: fixture.filename, root, webRoot, allowTestAuth: true, legacyUpstream: "" });
+  try {
+    fs.mkdirSync(path.join(webRoot, "features"), { recursive: true });
+    fs.writeFileSync(path.join(webRoot, "moments.css"), ".moments-page{display:block}", "utf8");
+    fs.writeFileSync(path.join(webRoot, "features", "moments.js"), "window.JourneyDeckMoments=true;", "utf8");
+    const css = await runtime.app.inject({ method: "GET", url: "/moments.css?v=next" });
+    const script = await runtime.app.inject({ method: "GET", url: "/features/moments.js?v=next" });
+    assert.equal(css.statusCode, 200, css.body);
+    assert.match(String(css.headers["content-type"]), /^text\/css/);
+    assert.equal(script.statusCode, 200, script.body);
+    assert.match(String(script.headers["content-type"]), /javascript/);
+  } finally {
+    await runtime.app.close(); fixture.cleanup(); fs.rmSync(webRoot, { recursive: true, force: true });
+  }
+});
 
 test("Atlas API enforces auth, origin, roles, and durable serialized writes", async () => {
   const fixture = fixtureDatabase();

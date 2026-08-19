@@ -867,6 +867,12 @@ function renderFavoriteRoutes() {
 
 const collectionsFeature = window.DriveOSFeatures.collections.create({ state, api: window.DriveOSApi, applyFilter: applyJourneyCollectionFilter, ensureMapLibre });
 
+// Keep Collection Overview dismissible even when it is layered above another
+// modal (for example, View from an in-progress Memory edit).
+document.addEventListener("click", event => {
+  if (event.target.closest("[data-close-journey-story]")) collectionsFeature.closeStory();
+}, true);
+
 document.addEventListener("journeydeck:addtocollection", event => {
   collectionsFeature.open();
   const driveId = event.detail?.driveId;
@@ -879,16 +885,14 @@ document.addEventListener("journeydeck:addtocollection", event => {
   }, 0);
 });
 
-document.addEventListener("journeydeck:editcollection", event => {
+document.addEventListener("journeydeck:opencollection", event => {
+  const requestedId = String(event.detail?.collectionId || "").trim();
   const requestedName = String(event.detail?.collectionName || "").trim();
-  const collection = state.collections.find(item => String(item.name || "").toLocaleLowerCase() === requestedName.toLocaleLowerCase());
-  collectionsFeature.open(collection || null);
-  if (collection || !requestedName) return;
-  window.setTimeout(() => {
-    const name = $("journeyCollectionName");
-    if (name) name.value = requestedName;
-    setText("journeyCollectionModalHeading", "Edit collection");
-  }, 0);
+  const requestedDriveIds = Array.isArray(event.detail?.driveIds) ? event.detail.driveIds : [];
+  const collection = state.collections.find(item => requestedId ? String(item.id) === requestedId : String(item.name || "").toLocaleLowerCase() === requestedName.toLocaleLowerCase());
+  if (collection) { void collectionsFeature.openStory(collection); return; }
+  if (!requestedName) return;
+  void collectionsFeature.openStory({ id: "", name: requestedName, description: String(event.detail?.description || ""), driveIds: requestedDriveIds, suggested: Boolean(event.detail?.suggested) });
 });
 
 document.addEventListener("journeydeck:openjourney", event => {
@@ -1792,6 +1796,9 @@ document.querySelectorAll("[data-timeline-days]").forEach(button => {
   });
 });
 document.querySelector('.nav-button[data-view="timeline"]')?.addEventListener("click", () => { void loadDriveTimeline(); });
+document.addEventListener("journeydeck:viewchange", event => {
+  if (event.detail?.view === "timeline") void loadDriveTimeline();
+});
 function locationContains(value, query) {
   const terms = String(query || "")
     .toLocaleLowerCase()

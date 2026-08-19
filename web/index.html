@@ -15,11 +15,11 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=6.0.1">
+  <link rel="stylesheet" href="/styles.css?v=6.0.1-release-3">
   <link rel="stylesheet" href="/beta-theme.css?v=6.0.1">
   <link rel="stylesheet" href="/beta-theme-v2.css?v=6.0.1">
   <link rel="stylesheet" href="/reference-dashboard.css?v=6.0.1">
-  <link rel="stylesheet" href="/moments.css?v=6.0.1-memory-modal">
+  <link rel="stylesheet" href="/moments.css?v=6.0.1-durable-moments-5">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -559,9 +559,15 @@
         </header>
 
         <section class="moments-memory-section" aria-labelledby="momentsMemoriesHeading">
-          <h3 id="momentsMemoriesHeading" class="moments-level-label">MEMORIES</h3>
+          <div class="moments-level-heading moments-memory-heading">
+            <h3 id="momentsMemoriesHeading" class="moments-level-label sr-only">MEMORIES</h3>
+            <div class="moments-section-search" data-moments-search="memories">
+              <button class="moments-search-toggle" type="button" data-moments-search-toggle="memories" aria-label="Search memories" aria-expanded="false" aria-controls="momentsMemoriesSearchPill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg></button>
+              <div id="momentsMemoriesSearchPill" class="moments-search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg><input type="search" data-moments-search-input="memories" aria-label="Search memories" placeholder="Search memories…" autocomplete="off"><span class="moments-search-count" data-moments-search-count="memories" hidden></span><button class="moments-search-close" type="button" data-moments-search-close="memories" aria-label="Close memory search">&times;</button></div>
+            </div>
+          </div>
           <div class="moments-memory-carousel" role="region" aria-roledescription="carousel" aria-label="JourneyDeck memories">
-            <button class="moments-carousel-arrow moments-carousel-previous" type="button" aria-label="Previous memory">&#x2039;</button>
+            <button class="moments-carousel-arrow moments-carousel-previous" type="button" aria-label="Previous memory"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M13 4l-6 6 6 6"/></svg></button>
             <div class="moments-memory-viewport">
               <div class="moments-memory-track">
                 <button class="moments-memory-card" type="button" data-memory-index="0" aria-label="Select Everyday Life">
@@ -596,7 +602,7 @@
                 </button>
               </div>
             </div>
-            <button class="moments-carousel-arrow moments-carousel-next" type="button" aria-label="Next memory">&#x203A;</button>
+            <button class="moments-carousel-arrow moments-carousel-next" type="button" aria-label="Next memory"><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M7 4l6 6-6 6"/></svg></button>
             <div class="moments-carousel-dots" role="tablist" aria-label="Choose a memory"></div>
           </div>
         </section>
@@ -604,7 +610,10 @@
         <section class="moments-collections-section" aria-labelledby="momentsCollectionsHeading">
           <div class="moments-level-heading">
             <h3 id="momentsCollectionsHeading" class="moments-level-label">COLLECTIONS IN <span data-selected-memory>SUMMER 2026</span></h3>
-            <button class="moments-text-action" type="button" data-moments-new-collection>+ New collection</button>
+            <div class="moments-level-actions">
+              <button class="moments-text-action" type="button" data-moments-new-collection>+ New collection</button>
+              <div class="moments-section-search" data-moments-search="collections"><button class="moments-search-toggle" type="button" data-moments-search-toggle="collections" aria-label="Search collections" aria-expanded="false" aria-controls="momentsCollectionsSearchPill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg></button><div id="momentsCollectionsSearchPill" class="moments-search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg><input type="search" data-moments-search-input="collections" aria-label="Search collections" placeholder="Search collections…" autocomplete="off"><span class="moments-search-count" data-moments-search-count="collections" hidden></span><button class="moments-search-close" type="button" data-moments-search-close="collections" aria-label="Close collection search">&times;</button></div></div>
+            </div>
           </div>
           <div class="moments-collection-grid">
             <button class="moments-collection-card" type="button" data-collection-name="Mountain weekends">
@@ -625,7 +634,10 @@
         <section class="moments-journeys-section" aria-labelledby="momentsJourneysHeading">
           <div class="moments-level-heading">
             <h3 id="momentsJourneysHeading" class="moments-level-label">JOURNEYS <span>&mdash; NEWEST FIRST</span></h3>
-            <button class="moments-text-action" type="button" data-moments-view-all>View all journeys &#x2192;</button>
+            <div class="moments-level-actions">
+              <button class="moments-text-action" type="button" data-moments-view-all>View all journeys &#x2192;</button>
+              <div class="moments-section-search" data-moments-search="journeys"><button class="moments-search-toggle" type="button" data-moments-search-toggle="journeys" aria-label="Search journeys" aria-expanded="false" aria-controls="momentsJourneysSearchPill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg></button><div id="momentsJourneysSearchPill" class="moments-search-pill"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"></circle><path d="m15 15 4 4"></path></svg><input type="search" data-moments-search-input="journeys" aria-label="Search journeys" placeholder="Search journeys…" autocomplete="off"><span class="moments-search-count" data-moments-search-count="journeys" hidden></span><button class="moments-search-close" type="button" data-moments-search-close="journeys" aria-label="Close journey search">&times;</button></div></div>
+            </div>
           </div>
           <div class="moments-journey-table" role="table" aria-label="Recent journeys">
             <div class="moments-journey-header" role="row">
@@ -637,6 +649,94 @@
 
         <div id="momentsStatus" class="moments-status" role="status" aria-live="polite" hidden></div>
       </section>
+
+      <!-- Desktop journey-to-collection flow preview -->
+      <div id="momentsCollectionPickerModal" class="modal moments-collection-picker-modal" role="dialog" aria-modal="true" aria-labelledby="momentsCollectionPickerHeading" aria-hidden="true">
+        <div class="modal-backdrop" data-close-moments-collection-picker></div>
+        <article class="modal-card moments-collection-picker-card">
+          <button class="modal-close" type="button" data-close-moments-collection-picker aria-label="Close collection picker">&#xD7;</button>
+
+          <section id="momentsCollectionPickerChoice" class="moments-picker-step">
+            <header class="moments-picker-heading">
+              <h2 id="momentsCollectionPickerHeading">ADD JOURNEY TO COLLECTION</h2>
+              <p>Choose where this journey belongs.</p>
+            </header>
+            <div class="moments-picker-options">
+              <button class="moments-picker-option moments-picker-option-create" type="button" data-moments-picker-create>
+                <span class="moments-picker-option-icon" aria-hidden="true">+</span>
+                <span class="moments-picker-option-copy"><strong>Create a New Collection</strong><small>Start a new group of journeys</small></span>
+                <span class="moments-picker-option-arrow" aria-hidden="true">&#x2192;</span>
+              </button>
+              <button class="moments-picker-option moments-picker-option-existing" type="button" data-moments-picker-existing>
+                <span class="moments-picker-option-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="moments-picker-option-copy"><strong>Add to Existing</strong><small>Choose from your saved collections</small></span>
+                <span class="moments-picker-option-arrow" aria-hidden="true">&#x2192;</span>
+              </button>
+            </div>
+            <p id="momentsCollectionPickerChoiceMessage" class="moments-picker-message" role="status" aria-live="polite"></p>
+          </section>
+
+          <section id="momentsCollectionPickerSearch" class="moments-picker-step moments-picker-search-step" hidden>
+            <button class="moments-picker-back" type="button" data-moments-picker-back aria-label="Back to collection options">&#x2190;</button>
+            <header class="moments-picker-heading">
+              <h2 id="momentsCollectionPickerSearchHeading">ADD TO EXISTING COLLECTION</h2>
+              <p>Choose a collection for this journey.</p>
+            </header>
+            <label class="moments-picker-search-box">
+              <span aria-hidden="true">&#x2315;</span>
+              <input id="momentsCollectionPickerSearchInput" type="search" autocomplete="off" spellcheck="false" placeholder="Search collections by name..." aria-label="Search existing collections" aria-controls="momentsCollectionPickerResults">
+              <button type="button" data-moments-picker-clear aria-label="Clear collection search">&#xD7;</button>
+            </label>
+            <div class="moments-picker-results-heading"><span>MATCHING COLLECTIONS</span><small id="momentsCollectionPickerCount"></small></div>
+            <div id="momentsCollectionPickerResults" class="moments-picker-results" role="listbox" aria-label="Matching collections"></div>
+            <footer class="moments-picker-keyboard-hints" aria-hidden="true"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> Navigate</span><span><kbd>Enter</kbd> Add</span><span><kbd>Esc</kbd> Close</span></footer>
+            <p id="momentsCollectionPickerSearchMessage" class="moments-picker-message" role="status" aria-live="polite"></p>
+          </section>
+
+          <form id="momentsCollectionCreate" class="moments-picker-step moments-create-step" hidden>
+            <button class="moments-picker-back" type="button" data-moments-create-back aria-label="Back to collection options">&#x2190;</button>
+            <header class="moments-picker-heading">
+              <h2 id="momentsCollectionCreateHeading">CREATE A NEW COLLECTION</h2>
+            </header>
+
+            <div class="moments-create-story">
+              <div class="moments-create-fields">
+                <label><span>Collection name</span><input id="momentsCreateName" maxlength="80" required value="Summer Night Drives"></label>
+                <label><span>Notes <small>optional</small></span><textarea id="momentsCreateNotes" maxlength="500" rows="3">Warm nights, city lights, and the songs that carried us home.</textarea></label>
+              </div>
+              <section class="moments-create-photo-section" aria-labelledby="momentsCreatePhotosHeading">
+                <span id="momentsCreatePhotosHeading">Photos</span>
+                <div id="momentsCreatePhotos" class="moments-create-photos"></div>
+                <label class="moments-create-add-photo"><span aria-hidden="true">+</span> Add photos<input id="momentsCreatePhotoInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+              </section>
+            </div>
+
+            <div class="moments-create-stats" aria-label="Selected journey totals">
+              <article><span class="moments-create-stat-icon" aria-hidden="true">&#x223F;</span><strong id="momentsCreateJourneyCount">1</strong><small>journey</small></article>
+              <article><span class="moments-create-stat-icon" aria-hidden="true">&#x2316;</span><strong id="momentsCreateMiles">0 mi</strong><small>total distance</small></article>
+              <article><span class="moments-create-stat-icon" aria-hidden="true">&#x266B;</span><strong id="momentsCreateSongs">0</strong><small>songs</small></article>
+            </div>
+
+            <div class="moments-create-organizer">
+              <section class="moments-create-journey-panel" aria-labelledby="momentsCreateAvailableHeading">
+                <div class="moments-create-panel-heading"><strong id="momentsCreateAvailableHeading">AVAILABLE JOURNEYS</strong><small id="momentsCreateAvailableCount"></small></div>
+                <label class="moments-create-search-box"><span aria-hidden="true">&#x2315;</span><input id="momentsCreateJourneySearch" type="search" autocomplete="off" spellcheck="false" placeholder="Search journeys by route, place, or date..." aria-label="Search available journeys"></label>
+                <div id="momentsCreateAvailableJourneys" class="moments-create-journey-list" role="list"></div>
+              </section>
+
+              <div class="moments-create-transfer" aria-hidden="true">&#x2192;</div>
+
+              <section class="moments-create-journey-panel" aria-labelledby="momentsCreateSelectedHeading">
+                <div class="moments-create-panel-heading"><strong id="momentsCreateSelectedHeading">SELECTED JOURNEYS</strong><small id="momentsCreateSelectedCount"></small></div>
+                <div id="momentsCreateSelectedJourneys" class="moments-create-journey-list" role="list"></div>
+              </section>
+            </div>
+
+            <p id="momentsCreateMessage" class="moments-picker-message" role="status" aria-live="polite"></p>
+            <footer class="moments-create-actions"><button type="button" class="moments-create-cancel" data-moments-create-cancel>Cancel</button><button type="submit" class="moments-create-submit">Create collection</button></footer>
+          </form>
+        </article>
+      </div>
 
       <!-- Legacy Journey Library remains available to the data layer but is not a navigable view. -->
       <section id="view-journey-library" class="view journey-library-legacy" aria-hidden="true">
@@ -1114,7 +1214,7 @@
           <aside id="journeyStoryArtist" class="journey-story-artist"></aside>
         </section>
         <section class="journey-story-drive-section"><div class="journey-story-section-heading"><div><span class="section-label">IN THIS COLLECTION</span><h3>Journeys</h3></div></div><div id="journeyStoryDrives" class="journey-story-drives"></div></section>
-        <div class="journey-story-actions"><button id="journeyStoryShowDrives" class="primary-button" type="button">Show these journeys</button><button id="journeyStoryManage" class="secondary-button" type="button">Manage collection</button></div>
+        <div class="journey-story-actions"><button id="journeyStoryShowDrives" class="primary-button" type="button">Show these journeys</button><button id="journeyStoryManage" class="secondary-button" type="button">Edit collection</button></div>
       </div>
     </article>
   </div>
@@ -1187,7 +1287,7 @@
         </section>
 
         <footer class="memory-details-footer">
-          <span>Local preview draft &middot; changes last for this browser session</span>
+          <span>Saved privately to your JourneyDeck account</span>
           <button id="memoryEditButton" class="primary-button" type="button">Edit memory</button>
         </footer>
       </div>
@@ -1203,13 +1303,14 @@
         <section class="memory-edit-section">
           <div class="memory-details-section-heading"><div><div class="section-label">COLLECTIONS</div><h3>Organize this memory</h3></div></div>
           <div id="memoryEditCollections" class="memory-edit-collections"></div>
-          <div class="memory-edit-add-row"><input id="memoryEditCollectionInput" maxlength="80" placeholder="Collection name"><button id="memoryEditAddCollection" class="secondary-button" type="button">Add collection</button></div>
+          <div class="memory-edit-add-row"><input id="memoryEditCollectionInput" type="search" maxlength="80" autocomplete="off" placeholder="Search your collections…" aria-controls="memoryEditCollectionResults"><button id="memoryEditAddCollection" class="secondary-button" type="button">Add collection</button></div>
+          <div id="memoryEditCollectionResults" class="memory-edit-collection-results" role="listbox" aria-label="Matching collections" hidden></div>
         </section>
 
         <section class="memory-edit-section">
           <div class="memory-details-section-heading"><div><div class="section-label">PHOTOS</div><h3>Add personal pictures</h3></div><label class="secondary-button memory-photo-picker">Add photos<input id="memoryEditPhotoInput" type="file" accept="image/jpeg,image/png,image/webp" multiple></label></div>
           <div id="memoryEditPhotos" class="memory-edit-photos"></div>
-          <p class="memory-edit-help">Up to 6 photos, 8 MB each. Photos stay in this browser session in the localhost preview.</p>
+          <p class="memory-edit-help">Up to 6 photos. Images are optimized and saved privately to your JourneyDeck account.</p>
         </section>
 
         <p id="memoryEditMessage" class="modal-message" role="status" aria-live="polite"></p>
@@ -1446,10 +1547,10 @@
   <script src="/features/live-drive.js?v=6.0.1"></script>
   <script src="/features/data-health.js?v=6.0.1"></script>
   <script src="/features/passkeys.js?v=6.0.1"></script>
-  <script src="/features/collections.js?v=6.0.1"></script>
-  <script src="/features/moments.js?v=6.0.1-memory-modal"></script>
+  <script src="/features/collections.js?v=6.0.1-durable-moments-3"></script>
+  <script src="/features/moments.js?v=6.0.1-durable-moments-11"></script>
   <script src="/features/mobility-graph.js?v=6.0.1"></script>
   <script src="/features/reference-dashboard.js?v=6.0.1"></script>
-  <script src="/app.js?v=6.0.1"></script>
+  <script src="/app.js?v=6.0.1-memory-collection-flow-3"></script>
 </body>
 </html>

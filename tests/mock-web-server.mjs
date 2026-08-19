@@ -106,6 +106,21 @@ const routePoints = Array.from({ length: 18 }, (_, index) => ({
   battery: 78 - Math.floor(index / 2)
 }));
 
+const mockCollections = [
+  { id: 'collection_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' },
+  { id: 'collection_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', name: 'Favorite night drives', description: 'City lights and late-night roads.', driveIds: ['demo-drive-2','demo-drive-4'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' },
+  { id: 'collection_cccccccccccccccccccccccccccccccc', name: 'Summer', description: 'Warm-weather journeys.', driveIds: ['demo-drive-6','demo-drive-7','demo-drive-8'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }
+];
+const mockMemories = [
+  { id: 'memory_dddddddddddddddddddddddddddddddd', name: 'Summer 2026', notes: 'Golden days, open roads, and the drives that made the season feel endless.', artworkKey: 'summer-2026', collectionIds: mockCollections.map(collection => collection.id), createdAtUtc: '2026-08-12T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }
+];
+const mockMemorySuggestions = [
+  { id: 'suggestion_ffffffffffffffffffffffffffffffff', kind: 'memory', suggestionKey: 'memory:context:localhost-night-routes', title: 'After Dark Favorites', description: 'Suggested because these collections share nighttime journeys, city destinations, and related music.', payload: { collectionIds: [mockCollections[0].id, mockCollections[1].id], driveIds: ['demo-drive-1','demo-drive-2','demo-drive-3','demo-drive-4','demo-drive-5'], artworkKey: 'golden-hour-drives', signals: ['similar nighttime driving patterns', 'shared destinations and music'], journeyCount: 5, miles: 132.4, songs: 31, score: 12 }, status: 'suggested', createdAtUtc: '2026-08-19T12:00:00Z', updatedAtUtc: '2026-08-19T12:00:00Z' },
+  { id: 'suggestion_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', kind: 'collection', suggestionKey: 'collection:recent-favorites', title: 'Golden hour drives', description: 'Suggested from recent sunset journeys.', payload: { driveIds: ['demo-drive-1','demo-drive-2'] }, status: 'suggested', createdAtUtc: '2026-08-19T12:00:00Z', updatedAtUtc: '2026-08-19T12:00:00Z' }
+];
+const mockCollectionAttachments = new Map();
+const mockMemoryAttachments = new Map();
+
 const responses = {
   '/api/auth/session': { authenticated: true, role: 'owner' },
   '/api/data-health': {
@@ -168,9 +183,10 @@ const responses = {
       { type: 'emerging-place', direction: 'new', title: 'Summit Gym entered your recent world', narrative: 'This place appears in the recent 30-day period but not the previous one.', confidence: 'medium' }
     ]
   },
-  '/api/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
+  '/api/collections': { collections: mockCollections },
+  '/api/memories': { memories: mockMemories, suggestions: mockMemorySuggestions },
   '/api/wife/drives': { today: { miles: 24.6, trips: 1 }, drives },
-  '/api/wife/collections': { collections: [{ id: 'collection_demo0000000000000000000000000000', name: 'Mountain weekends', description: 'Favorite scenic drives and day trips.', driveIds: ['demo-drive-1','demo-drive-3','demo-drive-5'], createdAtUtc: '2026-08-10T12:00:00Z', updatedAtUtc: '2026-08-12T12:00:00Z' }] },
+  '/api/wife/collections': { collections: mockCollections },
   '/api/music/stats': { totalPlays: 1427, topTracks, topArtists, daily: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((label, index) => ({ label, count: 4 + ((index * 7) % 18) })) },
   '/api/statistics': { periodDays: 30, driveCount: 38, totalMiles: 624.8, totalEnergyKWh: 147.3, totalBatteryUsed: 264, averageWhMi: 236, soundtrackSongs: 184 },
   '/api/places': { places: [
@@ -227,6 +243,47 @@ http.createServer((req, res) => {
     const file = path.join(projectRoot, 'assets', artwork[index]);
     res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'no-store' });
     fs.createReadStream(file).pipe(res);
+    return;
+  }
+  if (req.method === 'POST' && ['/api/collections/save','/api/memories/save','/api/memories/suggestions/status','/api/collections/attachments/list','/api/collections/attachments/get','/api/collections/attachments/add','/api/collections/attachments/remove','/api/memories/attachments/list','/api/memories/attachments/get','/api/memories/attachments/add','/api/memories/attachments/remove'].includes(url.pathname)) {
+    let requestBody = '';
+    req.on('data', chunk => { requestBody += chunk; });
+    req.on('end', () => {
+      const body = JSON.parse(requestBody || '{}');
+      let result = { success: true };
+      if (url.pathname === '/api/collections/save') {
+        const existing = mockCollections.find(collection => collection.id === body.id);
+        const record = { id: existing?.id || `collection_${'f'.repeat(32)}`, name: String(body.name || '').trim(), description: String(body.description || '').trim(), driveIds: Array.from(new Set(body.driveIds || [])), createdAtUtc: existing?.createdAtUtc || new Date().toISOString(), updatedAtUtc: new Date().toISOString() };
+        if (existing) Object.assign(existing, record); else mockCollections.unshift(record);
+        result = record;
+      } else if (url.pathname === '/api/memories/save') {
+        const existing = mockMemories.find(memory => memory.id === body.id);
+        const record = { id: existing?.id || `memory_${'1'.repeat(32)}`, name: String(body.name || '').trim(), notes: String(body.notes || '').trim(), artworkKey: body.artworkKey || 'summer-2026', collectionIds: Array.from(new Set(body.collectionIds || [])), createdAtUtc: existing?.createdAtUtc || new Date().toISOString(), updatedAtUtc: new Date().toISOString() };
+        if (existing) Object.assign(existing, record); else mockMemories.unshift(record);
+        const accepted = mockMemorySuggestions.find(suggestion => suggestion.id === body.suggestionId);
+        if (accepted) { accepted.status = 'accepted'; accepted.updatedAtUtc = new Date().toISOString(); }
+        result = record;
+      } else if (url.pathname === '/api/memories/suggestions/status') {
+        const suggestion = mockMemorySuggestions.find(item => item.id === body.suggestionId);
+        if (suggestion) { suggestion.status = String(body.status || 'dismissed'); suggestion.updatedAtUtc = new Date().toISOString(); }
+        result = suggestion || { success: true };
+      } else {
+        const memoryRoute = url.pathname.includes('/memories/'), store = memoryRoute ? mockMemoryAttachments : mockCollectionAttachments;
+        const ownerId = memoryRoute ? body.memoryId : body.collectionId;
+        if (url.pathname.endsWith('/list')) result = { attachments: [...store.values()].filter(item => item.ownerId === ownerId).map(({ dataBase64, ownerId: _, ...item }) => item) };
+        if (url.pathname.endsWith('/get')) result = store.get(body.attachmentId) || {};
+        if (url.pathname.endsWith('/add')) {
+          const prefix = memoryRoute ? 'memory_attachment_' : 'attachment_', id = `${prefix}${String(store.size + 1).padStart(32, '0')}`;
+          const record = { id, ownerId, memoryId: body.memoryId, collectionId: body.collectionId, fileName: body.fileName, contentType: body.contentType, byteLength: Math.ceil(String(body.dataBase64 || '').length * .75), dataBase64: body.dataBase64, createdAtUtc: new Date().toISOString() };
+          store.set(id, record); const { dataBase64, ownerId: _, ...metadata } = record; result = metadata;
+        }
+        if (url.pathname.endsWith('/remove')) { store.delete(body.attachmentId); result = { deleted: true, attachmentId: body.attachmentId }; }
+      }
+      responses['/api/collections'] = { collections: mockCollections };
+      responses['/api/memories'] = { memories: mockMemories, suggestions: mockMemorySuggestions.filter(suggestion => suggestion.status === 'suggested') };
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify(result));
+    });
     return;
   }
   if (url.pathname.startsWith('/api/')) {

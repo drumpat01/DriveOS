@@ -30,7 +30,12 @@ function Save-JourneyCollection {
     }
     else { $Id = 'collection_' + [guid]::NewGuid().ToString('N') }
     $Now = [DateTimeOffset]::UtcNow.ToString('o')
-    $Collection = [PSCustomObject]@{ id=$Id; name=$CleanName; description=$CleanDescription; driveIds=@($UniqueDriveIds); createdAtUtc=$(if($Existing){[string]$Existing.createdAtUtc}else{$Now}); updatedAtUtc=$Now }
+    $CreatedAt = if ($Existing) {
+        if ($Existing.createdAtUtc -is [DateTime] -or $Existing.createdAtUtc -is [DateTimeOffset]) { ([DateTimeOffset]$Existing.createdAtUtc).ToUniversalTime().ToString('o') }
+        else { "$($Existing.createdAtUtc)" }
+    }
+    else { $Now }
+    $Collection = [PSCustomObject]@{ id=$Id; name=$CleanName; description=$CleanDescription; driveIds=@($UniqueDriveIds); createdAtUtc=$CreatedAt; updatedAtUtc=$Now }
     Set-DriveOSJourneyCollection -Repository $Repository -Collection $Collection -HouseholdId $HouseholdId
     return $Collection
 }
