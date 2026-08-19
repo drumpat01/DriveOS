@@ -71,6 +71,22 @@ test("bootstrap is private, ETagged, compressed, and contains no journey archive
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
+test("Atlas journey map is bounded, progressive, private, and contains no place labels", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "" });
+  try {
+    const world = "west=-180&south=-90&east=180&north=90";
+    assert.equal((await runtime.app.inject({ method: "GET", url: `/api/atlas/map?${world}&zoom=4` })).statusCode, 401);
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api/atlas/map?west=5&south=5&east=1&north=9&zoom=4", headers: auth })).statusCode, 400);
+    const overviewResponse = await runtime.app.inject({ method: "GET", url: `/api/atlas/map?${world}&zoom=4`, headers: auth });
+    assert.equal(overviewResponse.statusCode, 200, overviewResponse.body); assert.equal(overviewResponse.headers["cache-control"], "private, max-age=30");
+    const overview = JSON.parse(overviewResponse.body); assert.equal(overview.mode, "corridors"); assert.equal(overview.totalInView, 2100); assert.ok(overview.returned <= 500); assert.ok(overview.data.features.every((item: any) => item.properties.kind === "corridor" && !item.properties.journeyId));
+    const detailResponse = await runtime.app.inject({ method: "GET", url: `/api/atlas/map?${world}&zoom=11`, headers: auth });
+    assert.equal(detailResponse.statusCode, 200, detailResponse.body); const detail = JSON.parse(detailResponse.body);
+    assert.equal(detail.mode, "journeys"); assert.equal(detail.returned, 1200); assert.equal(detail.truncated, true); assert.ok(detail.data.features.every((item: any) => item.properties.kind === "journey" && item.properties.journeyId));
+    assert.doesNotMatch(detailResponse.body, /startingLocation|endingLocation|raw_payload|Resolved place|Walmart/i);
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
 test("snapshot rebuild runs off the request thread and preserves the last valid snapshot", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "" });
   try {

@@ -647,7 +647,9 @@
         event.preventDefault();
         event.stopPropagation();
         const index = Number(memoryCard.dataset.memoryIndex);
+        const wasSelected = index === state.selectedMemory;
         selectMemory(index);
+        if (!wasSelected && !state.records[index]?.create) return;
         if (state.records[index]?.create) { state.activeMemoryIndex = index; void openMemoryModal(index).then(showMemoryEditor); return; }
         if (!state.records[index]?.suggested) void openMemoryModal(index);
       }

@@ -107,11 +107,12 @@ Assert-True ($Frontend -notmatch '/api/atlas/journeys|/api/mobility-graph|/api/d
 Assert-True ($Frontend -match "addSource\('mobility-connections'" -and $Frontend -match "addSource\('mobility-places'" -and $Frontend -match 'cluster:true' -and $Frontend -notmatch 'new\s+maplibregl\.Marker') 'Atlas must render prepared GeoJSON through clustered MapLibre layers, not DOM markers.'
 Assert-True ($Frontend -match 'api/atlas/places/\$\{encodeURIComponent\(node\.id\)\}' -and $Frontend -match 'Loading place details') 'Atlas place details must load only after selection.'
 Assert-True ($Frontend -match 'changeInsights\|\|\[\]\)\.slice\(0,3\)') 'Atlas change insights are not capped at three cards.'
-Assert-True ($Frontend -match 'data-save-card-place' -and $Frontend -match 'moments when Home anchored your journey') 'Atlas must retain card relabeling and the compact Home summary.'
+Assert-True ($Frontend -match 'data-save-card-place' -and $Frontend -match 'homeJourneyCount' -and $Frontend -match 'journeys recorded going to or from Home') 'Atlas must retain card relabeling and use the unique aggregate Home journey count.'
 Assert-True ($Frontend -match 'placeSaveQueue' -and $Frontend -match '/api/atlas/places/label') 'Card place labels must serialize through the local Atlas write API.'
 Assert-True ($Frontend -match 'routineSaveQueue' -and $Frontend -match '/api/atlas/patterns/' -and $Frontend -match "api\.get\('/api/atlas/patterns\?limit=10'") 'Recurring-pattern reviews must serialize and refill the ten-card queue.'
 Assert-True ($Frontend -notmatch 'localStorage') 'Atlas must not persist private places or review state in browser storage.'
 Assert-True ($SnapshotBuilder -match 'representativeLines\(visibleMapped, 200\)' -and $SnapshotBuilder -match 'slice\(0, 10\)' -and $SnapshotBuilder -match 'changeInsights') 'The materialized snapshot does not enforce 200 lines, ten patterns, and three insights.'
+Assert-True ($SnapshotBuilder -match 'homeJourneyIds' -and $SnapshotBuilder -match 'homeJourneyCount: homeJourneyIds\.size') 'Atlas does not aggregate unique journeys across every Home cluster.'
 Assert-True ($SnapshotBuilder -match 'coordinateLabel' -and $SnapshotBuilder -match 'importedLabel' -and $SnapshotBuilder -match 'source\.category === "home" && target\.category === "home"') 'Snapshot generation must suppress coordinate/import placeholders and Home-to-Home journeys.'
 Assert-True ($AtlasStore -match 'new Worker' -and $AtlasStore -match 'patchBootstrap' -and $AtlasStore -match 'scheduleRebuild') 'Atlas writes must patch immediately and rebuild in a background worker.'
 $MapTheme = Get-Content (Join-Path $Root 'web\features\beta-map-theme.js') -Raw

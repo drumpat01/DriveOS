@@ -1503,7 +1503,7 @@ button.drive-timeline-event:hover { border-color:rgba(255,83,76,.5) !important; 
 .mobility-change-sidebar .panel-description { margin:7px 0 14px; }
 .mobility-place-inspector { margin-top:18px; }
 .mobility-home-summary { display:grid; justify-items:start; gap:6px; padding:18px; border:1px solid rgba(176,92,255,.34); border-radius:16px; background:linear-gradient(145deg,rgba(92,35,138,.24),rgba(22,10,42,.92)); }
-.mobility-home-summary h3 { margin:0; color:#f4eaff; }
+:root[data-theme="dark"] .mobility-home-summary h3 { margin:0; color:#ff756d !important; font-size:1.35rem; line-height:1; letter-spacing:.12em; text-transform:uppercase; }
 .mobility-home-summary strong { margin-top:4px; color:#ff6964; font-family:var(--display-font); font-size:3.4rem; line-height:.9; }
 .mobility-home-summary span { color:#c8a8dd; font-size:.72rem; }
 .mobility-card-place-labeler {

@@ -24,9 +24,10 @@ function validCoordinate(latitude: number, longitude: number) {
   return Number.isFinite(latitude) && Number.isFinite(longitude) && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180;
 }
 
-type Enrichment = { name: string; address: string; category: string; latitude: number; longitude: number; radiusMiles: number };
+type Enrichment = { id: string; name: string; address: string; category: string; latitude: number; longitude: number; radiusMiles: number; canonical: boolean };
 type MutablePlace = AtlasPlace & { journeyIds: Set<string> };
 type Edge = { source: string; target: string; driveCount: number; totalMiles: number; firstSeenAt: string; lastSeenAt: string };
+type ReviewedRoutine = { id: string; customName: string };
 
 function safeJson<T>(value: unknown, fallback: T): T {
   try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
@@ -54,24 +55,35 @@ function loadEnrichments(database: DatabaseSync): Enrichment[] {
   const cacheItems = Array.isArray(cache) ? cache : Array.isArray(cache?.entries) ? cache.entries : [];
   const preferences = byKey.get("mobility-preferences") || {};
   const fences = Array.isArray(preferences.placeGeofences) ? preferences.placeGeofences : [];
-  const labels = database.prepare("SELECT name,category,latitude,longitude,radius_feet FROM atlas_place_labels WHERE latitude IS NOT NULL AND longitude IS NOT NULL").all() as any[];
+  const labels = database.prepare("SELECT place_id,name,category,latitude,longitude,radius_feet FROM atlas_place_labels WHERE latitude IS NOT NULL AND longitude IS NOT NULL").all() as any[];
   const result: Enrichment[] = [];
-  for (const item of [...cacheItems, ...fences, ...labels]) {
+  for (const [source, items] of [["cache", cacheItems], ["fence", fences], ["label", labels]] as const) for (const item of items) {
     const latitude = Number(item.latitude), longitude = Number(item.longitude);
     const name = String(item.name || item.businessName || item.label || "").trim();
     if (!name || !validCoordinate(latitude, longitude)) continue;
-    result.push({ name, address: String(item.address || item.businessAddress || name), category: String(item.category || "other").toLowerCase(), latitude, longitude, radiusMiles: Number(item.radiusMiles) || Number(item.radiusFeet ?? item.radius_feet) / 5280 || 0.16 });
+    result.push({ id: source === "label" && item.place_id ? String(item.place_id) : hash("place", `${latitude.toFixed(3)},${longitude.toFixed(3)}`), name, address: String(item.address || item.businessAddress || name), category: String(item.category || "other").toLowerCase(), latitude, longitude, radiusMiles: Number(item.radiusMiles) || Number(item.radiusFeet ?? item.radius_feet) / 5280 || 0.16, canonical: source !== "cache" });
   }
-  return result.sort((a, b) => (a.category === "home" ? -1 : 0) - (b.category === "home" ? -1 : 0) || a.name.localeCompare(b.name));
+  return result.sort((a, b) => Number(b.canonical) - Number(a.canonical) || (a.category === "home" ? -1 : 0) - (b.category === "home" ? -1 : 0) || a.name.localeCompare(b.name));
+}
+
+function loadReviewedRoutines(database: DatabaseSync): ReviewedRoutine[] {
+  const state = database.prepare("SELECT value_json FROM app_state WHERE key='mobility-preferences'").get() as { value_json?: string } | undefined;
+  const preferences = safeJson<any>(state?.value_json, {});
+  const fromPreferences = (Array.isArray(preferences.routines) ? preferences.routines : []).filter((item: any) => String(item.status || "") === "confirmed").map((item: any) => ({ id: String(item.routineId || ""), customName: String(item.customName || "").trim() }));
+  const fromReviews = (database.prepare("SELECT id,custom_name FROM atlas_pattern_reviews WHERE status='confirmed' AND custom_name IS NOT NULL").all() as Array<{ id: string; custom_name: string }>).map(item => ({ id: String(item.id), customName: String(item.custom_name || "").trim() }));
+  return [...new Map([...fromPreferences, ...fromReviews].filter(item => item.id && item.customName).map(item => [item.id, item])).values()];
 }
 
 function resolveEnrichment(items: Enrichment[], latitude: number, longitude: number) {
-  let closest: Enrichment | undefined, closestMiles = Infinity;
-  for (const item of items) {
-    const miles = distanceMiles([longitude, latitude], [item.longitude, item.latitude]);
-    if (miles <= item.radiusMiles && miles < closestMiles) { closest = item; closestMiles = miles; }
-  }
-  return closest;
+  const closest = (candidates: Enrichment[]) => {
+    let match: Enrichment | undefined, closestMiles = Infinity;
+    for (const item of candidates) {
+      const miles = distanceMiles([longitude, latitude], [item.longitude, item.latitude]);
+      if (miles <= item.radiusMiles && miles < closestMiles) { match = item; closestMiles = miles; }
+    }
+    return match;
+  };
+  return closest(items.filter(item => item.canonical)) || closest(items.filter(item => !item.canonical));
 }
 
 function cleanLabel(label: string, address: string, enrichment?: Enrichment) {
@@ -105,9 +117,42 @@ function timeBand(value: string) {
   return hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : hour >= 17 && hour < 22 ? "evening" : "late night";
 }
 
+function restoreMailboxPlace(places: MutablePlace[], mapped: Array<{ journey: AtlasJourney; source: MutablePlace; target: MutablePlace }>, reviewed: ReviewedRoutine[]) {
+  const pairByRoutine = new Map<string, [MutablePlace, MutablePlace]>();
+  for (const item of mapped) {
+    if (item.source.id === item.target.id) continue;
+    const key = [item.source.id, item.target.id].sort().join("|");
+    pairByRoutine.set(hash("routine", key), [item.source, item.target]);
+  }
+  const mailboxIds = new Set<string>();
+  const homeIds = new Set<string>();
+  for (const item of reviewed) {
+    const name = item.customName.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!name.includes("home") || !name.includes("mailbox")) continue;
+    const pair = pairByRoutine.get(item.id); if (!pair) continue;
+    const home = pair.find(place => place.category === "home"), mailbox = pair.find(place => place !== home);
+    if (home && mailbox) { homeIds.add(home.id); mailboxIds.add(mailbox.id); }
+  }
+  const aliases = places.filter(place => mailboxIds.has(place.id)).sort((a, b) => b.visitCount - a.visitCount || a.id.localeCompare(b.id));
+  const primary = aliases[0]; if (!primary) return;
+  const aliasIds = aliases.map(place => place.id), canonicalMailboxId = hash("place", `mailbox:${[...homeIds].sort().join("|")}`);
+  primary.label = "Mailbox"; primary.address = "Mailbox"; primary.category = "other";
+  const replacement = new Map<string, MutablePlace>(aliasIds.map(id => [id, primary]));
+  for (const alias of aliases.slice(1)) {
+    for (const journeyId of alias.journeyIds) primary.journeyIds.add(journeyId);
+    primary.arrivals += alias.arrivals; primary.departures += alias.departures;
+    primary.firstSeenAt = primary.firstSeenAt < alias.firstSeenAt ? primary.firstSeenAt : alias.firstSeenAt;
+    primary.lastSeenAt = primary.lastSeenAt > alias.lastSeenAt ? primary.lastSeenAt : alias.lastSeenAt;
+  }
+  primary.id = canonicalMailboxId; primary.visitCount = primary.journeyIds.size;
+  for (const item of mapped) { item.source = replacement.get(item.source.id) || item.source; item.target = replacement.get(item.target.id) || item.target; }
+  for (let index = places.length - 1; index >= 0; index--) if (replacement.has(places[index].id) && places[index] !== primary) places.splice(index, 1);
+}
+
 export function buildAtlasSnapshot(database: DatabaseSync, householdId: string): { bootstrap: AtlasBootstrap; details: Map<string, unknown>; candidates: AtlasPattern[] } {
-  const journeys = loadJourneys(database, householdId), enrichments = loadEnrichments(database);
+  const journeys = loadJourneys(database, householdId), enrichments = loadEnrichments(database), reviewedRoutines = loadReviewedRoutines(database);
   const places: MutablePlace[] = [], buckets = new Map<string, MutablePlace[]>(), edges = new Map<string, Edge>();
+  const canonicalPlaces = new Map<string, MutablePlace>();
   const mapped: Array<{ journey: AtlasJourney; source: MutablePlace; target: MutablePlace }> = [];
   const bucketKey = (lat: number, lon: number) => `${Math.floor(lat / CELL_SIZE)}:${Math.floor(lon / CELL_SIZE)}`;
   const placeFor = (journey: AtlasJourney, side: "start" | "end") => {
@@ -115,23 +160,38 @@ export function buildAtlasSnapshot(database: DatabaseSync, householdId: string):
     const rawLabel = side === "start" ? journey.startingLocation : journey.endingLocation, rawAddress = side === "start" ? journey.rawStartingLocation : journey.rawEndingLocation;
     const enrichment = resolveEnrichment(enrichments, latitude, longitude), identity = cleanLabel(rawLabel, rawAddress || rawLabel, enrichment);
     if (!identity) return null;
-    const latCell = Math.floor(latitude / CELL_SIZE), lonCell = Math.floor(longitude / CELL_SIZE), nearby: MutablePlace[] = [];
-    for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) nearby.push(...(buckets.get(`${latCell + y}:${lonCell + x}`) || []));
-    let place = nearby.find(item => distanceMiles([longitude, latitude], [item.longitude, item.latitude]) <= PLACE_RADIUS_MILES);
-    if (!place) {
-      place = { id: hash("place", `${latitude.toFixed(3)},${longitude.toFixed(3)}`), label: identity.label, address: identity.address, category: identity.category, latitude, longitude, visitCount: 0, arrivals: 0, departures: 0, firstSeenAt: journey.startedAt, lastSeenAt: journey.startedAt, journeyIds: new Set() };
-      places.push(place); const key = bucketKey(latitude, longitude); buckets.set(key, [...(buckets.get(key) || []), place]);
-    } else if (enrichment && (place.category !== "home" || enrichment.category === "home")) { place.label = identity.label; place.address = identity.address; place.category = identity.category; }
+    let place: MutablePlace | undefined;
+    if (enrichment?.canonical) {
+      place = canonicalPlaces.get(enrichment.id);
+      if (!place) {
+        place = { id: enrichment.id, label: identity.label, address: identity.address, category: identity.category, latitude: enrichment.latitude, longitude: enrichment.longitude, visitCount: 0, arrivals: 0, departures: 0, firstSeenAt: journey.startedAt, lastSeenAt: journey.startedAt, journeyIds: new Set() };
+        canonicalPlaces.set(enrichment.id, place); places.push(place);
+      }
+    } else {
+      const latCell = Math.floor(latitude / CELL_SIZE), lonCell = Math.floor(longitude / CELL_SIZE), nearby: MutablePlace[] = [];
+      for (let y = -1; y <= 1; y++) for (let x = -1; x <= 1; x++) nearby.push(...(buckets.get(`${latCell + y}:${lonCell + x}`) || []));
+      place = nearby.find(item => distanceMiles([longitude, latitude], [item.longitude, item.latitude]) <= PLACE_RADIUS_MILES);
+      if (!place) {
+        place = { id: hash("place", `${latitude.toFixed(3)},${longitude.toFixed(3)}`), label: identity.label, address: identity.address, category: identity.category, latitude, longitude, visitCount: 0, arrivals: 0, departures: 0, firstSeenAt: journey.startedAt, lastSeenAt: journey.startedAt, journeyIds: new Set() };
+        places.push(place); const key = bucketKey(latitude, longitude); buckets.set(key, [...(buckets.get(key) || []), place]);
+      } else if (enrichment) { place.label = identity.label; place.address = identity.address; place.category = identity.category; }
+    }
     place.journeyIds.add(journey.id); place.visitCount = place.journeyIds.size; place.firstSeenAt = place.firstSeenAt < journey.startedAt ? place.firstSeenAt : journey.startedAt; place.lastSeenAt = place.lastSeenAt > journey.startedAt ? place.lastSeenAt : journey.startedAt;
     if (side === "start") place.departures++; else place.arrivals++;
     return place;
   };
   for (const journey of journeys) {
     if (!validCoordinate(journey.startingLatitude, journey.startingLongitude) || !validCoordinate(journey.endingLatitude, journey.endingLongitude)) continue;
-    const source = placeFor(journey, "start"), target = placeFor(journey, "end"); if (!source || !target || (source.category === "home" && target.category === "home")) continue;
-    mapped.push({ journey, source, target }); const key = `${source.id}>${target.id}`;
-    const edge = edges.get(key) || { source: source.id, target: target.id, driveCount: 0, totalMiles: 0, firstSeenAt: journey.startedAt, lastSeenAt: journey.startedAt };
-    edge.driveCount++; edge.totalMiles += journey.miles; edge.firstSeenAt = edge.firstSeenAt < journey.startedAt ? edge.firstSeenAt : journey.startedAt; edge.lastSeenAt = edge.lastSeenAt > journey.startedAt ? edge.lastSeenAt : journey.startedAt; edges.set(key, edge);
+    const source = placeFor(journey, "start"), target = placeFor(journey, "end"); if (!source || !target) continue;
+    mapped.push({ journey, source, target });
+  }
+  restoreMailboxPlace(places, mapped, reviewedRoutines);
+  for (let index = mapped.length - 1; index >= 0; index--) {
+    const item = mapped[index];
+    if (item.source.id === item.target.id || (item.source.category === "home" && item.target.category === "home")) { mapped.splice(index, 1); continue; }
+    const key = `${item.source.id}>${item.target.id}`;
+    const edge = edges.get(key) || { source: item.source.id, target: item.target.id, driveCount: 0, totalMiles: 0, firstSeenAt: item.journey.startedAt, lastSeenAt: item.journey.startedAt };
+    edge.driveCount++; edge.totalMiles += item.journey.miles; edge.firstSeenAt = edge.firstSeenAt < item.journey.startedAt ? edge.firstSeenAt : item.journey.startedAt; edge.lastSeenAt = edge.lastSeenAt > item.journey.startedAt ? edge.lastSeenAt : item.journey.startedAt; edges.set(key, edge);
   }
   const groups = new Map<string, typeof mapped>();
   for (const item of mapped) { const key = [item.source.id, item.target.id].sort().join("|"); groups.set(key, [...(groups.get(key) || []), item]); }
@@ -167,13 +227,14 @@ export function buildAtlasSnapshot(database: DatabaseSync, householdId: string):
   }
   const watermark = journeys.at(-1)?.startedAt || new Date(0).toISOString();
   const totalMiles = journeys.reduce((sum, item) => sum + item.miles, 0);
+  const homeJourneyIds = new Set(visiblePlaces.filter(place => place.category === "home").flatMap(place => [...place.journeyIds]));
   const changeInsights = [
     { type: "activity", direction: "stable", title: "Your journey history is connected", narrative: `${journeys.length.toLocaleString()} journeys shape your Atlas.`, confidence: "high" },
     { type: "places", direction: "stable", title: "Your world has familiar anchors", narrative: `${visiblePlaces.length.toLocaleString()} resolved places are represented.`, confidence: "high" },
     { type: "patterns", direction: "new", title: "Recurring rhythms are ready", narrative: `${candidates.length.toLocaleString()} recurring journey patterns have enough evidence.`, confidence: "medium" }
   ];
   const minimalPlaces = visiblePlaces.map(place => ({ id: place.id, label: place.label, address: place.address, category: place.category, latitude: place.latitude, longitude: place.longitude, visitCount: place.visitCount, arrivals: place.arrivals, departures: place.departures, firstSeenAt: place.firstSeenAt, lastSeenAt: place.lastSeenAt }));
-  const bootstrap: AtlasBootstrap = { schemaVersion: SCHEMA_VERSION, generatedAtUtc: new Date().toISOString(), sourceWatermark: watermark, summary: { placeCount: visiblePlaces.length, connectionCount: edges.size, journeyCount: journeys.length, totalMiles: Math.round(totalMiles * 10) / 10 }, places: minimalPlaces, representativeLines: representativeLines(visibleMapped, 200), patterns, changeInsights };
+  const bootstrap: AtlasBootstrap = { schemaVersion: SCHEMA_VERSION, generatedAtUtc: new Date().toISOString(), sourceWatermark: watermark, summary: { placeCount: visiblePlaces.length, connectionCount: edges.size, journeyCount: journeys.length, homeJourneyCount: homeJourneyIds.size, totalMiles: Math.round(totalMiles * 10) / 10 }, places: minimalPlaces, representativeLines: representativeLines(visibleMapped, 200), patterns, changeInsights };
   return { bootstrap, details, candidates };
 }
 

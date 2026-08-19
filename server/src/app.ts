@@ -9,7 +9,7 @@ import { applyMigrations, openDatabase } from "./database.js";
 import { proxyLegacy } from "./legacy-proxy.js";
 import { legacyForwardingContext } from "./legacy-forwarding.js";
 import { config as defaultConfig } from "./config.js";
-import { bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
+import { atlasMapSchema, bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
@@ -69,6 +69,11 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   });
   app.get("/api/auth/session", async req => ({ authenticated: true, role: req.principal!.role, mode: req.principal!.mode }));
   app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => { const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot; });
+  app.get<{ Querystring: { west?: string; south?: string; east?: string; north?: string; zoom?: string } }>("/api/atlas/map", { schema: { response: { 200: atlasMapSchema } } }, async (req, reply) => {
+    const west = Number(req.query.west), south = Number(req.query.south), east = Number(req.query.east), north = Number(req.query.north), zoom = Number(req.query.zoom);
+    if (![west, south, east, north, zoom].every(Number.isFinite) || west < -180 || east > 180 || south < -90 || north > 90 || west >= east || south >= north || zoom < 0 || zoom > 18) return reply.code(400).send({ error: "Valid Atlas bounds and zoom are required." } as any);
+    reply.header("cache-control", "private, max-age=30"); return store.journeyMap({ west, south, east, north, zoom });
+  });
   app.get<{ Params: { id: string } }>("/api/atlas/places/:id", { schema: { response: { 200: placeDetailSchema } } }, async (req, reply) => { const detail = store.place(req.params.id); return detail || reply.code(404).send({ error: "Place was not found." }); });
   app.get<{ Querystring: { limit?: string; cursor?: string } }>("/api/atlas/patterns", { schema: { response: { 200: patternQueueSchema } } }, async req => store.patterns(Number(req.query.limit) || 10, String(req.query.cursor || "")));
   app.get("/api/atlas/snapshot/status", async () => store.status());
