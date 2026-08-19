@@ -53,5 +53,7 @@ Assert-True ($Styles -match 'Cinematic five-button mobile navigation shared by l
 Assert-True (-not ($Styles -match ':root\.local-host \.main-nav\.mobile-nav-portal')) 'The cinematic mobile navigation is still limited to localhost.'
 Assert-True ($Styles -match 'grid-template-columns:repeat\(5,minmax\(0,1fr\)\)') 'The mobile navigation must retain five equal actions.'
 Assert-True ($App -match 'journeydeck:viewchange[\s\S]{0,180}view\s*===\s*["'']timeline["''][\s\S]{0,100}loadDriveTimeline') 'The mobile More menu cannot start Journey Timeline loading.'
+Assert-True ($App -match 'loadDashboardDrives[\s\S]{0,900}moments\?\.setJourneys\(recent\)') 'The Moments page does not hydrate immediately from real recent journeys.'
+Assert-True ($App -match 'journeydeck:viewchange[\s\S]{0,180}view\s*===\s*["'']drives["''][\s\S]{0,120}loadDrives') 'Direct and mobile Moments navigation cannot start full Journey-library loading.'
 
 Write-Host 'DriveOS dashboard layout sync checks passed.' -ForegroundColor Green
