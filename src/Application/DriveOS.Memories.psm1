@@ -113,14 +113,14 @@ function Update-JourneyMemorySuggestions {
     param($Repository,[object[]]$Collections=@(),[object[]]$Drives=@(),[string]$HouseholdId='household_primary',[DateTimeOffset]$AsOfUtc=[DateTimeOffset]::UtcNow)
     $Now=$AsOfUtc.ToUniversalTime().ToString('o');$CurrentCollections=@($Collections|Where-Object{Get-JourneyMemoryRecordValue $_ @('id')}|Select-Object -First 80)
     $DriveMap=@{};foreach($Drive in @($Drives)){$DriveId="$(Get-JourneyMemoryRecordValue $Drive @('id'))";if($DriveId){$DriveMap[$DriveId]=$Drive}}
-    $ExistingByKey=@{};foreach($Status in @('suggested','dismissed','accepted','stale')){foreach($Item in @(Get-DriveOSMemorySuggestions -Repository $Repository -Status $Status -HouseholdId $HouseholdId)){$ExistingByKey["$($Item.suggestionKey)"]=$Item}}
+    $ExistingByKey=@{};foreach($Status in @('suggested','dismissed','accepted')){foreach($Item in @(Get-DriveOSMemorySuggestions -Repository $Repository -Status $Status -HouseholdId $HouseholdId)){$ExistingByKey["$($Item.suggestionKey)"]=$Item}}
     $PublishedKeys=New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
     $Publish={param($Suggestion)
         $Key="$($Suggestion.suggestionKey)";$Existing=if($ExistingByKey.ContainsKey($Key)){$ExistingByKey[$Key]}else{$null}
         if($Existing-and"$($Existing.status)"-eq'accepted'){return $false}
         if($Existing-and"$($Existing.status)"-eq'dismissed'){$DismissedAt=$null;try{$DismissedAt=[DateTimeOffset]::Parse("$($Existing.updatedAtUtc)")}catch{};if($DismissedAt-and$DismissedAt-gt$AsOfUtc.AddDays(-30)){return $false}}
         Set-DriveOSMemorySuggestion -Repository $Repository -Suggestion $Suggestion -HouseholdId $HouseholdId
-        if($Existing-and"$($Existing.status)"-in @('dismissed','stale')){Set-DriveOSMemorySuggestionStatus -Repository $Repository -SuggestionId $Suggestion.id -Status suggested -HouseholdId $HouseholdId}
+        if($Existing-and"$($Existing.status)"-eq'dismissed'){Set-DriveOSMemorySuggestionStatus -Repository $Repository -SuggestionId $Suggestion.id -Status suggested -HouseholdId $HouseholdId}
         $null=$PublishedKeys.Add($Key);return $true
     }
     $Contexts=@($CurrentCollections|ForEach-Object{Get-JourneyMemoryCollectionContext -Collection $_ -DriveMap $DriveMap})
@@ -151,7 +151,7 @@ function Update-JourneyMemorySuggestions {
         $Key='collection:recent-favorites';$Suggestion=[PSCustomObject]@{id=(New-JourneyMemoryStableId suggestion $Key);kind='collection';suggestionKey=$Key;title='Recent favorites';description="A suggested collection from $($RecentIds.Count) recent journeys.";payload=[PSCustomObject]@{driveIds=$RecentIds;artworkKey='golden-hour-drives'};status='suggested';createdAtUtc=$Now;updatedAtUtc=$Now}
         $null=&$Publish $Suggestion
     }
-    foreach($Old in @(Get-DriveOSMemorySuggestions -Repository $Repository -Status suggested -HouseholdId $HouseholdId)){if(-not$PublishedKeys.Contains("$($Old.suggestionKey)")){Set-DriveOSMemorySuggestionStatus -Repository $Repository -SuggestionId "$($Old.id)" -Status stale -HouseholdId $HouseholdId}}
+    foreach($Old in @(Get-DriveOSMemorySuggestions -Repository $Repository -Status suggested -HouseholdId $HouseholdId)){if(-not$PublishedKeys.Contains("$($Old.suggestionKey)")){Set-DriveOSMemorySuggestionStatus -Repository $Repository -SuggestionId "$($Old.id)" -Status dismissed -HouseholdId $HouseholdId}}
     return @(Get-JourneyMemorySuggestions -Repository $Repository -HouseholdId $HouseholdId)
 }
 

@@ -70,6 +70,19 @@ if(Test-Path -LiteralPath $SqliteExecutable){
         $DbRepository=New-DriveOSRepository -DataDirectory $DbScratch -AppRoot $Root -Provider SQLite;Initialize-DriveOSSqlite -Repository $DbRepository
         $DbOne=Save-JourneyCollection -Repository $DbRepository -Name 'City nights' -DriveIds @()
         $DbTwo=Save-JourneyCollection -Repository $DbRepository -Name 'Sunday drives' -DriveIds @()
+        $DbThree=Save-JourneyCollection -Repository $DbRepository -Name 'Mountain weekends' -DriveIds @()
+        $DbFour=Save-JourneyCollection -Repository $DbRepository -Name 'Evening soundtrack' -DriveIds @()
+        $DbAsOf=[DateTimeOffset]::UtcNow
+        $DbDrives=@(
+            [pscustomobject]@{id='sqlite-drive-1';startedAt=$DbAsOf.AddDays(-2).Date.AddHours(21).ToString('o');startingLocation='Home';endingLocation='Mountain';miles=12;songCount=3},
+            [pscustomobject]@{id='sqlite-drive-2';startedAt=$DbAsOf.AddDays(-1).Date.AddHours(22).ToString('o');startingLocation='Mountain';endingLocation='Home';miles=13;songCount=4}
+        )
+        $DbSuggestionCollections=@(@($DbOne,$DbTwo,$DbThree,$DbFour)|ForEach-Object{[pscustomobject]@{id=$_.id;name=$_.name;description=$_.description;driveIds=@('sqlite-drive-1','sqlite-drive-2')}})
+        $DbSuggestions=@(Update-JourneyMemorySuggestions -Repository $DbRepository -Collections $DbSuggestionCollections -Drives $DbDrives -AsOfUtc $DbAsOf)
+        Assert-True ($DbSuggestions.Count -ge 1) 'SQLite did not generate a durable suggestion.'
+        $null=Update-JourneyMemorySuggestions -Repository $DbRepository -Collections @() -Drives @() -AsOfUtc $DbAsOf.AddMinutes(1)
+        Assert-Equal @(Get-JourneyMemorySuggestions -Repository $DbRepository -Status suggested).Count 0 'Obsolete SQLite suggestions remained visible.'
+        Assert-True (@(Get-JourneyMemorySuggestions -Repository $DbRepository -Status dismissed).Count -ge 1) 'Obsolete SQLite suggestions were not retired with a schema-compatible status.'
         $DbMemory=Save-JourneyMemory -Repository $DbRepository -Name 'Weekend escapes' -CollectionIds @($DbOne.id,$DbTwo.id)
         Assert-Equal @(Get-JourneyMemories -Repository $DbRepository).Count 1 'SQLite Memory did not round-trip.'
         $Photo=Add-JourneyMemoryAttachment -Repository $DbRepository -MemoryId $DbMemory.id -FileName 'memory.png' -ContentType 'image/png' -DataBase64 'iVBORw0KGgo='
@@ -106,7 +119,7 @@ Assert-True ($Index.Contains('id="momentsMemoriesHeading" class="moments-level-l
 Assert-True ($MomentsClient.Contains('collectionChevron') -and $MomentsClient.Contains('M7 4l6 6-6 6') -and $MomentsCss.Contains('.moments-collection-card > i svg')) 'Collection-card chevrons are not using a truly centered vector path.'
 Assert-True ($Index.Contains('M13 4l-6 6 6 6') -and $Index.Contains('M7 4l6 6-6 6') -and $MomentsCss.Contains('.moments-carousel-arrow svg')) 'Carousel chevrons are not using centered vector paths.'
 Assert-True ($MomentsClient.Contains('data-confirm-memory-suggestion') -and $MomentsClient.Contains('data-dismiss-memory-suggestion') -and $MomentsClient.Contains('confirmMemorySuggestion') -and $MomentsClient.Contains('dismissMemorySuggestion')) 'Memory suggestions do not expose confirm and dismiss actions.'
-Assert-True ($MemoriesModule.Contains('Get-JourneyMemoryContextScore') -and $MemoriesModule.Contains("AddDays(-30)") -and $MemoriesModule.Contains("Status stale")) 'Contextual Memory generation or its 30-day suppression lifecycle is missing.'
+Assert-True ($MemoriesModule.Contains('Get-JourneyMemoryContextScore') -and $MemoriesModule.Contains("AddDays(-30)") -and $MemoriesModule.Contains("Status dismissed") -and -not $MemoriesModule.Contains("'stale'")) 'Contextual Memory generation or its schema-compatible 30-day suppression lifecycle is missing.'
 Assert-True ($MomentsClient.Contains('data-view-memory-collection') -and $MomentsClient.Contains('memory-edit-collection-view')) 'Memory editing does not provide a distinct Collection overview action.'
 Assert-True ($MomentsClient.Contains('refreshMemoryCollectionSearch') -and $MomentsClient.Contains('api.get("/api/collections")')) 'Memory editing does not refresh its search from saved Collections.'
 Assert-True ($MomentsCss.Contains('#memoryEditAddCollection') -and $MomentsCss.Contains(':root[data-theme] .memory-photo-picker:focus-within')) 'Memory editor Collection and photo actions are still inheriting the old theme.'
