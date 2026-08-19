@@ -129,6 +129,8 @@ Assert-True ($MomentsClient.Contains('saveCreatedCollection') -and $MomentsClien
 Assert-True ($MomentsClient.Contains('name: file.name, file, url: URL.createObjectURL(file)')) 'Create Collection drops the selected File before its durable photo upload.'
 Assert-True (-not $MomentsClient.Contains('is ready to create with')) 'The create-collection canvas still reports preview-only behavior.'
 Assert-True ($MomentsClient.Contains('openCreateCollection') -and $MomentsClient.Contains('renderCreateJourneyLists') -and $MomentsClient.Contains('pickerSelectedJourneyIds')) 'Create Collection lacks interactive journey selection and live totals.'
+Assert-True ($MomentsClient.Contains('function openNewCollection()') -and $MomentsClient.Contains('event.target.closest("[data-moments-new-collection]")')) 'The Memories dashboard New Collection action must open the shared Moments creation modal through resilient event delegation.'
+Assert-True ($MomentsClient.Contains('id: "new-memory"') -and $MomentsClient.Contains('class="moments-memory-card is-add"') -and $MomentsCss.Contains('.moments-memory-card.is-add')) 'The Memory carousel must always end with the shared tilted ADD placeholder card.'
 Assert-True ($Index.Contains('momentsCollectionCreate') -and $Index.Contains('momentsCreatePhotos') -and $Index.Contains('momentsCreateJourneySearch')) 'Create Collection canvas markup is incomplete.'
 Assert-True ($CollectionsClient.Contains('journeydeck:collectionchanged')) 'Collection edits do not notify Moments to refresh names, counts, and artwork.'
 Assert-True ($Index.Contains('Saved privately to your JourneyDeck account') -and -not $Index.Contains('changes last for this browser session')) 'The Memory editor still describes saved changes as session-only.'

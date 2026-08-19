@@ -130,7 +130,7 @@
       id: item.id, title: item.title, notes: item.description || "", artworkKey: item.payload?.artworkKey || "summer-2026",
       collectionIds: item.payload?.collectionIds || [], suggestionId: item.id, suggested: true
     }));
-    return [...orderedPreviewRecords, ...additionalSaved, ...suggested];
+    return [...orderedPreviewRecords, ...additionalSaved, ...suggested, { id: "new-memory", title: "ADD", notes: "", collectionIds: [], create: true }];
   }
 
   function memoryRecord(index = state.selectedMemory) {
@@ -157,6 +157,7 @@
     if (desiredIndex >= 0) state.selectedMemory = desiredIndex;
     state.selectedMemory = Math.min(state.selectedMemory, state.records.length - 1);
     track.innerHTML = state.records.map((record, index) => {
+      if (record.create) return `<button class="moments-memory-card is-add" type="button" data-memory-index="${index}" aria-label="Create a new Memory"><span class="moments-memory-add-content"><span class="moments-memory-add-icon" aria-hidden="true">+</span><strong>ADD</strong></span></button>`;
       const memory = memoryRecord(index);
       const badge = record.suggested ? '<span class="moments-suggested-badge">SUGGESTED</span>' : "";
       const content = `<img src="${escape(memory.cover)}" alt="${escape(record.title)} cover" decoding="async"${index > 2 ? ' loading="lazy"' : ""}>${badge}<span class="moments-memory-copy"><strong>${escape(record.title)}</strong><small>${memory.collections.length} collections &middot; ${memory.journeys} journeys</small></span>`;
@@ -407,7 +408,7 @@
     document.getElementById("memoryDetailsView")?.setAttribute("hidden", "");
     document.getElementById("memoryEditForm")?.removeAttribute("hidden");
     const title = document.getElementById("memoryEditTitle"), notes = document.getElementById("memoryEditNotes"), input = document.getElementById("memoryEditCollectionInput");
-    if (title) title.value = memory.title;
+    if (title) title.value = memory.create ? "" : memory.title;
     if (notes) notes.value = memory.notes || "";
     if (input) input.value = "";
     const message = document.getElementById("memoryEditMessage"); if (message) message.textContent = "";
@@ -554,6 +555,10 @@
     document.getElementById("momentsCreateJourneySearch").value = "";
     renderCreatePhotos(); renderCreateJourneyLists(""); setCollectionPickerStep("create");
   }
+  function openNewCollection() {
+    openCollectionPicker(null);
+    openCreateCollection();
+  }
   function addCreatePhotos(event) {
     const files = Array.from(event.target.files || []); event.target.value = "";
     for (const file of files) { if (state.pickerCreatePhotos.length >= 6) break; if (!file.type.startsWith("image/")) continue; state.pickerCreatePhotos.push({ id: `preview-upload-${Date.now()}-${state.pickerCreatePhotos.length}`, name: file.name, file, url: URL.createObjectURL(file), temporary: true }); }
@@ -625,6 +630,7 @@
     carousel?.addEventListener("pointerdown", event => { if (event.pointerType !== "mouse") state.pointerStartX = event.clientX; }, { passive: true });
     carousel?.addEventListener("pointerup", event => { if (state.pointerStartX == null) return; const distance = event.clientX - state.pointerStartX; state.pointerStartX = null; if (Math.abs(distance) >= 42) selectMemory(state.selectedMemory + (distance < 0 ? 1 : -1)); }, { passive: true });
     document.addEventListener("click", event => {
+      if (event.target.closest("[data-moments-new-collection]")) { event.preventDefault(); event.stopPropagation(); openNewCollection(); return; }
       const confirmSuggestion = event.target.closest("[data-confirm-memory-suggestion]");
       if (confirmSuggestion) { event.preventDefault(); event.stopPropagation(); void confirmMemorySuggestion(Number(confirmSuggestion.dataset.confirmMemorySuggestion)); return; }
       const dismissSuggestion = event.target.closest("[data-dismiss-memory-suggestion]");
@@ -642,6 +648,7 @@
         event.stopPropagation();
         const index = Number(memoryCard.dataset.memoryIndex);
         selectMemory(index);
+        if (state.records[index]?.create) { state.activeMemoryIndex = index; void openMemoryModal(index).then(showMemoryEditor); return; }
         if (!state.records[index]?.suggested) void openMemoryModal(index);
       }
     }, true);
@@ -687,7 +694,6 @@
       });
       input.addEventListener("keydown", event => { if (event.key === "Escape") { event.preventDefault(); clearSectionSearch(event.currentTarget.dataset.momentsSearchInput); } });
     });
-    document.querySelector("[data-moments-new-collection]")?.addEventListener("click", () => document.dispatchEvent(new CustomEvent("journeydeck:addtocollection", { detail: { driveId: null } })));
     document.querySelector("[data-moments-view-all]")?.addEventListener("click", () => { state.expandedJourneys = !state.expandedJourneys; renderJourneys(); });
     document.addEventListener("journeydeck:collectionchanged", event => { if (event.detail?.collectionId) { state.collectionHeroes.delete(event.detail.collectionId); state.collectionHeroPromises.delete(event.detail.collectionId); } void loadData(state.records[state.selectedMemory]?.id); });
     document.addEventListener("journeydeck:viewchange", event => document.body.classList.toggle("moments-view-active", event.detail?.view === "drives"));

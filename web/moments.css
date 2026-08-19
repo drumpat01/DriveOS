@@ -178,6 +178,55 @@
   border-color: rgba(255, 112, 75, .82);
 }
 
+.moments-memory-card.is-add {
+  border: 1px dashed rgba(255, 112, 75, .9);
+  background:
+    radial-gradient(circle at 50% 48%, rgba(255, 112, 75, .13), transparent 34%),
+    linear-gradient(160deg, rgba(34, 15, 30, .96), rgba(8, 5, 13, .98));
+  color: var(--moments-orange);
+}
+
+.moments-memory-card.is-add::after {
+  background: linear-gradient(180deg, rgba(255, 125, 80, .035), transparent 34%, rgba(255, 82, 55, .045));
+}
+
+.moments-memory-add-content {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  color: var(--moments-orange);
+}
+
+.moments-memory-add-icon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 2.35rem;
+  font-weight: 300;
+  line-height: 1;
+  box-shadow: 0 0 20px rgba(255, 112, 75, .12);
+}
+
+.moments-memory-add-content strong {
+  font-size: .82rem;
+  font-weight: 850;
+  letter-spacing: .14em;
+}
+
+.moments-memory-card.is-add:hover,
+.moments-memory-card.is-add:focus-visible {
+  border-color: #ff8559;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, .56), 0 0 25px rgba(255, 96, 63, .24);
+}
+
 .moments-memory-card.is-suggested .moments-memory-copy { bottom: 58px; }
 .moments-memory-suggestion-actions { position: absolute; z-index: 4; right: 12px; bottom: 12px; left: 12px; display: flex; align-items: center; gap: 7px; opacity: 0; pointer-events: none; transition: opacity .2s ease; }
 .moments-memory-card.is-selected .moments-memory-suggestion-actions { opacity: 1; pointer-events: auto; }
