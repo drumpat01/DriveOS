@@ -965,23 +965,11 @@
             </div>
           </div>
           <article class="music-player" aria-label="Spotify player">
-            <div class="music-player-kicker"><i aria-hidden="true"></i><span id="musicPlayerKicker">Spotify player</span></div>
-            <strong id="musicPlayerTrack">Connect Spotify to play</strong>
-            <span id="musicPlayerArtist">Your current song will appear here</span>
-            <span id="musicPlayerAlbum" class="music-player-album">JourneyDeck Web Player</span>
-            <div class="music-player-progress" aria-hidden="true"><i id="musicPlayerProgress"></i></div>
-            <div class="music-player-times"><span id="musicPlayerElapsed">0:00</span><span id="musicPlayerDuration">0:00</span></div>
-            <div class="music-player-controls">
-              <button type="button" data-music-player="shuffle" aria-label="Toggle shuffle" title="Shuffle">&#x2928;</button>
-              <button type="button" data-music-player="previous" aria-label="Previous song" title="Previous">&#x23EE;</button>
-              <button class="music-player-primary" type="button" data-music-player="toggle" aria-label="Play" title="Play or pause"><span id="musicPlayerToggleIcon">&#x25B6;</span></button>
-              <button type="button" data-music-player="next" aria-label="Next song" title="Next">&#x23ED;</button>
-              <button type="button" data-music-player="favorite" aria-label="Save current song" title="Save song">&#x2661;</button>
+            <div class="music-player-kicker"><i aria-hidden="true"></i><span id="musicPlayerKicker">Spotify in JourneyDeck</span></div>
+            <div id="musicSpotifyEmbed" class="music-spotify-embed" aria-live="polite">
+              <div class="music-spotify-placeholder"><span aria-hidden="true">&#x266B;</span><strong>Loading your latest song&#x2026;</strong></div>
             </div>
-            <div class="music-player-device-row">
-              <span id="musicPlayerStatus" role="status">Checking Spotify playback&#x2026;</span>
-              <button id="musicPlayerReconnect" class="music-player-connect" type="button" hidden>Enable playback</button>
-            </div>
+            <span id="musicPlayerStatus" class="music-embed-status" role="status">The player stays inside this JourneyDeck tab.</span>
           </article>
         </section>
 
@@ -1633,7 +1621,7 @@
   <script src="/features/drives.js?v=6.0.1"></script>
   <script src="/features/replay.js?v=6.0.1"></script>
   <script src="/features/music.js?v=6.0.1"></script>
-  <script src="/features/music-dashboard.js?v=6.0.1-music-life-1"></script>
+  <script src="/features/music-dashboard.js?v=6.0.1-spotify-embed-1"></script>
   <script src="/features/share-cards.js?v=6.0.1"></script>
   <script src="/features/command-palette.js?v=6.0.1"></script>
   <script src="/features/dashboard-customization.js?v=6.0.1"></script>

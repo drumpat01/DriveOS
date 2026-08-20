@@ -37,6 +37,7 @@ test('Music page renders its cinematic hero and live archived play', async ({ pa
   await expect(page).toHaveURL(/#music$/);
   await expect(page.locator('#musicLifeHeading')).toContainText('YOUR LIFE HAS A');
   await expect(page.locator('#musicLifeHeading')).toContainText('SOUNDTRACK');
-  await expect(page.locator('#musicPlayerKicker')).toHaveText('Latest archived play');
-  await expect(page.locator('#musicPlayerTrack')).not.toHaveText('Connect Spotify to play');
+  await expect(page.locator('#musicPlayerKicker')).toHaveText('Spotify in JourneyDeck');
+  await expect(page.locator('.music-player').locator('iframe, #musicSpotifyEmbed')).toBeVisible();
+  await expect(page.locator('#topTracks [data-music-uri]').first()).toHaveAttribute('data-music-uri', /^spotify:track:/);
 });

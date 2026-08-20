@@ -17,9 +17,9 @@ const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/m
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
-  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com https://sdk.scdn.co; connect-src 'self' https://tiles.openfreemap.org https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; media-src blob: https://*.scdn.co https://*.spotify.com; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'",
+  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com https://sdk.scdn.co https://open.spotify.com; connect-src 'self' https://tiles.openfreemap.org https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; media-src blob: https://*.scdn.co https://*.spotify.com; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src https://open.spotify.com; frame-ancestors 'none'; form-action 'self'; base-uri 'self'; manifest-src 'self'",
   "x-content-type-options": "nosniff", "x-frame-options": "DENY", "referrer-policy": "no-referrer",
-  "permissions-policy": "autoplay=(self), encrypted-media=(self), camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"
+  "permissions-policy": "autoplay=(self \"https://open.spotify.com\"), encrypted-media=(self \"https://open.spotify.com\"), camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()"
 };
 
 const loopbackHosts = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
