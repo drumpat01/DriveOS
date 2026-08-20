@@ -16,13 +16,71 @@ concurrency:
 jobs:
   validate:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
           package-manager-cache: false
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Install Chromium for Playwright
+        run: npx playwright install chromium
+      - name: Install PowerShell analysis
+        shell: powershell
+        run: Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber -Confirm:$false
+      - name: Install security CLIs
+        shell: pwsh
+        run: |
+          $toolDirectory = Join-Path $env:RUNNER_TEMP 'journeydeck-security-tools'
+          New-Item -ItemType Directory -Path $toolDirectory -Force | Out-Null
+
+          function Install-VerifiedArchive {
+            param(
+              [Parameter(Mandatory)][string]$Name,
+              [Parameter(Mandatory)][string]$Url,
+              [Parameter(Mandatory)][string]$Sha256,
+              [Parameter(Mandatory)][string]$Executable
+            )
+
+            $archive = Join-Path $env:RUNNER_TEMP "$Name.zip"
+            $extractDirectory = Join-Path $env:RUNNER_TEMP "$Name-extracted"
+            Invoke-WebRequest -Uri $Url -OutFile $archive
+            $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $Sha256) { throw "$Name archive hash mismatch." }
+            Expand-Archive -LiteralPath $archive -DestinationPath $extractDirectory -Force
+            $source = Get-ChildItem -LiteralPath $extractDirectory -Recurse -Filter $Executable | Select-Object -First 1
+            if (-not $source) { throw "$Executable was not present in the $Name archive." }
+            Copy-Item -LiteralPath $source.FullName -Destination (Join-Path $toolDirectory $Executable)
+          }
+
+          Install-VerifiedArchive `
+            -Name 'gitleaks-8.30.1' `
+            -Url 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip' `
+            -Sha256 'd29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e' `
+            -Executable 'gitleaks.exe'
+          Install-VerifiedArchive `
+            -Name 'trivy-0.74.0' `
+            -Url 'https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_windows-64bit.zip' `
+            -Sha256 '94c40e0696e4b907a74b7b2e1438d5d72ebaca83115817407f568a002d520842' `
+            -Executable 'trivy.exe'
+
+          $toolDirectory | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Seed isolated Atlas benchmark fixture
+        run: npm run seed:atlas
+      - name: Run npm validation pipeline
+        run: npm test
+      - name: Archive Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: journeydeck-playwright-${{ github.run_id }}
+          path: artifacts/playwright-*
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Run application validation
         shell: pwsh
         run: ./tools/Test-DriveOS.ps1
