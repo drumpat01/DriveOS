@@ -1010,7 +1010,8 @@ body::before {
    still handled by the bottom navigation rules in styles.css. */
 @media (min-width: 768px) {
   .app-shell {
-    width:min(1500px,calc(100% - 250px)) !important;
+    width:calc(100% - 250px) !important;
+    max-width:none !important;
     margin:18px 20px 30px 230px !important;
   }
   .topbar {
