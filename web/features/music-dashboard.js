@@ -16,6 +16,7 @@
   let drives = [];
   let player = null;
   let deviceId = "";
+  let webDeviceId = "";
   let currentTrack = null;
   let currentToken = "";
   let playerReady = false;
@@ -367,7 +368,7 @@
   }
 
   async function initializePlayer() {
-    if (player || playerReady) return;
+    if (player || playerReady || deviceId) return;
     playerReady = true;
     try {
       const spotifySession = await session();
@@ -385,17 +386,24 @@
         volume: 0.65
       });
       player.addListener("ready", async ({ device_id: readyDeviceId }) => {
+        webDeviceId = readyDeviceId;
         deviceId = readyDeviceId;
         setText("musicPlayerStatus", "JourneyDeck Web Player ready");
         try { await spotifyRequest("/me/player", { method: "PUT", body: JSON.stringify({ device_ids: [deviceId], play: false }) }); }
         catch { setText("musicPlayerStatus", "Select JourneyDeck in Spotify Connect"); }
       });
-      player.addListener("not_ready", () => { setText("musicPlayerStatus", "Spotify player is offline"); });
+      player.addListener("not_ready", ({ device_id: offlineDeviceId }) => { if (webDeviceId === offlineDeviceId) { webDeviceId = ""; deviceId = ""; } setText("musicPlayerStatus", "Spotify player is offline"); });
       player.addListener("player_state_changed", updatePlayerState);
       player.addListener("account_error", () => { setText("musicPlayerStatus", "Spotify Premium is required for web playback"); });
       player.addListener("authentication_error", () => { setText("musicPlayerStatus", "Spotify authorization expired — reconnect"); byId("musicPlayerReconnect").hidden = false; });
       player.addListener("initialization_error", ({ message }) => { setText("musicPlayerStatus", message || "Spotify player could not start"); });
-      await player.connect();
+      const connected = await player.connect();
+      if (!connected) {
+        player.disconnect();
+        player = null;
+        playerReady = false;
+        setText("musicPlayerStatus", "Looking for an active Spotify device…");
+      }
       window.clearInterval(progressTimer);
       progressTimer = window.setInterval(updateProgress, 1000);
     } catch (error) {
@@ -406,12 +414,42 @@
     }
   }
 
+  async function selectAvailableDevice() {
+    const response = await spotifyRequest("/me/player/devices");
+    const payload = await response.json();
+    const devices = Array.isArray(payload.devices) ? payload.devices : [];
+    const selected = devices.find(item => item.is_active && !item.is_restricted) || devices.find(item => !item.is_restricted);
+    if (!selected?.id) throw new Error("Open Spotify on this computer or phone, then try again.");
+    deviceId = selected.id;
+    setText("musicPlayerStatus", `Controlling Spotify on ${selected.name || "your active device"}`);
+    return deviceId;
+  }
+
+  async function playbackDevice() {
+    if (deviceId) return deviceId;
+    for (let attempt = 0; attempt < 10 && !deviceId; attempt++) await new Promise(resolve => setTimeout(resolve, 250));
+    return deviceId || selectAvailableDevice();
+  }
+
+  async function runPlaybackControl(action) {
+    const targetDevice = await playbackDevice();
+    if (targetDevice === webDeviceId && player) {
+      if (action === "toggle") return player.togglePlay();
+      if (action === "previous") return player.previousTrack();
+      if (action === "next") return player.nextTrack();
+    }
+    if (action === "previous" || action === "next") return spotifyRequest(`/me/player/${action}?device_id=${encodeURIComponent(targetDevice)}`, { method: "POST" });
+    const stateResponse = await spotifyRequest("/me/player");
+    const state = stateResponse.status === 204 ? null : await stateResponse.json();
+    return spotifyRequest(`/me/player/${state?.is_playing ? "pause" : "play"}?device_id=${encodeURIComponent(targetDevice)}`, { method: "PUT" });
+  }
+
   async function playUri(uri, fallbackUrl) {
     if (!uri) { if (fallbackUrl) window.open(fallbackUrl, "_blank", "noopener,noreferrer"); return; }
     await initializePlayer();
-    if (!deviceId) { setText("musicPlayerStatus", "Waiting for JourneyDeck Web Player\u2026"); return; }
     try {
-      await spotifyRequest(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, { method: "PUT", body: JSON.stringify({ uris: [uri] }) });
+      const targetDevice = await playbackDevice();
+      await spotifyRequest(`/me/player/play?device_id=${encodeURIComponent(targetDevice)}`, { method: "PUT", body: JSON.stringify({ uris: [uri] }) });
     } catch (error) { setText("musicPlayerStatus", error.message); }
   }
 
@@ -454,9 +492,7 @@
       const action = button.dataset.musicPlayer;
       try {
         await initializePlayer();
-        if (action === "toggle") await player?.togglePlay();
-        if (action === "previous") await player?.previousTrack();
-        if (action === "next") await player?.nextTrack();
+        if (["toggle", "previous", "next"].includes(action)) await runPlaybackControl(action);
         if (action === "shuffle") { shuffleEnabled = !shuffleEnabled; await spotifyRequest(`/me/player/shuffle?state=${shuffleEnabled}&device_id=${encodeURIComponent(deviceId)}`, { method: "PUT" }); button.classList.toggle("active", shuffleEnabled); }
         if (action === "favorite" && currentTrack?.id) { await spotifyRequest(`/me/tracks?ids=${encodeURIComponent(currentTrack.id)}`, { method: "PUT" }); button.classList.add("active"); setText("musicPlayerStatus", "Saved to your Liked Songs"); }
       } catch (error) { setText("musicPlayerStatus", error.message || "Spotify control unavailable"); }
