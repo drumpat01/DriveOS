@@ -1775,6 +1775,7 @@ function ConvertTo-PublicListeningPlay {
         artist     = $Record.artist
         album      = $Record.album
         trackId    = $Record.track_id
+        trackUri   = if ($Record.track_uri) { $Record.track_uri } elseif ($Record.track_id) { "spotify:track:$($Record.track_id)" } else { $null }
         albumImage = $Record.album_image
         spotifyUrl = $Record.spotify_url
         source     = $Source

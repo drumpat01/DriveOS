@@ -33,10 +33,15 @@ $SummaryFunction = $Ast.Find({
     param($Node)
     $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Get-SpotifySummary'
 },$true).Extent.Text
+$PublicPlayFunction = $Ast.Find({
+    param($Node)
+    $Node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'ConvertTo-PublicListeningPlay'
+},$true).Extent.Text
 Assert-True ($ScheduledFunction -match 'Get-SpotifyRecentPage -Limit 50') 'Scheduled sync must collect the first Spotify history page with its cursor.'
 Assert-True ($ScheduledFunction -match 'Save-SpotifyHistory -Items') 'Scheduled sync must archive through the existing dedupe path.'
 Assert-True ($ScheduledFunction -match 'Invoke-SoundtrackBackfillStep') 'Scheduled sync does not advance historical Spotify pagination and projection repair.'
 Assert-True ($SummaryFunction -notmatch 'Get-SpotifyRecent|Save-SpotifyHistory|Add-DriveOSListeningHistoryRecord') 'Dashboard Spotify reads can still poll or write through the web request process.'
+Assert-True ($PublicPlayFunction -match 'trackUri\s*=') 'Public Spotify plays must expose a track URI for the embedded player.'
 Assert-True ($Render -match 'DRIVEOS_SPOTIFY_SYNC_SECRET[\s\S]{0,60}sync:\s*false') 'Render sync secret must remain private.'
 Assert-True ($SpotifyIntegration -match 'function Get-SpotifyRecentlyPlayedPage') 'Spotify integration lacks a cursor-aware recently-played page reader.'
 Assert-True ($SpotifyIntegration -match '&before=\$Cursor') 'Spotify historical pagination does not request the preceding page.'
