@@ -14,7 +14,12 @@ export class AtlasStore {
   private readonly mapCache = new Map<string, AtlasMapResponse>();
   constructor(private readonly database: DatabaseSync, private readonly householdId: string, private readonly databasePath: string, private readonly root: string, private readonly durableState?: DurableState) {}
 
-  close() { if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.mapCache.clear(); }
+  async close() {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = undefined;
+    await this.rebuilding?.catch(() => {});
+    this.mapCache.clear();
+  }
 
   bootstrap() {
     const row = this.database.prepare("SELECT s.payload_json FROM atlas_snapshot_state st JOIN atlas_snapshots s ON s.id=st.active_snapshot_id WHERE st.household_id=? AND s.status='ready'").get(this.householdId) as { payload_json: string } | undefined;
@@ -87,7 +92,7 @@ export class AtlasStore {
   scheduleRebuild(delayMs = 250) {
     this.database.prepare("INSERT INTO atlas_snapshot_state(household_id,dirty) VALUES(?,1) ON CONFLICT(household_id) DO UPDATE SET dirty=1").run(this.householdId);
     if (this.timer) clearTimeout(this.timer);
-    this.timer = setTimeout(() => { this.timer = undefined; void this.rebuildNow(); }, delayMs);
+    this.timer = setTimeout(() => { this.timer = undefined; void this.rebuildNow().catch(() => {}); }, delayMs);
   }
 
   async savePlace(input: AtlasPlaceLabelInput) {

@@ -90,7 +90,10 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   });
   app.post<{ Params: { id: string }; Body: { type?: string; customName?: string } }>("/api/atlas/patterns/:id/confirm", { schema: { body: { type: "object", additionalProperties: false, properties: { type: { type: "string", maxLength: 40 }, customName: { type: "string", maxLength: 60 } } }, response: { 200: savedSchema } } }, async (req, reply) => (await store.reviewPattern(req.params.id, "confirmed", req.body?.type || "frequent-route", req.body?.customName)) || reply.code(404).send({ error: "Pattern was not found." }));
   app.post<{ Params: { id: string } }>("/api/atlas/patterns/:id/dismiss", { schema: { response: { 200: savedSchema } } }, async (req, reply) => (await store.reviewPattern(req.params.id, "dismissed")) || reply.code(404).send({ error: "Pattern was not found." }));
-  app.post("/api/atlas/snapshot/rebuild", async (_req, reply) => { void store.rebuildNow(); return reply.code(202).send({ accepted: true }); });
+  app.post("/api/atlas/snapshot/rebuild", async (_req, reply) => {
+    void store.rebuildNow().catch(error => app.log.error({ err: error }, "Atlas snapshot rebuild failed"));
+    return reply.code(202).send({ accepted: true });
+  });
   app.all("/api/atlas/*", async (_req, reply) => reply.code(410).send({ error: "The legacy Atlas API has been retired. Use the persisted Atlas snapshot API." }));
   app.get("/api/spotify/player/session", async (_req, reply) => {
     reply.header("cache-control", "no-store");
@@ -125,6 +128,6 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
   app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
-  app.addHook("onClose", async () => { store.close(); database.close(); });
+  app.addHook("onClose", async () => { await store.close(); database.close(); });
   return { app, database, store, config: cfg };
 }
