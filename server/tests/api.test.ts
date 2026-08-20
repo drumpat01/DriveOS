@@ -24,6 +24,7 @@ test("static web assets added after startup are served from the fixed web root",
     assert.equal(script.statusCode, 200, script.body);
     assert.match(String(script.headers["content-type"]), /javascript/);
     assert.match(String(script.headers["content-security-policy"]), /https:\/\/sdk\.scdn\.co/);
+    assert.match(String(script.headers["permissions-policy"]), /autoplay=\(self\).*encrypted-media=\(self\)/);
   } finally {
     await runtime.app.close(); fixture.cleanup(); fs.rmSync(webRoot, { recursive: true, force: true });
   }

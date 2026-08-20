@@ -383,7 +383,8 @@
       player = new Spotify.Player({
         name: "JourneyDeck Web Player",
         getOAuthToken: callback => { session().then(data => callback(data.accessToken)).catch(() => callback("")); },
-        volume: 0.65
+        volume: 0.65,
+        enableMediaSession: true
       });
       player.addListener("ready", async ({ device_id: readyDeviceId }) => {
         webDeviceId = readyDeviceId;
@@ -397,13 +398,15 @@
       player.addListener("account_error", () => { setText("musicPlayerStatus", "Spotify Premium is required for web playback"); });
       player.addListener("authentication_error", () => { setText("musicPlayerStatus", "Spotify authorization expired — reconnect"); byId("musicPlayerReconnect").hidden = false; });
       player.addListener("initialization_error", ({ message }) => { setText("musicPlayerStatus", message || "Spotify player could not start"); });
+      player.addListener("autoplay_failed", () => { setText("musicPlayerStatus", "Click play once to allow audio in Chrome"); });
+      player.addListener("playback_error", ({ message }) => { setText("musicPlayerStatus", message || "Spotify could not play this song"); });
       const connected = await player.connect();
       if (!connected) {
         player.disconnect();
         player = null;
         playerReady = false;
         setText("musicPlayerStatus", "Looking for an active Spotify device…");
-      }
+      } else if (!deviceId) setText("musicPlayerStatus", "Connecting JourneyDeck Web Player…");
       window.clearInterval(progressTimer);
       progressTimer = window.setInterval(updateProgress, 1000);
     } catch (error) {
@@ -412,6 +415,10 @@
       if (reconnect) reconnect.hidden = false;
       playerReady = false;
     }
+  }
+
+  function activateWebPlayer() {
+    if (player?.activateElement) void player.activateElement().catch(() => {});
   }
 
   async function selectAvailableDevice() {
@@ -427,7 +434,7 @@
 
   async function playbackDevice() {
     if (deviceId) return deviceId;
-    for (let attempt = 0; attempt < 10 && !deviceId; attempt++) await new Promise(resolve => setTimeout(resolve, 250));
+    for (let attempt = 0; attempt < 40 && !deviceId; attempt++) await new Promise(resolve => setTimeout(resolve, 250));
     return deviceId || selectAvailableDevice();
   }
 
@@ -486,11 +493,12 @@
     byId("musicPlayerReconnect")?.addEventListener("click", reconnect);
     byId("topTracks")?.addEventListener("click", event => {
       const button = event.target.closest("[data-music-uri]");
-      if (button) void playUri(button.dataset.musicUri, button.dataset.musicUrl);
+      if (button) { activateWebPlayer(); void playUri(button.dataset.musicUri, button.dataset.musicUrl); }
     });
     document.querySelectorAll("[data-music-player]").forEach(button => button.addEventListener("click", async () => {
       const action = button.dataset.musicPlayer;
       try {
+        activateWebPlayer();
         await initializePlayer();
         if (["toggle", "previous", "next"].includes(action)) await runPlaybackControl(action);
         if (action === "shuffle") { shuffleEnabled = !shuffleEnabled; await spotifyRequest(`/me/player/shuffle?state=${shuffleEnabled}&device_id=${encodeURIComponent(deviceId)}`, { method: "PUT" }); button.classList.toggle("active", shuffleEnabled); }
