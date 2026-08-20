@@ -69,6 +69,8 @@ jobs:
             -Executable 'trivy.exe'
 
           $toolDirectory | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+      - name: Seed isolated Atlas benchmark fixture
+        run: npm run seed:atlas
       - name: Run npm validation pipeline
         run: npm test
       - name: Archive Playwright diagnostics
