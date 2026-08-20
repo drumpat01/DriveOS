@@ -18,6 +18,46 @@ test('Memories navigation and page title use the released name', async ({ page }
   await expect(page.locator('#momentsPageTitle')).toBeVisible();
 });
 
+test('Every navigable content page uses the matching uniform title', async ({ page }) => {
+  const pages = [
+    ['live', 'LIVE'],
+    ['drives', 'MEMORIES'],
+    ['graph', 'ATLAS'],
+    ['timeline', 'TIMELINE'],
+    ['music', 'MUSIC'],
+    ['statistics', 'STATISTICS'],
+  ] as const;
+
+  for (const [view, title] of pages) {
+    await page.locator(`.nav-button[data-view="${view}"]`).click();
+    await expect(page.locator(`#view-${view} .cinematic-page-heading h2`).first()).toHaveText(title);
+  }
+
+  await expect(page.locator('#view-health .cinematic-page-heading h2')).toHaveText('DATA HEALTH');
+});
+
+test('Overview hero keeps one brand and promotes the vehicle name', async ({ page }) => {
+  await expect(page.locator('.topbar .brand')).toHaveCount(1);
+  await expect(page.locator('.ref-brand-lockup')).toHaveCount(0);
+  await expect(page.locator('.ref-title-lockup span')).toHaveText('TESLA MODEL 3');
+  await expect(page.locator('.ref-title-lockup em')).toHaveText('Eloise');
+
+  const modelTitle = page.locator('.ref-title-lockup span');
+  const modelTitleStyle = await modelTitle.evaluate(element => getComputedStyle(element));
+  expect(Number.parseFloat(modelTitleStyle.fontSize)).toBeGreaterThanOrEqual(50);
+  expect(modelTitleStyle.whiteSpace).toBe('nowrap');
+});
+
+test('Desktop dashboard expands to the available viewport width', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1000 });
+  await page.reload();
+  await expect(page.locator('#view-dashboard')).toHaveClass(/active-view/);
+
+  const shell = await page.locator('.app-shell').boundingBox();
+  expect(shell).not.toBeNull();
+  expect(1920 - ((shell?.x || 0) + (shell?.width || 0))).toBeLessThanOrEqual(22);
+});
+
 test('Timeline renders live mock data and exposes working map zoom controls', async ({ page }) => {
   await page.locator('.nav-button[data-view="timeline"]').click();
 

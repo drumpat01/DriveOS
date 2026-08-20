@@ -7,6 +7,13 @@ import { seedRealisticAtlasFixture } from "../tools/fixture.js";
 
 export const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(?:[A-Za-z]:)/, value => value.slice(1))), "..", "..");
 
+function removeFixtureDirectory(directory: string) {
+  // SQLite and antivirus filters can briefly retain handles on Windows CI
+  // after the database closes. Give those handles time to drain before
+  // treating fixture cleanup as a test failure.
+  fs.rmSync(directory, { recursive: true, force: true, maxRetries: 12, retryDelay: 250 });
+}
+
 export function fixtureDatabase() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-atlas-"));
   const filename = path.join(directory, "fixture.db");
@@ -14,6 +21,6 @@ export function fixtureDatabase() {
   return {
     filename,
     directory,
-    cleanup: () => fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    cleanup: () => removeFixtureDirectory(directory)
   };
 }

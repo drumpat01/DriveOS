@@ -1,0 +1,132 @@
+/* JourneyDeck 6.0.1 — shared Option 4 "Poster Credit" page titles. */
+
+.cinematic-page-heading {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center !important;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 112px;
+  margin: 10px 4px 22px !important;
+  padding: 16px 22px 16px 32px !important;
+  overflow: hidden;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(163, 72, 239, .2) !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(90deg, rgba(255, 91, 66, .055), transparent 34%),
+    radial-gradient(ellipse at 78% 0, rgba(151, 61, 255, .08), transparent 42%) !important;
+  box-shadow: none !important;
+}
+
+.cinematic-page-heading::before {
+  content: "";
+  position: absolute;
+  top: 17px;
+  bottom: 17px;
+  left: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff9a58, #ff544b 55%, rgba(255, 84, 75, 0));
+  box-shadow: 0 0 18px rgba(255, 84, 75, .34);
+}
+
+.cinematic-page-heading::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255, 93, 67, .55), rgba(151, 61, 255, .22) 48%, transparent 90%);
+}
+
+.cinematic-page-heading-copy {
+  min-width: 0;
+}
+
+.cinematic-page-heading .section-label,
+.cinematic-page-heading .live-drive-kicker {
+  margin: 0 0 6px !important;
+  color: #ff7958 !important;
+  font: 800 .63rem/1.25 Inter, "Segoe UI", system-ui, sans-serif !important;
+  letter-spacing: .17em !important;
+  text-transform: uppercase;
+}
+
+.cinematic-page-heading h2,
+.moments-heading.cinematic-page-heading h2,
+.timeline-cinematic-heading.cinematic-page-heading h2,
+.live-drive-header.cinematic-page-heading h2 {
+  margin: 0 !important;
+  color: #fffaf5 !important;
+  font-family: var(--jd-display) !important;
+  font-size: clamp(2.65rem, 3.5vw, 3.85rem) !important;
+  font-weight: 400 !important;
+  line-height: .9 !important;
+  letter-spacing: .105em !important;
+  text-transform: uppercase;
+  text-shadow: 0 5px 24px rgba(255, 255, 255, .08) !important;
+}
+
+.cinematic-page-heading p,
+.moments-heading.cinematic-page-heading p,
+.timeline-cinematic-heading.cinematic-page-heading p {
+  max-width: 760px;
+  margin: 8px 0 0 !important;
+  color: #9e91a8 !important;
+  font: 400 .86rem/1.45 Inter, "Segoe UI", system-ui, sans-serif !important;
+  letter-spacing: 0 !important;
+}
+
+.live-drive-vehicle-name {
+  display: inline-block;
+  margin-top: 5px;
+  color: #d4c5dc;
+  font-size: .72rem;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.moments-page > .moments-hierarchy {
+  margin: -8px 14px 24px;
+}
+
+.music-page-heading {
+  margin-top: 4px !important;
+}
+
+@media (max-width: 760px) {
+  .cinematic-page-heading {
+    align-items: flex-start !important;
+    flex-direction: column;
+    min-height: 92px;
+    margin: 4px 2px 14px !important;
+    padding: 13px 14px 13px 24px !important;
+  }
+
+  .cinematic-page-heading::before {
+    top: 13px;
+    bottom: 13px;
+    left: 6px;
+  }
+
+  .cinematic-page-heading h2,
+  .moments-heading.cinematic-page-heading h2,
+  .timeline-cinematic-heading.cinematic-page-heading h2,
+  .live-drive-header.cinematic-page-heading h2 {
+    font-size: clamp(2rem, 10vw, 2.65rem) !important;
+    letter-spacing: .075em !important;
+  }
+
+  .cinematic-page-heading p,
+  .moments-heading.cinematic-page-heading p,
+  .timeline-cinematic-heading.cinematic-page-heading p {
+    font-size: .78rem !important;
+  }
+
+  .moments-page > .moments-hierarchy {
+    margin: -2px 8px 18px;
+  }
+}
