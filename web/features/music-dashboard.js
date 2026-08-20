@@ -27,6 +27,9 @@
   let positionMs = 0;
   let durationMs = 0;
   let positionCapturedAt = 0;
+  let embedController = null;
+  let embedApiPromise = null;
+  let embeddedUri = "";
   const spotifyTokenKey = "journeydeck-spotify-player-token-v1";
   const spotifyPkceKey = "journeydeck-spotify-pkce-v1";
   const spotifyScopes = ["streaming", "user-read-email", "user-read-private", "user-read-playback-state", "user-modify-playback-state", "user-library-modify"];
@@ -76,10 +79,6 @@
     const art = artworkUrl(song);
     const heroArtwork = byId("musicHeroArtwork");
     if (heroArtwork && art) { heroArtwork.src = art; heroArtwork.alt = `${song.album || song.track} artwork`; }
-    setText("musicPlayerTrack", song.track || "Your latest song");
-    setText("musicPlayerArtist", song.artist || "Spotify");
-    setText("musicPlayerAlbum", song.album || "Latest archived play");
-    setText("musicPlayerKicker", "Latest archived play");
   }
 
   function renderSoundtrack() {
@@ -228,6 +227,52 @@
     renderCities();
     renderIntensity();
     renderWeek();
+    void syncSpotifyEmbed();
+  }
+
+  function loadSpotifyEmbedApi() {
+    if (embedApiPromise) return embedApiPromise;
+    embedApiPromise = new Promise((resolve, reject) => {
+      window.onSpotifyIframeApiReady = resolve;
+      const script = document.createElement("script");
+      script.src = "https://open.spotify.com/embed/iframe-api/v1";
+      script.async = true;
+      script.onerror = () => reject(new Error("Spotify's embedded player could not be loaded."));
+      document.body.appendChild(script);
+    });
+    return embedApiPromise;
+  }
+
+  async function loadEmbeddedSong(uri, play = false) {
+    if (!uri) { setText("musicPlayerStatus", "No Spotify track is available to embed yet."); return; }
+    if (embedController) {
+      if (embeddedUri !== uri) embedController.loadEntity(uri);
+      embeddedUri = uri;
+      if (play) embedController.play();
+      return;
+    }
+    const host = byId("musicSpotifyEmbed");
+    if (!host) return;
+    try {
+      const api = await loadSpotifyEmbedApi();
+      api.createController(host, { width: "100%", height: 152, uri }, controller => {
+        embedController = controller;
+        embeddedUri = uri;
+        controller.addListener("ready", () => setText("musicPlayerStatus", "Spotify is ready inside JourneyDeck."));
+        controller.addListener("playback_started", () => setText("musicPlayerStatus", "Playing inside this JourneyDeck tab."));
+        controller.addListener("playback_update", event => {
+          if (event?.data?.isBuffering) setText("musicPlayerStatus", "Buffering Spotify inside JourneyDeck…");
+        });
+        if (play) controller.play();
+      });
+    } catch (error) {
+      setText("musicPlayerStatus", error.message || "Spotify's embedded player is unavailable.");
+    }
+  }
+
+  function syncSpotifyEmbed() {
+    const song = recent.find(item => trackUri(item));
+    return loadEmbeddedSong(song ? trackUri(song) : "");
   }
 
   function storedSpotifyToken() {
@@ -490,31 +535,11 @@
   }
 
   function bind() {
-    byId("musicPlayerReconnect")?.addEventListener("click", reconnect);
     byId("topTracks")?.addEventListener("click", event => {
       const button = event.target.closest("[data-music-uri]");
-      if (button) { activateWebPlayer(); void playUri(button.dataset.musicUri, button.dataset.musicUrl); }
+      if (button?.dataset.musicUri) void loadEmbeddedSong(button.dataset.musicUri, true);
     });
-    document.querySelectorAll("[data-music-player]").forEach(button => button.addEventListener("click", async () => {
-      const action = button.dataset.musicPlayer;
-      try {
-        activateWebPlayer();
-        await initializePlayer();
-        if (["toggle", "previous", "next"].includes(action)) await runPlaybackControl(action);
-        if (action === "shuffle") { shuffleEnabled = !shuffleEnabled; await spotifyRequest(`/me/player/shuffle?state=${shuffleEnabled}&device_id=${encodeURIComponent(deviceId)}`, { method: "PUT" }); button.classList.toggle("active", shuffleEnabled); }
-        if (action === "favorite" && currentTrack?.id) { await spotifyRequest(`/me/tracks?ids=${encodeURIComponent(currentTrack.id)}`, { method: "PUT" }); button.classList.add("active"); setText("musicPlayerStatus", "Saved to your Liked Songs"); }
-      } catch (error) { setText("musicPlayerStatus", error.message || "Spotify control unavailable"); }
-    }));
-    document.addEventListener("journeydeck:viewchange", event => { if (event.detail?.view === "music") void initializePlayer(); });
-    if (location.pathname === "/spotify-callback") {
-      setText("musicPlayerStatus", "Finishing Spotify authorization…");
-      void finishBrowserAuthorization().then(() => initializePlayer()).catch(error => {
-        history.replaceState({}, "", "/#music");
-        setText("musicPlayerStatus", error.message || "Spotify authorization failed");
-        const reconnect = byId("musicPlayerReconnect");
-        if (reconnect) reconnect.hidden = false;
-      });
-    } else if (location.hash === "#music") setTimeout(() => { void initializePlayer(); }, 0);
+    document.addEventListener("journeydeck:viewchange", event => { if (event.detail?.view === "music") void syncSpotifyEmbed(); });
   }
 
   bind();

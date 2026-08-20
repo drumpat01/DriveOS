@@ -9083,6 +9083,11 @@ textarea {
 
 .music-player-kicker { display:flex;align-items:center;gap:8px;margin-bottom:13px;color:#ff879e;font-size:.72rem;font-weight:850;text-transform:uppercase;letter-spacing:.12em;text-shadow:0 0 10px rgba(255,70,111,.4); }
 .music-player-kicker i { width:7px;height:7px;border-radius:50%;background:#1ed760;box-shadow:0 0 10px rgba(30,215,96,.8); }
+.music-spotify-embed { min-height:152px;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(8,6,16,.86);box-shadow:0 16px 34px rgba(0,0,0,.28); }
+.music-spotify-embed iframe,.music-player > iframe { display:block;width:100%;height:152px;border:0;border-radius:14px; }
+.music-spotify-placeholder { display:flex;height:152px;align-items:center;justify-content:center;gap:10px;color:#d9cedf;font-size:.78rem; }
+.music-spotify-placeholder span { color:#1ed760;font-size:1.4rem;text-shadow:0 0 14px rgba(30,215,96,.45); }
+.music-player .music-embed-status { margin-top:9px;color:#bcb0c8;font-size:.66rem;text-align:center;white-space:normal; }
 .music-player > strong { display:block;overflow:hidden;color:#fff;font-size:1.38rem;font-weight:850;line-height:1.18;text-overflow:ellipsis;text-shadow:0 0 12px rgba(255,255,255,.12);white-space:nowrap; }
 .music-player > span { display:block;overflow:hidden;margin-top:8px;color:#f1e9f7;text-overflow:ellipsis;white-space:nowrap; }
 .music-player .music-player-album { display:inline-block;width:max-content;max-width:100%;padding:6px 12px;border:1px solid rgba(202,156,242,.38);border-radius:99px;background:rgba(134,70,167,.3);color:#fff;font-size:.75rem; }
