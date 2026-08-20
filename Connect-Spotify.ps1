@@ -5,8 +5,7 @@ $ErrorActionPreference = "Stop"
 # Authorization Code + PKCE
 # Windows PowerShell 5.1 compatible
 #
-# v0.3 adds playlist-modify-private so DriveOS can create
-# a private Spotify playlist from a completed drive soundtrack.
+# Includes the permissions needed by the embedded JourneyDeck Web Player.
 # ============================================================
 
 if (-not $env:SPOTIFY_CLIENT_ID) {
@@ -20,6 +19,11 @@ $Scopes = @(
     "user-read-recently-played"
     "user-read-playback-state"
     "user-read-currently-playing"
+    "user-modify-playback-state"
+    "user-read-email"
+    "user-read-private"
+    "user-library-modify"
+    "streaming"
     "playlist-modify-private"
 ) -join " "
 
@@ -71,8 +75,8 @@ Write-Host "==============================================" -ForegroundColor Gre
 Write-Host "       DRIVE OS - SPOTIFY AUTH 1.0          " -ForegroundColor Green
 Write-Host "==============================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "This reauthorization adds permission for DriveOS" -ForegroundColor Cyan
-Write-Host "to create PRIVATE Spotify drive playlists." -ForegroundColor Cyan
+Write-Host "This one-time authorization enables the JourneyDeck" -ForegroundColor Cyan
+Write-Host "Spotify player and private drive playlists." -ForegroundColor Cyan
 Write-Host ""
 
 $Listener = [System.Net.Sockets.TcpListener]::new(

@@ -326,7 +326,7 @@ function Send-HttpResponse {
         "Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()`r`n" +
         "Cross-Origin-Opener-Policy: same-origin`r`n" +
         "Cross-Origin-Resource-Policy: same-origin`r`n" +
-        "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com; connect-src 'self' https://tiles.openfreemap.org; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; manifest-src 'self'`r`n" +
+        "Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline' https://unpkg.com; script-src 'self' https://unpkg.com https://sdk.scdn.co; connect-src 'self' https://tiles.openfreemap.org https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co; img-src 'self' data: blob: https://tiles.openfreemap.org https://i.scdn.co; media-src blob: https://*.scdn.co https://*.spotify.com; font-src 'self' data: https://tiles.openfreemap.org; worker-src 'self' blob:; child-src blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'; base-uri 'none'; manifest-src 'self'`r`n" +
         $ExtraHeaderText +
         "`r`n"
 
@@ -1207,6 +1207,11 @@ function Start-SpotifyWebAuthorization {
         "user-read-recently-played"
         "user-read-playback-state"
         "user-read-currently-playing"
+        "user-modify-playback-state"
+        "user-read-email"
+        "user-read-private"
+        "user-library-modify"
+        "streaming"
         "playlist-modify-private"
     ) -join " "
 

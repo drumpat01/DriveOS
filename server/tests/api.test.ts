@@ -23,6 +23,7 @@ test("static web assets added after startup are served from the fixed web root",
     assert.match(String(css.headers["content-type"]), /^text\/css/);
     assert.equal(script.statusCode, 200, script.body);
     assert.match(String(script.headers["content-type"]), /javascript/);
+    assert.match(String(script.headers["content-security-policy"]), /https:\/\/sdk\.scdn\.co/);
   } finally {
     await runtime.app.close(); fixture.cleanup(); fs.rmSync(webRoot, { recursive: true, force: true });
   }
@@ -34,9 +35,12 @@ test("Atlas API enforces auth, origin, roles, and durable serialized writes", as
   let runtime = await createApp(options);
   try {
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api/atlas/bootstrap" })).statusCode, 401);
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api/spotify/player/session" })).statusCode, 401);
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api/atlas/bootstrap", headers: { "tailscale-user-login": "spoofed@example.com" } })).statusCode, 401);
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api/atlas/bootstrap", headers: auth })).statusCode, 200);
     assert.equal((await runtime.app.inject({ method: "POST", url: "/api/atlas/snapshot/rebuild", headers: { ...auth, origin: "https://evil.invalid" } })).statusCode, 403);
+    assert.equal((await runtime.app.inject({ method: "POST", url: "/api/atlas/snapshot/rebuild", headers: { ...auth, host: "127.0.0.1:8791", origin: "http://127.0.0.1:8791" } })).statusCode, 202);
+    assert.equal((await runtime.app.inject({ method: "POST", url: "/api/atlas/snapshot/rebuild", headers: { ...auth, host: "127.0.0.1:8791", origin: "http://127.0.0.1:8792" } })).statusCode, 403);
     assert.equal((await runtime.app.inject({ method: "POST", url: "/api/atlas/snapshot/rebuild", headers: { "x-journeydeck-test-auth": "wife", origin: "http://127.0.0.1" } })).statusCode, 403);
     const original = JSON.parse((await runtime.app.inject({ method: "GET", url: "/api/atlas/bootstrap", headers: auth })).body);
     const places = original.places.filter((item: any) => item.category !== "home").slice(0, 2);

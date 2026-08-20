@@ -18,6 +18,18 @@ let driveLibraryExpanded = false;
 let driveTimelineDays = 7;
 let driveTimelineLoaded = false;
 let driveTimelineLoadPromise = null;
+let driveTimelineSelectedEventId = null;
+let driveTimelineHeroToken = 0;
+let driveTimelineRefreshTimer = null;
+let driveTimelineLastUpdatedAt = null;
+let driveTimelineVisibleCount = 40;
+let driveTimelineMapZoom = 1;
+let driveTimelineMapPanX = 0;
+let driveTimelineMapPanY = 0;
+let driveTimelineMapDrag = null;
+let driveTimelineSuppressRouteClickUntil = 0;
+const DRIVE_TIMELINE_PAGE_SIZE = 40;
+const DRIVE_TIMELINE_MAP_MAX_ZOOM = 4;
 const driveTimelineRouteCache = new Map();
 
 function ensureMapLibre() {
@@ -451,6 +463,7 @@ function renderVehicleLocation(vehicle) {
 async function loadVehicle() {
   try {
     const v = await getJson("/api/vehicle");
+    state.vehicle = v;
 
     setText("vehicleName", v.name);
     setText("vehicleState", v.state);
@@ -469,8 +482,10 @@ async function loadVehicle() {
 
     $("vehicleRefresh").textContent =
       `Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    return v;
   } catch (error) {
     $("vehicleRefresh").textContent = `Tesla error: ${error.message}`;
+    return null;
   }
 }
 
@@ -489,6 +504,7 @@ async function loadSpotify() {
     const data = await getJson("/api/spotify/recent");
     const tracks = data.recent || [];
     state.spotifyRecent = tracks;
+    window.DriveOSMusicDashboard?.setRecent(tracks);
 
     if (tracks.length) {
       const featured = tracks[0];
@@ -1335,9 +1351,11 @@ async function loadCharging() {
     state.chargingSessions = data.sessions || [];
     renderCharging(data);
     if (driveTimelineLoaded) renderDriveTimeline();
+    return data;
   } catch (error) {
     const container = $("chargingHistory");
     if (container) container.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
+    return null;
   }
 }
 
@@ -1475,6 +1493,13 @@ async function loadDashboardDrives() {
       state.driveLibraryWindowDays = Number(data.windowDays) || 14;
       window.DriveOSFeatures.moments?.setJourneys(recent);
       renderFavoriteRoutes();
+      window.DriveOSMusicDashboard?.render(null, state.drives, state.spotifyRecent);
+    } else if (recent.length) {
+      const merged = new Map(state.drives.map(drive => [String(drive.id), drive]));
+      recent.forEach(drive => merged.set(String(drive.id), drive));
+      state.drives = [...merged.values()].sort((left, right) =>
+        String(right.startedAt || "").localeCompare(String(left.startedAt || "")));
+      window.DriveOSMusicDashboard?.render(null, state.drives, state.spotifyRecent);
     }
 
     renderDashboardDrives(recent);
@@ -1499,6 +1524,7 @@ async function loadDrives() {
       state.driveLibraryWindowDays = Number(data.windowDays) || 730;
       driveLibraryFullyLoaded = true;
       window.DriveOSFeatures.moments?.setJourneys(state.drives);
+      window.DriveOSMusicDashboard?.render(null, state.drives, state.spotifyRecent);
 
       const all = $("allDrives");
 
@@ -1572,6 +1598,93 @@ function timelineDuration(minutes) {
   const mins = total % 60;
   return mins ? `${hours} hr ${mins} min` : `${hours} hr`;
 }
+function timelineTrackDuration(song) {
+  const milliseconds = Number(song?.durationMs || song?.duration_ms);
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return "--";
+  const seconds = Math.round(milliseconds / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+function timelineSessionMinutes(session) {
+  const explicit = Number(session?.durationMinutes);
+  if (Number.isFinite(explicit)) return explicit;
+  const start = timelineDate(session?.startedAt);
+  const end = timelineDate(session?.endedAt);
+  return start && end ? Math.max(0, (end - start) / 60000) : 0;
+}
+function timelineRangeStart(days) {
+  const start = new Date();
+  if (days <= 1) start.setHours(0, 0, 0, 0);
+  else {
+    start.setDate(start.getDate() - (days - 1));
+    start.setHours(0, 0, 0, 0);
+  }
+  return start;
+}
+function timelineRangeLabel(days, compact = false) {
+  if (days <= 1) return "Today";
+  return compact ? `${days} days` : `Last ${days} days`;
+}
+function timelineLocalhost() {
+  return location.hostname === "127.0.0.1" || location.hostname === "localhost";
+}
+function timelineDemoRoute(points) {
+  return points.map(([latitude, longitude], index) => ({ latitude, longitude, timestamp: index }));
+}
+function ensureTimelineLocalDemoData() {
+  if (!timelineLocalhost()) return false;
+  const now = Date.now();
+  const iso = minutesAgo => new Date(now - minutesAgo * 60000).toISOString();
+  let added = false;
+  if (!Array.isArray(state.drives) || !state.drives.length) {
+    state.drives = [
+      { id:"timeline-demo-1", startedAt:iso(31), endedAt:iso(27), startingLocation:"Saginaw", endingLocation:"Home", miles:.9, durationMinutes:4, startingBattery:64, endingBattery:63, songCount:0, _timelineRoutePoints:timelineDemoRoute([[32.862,-97.368],[32.87,-97.355],[32.879,-97.347],[32.889,-97.361]]) },
+      { id:"timeline-demo-2", startedAt:iso(102), endedAt:iso(98), startingLocation:"Home", endingLocation:"Saginaw", miles:1, durationMinutes:4, startingBattery:65, endingBattery:64, songCount:1, _timelineRoutePoints:timelineDemoRoute([[32.889,-97.361],[32.883,-97.35],[32.875,-97.343],[32.862,-97.368]]) },
+      { id:"timeline-demo-3", startedAt:iso(212), endedAt:iso(205), startingLocation:"Chisholm Trail HS", endingLocation:"Home", miles:1.4, durationMinutes:7, startingBattery:71, endingBattery:69, songCount:1, _timelineRoutePoints:timelineDemoRoute([[32.835,-97.402],[32.846,-97.389],[32.865,-97.377],[32.889,-97.361]]) }
+    ];
+    added = true;
+  }
+  if (!Array.isArray(state.chargingSessions) || !state.chargingSessions.length) {
+    state.chargingSessions = [{ id:"timeline-demo-charge", startedAt:iso(165), endedAt:iso(102), location:"Home", energyAddedKWh:11, startingBattery:52, endingBattery:71, isSupercharger:false }];
+    added = true;
+  }
+  if (!Array.isArray(state.spotifyRecent) || !state.spotifyRecent.length) {
+    state.spotifyRecent = [
+      { trackId:"timeline-demo-song-1", track:"I miss you, I’m sorry", artist:"Gracie Abrams", album:"Minor", playedAt:iso(148), durationMs:168000, albumImage:"/assets/moments/golden-hour-memory.jpg" },
+      { trackId:"timeline-demo-song-2", track:"traitor", artist:"Olivia Rodrigo", album:"SOUR", playedAt:iso(255), durationMs:229000, albumImage:"/assets/moments/favorite-night-drives.jpg" }
+    ];
+    added = true;
+  }
+  if (!state.vehicle) {
+    state.vehicle = { name:"Eloise", state:"Parked", battery:69, outsideTempF:82, insideTempF:78, charging:"Disconnected", observedAt:new Date(now).toISOString() };
+    added = true;
+  }
+  return added;
+}
+function fallbackTimelineRoutePoints(drive) {
+  const startLat = Number(drive?.startingLatitude), startLon = Number(drive?.startingLongitude);
+  const endLat = Number(drive?.endingLatitude), endLon = Number(drive?.endingLongitude);
+  if (![startLat,startLon,endLat,endLon].every(Number.isFinite)) return [];
+  const bend = ((String(drive.id || "").length % 5) - 2) * .006;
+  return [
+    { latitude:startLat, longitude:startLon },
+    { latitude:(startLat * 2 + endLat) / 3 + bend, longitude:(startLon * 2 + endLon) / 3 - bend },
+    { latitude:(startLat + endLat * 2) / 3 - bend, longitude:(startLon + endLon * 2) / 3 + bend },
+    { latitude:endLat, longitude:endLon }
+  ];
+}
+async function timelineRoutePointsForDrive(drive) {
+  const embedded = Array.isArray(drive?._timelineRoutePoints) ? drive._timelineRoutePoints : null;
+  if (embedded?.length) return embedded;
+  const driveId = String(drive?.id || "");
+  if (!driveId) return fallbackTimelineRoutePoints(drive);
+  if (!driveTimelineRouteCache.has(driveId)) {
+    driveTimelineRouteCache.set(driveId, postJson("/api/drive/map", { driveId }).catch(() => null));
+  }
+  const mapData = await driveTimelineRouteCache.get(driveId);
+  return Array.isArray(mapData?.routePoints) && mapData.routePoints.length
+    ? mapData.routePoints
+    : fallbackTimelineRoutePoints(drive);
+}
 function normalizedTimelineRoutePath(points) {
   const route = (points || []).filter(point => Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)));
   if (route.length < 2) return "";
@@ -1589,13 +1702,11 @@ function normalizedTimelineRoutePath(points) {
   }).join(" ");
 }
 async function hydrateTimelineRoutePreviews() {
-  const previews = [...document.querySelectorAll("[data-timeline-route]")].slice(0, 30);
+  const previews = [...document.querySelectorAll("[data-timeline-route]")];
   await Promise.allSettled(previews.map(async preview => {
-    const driveId = preview.dataset.timelineRoute;
-    if (!driveTimelineRouteCache.has(driveId)) driveTimelineRouteCache.set(driveId, postJson("/api/drive/map", { driveId }).catch(() => null));
-    const mapData = await driveTimelineRouteCache.get(driveId);
+    const drive = state.drives.find(item => String(item.id) === preview.dataset.timelineRoute);
+    const path = normalizedTimelineRoutePath(await timelineRoutePointsForDrive(drive));
     if (!preview.isConnected) return;
-    const path = normalizedTimelineRoutePath(mapData?.routePoints);
     const svg = preview.querySelector("svg");
     if (!svg) return;
     if (!path) {
@@ -1607,172 +1718,278 @@ async function hydrateTimelineRoutePreviews() {
     preview.classList.add("is-ready");
   }));
 }
-function timelineRangeStart(days) {
-  const start = new Date();
-  if (days <= 1) start.setHours(0, 0, 0, 0);
-  else {
-    start.setDate(start.getDate() - (days - 1));
-    start.setHours(0, 0, 0, 0);
-  }
-  return start;
-}
 function buildDriveTimelineEvents(days = 7) {
   const cutoff = timelineRangeStart(days);
   const events = [];
   const drives = Array.isArray(state.drives) ? [...state.drives] : [];
   const charges = Array.isArray(state.chargingSessions) ? state.chargingSessions : [];
   const spotify = Array.isArray(state.spotifyRecent) ? state.spotifyRecent : [];
-
   drives.forEach(drive => {
     const start = timelineDate(drive.startedAt);
     if (!start || start < cutoff) return;
     events.push({
-      type: "drive",
-      at: start,
-      drive,
-      title: driveRouteText(drive) || "Journey",
-      detail: [
-        drive.miles != null ? `${drive.miles} mi` : null,
-        drive.durationMinutes != null ? timelineDuration(drive.durationMinutes) : null,
-        drive.songCount ? `${drive.songCount} song${drive.songCount === 1 ? "" : "s"}` : null
-      ].filter(Boolean).join(" \u00B7 ")
+      id:`drive:${drive.id}`, type:"drive", at:start, drive,
+      title:driveRouteText(drive) || "Journey",
+      detail:[drive.miles != null ? `${drive.miles} mi` : null,drive.durationMinutes != null ? timelineDuration(drive.durationMinutes) : null,drive.songCount ? `${drive.songCount} song${drive.songCount === 1 ? "" : "s"}` : null].filter(Boolean).join(" \u00B7 ")
     });
   });
-
-  charges.forEach(session => {
+  charges.forEach((session,index) => {
     const start = timelineDate(session.startedAt);
     if (!start || start < cutoff) return;
     events.push({
-      type: "charge",
-      at: start,
-      session,
-      title: session.isSupercharger ? "Supercharging" : "Charging",
-      detail: [
-        session.location || "Unknown location",
-        session.energyAddedKWh != null ? `${session.energyAddedKWh} kWh` : null,
-        session.displayCost != null ? money(session.displayCost) : null
-      ].filter(Boolean).join(" \u00B7 ")
+      id:`charge:${session.id || session.startedAt || index}`, type:"charge", at:start, session,
+      title:session.location || (session.isSupercharger ? "Supercharger" : "Charging"),
+      detail:[session.isSupercharger ? "Supercharging" : "Charging",session.startingBattery != null && session.endingBattery != null ? `${session.startingBattery}% → ${session.endingBattery}%` : null].filter(Boolean).join(" \u00B7 ")
     });
   });
-
-  spotify.forEach(song => {
+  spotify.forEach((song,index) => {
     const playedAt = timelineDate(song.playedAt || song.played_at);
     if (!playedAt || playedAt < cutoff) return;
-    events.push({ type: "song", at: playedAt, song, title: song.track || "Spotify play", detail: song.artist || "" });
+    events.push({ id:`song:${song.trackId || song.id || index}:${playedAt.getTime()}`, type:"song", at:playedAt, song, title:song.track || "Spotify play", detail:song.artist || "" });
   });
-
-  const chronological = drives
-    .filter(drive => timelineDate(drive.startedAt))
-    .sort((a, b) => timelineDate(a.startedAt) - timelineDate(b.startedAt));
-
-  for (let i = 0; i < chronological.length - 1; i += 1) {
-    const current = chronological[i];
-    const next = chronological[i + 1];
-    const stopStart = timelineDate(current.endedAt);
-    const nextStart = timelineDate(next.startedAt);
-    if (!stopStart || !nextStart || stopStart < cutoff) continue;
-    if (!timelineSamePlace(current.endingLocation, next.startingLocation)) continue;
+  const chronological = drives.filter(drive => timelineDate(drive.startedAt)).sort((a,b) => timelineDate(a.startedAt) - timelineDate(b.startedAt));
+  for (let index = 0; index < chronological.length - 1; index += 1) {
+    const current = chronological[index], next = chronological[index + 1];
+    const stopStart = timelineDate(current.endedAt), nextStart = timelineDate(next.startedAt);
+    if (!stopStart || !nextStart || stopStart < cutoff || !timelineSamePlace(current.endingLocation,next.startingLocation)) continue;
     const minutes = Math.round((nextStart - stopStart) / 60000);
     if (minutes < 30 || minutes > 360) continue;
-    events.push({
-      type: "stop",
-      at: stopStart,
-      title: current.endingLocation || "Stop",
-      detail: `Stopped for ${timelineDuration(minutes)}`
-    });
+    events.push({ id:`stop:${current.id}:${stopStart.getTime()}`, type:"stop", at:stopStart, title:current.endingLocation || "Stop", detail:`Stopped for ${timelineDuration(minutes)}`, durationMinutes:minutes });
   }
-
-  return events.sort((a, b) => b.at - a.at);
+  return events.sort((a,b) => b.at - a.at);
 }
 function timelineIcon(type) {
-  return ({ drive: "\u2197", charge: "\u26A1", song: "\u266B", stop: "\u25CF" })[type] || "\u2022";
+  return ({ drive:"\u2197", charge:"\u26A1", song:"\u266B", stop:"\u25CF" })[type] || "\u2022";
+}
+function timelineEventMetric(event) {
+  if (event.type === "drive") return { value:event.drive.miles != null ? Number(event.drive.miles).toLocaleString(undefined,{maximumFractionDigits:1}) : "--", label:"Miles" };
+  if (event.type === "song") return { value:event.song.album || event.song.albumName || "--", label:"Album" };
+  if (event.type === "charge") return { value:event.session.energyAddedKWh != null ? Number(event.session.energyAddedKWh).toLocaleString(undefined,{maximumFractionDigits:1}) : "--", label:"kWh added" };
+  return { value:"Stop", label:"Place" };
+}
+function timelineEventDurationValue(event) {
+  if (event.type === "drive") return event.drive.durationMinutes != null ? timelineDuration(event.drive.durationMinutes) : "--";
+  if (event.type === "song") return timelineTrackDuration(event.song);
+  if (event.type === "charge") return timelineDuration(timelineSessionMinutes(event.session));
+  return timelineDuration(event.durationMinutes);
 }
 function timelineEventMarkup(event) {
-  const time = timelineTimeLabel(event.at);
-  if (event.type === "drive") {
-    return `
-      <button class="drive-timeline-event drive-timeline-event-drive" type="button" data-timeline-drive="${escapeHtml(event.drive.id)}">
-        <span class="drive-timeline-time">${escapeHtml(time)}</span>
-        <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
-        <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
-        <span class="drive-timeline-route-preview" data-timeline-route="${escapeHtml(event.drive.id)}"><svg viewBox="0 0 120 66" role="img" aria-label="Journey route preview"><path class="timeline-route-loading" d="M12 50 C32 14 78 52 108 12"/></svg><small>Route overview</small></span>
-      </button>`;
-  }
-  if (event.type === "song") {
-    const album = event.song.album || event.song.albumName || "Album unavailable";
-    return `
-      <article class="drive-timeline-event drive-timeline-event-song">
-        <span class="drive-timeline-time">${escapeHtml(time)}</span>
-        <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
-        <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
-        <div class="drive-timeline-track-preview">${songArtworkMarkup(event.song,"drive-timeline-artwork")}<div><strong>${escapeHtml(event.song.track || "Unknown track")}</strong><small>${escapeHtml(event.song.artist || "Unknown artist")}</small><em>${escapeHtml(album)}</em></div></div>
-      </article>`;
-  }
+  const metric = timelineEventMetric(event);
+  let visual = '<span class="timeline-event-symbol" aria-hidden="true">\u2022</span>';
+  if (event.type === "drive") visual = `<span class="drive-timeline-route-preview" data-timeline-route="${escapeHtml(event.drive.id)}"><svg viewBox="0 0 120 66" role="img" aria-label="Journey route preview"><path class="timeline-route-loading" d="M12 50 C32 14 78 52 108 12"/></svg></span>`;
+  if (event.type === "song") visual = `<div class="drive-timeline-track-preview">${songArtworkMarkup(event.song,"drive-timeline-artwork")}</div>`;
+  if (event.type === "charge") visual = '<span class="timeline-event-symbol" aria-hidden="true">\u26A1</span>';
   return `
-    <article class="drive-timeline-event drive-timeline-event-${escapeHtml(event.type)}">
-      <span class="drive-timeline-time">${escapeHtml(time)}</span>
-      <span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span>
-      <span class="drive-timeline-event-copy"><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span>
+    <article class="drive-timeline-event drive-timeline-event-${escapeHtml(event.type)}${event.id === driveTimelineSelectedEventId ? " is-selected" : ""}" data-timeline-event="${escapeHtml(event.id)}" tabindex="0" aria-label="${escapeHtml(`${event.title}, ${event.detail}`)}">
+      <div class="timeline-event-main"><time class="drive-timeline-time" datetime="${escapeHtml(event.at.toISOString())}">${escapeHtml(timelineTimeLabel(event.at))}</time><span class="drive-timeline-node" aria-hidden="true">${timelineIcon(event.type)}</span><span class="drive-timeline-event-copy"><small>${escapeHtml(event.type === "charge" ? "Charging" : event.type)}</small><strong>${escapeHtml(event.title)}</strong><span>${escapeHtml(event.detail)}</span></span></div>
+      <div class="timeline-event-visual">${visual}</div>
+      <div class="timeline-event-metric"><strong>${escapeHtml(metric.value)}</strong><span>${escapeHtml(metric.label)}</span></div>
+      <div class="timeline-event-duration"><strong>${escapeHtml(timelineEventDurationValue(event))}</strong><span>${event.type === "song" ? "Length" : "Duration"}</span></div>
+      <button class="timeline-event-open" type="button" ${event.type === "drive" ? `data-timeline-drive="${escapeHtml(event.drive.id)}" aria-label="Open journey details"` : `data-timeline-select="${escapeHtml(event.id)}" aria-label="Focus this event"`}>&rsaquo;</button>
     </article>`;
+}
+function timelineActiveDays(events) {
+  return new Set(events.map(event => event.at.toLocaleDateString("en-CA"))).size;
+}
+function renderTimelineGlance(events) {
+  const drives = events.filter(event => event.type === "drive");
+  const charges = events.filter(event => event.type === "charge");
+  const songs = events.filter(event => event.type === "song");
+  const stops = events.filter(event => event.type === "stop");
+  const miles = drives.reduce((sum,event) => sum + (Number(event.drive?.miles) || 0),0);
+  const energy = charges.reduce((sum,event) => sum + (Number(event.session?.energyAddedKWh) || 0),0);
+  const drivingMinutes = drives.reduce((sum,event) => sum + (Number(event.drive?.durationMinutes) || 0),0);
+  const stoppedMinutes = stops.reduce((sum,event) => sum + (Number(event.durationMinutes) || 0),0);
+  const totalRoadMinutes = drivingMinutes + stoppedMinutes;
+  const drivingShare = totalRoadMinutes ? Math.round(drivingMinutes / totalRoadMinutes * 100) : 0;
+  const stoppedShare = totalRoadMinutes ? 100 - drivingShare : 0;
+  const activeDays = timelineActiveDays(events);
+  const coveredDays = Math.max(1,driveTimelineDays);
+  const coverage = Math.min(100,Math.round(activeDays / coveredDays * 100));
+  const battery = Number(state.vehicle?.battery ?? charges[0]?.session?.endingBattery);
+  setText("timelineGlanceRange",timelineRangeLabel(driveTimelineDays,true));
+  setText("timelineGlanceMiles",Math.round(miles * 10) / 10,"0");
+  setText("timelineDailyAverage",`${(miles / coveredDays).toLocaleString(undefined,{maximumFractionDigits:1})} mi daily average`);
+  setText("timelineMilesPace",`${activeDays}/${coveredDays} active`);
+  const ring = $("timelineMilesRing");
+  if (ring) ring.style.strokeDashoffset = String(307.88 * (1 - coverage / 100));
+  if ($("timelineMilesMeter")) $("timelineMilesMeter").style.width = `${coverage}%`;
+  setText("timelineBatteryValue",Number.isFinite(battery) ? `${Math.round(battery)}%` : "--%");
+  if ($("timelineBatteryGauge")) $("timelineBatteryGauge").style.setProperty("--battery",`${Number.isFinite(battery) ? Math.max(0,Math.min(100,battery)) : 0}%`);
+  setText("timelineEnergyAdded",`${energy.toLocaleString(undefined,{maximumFractionDigits:1})} kWh`);
+  setText("timelineChargeSummary",`${charges.length} charge${charges.length === 1 ? "" : "s"} in range`);
+  setText("timelineDrivingShare",`${drivingShare}%`);
+  setText("timelineStoppedShare",`${stoppedShare}%`);
+  setText("timelineDrivingTime",`${timelineDuration(drivingMinutes)} driving`);
+  setText("timelineStoppedTime",`${timelineDuration(stoppedMinutes)} stopped`);
+  if ($("timelineDrivingBar")) $("timelineDrivingBar").style.width = `${drivingShare}%`;
+  if ($("timelineStoppedBar")) $("timelineStoppedBar").style.width = `${stoppedShare}%`;
+  const artistCounts = new Map();
+  songs.forEach(event => {
+    const artist = event.song?.artist || "Unknown artist";
+    const record = artistCounts.get(artist) || { count:0, song:event.song };
+    record.count += 1;
+    artistCounts.set(artist,record);
+  });
+  const topArtist = [...artistCounts.entries()].sort((left,right) => right[1].count - left[1].count)[0];
+  const artistContainer = $("timelineTopArtist");
+  if (artistContainer) {
+    artistContainer.innerHTML = topArtist
+      ? `${songArtworkMarkup(topArtist[1].song,"timeline-artist-artwork")}<div><strong>${escapeHtml(topArtist[0])}</strong><small>${topArtist[1].count} song${topArtist[1].count === 1 ? "" : "s"} played</small></div>`
+      : '<div class="timeline-artist-placeholder" aria-hidden="true">\u266B</div><div><strong>Listening data unavailable</strong><small>No plays in this range</small></div>';
+  }
+  const temperature = Number(state.vehicle?.outsideTempF);
+  setText("timelineOutsideTemp",Number.isFinite(temperature) ? `${Math.round(temperature)}°F` : "--°F");
+  setText("timelineVehicleState",state.vehicle?.state || state.vehicle?.charging || "--");
+  setText("timelineLocalTime",new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}));
+}
+function timelineHeroPath(points,bounds) {
+  const valid = points.filter(point => Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)));
+  if (valid.length < 2) return "";
+  const step = Math.max(1,Math.ceil(valid.length / 60));
+  const sampled = valid.filter((_,index) => index % step === 0);
+  if (sampled.at(-1) !== valid.at(-1)) sampled.push(valid.at(-1));
+  return sampled.map((point,index) => {
+    const x = 45 + (Number(point.longitude) - bounds.minLon) / bounds.lonSpan * 910;
+    const y = 220 - (Number(point.latitude) - bounds.minLat) / bounds.latSpan * 190;
+    return `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+}
+function applyTimelineHeroZoom() {
+  const svg = $("timelineHeroMapSvg"), map = $("timelineHeroMap");
+  if (!svg || !map) return;
+  const zoom = Math.max(1,Math.min(DRIVE_TIMELINE_MAP_MAX_ZOOM,driveTimelineMapZoom));
+  driveTimelineMapZoom = zoom;
+  const width = 1000 / zoom, height = 250 / zoom;
+  const maxPanX = Math.max(0,(1000-width)/2), maxPanY = Math.max(0,(250-height)/2);
+  driveTimelineMapPanX = Math.max(-maxPanX,Math.min(maxPanX,driveTimelineMapPanX));
+  driveTimelineMapPanY = Math.max(-maxPanY,Math.min(maxPanY,driveTimelineMapPanY));
+  svg.setAttribute("viewBox",`${(500+driveTimelineMapPanX-width/2).toFixed(2)} ${(125+driveTimelineMapPanY-height/2).toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)}`);
+  map.classList.toggle("is-zoomed",zoom > 1);
+  setText("timelineMapZoomLevel",`${Number.isInteger(zoom) ? zoom : zoom.toFixed(1)}×`);
+  document.querySelectorAll("[data-timeline-map-zoom]").forEach(button => {
+    button.disabled = button.dataset.timelineMapZoom === "out" ? zoom <= 1 : zoom >= DRIVE_TIMELINE_MAP_MAX_ZOOM;
+  });
+}
+function changeTimelineHeroZoom(direction) {
+  driveTimelineMapZoom = Math.max(1,Math.min(DRIVE_TIMELINE_MAP_MAX_ZOOM,driveTimelineMapZoom + (direction === "in" ? .5 : -.5)));
+  if (driveTimelineMapZoom === 1) { driveTimelineMapPanX = 0; driveTimelineMapPanY = 0; }
+  applyTimelineHeroZoom();
+}
+async function hydrateTimelineHero(driveEvents) {
+  const token = ++driveTimelineHeroToken;
+  const routes = (await Promise.all(driveEvents.slice(0,8).map(async event => {
+    const fallback = fallbackTimelineRoutePoints(event.drive);
+    const points = await Promise.race([
+      timelineRoutePointsForDrive(event.drive),
+      new Promise(resolve => window.setTimeout(() => resolve(fallback),8000))
+    ]);
+    return { event,points:Array.isArray(points) ? points : fallback };
+  }))).filter(route => route.points.length >= 2);
+  if (token !== driveTimelineHeroToken) return;
+  const routeGroup = $("timelineHeroRoutes"), empty = $("timelineHeroEmpty");
+  if (!routeGroup || !empty) return;
+  empty.hidden = routes.length > 0;
+  if (!routes.length) { routeGroup.innerHTML = ""; return; }
+  const allPoints = routes.flatMap(route => route.points).filter(point => Number.isFinite(Number(point.latitude)) && Number.isFinite(Number(point.longitude)));
+  const latitudes = allPoints.map(point => Number(point.latitude)), longitudes = allPoints.map(point => Number(point.longitude));
+  const minLat = Math.min(...latitudes), maxLat = Math.max(...latitudes), minLon = Math.min(...longitudes), maxLon = Math.max(...longitudes);
+  const bounds = { minLat:minLat - Math.max(.001,(maxLat-minLat)*.08), minLon:minLon - Math.max(.001,(maxLon-minLon)*.08), latSpan:Math.max(.002,(maxLat-minLat)*1.16), lonSpan:Math.max(.002,(maxLon-minLon)*1.16) };
+  const colors = ["#ff563d","#ff8a42","#c65cff","#8857ff","#3d9cff","#ef4fc8"];
+  routeGroup.innerHTML = routes.map((route,index) => {
+    const path = timelineHeroPath(route.points,bounds);
+    const last = route.points.at(-1), markerX = 45 + (Number(last.longitude)-bounds.minLon)/bounds.lonSpan*910, markerY = 220-(Number(last.latitude)-bounds.minLat)/bounds.latSpan*190;
+    const selected = route.event.id === driveTimelineSelectedEventId;
+    const muted = driveTimelineSelectedEventId && !selected;
+    return `<g class="timeline-hero-route${selected ? " is-selected" : ""}${muted ? " is-muted" : ""}" data-hero-event="${escapeHtml(route.event.id)}" style="--route-color:${colors[index % colors.length]}"><path class="timeline-hero-route-glow" d="${path}"/><path class="timeline-hero-route-line" d="${path}"/><circle class="timeline-hero-route-marker" cx="${markerX.toFixed(1)}" cy="${markerY.toFixed(1)}" r="4"/></g>`;
+  }).join("");
+  routeGroup.querySelectorAll("[data-hero-event]").forEach(route => route.addEventListener("click",() => {
+    if (performance.now() < driveTimelineSuppressRouteClickUntil) return;
+    selectTimelineEvent(route.dataset.heroEvent);
+  }));
+  applyTimelineHeroZoom();
+}
+function applyTimelineSelection() {
+  document.querySelectorAll("[data-timeline-event]").forEach(row => row.classList.toggle("is-selected",row.dataset.timelineEvent === driveTimelineSelectedEventId));
+  const selectedDriveId = driveTimelineSelectedEventId?.startsWith("drive:") ? driveTimelineSelectedEventId : null;
+  document.querySelectorAll("[data-hero-event]").forEach(route => {
+    const selected = route.dataset.heroEvent === selectedDriveId;
+    route.classList.toggle("is-selected",selected);
+    route.classList.toggle("is-muted",Boolean(selectedDriveId) && !selected);
+  });
+}
+function selectTimelineEvent(eventId) {
+  driveTimelineSelectedEventId = eventId;
+  applyTimelineSelection();
 }
 function renderDriveTimeline() {
   const container = $("driveTimelineContent");
   if (!container) return;
   const events = buildDriveTimelineEvents(driveTimelineDays);
+  const visibleEvents = events.slice(0,driveTimelineVisibleCount);
   const groups = new Map();
-
-  events.forEach(event => {
-    const key = event.at.toLocaleDateString("en-CA");
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(event);
-  });
-
-  const drives = events.filter(event => event.type === "drive");
-  const charges = events.filter(event => event.type === "charge");
-  const songs = events.filter(event => event.type === "song");
-  const miles = drives.reduce((sum, event) => sum + (Number(event.drive?.miles) || 0), 0);
-
-  setText("timelineDriveCount", drives.length, "0");
-  setText("timelineMiles", Math.round(miles * 10) / 10, "0");
-  setText("timelineChargeCount", charges.length, "0");
-  setText("timelineSongCount", songs.length, "0");
-
+  visibleEvents.forEach(event => { const key = event.at.toLocaleDateString("en-CA"); if (!groups.has(key)) groups.set(key,[]); groups.get(key).push(event); });
+  const drives = events.filter(event => event.type === "drive"), charges = events.filter(event => event.type === "charge"), songs = events.filter(event => event.type === "song");
+  const miles = drives.reduce((sum,event) => sum + (Number(event.drive?.miles) || 0),0);
+  if (!events.some(event => event.id === driveTimelineSelectedEventId)) driveTimelineSelectedEventId = drives[0]?.id || events[0]?.id || null;
+  setText("timelineDriveCount",drives.length,"0");
+  setText("timelineMiles",Math.round(miles * 10) / 10,"0");
+  setText("timelineChargeCount",charges.length,"0");
+  setText("timelineSongCount",songs.length,"0");
+  setText("timelineHeroRange",`${timelineRangeLabel(driveTimelineDays)} route field`);
+  setText("timelineHeroJourneyCount",`${drives.length} route${drives.length === 1 ? "" : "s"}`);
+  setText("timelineHeroUpdated",driveTimelineLastUpdatedAt ? `Updated ${timelineTimeLabel(driveTimelineLastUpdatedAt)}` : "Latest available data");
+  renderTimelineGlance(events);
+  void hydrateTimelineHero(drives);
   if (!events.length) {
     container.innerHTML = `<div class="empty-state"><h3>No timeline activity in this range</h3><p>Try a longer range, or refresh JourneyDeck after your next journey.</p></div>`;
     return;
   }
-
-  container.innerHTML = [...groups.entries()].map(([dateKey, dayEvents]) => {
-    const day = dayEvents[0].at;
-    const heading = day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-    return `
-      <section class="drive-timeline-day" data-timeline-date="${escapeHtml(dateKey)}">
-        <div class="drive-timeline-day-heading"><span>${escapeHtml(heading)}</span><small>${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}</small></div>
-        <div class="drive-timeline-day-events">${dayEvents.map(timelineEventMarkup).join("")}</div>
-      </section>`;
+  const timelineDaysMarkup = [...groups.entries()].map(([dateKey,dayEvents]) => {
+    const heading = dayEvents[0].at.toLocaleDateString([],{weekday:"long",month:"long",day:"numeric"});
+    return `<section class="drive-timeline-day" data-timeline-date="${escapeHtml(dateKey)}"><div class="drive-timeline-day-heading"><span>${escapeHtml(heading)}</span><small>${dayEvents.length} event${dayEvents.length === 1 ? "" : "s"}</small></div><div class="drive-timeline-day-events">${dayEvents.map(timelineEventMarkup).join("")}</div></section>`;
   }).join("");
-
+  const remaining = Math.max(0,events.length-visibleEvents.length);
+  const loadMoreMarkup = remaining ? `<div class="timeline-load-more"><span>Showing ${visibleEvents.length} of ${events.length} events</span><button id="timelineLoadMore" class="secondary-button" type="button">Load ${Math.min(DRIVE_TIMELINE_PAGE_SIZE,remaining)} more</button></div>` : events.length > DRIVE_TIMELINE_PAGE_SIZE ? `<div class="timeline-load-more is-complete"><span>All ${events.length} events loaded</span></div>` : "";
+  container.innerHTML = timelineDaysMarkup + loadMoreMarkup;
   void hydrateTimelineRoutePreviews();
-
-  container.querySelectorAll("[data-timeline-drive]").forEach(button => {
-    button.addEventListener("click", () => {
-      const drive = state.drives.find(item => String(item.id) === button.dataset.timelineDrive);
-      if (drive) openDriveModal(drive);
-    });
+  container.querySelectorAll("[data-timeline-event]").forEach(row => {
+    const select = () => selectTimelineEvent(row.dataset.timelineEvent);
+    row.addEventListener("click",event => { if (!event.target.closest("[data-timeline-drive]")) select(); });
+    row.addEventListener("keydown",event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); } });
   });
+  container.querySelectorAll("[data-timeline-select]").forEach(button => button.addEventListener("click",event => { event.stopPropagation(); selectTimelineEvent(button.dataset.timelineSelect); }));
+  container.querySelectorAll("[data-timeline-drive]").forEach(button => button.addEventListener("click",event => { event.stopPropagation(); const drive = state.drives.find(item => String(item.id) === button.dataset.timelineDrive); if (drive) openDriveModal(drive); }));
+  $("timelineLoadMore")?.addEventListener("click",() => { driveTimelineVisibleCount += DRIVE_TIMELINE_PAGE_SIZE; renderDriveTimeline(); });
 }
 function setDriveTimelineLoading(active) {
-  const region = $("view-timeline");
+  const region = $("view-timeline"), status = $("timelineLiveStatus")?.parentElement;
   if (!region) return;
-  if (active) {
-    region.classList.add("driveos-loading-region");
-    region.setAttribute("aria-busy", "true");
-    region.dataset.loadingLabel = "Loading Journey Timeline\u2026";
-  } else {
-    region.classList.remove("driveos-loading-region");
-    region.removeAttribute("aria-busy");
-    delete region.dataset.loadingLabel;
-  }
+  status?.classList.toggle("is-refreshing",active);
+  setText("timelineLiveStatus",active ? "Updating" : timelineLocalhost() && state.drives?.some(drive => String(drive.id).startsWith("timeline-demo")) ? "Live demo data" : "Live data");
+  if (active && !driveTimelineLoaded) { region.classList.add("driveos-loading-region"); region.setAttribute("aria-busy","true"); region.dataset.loadingLabel = "Loading Journey Timeline\u2026"; }
+  else { region.classList.remove("driveos-loading-region"); region.removeAttribute("aria-busy"); delete region.dataset.loadingLabel; }
+}
+async function refreshDriveTimelineLiveData() {
+  setDriveTimelineLoading(true);
+  try {
+    await Promise.allSettled([loadVehicle(),loadSpotify(),loadCharging(),loadDashboardDrives()]);
+    ensureTimelineLocalDemoData();
+    driveTimelineLastUpdatedAt = new Date();
+    driveTimelineLoaded = true;
+    renderDriveTimeline();
+  } finally { setDriveTimelineLoading(false); }
+}
+function startDriveTimelineLiveUpdates() {
+  if (driveTimelineRefreshTimer) return;
+  driveTimelineRefreshTimer = window.setInterval(() => {
+    if (document.hidden || !$("view-timeline")?.classList.contains("active-view")) return;
+    void refreshDriveTimelineLiveData();
+  },60000);
+  window.setInterval(() => {
+    if (!$("view-timeline")?.classList.contains("active-view")) return;
+    setText("timelineLocalTime",new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}));
+  },30000);
 }
 async function loadDriveTimeline() {
   if (driveTimelineLoadPromise) return driveTimelineLoadPromise;
@@ -1781,30 +1998,68 @@ async function loadDriveTimeline() {
     try {
       const jobs = [];
       if (!driveLibraryFullyLoaded) jobs.push(loadDrives());
-      if (!Array.isArray(state.chargingSessions)) jobs.push(loadCharging());
-      if (!Array.isArray(state.spotifyRecent)) jobs.push(loadSpotify());
+      if (!state.chargingSessions?.length) jobs.push(loadCharging());
+      if (!state.spotifyRecent?.length) jobs.push(loadSpotify());
+      if (!state.vehicle) jobs.push(loadVehicle());
       if (jobs.length) await Promise.allSettled(jobs);
+      ensureTimelineLocalDemoData();
+      driveTimelineLastUpdatedAt = new Date();
       driveTimelineLoaded = true;
       renderDriveTimeline();
-    } finally {
-      setDriveTimelineLoading(false);
-      driveTimelineLoadPromise = null;
-    }
+      startDriveTimelineLiveUpdates();
+    } finally { setDriveTimelineLoading(false); driveTimelineLoadPromise = null; }
   })();
   return driveTimelineLoadPromise;
 }
-
-document.querySelectorAll("[data-timeline-days]").forEach(button => {
-  button.addEventListener("click", () => {
-    driveTimelineDays = Number(button.dataset.timelineDays) || 7;
-    document.querySelectorAll("[data-timeline-days]").forEach(item => item.classList.toggle("active", item === button));
-    renderDriveTimeline();
-  });
+document.querySelectorAll("[data-timeline-days]").forEach(button => button.addEventListener("click",() => {
+  driveTimelineDays = Number(button.dataset.timelineDays) || 7;
+  document.querySelectorAll("[data-timeline-days]").forEach(item => item.classList.toggle("active",item === button));
+  driveTimelineSelectedEventId = null;
+  driveTimelineVisibleCount = DRIVE_TIMELINE_PAGE_SIZE;
+  driveTimelineMapZoom = 1;
+  driveTimelineMapPanX = 0;
+  driveTimelineMapPanY = 0;
+  renderDriveTimeline();
+}));
+document.querySelectorAll("[data-timeline-map-zoom]").forEach(button => button.addEventListener("click",() => changeTimelineHeroZoom(button.dataset.timelineMapZoom)));
+$("timelineHeroMap")?.addEventListener("wheel",event => {
+  const nextZoom = Math.max(1,Math.min(DRIVE_TIMELINE_MAP_MAX_ZOOM,driveTimelineMapZoom + (event.deltaY < 0 ? .5 : -.5)));
+  if (nextZoom === driveTimelineMapZoom) return;
+  event.preventDefault();
+  driveTimelineMapZoom = nextZoom;
+  if (driveTimelineMapZoom === 1) { driveTimelineMapPanX = 0; driveTimelineMapPanY = 0; }
+  applyTimelineHeroZoom();
+},{ passive:false });
+$("timelineHeroMap")?.addEventListener("pointerdown",event => {
+  const map = $("timelineHeroMap");
+  if (!map || driveTimelineMapZoom <= 1 || event.button !== 0 || event.target.closest(".timeline-map-zoom-controls")) return;
+  driveTimelineMapDrag = { pointerId:event.pointerId, startX:event.clientX, startY:event.clientY, panX:driveTimelineMapPanX, panY:driveTimelineMapPanY, moved:false };
+  map.setPointerCapture(event.pointerId);
+  map.classList.add("is-panning");
+  event.preventDefault();
 });
-document.querySelector('.nav-button[data-view="timeline"]')?.addEventListener("click", () => { void loadDriveTimeline(); });
-document.addEventListener("journeydeck:viewchange", event => {
-  if (event.detail?.view === "timeline") void loadDriveTimeline();
+$("timelineHeroMap")?.addEventListener("pointermove",event => {
+  const map = $("timelineHeroMap"), drag = driveTimelineMapDrag;
+  if (!map || !drag || drag.pointerId !== event.pointerId) return;
+  const dx = event.clientX-drag.startX, dy = event.clientY-drag.startY;
+  if (Math.abs(dx)+Math.abs(dy) > 4) drag.moved = true;
+  driveTimelineMapPanX = drag.panX-dx*(1000/driveTimelineMapZoom)/Math.max(1,map.clientWidth);
+  driveTimelineMapPanY = drag.panY-dy*(250/driveTimelineMapZoom)/Math.max(1,map.clientHeight);
+  applyTimelineHeroZoom();
+  event.preventDefault();
 });
+const finishTimelineMapDrag = event => {
+  const map = $("timelineHeroMap"), drag = driveTimelineMapDrag;
+  if (!map || !drag || drag.pointerId !== event.pointerId) return;
+  if (drag.moved) driveTimelineSuppressRouteClickUntil = performance.now()+250;
+  if (map.hasPointerCapture(event.pointerId)) map.releasePointerCapture(event.pointerId);
+  map.classList.remove("is-panning");
+  driveTimelineMapDrag = null;
+};
+$("timelineHeroMap")?.addEventListener("pointerup",finishTimelineMapDrag);
+$("timelineHeroMap")?.addEventListener("pointercancel",finishTimelineMapDrag);
+document.querySelector('.nav-button[data-view="timeline"]')?.addEventListener("click",() => { void loadDriveTimeline(); });
+document.addEventListener("journeydeck:viewchange",event => { if (event.detail?.view === "timeline") void loadDriveTimeline(); });
 function locationContains(value, query) {
   const terms = String(query || "")
     .toLocaleLowerCase()
@@ -2021,6 +2276,10 @@ async function loadMusicStats() {
   try {
     const data = await getJson("/api/music/stats");
     setText("musicTotalPlays", data.totalPlays, "0");
+    if (window.DriveOSMusicDashboard) {
+      window.DriveOSMusicDashboard.render(data, state.drives, state.spotifyRecent);
+      return;
+    }
 
     const rankedRow = (item, rowClass, body) => item.spotifyUrl
       ? `<a class="rank-row ${rowClass} rank-row-link" href="${escapeHtml(item.spotifyUrl)}" target="_blank" rel="noopener noreferrer" aria-label="Open ${escapeHtml(item.track || item.artist || "item")} on Spotify">${body}</a>`

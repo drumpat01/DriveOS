@@ -1,12 +1,18 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Worker } from "node:worker_threads";
+import type { AtlasPatternReviewInput, AtlasPlaceLabelInput } from "./atlas-durable-state.js";
 import type { AtlasBootstrap, AtlasMapFeature, AtlasMapResponse, AtlasPattern } from "./types.js";
+
+type DurableState = {
+  persistPlaceLabel(input: AtlasPlaceLabelInput, updatedAtUtc: string): Promise<void>;
+  persistPatternReview(input: AtlasPatternReviewInput, updatedAtUtc: string): Promise<void>;
+};
 
 export class AtlasStore {
   private timer?: NodeJS.Timeout;
   private rebuilding?: Promise<void>;
   private readonly mapCache = new Map<string, AtlasMapResponse>();
-  constructor(private readonly database: DatabaseSync, private readonly householdId: string, private readonly databasePath: string, private readonly root: string) {}
+  constructor(private readonly database: DatabaseSync, private readonly householdId: string, private readonly databasePath: string, private readonly root: string, private readonly durableState?: DurableState) {}
 
   close() { if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.mapCache.clear(); }
 
@@ -84,8 +90,9 @@ export class AtlasStore {
     this.timer = setTimeout(() => { this.timer = undefined; void this.rebuildNow(); }, delayMs);
   }
 
-  savePlace(input: { placeId: string; name: string; category: string; latitude?: number; longitude?: number; radiusFeet?: number }) {
+  async savePlace(input: AtlasPlaceLabelInput) {
     const now = new Date().toISOString();
+    if (this.durableState) await this.durableState.persistPlaceLabel(input, now);
     this.database.prepare(`INSERT INTO atlas_place_labels(place_id,name,category,latitude,longitude,radius_feet,updated_at_utc) VALUES(?,?,?,?,?,?,?)
       ON CONFLICT(place_id) DO UPDATE SET name=excluded.name,category=excluded.category,latitude=excluded.latitude,longitude=excluded.longitude,radius_feet=excluded.radius_feet,updated_at_utc=excluded.updated_at_utc`).run(input.placeId, input.name, input.category, input.latitude ?? null, input.longitude ?? null, input.radiusFeet || 200, now);
     const bootstrap = this.bootstrap();
@@ -97,9 +104,10 @@ export class AtlasStore {
     this.scheduleRebuild(); return { saved: true, updatedAtUtc: now };
   }
 
-  reviewPattern(id: string, status: "confirmed" | "dismissed", type?: string, customName?: string) {
+  async reviewPattern(id: string, status: "confirmed" | "dismissed", type?: string, customName?: string) {
     const existing = this.database.prepare("SELECT id FROM atlas_pattern_candidates WHERE id=?").get(id); if (!existing) return null;
     const now = new Date().toISOString();
+    if (this.durableState) await this.durableState.persistPatternReview({ id, status, type, customName }, now);
     this.database.prepare("INSERT INTO atlas_pattern_reviews(id,status,type,custom_name,updated_at_utc) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,type=excluded.type,custom_name=excluded.custom_name,updated_at_utc=excluded.updated_at_utc").run(id, status, type || null, customName || null, now);
     const bootstrap = this.bootstrap(); if (bootstrap) { bootstrap.patterns = this.patterns(10).items; this.patchBootstrap(bootstrap); }
     this.scheduleRebuild(); return { saved: true, id, status, updatedAtUtc: now };
