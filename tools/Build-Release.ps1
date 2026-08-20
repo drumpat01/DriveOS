@@ -49,14 +49,14 @@ $Csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 $DesktopSources = @(Get-ChildItem (Join-Path $Stage 'desktop') -Filter '*.cs' -File | Sort-Object Name)
 $CompilerArguments = @(
     '/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/checked+', '/warn:4',
-    "/win32icon:`"$(Join-Path $Stage 'JourneyDeck.ico')`"",
-    "/out:`"$(Join-Path $Stage 'DriveOS.exe')`"",
+    "/win32icon:$(Join-Path $Stage 'JourneyDeck.ico')",
+    "/out:$(Join-Path $Stage 'DriveOS.exe')",
     '/reference:System.dll', '/reference:System.Core.dll', '/reference:System.Drawing.dll',
     '/reference:System.Windows.Forms.dll',
-    "/reference:`"$(Join-Path $Stage 'Microsoft.Web.WebView2.Core.dll')`"",
-    "/reference:`"$(Join-Path $Stage 'Microsoft.Web.WebView2.WinForms.dll')`""
+    "/reference:$(Join-Path $Stage 'Microsoft.Web.WebView2.Core.dll')",
+    "/reference:$(Join-Path $Stage 'Microsoft.Web.WebView2.WinForms.dll')"
 )
-$CompilerArguments += @($DesktopSources | ForEach-Object { "`"$($_.FullName)`"" })
+$CompilerArguments += @($DesktopSources | ForEach-Object { $_.FullName })
 
 & $Csc @CompilerArguments
 $CompileExitCode = $LASTEXITCODE

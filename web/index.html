@@ -15,11 +15,11 @@
   <link rel="preconnect" href="https://unpkg.com" crossorigin>
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://i.scdn.co" crossorigin>
-  <link rel="stylesheet" href="/styles.css?v=6.0.1-release-3">
+  <link rel="stylesheet" href="/styles.css?v=6.0.1-release-10">
   <link rel="stylesheet" href="/beta-theme.css?v=6.0.1">
-  <link rel="stylesheet" href="/beta-theme-v2.css?v=6.0.1-atlas-home-3">
+  <link rel="stylesheet" href="/beta-theme-v2.css?v=6.0.1-timeline-map-2">
   <link rel="stylesheet" href="/reference-dashboard.css?v=6.0.1">
-  <link rel="stylesheet" href="/moments.css?v=6.0.1-durable-moments-6">
+  <link rel="stylesheet" href="/moments.css?v=6.0.1-durable-moments-7">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -97,7 +97,7 @@
       <nav class="main-nav" aria-label="JourneyDeck">
         <button class="nav-button active" data-view="dashboard"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h5v-5h3v5h5v-9.5"/></svg></span><span class="nav-desktop-label">Overview</span><span class="nav-mobile-label">Home</span></button>
         <button class="nav-button nav-button-live" data-view="live"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.25"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.7 4.7a10.3 10.3 0 0 0 0 14.6M19.3 4.7a10.3 10.3 0 0 1 0 14.6"/></svg></span><span class="nav-live-dot" aria-hidden="true"></span><span>Live</span></button>
-        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17.5 9.5 8l5 5L19 5.5"/><circle cx="5" cy="17.5" r="2"/><circle cx="9.5" cy="8" r="2"/><circle cx="14.5" cy="13" r="2"/><circle cx="19" cy="5.5" r="2"/></svg></span><span>Moments</span></button>
+        <button class="nav-button" data-view="drives"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 17.5 9.5 8l5 5L19 5.5"/><circle cx="5" cy="17.5" r="2"/><circle cx="9.5" cy="8" r="2"/><circle cx="14.5" cy="13" r="2"/><circle cx="19" cy="5.5" r="2"/></svg></span><span>Memories</span></button>
         <button class="nav-button nav-secondary" data-view="graph"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3.5 6.5 5-2.5 7 2.5 5-2.5v13.5l-5 2.5-7-2.5-5 2.5z"/><path d="M8.5 4v13.5M15.5 6.5V20"/></svg></span><span>Atlas</span></button>
         <button class="nav-button nav-secondary" data-view="timeline"><span class="nav-mobile-icon" aria-hidden="true">&#x25F4;</span><span>Timeline</span></button>
         <button class="nav-button nav-secondary" data-view="music"><span class="nav-mobile-icon" aria-hidden="true">&#x266B;</span><span>Music</span></button>
@@ -106,6 +106,11 @@
         <button id="sidebarSearchButton" class="nav-button nav-secondary sidebar-search-button" type="button"><span class="nav-mobile-icon" aria-hidden="true">&#x2315;</span><span>Search</span></button>
         <button class="nav-button mobile-more-button" type="button" data-mobile-menu aria-expanded="false" aria-controls="mobileMoreMenu"><span class="nav-mobile-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg></span><span>More</span></button>
       </nav>
+
+      <div class="music-sidebar-poster" aria-hidden="true">
+        <img src="/assets/moments/sidebar-sunset.jpg?v=6.0.1" alt="">
+        <span>EVERY MILE HAS A SONG</span>
+      </div>
 
       <div class="topbar-right">
         <button id="desktopMobilePreviewButton" class="desktop-mobile-preview" type="button" hidden>Mobile Preview</button>
@@ -548,12 +553,12 @@
         </div>
       </section>
 
-      <!-- MOMENTS -->
+      <!-- MEMORIES -->
       <section id="view-drives" class="view moments-page" aria-labelledby="momentsPageTitle">
         <header class="moments-heading">
-          <h2 id="momentsPageTitle">MOMENTS</h2>
+          <h2 id="momentsPageTitle">MEMORIES</h2>
           <p>The chapters made from your journeys.</p>
-          <nav class="moments-hierarchy" aria-label="Moments hierarchy">
+          <nav class="moments-hierarchy" aria-label="Memories hierarchy">
             <span class="active">MEMORIES</span><i aria-hidden="true">&#x2192;</i><span>COLLECTIONS</span><i aria-hidden="true">&#x2192;</i><span>JOURNEYS</span>
           </nav>
         </header>
@@ -946,100 +951,188 @@
       </section>
 
       <!-- MUSIC -->
-      <section id="view-music" class="view">
-        <div class="page-heading">
-          <div>
-            <div class="section-label spotify-label">LISTENING ARCHIVE</div>
-            <h2>Music</h2>
-            <p>Your JourneyDeck listening archive is powered by Spotify. Historical plays previously imported from Last.fm are preserved.</p>
+      <section id="view-music" class="view music-life-view">
+        <section class="music-life-hero" aria-labelledby="musicLifeHeading">
+          <div class="music-life-hero-art" aria-hidden="true">
+            <img id="musicHeroArtwork" alt="" loading="eager" decoding="async">
+            <div class="music-vinyl-ring"></div>
           </div>
-          <div class="big-number"><span id="musicTotalPlays">--</span><small> archived plays</small></div>
-        </div>
-
-        <div class="analytics-grid">
-          <article class="panel analytics-panel">
-            <div class="panel-heading"><h3>Top tracks</h3><span class="muted">local archive</span></div>
-            <div id="topTracks" class="rank-list"></div>
-          </article>
-
-          <article class="panel analytics-panel">
-            <div class="panel-heading"><h3>Top artists</h3><span class="muted">artist credits</span></div>
-            <div id="topArtists" class="rank-list"></div>
-          </article>
-        </div>
-
-        <article class="panel music-location-panel">
-          <div class="panel-heading music-location-heading">
-            <div>
-              <div class="section-label spotify-label">MUSIC BY LOCATION</div>
-              <h3>What do you hear around a place?</h3>
-              <p class="panel-description">Search a city, neighborhood, street, or destination from Tessie journey locations.</p>
+          <div class="music-life-title">
+            <span class="music-life-eyebrow">THE ROAD SOUNDS BETTER WITH MUSIC</span>
+            <h2 id="musicLifeHeading"><span>YOUR LIFE HAS A</span><em>SOUNDTRACK</em></h2>
+            <div class="music-waveform" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
             </div>
           </div>
-
-          <form id="musicLocationForm" class="music-location-form">
-            <label class="music-location-search">
-              <span class="search-icon" aria-hidden="true">&#x2315;</span>
-              <input id="musicLocationQuery" type="search" autocomplete="off" spellcheck="false" placeholder="Try Arlington, East Lamar, home&#x2026;" aria-label="Search music by location">
-            </label>
-
-            <label class="music-location-window">
-              <span>Near start/end</span>
-              <select id="musicLocationMinutes">
-                <option value="10">10 min</option>
-                <option value="15" selected>15 min</option>
-                <option value="30">30 min</option>
-              </select>
-            </label>
-
-            <button class="primary-button" type="submit">Find music</button>
-          </form>
-
-          <div id="musicLocationStatus" class="music-location-status">
-            JourneyDeck uses Tessie start/end addresses for text searches. Click a journey map for GPS-precise song locations on that journey.
-          </div>
-
-          <div id="musicLocationResults" class="music-location-results"></div>
-        </article>
-
-        <article class="panel timeline-panel">
-          <div class="panel-heading">
-            <div>
-              <div class="section-label">14 DAYS</div>
-              <h3>Listening timeline</h3>
+          <article class="music-player" aria-label="Spotify player">
+            <div class="music-player-kicker"><i aria-hidden="true"></i><span id="musicPlayerKicker">Spotify player</span></div>
+            <strong id="musicPlayerTrack">Connect Spotify to play</strong>
+            <span id="musicPlayerArtist">Your current song will appear here</span>
+            <span id="musicPlayerAlbum" class="music-player-album">JourneyDeck Web Player</span>
+            <div class="music-player-progress" aria-hidden="true"><i id="musicPlayerProgress"></i></div>
+            <div class="music-player-times"><span id="musicPlayerElapsed">0:00</span><span id="musicPlayerDuration">0:00</span></div>
+            <div class="music-player-controls">
+              <button type="button" data-music-player="shuffle" aria-label="Toggle shuffle" title="Shuffle">&#x2928;</button>
+              <button type="button" data-music-player="previous" aria-label="Previous song" title="Previous">&#x23EE;</button>
+              <button class="music-player-primary" type="button" data-music-player="toggle" aria-label="Play" title="Play or pause"><span id="musicPlayerToggleIcon">&#x25B6;</span></button>
+              <button type="button" data-music-player="next" aria-label="Next song" title="Next">&#x23ED;</button>
+              <button type="button" data-music-player="favorite" aria-label="Save current song" title="Save song">&#x2661;</button>
             </div>
-          </div>
-          <div id="musicTimeline" class="timeline"></div>
-        </article>
+            <div class="music-player-device-row">
+              <span id="musicPlayerStatus" role="status">Checking Spotify playback&#x2026;</span>
+              <button id="musicPlayerReconnect" class="music-player-connect" type="button" hidden>Enable playback</button>
+            </div>
+          </article>
+        </section>
+
+        <section class="music-metric-grid" aria-label="Music journey totals">
+          <article class="music-metric"><span class="music-metric-icon road">&#x25B2;</span><div><small>Miles with music</small><strong id="musicMilesWithMusic">--</strong><span>all time</span></div></article>
+          <article class="music-metric"><span class="music-metric-icon headphones">&#x266C;</span><div><small>Listening hours</small><strong id="musicListeningHours">--</strong><span>from archived plays</span></div></article>
+          <article class="music-metric"><span class="music-metric-icon note">&#x266B;</span><div><small>Songs on the road</small><strong id="musicSongsOnRoad">--</strong><span>matched to journeys</span></div></article>
+          <article class="music-metric"><span class="music-metric-icon flame">&#x2666;</span><div><small>Current streak</small><strong id="musicCurrentStreak">--</strong><span>days with music</span></div></article>
+        </section>
+
+        <section class="music-feature-grid">
+          <article class="music-card music-soundtrack-card">
+            <header><h3>Today's soundtrack</h3><span id="musicTodayCount">Latest Spotify plays</span></header>
+            <div id="topTracks" class="music-album-strip" aria-live="polite"></div>
+          </article>
+          <article class="music-card music-artists-card">
+            <header><h3>Top artists</h3><span>All-time archive</span></header>
+            <div id="topArtists" class="music-artist-list" aria-live="polite"></div>
+          </article>
+        </section>
+
+        <section class="music-insight-grid">
+          <article class="music-card music-mileage-card">
+            <header><h3>Tour mileage</h3><span>This week</span></header>
+            <strong id="musicTourMileage">--</strong><small>miles with a soundtrack</small>
+            <div class="music-mileage-route" aria-hidden="true"><i></i></div>
+            <div id="musicTourChange" class="music-change">Comparing recent journeys&#x2026;</div>
+          </article>
+          <article class="music-card music-mood-card">
+            <header><h3>Mood by mile</h3><span>When you listen</span></header>
+            <div id="musicMoodBar" class="music-mood-bar"><i></i><i></i><i></i><i></i></div>
+            <div id="musicMoodLegend" class="music-mood-legend"></div>
+            <small class="music-card-footnote">Your real listening rhythm across the day</small>
+          </article>
+          <article class="music-card music-cities-card">
+            <header><h3>Cities &amp; sound</h3><span>Journey matches</span></header>
+            <div id="musicCities" class="music-city-list"></div>
+          </article>
+          <article class="music-card music-intensity-card">
+            <header><h3>Listening intensity</h3><span>Last 7 days</span></header>
+            <div id="musicIntensityChart" class="music-intensity-chart" role="img" aria-label="Daily listening intensity"></div>
+          </article>
+          <article class="music-card music-week-card">
+            <header><h3>This week in sound</h3><span>Spotify plays</span></header>
+            <div id="musicWeekBars" class="music-week-bars" aria-label="Spotify plays by day"></div>
+            <div class="music-week-total"><strong id="musicWeekTotal">--</strong><span>plays this week</span><em id="musicWeekChange">--</em></div>
+          </article>
+        </section>
+        <span id="musicTotalPlays" hidden>--</span>
+        <div id="musicTimeline" hidden></div>
       </section>
 
       <!-- DRIVE TIMELINE -->
       <section id="view-timeline" class="view">
-        <div class="page-heading drive-timeline-heading">
+        <div class="page-heading drive-timeline-heading timeline-cinematic-heading">
           <div>
             <div class="section-label">VEHICLE JOURNAL</div>
             <h2>Journey Timeline</h2>
-            <p>One chronological view of journeys, charging, music, and the places where Eloise spent time.</p>
+            <p>Every journey, charge, song, and stop—assembled from the latest JourneyDeck data.</p>
           </div>
-          <div class="timeline-range-control" role="group" aria-label="Timeline range">
-            <button class="secondary-button timeline-range-button" type="button" data-timeline-days="1">Today</button>
-            <button class="secondary-button timeline-range-button active" type="button" data-timeline-days="7">7 days</button>
-            <button class="secondary-button timeline-range-button" type="button" data-timeline-days="30">30 days</button>
+          <div class="timeline-heading-actions">
+            <div class="timeline-live-status" role="status"><i aria-hidden="true"></i><span id="timelineLiveStatus">Live data</span></div>
+            <div class="timeline-range-control" role="group" aria-label="Timeline range">
+              <button class="secondary-button timeline-range-button" type="button" data-timeline-days="1">Today</button>
+              <button class="secondary-button timeline-range-button active" type="button" data-timeline-days="7">7 days</button>
+              <button class="secondary-button timeline-range-button" type="button" data-timeline-days="30">30 days</button>
+            </div>
           </div>
         </div>
 
-        <section class="panel drive-timeline-summary-panel">
-          <div class="drive-timeline-summary">
-            <div><span>Journeys</span><strong id="timelineDriveCount">--</strong></div>
-            <div><span>Miles</span><strong id="timelineMiles">--</strong></div>
-            <div><span>Charging</span><strong id="timelineChargeCount">--</strong></div>
-            <div><span>Songs</span><strong id="timelineSongCount">--</strong></div>
-          </div>
-        </section>
+        <div class="drive-timeline-summary" aria-label="Timeline summary">
+          <article class="timeline-summary-card timeline-summary-journeys"><i aria-hidden="true">&#x2197;</i><div><span>Journeys</span><strong id="timelineDriveCount">--</strong></div></article>
+          <article class="timeline-summary-card timeline-summary-miles"><i aria-hidden="true">&#x26A1;</i><div><span>Miles</span><strong id="timelineMiles">--</strong></div></article>
+          <article class="timeline-summary-card timeline-summary-charging"><i aria-hidden="true">&#x26A1;</i><div><span>Charging</span><strong id="timelineChargeCount">--</strong></div></article>
+          <article class="timeline-summary-card timeline-summary-songs"><i aria-hidden="true">&#x266B;</i><div><span>Songs</span><strong id="timelineSongCount">--</strong></div></article>
+        </div>
 
-        <section id="driveTimelineContent" class="drive-timeline-content" aria-live="polite">
-          <div class="empty-state"><h3>Loading timeline&hellip;</h3><p>JourneyDeck is combining your recent vehicle and music activity.</p></div>
-        </section>
+        <div class="timeline-cinematic-grid">
+          <main class="timeline-cinematic-main">
+            <section class="timeline-hero-panel" aria-labelledby="timelineHeroTitle">
+              <div class="timeline-hero-toolbar">
+                <div><span id="timelineHeroRange">7-day route field</span><strong id="timelineHeroTitle">Live journey map</strong></div>
+                <div class="timeline-hero-meta"><span id="timelineHeroJourneyCount">-- routes</span><span id="timelineHeroUpdated">Updating&hellip;</span></div>
+              </div>
+              <div id="timelineHeroMap" class="timeline-hero-map">
+                <svg id="timelineHeroMapSvg" viewBox="0 0 1000 250" preserveAspectRatio="none" role="img" aria-label="Routes travelled during the selected period">
+                  <defs>
+                    <pattern id="timelineMapGrid" width="38" height="38" patternUnits="userSpaceOnUse"><path d="M38 0H0V38" fill="none" stroke="rgba(126,75,168,.12)" stroke-width="1"/></pattern>
+                    <filter id="timelineHeroGlow" x="-25%" y="-25%" width="150%" height="150%"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                  </defs>
+                  <rect width="1000" height="250" fill="url(#timelineMapGrid)"/>
+                  <g class="timeline-map-roadwork" aria-hidden="true">
+                    <path d="M-40 215C120 190 125 88 286 121S470 218 620 134 830 45 1040 74"/>
+                    <path d="M-20 62C130 95 210 30 350 72s182 128 336 78 184-92 350-43"/>
+                    <path d="M168-20c20 76-10 120 48 182s122 48 150 108M650-20c-30 74 20 118 82 145s102 84 90 145"/>
+                  </g>
+                  <g id="timelineHeroRoutes" class="timeline-hero-routes"></g>
+                </svg>
+                <div id="timelineHeroEmpty" class="timeline-hero-empty" hidden>No route geometry is available for this period.</div>
+                <div class="timeline-map-zoom-controls" role="group" aria-label="Journey map zoom">
+                  <button type="button" data-timeline-map-zoom="out" aria-label="Zoom journey map out">&minus;</button>
+                  <span id="timelineMapZoomLevel" aria-live="polite">1&times;</span>
+                  <button type="button" data-timeline-map-zoom="in" aria-label="Zoom journey map in">+</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="driveTimelineContent" class="drive-timeline-content" aria-live="polite">
+              <div class="empty-state"><h3>Loading timeline&hellip;</h3><p>JourneyDeck is combining your recent vehicle and music activity.</p></div>
+            </section>
+          </main>
+
+          <aside class="timeline-glance" aria-label="Selected range at a glance">
+            <div class="timeline-glance-heading"><span id="timelineGlanceRange">7 days</span><strong>At a glance</strong></div>
+
+            <article class="timeline-glance-card timeline-total-card">
+              <span>Total miles</span>
+              <div class="timeline-ring timeline-miles-ring">
+                <svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="49"/><circle id="timelineMilesRing" class="timeline-ring-value" cx="60" cy="60" r="49"/></svg>
+                <div><strong id="timelineGlanceMiles">--</strong><small>MILES</small></div>
+              </div>
+              <div class="timeline-card-caption"><span id="timelineDailyAverage">-- mi daily average</span><strong id="timelineMilesPace">--</strong></div>
+              <div class="timeline-meter"><i id="timelineMilesMeter"></i></div>
+            </article>
+
+            <article class="timeline-glance-card timeline-energy-card">
+              <span>Energy &amp; charging</span>
+              <div class="timeline-energy-layout">
+                <div class="timeline-energy-gauge"><i id="timelineBatteryGauge"></i><div><strong id="timelineBatteryValue">--%</strong><small>BATTERY</small></div></div>
+                <div class="timeline-energy-copy"><strong id="timelineEnergyAdded">-- kWh</strong><span id="timelineChargeSummary">No charges</span></div>
+              </div>
+            </article>
+
+            <article class="timeline-glance-card timeline-road-card">
+              <span>Time on the road</span>
+              <div class="timeline-road-bar"><i id="timelineDrivingBar"></i><b id="timelineStoppedBar"></b></div>
+              <div class="timeline-road-split"><div><strong id="timelineDrivingShare">--%</strong><span id="timelineDrivingTime">-- driving</span></div><div><strong id="timelineStoppedShare">--%</strong><span id="timelineStoppedTime">-- stopped</span></div></div>
+            </article>
+
+            <article class="timeline-glance-card timeline-artist-card">
+              <span>Top artist</span>
+              <div id="timelineTopArtist" class="timeline-top-artist"><div class="timeline-artist-placeholder" aria-hidden="true">&#x266B;</div><div><strong>Listening data unavailable</strong><small>No plays in this range</small></div></div>
+              <svg class="timeline-artist-wave" viewBox="0 0 220 32" preserveAspectRatio="none" aria-hidden="true"><path d="M0 25 C24 19 35 8 54 17 S90 27 112 13 150 9 166 16 196 7 220 11"/></svg>
+            </article>
+
+            <article class="timeline-glance-card timeline-conditions-card">
+              <span>Live conditions</span>
+              <div class="timeline-conditions-grid"><div><strong id="timelineOutsideTemp">--&deg;F</strong><small>Outside</small></div><div><strong id="timelineVehicleState">--</strong><small>Vehicle</small></div><div><strong id="timelineLocalTime">--</strong><small>Local time</small></div></div>
+            </article>
+          </aside>
+        </div>
       </section>
 
       <!-- STATISTICS -->
@@ -1540,6 +1633,7 @@
   <script src="/features/drives.js?v=6.0.1"></script>
   <script src="/features/replay.js?v=6.0.1"></script>
   <script src="/features/music.js?v=6.0.1"></script>
+  <script src="/features/music-dashboard.js?v=6.0.1-music-life-1"></script>
   <script src="/features/share-cards.js?v=6.0.1"></script>
   <script src="/features/command-palette.js?v=6.0.1"></script>
   <script src="/features/dashboard-customization.js?v=6.0.1"></script>
@@ -1551,6 +1645,6 @@
   <script src="/features/moments.js?v=6.0.1-durable-moments-15"></script>
   <script src="/features/mobility-graph.js?v=6.0.1-atlas-journey-lod-1"></script>
   <script src="/features/reference-dashboard.js?v=6.0.1"></script>
-  <script src="/app.js?v=6.0.1-memory-collection-flow-4"></script>
+  <script src="/app.js?v=6.0.1-music-life-1"></script>
 </body>
 </html>

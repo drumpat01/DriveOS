@@ -55,11 +55,11 @@
 .moments-heading h2 {
   margin: 0;
   color: #fff9f4;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
   font-size: clamp(2.45rem, 3.2vw, 3.5rem);
-  font-weight: 400;
-  line-height: .98;
-  letter-spacing: .015em;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: .055em;
 }
 
 .moments-heading p {

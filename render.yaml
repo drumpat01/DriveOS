@@ -5,19 +5,24 @@ services:
     plan: standard
     region: ohio
     branch: main
-    autoDeployTrigger: commit
+    autoDeployTrigger: checksPass
     healthCheckPath: /readyz
-    disk:
-      name: atlas-production-data
-      mountPath: /var/data/atlas
-      sizeGB: 1
+    maxShutdownDelaySeconds: 60
     envVars:
       - key: DRIVEOS_ATLAS_NODE_CANARY
         value: "true"
       - key: DRIVEOS_NODE_DATABASE
-        value: /var/data/atlas/journeydeck.db
+        value: /tmp/driveos/atlas/journeydeck.db
       - key: DRIVEOS_NODE_DATA_ROOT
-        value: /var/data/atlas
+        value: /tmp/driveos/atlas
+      - key: DRIVEOS_ATLAS_DURABLE_TURSO
+        value: "true"
+      - key: DRIVEOS_ATLAS_LEGACY_DATABASE
+        value: /var/data/atlas/journeydeck.db
+      - key: DRIVEOS_COMPATIBILITY_STARTUP_TIMEOUT_MS
+        value: "180000"
+      - key: DRIVEOS_COMPATIBILITY_READY_SUCCESSES
+        value: "2"
       - key: DRIVEOS_NODE_HOUSEHOLD_ID
         value: household_primary
       - key: DRIVEOS_NODE_PUBLIC_ORIGIN

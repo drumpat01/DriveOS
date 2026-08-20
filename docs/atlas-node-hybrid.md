@@ -73,6 +73,10 @@ Inspect `GET /readyz` or authenticated `GET /api/atlas/snapshot/status` for `rea
 - `DRIVEOS_NODE_SESSION_SECRET`
 - `DRIVEOS_NODE_LEGACY_UPSTREAM`
 - `DRIVEOS_NODE_LEGACY_READ_ONLY`
+- `DRIVEOS_ATLAS_DURABLE_TURSO`
+- `DRIVEOS_ATLAS_LEGACY_DATABASE` (temporary migration source; ignored when absent)
+- `DRIVEOS_COMPATIBILITY_STARTUP_TIMEOUT_MS`
+- `DRIVEOS_COMPATIBILITY_READY_SUCCESSES`
 - `DRIVEOS_NODE_LOG_LEVEL`
 - `DRIVEOS_NODE_TEST_AUTH` (automated tests only)
 - `DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS` (private local proxy only; never enable on a public origin)
@@ -103,8 +107,10 @@ The authenticated real-sized local snapshot returned one 38.9 KB transferred boo
 
 Set both `DRIVEOS_NODE_PUBLIC_ORIGIN` and `DRIVEOS_PUBLIC_URL` to the canary's exact HTTPS origin. Copy the existing production secrets into the canary through Render; never add their values to the blueprint. A first boot is ready only after `/readyz` reports an active Atlas snapshot.
 
-Before promotion, verify login, `/api/atlas/bootstrap`, label and pattern writes, `/api/atlas/snapshot/status`, dashboard, Replay, Share Card, Timeline, Collections, Data Health, and Wife Mode on the canary. Promotion is a separate reviewed change that moves the Node entrypoint and persistent disk settings into `render.yaml`. Rollback leaves `render.yaml` on the PowerShell entrypoint or reverts that promotion commit; the current production service and Turso are not modified by canary creation.
+Before promotion, verify login, `/api/atlas/bootstrap`, label and pattern writes, `/api/atlas/snapshot/status`, dashboard, Replay, Share Card, Timeline, Collections, Data Health, and Wife Mode on the canary. Rollback leaves `render.yaml` on the previous Node release; Turso remains the durable source of truth.
 
-The hosted runtime imports Turso when the persistent database is absent, then refreshes its canonical journey rows every 15 minutes. Each refresh uses count-verified read-only Turso queries, an ignored temporary JSON file that is deleted in `finally`, a single SQLite transaction, and an atomic snapshot rebuild. A failed refresh retains the last valid snapshot. `render.yaml` promotes the same Node front door and persistent-disk boundary to `journeydeck.me`; reverting that promotion returns the production service to its PowerShell entrypoint without changing Turso.
+The production runtime builds an ephemeral SQLite read cache from Turso at startup, then refreshes canonical journey rows every 15 minutes. Atlas place labels and pattern reviews persist to Turso before the local cache changes, so a deploy never depends on an attached disk. Each refresh count-checks its source, reconciles durable Atlas decisions, updates SQLite in one transaction, and atomically rebuilds the snapshot. A failed refresh retains the last valid snapshot.
+
+`render-start.sh` starts the PowerShell compatibility service first and requires consecutive successful `/healthz` probes before refreshing Atlas or launching the public Node listener. Render probes Node's `/readyz`, which remains `503` until both the Atlas snapshot and compatibility boundary are ready. Because production has no persistent disk, Render keeps the previous revision serving until that composite gate passes, then drains it for up to 60 seconds.
 
 The Node front door owns the complete `/api/atlas/*` namespace. Any unrecognized or retired Atlas route returns `410` and is never forwarded to PowerShell. The internal PowerShell process remains only as a non-Atlas compatibility boundary while those screens are migrated.
