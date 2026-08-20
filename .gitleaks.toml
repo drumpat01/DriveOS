@@ -1,0 +1,10 @@
+title = "JourneyDeck Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic scheduled-sync token used only by WebRequest.Tests.ps1"
+condition = "AND"
+paths = ['''tests/WebRequest\.Tests\.ps1''']
+regexes = ['''0123456789abcdef0123456789abcdef''']
