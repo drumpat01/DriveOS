@@ -5,7 +5,21 @@
     .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
   const number = value => (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
   const artworkUrl = song => window.DriveOSComponents?.songArtwork?.url(song) || "";
-  const trackUri = song => song?.uri || song?.trackUri || (song?.trackId ? `spotify:track:${song.trackId}` : "");
+  const spotifyTrackId = value => {
+    const text = String(value || "").trim();
+    const uriMatch = text.match(/^spotify:track:([A-Za-z0-9]+)$/i);
+    if (uriMatch) return uriMatch[1];
+    try {
+      const url = new URL(text);
+      if (url.hostname === "open.spotify.com") return url.pathname.match(/^\/track\/([A-Za-z0-9]+)/i)?.[1] || "";
+    } catch { /* The value may be a Spotify URI instead of a URL. */ }
+    return "";
+  };
+  const trackUri = song => {
+    const explicit = song?.uri || song?.trackUri || song?.spotifyUrl || "";
+    const id = spotifyTrackId(explicit) || String(song?.trackId || "").trim();
+    return id ? `spotify:track:${id}` : "";
+  };
   const formatTime = milliseconds => {
     const seconds = Math.max(0, Math.floor((Number(milliseconds) || 0) / 1000));
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -27,8 +41,6 @@
   let positionMs = 0;
   let durationMs = 0;
   let positionCapturedAt = 0;
-  let embedController = null;
-  let embedApiPromise = null;
   let embeddedUri = "";
   const spotifyTokenKey = "journeydeck-spotify-player-token-v1";
   const spotifyPkceKey = "journeydeck-spotify-pkce-v1";
@@ -230,48 +242,26 @@
     void syncSpotifyEmbed();
   }
 
-  function loadSpotifyEmbedApi() {
-    if (embedApiPromise) return embedApiPromise;
-    embedApiPromise = new Promise((resolve, reject) => {
-      window.onSpotifyIframeApiReady = resolve;
-      const script = document.createElement("script");
-      script.src = "https://open.spotify.com/embed/iframe-api/v1";
-      script.async = true;
-      script.onerror = () => reject(new Error("Spotify's embedded player could not be loaded."));
-      document.body.appendChild(script);
-    });
-    return embedApiPromise;
-  }
-
-  async function loadEmbeddedSong(uri, play = false) {
-    if (!uri) { setText("musicPlayerStatus", "No Spotify track is available to embed yet."); return; }
-    if (embedController) {
-      if (embeddedUri !== uri) embedController.loadEntity(uri);
-      embeddedUri = uri;
-      if (play) embedController.play();
-      return;
-    }
+  function loadEmbeddedSong(uri, selected = false) {
+    const id = spotifyTrackId(uri);
+    if (!id) { setText("musicPlayerStatus", "No Spotify track is available to embed yet."); return; }
     const host = byId("musicSpotifyEmbed");
     if (!host) return;
-    try {
-      const api = await loadSpotifyEmbedApi();
-      api.createController(host, { width: "100%", height: 152, uri }, controller => {
-        embedController = controller;
-        embeddedUri = uri;
-        controller.addListener("ready", () => setText("musicPlayerStatus", "Spotify is ready inside JourneyDeck."));
-        controller.addListener("playback_started", () => setText("musicPlayerStatus", "Playing inside this JourneyDeck tab."));
-        controller.addListener("playback_update", event => {
-          if (event?.data?.isBuffering) setText("musicPlayerStatus", "Buffering Spotify inside JourneyDeck…");
-        });
-        if (play) controller.play();
-      });
-    } catch (error) {
-      setText("musicPlayerStatus", error.message || "Spotify's embedded player is unavailable.");
-    }
+    if (embeddedUri === uri && host.querySelector("iframe")) return;
+    const iframe = document.createElement("iframe");
+    iframe.src = `https://open.spotify.com/embed/track/${encodeURIComponent(id)}?utm_source=generator&theme=0`;
+    iframe.title = "Spotify embedded player";
+    iframe.loading = "eager";
+    iframe.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture";
+    iframe.setAttribute("allowfullscreen", "");
+    host.replaceChildren(iframe);
+    embeddedUri = uri;
+    setText("musicPlayerStatus", selected ? "Track loaded — press play above to listen in JourneyDeck." : "Spotify is ready inside JourneyDeck.");
   }
 
   function syncSpotifyEmbed() {
-    const song = recent.find(item => trackUri(item));
+    const candidates = [...recent, ...(stats?.topTracks || []), ...allJourneySongs()];
+    const song = candidates.find(item => trackUri(item));
     return loadEmbeddedSong(song ? trackUri(song) : "");
   }
 
@@ -543,5 +533,5 @@
   }
 
   bind();
-  window.DriveOSMusicDashboard = Object.freeze({ render, setRecent(items) { recent = Array.isArray(items) ? items : []; renderHeroFallback(); renderSoundtrack(); } });
+  window.DriveOSMusicDashboard = Object.freeze({ render, setRecent(items) { recent = Array.isArray(items) ? items : []; renderHeroFallback(); renderSoundtrack(); syncSpotifyEmbed(); } });
 })();
