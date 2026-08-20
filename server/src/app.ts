@@ -105,7 +105,14 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     } catch { return { authorized: false, playbackReady: false, missingScopes: [] }; }
   });
   app.post("/api/spotify/player/connect", async (_req, reply) => {
-    if (process.platform !== "win32") return reply.code(501).send({ error: "Spotify desktop authorization is available only on the JourneyDeck host computer." });
+    if (cfg.mode === "web" || process.platform !== "win32") {
+      if (!cfg.spotifyClientId) return reply.code(503).send({ error: "Spotify playback is not configured." });
+      return {
+        mode: "pkce",
+        clientId: cfg.spotifyClientId,
+        redirectUri: `${cfg.publicOrigin.replace(/\/$/, "")}/spotify-callback`
+      };
+    }
     try { return { started: startSpotifyPlaybackAuthorization(cfg.root) }; }
     catch { return reply.code(503).send({ error: "Spotify authorization could not be opened." }); }
   });
@@ -116,7 +123,7 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   // has no route for. The wildcard handler resolves each request against the
   // same fixed root, so atomic web asset updates become visible immediately.
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
-  app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
   app.addHook("onClose", async () => { store.close(); database.close(); });
   return { app, database, store, config: cfg };

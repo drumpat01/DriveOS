@@ -26,6 +26,9 @@
   let positionMs = 0;
   let durationMs = 0;
   let positionCapturedAt = 0;
+  const spotifyTokenKey = "journeydeck-spotify-player-token-v1";
+  const spotifyPkceKey = "journeydeck-spotify-pkce-v1";
+  const spotifyScopes = ["streaming", "user-read-email", "user-read-private", "user-read-playback-state", "user-modify-playback-state", "user-library-modify"];
 
   function setText(id, value) {
     const element = byId(id);
@@ -226,10 +229,81 @@
     renderWeek();
   }
 
+  function storedSpotifyToken() {
+    try { return JSON.parse(localStorage.getItem(spotifyTokenKey) || "null"); }
+    catch { return null; }
+  }
+
+  function saveSpotifyToken(data, previousRefreshToken = "") {
+    const token = {
+      accessToken: String(data.access_token || ""),
+      refreshToken: String(data.refresh_token || previousRefreshToken || ""),
+      expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
+      scope: String(data.scope || spotifyScopes.join(" "))
+    };
+    localStorage.setItem(spotifyTokenKey, JSON.stringify(token));
+    return token;
+  }
+
+  async function refreshSpotifyToken(token) {
+    if (!token?.refreshToken || !token?.clientId) throw new Error("Spotify playback needs to be enabled again.");
+    const response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: token.clientId, grant_type: "refresh_token", refresh_token: token.refreshToken })
+    });
+    if (!response.ok) throw new Error("Spotify authorization expired — enable playback again.");
+    const refreshed = saveSpotifyToken(await response.json(), token.refreshToken);
+    refreshed.clientId = token.clientId;
+    localStorage.setItem(spotifyTokenKey, JSON.stringify(refreshed));
+    return refreshed;
+  }
+
   async function session() {
+    let token = storedSpotifyToken();
+    if (token) {
+      if (Date.now() >= Number(token.expiresAt || 0) - 120000) token = await refreshSpotifyToken(token);
+      currentToken = token.accessToken || "";
+      return { accessToken: currentToken, playbackReady: Boolean(currentToken), missingScopes: [] };
+    }
     const data = await window.DriveOSApi.get("/api/spotify/player/session");
     currentToken = data.accessToken || "";
     return data;
+  }
+
+  function base64Url(bytes) {
+    let binary = "";
+    bytes.forEach(byte => { binary += String.fromCharCode(byte); });
+    return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+  }
+
+  async function beginBrowserAuthorization(config) {
+    const verifier = base64Url(crypto.getRandomValues(new Uint8Array(64)));
+    const state = base64Url(crypto.getRandomValues(new Uint8Array(24)));
+    const challenge = base64Url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+    sessionStorage.setItem(spotifyPkceKey, JSON.stringify({ verifier, state, clientId: config.clientId, redirectUri: config.redirectUri, createdAt: Date.now() }));
+    const parameters = new URLSearchParams({ client_id: config.clientId, response_type: "code", redirect_uri: config.redirectUri, scope: spotifyScopes.join(" "), code_challenge_method: "S256", code_challenge: challenge, state });
+    location.assign(`https://accounts.spotify.com/authorize?${parameters}`);
+  }
+
+  async function finishBrowserAuthorization() {
+    if (location.pathname !== "/spotify-callback") return false;
+    const query = new URLSearchParams(location.search);
+    const transaction = JSON.parse(sessionStorage.getItem(spotifyPkceKey) || "null");
+    if (query.get("error")) throw new Error(`Spotify authorization failed: ${query.get("error")}`);
+    if (!transaction || !query.get("code") || query.get("state") !== transaction.state || Date.now() - transaction.createdAt > 10 * 60 * 1000) throw new Error("Spotify authorization could not be verified. Please try again.");
+    const response = await fetch("https://accounts.spotify.com/api/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: transaction.clientId, grant_type: "authorization_code", code: query.get("code"), redirect_uri: transaction.redirectUri, code_verifier: transaction.verifier })
+    });
+    if (!response.ok) throw new Error("Spotify did not accept the playback authorization.");
+    const token = saveSpotifyToken(await response.json());
+    token.clientId = transaction.clientId;
+    localStorage.setItem(spotifyTokenKey, JSON.stringify(token));
+    sessionStorage.removeItem(spotifyPkceKey);
+    history.replaceState({}, "", "/#music");
+    return true;
   }
 
   function loadSdk() {
@@ -345,7 +419,11 @@
     const button = byId("musicPlayerReconnect");
     if (button) { button.disabled = true; button.textContent = "Opening Spotify\u2026"; }
     try {
-      await window.DriveOSApi.post("/api/spotify/player/connect", {});
+      const authorization = await window.DriveOSApi.post("/api/spotify/player/connect", {});
+      if (authorization.mode === "pkce") {
+        await beginBrowserAuthorization(authorization);
+        return;
+      }
       setText("musicPlayerStatus", "Approve Spotify playback in the opened browser");
       const deadline = Date.now() + 5 * 60 * 1000;
       while (Date.now() < deadline) {
@@ -384,7 +462,15 @@
       } catch (error) { setText("musicPlayerStatus", error.message || "Spotify control unavailable"); }
     }));
     document.addEventListener("journeydeck:viewchange", event => { if (event.detail?.view === "music") void initializePlayer(); });
-    if (location.hash === "#music") setTimeout(() => { void initializePlayer(); }, 0);
+    if (location.pathname === "/spotify-callback") {
+      setText("musicPlayerStatus", "Finishing Spotify authorization…");
+      void finishBrowserAuthorization().then(() => initializePlayer()).catch(error => {
+        history.replaceState({}, "", "/#music");
+        setText("musicPlayerStatus", error.message || "Spotify authorization failed");
+        const reconnect = byId("musicPlayerReconnect");
+        if (reconnect) reconnect.hidden = false;
+      });
+    } else if (location.hash === "#music") setTimeout(() => { void initializePlayer(); }, 0);
   }
 
   bind();
