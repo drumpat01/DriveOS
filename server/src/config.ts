@@ -22,6 +22,8 @@ export const config = Object.freeze({
   atlasLegacyDatabasePath: process.env.DRIVEOS_ATLAS_LEGACY_DATABASE || "",
   publicOrigin: process.env.DRIVEOS_NODE_PUBLIC_ORIGIN || "https://superredux.tail1babbd.ts.net:8443",
   scheduledSyncSecret: process.env.DRIVEOS_SPOTIFY_SYNC_SECRET || "",
+  spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
+  mode: process.env.DRIVEOS_MODE || "desktop",
   allowTestAuth: process.env.DRIVEOS_NODE_TEST_AUTH === "true",
   trustTailscaleHeaders: process.env.DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS === "true",
   householdId: process.env.DRIVEOS_NODE_HOUSEHOLD_ID || "household_primary"

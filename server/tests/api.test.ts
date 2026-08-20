@@ -66,6 +66,19 @@ test("Atlas API enforces auth, origin, roles, and durable serialized writes", as
   } finally { await runtime.app.close().catch(() => {}); fixture.cleanup(); }
 });
 
+test("hosted Spotify playback returns a browser PKCE authorization configuration", async () => {
+  const fixture = fixtureDatabase(), publicOrigin = "https://journeydeck.me";
+  const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", publicOrigin, mode: "web", spotifyClientId: "spotify-test-client" });
+  try {
+    const response = await runtime.app.inject({ method: "POST", url: "/api/spotify/player/connect", headers: { ...auth, origin: publicOrigin }, payload: {} });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(JSON.parse(response.body), { mode: "pkce", clientId: "spotify-test-client", redirectUri: "https://journeydeck.me/spotify-callback" });
+    const callback = await runtime.app.inject({ method: "GET", url: "/spotify-callback?code=test&state=test", headers: auth });
+    assert.equal(callback.statusCode, 200, callback.body);
+    assert.match(String(callback.headers["content-type"]), /text\/html/);
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
 test("bootstrap is private, ETagged, compressed, and contains no journey archive", async () => {
   const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "" });
   try {
