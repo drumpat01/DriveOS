@@ -3,7 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "npm run check:server && npm run lint:server && npm run test:server && npm run test:atlas-performance",
+    "test": "npm run test:application && npm run test:e2e && npm run check:powershell && npm run check:secrets && npm run check:vulnerabilities",
+    "test:application": "npm run check:server && npm run lint:server && npm run test:server && npm run test:atlas-performance",
+    "test:e2e": "playwright test",
+    "check:powershell": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/Test-PSScriptAnalyzer.ps1",
+    "check:secrets": "gitleaks git --redact --no-banner --exit-code 1 .",
+    "check:vulnerabilities": "trivy fs --scanners vuln --include-dev-deps --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs node_modules --skip-dirs artifacts .",
     "build:server": "tsc -p server/tsconfig.json",
     "check:server": "tsc -p server/tsconfig.json --noEmit",
     "lint:server": "eslint \"server/**/*.ts\"",
@@ -23,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.5.0",
     "eslint": "^9.36.0",
     "tsx": "^4.20.5",
