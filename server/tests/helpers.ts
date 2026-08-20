@@ -11,5 +11,9 @@ export function fixtureDatabase() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "journeydeck-atlas-"));
   const filename = path.join(directory, "fixture.db");
   const database = openDatabase(filename); applyMigrations(database, root); seedRealisticAtlasFixture(database); rebuildAtlasSnapshot(database, "household_primary"); database.close();
-  return { filename, directory, cleanup: () => fs.rmSync(directory, { recursive: true, force: true }) };
+  return {
+    filename,
+    directory,
+    cleanup: () => fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  };
 }
