@@ -81,6 +81,7 @@ function makeDrive(index, overrides = {}) {
     efficiencyWhMi: 236,
     averageSpeed: 34,
     maxSpeed: 68,
+    autopilotMiles: Math.round((17.4 + (index % 4) * 2.3) * 10) / 10,
     soundtrack,
     songCount: soundtrack.length,
     ...overrides
@@ -188,7 +189,7 @@ const responses = {
   '/api/wife/drives': { today: { miles: 24.6, trips: 1 }, drives },
   '/api/wife/collections': { collections: mockCollections },
   '/api/music/stats': { totalPlays: 1427, topTracks, topArtists, daily: ['Mon','Tue','Wed','Thu','Fri','Sat','Sun','Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((label, index) => ({ label, count: 4 + ((index * 7) % 18) })) },
-  '/api/statistics': { periodDays: 30, driveCount: 38, totalMiles: 624.8, totalEnergyKWh: 147.3, totalBatteryUsed: 264, averageWhMi: 236, soundtrackSongs: 184 },
+  '/api/statistics': { periodDays: 30, driveCount: 10, totalMiles: 300, totalEnergyKWh: 58, totalBatteryUsed: 100, averageWhMi: 193, soundtrackSongs: 40, autopilotMiles: 203.9, autopilotEligibleMiles: 300, autopilotPercent: 68 },
   '/api/places': { places: [
     { location: '120 Demo Avenue', label: 'Studio', manualLabel: 'Studio', displayName: 'Studio', source: 'manual', uses: 8 },
     { location: '500 Sample Way', label: '', manualLabel: '', businessName: 'Demo Coffee', businessCategory: 'Coffee Shop', businessDistanceMeters: 18, displayName: 'Demo Coffee', source: 'foursquare', uses: 6 }

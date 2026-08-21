@@ -1523,6 +1523,7 @@ async function loadDrives() {
       state.drives = normalizeDriveCollection(data.drives);
       state.driveLibraryWindowDays = Number(data.windowDays) || 730;
       driveLibraryFullyLoaded = true;
+      window.DriveOSStatisticsDashboard?.render(state.statistics, state.drives, { fullLibrary: true });
       window.DriveOSFeatures.moments?.setJourneys(state.drives);
       window.DriveOSMusicDashboard?.render(null, state.drives, state.spotifyRecent);
 
@@ -1571,7 +1572,7 @@ document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("cli
   }
 });
 document.addEventListener("journeydeck:viewchange", event => {
-  if (event.detail?.view === "drives" && !driveLibraryFullyLoaded) {
+  if (["drives", "statistics"].includes(event.detail?.view) && !driveLibraryFullyLoaded) {
     void loadDrives();
   }
 });
@@ -2340,15 +2341,13 @@ async function loadMusicStats() {
 async function loadStatistics() {
   try {
     const data = await getJson("/api/statistics");
-
-    setText("statDriveCount", data.driveCount, "0");
-    setText("statMiles", data.totalMiles, "0");
-    setText("statEnergy", data.totalEnergyKWh, "0");
-    setText("statEfficiency", data.averageWhMi, "--");
-    setText("statBattery", data.totalBatteryUsed, "0");
-    setText("statSongs", data.soundtrackSongs, "0");
+    state.statistics = data;
+    window.DriveOSStatisticsDashboard?.render(data, state.drives, { fullLibrary: driveLibraryFullyLoaded });
+    return data;
   } catch (error) {
     console.error(error);
+    window.DriveOSStatisticsDashboard?.renderError(error);
+    return null;
   }
 }
 
@@ -3541,7 +3540,11 @@ dashboardWidgetsFeature = window.DriveOSFeatures.dashboardWidgets.create({
     openDrive: openDriveModal,
     openRecap: () => {
       showView("statistics");
-      setTimeout(() => document.querySelector(".monthly-recap-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 180);
+      setTimeout(() => {
+        const archive = $("statisticsMonthlyArchive");
+        if (archive?.hidden) $("statisticsMonthlyArchiveButton")?.click();
+        archive?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 180);
     }
   }
 });

@@ -109,12 +109,15 @@ try {
     Assert-Equal $musicStats.totalPlays 2 'Music total changed.'
     Assert-Equal $musicStats.topTracks[0].plays 2 'Top-track grouping changed.'
     Assert-Equal $musicStats.daily[-1].count 2 'Daily music grouping changed.'
-    $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3})
+    $driveStats = New-DriveOSDriveStats -Drives @([pscustomobject]@{miles=10;energyKWh=2.5;batteryUsed=5;songCount=3;autopilotMiles=7.2})
     Assert-Equal $driveStats.averageWhMi 250 'Drive efficiency changed.'
-    $rawDrive=[pscustomobject]@{started_at=100;ended_at=3700;starting_battery=80;ending_battery=70;odometer_distance=10;energy_used=2.5;starting_location='A';ending_location='B';starting_latitude=32;starting_longitude=-97;ending_latitude=33;ending_longitude=-98;tag='Test';driver_profile='Driver';average_speed=30;max_speed=60}
+    Assert-Equal $driveStats.autopilotMiles 7.2 'Autopilot mileage aggregation changed.'
+    Assert-Equal $driveStats.autopilotPercent 72 'Autopilot usage percentage changed.'
+    $rawDrive=[pscustomobject]@{started_at=100;ended_at=3700;starting_battery=80;ending_battery=70;odometer_distance=10;energy_used=2.5;autopilot_distance=7.2;starting_location='A';ending_location='B';starting_latitude=32;starting_longitude=-97;ending_latitude=33;ending_longitude=-98;tag='Test';driver_profile='Driver';average_speed=30;max_speed=60}
     $driveModel=ConvertTo-DriveOSDrive -Drive $rawDrive -Soundtrack @([pscustomobject]@{track='Song'}) -StartingLocation Home -EndingLocation Work
     Assert-Equal $driveModel.durationMinutes 60 'Drive duration changed.'
     Assert-Equal $driveModel.efficiencyWhMi 250 'Drive efficiency mapping changed.'
+    Assert-Equal $driveModel.autopilotMiles 7.2 'Tessie Autopilot distance mapping changed.'
     Assert-Equal $driveModel.songCount 1 'Drive soundtrack count changed.'
     $privateDrive=[pscustomobject]@{
         id='100-3700';startedAt='2026-08-08T22:00:00-05:00';dateLabel='Saturday, August 8'

@@ -133,7 +133,7 @@
         // Atlas and the dashboard do not need the multi-megabyte journey
         // library. Fetch it only while a library-backed view is visible; the
         // Journey Library and Timeline also request it when opened directly.
-        const libraryViewVisible = ["view-drives", "view-timeline"]
+        const libraryViewVisible = ["view-drives", "view-timeline", "view-statistics"]
           .some(id => document.getElementById?.(id)?.classList?.contains("active-view"));
         if (libraryViewVisible) {
           await tasks.loadDrives();

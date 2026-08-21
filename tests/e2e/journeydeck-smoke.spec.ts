@@ -85,3 +85,32 @@ test('Music page renders its cinematic hero and live archived play', async ({ pa
   await expect(page.locator('.music-metric-icon svg')).toHaveCount(4);
   await expect(page.locator('#topTracks [data-music-uri]').first()).toHaveAttribute('data-music-uri', /^spotify:track:/);
 });
+
+test('Statistics Option 1 renders live journey analysis and interactive ranges', async ({ page }) => {
+  await page.locator('.nav-button[data-view="statistics"]').click();
+
+  await expect(page).toHaveURL(/#statistics$/);
+  await expect(page.locator('#view-statistics .cinematic-page-heading h2')).toHaveText('STATISTICS');
+  await expect(page.locator('#statDriveCount')).toHaveText('10');
+  await expect(page.locator('#statMiles')).toHaveText('300.0');
+  await expect(page.locator('#statEfficiency')).toHaveText('193');
+  await expect(page.locator('#statEnergy')).toHaveText('58.0');
+  await expect(page.locator('#statBattery')).toHaveText('100');
+  await expect(page.locator('#statSongs')).toHaveText('40');
+  await expect(page.locator('#statisticsScore')).not.toHaveText('--');
+  await expect(page.locator('.statistics-kpi')).toHaveCount(7);
+  await expect(page.locator('#statAutopilot')).toHaveText('203.9');
+  await expect(page.locator('#statAutopilotShare')).toHaveText('68% of Tessie-recorded miles');
+  for (const metric of ['autopilot', 'journeys', 'miles', 'efficiency', 'energy', 'battery', 'songs']) {
+    await expect(page.locator(`[data-stat-spark="${metric}"] polyline`)).toHaveAttribute('points', /\d/);
+  }
+  await expect(page.locator('.statistics-comparison-row')).toHaveCount(4);
+  await expect(page.locator('#statisticsTrendChart .statistics-chart-line')).toHaveCount(2);
+
+  const weekly = page.getByRole('button', { name: 'Weekly' });
+  await weekly.click();
+  await expect(weekly).toHaveClass(/active/);
+
+  await page.getByRole('button', { name: /View monthly archive/ }).click();
+  await expect(page.locator('#statisticsMonthlyArchive')).toBeVisible();
+});
