@@ -21,6 +21,7 @@
   <link rel="stylesheet" href="/reference-dashboard.css?v=6.0.1">
   <link rel="stylesheet" href="/moments.css?v=6.0.1-durable-moments-7">
   <link rel="stylesheet" href="/page-headers.css?v=6.0.1-option-4">
+  <link rel="stylesheet" href="/statistics-dashboard.css?v=6.0.1-option-1">
 </head>
 <body>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
@@ -1142,27 +1143,72 @@
           </div>
         </div>
 
-        <div class="big-stats">
-          <article class="big-stat"><span>Journeys</span><strong id="statDriveCount">--</strong></article>
-          <article class="big-stat"><span>Miles</span><strong id="statMiles">--</strong></article>
-          <article class="big-stat"><span>Energy</span><strong><span id="statEnergy">--</span><small> kWh</small></strong></article>
-          <article class="big-stat"><span>Avg efficiency</span><strong><span id="statEfficiency">--</span><small> Wh/mi</small></strong></article>
-          <article class="big-stat"><span>Battery used</span><strong><span id="statBattery">--</span><small>%</small></strong></article>
-          <article class="big-stat"><span>Journey soundtrack plays</span><strong id="statSongs">--</strong></article>
-        </div>
+        <div class="statistics-dashboard" data-statistics-dashboard>
+          <div class="statistics-overview-grid">
+            <article class="statistics-panel statistics-score-panel" aria-labelledby="statisticsScoreHeading">
+              <h3 id="statisticsScoreHeading">YOUR DRIVING SCORE</h3>
+              <div class="statistics-score-gauge" id="statisticsScoreGauge" style="--score:0">
+                <div class="statistics-score-value"><strong id="statisticsScore">--</strong><span id="statisticsScoreLabel">Building your score</span></div>
+              </div>
+              <p id="statisticsScoreContext">Efficiency, consistency, and complete Tessie telemetry.</p>
+              <button id="statisticsScoreBreakdown" class="statistics-text-button" type="button" aria-expanded="false">Score breakdown</button>
+              <div id="statisticsScoreDetails" class="statistics-score-details" hidden></div>
+            </article>
 
+            <article class="statistics-panel statistics-trend-panel" aria-labelledby="statisticsTrendHeading">
+              <header class="statistics-panel-heading">
+                <div><h3 id="statisticsTrendHeading">MILES &amp; ENERGY OVER TIME</h3><div class="statistics-chart-legend"><span class="miles">Miles</span><span class="energy">Energy (kWh)</span></div></div>
+                <div class="statistics-range-tabs" role="group" aria-label="Statistics chart range">
+                  <button class="active" type="button" data-stat-range="daily">Daily</button>
+                  <button type="button" data-stat-range="weekly">Weekly</button>
+                  <button type="button" data-stat-range="monthly">Monthly</button>
+                </div>
+              </header>
+              <div class="statistics-chart-wrap">
+                <svg id="statisticsTrendChart" class="statistics-trend-chart" viewBox="0 0 760 290" preserveAspectRatio="none" role="img" aria-label="Miles and energy over time"></svg>
+              </div>
+            </article>
 
-        <article class="panel monthly-recap-panel">
-          <div class="panel-heading recap-heading">
-            <div>
-              <div class="section-label">MONTHLY RECAP</div>
-              <h3>Your month in JourneyDeck</h3>
-              <p class="panel-description">Driving, charging and Spotify together in one summary.</p>
-            </div>
-            <label class="recap-month-control"><span>Month</span><select id="recapMonthSelect"></select></label>
+            <article class="statistics-panel statistics-compare-panel" aria-labelledby="statisticsCompareHeading">
+              <h3 id="statisticsCompareHeading">COMPARED WITH PRIOR 30 DAYS</h3>
+              <div id="statisticsComparison" class="statistics-comparison-list"></div>
+              <button id="statisticsMonthlyArchiveButton" class="statistics-archive-button" type="button" aria-expanded="false">View monthly archive <span aria-hidden="true">&#x203A;</span></button>
+            </article>
           </div>
-          <div id="monthlyRecap" class="monthly-recap-content"></div>
-        </article>
+
+          <div class="statistics-kpi-grid" aria-label="Thirty-day driving totals">
+            <article class="statistics-kpi statistics-kpi-autopilot" data-stat-kpi="autopilot"><div class="statistics-kpi-heading"><span>AUTOPILOT</span><em id="statAutopilotChange">--</em></div><strong><span id="statAutopilot">--</span> <b>MI</b></strong><small id="statAutopilotShare">Loading Tessie usage…</small><svg data-stat-spark="autopilot" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="journeys"><div class="statistics-kpi-heading"><span>JOURNEYS</span><em id="statDriveCountChange">--</em></div><strong id="statDriveCount">--</strong><small>Total</small><svg data-stat-spark="journeys" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="miles"><div class="statistics-kpi-heading"><span>MILES</span><em id="statMilesChange">--</em></div><strong id="statMiles">--</strong><small>Total</small><svg data-stat-spark="miles" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="efficiency"><div class="statistics-kpi-heading"><span>EFFICIENCY</span><em id="statEfficiencyChange">--</em></div><strong><span id="statEfficiency">--</span></strong><small>Average Wh/mi</small><svg data-stat-spark="efficiency" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="energy"><div class="statistics-kpi-heading"><span>ENERGY</span><em id="statEnergyChange">--</em></div><strong><span id="statEnergy">--</span></strong><small>kWh used</small><svg data-stat-spark="energy" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="battery"><div class="statistics-kpi-heading"><span>BATTERY</span><em id="statBatteryChange">--</em></div><strong><span id="statBattery">--</span>%</strong><small>Total used</small><svg data-stat-spark="battery" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+            <article class="statistics-kpi" data-stat-kpi="songs"><div class="statistics-kpi-heading"><span>MUSIC</span><em id="statSongsChange">--</em></div><strong id="statSongs">--</strong><small>Soundtrack plays</small><svg data-stat-spark="songs" viewBox="0 0 180 48" aria-hidden="true"></svg></article>
+          </div>
+
+          <section class="statistics-story-strip" aria-label="Driving highlights">
+            <article class="statistics-highlight statistics-longest">
+              <div><span class="statistics-highlight-kicker">LONGEST JOURNEY</span><strong id="statisticsLongestMiles">--</strong><span id="statisticsLongestRoute">Waiting for journey data</span><small id="statisticsLongestDate">Last 30 days</small></div>
+              <svg id="statisticsLongestRouteArt" viewBox="0 0 300 130" preserveAspectRatio="none" aria-hidden="true"></svg>
+            </article>
+            <article class="statistics-highlight statistics-favorite-day">
+              <div><span class="statistics-highlight-kicker">FAVORITE DRIVING DAY</span><strong id="statisticsFavoriteDay">--</strong><span id="statisticsFavoriteAverage">Waiting for journey data</span><small id="statisticsFavoriteShare">Last 30 days</small></div>
+              <div id="statisticsWeekdayBars" class="statistics-weekday-bars" aria-label="Journeys by weekday"></div>
+            </article>
+            <article class="statistics-highlight statistics-streak">
+              <div><span class="statistics-highlight-kicker">DRIVING STREAK</span><strong id="statisticsStreakDays">--</strong><span id="statisticsStreakMessage">Your recent rhythm</span></div>
+              <div id="statisticsStreakTrack" class="statistics-streak-track" aria-label="Recent driving days"></div>
+            </article>
+          </section>
+
+          <article id="statisticsMonthlyArchive" class="panel monthly-recap-panel statistics-monthly-archive" hidden>
+            <div class="panel-heading recap-heading">
+              <div><div class="section-label">MONTHLY ARCHIVE</div><h3>Your month in JourneyDeck</h3><p class="panel-description">Driving, charging and Spotify together in one summary.</p></div>
+              <label class="recap-month-control"><span>Month</span><select id="recapMonthSelect"></select></label>
+            </div>
+            <div id="monthlyRecap" class="monthly-recap-content"></div>
+          </article>
+        </div>
       </section>
 
       <!-- OWNER DATA HEALTH -->
@@ -1631,6 +1677,7 @@
   <script src="/features/replay.js?v=6.0.1"></script>
   <script src="/features/music.js?v=6.0.1"></script>
   <script src="/features/music-dashboard.js?v=6.0.1-music-player-fix-1"></script>
+  <script src="/features/statistics-dashboard.js?v=6.0.1-option-1"></script>
   <script src="/features/share-cards.js?v=6.0.1"></script>
   <script src="/features/command-palette.js?v=6.0.1"></script>
   <script src="/features/dashboard-customization.js?v=6.0.1"></script>

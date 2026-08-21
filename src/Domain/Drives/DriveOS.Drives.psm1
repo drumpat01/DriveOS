@@ -57,6 +57,11 @@
     $miles=if($null -ne $Drive.odometer_distance){[math]::Round([double]$Drive.odometer_distance,1)}else{$null}
     $energy=if($null -ne $Drive.energy_used){[math]::Round([double]$Drive.energy_used,2)}else{$null}
     $efficiency=if($miles -and $miles -gt 0 -and $null -ne $energy){[math]::Round(($energy*1000)/$miles)}else{$null}
+    $AutopilotProperty = $Drive.PSObject.Properties['autopilot_distance']
+    $autopilotMiles = if ($AutopilotProperty -and $null -ne $AutopilotProperty.Value) {
+        [math]::Round([math]::Max(0,[double]$AutopilotProperty.Value),1)
+    }
+    else { $null }
     [pscustomobject]@{
         id="$($Drive.started_at)-$($Drive.ended_at)";startedAt=$start.ToString('o');endedAt=$end.ToString('o')
         dateLabel=$start.ToString('dddd, MMMM d');shortDateLabel=$start.ToString('ddd, MMM d');dateIso=$start.ToString('yyyy-MM-dd');dateNumeric=$start.ToString('M/d/yyyy')
@@ -64,7 +69,7 @@
         rawStartingLocation=$Drive.starting_location;rawEndingLocation=$Drive.ending_location;startingLatitude=$Drive.starting_latitude;startingLongitude=$Drive.starting_longitude
         endingLatitude=$Drive.ending_latitude;endingLongitude=$Drive.ending_longitude;tessieTag=$Drive.tag;driverProfile=$Drive.driver_profile
         durationMinutes=$duration;miles=$miles;startingBattery=$Drive.starting_battery;endingBattery=$Drive.ending_battery;batteryUsed=$battery
-        energyKWh=$energy;efficiencyWhMi=$efficiency;averageSpeed=$Drive.average_speed;maxSpeed=$Drive.max_speed;soundtrack=$CleanSoundtrack;songCount=$CleanSoundtrack.Count
+        energyKWh=$energy;efficiencyWhMi=$efficiency;averageSpeed=$Drive.average_speed;maxSpeed=$Drive.max_speed;autopilotMiles=$autopilotMiles;soundtrack=$CleanSoundtrack;songCount=$CleanSoundtrack.Count
     }
 }
 Export-ModuleMember -Function ConvertTo-DriveOSDrive

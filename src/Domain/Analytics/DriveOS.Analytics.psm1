@@ -31,14 +31,28 @@ function New-DriveOSMusicStats {
 function New-DriveOSDriveStats {
     param([object[]]$Drives=@(), [int]$PeriodDays=30)
     $miles=0.0; $energy=0.0; $battery=0; $songs=0
+    $autopilotMiles=0.0; $autopilotEligibleMiles=0.0; $autopilotKnown=$false
     foreach($drive in $Drives){
         if($null -ne $drive.miles){$miles += [double]$drive.miles}
         if($null -ne $drive.energyKWh){$energy += [double]$drive.energyKWh}
         if($null -ne $drive.batteryUsed){$battery += [int]$drive.batteryUsed}
         $songs += [int]$drive.songCount
+        $AutopilotProperty = $drive.PSObject.Properties['autopilotMiles']
+        if($AutopilotProperty -and $null -ne $AutopilotProperty.Value){
+            $autopilotKnown=$true
+            $autopilotMiles += [math]::Max(0,[double]$AutopilotProperty.Value)
+            if($null -ne $drive.miles){$autopilotEligibleMiles += [math]::Max(0,[double]$drive.miles)}
+        }
     }
     $efficiency=if($miles -gt 0 -and $energy -gt 0){[math]::Round(($energy*1000)/$miles)}else{$null}
-    [pscustomobject]@{periodDays=$PeriodDays;driveCount=$Drives.Count;totalMiles=[math]::Round($miles,1);totalEnergyKWh=[math]::Round($energy,2);totalBatteryUsed=$battery;averageWhMi=$efficiency;soundtrackSongs=$songs}
+    $autopilotPercent=if($autopilotKnown -and $autopilotEligibleMiles -gt 0){[math]::Round(($autopilotMiles/$autopilotEligibleMiles)*100)}else{$null}
+    [pscustomobject]@{
+        periodDays=$PeriodDays;driveCount=$Drives.Count;totalMiles=[math]::Round($miles,1);totalEnergyKWh=[math]::Round($energy,2)
+        totalBatteryUsed=$battery;averageWhMi=$efficiency;soundtrackSongs=$songs
+        autopilotMiles=if($autopilotKnown){[math]::Round($autopilotMiles,1)}else{$null}
+        autopilotEligibleMiles=if($autopilotKnown){[math]::Round($autopilotEligibleMiles,1)}else{$null}
+        autopilotPercent=$autopilotPercent
+    }
 }
 
 Export-ModuleMember -Function New-DriveOSMusicStats,New-DriveOSDriveStats
