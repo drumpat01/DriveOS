@@ -74,6 +74,8 @@ Inspect `GET /readyz` or authenticated `GET /api/atlas/snapshot/status` for `rea
 - `DRIVEOS_NODE_LEGACY_UPSTREAM`
 - `DRIVEOS_NODE_LEGACY_READ_ONLY`
 - `DRIVEOS_ATLAS_DURABLE_TURSO`
+- `JOURNEYDECK_RECORDER_DURABLE_TURSO` (store Recorder sessions and points in Turso)
+- `JOURNEYDECK_RECORDER_TOKEN` (private, high-entropy bearer key used only by the Recorder app)
 - `DRIVEOS_ATLAS_LEGACY_DATABASE` (temporary migration source; ignored when absent)
 - `DRIVEOS_COMPATIBILITY_STARTUP_TIMEOUT_MS`
 - `DRIVEOS_COMPATIBILITY_READY_SUCCESSES`

@@ -39,6 +39,14 @@ export function authenticateScheduledSync(req: FastifyRequest, expectedSecret: s
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
 
+export function authenticateRecorder(req: FastifyRequest, expectedToken: string) {
+  const authorization = String(req.headers.authorization || "");
+  const candidate = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (Buffer.byteLength(expectedToken) < 32 || !candidate || Buffer.byteLength(candidate) > 512) return false;
+  const provided = Buffer.from(candidate), expected = Buffer.from(expectedToken);
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
 function localToken(token: string, secret: string): Principal | null {
   try {
     const [version, payload, signature] = token.split("."); if (version !== "v1" || !payload || !signature || Buffer.byteLength(secret) < 32) return null;

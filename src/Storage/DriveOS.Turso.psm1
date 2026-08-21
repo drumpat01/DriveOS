@@ -344,7 +344,7 @@ function Set-DriveOSTursoIntegrationSyncRun {
 
 function Get-DriveOSTursoTessieDrives {
     param([Parameter(Mandatory=$true)]$Repository,[long]$FromEpoch)
-    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline') AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
+    $Rows = @(Invoke-DriveOSTursoQuery -Repository $Repository -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline','journeydeck_recorder') AND started_at_epoch >= ? ORDER BY started_at_epoch DESC,id;" -Args @($FromEpoch))
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
 }
 

@@ -1,0 +1,33 @@
+{
+  "name": "journeydeck-recorder",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~57.0.15",
+    "expo-crypto": "~57.0.1",
+    "expo-dev-client": "~57.0.14",
+    "expo-location": "~57.0.12",
+    "expo-secure-store": "~57.0.1",
+    "expo-sqlite": "~57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "expo-task-manager": "~57.0.12",
+    "react": "19.2.3",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit",
+    "doctor": "expo-doctor",
+    "build:ios:development": "eas build --platform ios --profile development",
+    "build:ios:preview": "eas build --platform ios --profile preview",
+    "build:ios:production": "eas build --platform ios --profile production",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}
