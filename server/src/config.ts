@@ -26,5 +26,7 @@ export const config = Object.freeze({
   mode: process.env.DRIVEOS_MODE || "desktop",
   allowTestAuth: process.env.DRIVEOS_NODE_TEST_AUTH === "true",
   trustTailscaleHeaders: process.env.DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS === "true",
-  householdId: process.env.DRIVEOS_NODE_HOUSEHOLD_ID || "household_primary"
+  householdId: process.env.DRIVEOS_NODE_HOUSEHOLD_ID || "household_primary",
+  recorderToken: process.env.JOURNEYDECK_RECORDER_TOKEN || "",
+  recorderDurableTurso: process.env.JOURNEYDECK_RECORDER_DURABLE_TURSO === "true" || process.env.DRIVEOS_ATLAS_DURABLE_TURSO === "true"
 });

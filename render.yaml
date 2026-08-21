@@ -17,6 +17,8 @@ services:
         value: /tmp/driveos/atlas
       - key: DRIVEOS_ATLAS_DURABLE_TURSO
         value: "true"
+      - key: JOURNEYDECK_RECORDER_DURABLE_TURSO
+        value: "true"
       - key: DRIVEOS_ATLAS_LEGACY_DATABASE
         value: /var/data/atlas/journeydeck.db
       - key: DRIVEOS_COMPATIBILITY_STARTUP_TIMEOUT_MS
@@ -68,6 +70,8 @@ services:
       - key: DRIVEOS_WIFE_PASSWORD_HASH
         sync: false
       - key: DRIVEOS_AUTH_SECRET
+        sync: false
+      - key: JOURNEYDECK_RECORDER_TOKEN
         sync: false
       - key: DRIVEOS_ENCRYPTION_KEY
         sync: false

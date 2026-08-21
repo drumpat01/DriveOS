@@ -3,13 +3,14 @@ import compress from "@fastify/compress";
 import staticPlugin from "@fastify/static";
 import { AtlasStore } from "./atlas-store.js";
 import { tursoAtlasDurableState } from "./atlas-durable-state.js";
-import { authenticate, authenticateScheduledSync, type Principal } from "./auth.js";
+import { authenticate, authenticateRecorder, authenticateScheduledSync, type Principal } from "./auth.js";
 import { compatibilityProcessReady, compatibilityReady } from "./compatibility-readiness.js";
 import { applyMigrations, openDatabase } from "./database.js";
 import { proxyLegacy } from "./legacy-proxy.js";
 import { config as defaultConfig } from "./config.js";
 import { atlasMapSchema, bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
 import { getSpotifyPlayerSession, startSpotifyPlaybackAuthorization } from "./spotify-player.js";
+import { RecorderStore, type RecorderPoint } from "./recorder.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
@@ -43,6 +44,7 @@ function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
 export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   const cfg = { ...defaultConfig, ...overrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined);
+  const recorder = new RecorderStore(database, cfg.householdId, cfg.recorderDurableTurso);
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
@@ -52,6 +54,11 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
     if (requestPath === scheduledSyncPath) {
       if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
+      return;
+    }
+    if (requestPath === "/api/recorder" || requestPath.startsWith("/api/recorder/")) {
+      if (!authenticateRecorder(req, cfg.recorderToken)) return reply.code(401).send({ error: "Recorder authentication failed." });
+      req.principal = { subject: "journeydeck-recorder", role: "owner", mode: "full" };
       return;
     }
     if (publicAuthPaths.has(requestPath)) {
@@ -74,6 +81,46 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     return reply.code(ready ? 200 : 503).send({ ok: ready, atlas, legacyCompatibilityReachable });
   });
   app.get("/api/auth/session", async req => ({ authenticated: true, role: req.principal!.role, mode: req.principal!.mode }));
+  const recorderIdentifier = { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9._:-]+$" } as const;
+  const recorderTimestamp = { type: "string", minLength: 20, maxLength: 40 } as const;
+  const recorderPointSchema = {
+    type: "object", additionalProperties: false,
+    required: ["sequence", "recordedAt", "latitude", "longitude"],
+    properties: {
+      sequence: { type: "integer", minimum: 0, maximum: 10_000_000 }, recordedAt: recorderTimestamp,
+      latitude: { type: "number", minimum: -90, maximum: 90 }, longitude: { type: "number", minimum: -180, maximum: 180 },
+      accuracyMeters: { type: ["number", "null"], minimum: 0, maximum: 10_000 }, altitudeMeters: { type: ["number", "null"], minimum: -1000, maximum: 100_000 },
+      headingDegrees: { type: ["number", "null"], minimum: 0, maximum: 360 }, speedMps: { type: ["number", "null"], minimum: 0, maximum: 150 }
+    }
+  } as const;
+  const validTimestamp = (value: string) => Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now() + 300_000;
+  app.get("/api/recorder/status", async () => ({ ready: true, mode: "single-owner", durable: cfg.recorderDurableTurso ? "turso" : "sqlite" }));
+  app.post<{ Body: { id: string; deviceId: string; startedAt: string } }>("/api/recorder/sessions", {
+    schema: { body: { type: "object", additionalProperties: false, required: ["id", "deviceId", "startedAt"], properties: { id: recorderIdentifier, deviceId: recorderIdentifier, startedAt: recorderTimestamp } } }
+  }, async (req, reply) => {
+    if (!validTimestamp(req.body.startedAt)) return reply.code(400).send({ error: "A valid recording start time is required." });
+    return reply.code(201).send(await recorder.start(req.body.id, req.body.deviceId, new Date(req.body.startedAt).toISOString()));
+  });
+  app.get<{ Params: { id: string }; Querystring: { deviceId?: string } }>("/api/recorder/sessions/:id", {
+    schema: { params: { type: "object", required: ["id"], properties: { id: recorderIdentifier } }, querystring: { type: "object", additionalProperties: false, required: ["deviceId"], properties: { deviceId: recorderIdentifier } } }
+  }, async (req, reply) => (await recorder.get(req.params.id, String(req.query.deviceId))) || reply.code(404).send({ error: "Recording was not found." }));
+  app.post<{ Params: { id: string }; Body: { deviceId: string; points: RecorderPoint[] } }>("/api/recorder/sessions/:id/points", {
+    schema: { params: { type: "object", required: ["id"], properties: { id: recorderIdentifier } }, body: { type: "object", additionalProperties: false, required: ["deviceId", "points"], properties: { deviceId: recorderIdentifier, points: { type: "array", minItems: 1, maxItems: 250, items: recorderPointSchema } } } }
+  }, async (req, reply) => {
+    if (req.body.points.some(point => !validTimestamp(point.recordedAt))) return reply.code(400).send({ error: "Every recorded point requires a valid timestamp." });
+    try { return (await recorder.appendPoints(req.params.id, req.body.deviceId, req.body.points)) || reply.code(404).send({ error: "Recording was not found." }); }
+    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "Recorded points could not be saved." }); }
+  });
+  app.post<{ Params: { id: string }; Body: { deviceId: string; status: "recording" | "paused" } }>("/api/recorder/sessions/:id/state", {
+    schema: { params: { type: "object", required: ["id"], properties: { id: recorderIdentifier } }, body: { type: "object", additionalProperties: false, required: ["deviceId", "status"], properties: { deviceId: recorderIdentifier, status: { type: "string", enum: ["recording", "paused"] } } } }
+  }, async (req, reply) => (await recorder.setState(req.params.id, req.body.deviceId, req.body.status)) || reply.code(404).send({ error: "Recording was not found." }));
+  app.post<{ Params: { id: string }; Body: { deviceId: string; endedAt: string } }>("/api/recorder/sessions/:id/complete", {
+    schema: { params: { type: "object", required: ["id"], properties: { id: recorderIdentifier } }, body: { type: "object", additionalProperties: false, required: ["deviceId", "endedAt"], properties: { deviceId: recorderIdentifier, endedAt: recorderTimestamp } } }
+  }, async (req, reply) => {
+    if (!validTimestamp(req.body.endedAt)) return reply.code(400).send({ error: "A valid recording end time is required." });
+    try { return (await recorder.complete(req.params.id, req.body.deviceId, new Date(req.body.endedAt).toISOString())) || reply.code(404).send({ error: "Recording was not found." }); }
+    catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "Recording could not be completed." }); }
+  });
   app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => { const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot; });
   app.get<{ Querystring: { west?: string; south?: string; east?: string; north?: string; zoom?: string } }>("/api/atlas/map", { schema: { response: { 200: atlasMapSchema } } }, async (req, reply) => {
     const west = Number(req.query.west), south = Number(req.query.south), east = Number(req.query.east), north = Number(req.query.north), zoom = Number(req.query.zoom);
@@ -119,6 +166,13 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     try { return { started: startSpotifyPlaybackAuthorization(cfg.root) }; }
     catch { return reply.code(503).send({ error: "Spotify authorization could not be opened." }); }
   });
+  app.post<{ Body: { driveId?: string } }>("/api/drive/map", async (req, reply) => {
+    const driveId = String(req.body?.driveId || "");
+    if (!/^\d+-\d+$/.test(driveId)) return reply.code(400).send({ error: "A valid journey identifier is required." });
+    const recorded = await recorder.routeMap(driveId);
+    if (recorded) return recorded;
+    return proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin);
+  });
   app.all("/api/*", async (req, reply) => proxyLegacy(req, reply, cfg.legacyUpstream, cfg.legacyReadOnly, cfg.publicOrigin));
   // Keep one sandboxed wildcard route rooted at web/. With wildcard disabled,
   // Fastify snapshots the file list during startup; a refreshed HTML shell can
@@ -129,5 +183,5 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
   app.addHook("onClose", async () => { await store.close(); database.close(); });
-  return { app, database, store, config: cfg };
+  return { app, database, store, recorder, config: cfg };
 }
