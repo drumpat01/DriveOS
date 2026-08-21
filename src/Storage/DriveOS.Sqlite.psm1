@@ -118,7 +118,7 @@ function Set-DriveOSSqliteIntegrationSyncRun {
 
 function Get-DriveOSSqliteTessieDrives {
     param($Repository,[long]$FromEpoch)
-    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline') AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
+    $Rows = @(Invoke-DriveOSSqlite -Executable $Repository.SqliteExecutable -Database $Repository.DatabasePath -Sql "SELECT raw_payload_json FROM drives WHERE provider IN ('tessie','google_timeline','journeydeck_recorder') AND started_at_epoch >= $FromEpoch ORDER BY started_at_epoch DESC,id;" -Json)
     return @($Rows | ForEach-Object { $_.raw_payload_json | ConvertFrom-Json })
 }
 

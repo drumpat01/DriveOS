@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "JourneyDeck Recorder",
+    "slug": "journeydeck",
+    "owner": "journeydeck",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "scheme": "journeydeck-recorder",
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.journeydeck.recorder",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "JourneyDeck uses your location to record the route of a journey you start.",
+          "locationAlwaysAndWhenInUsePermission": "JourneyDeck records your route while your phone is locked or another app is open.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-sqlite",
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4"
+      }
+    }
+  }
+}
