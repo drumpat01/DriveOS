@@ -564,18 +564,17 @@
       $("shareCardMessage").textContent = "Image saved. The PNG contains no raw addresses or geographic coordinates.";
     }
 
-    async function shareToX() {
+    async function shareCard() {
       render();
       const blob = await canvasBlob();
       const file = new File([blob], filename(), { type: "image/png" });
       const postText = `${state.shareCardData.title}\n${state.shareCardData.startLabel} \u2192 ${state.shareCardData.endLabel}\n${state.shareCardData.stats.miles ?? "--"} miles · ${state.shareCardData.stats.durationMinutes ?? "--"} minutes\n#JourneyDeck`;
       if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
         await navigator.share({ files: [file], title: state.shareCardData.title, text: postText });
-        $("shareCardMessage").textContent = "Choose X in the share sheet to post the card.";
+        $("shareCardMessage").textContent = "Journey card shared.";
       } else {
         await download();
-        window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(postText)}`, "_blank", "noopener,noreferrer,width=700,height=700");
-        $("shareCardMessage").textContent = "The PNG was saved and the X composer opened. Attach the saved card to the post.";
+        $("shareCardMessage").textContent = "Sharing is unavailable in this browser, so the journey card was saved as a PNG.";
       }
     }
 
@@ -620,12 +619,12 @@
       ["shareCardMapStyle", "shareCardArtwork"].forEach(id => ["input", "change"].forEach(eventName => $(id)?.addEventListener(eventName, () => queuePreviewUpdate(false))));
       ["input", "change"].forEach(eventName => $("shareCardTheme")?.addEventListener(eventName, () => queuePreviewUpdate(true)));
       $("shareCardDownload")?.addEventListener("click", () => download().catch(error => { $("shareCardMessage").textContent = error.message; }));
-      $("shareCardNativeButton")?.addEventListener("click", () => shareToX().catch(error => {
+      $("shareCardNativeButton")?.addEventListener("click", () => shareCard().catch(error => {
         if (error?.name !== "AbortError") $("shareCardMessage").textContent = error.message || "Sharing was not available.";
       }));
     }
 
-    return Object.freeze({ open, close, render, download, shareToX, bind });
+    return Object.freeze({ open, close, render, download, shareCard, bind });
   }
 
   window.DriveOSFeatures = window.DriveOSFeatures || {};

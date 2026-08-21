@@ -24,6 +24,10 @@
   <link rel="stylesheet" href="/statistics-dashboard.css?v=6.0.1-option-1">
 </head>
 <body>
+  <div id="pullRefreshIndicator" class="pull-refresh-indicator" role="status" aria-live="polite" aria-hidden="true">
+    <span class="pull-refresh-icon" aria-hidden="true">&#x2193;</span>
+    <span id="pullRefreshText">Pull to refresh</span>
+  </div>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
     <div>
       <strong>Add JourneyDeck to your iPhone</strong>
@@ -1469,6 +1473,12 @@
 
       <div id="modalMetrics" class="detail-metrics"></div>
 
+      <div class="journey-summary-actions">
+        <button id="shareCardButton" class="primary-button journey-share-button" type="button">
+          <span aria-hidden="true">&#x2191;</span> Share journey
+        </button>
+      </div>
+
 
       <section class="drive-map-section">
         <div class="map-heading">
@@ -1594,7 +1604,6 @@
           <h3 id="modalSongCount">0 songs</h3>
         </div>
         <div class="action-row">
-          <button id="shareCardButton" class="secondary-button" type="button">Create share card</button>
           <button id="playlistButton" class="primary-button" type="button">Create Spotify playlist</button>
         </div>
       </div>
@@ -1648,7 +1657,7 @@
               <li id="shareCardHomeStatus">Home protection checked</li>
             </ul>
           </div>
-          <button id="shareCardNativeButton" class="primary-button share-to-x-button" type="button">Share to X</button>
+          <button id="shareCardNativeButton" class="primary-button share-card-native-button" type="button">Share card</button>
           <button id="shareCardDownload" class="secondary-button" type="button">Save PNG</button>
           <p id="shareCardMessage" class="muted" aria-live="polite"></p>
         </aside>

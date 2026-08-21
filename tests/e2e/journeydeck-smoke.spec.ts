@@ -71,6 +71,30 @@ test('Timeline renders live mock data and exposes working map zoom controls', as
   await expect(zoomLevel).not.toHaveText(initialZoom || '');
 });
 
+test('Mobile journeys expose pull-to-refresh and a native share-card flow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  await expect(page.locator('#pullRefreshIndicator')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#pullRefreshText')).toHaveText('Pull to refresh');
+  await expect(page.locator('.topbar-right')).toBeHidden();
+
+  await page.locator('[data-reference-drive="0"]').click();
+  await expect(page.getByRole('button', { name: /Share journey/ })).toBeVisible();
+  await expect(page.locator('#shareCardNativeButton')).toHaveText('Share card');
+});
+
+test('Mobile content pages hide the desktop utility strip', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  for (const view of ['drives', 'graph', 'music', 'statistics'] as const) {
+    await page.locator(`.nav-button[data-view="${view}"]`).evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.locator(`#view-${view}`)).toHaveClass(/active-view/);
+    await expect(page.locator('.topbar-right')).toBeHidden();
+  }
+});
+
 test('Music page renders its cinematic hero and live archived play', async ({ page }) => {
   await page.locator('.nav-button[data-view="music"]').click();
 

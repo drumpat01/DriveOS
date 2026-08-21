@@ -32,6 +32,80 @@
     let initialRefresh = null;
     let refreshPromise = null;
     let backgroundSyncPending = false;
+    let pullStartY = null;
+    let pullDistance = 0;
+    let pullTracking = false;
+    const pullThreshold = 82;
+
+    function pullIndicator() {
+      return $("pullRefreshIndicator");
+    }
+
+    function updatePullIndicator(distance, state = "pulling") {
+      const indicator = pullIndicator();
+      const label = $("pullRefreshText");
+      if (!indicator) return;
+      const progress = Math.min(1, Math.max(0, distance / pullThreshold));
+      indicator.style.setProperty("--pull-progress", progress);
+      indicator.style.setProperty("--pull-distance", `${Math.min(distance, 112)}px`);
+      indicator.dataset.state = state;
+      indicator.setAttribute("aria-hidden", state === "idle" ? "true" : "false");
+      if (label) label.textContent = state === "refreshing"
+        ? "Updating JourneyDeck…"
+        : progress >= 1 ? "Release to refresh" : "Pull to refresh";
+    }
+
+    function resetPullIndicator(delay = 0) {
+      window.setTimeout(() => {
+        pullDistance = 0;
+        updatePullIndicator(0, "idle");
+      }, delay);
+    }
+
+    function bindPullToRefresh() {
+      if (!document?.addEventListener) return;
+      const mobile = window.matchMedia?.("(max-width: 820px), (pointer: coarse)");
+
+      document.addEventListener("touchstart", event => {
+        if (mobile && !mobile.matches) return;
+        if (window.scrollY > 0 || refreshPromise || document.body?.classList?.contains("modal-open")) return;
+        if (event.touches?.length !== 1 || event.target?.closest?.(".modal, .drive-map, .timeline-hero-map, input, textarea, select")) return;
+        pullStartY = event.touches[0].clientY;
+        pullDistance = 0;
+        pullTracking = true;
+      }, { passive: true });
+
+      document.addEventListener("touchmove", event => {
+        if (!pullTracking || pullStartY == null || event.touches?.length !== 1) return;
+        const rawDistance = event.touches[0].clientY - pullStartY;
+        if (rawDistance <= 0) {
+          pullTracking = false;
+          resetPullIndicator();
+          return;
+        }
+        pullDistance = Math.min(112, rawDistance * .58);
+        updatePullIndicator(pullDistance);
+        if (pullDistance > 8 && event.cancelable) event.preventDefault();
+      }, { passive: false });
+
+      document.addEventListener("touchend", () => {
+        if (!pullTracking) return;
+        pullTracking = false;
+        pullStartY = null;
+        if (pullDistance < pullThreshold) {
+          resetPullIndicator();
+          return;
+        }
+        updatePullIndicator(pullThreshold, "refreshing");
+        void refresh().finally(() => resetPullIndicator(650));
+      }, { passive: true });
+
+      document.addEventListener("touchcancel", () => {
+        pullTracking = false;
+        pullStartY = null;
+        resetPullIndicator();
+      }, { passive: true });
+    }
 
     function scheduleListeningSync() {
       if (!tasks.syncListeningHistory || backgroundSyncPending) return;
@@ -164,6 +238,7 @@
 
     function bind() {
       $("refreshButton")?.addEventListener("click", refresh);
+      bindPullToRefresh();
     }
 
     function start() {

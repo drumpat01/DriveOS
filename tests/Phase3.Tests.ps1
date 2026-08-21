@@ -28,9 +28,7 @@ foreach($capability in @('localStorage','dashboard-size-compact','pinned','hidde
 $dashboardWidgets=Get-Content (Join-Path $Root 'web\features\dashboard-widgets.js') -Raw
 foreach($capability in @('todaySummary','inferMood','data-dashboard-action','openShareCard','openRecap')){if($dashboardWidgets -notmatch [regex]::Escape($capability)){throw "Dashboard insight widget capability is missing: $capability"}}
 if($index -notmatch 'Home privacy is locked on'){throw 'Share-card Home privacy lock is missing.'}
-if($index -notmatch '>Share to X<'){throw 'Share-card X action is missing.'}
 $shareCards=Get-Content (Join-Path $Root 'web\features\share-cards.js') -Raw
-if($shareCards -notmatch 'https://x\.com/intent/tweet'){throw 'Official X Web Intent fallback is missing.'}
 if($shareCards -notmatch 'JourneyDeckMapTheme' -or $shareCards -notmatch 'tiles\.openfreemap\.org/styles/dark'){throw 'Share-card dark map overview is missing.'}
 if($shareCards -match 'vehicleArtwork|loadVehicleArtwork' -or $shareCards -notmatch 'journeydeck-share-card-preferences-v1' -or $shareCards -notmatch 'localStorage\.setItem\(preferenceKey' -or $shareCards -notmatch 'queuePreviewUpdate\(true\)' -or $shareCards -notmatch 'drawRoute\(ctx, card, \{ x: 54, y: 440, w: 972, h: 455 \}, false\)' -or $shareCards -notmatch '"line-color": theme\.routeGlow \|\| theme\.accent'){throw 'Share-card customization must persist and the cinematic hero must remain a theme-aware route map.'}
 if($index -notmatch 'data-close-place-modal'){throw 'Friendly places modal backdrop/close control is missing.'}
