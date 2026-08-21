@@ -1572,7 +1572,10 @@ document.querySelector('.nav-button[data-view="drives"]')?.addEventListener("cli
   }
 });
 document.addEventListener("journeydeck:viewchange", event => {
-  if (["drives", "statistics"].includes(event.detail?.view) && !driveLibraryFullyLoaded) {
+  if (event.detail?.view === "drives" && !driveLibraryFullyLoaded) {
+    void loadDrives();
+  }
+  if (event.detail?.view === "statistics" && !driveLibraryFullyLoaded) {
     void loadDrives();
   }
 });
