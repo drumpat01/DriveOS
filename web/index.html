@@ -1168,10 +1168,11 @@
                   <button id="statisticsRangeMonthly" type="button" aria-pressed="false" data-stat-range="monthly">Monthly</button>
                 </div>
               </header>
-              <div id="statisticsChartWrap" class="statistics-chart-wrap" tabindex="0" role="region" aria-label="Miles and energy over time trend chart">
+              <div id="statisticsChartWrap" class="statistics-chart-wrap" tabindex="0" role="region" aria-label="Miles and energy over time trend chart" aria-describedby="statisticsTrendHint">
                 <svg id="statisticsTrendChart" class="statistics-trend-chart" viewBox="0 0 760 290" preserveAspectRatio="none" role="img" aria-label="Miles and energy over time"></svg>
                 <div id="statisticsTrendAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
               </div>
+              <p id="statisticsTrendHint" class="statistics-trend-hint">Hover, drag, or use arrow keys to inspect</p>
             </article>
 
             <article class="statistics-panel statistics-compare-panel" aria-labelledby="statisticsCompareHeading">
