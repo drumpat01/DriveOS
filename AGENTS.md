@@ -18,3 +18,16 @@ All AI coding assistants (Codex, Claude, Gemini, etc.) working in this repositor
    - **Do Not Force Git Actions for Handoff**: Do not stage, commit, push, revert, or discard work merely to create a handoff unless explicitly instructed.
    - **Continue Existing Work**: A receiving agent should continue from the current working tree rather than reimplementing work already completed by another agent.
    - Keep handoff notes concise, factual, and up to date.
+6. **Git Command Normalization**:
+   - Run Git commands individually rather than chaining them with `;`, `&&`, or PowerShell pipelines to keep CLI execution predictable and reduce approval prompts.
+   - Reuse stable, canonical commands whenever possible:
+     - `git status`
+     - `git diff --stat`
+     - `git diff`
+     - `git diff --check`
+     - `git log -5 --oneline`
+     - `git add <explicit approved paths>`
+     - `git commit -m "<message>"`
+     - `git push origin <current-branch>`
+   - Do not combine independent Git inspection commands into compound shell strings unless there is an explicit technical requirement.
+   - Continue strictly adhering to all existing staging, commit, push, revert, and handoff safety rules.
