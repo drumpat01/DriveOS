@@ -241,6 +241,15 @@
   fill: #d94314;
 }
 
+.statistics-trend-hint {
+  margin: 8px 0 0;
+  color: var(--statistics-muted);
+  font: 500 .68rem/1.35 Inter, "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  letter-spacing: .01em;
+  user-select: none;
+}
+
 .statistics-compare-panel { display: flex; flex-direction: column; }
 .statistics-comparison-list { display: grid; margin-top: 16px; }
 .statistics-comparison-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 65px; border-bottom: 1px solid rgba(166, 76, 255, .13); }
@@ -414,4 +423,5 @@
   #statisticsLongestRouteArt { height: 105px; }
   .statistics-weekday-bars { height: 100px; }
   .statistics-streak-track { margin-top: 8px; }
+  .statistics-trend-hint { margin-top: 6px; font-size: .62rem; }
 }

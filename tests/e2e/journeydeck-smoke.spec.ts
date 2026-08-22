@@ -131,6 +131,12 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
   await expect(page.locator('.statistics-comparison-row')).toHaveCount(4);
   await expect(page.locator('#statisticsTrendChart .statistics-chart-line')).toHaveCount(2);
 
+  const chartWrap = page.locator('#statisticsChartWrap');
+  const trendHint = page.locator('#statisticsTrendHint');
+  await expect(chartWrap).toHaveAttribute('aria-describedby', 'statisticsTrendHint');
+  await expect(trendHint).toBeVisible();
+  await expect(trendHint).toHaveText('Hover, drag, or use arrow keys to inspect');
+
   const daily = page.getByRole('button', { name: 'Daily' });
   const weekly = page.getByRole('button', { name: 'Weekly' });
   const monthly = page.getByRole('button', { name: 'Monthly', exact: true });
