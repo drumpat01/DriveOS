@@ -18,29 +18,30 @@
 ## 2. Workspace State (JourneyDeck / DriveOS)
 * **Active Branch**: `codex/statistics-redesign` (up to date with `origin/codex/statistics-redesign`).
 * **Completed Implementation**:
-  * Fixed long-term driving streak calculation in `web/features/statistics-dashboard.js` by passing `latestDrives` to `renderStreak()`, preventing streaks exceeding 30 days from being capped by the 30-day KPI slice.
-  * Added focused regression test in `tests/frontend-modules.test.js` validating a 45-day continuous streak, 7-day visual track boundary, and 30-day KPI window isolation.
+  * Made the Statistics "Longest Journey" card interactive (`.statistics-longest.is-interactive`) with mouse/touch click, keyboard activation (`Enter`/`Space`), `role="button"`, and `tabindex="0"`, opening the existing Journey Detail Modal via direct injected `openDrive` callback.
+  * Added focused unit test in `tests/frontend-modules.test.js` and E2E assertion in `tests/e2e/journeydeck-smoke.spec.ts`.
 * **Uncommitted Changes in Working Tree**:
-  * `AGENTS.md` (modified): Shared AI handoff protocol + low-context automatic handoff rule.
-  * `web/features/statistics-dashboard.js` (modified): Pass `latestDrives` to `renderStreak()`.
-  * `tests/frontend-modules.test.js` (modified): Regression assertions for streak >30 days, 7-day track, and 30-day KPI isolation.
-  * `.ai/HANDOFF.md` (untracked): Cross-agent handoff record.
+  * `web/features/statistics-dashboard.js` (modified): Wire direct `openDrive` callback for `activeLongestDrive` on click/keyboard.
+  * `web/statistics-dashboard.css` (modified): Add hover, active, and focus-visible styling for `.statistics-longest.is-interactive`.
+  * `web/app.js` (modified): Pass `openDrive: openDriveModal` in `loadStatistics()` and `loadDrives()`.
+  * `tests/frontend-modules.test.js` (modified): Unit tests for longest card interaction, accessibility attributes, and empty-state toggling.
+  * `tests/e2e/journeydeck-smoke.spec.ts` (modified): E2E assertion for opening journey modal from longest card.
+  * `.ai/HANDOFF.md` (modified): Updated handoff state.
 * **Verification & Test Results**:
-  * `node tests/frontend-modules.test.js`: Passed (45-day streak verified, 7-day track verified, 30-day KPI window verified).
+  * `node tests/frontend-modules.test.js`: Passed (longest card interaction, role, tabindex, and drive matching verified).
   * `npm run check:server`: TypeScript typecheck passed (no errors).
   * `npm run lint:server`: ESLint passed (0 errors / 0 warnings).
   * `npm run test:server`: 25/25 tests passed.
-  * `npm run test:atlas-performance`: Benchmarks passed (p50 2.53ms, p95 3.70ms).
   * `npm run test:e2e`: 9/9 Playwright E2E smoke tests passed.
 
 ---
 
 ## 3. Current Objective & Next Steps
-* **Active Implementation Task**: Completed lifetime streak fix and regression testing.
+* **Active Implementation Task**: Completed simplified Longest Journey modal drill-down implementation and verification.
 * **Remaining Issues**: None.
-* **Next Steps**: Await user instructions for the next task or release step.
+* **Next Steps**: Await user review and approval of the diff before committing.
 
 ---
 
 ## Last Agent
-Antigravity — 2026-08-22 13:10 CDT
+Antigravity — 2026-08-22 13:55 CDT

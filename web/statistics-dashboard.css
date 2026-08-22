@@ -203,6 +203,26 @@
 .statistics-highlight + .statistics-highlight { border-left: 1px solid rgba(166, 76, 255, .16); }
 .statistics-highlight > div:first-child { min-width: 0; }
 .statistics-highlight-kicker { display: block; color: #ae83cf; }
+.statistics-longest.is-interactive {
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  user-select: none;
+}
+.statistics-longest.is-interactive:hover {
+  background: rgba(166, 76, 255, .08);
+  box-shadow: inset 0 0 0 1px rgba(166, 76, 255, .28), 0 8px 24px rgba(0, 0, 0, .25);
+}
+.statistics-longest.is-interactive:active {
+  transform: scale(0.992);
+}
+.statistics-longest.is-interactive:focus-visible {
+  outline: 2px solid var(--statistics-orange);
+  outline-offset: -2px;
+}
+:root[data-theme="light"] .statistics-longest.is-interactive:hover {
+  background: rgba(166, 76, 255, .06);
+  box-shadow: inset 0 0 0 1px rgba(166, 76, 255, .25), 0 8px 24px rgba(75, 31, 87, .08);
+}
 .statistics-highlight > div:first-child > strong { display: block; margin-top: 22px; color: var(--statistics-text); font: 350 clamp(1.65rem, 2.2vw, 2.3rem)/1 Inter, "Segoe UI", sans-serif; letter-spacing: -.05em; }
 .statistics-highlight > div:first-child > span:not(.statistics-highlight-kicker),
 .statistics-highlight > div:first-child > small { display: block; overflow: hidden; margin-top: 9px; color: #d8cbdc; font-size: .76rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }

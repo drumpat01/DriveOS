@@ -13,6 +13,8 @@
   let latestDrives = [];
   let currentRange = "daily";
   let controlsBound = false;
+  let activeOptions = {};
+  let activeLongestDrive = null;
 
   function driveDate(drive) {
     const date = new Date(drive?.startedAt || drive?.started_at || "");
@@ -257,11 +259,27 @@
 
   function renderLongest(drives) {
     const longest = [...drives].filter(drive => Number.isFinite(Number(drive.miles))).sort((left, right) => Number(right.miles) - Number(left.miles))[0];
+    activeLongestDrive = longest || null;
+    const card = document.querySelector(".statistics-longest") || byId("statisticsLongestCard");
     if (!longest) {
       setValue("statisticsLongestMiles", "--");
       setValue("statisticsLongestRoute", "No journeys in this window");
       setValue("statisticsLongestDate", "Last 30 days");
+      if (card) {
+        card.classList.remove("is-interactive");
+        card.removeAttribute("tabindex");
+        card.removeAttribute("role");
+        card.removeAttribute("aria-label");
+        card.removeAttribute("title");
+      }
       return;
+    }
+    if (card) {
+      card.classList.add("is-interactive");
+      card.setAttribute("tabindex", "0");
+      card.setAttribute("role", "button");
+      card.setAttribute("aria-label", `Open longest journey details: ${longest.startingLocation || "Journey start"} to ${longest.endingLocation || "Destination"}, ${number(longest.miles, 1)} miles`);
+      card.setAttribute("title", "Open journey details");
     }
     const route = `${longest.startingLocation || "Journey start"} → ${longest.endingLocation || "Destination"}`;
     const date = driveDate(longest);
@@ -318,6 +336,24 @@
   function bindControls() {
     if (controlsBound) return;
     controlsBound = true;
+    const longestCard = document.querySelector(".statistics-longest") || byId("statisticsLongestCard");
+    if (longestCard && !longestCard.dataset.boundLongest) {
+      longestCard.dataset.boundLongest = "true";
+      const triggerOpen = () => {
+        if (activeLongestDrive && typeof activeOptions.openDrive === "function") {
+          activeOptions.openDrive(activeLongestDrive);
+        }
+      };
+      longestCard.addEventListener("click", event => {
+        if (event.target?.closest?.("button, a, input, select, textarea")) return;
+        triggerOpen();
+      });
+      longestCard.addEventListener("keydown", event => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        triggerOpen();
+      });
+    }
     document.querySelectorAll("[data-stat-range]").forEach(button => button.addEventListener("click", () => {
       currentRange = button.dataset.statRange || "daily";
       document.querySelectorAll("[data-stat-range]").forEach(item => item.classList.toggle("active", item === button));
@@ -340,6 +376,7 @@
   }
 
   function render(summary, drives, options = {}) {
+    activeOptions = options || {};
     latestSummary = summary || latestSummary;
     latestDrives = Array.isArray(drives) ? drives.filter(Boolean) : latestDrives;
     bindControls();

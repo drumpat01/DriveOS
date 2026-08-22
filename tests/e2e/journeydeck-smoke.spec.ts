@@ -135,6 +135,13 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
   await weekly.click();
   await expect(weekly).toHaveClass(/active/);
 
+  const longestCard = page.locator('.statistics-longest');
+  await expect(longestCard).toHaveClass(/is-interactive/);
+  await longestCard.click();
+  await expect(page.locator('#driveModal')).toHaveClass(/open/);
+  await page.locator('#driveModal .modal-close').click();
+  await expect(page.locator('#driveModal')).not.toHaveClass(/open/);
+
   await page.getByRole('button', { name: /View monthly archive/ }).click();
   await expect(page.locator('#statisticsMonthlyArchive')).toBeVisible();
 });
