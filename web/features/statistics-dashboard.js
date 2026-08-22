@@ -396,7 +396,7 @@
     renderTrend();
     renderLongest(currentDrives);
     renderFavoriteDay(currentDrives);
-    renderStreak(currentDrives, now);
+    renderStreak(latestDrives, now);
     document.querySelector("[data-statistics-dashboard]")?.classList.toggle("statistics-library-loading", !options.fullLibrary);
   }
 
