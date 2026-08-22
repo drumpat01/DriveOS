@@ -17,39 +17,37 @@
 
 ## 2. Workspace State (JourneyDeck / DriveOS)
 * **Active Branch**: `codex/statistics-redesign` (up to date with `origin/codex/statistics-redesign`).
-* **Completed Implementation**:
-  * Implemented interactive pointer and keyboard inspection tooltips for the Statistics trend chart (`#statisticsTrendChart`).
-  * Unified Pointer Events (`pointerdown`, `pointermove`, `pointerleave`, `pointercancel`) with `touch-action: pan-y` for mobile gestures.
-  * Derived directly from `buildSeries()` and SVG coordinate bounds; dynamically renders vertical guide line, curve marker dots, and boundary-aware tooltip badge within the SVG.
-  * Strictly preserved minimal public API on `window.DriveOSStatisticsDashboard` (`render`, `renderError`); removed all test-only leaks.
-  * Supports keyboard scrubbing (<kbd>←</kbd>/<kbd>→</kbd> arrow keys with clamping, <kbd>Esc</kbd> to clear) and screen-reader `aria-live="polite"` status announcements.
-  * Verified that range-tab switching (Daily / Weekly / Monthly) immediately clears active inspection and live announcements.
-  * Completed visual verification across Desktop and iPhone mobile viewports in both Dark and Light themes.
-  * Made test fixture deterministic with fixed intra-day timestamp offsets, restoring exact invariant assertion (`statDriveCount === '30'`).
-  * Added regression test coverage in `tests/frontend-modules.test.js` and Playwright E2E assertions in `tests/e2e/journeydeck-smoke.spec.ts`.
-* **Uncommitted Changes in Working Tree**:
-  * `web/index.html` (modified): Accessible `#statisticsChartWrap` attributes and `#statisticsTrendAnnouncement` live region.
-  * `web/features/statistics-dashboard.js` (modified): Trend chart pointer/keyboard inspection logic and range-clear behavior.
-  * `web/statistics-dashboard.css` (modified): Chart inspection overlay, guide line, dots, tooltip, and dark/light theme styling.
-  * `tests/frontend-modules.test.js` (modified): Unit tests for pointer/keyboard events, range-switch clearing, empty-state safety, and exact 30-day KPI count.
-  * `tests/e2e/journeydeck-smoke.spec.ts` (modified): E2E assertions for trend chart hover inspection, live announcement, Escape dismissal, and range-switch clearing.
-  * `.ai/HANDOFF.md` (modified): Updated handoff state.
+* **Completed Implementation & Commits**:
+  * **`a529621`** (`feat(statistics): add interactive trend chart inspection tooltips and keyboard navigation`):
+    - Implemented interactive pointer and keyboard inspection tooltips for the Statistics trend chart (`#statisticsTrendChart`).
+    - Unified Pointer Events (`pointerdown`, `pointermove`, `pointerleave`, `pointercancel`) with `touch-action: pan-y` for mobile gestures.
+    - Derived directly from `buildSeries()` and SVG coordinate bounds; dynamically renders vertical guide line, curve marker dots, and boundary-aware tooltip badge within the SVG.
+    - Strictly preserved minimal public API on `window.DriveOSStatisticsDashboard` (`render`, `renderError`); no test-only leaks.
+    - Supports keyboard scrubbing (<kbd>←</kbd>/<kbd>→</kbd> arrow keys with clamping, <kbd>Esc</kbd> to clear) and screen-reader `aria-live="polite"` status announcements.
+    - Range-tab switching (Daily / Weekly / Monthly) immediately clears active inspection and live announcements.
+    - Made test fixture deterministic with fixed intra-day timestamp offsets, verifying exact invariant assertion (`statDriveCount === '30'`).
+    - Added regression test coverage in `tests/frontend-modules.test.js` and Playwright E2E assertions in `tests/e2e/journeydeck-smoke.spec.ts`.
+  * **`5e6ff04`** (`Normalize Git commands to reduce repeated approval prompts`):
+    - Added rule 6 in `AGENTS.md` for individual canonical Git commands.
+* **Working Tree State**:
+  * Clean working tree (`git status` clean).
+  * Up to date with `origin/codex/statistics-redesign`.
 * **Verification & Test Results**:
-  * `node tests/frontend-modules.test.js`: Passed (exact 30-day KPI count: 30).
+  * `node tests/frontend-modules.test.js`: Passed (deterministic 30-day KPI count: 30).
   * `npm run check:server`: TypeScript typecheck passed (0 errors).
   * `npm run lint:server`: ESLint passed (0 errors / 0 warnings).
   * `npm run test:server`: 25/25 tests passed.
   * `npm run test:e2e`: 9/9 Playwright E2E smoke tests passed.
-  * Visual verification: Captured screenshots across desktop/mobile/dark/light themes confirming no clipping, high contrast, and clean layout alignment.
+  * Visual verification: Confirmed on Desktop (1440×1000) and iPhone mobile (390×844) across Daily/Weekly/Monthly ranges and Dark/Light themes.
 
 ---
 
 ## 3. Current Objective & Next Steps
-* **Active Implementation Task**: Statistics trend chart interactive tooltip inspection completed and visually verified.
+* **Active Implementation Task**: Statistics trend chart tooltip inspection feature complete and pushed to remote.
 * **Remaining Issues**: None.
-* **Next Steps**: Await user review and approval of the diff before committing.
+* **Next Steps**: Ready for next milestone or instructions.
 
 ---
 
 ## Last Agent
-Antigravity — 2026-08-22 14:27 CDT
+Antigravity — 2026-08-22 14:33 CDT
