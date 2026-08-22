@@ -400,6 +400,27 @@
     }).join("");
   }
 
+  function selectRange(rangeOrButton, shouldFocus = false) {
+    const buttons = Array.from(document.querySelectorAll("[data-stat-range]"));
+    if (!buttons.length) return;
+    const targetButton = typeof rangeOrButton === "string"
+      ? buttons.find(item => item.dataset.statRange === rangeOrButton) || buttons[0]
+      : rangeOrButton;
+    if (!targetButton) return;
+
+    currentRange = targetButton.dataset.statRange || "daily";
+    buttons.forEach(item => {
+      const isSelected = item === targetButton;
+      item.classList.toggle("active", isSelected);
+      item.setAttribute("aria-pressed", isSelected ? "true" : "false");
+    });
+    if (shouldFocus && typeof targetButton.focus === "function") {
+      targetButton.focus();
+    }
+    clearTrendInspection();
+    renderTrend();
+  }
+
   function bindControls() {
     if (controlsBound) return;
     controlsBound = true;
@@ -421,12 +442,35 @@
         triggerOpen();
       });
     }
-    document.querySelectorAll("[data-stat-range]").forEach(button => button.addEventListener("click", () => {
-      currentRange = button.dataset.statRange || "daily";
-      document.querySelectorAll("[data-stat-range]").forEach(item => item.classList.toggle("active", item === button));
-      clearTrendInspection();
-      renderTrend();
-    }));
+
+    const rangeButtons = Array.from(document.querySelectorAll("[data-stat-range]"));
+    rangeButtons.forEach((button, index) => {
+      const isSelected = (button.dataset.statRange || "daily") === currentRange;
+      button.classList.toggle("active", isSelected);
+      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+
+      button.addEventListener("click", () => {
+        selectRange(button, false);
+      });
+      button.addEventListener("keydown", event => {
+        let targetIndex = null;
+        if (event.key === "ArrowRight") {
+          targetIndex = (index + 1) % rangeButtons.length;
+        } else if (event.key === "ArrowLeft") {
+          targetIndex = (index - 1 + rangeButtons.length) % rangeButtons.length;
+        } else if (event.key === "Home") {
+          targetIndex = 0;
+        } else if (event.key === "End") {
+          targetIndex = rangeButtons.length - 1;
+        }
+        if (targetIndex != null) {
+          event.preventDefault();
+          if (targetIndex !== index) {
+            selectRange(rangeButtons[targetIndex], true);
+          }
+        }
+      });
+    });
 
     const chartWrap = byId("statisticsChartWrap") || document.querySelector(".statistics-chart-wrap");
     const chart = byId("statisticsTrendChart");

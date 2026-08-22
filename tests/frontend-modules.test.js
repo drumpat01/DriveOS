@@ -2,11 +2,8 @@ const fs=require('fs');const path=require('path');const vm=require('vm');const a
 const root=path.resolve(__dirname,'..');
 const elements=new Map([['status',{textContent:''}]]);
 const longestCardElement={innerHTML:'',textContent:'',hidden:false,className:'statistics-highlight statistics-longest',attributes:{},dataset:{},setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];},classList:{values:new Set(['statistics-highlight','statistics-longest']),toggle(name,enabled){if(enabled)this.values.add(name);else this.values.delete(name);},add(name){this.values.add(name);},remove(name){this.values.delete(name);},contains(name){return this.values.has(name);}},listeners:{},addEventListener(event,handler){this.listeners[event]=handler;},dispatchEvent(event){const handler=this.listeners[event.type];if(handler)handler(event);}};
-const rangeButtons=[
-  {dataset:{statRange:'daily'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}},
-  {dataset:{statRange:'weekly'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}},
-  {dataset:{statRange:'monthly'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}
-];
+const makeRangeButton=statRange=>({dataset:{statRange},attributes:{},focused:false,classList:{values:new Set(),toggle(name,enabled){if(enabled)this.values.add(name);else this.values.delete(name);},add(name){this.values.add(name);},remove(name){this.values.delete(name);},contains(name){return this.values.has(name);}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;},setAttribute(name,value){this.attributes[name]=String(value);},getAttribute(name){return this.attributes[name]??null;},removeAttribute(name){delete this.attributes[name];},hasAttribute(name){return name in this.attributes;},focus(){this.focused=true;},dispatchEvent(event){const handler=this.listeners[event.type];if(handler)handler(event);}});
+const rangeButtons=[makeRangeButton('daily'),makeRangeButton('weekly'),makeRangeButton('monthly')];
 const context={console,Map,Promise,setTimeout,clearTimeout,URL,Intl,location:{hostname:'127.0.0.1',hash:''},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelector:sel=>sel==='.statistics-longest'||sel==='[data-statistics-dashboard]'?longestCardElement:null,querySelectorAll:sel=>sel==='[data-stat-range]'?rangeButtons:[],addEventListener(){}},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
 context.window=context;context.window.navigator=context.navigator;context.window.location=context.location;context.window.matchMedia=()=>({matches:false});
 vm.createContext(context);
@@ -63,11 +60,49 @@ assert.equal(inspectionElement.hidden,false,'re-hovering reveals inspection');
 chartElement.dispatchEvent({type:'pointerleave'});
 assert.equal(inspectionElement.hidden,true,'pointerleave should dismiss overlay');
 
+assert.equal(rangeButtons[0].attributes['role'],undefined,'range buttons should not use tab role');
+assert.equal(rangeButtons[0].attributes['aria-pressed'],'true','daily range button should initially have aria-pressed true');
+assert.ok(rangeButtons[0].classList.contains('active'),'daily range button should have active class');
+assert.equal(rangeButtons[1].attributes['aria-pressed'],'false','weekly range button should initially have aria-pressed false');
+assert.equal(rangeButtons[2].attributes['aria-pressed'],'false','monthly range button should initially have aria-pressed false');
+
 chartElement.dispatchEvent({type:'pointerdown',clientX:200});
 assert.equal(inspectionElement.hidden,false,'active inspection exists before switching range');
-rangeButtons[1].listeners['click']?.({currentTarget:rangeButtons[1]});
-assert.equal(inspectionElement.hidden,true,'switching range tab must clear active trend inspection');
-assert.equal(announcementElement.textContent,'','switching range tab must clear live announcement');
+rangeButtons[1].dispatchEvent({type:'click'});
+assert.equal(rangeButtons[1].attributes['aria-pressed'],'true','clicked weekly button must have aria-pressed true');
+assert.ok(rangeButtons[1].classList.contains('active'),'clicked weekly button must have active class');
+assert.equal(rangeButtons[0].attributes['aria-pressed'],'false','daily button must now have aria-pressed false');
+assert.equal(rangeButtons[2].attributes['aria-pressed'],'false','monthly button must remain aria-pressed false');
+assert.equal(inspectionElement.hidden,true,'switching range button must clear active trend inspection');
+assert.equal(announcementElement.textContent,'','switching range button must clear live announcement');
+
+rangeButtons[0].focused=false;rangeButtons[1].focused=false;rangeButtons[2].focused=false;
+rangeButtons[1].dispatchEvent({type:'keydown',key:'ArrowRight',preventDefault:()=>{}});
+assert.equal(rangeButtons[2].attributes['aria-pressed'],'true','ArrowRight should activate monthly range button');
+assert.equal(rangeButtons[2].focused,true,'monthly range button should receive focus');
+assert.equal(rangeButtons[1].attributes['aria-pressed'],'false','weekly range button should have aria-pressed false');
+
+rangeButtons[0].focused=false;rangeButtons[1].focused=false;rangeButtons[2].focused=false;
+rangeButtons[2].dispatchEvent({type:'keydown',key:'ArrowRight',preventDefault:()=>{}});
+assert.equal(rangeButtons[0].attributes['aria-pressed'],'true','ArrowRight on last button should wrap to daily range button');
+assert.equal(rangeButtons[0].focused,true,'daily range button should receive focus');
+
+rangeButtons[0].focused=false;rangeButtons[1].focused=false;rangeButtons[2].focused=false;
+rangeButtons[0].dispatchEvent({type:'keydown',key:'ArrowLeft',preventDefault:()=>{}});
+assert.equal(rangeButtons[2].attributes['aria-pressed'],'true','ArrowLeft on first button should wrap to monthly range button');
+assert.equal(rangeButtons[2].focused,true,'monthly range button should receive focus on wrap');
+
+rangeButtons[0].focused=false;rangeButtons[1].focused=false;rangeButtons[2].focused=false;
+rangeButtons[2].dispatchEvent({type:'keydown',key:'Home',preventDefault:()=>{}});
+assert.equal(rangeButtons[0].attributes['aria-pressed'],'true','Home should activate first button (daily)');
+assert.equal(rangeButtons[0].focused,true,'daily range button should receive focus on Home');
+
+rangeButtons[0].focused=false;rangeButtons[1].focused=false;rangeButtons[2].focused=false;
+rangeButtons[0].dispatchEvent({type:'keydown',key:'End',preventDefault:()=>{}});
+assert.equal(rangeButtons[2].attributes['aria-pressed'],'true','End should activate last button (monthly)');
+assert.equal(rangeButtons[2].focused,true,'monthly range button should receive focus on End');
+
+rangeButtons[0].dispatchEvent({type:'click'});
 
 context.DriveOSStatisticsDashboard.render(null,[],{});
 assert.ok(!longestCardElement.classList.contains('is-interactive'),'longest journey card should not be interactive when no journeys exist');

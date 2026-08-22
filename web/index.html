@@ -1163,9 +1163,9 @@
               <header class="statistics-panel-heading">
                 <div><h3 id="statisticsTrendHeading">MILES &amp; ENERGY OVER TIME</h3><div class="statistics-chart-legend"><span class="miles">Miles</span><span class="energy">Energy (kWh)</span></div></div>
                 <div class="statistics-range-tabs" role="group" aria-label="Statistics chart range">
-                  <button class="active" type="button" data-stat-range="daily">Daily</button>
-                  <button type="button" data-stat-range="weekly">Weekly</button>
-                  <button type="button" data-stat-range="monthly">Monthly</button>
+                  <button id="statisticsRangeDaily" class="active" type="button" aria-pressed="true" data-stat-range="daily">Daily</button>
+                  <button id="statisticsRangeWeekly" type="button" aria-pressed="false" data-stat-range="weekly">Weekly</button>
+                  <button id="statisticsRangeMonthly" type="button" aria-pressed="false" data-stat-range="monthly">Monthly</button>
                 </div>
               </header>
               <div id="statisticsChartWrap" class="statistics-chart-wrap" tabindex="0" role="region" aria-label="Miles and energy over time trend chart">
