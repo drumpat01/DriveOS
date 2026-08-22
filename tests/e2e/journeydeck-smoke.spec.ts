@@ -135,6 +135,26 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
   await weekly.click();
   await expect(weekly).toHaveClass(/active/);
 
+  const trendChart = page.locator('#statisticsTrendChart');
+  await trendChart.hover({ position: { x: 300, y: 100 } });
+  const inspection = page.locator('#statisticsTrendInspection');
+  await expect(inspection).toBeVisible();
+  await expect(inspection.locator('.tooltip-title')).not.toBeEmpty();
+  await expect(inspection.locator('.tooltip-metric.miles')).toContainText(/mi$/);
+  await expect(inspection.locator('.tooltip-metric.energy')).toContainText(/kWh$/);
+  await expect(page.locator('#statisticsTrendAnnouncement')).not.toBeEmpty();
+
+  await page.locator('#statisticsChartWrap').press('Escape');
+  await expect(inspection).toBeHidden();
+
+  await trendChart.hover({ position: { x: 300, y: 100 } });
+  await expect(inspection).toBeVisible();
+  const monthly = page.getByRole('button', { name: 'Monthly', exact: true });
+  await monthly.click();
+  await expect(monthly).toHaveClass(/active/);
+  await expect(inspection).toBeHidden();
+  await expect(page.locator('#statisticsTrendAnnouncement')).toBeEmpty();
+
   const longestCard = page.locator('.statistics-longest');
   await expect(longestCard).toHaveClass(/is-interactive/);
   await longestCard.click();

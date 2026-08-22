@@ -123,6 +123,9 @@
     if (target) target.textContent = value;
   }
 
+  let currentTrendData = null;
+  let activeTrendIndex = null;
+
   function seriesWindows(range, now) {
     if (range === "weekly") {
       const currentWeek = startOfDay(now);
@@ -130,7 +133,10 @@
       return Array.from({ length: 12 }, (_, index) => {
         const start = new Date(currentWeek.getTime() - (11 - index) * 7 * dayMs);
         const end = new Date(start.getTime() + 7 * dayMs);
-        return { start, end, label: start.toLocaleDateString(undefined, { month: "short", day: "numeric" }) };
+        const lastDay = new Date(end.getTime() - dayMs);
+        const label = start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const fullLabel = `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${lastDay.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+        return { start, end, label, fullLabel };
       });
     }
     if (range === "monthly") {
@@ -138,14 +144,18 @@
       return Array.from({ length: 12 }, (_, index) => {
         const start = new Date(month.getFullYear(), month.getMonth() - (11 - index), 1);
         const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
-        return { start, end, label: start.toLocaleDateString(undefined, { month: "short" }) };
+        const label = start.toLocaleDateString(undefined, { month: "short" });
+        const fullLabel = start.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+        return { start, end, label, fullLabel };
       });
     }
     const today = startOfDay(now);
     return Array.from({ length: 30 }, (_, index) => {
       const start = new Date(today.getTime() - (29 - index) * dayMs);
       const end = new Date(start.getTime() + dayMs);
-      return { start, end, label: start.toLocaleDateString(undefined, { month: "short", day: "numeric" }) };
+      const label = start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const fullLabel = start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      return { start, end, label, fullLabel };
     });
   }
 
@@ -165,6 +175,59 @@
     }).join(" ");
   }
 
+  function clearTrendInspection() {
+    activeTrendIndex = null;
+    const inspection = byId("statisticsTrendInspection");
+    if (inspection) {
+      inspection.innerHTML = "";
+      inspection.hidden = true;
+      inspection.setAttribute("hidden", "hidden");
+    }
+    const announcement = byId("statisticsTrendAnnouncement");
+    if (announcement) announcement.textContent = "";
+  }
+
+  function renderTrendInspection(index) {
+    if (!currentTrendData || !currentTrendData.points.length) {
+      clearTrendInspection();
+      return;
+    }
+    const { points, bounds, maxMiles, maxEnergy } = currentTrendData;
+    if (index == null || index < 0 || index >= points.length) {
+      clearTrendInspection();
+      return;
+    }
+    activeTrendIndex = index;
+    const point = points[index];
+    const x = bounds.left + (index / Math.max(1, points.length - 1)) * bounds.width;
+    const yMiles = bounds.top + bounds.height - ((Number(point.miles) || 0) / maxMiles) * bounds.height;
+    const yEnergy = bounds.top + bounds.height - ((Number(point.energy) || 0) / maxEnergy) * bounds.height;
+
+    const width = 152;
+    const height = 66;
+    const tooltipX = x > (bounds.left + bounds.width / 2)
+      ? Math.max(8, x - width - 12)
+      : Math.min(760 - width - 8, x + 12);
+    const minY = Math.min(yMiles, yEnergy);
+    const tooltipY = Math.max(bounds.top, Math.min(bounds.top + bounds.height - height, minY - 20));
+
+    const periodLabel = point.fullLabel || point.label;
+    const milesValue = `${number(point.miles, 1)} mi`;
+    const energyValue = `${number(point.energy, 1)} kWh`;
+
+    const inspection = byId("statisticsTrendInspection");
+    if (inspection) {
+      inspection.removeAttribute("hidden");
+      inspection.hidden = false;
+      inspection.innerHTML = `<line class="statistics-trend-guide" x1="${x.toFixed(1)}" y1="${bounds.top}" x2="${x.toFixed(1)}" y2="${bounds.top + bounds.height}"/><circle class="statistics-trend-dot miles" cx="${x.toFixed(1)}" cy="${yMiles.toFixed(1)}" r="4.5"/><circle class="statistics-trend-dot energy" cx="${x.toFixed(1)}" cy="${yEnergy.toFixed(1)}" r="4.5"/><g class="statistics-trend-tooltip" transform="translate(${tooltipX.toFixed(1)}, ${tooltipY.toFixed(1)})"><rect class="tooltip-bg" width="${width}" height="${height}" rx="8"/><text class="tooltip-title" x="12" y="19">${escapeHtml(periodLabel)}</text><circle cx="16" cy="36" r="3.5" class="tooltip-marker miles"/><text class="tooltip-metric miles" x="25" y="40">${milesValue}</text><circle cx="16" cy="52" r="3.5" class="tooltip-marker energy"/><text class="tooltip-metric energy" x="25" y="56">${energyValue}</text></g>`;
+    }
+
+    const announcement = byId("statisticsTrendAnnouncement");
+    if (announcement) {
+      announcement.textContent = `${periodLabel}: ${number(point.miles, 1)} miles, ${number(point.energy, 1)} kilowatt-hours`;
+    }
+  }
+
   function renderTrend() {
     const chart = byId("statisticsTrendChart");
     if (!chart) return;
@@ -173,6 +236,7 @@
     const bounds = { left: 48, top: 24, width: 664, height: 214 };
     const maxMiles = Math.max(1, ...points.map(point => point.miles));
     const maxEnergy = Math.max(1, ...points.map(point => point.energy));
+    currentTrendData = { points, bounds, maxMiles, maxEnergy };
     const milesPath = pathFor(points, "miles", bounds, maxMiles);
     const energyPath = pathFor(points, "energy", bounds, maxEnergy);
     const labelStep = currentRange === "daily" ? 5 : currentRange === "weekly" ? 2 : 2;
@@ -188,7 +252,10 @@
       : "").join("");
     const milesArea = `${milesPath} L${bounds.left + bounds.width},${bounds.top + bounds.height} L${bounds.left},${bounds.top + bounds.height} Z`;
     const energyArea = `${energyPath} L${bounds.left + bounds.width},${bounds.top + bounds.height} L${bounds.left},${bounds.top + bounds.height} Z`;
-    chart.innerHTML = `<defs><linearGradient id="statisticsMilesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a64cff" stop-opacity=".28"/><stop offset="1" stop-color="#a64cff" stop-opacity="0"/></linearGradient><linearGradient id="statisticsEnergyFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7847" stop-opacity=".2"/><stop offset="1" stop-color="#ff7847" stop-opacity="0"/></linearGradient></defs><g class="statistics-chart-grid">${grid}</g><path class="statistics-chart-area miles" d="${milesArea}"/><path class="statistics-chart-area energy" d="${energyArea}"/><path class="statistics-chart-line miles" d="${milesPath}"/><path class="statistics-chart-line energy" d="${energyPath}"/><g class="statistics-chart-labels">${labels}</g><text class="axis-title" x="4" y="14">Miles</text><text class="axis-title right" x="756" y="14">kWh</text>`;
+    chart.innerHTML = `<defs><linearGradient id="statisticsMilesFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a64cff" stop-opacity=".28"/><stop offset="1" stop-color="#a64cff" stop-opacity="0"/></linearGradient><linearGradient id="statisticsEnergyFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7847" stop-opacity=".2"/><stop offset="1" stop-color="#ff7847" stop-opacity="0"/></linearGradient></defs><g class="statistics-chart-grid">${grid}</g><path class="statistics-chart-area miles" d="${milesArea}"/><path class="statistics-chart-area energy" d="${energyArea}"/><path class="statistics-chart-line miles" d="${milesPath}"/><path class="statistics-chart-line energy" d="${energyPath}"/><g class="statistics-chart-labels">${labels}</g><text class="axis-title" x="4" y="14">Miles</text><text class="axis-title right" x="756" y="14">kWh</text><g id="statisticsTrendInspection" class="statistics-trend-inspection" hidden></g>`;
+    if (activeTrendIndex != null && activeTrendIndex < points.length) {
+      renderTrendInspection(activeTrendIndex);
+    }
   }
 
   function sparklineMarkup(points, key) {
@@ -357,8 +424,70 @@
     document.querySelectorAll("[data-stat-range]").forEach(button => button.addEventListener("click", () => {
       currentRange = button.dataset.statRange || "daily";
       document.querySelectorAll("[data-stat-range]").forEach(item => item.classList.toggle("active", item === button));
+      clearTrendInspection();
       renderTrend();
     }));
+
+    const chartWrap = byId("statisticsChartWrap") || document.querySelector(".statistics-chart-wrap");
+    const chart = byId("statisticsTrendChart");
+
+    if (chart && !chart.dataset.boundTrendInspection) {
+      chart.dataset.boundTrendInspection = "true";
+
+      const resolvePointIndexFromEvent = event => {
+        if (!currentTrendData || !currentTrendData.points.length) return null;
+        const rect = chart.getBoundingClientRect();
+        if (!rect || rect.width <= 0) return null;
+        const clientX = Number(event.clientX);
+        if (!Number.isFinite(clientX)) return null;
+        const normalizedX = (clientX - rect.left) / rect.width;
+        const svgX = normalizedX * 760;
+        const { bounds, points } = currentTrendData;
+        const clampedRatio = Math.max(0, Math.min(1, (svgX - bounds.left) / bounds.width));
+        return Math.round(clampedRatio * (points.length - 1));
+      };
+
+      chart.addEventListener("pointerdown", event => {
+        const index = resolvePointIndexFromEvent(event);
+        if (index != null) renderTrendInspection(index);
+      });
+      chart.addEventListener("pointermove", event => {
+        const index = resolvePointIndexFromEvent(event);
+        if (index != null) renderTrendInspection(index);
+      });
+      chart.addEventListener("pointerleave", () => {
+        clearTrendInspection();
+      });
+      chart.addEventListener("pointercancel", () => {
+        clearTrendInspection();
+      });
+    }
+
+    const keyboardTarget = chartWrap || chart;
+    if (keyboardTarget && !keyboardTarget.dataset.boundTrendKeyboard) {
+      keyboardTarget.dataset.boundTrendKeyboard = "true";
+      if (!keyboardTarget.hasAttribute("tabindex")) keyboardTarget.setAttribute("tabindex", "0");
+      if (!keyboardTarget.hasAttribute("role")) keyboardTarget.setAttribute("role", "region");
+      if (!keyboardTarget.hasAttribute("aria-label")) keyboardTarget.setAttribute("aria-label", "Miles and energy over time trend chart");
+
+      keyboardTarget.addEventListener("keydown", event => {
+        if (!currentTrendData || !currentTrendData.points.length) return;
+        const maxIdx = currentTrendData.points.length - 1;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          const nextIdx = activeTrendIndex == null ? maxIdx : Math.max(0, activeTrendIndex - 1);
+          renderTrendInspection(nextIdx);
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          const nextIdx = activeTrendIndex == null ? 0 : Math.min(maxIdx, activeTrendIndex + 1);
+          renderTrendInspection(nextIdx);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          clearTrendInspection();
+        }
+      });
+    }
+
     byId("statisticsScoreBreakdown")?.addEventListener("click", event => {
       const details = byId("statisticsScoreDetails");
       if (!details) return;

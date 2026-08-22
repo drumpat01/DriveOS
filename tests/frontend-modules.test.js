@@ -2,17 +2,22 @@ const fs=require('fs');const path=require('path');const vm=require('vm');const a
 const root=path.resolve(__dirname,'..');
 const elements=new Map([['status',{textContent:''}]]);
 const longestCardElement={innerHTML:'',textContent:'',hidden:false,className:'statistics-highlight statistics-longest',attributes:{},dataset:{},setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];},classList:{values:new Set(['statistics-highlight','statistics-longest']),toggle(name,enabled){if(enabled)this.values.add(name);else this.values.delete(name);},add(name){this.values.add(name);},remove(name){this.values.delete(name);},contains(name){return this.values.has(name);}},listeners:{},addEventListener(event,handler){this.listeners[event]=handler;},dispatchEvent(event){const handler=this.listeners[event.type];if(handler)handler(event);}};
-const context={console,Map,Promise,setTimeout,clearTimeout,URL,Intl,location:{hostname:'127.0.0.1',hash:''},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelector:sel=>sel==='.statistics-longest'||sel==='[data-statistics-dashboard]'?longestCardElement:null,querySelectorAll:()=>[],addEventListener(){}},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
+const rangeButtons=[
+  {dataset:{statRange:'daily'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}},
+  {dataset:{statRange:'weekly'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}},
+  {dataset:{statRange:'monthly'},classList:{toggle(){}},listeners:{},addEventListener(ev,fn){this.listeners[ev]=fn;}}
+];
+const context={console,Map,Promise,setTimeout,clearTimeout,URL,Intl,location:{hostname:'127.0.0.1',hash:''},navigator:{userAgent:'DriveOS Test',platform:'Win32',maxTouchPoints:0},document:{getElementById:id=>elements.get(id)||null,documentElement:{dataset:{},classList:{toggle(){}}},querySelector:sel=>sel==='.statistics-longest'||sel==='[data-statistics-dashboard]'?longestCardElement:null,querySelectorAll:sel=>sel==='[data-stat-range]'?rangeButtons:[],addEventListener(){}},window:null,fetch:async()=>({ok:true,json:async()=>({ok:true})})};
 context.window=context;context.window.navigator=context.navigator;context.window.location=context.location;context.window.matchMedia=()=>({matches:false});
 vm.createContext(context);
 for(const file of ['web/core/dom.js','web/core/state.js','web/core/platform.js','web/core/api.js','web/features/drives.js','web/features/replay.js','web/features/music.js','web/features/data-health.js','web/features/collections.js','web/features/mobility-graph.js','web/features/statistics-dashboard.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'),context,{filename:file});
-const statIds=['statDriveCount','statMiles','statEfficiency','statEnergy','statBattery','statSongs','statAutopilot','statAutopilotShare','statDriveCountChange','statMilesChange','statEfficiencyChange','statEnergyChange','statBatteryChange','statSongsChange','statAutopilotChange','statisticsComparison','statisticsScoreGauge','statisticsScore','statisticsScoreLabel','statisticsScoreContext','statisticsScoreDetails','statisticsLongestMiles','statisticsLongestRoute','statisticsLongestDate','statisticsLongestRouteArt','statisticsFavoriteDay','statisticsFavoriteAverage','statisticsFavoriteShare','statisticsWeekdayBars','statisticsStreakDays','statisticsStreakMessage','statisticsStreakTrack','statisticsTrendChart','statisticsScoreBreakdown','statisticsMonthlyArchiveButton','statisticsMonthlyArchive'];
-for(const id of statIds)elements.set(id,{innerHTML:'',textContent:'',hidden:false,className:'',style:{setProperty(){}},attributes:{},setAttribute(name,value){this.attributes[name]=value;},classList:{values:new Set(),toggle(name,enabled){if(enabled)this.values.add(name);else this.values.delete(name);}},addEventListener(){}});
+const statIds=['statDriveCount','statMiles','statEfficiency','statEnergy','statBattery','statSongs','statAutopilot','statAutopilotShare','statDriveCountChange','statMilesChange','statEfficiencyChange','statEnergyChange','statBatteryChange','statSongsChange','statAutopilotChange','statisticsComparison','statisticsScoreGauge','statisticsScore','statisticsScoreLabel','statisticsScoreContext','statisticsScoreDetails','statisticsLongestMiles','statisticsLongestRoute','statisticsLongestDate','statisticsLongestRouteArt','statisticsFavoriteDay','statisticsFavoriteAverage','statisticsFavoriteShare','statisticsWeekdayBars','statisticsStreakDays','statisticsStreakMessage','statisticsStreakTrack','statisticsTrendChart','statisticsChartWrap','statisticsTrendAnnouncement','statisticsTrendInspection','statisticsScoreBreakdown','statisticsMonthlyArchiveButton','statisticsMonthlyArchive'];
+for(const id of statIds)elements.set(id,{innerHTML:'',textContent:'',hidden:false,className:'',style:{setProperty(){}},attributes:{},dataset:{},hasAttribute(name){return name in this.attributes;},setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];if(name==='hidden')this.hidden=false;},classList:{values:new Set(),toggle(name,enabled){if(enabled)this.values.add(name);else this.values.delete(name);}},listeners:{},addEventListener(event,handler){this.listeners[event]=handler;},dispatchEvent(event){const handler=this.listeners[event.type];if(handler)handler(event);},getBoundingClientRect(){return{left:0,top:0,width:760,height:278};}});
 let openedDrive=null;
-const statDrives=Array.from({length:45},(_,index)=>{const date=new Date(Date.now()-index*86400000);return{id:`streak-drive-${index+1}`,startedAt:date.toISOString(),miles:index===2?50:10,energyKWh:2.5,batteryUsed:5,durationMinutes:20,efficiencyWhMi:250,startingLocation:'Home',endingLocation:'Office'};});
+const statDrives=Array.from({length:45},(_,index)=>{const date=new Date(Date.now()-index*86400000-3600000);return{id:`streak-drive-${index+1}`,startedAt:date.toISOString(),miles:index===2?50:10,energyKWh:2.5,batteryUsed:5,durationMinutes:20,efficiencyWhMi:250,startingLocation:'Home',endingLocation:'Office'};});
 context.DriveOSStatisticsDashboard.render(null,statDrives,{openDrive:drive=>{openedDrive=drive;}});
 assert.equal(elements.get('statisticsStreakDays').textContent,'45 days','driving streak should reflect full library history and exceed the 30-day window');
-assert.equal(elements.get('statDriveCount').textContent,'31','30-day KPI totals must continue using only the current 30-day window');
+assert.equal(elements.get('statDriveCount').textContent,'30','30-day KPI totals must continue using only the current 30-day window');
 const streakTrackHtml=elements.get('statisticsStreakTrack').innerHTML;
 assert.equal((streakTrackHtml.match(/<div class=/g)||[]).length,7,'streak visual track must remain exactly 7 days');
 assert.ok(longestCardElement.classList.contains('is-interactive'),'longest journey card should be interactive when longest drive exists');
@@ -23,8 +28,53 @@ assert.equal(openedDrive?.id,'streak-drive-3','clicking longest journey card sho
 openedDrive=null;
 longestCardElement.dispatchEvent({type:'keydown',key:'Enter',preventDefault:()=>{}});
 assert.equal(openedDrive?.id,'streak-drive-3','pressing Enter on longest journey card should open the longest drive');
+
+const chartElement=elements.get('statisticsTrendChart');
+const inspectionElement=elements.get('statisticsTrendInspection');
+const announcementElement=elements.get('statisticsTrendAnnouncement');
+const chartWrapElement=elements.get('statisticsChartWrap');
+
+assert.equal(typeof context.DriveOSStatisticsDashboard.inspectTrend,'undefined','inspectTrend must not be exposed on public API');
+assert.equal(typeof context.DriveOSStatisticsDashboard.clearTrendInspection,'undefined','clearTrendInspection must not be exposed on public API');
+
+chartElement.dispatchEvent({type:'pointermove',clientX:48});
+assert.equal(inspectionElement.hidden,false,'start point pointer inspection should be visible');
+assert.ok(inspectionElement.innerHTML.includes('statistics-trend-guide'),'inspection must include guide line');
+assert.ok(inspectionElement.innerHTML.includes('statistics-trend-dot miles'),'inspection must include miles dot');
+assert.ok(inspectionElement.innerHTML.includes('statistics-trend-dot energy'),'inspection must include energy dot');
+assert.ok(inspectionElement.innerHTML.includes('statistics-trend-tooltip'),'inspection must include tooltip');
+assert.ok(announcementElement.textContent.includes('miles')&&announcementElement.textContent.includes('kilowatt-hours'),'screen-reader live region must announce values');
+
+chartElement.dispatchEvent({type:'pointermove',clientX:380});
+assert.equal(inspectionElement.hidden,false,'midpoint pointer inspection should be visible');
+
+chartElement.dispatchEvent({type:'pointermove',clientX:712});
+assert.equal(inspectionElement.hidden,false,'end point pointer inspection should be visible');
+
+chartWrapElement.dispatchEvent({type:'keydown',key:'ArrowLeft',preventDefault:()=>{}});
+assert.ok(announcementElement.textContent.length>0,'ArrowLeft should step to adjacent point');
+
+chartWrapElement.dispatchEvent({type:'keydown',key:'Escape',preventDefault:()=>{}});
+assert.equal(inspectionElement.hidden,true,'Escape should clear inspection');
+assert.equal(announcementElement.textContent,'','Escape should clear live region text');
+
+chartElement.dispatchEvent({type:'pointermove',clientX:120});
+assert.equal(inspectionElement.hidden,false,'re-hovering reveals inspection');
+chartElement.dispatchEvent({type:'pointerleave'});
+assert.equal(inspectionElement.hidden,true,'pointerleave should dismiss overlay');
+
+chartElement.dispatchEvent({type:'pointerdown',clientX:200});
+assert.equal(inspectionElement.hidden,false,'active inspection exists before switching range');
+rangeButtons[1].listeners['click']?.({currentTarget:rangeButtons[1]});
+assert.equal(inspectionElement.hidden,true,'switching range tab must clear active trend inspection');
+assert.equal(announcementElement.textContent,'','switching range tab must clear live announcement');
+
 context.DriveOSStatisticsDashboard.render(null,[],{});
 assert.ok(!longestCardElement.classList.contains('is-interactive'),'longest journey card should not be interactive when no journeys exist');
+chartElement.dispatchEvent({type:'pointermove',clientX:48});
+assert.equal(inspectionElement.hidden,false,'zero-activity data should still allow inspection');
+assert.ok(inspectionElement.innerHTML.includes('0.0 mi'),'zero-activity inspection should show 0.0 mi');
+assert.ok(inspectionElement.innerHTML.includes('0.0 kWh'),'zero-activity inspection should show 0.0 kWh');
 assert.equal(context.DriveOSDom.escapeHtml(`<Driver's & "Song">`),'&lt;Driver&#039;s &amp; &quot;Song&quot;&gt;');
 context.DriveOSDom.setText('status','ONLINE');assert.equal(elements.get('status').textContent,'ONLINE');
 assert.equal(context.DriveOSState.driveLibraryWindowDays,730);assert.ok(context.DriveOSState.songMapMarkers instanceof Map);

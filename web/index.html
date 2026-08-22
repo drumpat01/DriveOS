@@ -1168,8 +1168,9 @@
                   <button type="button" data-stat-range="monthly">Monthly</button>
                 </div>
               </header>
-              <div class="statistics-chart-wrap">
+              <div id="statisticsChartWrap" class="statistics-chart-wrap" tabindex="0" role="region" aria-label="Miles and energy over time trend chart">
                 <svg id="statisticsTrendChart" class="statistics-trend-chart" viewBox="0 0 760 290" preserveAspectRatio="none" role="img" aria-label="Miles and energy over time"></svg>
+                <div id="statisticsTrendAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
               </div>
             </article>
 
