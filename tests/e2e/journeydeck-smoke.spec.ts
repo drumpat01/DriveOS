@@ -131,9 +131,19 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
   await expect(page.locator('.statistics-comparison-row')).toHaveCount(4);
   await expect(page.locator('#statisticsTrendChart .statistics-chart-line')).toHaveCount(2);
 
+  const daily = page.getByRole('button', { name: 'Daily' });
   const weekly = page.getByRole('button', { name: 'Weekly' });
+  const monthly = page.getByRole('button', { name: 'Monthly', exact: true });
+
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
+  await expect(weekly).toHaveAttribute('aria-pressed', 'false');
+  await expect(monthly).toHaveAttribute('aria-pressed', 'false');
+
   await weekly.click();
   await expect(weekly).toHaveClass(/active/);
+  await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+  await expect(daily).toHaveAttribute('aria-pressed', 'false');
+  await expect(monthly).toHaveAttribute('aria-pressed', 'false');
 
   const trendChart = page.locator('#statisticsTrendChart');
   await trendChart.hover({ position: { x: 300, y: 100 } });
@@ -149,11 +159,27 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
 
   await trendChart.hover({ position: { x: 300, y: 100 } });
   await expect(inspection).toBeVisible();
-  const monthly = page.getByRole('button', { name: 'Monthly', exact: true });
   await monthly.click();
   await expect(monthly).toHaveClass(/active/);
+  await expect(monthly).toHaveAttribute('aria-pressed', 'true');
   await expect(inspection).toBeHidden();
   await expect(page.locator('#statisticsTrendAnnouncement')).toBeEmpty();
+
+  await monthly.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(daily).toBeFocused();
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
+  await expect(daily).toHaveClass(/active/);
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(monthly).toBeFocused();
+  await expect(monthly).toHaveAttribute('aria-pressed', 'true');
+  await expect(monthly).toHaveClass(/active/);
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(weekly).toBeFocused();
+  await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+  await expect(weekly).toHaveClass(/active/);
 
   const longestCard = page.locator('.statistics-longest');
   await expect(longestCard).toHaveClass(/is-interactive/);
