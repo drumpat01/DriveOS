@@ -143,11 +143,28 @@
   background: rgba(7, 4, 15, .58);
 }
 .statistics-range-tabs button { min-width: 60px; padding: 9px 12px; border: 0; background: transparent; color: var(--statistics-muted); cursor: pointer; font-size: .67rem; }
-.statistics-range-tabs button.active { color: #fff; background: linear-gradient(135deg, rgba(166, 76, 255, .45), rgba(116, 39, 187, .35)); box-shadow: inset 0 0 0 1px rgba(196, 122, 255, .18); }
+.statistics-range-tabs button.active,
+.statistics-range-tabs button[aria-pressed="true"] { color: #fff; background: linear-gradient(135deg, rgba(166, 76, 255, .45), rgba(116, 39, 187, .35)); box-shadow: inset 0 0 0 1px rgba(196, 122, 255, .18); }
 .statistics-range-tabs button:focus-visible { outline: 2px solid var(--statistics-orange); outline-offset: -2px; }
 
-.statistics-chart-wrap { height: 278px; margin-top: 8px; }
-.statistics-trend-chart { width: 100%; height: 100%; overflow: visible; }
+.statistics-chart-wrap {
+  position: relative;
+  height: 278px;
+  margin-top: 8px;
+  outline: none;
+  touch-action: pan-y;
+}
+.statistics-chart-wrap:focus-visible {
+  box-shadow: 0 0 0 2px var(--statistics-orange);
+  border-radius: 12px;
+}
+.statistics-trend-chart {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  touch-action: pan-y;
+  cursor: crosshair;
+}
 .statistics-chart-grid line { stroke: rgba(190, 164, 205, .12); stroke-width: 1; stroke-dasharray: 3 4; }
 .statistics-chart-grid text,
 .statistics-chart-labels text,
@@ -159,6 +176,79 @@
 .statistics-chart-line.energy { stroke: var(--statistics-orange); filter: drop-shadow(0 0 4px rgba(255, 108, 68, .28)); }
 .statistics-chart-area.miles { fill: url(#statisticsMilesFill); }
 .statistics-chart-area.energy { fill: url(#statisticsEnergyFill); }
+
+.statistics-trend-inspection {
+  pointer-events: none;
+}
+.statistics-trend-guide {
+  stroke: rgba(166, 76, 255, 0.45);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.statistics-trend-dot {
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(166, 76, 255, 0.6));
+}
+.statistics-trend-dot.miles {
+  fill: #130920;
+  stroke: var(--statistics-purple);
+}
+.statistics-trend-dot.energy {
+  fill: #130920;
+  stroke: var(--statistics-orange);
+  filter: drop-shadow(0 0 6px rgba(255, 108, 68, 0.6));
+}
+
+.statistics-trend-tooltip .tooltip-bg {
+  fill: rgba(12, 6, 22, 0.94);
+  stroke: rgba(166, 76, 255, 0.35);
+  stroke-width: 1;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.6));
+}
+.statistics-trend-tooltip .tooltip-title {
+  fill: #f4eaff;
+  font: 700 11px Inter, "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
+}
+.statistics-trend-tooltip .tooltip-metric {
+  font: 600 10.5px Inter, "Segoe UI", sans-serif;
+}
+.statistics-trend-tooltip .tooltip-metric.miles {
+  fill: #d49cff;
+}
+.statistics-trend-tooltip .tooltip-metric.energy {
+  fill: #ff9b77;
+}
+.statistics-trend-tooltip .tooltip-marker.miles {
+  fill: var(--statistics-purple);
+}
+.statistics-trend-tooltip .tooltip-marker.energy {
+  fill: var(--statistics-orange);
+}
+
+:root[data-theme="light"] .statistics-trend-tooltip .tooltip-bg {
+  fill: rgba(255, 255, 255, 0.96);
+  stroke: rgba(166, 76, 255, 0.28);
+  filter: drop-shadow(0 8px 24px rgba(75, 31, 87, 0.15));
+}
+:root[data-theme="light"] .statistics-trend-tooltip .tooltip-title {
+  fill: #241432;
+}
+:root[data-theme="light"] .statistics-trend-tooltip .tooltip-metric.miles {
+  fill: #7a22cc;
+}
+:root[data-theme="light"] .statistics-trend-tooltip .tooltip-metric.energy {
+  fill: #d94314;
+}
+
+.statistics-trend-hint {
+  margin: 8px 0 0;
+  color: var(--statistics-muted);
+  font: 500 .68rem/1.35 Inter, "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  letter-spacing: .01em;
+  user-select: none;
+}
 
 .statistics-compare-panel { display: flex; flex-direction: column; }
 .statistics-comparison-list { display: grid; margin-top: 16px; }
@@ -203,6 +293,26 @@
 .statistics-highlight + .statistics-highlight { border-left: 1px solid rgba(166, 76, 255, .16); }
 .statistics-highlight > div:first-child { min-width: 0; }
 .statistics-highlight-kicker { display: block; color: #ae83cf; }
+.statistics-longest.is-interactive {
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
+  user-select: none;
+}
+.statistics-longest.is-interactive:hover {
+  background: rgba(166, 76, 255, .08);
+  box-shadow: inset 0 0 0 1px rgba(166, 76, 255, .28), 0 8px 24px rgba(0, 0, 0, .25);
+}
+.statistics-longest.is-interactive:active {
+  transform: scale(0.992);
+}
+.statistics-longest.is-interactive:focus-visible {
+  outline: 2px solid var(--statistics-orange);
+  outline-offset: -2px;
+}
+:root[data-theme="light"] .statistics-longest.is-interactive:hover {
+  background: rgba(166, 76, 255, .06);
+  box-shadow: inset 0 0 0 1px rgba(166, 76, 255, .25), 0 8px 24px rgba(75, 31, 87, .08);
+}
 .statistics-highlight > div:first-child > strong { display: block; margin-top: 22px; color: var(--statistics-text); font: 350 clamp(1.65rem, 2.2vw, 2.3rem)/1 Inter, "Segoe UI", sans-serif; letter-spacing: -.05em; }
 .statistics-highlight > div:first-child > span:not(.statistics-highlight-kicker),
 .statistics-highlight > div:first-child > small { display: block; overflow: hidden; margin-top: 9px; color: #d8cbdc; font-size: .76rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
@@ -257,7 +367,8 @@
 :root[data-theme="light"] .statistics-kpi > strong,
 :root[data-theme="light"] .statistics-highlight > div:first-child > strong { color: var(--statistics-text); }
 :root[data-theme="light"] .statistics-range-tabs { background: rgba(249, 240, 249, .9); }
-:root[data-theme="light"] .statistics-range-tabs button.active { color: #fff; }
+:root[data-theme="light"] .statistics-range-tabs button.active,
+:root[data-theme="light"] .statistics-range-tabs button[aria-pressed="true"] { color: #fff; }
 :root[data-theme="light"] .statistics-comparison-row strong,
 :root[data-theme="light"] .statistics-highlight > div:first-child > span:not(.statistics-highlight-kicker) { color: #443348; }
 :root[data-theme="light"] .statistics-streak-track i { background: #fff8f7; }
@@ -312,4 +423,5 @@
   #statisticsLongestRouteArt { height: 105px; }
   .statistics-weekday-bars { height: 100px; }
   .statistics-streak-track { margin-top: 8px; }
+  .statistics-trend-hint { margin-top: 6px; font-size: .62rem; }
 }

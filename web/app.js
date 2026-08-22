@@ -1523,7 +1523,7 @@ async function loadDrives() {
       state.drives = normalizeDriveCollection(data.drives);
       state.driveLibraryWindowDays = Number(data.windowDays) || 730;
       driveLibraryFullyLoaded = true;
-      window.DriveOSStatisticsDashboard?.render(state.statistics, state.drives, { fullLibrary: true });
+      window.DriveOSStatisticsDashboard?.render(state.statistics, state.drives, { fullLibrary: true, openDrive: openDriveModal });
       window.DriveOSFeatures.moments?.setJourneys(state.drives);
       window.DriveOSMusicDashboard?.render(null, state.drives, state.spotifyRecent);
 
@@ -2345,7 +2345,7 @@ async function loadStatistics() {
   try {
     const data = await getJson("/api/statistics");
     state.statistics = data;
-    window.DriveOSStatisticsDashboard?.render(data, state.drives, { fullLibrary: driveLibraryFullyLoaded });
+    window.DriveOSStatisticsDashboard?.render(data, state.drives, { fullLibrary: driveLibraryFullyLoaded, openDrive: openDriveModal });
     return data;
   } catch (error) {
     console.error(error);

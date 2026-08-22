@@ -71,6 +71,30 @@ test('Timeline renders live mock data and exposes working map zoom controls', as
   await expect(zoomLevel).not.toHaveText(initialZoom || '');
 });
 
+test('Mobile journeys expose pull-to-refresh and a native share-card flow', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  await expect(page.locator('#pullRefreshIndicator')).toHaveCSS('display', 'flex');
+  await expect(page.locator('#pullRefreshText')).toHaveText('Pull to refresh');
+  await expect(page.locator('.topbar-right')).toBeHidden();
+
+  await page.locator('[data-reference-drive="0"]').click();
+  await expect(page.getByRole('button', { name: /Share journey/ })).toBeVisible();
+  await expect(page.locator('#shareCardNativeButton')).toHaveText('Share card');
+});
+
+test('Mobile content pages hide the desktop utility strip', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+
+  for (const view of ['drives', 'graph', 'music', 'statistics'] as const) {
+    await page.locator(`.nav-button[data-view="${view}"]`).evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.locator(`#view-${view}`)).toHaveClass(/active-view/);
+    await expect(page.locator('.topbar-right')).toBeHidden();
+  }
+});
+
 test('Music page renders its cinematic hero and live archived play', async ({ page }) => {
   await page.locator('.nav-button[data-view="music"]').click();
 
@@ -107,9 +131,68 @@ test('Statistics Option 1 renders live journey analysis and interactive ranges',
   await expect(page.locator('.statistics-comparison-row')).toHaveCount(4);
   await expect(page.locator('#statisticsTrendChart .statistics-chart-line')).toHaveCount(2);
 
+  const chartWrap = page.locator('#statisticsChartWrap');
+  const trendHint = page.locator('#statisticsTrendHint');
+  await expect(chartWrap).toHaveAttribute('aria-describedby', 'statisticsTrendHint');
+  await expect(trendHint).toBeVisible();
+  await expect(trendHint).toHaveText('Hover, drag, or use arrow keys to inspect');
+
+  const daily = page.getByRole('button', { name: 'Daily' });
   const weekly = page.getByRole('button', { name: 'Weekly' });
+  const monthly = page.getByRole('button', { name: 'Monthly', exact: true });
+
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
+  await expect(weekly).toHaveAttribute('aria-pressed', 'false');
+  await expect(monthly).toHaveAttribute('aria-pressed', 'false');
+
   await weekly.click();
   await expect(weekly).toHaveClass(/active/);
+  await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+  await expect(daily).toHaveAttribute('aria-pressed', 'false');
+  await expect(monthly).toHaveAttribute('aria-pressed', 'false');
+
+  const trendChart = page.locator('#statisticsTrendChart');
+  await trendChart.hover({ position: { x: 300, y: 100 } });
+  const inspection = page.locator('#statisticsTrendInspection');
+  await expect(inspection).toBeVisible();
+  await expect(inspection.locator('.tooltip-title')).not.toBeEmpty();
+  await expect(inspection.locator('.tooltip-metric.miles')).toContainText(/mi$/);
+  await expect(inspection.locator('.tooltip-metric.energy')).toContainText(/kWh$/);
+  await expect(page.locator('#statisticsTrendAnnouncement')).not.toBeEmpty();
+
+  await page.locator('#statisticsChartWrap').press('Escape');
+  await expect(inspection).toBeHidden();
+
+  await trendChart.hover({ position: { x: 300, y: 100 } });
+  await expect(inspection).toBeVisible();
+  await monthly.click();
+  await expect(monthly).toHaveClass(/active/);
+  await expect(monthly).toHaveAttribute('aria-pressed', 'true');
+  await expect(inspection).toBeHidden();
+  await expect(page.locator('#statisticsTrendAnnouncement')).toBeEmpty();
+
+  await monthly.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(daily).toBeFocused();
+  await expect(daily).toHaveAttribute('aria-pressed', 'true');
+  await expect(daily).toHaveClass(/active/);
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(monthly).toBeFocused();
+  await expect(monthly).toHaveAttribute('aria-pressed', 'true');
+  await expect(monthly).toHaveClass(/active/);
+
+  await page.keyboard.press('ArrowLeft');
+  await expect(weekly).toBeFocused();
+  await expect(weekly).toHaveAttribute('aria-pressed', 'true');
+  await expect(weekly).toHaveClass(/active/);
+
+  const longestCard = page.locator('.statistics-longest');
+  await expect(longestCard).toHaveClass(/is-interactive/);
+  await longestCard.click();
+  await expect(page.locator('#driveModal')).toHaveClass(/open/);
+  await page.locator('#driveModal .modal-close').click();
+  await expect(page.locator('#driveModal')).not.toHaveClass(/open/);
 
   await page.getByRole('button', { name: /View monthly archive/ }).click();
   await expect(page.locator('#statisticsMonthlyArchive')).toBeVisible();

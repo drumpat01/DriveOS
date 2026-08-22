@@ -24,6 +24,10 @@
   <link rel="stylesheet" href="/statistics-dashboard.css?v=6.0.1-option-1">
 </head>
 <body>
+  <div id="pullRefreshIndicator" class="pull-refresh-indicator" role="status" aria-live="polite" aria-hidden="true">
+    <span class="pull-refresh-icon" aria-hidden="true">&#x2193;</span>
+    <span id="pullRefreshText">Pull to refresh</span>
+  </div>
   <div id="pwaInstallBanner" class="pwa-install-banner" hidden>
     <div>
       <strong>Add JourneyDeck to your iPhone</strong>
@@ -1159,14 +1163,16 @@
               <header class="statistics-panel-heading">
                 <div><h3 id="statisticsTrendHeading">MILES &amp; ENERGY OVER TIME</h3><div class="statistics-chart-legend"><span class="miles">Miles</span><span class="energy">Energy (kWh)</span></div></div>
                 <div class="statistics-range-tabs" role="group" aria-label="Statistics chart range">
-                  <button class="active" type="button" data-stat-range="daily">Daily</button>
-                  <button type="button" data-stat-range="weekly">Weekly</button>
-                  <button type="button" data-stat-range="monthly">Monthly</button>
+                  <button id="statisticsRangeDaily" class="active" type="button" aria-pressed="true" data-stat-range="daily">Daily</button>
+                  <button id="statisticsRangeWeekly" type="button" aria-pressed="false" data-stat-range="weekly">Weekly</button>
+                  <button id="statisticsRangeMonthly" type="button" aria-pressed="false" data-stat-range="monthly">Monthly</button>
                 </div>
               </header>
-              <div class="statistics-chart-wrap">
+              <div id="statisticsChartWrap" class="statistics-chart-wrap" tabindex="0" role="region" aria-label="Miles and energy over time trend chart" aria-describedby="statisticsTrendHint">
                 <svg id="statisticsTrendChart" class="statistics-trend-chart" viewBox="0 0 760 290" preserveAspectRatio="none" role="img" aria-label="Miles and energy over time"></svg>
+                <div id="statisticsTrendAnnouncement" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
               </div>
+              <p id="statisticsTrendHint" class="statistics-trend-hint">Hover, drag, or use arrow keys to inspect</p>
             </article>
 
             <article class="statistics-panel statistics-compare-panel" aria-labelledby="statisticsCompareHeading">
@@ -1469,6 +1475,12 @@
 
       <div id="modalMetrics" class="detail-metrics"></div>
 
+      <div class="journey-summary-actions">
+        <button id="shareCardButton" class="primary-button journey-share-button" type="button">
+          <span aria-hidden="true">&#x2191;</span> Share journey
+        </button>
+      </div>
+
 
       <section class="drive-map-section">
         <div class="map-heading">
@@ -1594,7 +1606,6 @@
           <h3 id="modalSongCount">0 songs</h3>
         </div>
         <div class="action-row">
-          <button id="shareCardButton" class="secondary-button" type="button">Create share card</button>
           <button id="playlistButton" class="primary-button" type="button">Create Spotify playlist</button>
         </div>
       </div>
@@ -1648,7 +1659,7 @@
               <li id="shareCardHomeStatus">Home protection checked</li>
             </ul>
           </div>
-          <button id="shareCardNativeButton" class="primary-button share-to-x-button" type="button">Share to X</button>
+          <button id="shareCardNativeButton" class="primary-button share-card-native-button" type="button">Share card</button>
           <button id="shareCardDownload" class="secondary-button" type="button">Save PNG</button>
           <p id="shareCardMessage" class="muted" aria-live="polite"></p>
         </aside>

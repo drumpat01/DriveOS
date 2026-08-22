@@ -1624,10 +1624,45 @@ footer {
 .share-card-privacy-list { display: grid; gap: 4px; margin: 3px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .64rem; }
 .share-card-privacy-list li::before { content: "\2713"; margin-right: 6px; color: #49daa5; font-weight: 900; }
 .share-card-map-renderer { position: fixed; left: -12000px; top: 0; width: 936px; height: 430px; pointer-events: none; opacity: .01; }
-.share-to-x-button { background: #050505 !important; border-color: #050505 !important; color: #fff !important; }
-.share-to-x-button:hover { background: #202020 !important; }
+.share-card-native-button { background: linear-gradient(135deg, #ff7440, #e94286) !important; border-color: rgba(255,116,64,.62) !important; color: #fff !important; }
+.share-card-native-button:hover { filter: brightness(1.08); }
+
+.journey-summary-actions { display:flex; justify-content:flex-end; margin:14px 0 2px; }
+.journey-share-button { display:inline-flex; align-items:center; gap:8px; }
+
+.pull-refresh-indicator {
+  --pull-progress: 0;
+  --pull-distance: 0px;
+  position:fixed;
+  z-index:1400;
+  top:calc(env(safe-area-inset-top) + 8px);
+  left:50%;
+  display:none;
+  min-height:42px;
+  align-items:center;
+  gap:9px;
+  padding:0 15px;
+  transform:translate(-50%, calc(-58px + var(--pull-distance)));
+  border:1px solid rgba(255,116,64,.38);
+  border-radius:999px;
+  background:rgba(10,6,20,.94);
+  color:#fff;
+  box-shadow:0 12px 34px rgba(0,0,0,.4), 0 0 22px rgba(255,80,92,.13);
+  font-size:.72rem;
+  font-weight:800;
+  letter-spacing:.025em;
+  opacity:var(--pull-progress);
+  pointer-events:none;
+  transition:opacity .16s ease, transform .16s ease;
+  backdrop-filter:blur(16px);
+}
+.pull-refresh-icon { display:grid; width:23px; height:23px; place-items:center; border-radius:50%; background:linear-gradient(135deg,#ff7b3d,#e83e89); transform:rotate(calc(var(--pull-progress) * 180deg)); transition:transform .12s linear; }
+.pull-refresh-indicator[data-state="refreshing"] { --pull-progress:1 !important; --pull-distance:58px !important; }
+.pull-refresh-indicator[data-state="refreshing"] .pull-refresh-icon { animation:journeydeckPullSpin .8s linear infinite; }
+@keyframes journeydeckPullSpin { to { transform:rotate(360deg); } }
 
 @media (max-width: 820px) {
+  .pull-refresh-indicator { display:flex; }
   .share-card-modal-card { padding: 24px 18px; }
   .share-card-workspace { grid-template-columns: 1fr; }
   .share-card-controls { position: static; grid-template-columns: 1fr 1fr; }
@@ -8719,6 +8754,15 @@ textarea {
   }
 }
 
+@media (max-width: 560px) {
+  .journey-summary-actions { position:sticky; z-index:4; bottom:8px; margin:12px 0; }
+  .journey-share-button { width:100%; min-height:50px; justify-content:center; box-shadow:0 12px 28px rgba(0,0,0,.32); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pull-refresh-indicator, .pull-refresh-icon { transition:none; }
+}
+
 /* Cinematic five-button mobile navigation shared by local, Tailnet, and production. */
 @media (max-width:767px) {
   :root .app-shell {
@@ -9155,3 +9199,10 @@ textarea {
 }
 
 @media (prefers-reduced-motion:reduce) { .music-waveform i { animation:none; } }
+
+/* Pull-to-refresh replaces the utility strip on phone-sized layouts. */
+@media (max-width:767px) {
+  .topbar-right {
+    display:none !important;
+  }
+}
