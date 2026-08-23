@@ -1,7 +1,11 @@
 import type { Connection } from './credentials';
-import { getSession, markPointsUploaded, markRemoteCreated, queuedPoints } from './storage';
+import {
+  getSession, markMusicObservationsUploaded, markPointsUploaded, markRemoteCreated,
+  queuedMusicObservations, queuedPoints, sessionsWithQueuedMusic,
+} from './storage';
 
 type RecorderSession = { id: string; driveId?: string | null };
+const musicFlushes = new Map<string, Promise<number>>();
 
 async function request<T>(connection: Pick<Connection, 'serverUrl' | 'token'>, path: string, init?: RequestInit): Promise<T> {
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000);
@@ -35,6 +39,48 @@ export async function flushRecording(connection: Connection, sessionId: string) 
     markPointsUploaded(sessionId, batch.map(point => point.sequence));
     batch = queuedPoints(sessionId);
   }
+  // Music is an additive enrichment. Start its independent queue flush only
+  // after GPS is safe, and never let it delay or fail recording completion.
+  void flushMusicObservationsBestEffort(connection, sessionId);
+}
+
+async function runMusicObservationFlush(connection: Connection, sessionId: string) {
+  await ensureRemoteSession(connection, sessionId);
+  let uploaded = 0;
+  let batch = queuedMusicObservations(sessionId);
+  while (batch.length) {
+    await request<{ accepted: number; total: number; updatedAt: string }>(
+      connection,
+      `/api/recorder/sessions/${encodeURIComponent(sessionId)}/music`,
+      { method: 'POST', body: JSON.stringify({ deviceId: connection.deviceId, observations: batch }) },
+    );
+    markMusicObservationsUploaded(sessionId, batch.map(observation => observation.observationId));
+    uploaded += batch.length;
+    batch = queuedMusicObservations(sessionId);
+  }
+  return uploaded;
+}
+
+export function flushMusicObservations(connection: Connection, sessionId: string) {
+  const existing = musicFlushes.get(sessionId);
+  if (existing) return existing;
+  const pending = runMusicObservationFlush(connection, sessionId)
+    .finally(() => { if (musicFlushes.get(sessionId) === pending) musicFlushes.delete(sessionId); });
+  musicFlushes.set(sessionId, pending);
+  return pending;
+}
+
+export async function flushMusicObservationsBestEffort(connection: Connection, sessionId: string) {
+  try { return await flushMusicObservations(connection, sessionId); }
+  catch { return 0; }
+}
+
+export async function flushAllQueuedMusicBestEffort(connection: Connection) {
+  let uploaded = 0;
+  for (const sessionId of sessionsWithQueuedMusic()) {
+    uploaded += await flushMusicObservationsBestEffort(connection, sessionId);
+  }
+  return uploaded;
 }
 
 export async function setRemoteState(connection: Connection, sessionId: string, status: 'recording' | 'paused') {
