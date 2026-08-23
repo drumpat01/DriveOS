@@ -28,5 +28,7 @@ export const config = Object.freeze({
   trustTailscaleHeaders: process.env.DRIVEOS_NODE_TRUST_TAILSCALE_HEADERS === "true",
   householdId: process.env.DRIVEOS_NODE_HOUSEHOLD_ID || "household_primary",
   recorderToken: process.env.JOURNEYDECK_RECORDER_TOKEN || "",
+  lastFmApiKey: process.env.LASTFM_API_KEY || "",
+  tessieToken: process.env.TESSIE_TOKEN || "",
   recorderDurableTurso: process.env.JOURNEYDECK_RECORDER_DURABLE_TURSO === "true" || process.env.DRIVEOS_ATLAS_DURABLE_TURSO === "true"
 });

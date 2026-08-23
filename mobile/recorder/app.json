@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "JourneyDeck Recorder",
+    "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,6 +12,10 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.journeydeck.recorder",
+      "infoPlist": {
+        "NSAppleMusicUsageDescription": "JourneyDeck reads your Apple Music activity to build the soundtrack for journeys you record.",
+        "NSMicrophoneUsageDescription": "JourneyDeck briefly listens for music you choose to recognize. Audio is never saved."
+      },
       "config": {
         "usesNonExemptEncryption": false
       }

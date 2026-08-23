@@ -9,7 +9,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 
 import './src/location-task';
 import { loadConnection, saveConnection, type Connection } from './src/credentials';
-import { completeRecording, flushRecording, pingRecorder, setRemoteState } from './src/api';
+import { completeRecording, flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, setRemoteState } from './src/api';
 import {
   activeSession, beginLocalSession, getSessionSummary, initializeDatabase, markSessionCompleted,
   recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
@@ -17,9 +17,17 @@ import {
 import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
 import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
+import { JourneyDeckShell } from './src/shell';
+import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
+import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
+
+function enrichCompletedJourney(connection: Connection, sessionId: string) {
+  void captureAppleMusicHistoryForSession(sessionId).then(() => flushAllQueuedMusicBestEffort(connection));
+  void queueLastFmForCompletedSession(sessionId);
+}
 
 async function captureCurrentPoint(fresh = false) {
   try {
@@ -43,7 +51,7 @@ function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
   return status === 'recording' ? (nativeTracking ? 'Recording' : 'Recovering recording') : status === 'paused' ? 'Paused' : status === 'finishing' ? 'Waiting to finish' : 'Ready';
 }
 
-export default function App() {
+function RecorderScreen() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [token, setToken] = useState('');
@@ -96,6 +104,8 @@ export default function App() {
       try {
         if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
         await captureCurrentPoint(true);
+        void sampleAppleMusicForActiveSession({ force: true });
+        void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
         taskRunning = true;
         setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
         if (connection && current.remote_created) {
@@ -126,8 +136,9 @@ export default function App() {
       try {
         const completed = await completeRecording(connection, current.id);
         markSessionCompleted(current.id, completed.driveId ?? null);
+        enrichCompletedJourney(connection, current.id);
         setSyncStage('synced');
-        setNotice('Journey finished and saved to JourneyDeck.');
+        setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.');
       } catch {
         setSyncStage('retry');
         setNotice('Journey is ready to finish. Points remain safe and completion will retry when JourneyDeck is reachable.');
@@ -148,23 +159,39 @@ export default function App() {
   }, [connection, runExclusive]);
 
   useEffect(() => {
-    void (async () => {
-      const saved = await loadConnection();
-      if (saved) { setConnection(saved); setServerUrl(saved.serverUrl); }
-      await refresh().catch(() => {});
-    })();
+    let cancelled = false;
+    void loadConnection().then(saved => {
+      if (cancelled || !saved) return;
+      setConnection(saved);
+      setServerUrl(saved.serverUrl);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    void refresh().catch(() => {});
+    void sampleAppleMusicForActiveSession({ force: true });
+    if (connection) void flushAllQueuedMusicBestEffort(connection);
+    void syncPendingLastFmBestEffort();
     let ticks = 0;
     const timer = setInterval(() => {
       setClock(value => value + 1);
       ticks += 1;
       if (ticks % 5 === 0 && !busyRef.current) void refresh().catch(() => {});
+      if (ticks % 60 === 0) void syncPendingLastFmBestEffort();
     }, 1000);
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active' && !busyRef.current) void refresh().catch(() => {}); });
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active' || busyRef.current) return;
+      void refresh().catch(() => {});
+      void sampleAppleMusicForActiveSession({ force: true });
+      if (connection) void flushAllQueuedMusicBestEffort(connection);
+      void syncPendingLastFmBestEffort();
+    });
     return () => { clearInterval(timer); subscription.remove(); };
-  }, [refresh]);
+  }, [connection, refresh]);
 
   useEffect(() => {
-    if (!connection || !summary || summary.queuedCount === 0 || busy) return;
+    if (!connection || !summary || (summary.queuedCount === 0 && summary.musicQueuedCount === 0) || busy) return;
     const timer = setTimeout(() => {
       void runExclusive(async () => {
         await flushRecording(connection, summary.id);
@@ -209,6 +236,8 @@ export default function App() {
     const session = beginLocalSession(connection.deviceId);
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
+    void sampleAppleMusicForActiveSession({ force: true });
+    void recognizeAndQueueActiveSessionMusic(10_000).then(() => flushAllQueuedMusicBestEffort(connection)).catch(() => {});
     try { await flushRecording(connection, session.id); remoteRecordingConfirmed.current.add(session.id); setNotice('Recording started and connected.'); }
     catch { setNotice('Recording started offline. It will sync when JourneyDeck is reachable.'); }
   }, 'Starting background recording…');
@@ -225,6 +254,8 @@ export default function App() {
     setLocalStatus(summary.id, 'recording');
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
+    void sampleAppleMusicForActiveSession({ force: true });
+    void recognizeAndQueueActiveSessionMusic(10_000).then(() => flushAllQueuedMusicBestEffort(connection)).catch(() => {});
     try { await setRemoteState(connection, summary.id, 'recording'); remoteRecordingConfirmed.current.add(summary.id); setNotice('Recording resumed.'); }
     catch { setNotice('Recording resumed offline.'); }
   }, 'Resuming recording…');
@@ -244,9 +275,10 @@ export default function App() {
         try {
           const completed = await completeRecording(currentConnection, currentSummary.id);
           markSessionCompleted(currentSummary.id, completed.driveId ?? null);
+          enrichCompletedJourney(currentConnection, currentSummary.id);
           setSummary(null);
           setSyncStage('synced');
-          setNotice('Journey finished and saved to JourneyDeck.');
+          setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.');
         } catch {
           setSummary(getSessionSummary(currentSummary.id));
           setSyncStage('retry');
@@ -273,15 +305,23 @@ export default function App() {
     ]);
   };
 
+  const identifyMusic = () => withBusy(async () => {
+    const result = await recognizeAndQueueActiveSessionMusic(10_000, { allowAdHoc: true });
+    if (connection) void flushAllQueuedMusicBestEffort(connection);
+    if (result.status === 'queued' && result.observation) setNotice(`Identified “${result.observation.track}” by ${result.observation.artist}.`);
+    else if (result.status === 'duplicate') setNotice('That song is already in this journey soundtrack.');
+    else setNotice('No song matched this time. Try again with the music a little louder.');
+  }, 'Listening for music…');
+
   const syncNow = () => withBusy(async () => {
     if (!connection || !summary) return;
     setSyncStage('syncing');
     try {
       if (summary.status === 'finishing') {
         const completed = await completeRecording(connection, summary.id);
-        markSessionCompleted(summary.id, completed.driveId ?? null); setSummary(null); setSyncStage('synced'); setNotice('Journey finished and saved to JourneyDeck.'); return;
+        markSessionCompleted(summary.id, completed.driveId ?? null); enrichCompletedJourney(connection, summary.id); setSummary(null); setSyncStage('synced'); setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.'); return;
       }
-      await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('All queued points are synced.');
+      await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('GPS points are synced. Music details continue syncing independently.');
     } catch (error) {
       setSyncStage('retry');
       throw error;
@@ -289,7 +329,7 @@ export default function App() {
   }, 'Syncing to JourneyDeck…');
 
   const metrics = useMemo(() => [
-    ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], ['QUEUED', String(summary?.queuedCount ?? 0)],
+    ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], ['GPS QUEUED', String(summary?.queuedCount ?? 0)], ['MUSIC QUEUED', String(summary?.musicQueuedCount ?? 0)],
   ], [summary]);
 
   return (
@@ -325,8 +365,9 @@ export default function App() {
               {!active && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
-              {(summary?.queuedCount ?? 0) > 0 && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Sync now'} onPress={syncNow} disabled={busy} />}
-              {summary?.status === 'finishing' && (summary?.queuedCount ?? 0) === 0 && <PrimaryButton label="Finish & save" onPress={syncNow} disabled={busy} />}
+              {summary?.status === 'recording' && <SecondaryButton label="Identify music with Shazam" onPress={identifyMusic} disabled={busy} />}
+              {((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Sync saved data'} onPress={syncNow} disabled={busy} />}
+              {summary?.status === 'finishing' && (summary?.queuedCount ?? 0) === 0 && (summary?.musicQueuedCount ?? 0) === 0 && <PrimaryButton label="Finish & save" onPress={syncNow} disabled={busy} />}
             </>
           )}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
@@ -337,6 +378,10 @@ export default function App() {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
+}
+
+export default function App() {
+  return <JourneyDeckShell recorder={<RecorderScreen />} />;
 }
 
 type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };

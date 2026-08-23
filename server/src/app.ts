@@ -11,6 +11,8 @@ import { config as defaultConfig } from "./config.js";
 import { atlasMapSchema, bootstrapSchema, patternQueueSchema, placeDetailSchema, savedSchema } from "./schemas.js";
 import { getSpotifyPlayerSession, startSpotifyPlaybackAuthorization } from "./spotify-player.js";
 import { RecorderStore, type RecorderPoint } from "./recorder.js";
+import { RecorderMobileStore } from "./recorder-mobile.js";
+import { registerRecorderMobileRoutes } from "./recorder-mobile-routes.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
@@ -41,10 +43,14 @@ function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   }
 }
 
-export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
-  const cfg = { ...defaultConfig, ...overrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
+type CreateAppOverrides = Partial<typeof defaultConfig> & { lastFmFetch?: typeof fetch };
+
+export async function createApp(overrides: CreateAppOverrides = {}) {
+  const { lastFmFetch, ...configOverrides } = overrides;
+  const cfg = { ...defaultConfig, ...configOverrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined);
   const recorder = new RecorderStore(database, cfg.householdId, cfg.recorderDurableTurso);
+  const recorderMobile = new RecorderMobileStore(database, cfg.householdId, cfg.recorderDurableTurso);
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
@@ -121,6 +127,11 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
     try { return (await recorder.complete(req.params.id, req.body.deviceId, new Date(req.body.endedAt).toISOString())) || reply.code(404).send({ error: "Recording was not found." }); }
     catch (error) { return reply.code(409).send({ error: error instanceof Error ? error.message : "Recording could not be completed." }); }
   });
+  await registerRecorderMobileRoutes(app, recorderMobile, {
+    lastFmApiKey: cfg.lastFmApiKey,
+    tessieConfigured: Boolean(cfg.tessieToken),
+    lastFmFetch
+  });
   app.get("/api/atlas/bootstrap", { schema: { response: { 200: bootstrapSchema, 304: { type: "null" }, 503: { type: "object", additionalProperties: false, required: ["error"], properties: { error: { type: "string" } } } } } }, async (req, reply) => { const snapshot = store.bootstrap(); if (!snapshot) return reply.code(503).send({ error: "Atlas snapshot is not ready." }); const etag = `W/"${Buffer.from(snapshot.sourceWatermark).toString("base64url")}"`; reply.header("cache-control", "private, no-cache").header("etag", etag); if (req.headers["if-none-match"] === etag) return reply.code(304).send(); return snapshot; });
   app.get<{ Querystring: { west?: string; south?: string; east?: string; north?: string; zoom?: string } }>("/api/atlas/map", { schema: { response: { 200: atlasMapSchema } } }, async (req, reply) => {
     const west = Number(req.query.west), south = Number(req.query.south), east = Number(req.query.east), north = Number(req.query.north), zoom = Number(req.query.zoom);
@@ -183,5 +194,5 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
   app.addHook("onClose", async () => { await store.close(); database.close(); });
-  return { app, database, store, recorder, config: cfg };
+  return { app, database, store, recorder, recorderMobile, config: cfg };
 }

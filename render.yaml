@@ -77,6 +77,8 @@ services:
         sync: false
       - key: TESSIE_TOKEN
         sync: false
+      - key: LASTFM_API_KEY
+        sync: false
       - key: SPOTIFY_CLIENT_ID
         sync: false
       - key: DRIVEOS_SPOTIFY_SYNC_SECRET
