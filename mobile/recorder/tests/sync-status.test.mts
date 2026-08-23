@@ -15,5 +15,6 @@ assert.equal(syncPresentation('synced').spinning, false);
 assert.equal(syncPresentation('retry').spinning, false);
 assert.match(syncPresentation('syncing').title, /Saved on this iPhone/);
 assert.match(syncPresentation('retry').detail, /points are safe/i);
+assert.match(syncPresentation('retry').detail, /retry automatically/i);
 
 console.log(`sync status presentations: ${stages.length} passed`);
