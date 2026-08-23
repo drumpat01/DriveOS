@@ -15,6 +15,7 @@ import {
   recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
 } from './src/storage';
 import { decideRecovery } from './src/recovery';
+import { syncPresentation, type SyncStage } from './src/sync-status';
 import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
@@ -52,8 +53,12 @@ export default function App() {
   const [taskAvailable, setTaskAvailable] = useState(false);
   const [trackingActive, setTrackingActive] = useState(false);
   const operation = useRef<Promise<void>>(Promise.resolve());
+  const refreshPending = useRef<Promise<void> | null>(null);
+  const busyRef = useRef(false);
   const remoteRecordingConfirmed = useRef(new Set<string>());
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState('Working…');
+  const [syncStage, setSyncStage] = useState<SyncStage>('idle');
   const [notice, setNotice] = useState('');
   const [, setClock] = useState(0);
 
@@ -63,7 +68,9 @@ export default function App() {
     return next;
   }, []);
 
-  const refresh = useCallback(async () => runExclusive(async () => {
+  const refresh = useCallback(() => {
+    if (refreshPending.current) return refreshPending.current;
+    const pending = runExclusive(async () => {
     initializeDatabase();
     const foreground = await Location.getForegroundPermissionsAsync();
     const background = await Location.getBackgroundPermissionsAsync();
@@ -115,8 +122,10 @@ export default function App() {
       try {
         const completed = await completeRecording(connection, current.id);
         markSessionCompleted(current.id, completed.driveId ?? null);
+        setSyncStage('synced');
         setNotice('Journey finished and saved to JourneyDeck.');
       } catch {
+        setSyncStage('retry');
         setNotice('Journey is ready to finish. Points remain safe and completion will retry when JourneyDeck is reachable.');
       }
     }
@@ -126,21 +135,27 @@ export default function App() {
     setBackgroundPermission(background.status === 'granted');
     setTaskAvailable(available);
     setTrackingActive(taskRunning);
-  }), [connection, runExclusive]);
+    });
+    const tracked = pending.finally(() => {
+      if (refreshPending.current === tracked) refreshPending.current = null;
+    });
+    refreshPending.current = tracked;
+    return tracked;
+  }, [connection, runExclusive]);
 
   useEffect(() => {
     void (async () => {
       const saved = await loadConnection();
       if (saved) { setConnection(saved); setServerUrl(saved.serverUrl); }
-      await refresh();
+      await refresh().catch(() => {});
     })();
     let ticks = 0;
     const timer = setInterval(() => {
       setClock(value => value + 1);
       ticks += 1;
-      if (ticks % 5 === 0) void refresh();
+      if (ticks % 5 === 0 && !busyRef.current) void refresh().catch(() => {});
     }, 1000);
-    const subscription = AppState.addEventListener('change', state => { if (state === 'active') void refresh(); });
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active' && !busyRef.current) void refresh().catch(() => {}); });
     return () => { clearInterval(timer); subscription.remove(); };
   }, [refresh]);
 
@@ -159,11 +174,11 @@ export default function App() {
   const permissionsReady = foregroundPermission && backgroundPermission && taskAvailable;
   const accent = summary?.status === 'recording' && trackingActive ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
 
-  const withBusy = useCallback(async (work: () => Promise<void>) => {
-    setBusy(true); setNotice('');
+  const withBusy = useCallback(async (work: () => Promise<void>, label = 'Working…') => {
+    busyRef.current = true; setBusy(true); setBusyLabel(label); setSyncStage('idle'); setNotice('');
     try { await runExclusive(work); }
     catch (error) { const message = messageOf(error); setNotice(message); Alert.alert('JourneyDeck Recorder', message); }
-    finally { await refresh(); setBusy(false); }
+    finally { await refresh().catch(() => {}); busyRef.current = false; setBusy(false); }
   }, [refresh, runExclusive]);
 
   const connect = () => withBusy(async () => {
@@ -173,7 +188,7 @@ export default function App() {
     await pingRecorder(candidate);
     const saved = await saveConnection(candidate);
     setConnection(saved); setToken(''); setNotice('Connected securely to JourneyDeck.');
-  });
+  }, 'Connecting securely…');
 
   const enablePermissions = () => withBusy(async () => {
     const foreground = await Location.requestForegroundPermissionsAsync();
@@ -182,7 +197,7 @@ export default function App() {
     if (background.status !== 'granted') throw new Error('Choose “Always Allow” so recording continues with the screen locked.');
     if (!(await TaskManager.isAvailableAsync())) throw new Error('Background recording requires the installed JourneyDeck build, not Expo Go.');
     setNotice('Background location is ready.');
-  });
+  }, 'Checking location access…');
 
   const start = () => withBusy(async () => {
     if (!connection) throw new Error('Connect this recorder to JourneyDeck first.');
@@ -190,16 +205,16 @@ export default function App() {
     const session = beginLocalSession(connection.deviceId);
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
-    try { await flushRecording(connection, session.id); setNotice('Recording started and connected.'); }
+    try { await flushRecording(connection, session.id); remoteRecordingConfirmed.current.add(session.id); setNotice('Recording started and connected.'); }
     catch { setNotice('Recording started offline. It will sync when JourneyDeck is reachable.'); }
-  });
+  }, 'Starting background recording…');
 
   const pause = () => withBusy(async () => {
     if (!connection || !summary) return;
     await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused'); remoteRecordingConfirmed.current.delete(summary.id);
     try { await flushRecording(connection, summary.id); await setRemoteState(connection, summary.id, 'paused'); setNotice('Recording paused and synced.'); }
     catch { setNotice('Recording paused. Unsynced points are safe on this phone.'); }
-  });
+  }, 'Pausing recording…');
 
   const resume = () => withBusy(async () => {
     if (!connection || !summary) return;
@@ -208,28 +223,66 @@ export default function App() {
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
     try { await setRemoteState(connection, summary.id, 'recording'); remoteRecordingConfirmed.current.add(summary.id); setNotice('Recording resumed.'); }
     catch { setNotice('Recording resumed offline.'); }
-  });
+  }, 'Resuming recording…');
+
+  const finishSession = useCallback(async (currentConnection: Connection, currentSummary: SessionSummary) => {
+    let savedForSync = false;
+    busyRef.current = true; setBusy(true); setSyncStage('saving'); setNotice('');
+    try {
+      await runExclusive(async () => {
+        await captureCurrentPoint();
+        await stopLocationTracking();
+        setLocalStatus(currentSummary.id, 'finishing');
+        savedForSync = true;
+        setTrackingActive(false);
+        setSummary(getSessionSummary(currentSummary.id));
+        setSyncStage('syncing');
+        try {
+          const completed = await completeRecording(currentConnection, currentSummary.id);
+          markSessionCompleted(currentSummary.id, completed.driveId ?? null);
+          setSummary(null);
+          setSyncStage('synced');
+          setNotice('Journey finished and saved to JourneyDeck.');
+        } catch {
+          setSummary(getSessionSummary(currentSummary.id));
+          setSyncStage('retry');
+          setNotice('Journey saved on this iPhone. Sync did not finish yet; your points are safe.');
+        }
+      });
+    } catch (error) {
+      const message = messageOf(error);
+      setSyncStage(savedForSync ? 'retry' : 'idle');
+      setNotice(message);
+      Alert.alert('JourneyDeck Recorder', message);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+      void refresh().catch(() => {});
+    }
+  }, [refresh, runExclusive]);
 
   const finish = () => {
     if (!connection || !summary) return;
     Alert.alert('Finish this journey?', 'Recording will stop and the journey will appear in JourneyDeck after its points sync.', [
       { text: 'Keep recording', style: 'cancel' },
-      { text: 'Finish journey', style: 'destructive', onPress: () => void withBusy(async () => {
-        await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'finishing');
-        const completed = await completeRecording(connection, summary.id);
-        markSessionCompleted(summary.id, completed.driveId ?? null); setNotice('Journey finished and saved to JourneyDeck.');
-      }) },
+      { text: 'Finish journey', style: 'destructive', onPress: () => void finishSession(connection, summary) },
     ]);
   };
 
   const syncNow = () => withBusy(async () => {
     if (!connection || !summary) return;
-    if (summary.status === 'finishing') {
-      const completed = await completeRecording(connection, summary.id);
-      markSessionCompleted(summary.id, completed.driveId ?? null); setNotice('Journey finished and saved to JourneyDeck.'); return;
+    setSyncStage('syncing');
+    try {
+      if (summary.status === 'finishing') {
+        const completed = await completeRecording(connection, summary.id);
+        markSessionCompleted(summary.id, completed.driveId ?? null); setSummary(null); setSyncStage('synced'); setNotice('Journey finished and saved to JourneyDeck.'); return;
+      }
+      await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('All queued points are synced.');
+    } catch (error) {
+      setSyncStage('retry');
+      throw error;
     }
-    await flushRecording(connection, summary.id); setNotice('All queued points are synced.');
-  });
+  }, 'Syncing to JourneyDeck…');
 
   const metrics = useMemo(() => [
     ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], ['QUEUED', String(summary?.queuedCount ?? 0)],
@@ -272,7 +325,7 @@ export default function App() {
               {summary?.status === 'finishing' && (summary?.queuedCount ?? 0) === 0 && <PrimaryButton label="Finish & save" onPress={syncNow} disabled={busy} />}
             </>
           )}
-          {busy && <ActivityIndicator color="#9b7cff" style={styles.spinner} />}
+          {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>KEEP THE RECORDER RUNNING</Text><Text style={styles.warningText}>Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.</Text></View>
           <Text style={styles.footer}>Private single-iPhone recorder • {connection ? 'Connected' : 'Not connected'}</Text>
@@ -286,6 +339,13 @@ type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };
 function PrimaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.primaryButtonText}>{label}</Text></Pressable>; }
 function SecondaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.secondaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.secondaryButtonText}>{label}</Text></Pressable>; }
 function Check({ ready, label }: { ready: boolean; label: string }) { return <View style={styles.checkRow}><Text style={styles.check}>{ready ? '✓' : '○'}</Text><Text style={styles.checkText}>{label}</Text></View>; }
+function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
+  const presentation = syncPresentation(stage);
+  return <View style={[styles.syncCard, { borderColor: presentation.color }]} accessible accessibilityLabel={`${presentation.title}. ${presentation.detail}`}>
+    {presentation.spinning ? <ActivityIndicator color={presentation.color} /> : <View style={[styles.syncDot, { backgroundColor: presentation.color }]} />}
+    <View style={styles.syncCopy}><Text style={[styles.syncTitle, { color: presentation.color }]}>{presentation.title}</Text><Text style={styles.syncDetail}>{presentation.detail}</Text></View>
+  </View>;
+}
 
 const styles = StyleSheet.create({
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 22, paddingTop: 34, paddingBottom: 48, gap: 18 },
@@ -296,5 +356,7 @@ const styles = StyleSheet.create({
   statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20 }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12 }, statusText: { fontSize: 27, fontWeight: '800' }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6 },
   metrics: { flexDirection: 'row', backgroundColor: '#121019', borderRadius: 20, overflow: 'hidden' }, metric: { flex: 1, alignItems: 'center', paddingVertical: 18, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#302a3a' }, metricLabel: { color: '#766f83', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }, metricValue: { color: '#f4f0fb', fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '700', marginTop: 7 },
   primaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1 }, primaryButtonText: { color: '#160a06', fontSize: 16, fontWeight: '800' }, secondaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#1c1726', borderWidth: 1, borderColor: '#3c324c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1 }, secondaryButtonText: { color: '#e8e1f1', fontSize: 16, fontWeight: '700' }, buttonMuted: { opacity: 0.55 }, actionRow: { flexDirection: 'row', gap: 12 },
-  spinner: { marginVertical: 3 }, notice: { color: '#b9afc7', textAlign: 'center', lineHeight: 20 }, warning: { backgroundColor: '#17121b', borderLeftColor: '#9b7cff', borderLeftWidth: 3, borderRadius: 12, padding: 15 }, warningTitle: { color: '#c2b3ff', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, warningText: { color: '#9c94a8', fontSize: 13, lineHeight: 19, marginTop: 5 }, footer: { color: '#5e5868', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  progressRow: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 28 }, progressText: { color: '#b9afc7', fontSize: 14 },
+  syncCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 }, syncDot: { width: 10, height: 10, borderRadius: 5 }, syncCopy: { flex: 1 }, syncTitle: { fontSize: 14, fontWeight: '800' }, syncDetail: { color: '#938b9f', fontSize: 12, lineHeight: 17, marginTop: 3 },
+  notice: { color: '#b9afc7', textAlign: 'center', lineHeight: 20 }, warning: { backgroundColor: '#17121b', borderLeftColor: '#9b7cff', borderLeftWidth: 3, borderRadius: 12, padding: 15 }, warningTitle: { color: '#c2b3ff', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, warningText: { color: '#9c94a8', fontSize: 13, lineHeight: 19, marginTop: 5 }, footer: { color: '#5e5868', fontSize: 11, textAlign: 'center', marginTop: 4 },
 });
