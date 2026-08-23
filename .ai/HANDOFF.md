@@ -1,28 +1,22 @@
-# Handoff: Statistics Redesign Merge Preparation
+# Handoff: Recorder Recovery Reconciliation
 
 ## Summary
 
-- Active branch: `codex/statistics-redesign`.
-- Merged `origin/main` at `e7f49be` into the feature branch with merge commit `263ae96`; no textual conflicts occurred.
-- Main's README refresh, recorder/server/API work, migration `0008_journeydeck_recorder.sql`, screenshot assets, and stale root-script cleanup were preserved.
-- The remaining PR delta is the Statistics dashboard interaction/accessibility work, mobile web pull-to-refresh and native share-card UX, regression tests, and repository AI guidance.
-- Opened PR #107: https://github.com/drumpat01/DriveOS/pull/107
+- Active branch: `ao/driveos-10/root`, based on current `origin/main` (`e45b6dd`).
+- Added a serialized Recorder recovery coordinator that reconciles the persisted local session with Expo's native background-location task at startup, on foreground return, periodic refresh, and automatic sync.
+- Recovery stops orphaned/paused/finishing tasks, resumes only persisted recording sessions after native confirmation and a fresh point, pauses safely when permission/task availability is missing, and retries finishing sessions when connected.
+- The UI never labels a session `Recording` until native tracking is confirmed, and recovery messaging clearly preserves offline points while noting possible route gaps.
+- Added deterministic recovery-decision coverage.
+- Review follow-up: a recovery-triggered pause now best-effort mirrors `paused` to an already-created remote session without creating a new remote session. The active-tracking recovery path likewise reconciles an already-created remote session to `recording` once per local lifecycle, retrying after transient failures.
 
 ## Verification
 
-- `node tests/frontend-modules.test.js`: passed.
-- `npm run check:server`: passed.
-- `npm run lint:server`: passed.
-- `npm run test:server`: 25/25 passed.
 - `npm run typecheck` in `mobile/recorder`: passed.
-- `npm run test:e2e`: 9/9 passed.
-- `npm run test:atlas-performance`: passed.
-- `npm run check:powershell`: passed for 136 tracked PowerShell files.
-- `npm run check:secrets`: passed; no leaks found.
-- `npm run check:vulnerabilities`: passed; no HIGH/CRITICAL findings.
-- `git diff --check origin/main..HEAD`: passed.
+- `npm run test:recovery` in `mobile/recorder`: 9 recovery decisions passed (Node emits a harmless module-type warning for the TypeScript source).
+- `git diff --check`: passed.
+- Review follow-up verification: `npm run typecheck` and `npm run test:recovery` passed again.
 
 ## Next Steps
 
-- Review PR #107 and merge into `main` only after approval.
-- No known conflicts, regressions, or unresolved implementation issues remain.
+- Run the physical-iPhone development-build scenarios: force-quit/reopen while recording, paused-with-task cleanup, orphaned-task cleanup, denied Always permission recovery, and offline finishing followed by reconnection.
+- Commit, push, and open the Recorder recovery PR into `main`.

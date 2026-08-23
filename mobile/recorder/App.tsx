@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable, SafeAreaView,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
@@ -14,7 +14,8 @@ import {
   activeSession, beginLocalSession, getSessionSummary, initializeDatabase, markSessionCompleted,
   recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
 } from './src/storage';
-import { startLocationTracking, stopLocationTracking } from './src/tracking';
+import { decideRecovery } from './src/recovery';
+import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -37,8 +38,8 @@ function durationLabel(startedAt?: string) {
     .map(value => String(value).padStart(2, '0')).join(':');
 }
 
-function statusLabel(status?: LocalSessionStatus) {
-  return status === 'recording' ? 'Recording' : status === 'paused' ? 'Paused' : status === 'finishing' ? 'Waiting to finish' : 'Ready';
+function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
+  return status === 'recording' ? (nativeTracking ? 'Recording' : 'Recovering recording') : status === 'paused' ? 'Paused' : status === 'finishing' ? 'Waiting to finish' : 'Ready';
 }
 
 export default function App() {
@@ -49,20 +50,83 @@ export default function App() {
   const [foregroundPermission, setForegroundPermission] = useState(false);
   const [backgroundPermission, setBackgroundPermission] = useState(false);
   const [taskAvailable, setTaskAvailable] = useState(false);
+  const [trackingActive, setTrackingActive] = useState(false);
+  const operation = useRef<Promise<void>>(Promise.resolve());
+  const remoteRecordingConfirmed = useRef(new Set<string>());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [, setClock] = useState(0);
 
-  const refresh = useCallback(async () => {
+  const runExclusive = useCallback(async (work: () => Promise<void>) => {
+    const next = operation.current.then(work, work);
+    operation.current = next.catch(() => {});
+    return next;
+  }, []);
+
+  const refresh = useCallback(async () => runExclusive(async () => {
     initializeDatabase();
-    const current = activeSession();
-    setSummary(current ? getSessionSummary(current.id) : null);
     const foreground = await Location.getForegroundPermissionsAsync();
     const background = await Location.getBackgroundPermissionsAsync();
+    const available = await TaskManager.isAvailableAsync();
+    const permissionsReadyNow = foreground.status === 'granted' && background.status === 'granted' && available;
+    let taskRunning = false;
+    if (available) {
+      try { taskRunning = await isLocationTrackingActive(); } catch { taskRunning = false; }
+    }
+    const current = activeSession();
+    const action = decideRecovery(current?.status ?? null, taskRunning, permissionsReadyNow);
+    if (action === 'stop-orphaned-task' || action === 'stop-paused-task' || action === 'stop-and-finish') {
+      if (taskRunning) await stopLocationTracking();
+      taskRunning = false;
+    }
+    if (action === 'continue-recording' && current && connection && current.remote_created && !remoteRecordingConfirmed.current.has(current.id)) {
+      try {
+        await setRemoteState(connection, current.id, 'recording');
+        remoteRecordingConfirmed.current.add(current.id);
+      } catch {}
+    }
+    if (action === 'restart-recording' && current) {
+      try {
+        if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
+        await captureCurrentPoint(true);
+        taskRunning = true;
+        setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
+        if (connection && current.remote_created) {
+          try {
+            await setRemoteState(connection, current.id, 'recording');
+            remoteRecordingConfirmed.current.add(current.id);
+          } catch {}
+        }
+      } catch {
+        setLocalStatus(current.id, 'paused');
+        remoteRecordingConfirmed.current.delete(current.id);
+        if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
+        taskRunning = false;
+        setNotice('Recording paused because background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
+      }
+    }
+    if (action === 'pause-interrupted-recording' && current) {
+      setLocalStatus(current.id, 'paused');
+      remoteRecordingConfirmed.current.delete(current.id);
+      if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
+      setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
+    }
+    if (action === 'stop-and-finish' && current && connection) {
+      try {
+        const completed = await completeRecording(connection, current.id);
+        markSessionCompleted(current.id, completed.driveId ?? null);
+        setNotice('Journey finished and saved to JourneyDeck.');
+      } catch {
+        setNotice('Journey is ready to finish. Points remain safe and completion will retry when JourneyDeck is reachable.');
+      }
+    }
+    const reconciled = activeSession();
+    setSummary(reconciled ? getSessionSummary(reconciled.id) : null);
     setForegroundPermission(foreground.status === 'granted');
     setBackgroundPermission(background.status === 'granted');
-    setTaskAvailable(await TaskManager.isAvailableAsync());
-  }, []);
+    setTaskAvailable(available);
+    setTrackingActive(taskRunning);
+  }), [connection, runExclusive]);
 
   useEffect(() => {
     void (async () => {
@@ -83,21 +147,24 @@ export default function App() {
   useEffect(() => {
     if (!connection || !summary || summary.queuedCount === 0 || busy) return;
     const timer = setTimeout(() => {
-      void flushRecording(connection, summary.id).then(async () => { await refresh(); setNotice('Journey points synced.'); }).catch(() => {});
+      void runExclusive(async () => {
+        await flushRecording(connection, summary.id);
+        setNotice('Journey points synced.');
+      }).then(() => void refresh()).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [busy, connection, refresh, summary]);
+  }, [busy, connection, refresh, runExclusive, summary]);
 
   const active = Boolean(summary && summary.status !== 'completed');
   const permissionsReady = foregroundPermission && backgroundPermission && taskAvailable;
-  const accent = summary?.status === 'recording' ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
+  const accent = summary?.status === 'recording' && trackingActive ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
 
   const withBusy = useCallback(async (work: () => Promise<void>) => {
     setBusy(true); setNotice('');
-    try { await work(); }
+    try { await runExclusive(work); }
     catch (error) { const message = messageOf(error); setNotice(message); Alert.alert('JourneyDeck Recorder', message); }
     finally { await refresh(); setBusy(false); }
-  }, [refresh]);
+  }, [refresh, runExclusive]);
 
   const connect = () => withBusy(async () => {
     const candidate = { serverUrl: serverUrl.trim().replace(/\/+$/, ''), token: token.trim() };
@@ -121,7 +188,7 @@ export default function App() {
     if (!connection) throw new Error('Connect this recorder to JourneyDeck first.');
     if (!permissionsReady) throw new Error('Enable background location first.');
     const session = beginLocalSession(connection.deviceId);
-    try { await startLocationTracking(); await captureCurrentPoint(true); }
+    try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
     try { await flushRecording(connection, session.id); setNotice('Recording started and connected.'); }
     catch { setNotice('Recording started offline. It will sync when JourneyDeck is reachable.'); }
@@ -129,7 +196,7 @@ export default function App() {
 
   const pause = () => withBusy(async () => {
     if (!connection || !summary) return;
-    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
+    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused'); remoteRecordingConfirmed.current.delete(summary.id);
     try { await flushRecording(connection, summary.id); await setRemoteState(connection, summary.id, 'paused'); setNotice('Recording paused and synced.'); }
     catch { setNotice('Recording paused. Unsynced points are safe on this phone.'); }
   });
@@ -137,9 +204,9 @@ export default function App() {
   const resume = () => withBusy(async () => {
     if (!connection || !summary) return;
     setLocalStatus(summary.id, 'recording');
-    try { await startLocationTracking(); }
+    try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
-    try { await setRemoteState(connection, summary.id, 'recording'); setNotice('Recording resumed.'); }
+    try { await setRemoteState(connection, summary.id, 'recording'); remoteRecordingConfirmed.current.add(summary.id); setNotice('Recording resumed.'); }
     catch { setNotice('Recording resumed offline.'); }
   });
 
@@ -196,7 +263,7 @@ export default function App() {
             </View>
           ) : (
             <>
-              <View style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{statusLabel(summary?.status)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? 'You can lock your phone' : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : 'Start when you begin driving'}</Text></View>
+              <View style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : 'Start when you begin driving'}</Text></View>
               <View style={styles.metrics}>{metrics.map(([label, value]) => <View style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>)}</View>
               {!active && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
