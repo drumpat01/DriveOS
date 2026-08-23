@@ -21,6 +21,7 @@
   "scripts": {
     "start": "expo start",
     "typecheck": "tsc --noEmit",
+    "test:recovery": "node --experimental-strip-types tests/recovery.test.mts",
     "doctor": "expo-doctor",
     "build:ios:development": "eas build --platform ios --profile development",
     "build:ios:preview": "eas build --platform ios --profile preview",
