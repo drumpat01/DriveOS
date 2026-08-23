@@ -113,6 +113,10 @@ export default function App() {
       }
     }
     if (action === 'pause-interrupted-recording' && current) {
+      if (taskRunning) {
+        try { await stopLocationTracking(); } catch {}
+        taskRunning = false;
+      }
       setLocalStatus(current.id, 'paused');
       remoteRecordingConfirmed.current.delete(current.id);
       if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }

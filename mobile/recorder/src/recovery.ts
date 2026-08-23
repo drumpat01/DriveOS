@@ -13,8 +13,9 @@ export type RecoveryAction =
 export function decideRecovery(status: RecoveryStatus, taskRunning: boolean, trackingAvailable: boolean): RecoveryAction {
   if (!status || status === 'completed') return taskRunning ? 'stop-orphaned-task' : 'none';
   if (status === 'recording') {
+    if (!trackingAvailable) return 'pause-interrupted-recording';
     if (taskRunning) return 'continue-recording';
-    return trackingAvailable ? 'restart-recording' : 'pause-interrupted-recording';
+    return 'restart-recording';
   }
   if (status === 'paused') return taskRunning ? 'stop-paused-task' : 'remain-paused';
   return taskRunning ? 'stop-and-finish' : 'stop-and-finish';

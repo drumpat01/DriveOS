@@ -28,7 +28,7 @@ const presentations: Record<Exclude<SyncStage, 'idle'>, SyncPresentation> = {
   },
   retry: {
     title: 'Saved on this iPhone',
-    detail: 'JourneyDeck could not finish syncing. Your points are safe; use the retry button when ready.',
+    detail: 'JourneyDeck could not finish syncing. Your points are safe; it will retry automatically when connected.',
     color: '#ffb45c',
     spinning: false,
   },

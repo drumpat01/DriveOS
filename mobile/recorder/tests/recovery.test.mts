@@ -5,6 +5,7 @@ const cases: Array<[RecoveryStatus, boolean, boolean, RecoveryAction]> = [
   [null, true, true, 'stop-orphaned-task'],
   ['completed', true, true, 'stop-orphaned-task'],
   ['recording', true, true, 'continue-recording'],
+  ['recording', true, false, 'pause-interrupted-recording'],
   ['recording', false, true, 'restart-recording'],
   ['recording', false, false, 'pause-interrupted-recording'],
   ['paused', true, true, 'stop-paused-task'],
