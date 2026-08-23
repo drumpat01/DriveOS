@@ -87,12 +87,14 @@ export default function App() {
         if (connection) { try { await setRemoteState(connection, current.id, 'recording'); } catch {} }
       } catch {
         setLocalStatus(current.id, 'paused');
+        if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
         taskRunning = false;
         setNotice('Recording paused because background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
       }
     }
     if (action === 'pause-interrupted-recording' && current) {
       setLocalStatus(current.id, 'paused');
+      if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
     if (action === 'stop-and-finish' && current && connection) {
