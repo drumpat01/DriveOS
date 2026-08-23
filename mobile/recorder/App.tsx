@@ -52,6 +52,7 @@ export default function App() {
   const [taskAvailable, setTaskAvailable] = useState(false);
   const [trackingActive, setTrackingActive] = useState(false);
   const operation = useRef<Promise<void>>(Promise.resolve());
+  const remoteRecordingConfirmed = useRef(new Set<string>());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [, setClock] = useState(0);
@@ -78,15 +79,27 @@ export default function App() {
       if (taskRunning) await stopLocationTracking();
       taskRunning = false;
     }
+    if (action === 'continue-recording' && current && connection && current.remote_created && !remoteRecordingConfirmed.current.has(current.id)) {
+      try {
+        await setRemoteState(connection, current.id, 'recording');
+        remoteRecordingConfirmed.current.add(current.id);
+      } catch {}
+    }
     if (action === 'restart-recording' && current) {
       try {
         if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
         await captureCurrentPoint(true);
         taskRunning = true;
         setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
-        if (connection) { try { await setRemoteState(connection, current.id, 'recording'); } catch {} }
+        if (connection && current.remote_created) {
+          try {
+            await setRemoteState(connection, current.id, 'recording');
+            remoteRecordingConfirmed.current.add(current.id);
+          } catch {}
+        }
       } catch {
         setLocalStatus(current.id, 'paused');
+        remoteRecordingConfirmed.current.delete(current.id);
         if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
         taskRunning = false;
         setNotice('Recording paused because background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
@@ -94,6 +107,7 @@ export default function App() {
     }
     if (action === 'pause-interrupted-recording' && current) {
       setLocalStatus(current.id, 'paused');
+      remoteRecordingConfirmed.current.delete(current.id);
       if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
@@ -182,7 +196,7 @@ export default function App() {
 
   const pause = () => withBusy(async () => {
     if (!connection || !summary) return;
-    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
+    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused'); remoteRecordingConfirmed.current.delete(summary.id);
     try { await flushRecording(connection, summary.id); await setRemoteState(connection, summary.id, 'paused'); setNotice('Recording paused and synced.'); }
     catch { setNotice('Recording paused. Unsynced points are safe on this phone.'); }
   });
@@ -192,7 +206,7 @@ export default function App() {
     setLocalStatus(summary.id, 'recording');
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
-    try { await setRemoteState(connection, summary.id, 'recording'); setNotice('Recording resumed.'); }
+    try { await setRemoteState(connection, summary.id, 'recording'); remoteRecordingConfirmed.current.add(summary.id); setNotice('Recording resumed.'); }
     catch { setNotice('Recording resumed offline.'); }
   });
 

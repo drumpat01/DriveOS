@@ -7,7 +7,7 @@
 - Recovery stops orphaned/paused/finishing tasks, resumes only persisted recording sessions after native confirmation and a fresh point, pauses safely when permission/task availability is missing, and retries finishing sessions when connected.
 - The UI never labels a session `Recording` until native tracking is confirmed, and recovery messaging clearly preserves offline points while noting possible route gaps.
 - Added deterministic recovery-decision coverage.
-- Review follow-up: a recovery-triggered pause now best-effort mirrors `paused` to an already-created remote session without creating a new remote session.
+- Review follow-up: a recovery-triggered pause now best-effort mirrors `paused` to an already-created remote session without creating a new remote session. The active-tracking recovery path likewise reconciles an already-created remote session to `recording` once per local lifecycle, retrying after transient failures.
 
 ## Verification
 
