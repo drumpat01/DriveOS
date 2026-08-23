@@ -211,17 +211,17 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     void refreshDashboard();
   }, [refreshDashboard]);
 
-  const saveConnectionState = useCallback(async (next: Partial<ProviderPreferences['connections']>) => {
+  const saveConnectionState = useCallback(async (next: Partial<ProviderPreferences['connections']>, providerOverride?: MusicProvider | null, onboardingOverride?: boolean) => {
     const existing = await appDataClient.providerPreferences().catch(() => null);
     await appDataClient.updateProviderPreferences({
-      musicProvider: preferences?.provider ? toApiMusicProvider(preferences.provider) : null,
-      onboardingCompleted: Boolean(preferences?.onboardingCompleted),
+      musicProvider: (providerOverride ?? preferences?.provider) ? toApiMusicProvider(providerOverride ?? preferences!.provider!) : null,
+      onboardingCompleted: onboardingOverride ?? Boolean(preferences?.onboardingCompleted),
       connections: { ...(existing?.connections ?? defaultConnections), ...next },
     }).catch(() => null);
     await refreshDashboard();
   }, [preferences, refreshDashboard]);
 
-  const connectAppleMusic = useCallback(async () => {
+  const connectAppleMusic = useCallback(async (providerOverride?: MusicProvider) => {
     if (!isJourneyDeckMusicNativeAvailable || musicCapabilities?.appleMusicAvailable === false) {
       Alert.alert('Apple Music is not ready', 'Apple Music needs the new native JourneyDeck build and its Apple developer capability before it can ask for access.');
       return;
@@ -229,7 +229,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     try {
       const status = await authorizeAppleMusic();
       await refreshMusicCapabilities();
-      await saveConnectionState({ appleMusic: status === 'authorized' ? 'connected' : status === 'denied' || status === 'restricted' ? 'needs_attention' : 'not_connected' });
+      await saveConnectionState({ appleMusic: status === 'authorized' ? 'connected' : status === 'denied' || status === 'restricted' ? 'needs_attention' : 'not_connected' }, providerOverride, true);
       if (status !== 'authorized') Alert.alert('Apple Music not connected', 'You can keep using JourneyDeck and try Apple Music again later from Connections.');
     } catch {
       Alert.alert('Apple Music could not connect', 'Nothing changed. Recording will continue to work normally.');
@@ -298,7 +298,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
         {!preferences && <AppLoading />}
         {preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
-          onContinue={chooseProvider}
+          onContinue={async provider => {
+            await chooseProvider(provider);
+            if (provider === 'apple-music') await connectAppleMusic(provider);
+          }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
         {activePreferences && tab === 'home' && <HomeScreen state={dashboard} onRecord={() => openTab('record')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
