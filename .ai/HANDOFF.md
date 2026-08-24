@@ -111,6 +111,14 @@
 - Verification passed: server typecheck/lint and 29/29 server tests; mobile typecheck; recovery 10/10; sync status 4/4; music observations/destination policy 7/7; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
 - Delivered through PR #124 and merged to `main` as `b35b626`. Render deployment `dep-da6bfccs728c73f713ug` is live on that commit, `/readyz` returns 200, and the deployment produced no error logs. Preview OTA group `fb35a19c-7013-4ec4-ba7c-3444bf4a07e0` was published for iOS runtime `1.4.0`; dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/fb35a19c-7013-4ec4-ba7c-3444bf4a07e0`. Physical verification is still pending for the live Music page, all five drag destinations, the balanced tint, and Apple Music/Spotify handoffs.
 
+### Continuously gliding navigation highlight (implemented; release pending)
+
+- Replaced the per-tab orange background—which visibly jumped between selected items—with one animated orange glass overlay that tracks the finger's horizontal position continuously across the five-tab navigation pill.
+- The icon, label, underline, and screen still select at each tab midpoint. When the gesture ends, the overlay springs into exact alignment with the selected tab; ordinary taps and accessibility tab semantics remain unchanged.
+- Added pure, deterministic geometry helpers and four tests covering equal layout, continuous indicator motion, midpoint selection, and tab snap positions.
+- Verification passed: mobile typecheck; navigation motion 4/4; recovery 10/10; sync status 4/4; music observations 7/7; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
+- Branch/worktree: `codex/mobile-gliding-nav` at `C:\Users\patri\DriveOS-gliding-nav`. This is JavaScript/style-only and remains compatible with preview runtime `1.4.0`; no new iOS build is required. Next steps: review, commit/push, merge after CI, publish preview OTA, and physically verify the highlight follows the finger smoothly before snapping to the selected tab.
+
 ### Native modal overviews and share cards (implemented; release pending)
 
 - Memories, Collections, and Journeys now open as cinematic native overlay modals above the existing Memories screen instead of replacing or expanding the page.
