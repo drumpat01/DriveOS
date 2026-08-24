@@ -42,6 +42,10 @@ export type JourneySummary = {
   miles: number;
   startingLocation: string | null;
   endingLocation: string | null;
+  rawStartingLocation?: string;
+  rawEndingLocation?: string;
+  startingLocationKey?: string;
+  endingLocationKey?: string;
   averageSpeedMph: number | null;
   maxSpeedMph: number | null;
   songCount: number;
@@ -264,6 +268,15 @@ export const appDataClient = {
       if (cached) return cached;
       throw error;
     }
+  },
+
+  async savePlaceAlias(location: string, label: string): Promise<{ location: string; label: string; removed: boolean }> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before naming a location.');
+    return request(connection, '/api/recorder/places/alias', {
+      method: 'PUT',
+      body: JSON.stringify({ location, label: label.trim() }),
+    });
   },
 
   async memories(): Promise<MemoriesCatalog> {

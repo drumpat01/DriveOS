@@ -73,6 +73,7 @@ export type RecorderJourneyMemory = {
 export type RecorderCollectionInput = { id?: string | null; name: string; description?: string | null; driveIds: string[] };
 export type RecorderMemoryInput = { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] };
 export type RecorderPhotoInput = { fileName: string; contentType: string; dataBase64: string };
+export type RecorderPlaceAliasInput = { location: string; label: string };
 
 type JourneyRow = {
   id: string;
@@ -134,6 +135,15 @@ function validCoordinate(longitude: number, latitude: number) {
 
 function boundedText(value: unknown, maximum = 200) {
   return String(value ?? "").trim().slice(0, maximum);
+}
+
+function placeAliasKey(location: unknown, latitude: unknown, longitude: unknown) {
+  const raw = boundedText(location, 512), lat = finiteOrNull(latitude), lon = finiteOrNull(longitude);
+  const genericRecorderLocation = /^(?:recorder|google timeline) location$/i.test(raw);
+  if (genericRecorderLocation && lat !== null && lon !== null && validCoordinate(lon, lat)) {
+    return `geo:${lat.toFixed(4)},${lon.toFixed(4)}`;
+  }
+  return raw;
 }
 
 function safeHttpsUrl(value: unknown) {
@@ -313,9 +323,15 @@ export class RecorderMobileStore {
 
   private async journeySummaries(rows: JourneyRow[], loadedMobileSongs?: Map<string, SafeSong[]>) {
     const mobile = loadedMobileSongs || await this.mobileSongs(rows.map(row => row.recorder_session_id || ""));
+    const aliasRows = await this.read({ sql: "SELECT location,label FROM place_aliases;" });
+    const aliases = new Map(aliasRows.map(row => [String(row.location), boundedText(row.label, 64)]));
     return rows.map(row => {
       const songs = uniqueSongs([...soundtrackSongs(row.soundtrack_payload), ...(row.recorder_session_id ? mobile.get(row.recorder_session_id) || [] : [])]);
       const started = Number(row.started_at_epoch), ended = Number(row.ended_at_epoch);
+      const rawStartingLocation = boundedText(row.starting_location, 200) || "Unknown start";
+      const rawEndingLocation = boundedText(row.ending_location, 200) || "Unknown destination";
+      const startingLocationKey = placeAliasKey(rawStartingLocation, row.starting_latitude, row.starting_longitude);
+      const endingLocationKey = placeAliasKey(rawEndingLocation, row.ending_latitude, row.ending_longitude);
       return {
         id: row.id,
         legacyDriveId: row.legacy_drive_id,
@@ -325,8 +341,12 @@ export class RecorderMobileStore {
         endedAt: row.ended_at_utc,
         durationMinutes: Math.max(0, Math.round((ended - started) / 60)),
         miles: Math.round((finiteOrNull(row.distance_miles) || 0) * 10) / 10,
-        startingLocation: boundedText(row.starting_location, 200) || "Unknown start",
-        endingLocation: boundedText(row.ending_location, 200) || "Unknown destination",
+        startingLocation: aliases.get(startingLocationKey) || rawStartingLocation,
+        endingLocation: aliases.get(endingLocationKey) || rawEndingLocation,
+        rawStartingLocation,
+        rawEndingLocation,
+        startingLocationKey,
+        endingLocationKey,
         averageSpeedMph: finiteOrNull(row.average_speed_mph),
         maxSpeedMph: finiteOrNull(row.max_speed_mph),
         songCount: songs.length,
@@ -373,6 +393,16 @@ export class RecorderMobileStore {
   async journeys(limit: number, cursor = "") {
     const rows = await this.journeyRows(limit, cursor), page = rows.slice(0, limit);
     return { items: await this.journeySummaries(page), nextCursor: rows.length > limit && page.length ? encodeCursor(page.at(-1)!) : null };
+  }
+
+  async savePlaceAlias(input: RecorderPlaceAliasInput) {
+    const location = boundedText(input.location, 513), label = boundedText(input.label, 65);
+    if (!location || location.length > 512) throw new Error("A valid journey location is required.");
+    if (label.length > 64) throw new Error("Location names must be 64 characters or fewer.");
+    await this.write(label
+      ? [{ sql: "INSERT INTO place_aliases(location,label) VALUES(?,?) ON CONFLICT(location) DO UPDATE SET label=excluded.label;", args: [location, label] }]
+      : [{ sql: "DELETE FROM place_aliases WHERE location=?;", args: [location] }]);
+    return { location, label, removed: !label };
   }
 
   async memoriesCatalog() {

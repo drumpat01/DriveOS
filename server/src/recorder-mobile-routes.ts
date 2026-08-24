@@ -7,6 +7,7 @@ import {
   shazamConnectionStatuses,
   type RecorderCollectionInput,
   type RecorderMemoryInput,
+  type RecorderPlaceAliasInput,
   type RecorderPhotoInput,
   type RecorderMusicObservation,
   type RecorderProviderPreferences
@@ -78,6 +79,19 @@ export async function registerRecorderMobileRoutes(app: FastifyInstance, mobile:
   app.get<{ Params: { id: string } }>("/api/recorder/journeys/:id", {
     schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: identifier } } }
   }, async (req, reply) => { reply.header("cache-control", "private, no-store"); return (await mobile.journey(req.params.id)) || reply.code(404).send({ error: "Journey was not found." }); });
+
+  app.put<{ Body: RecorderPlaceAliasInput }>("/api/recorder/places/alias", {
+    schema: {
+      body: {
+        type: "object", additionalProperties: false, required: ["location", "label"],
+        properties: { location: { type: "string", minLength: 1, maxLength: 512 }, label: { type: "string", maxLength: 64 } }
+      }
+    }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.savePlaceAlias(req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Location name could not be saved." }); }
+  });
 
   app.get("/api/recorder/memories", async (_req, reply) => {
     reply.header("cache-control", "private, no-store");

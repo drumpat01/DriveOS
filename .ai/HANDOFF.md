@@ -68,6 +68,15 @@
 
 ## Release State and Next Steps
 
+### Mobile journey location names (implemented; pending Git review)
+
+- Added an **Edit locations** action beside **Create share card** in the native Journey overview modal. Users can name the start and destination (for example Home, Work, or School), cancel edits, or clear a name to restore the original location.
+- Location names use the existing shared `place_aliases` store, so a name is reused when the same place appears in other journeys. Generic phone-recorder locations receive coordinate-derived keys so unrelated `Recorder location` endpoints are not accidentally renamed together.
+- Added a narrowly authenticated Recorder mobile alias endpoint; responses preserve raw locations and return resolved display names plus stable alias keys. Existing cached mobile journey records remain backward compatible.
+- Verification passed: server typecheck/lint and 29/29 server tests; mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
+- Branch/worktree: `codex/mobile-journey-location-edit` at `C:\Users\patri\DriveOS-journey-location-edit`, based on `origin/main` at `328918f`. The generated iOS export used for validation has been removed.
+- Feature commit `716c25a` is pushed to `origin/codex/mobile-journey-location-edit`. The MacinCloud workflow has been retired; use a local Apple Silicon Mac Simulator when available or validate the native UI through the established iPhone preview/OTA flow. Saving names against the hosted JourneyDeck server requires the server-side endpoint to be deployed first.
+
 ### Native modal overviews and share cards (implemented; release pending)
 
 - Memories, Collections, and Journeys now open as cinematic native overlay modals above the existing Memories screen instead of replacing or expanding the page.
