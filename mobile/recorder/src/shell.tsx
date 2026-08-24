@@ -30,6 +30,7 @@ import {
 } from './recording-mode';
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
+import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
 
 type Tab = 'home' | 'journeys' | 'music' | 'record' | 'connections';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
@@ -1178,31 +1179,85 @@ function ConnectionsScreen({
 }
 
 function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: Tab) => void }) {
+  const navigationPadding = 6;
+  const navigationGap = 2;
   const navRef = useRef<View>(null);
   const navX = useRef(0);
   const navWidth = useRef(0);
+  const indicatorWidthRef = useRef(0);
+  const indicatorX = useRef(new Animated.Value(0)).current;
+  const [indicatorWidth, setIndicatorWidth] = useState(0);
+  const activeRef = useRef(active);
+  const dragging = useRef(false);
   const lastDraggedTab = useRef<Tab | null>(null);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  activeRef.current = active;
+
+  function tabIndex(tab: Tab) {
+    return Math.max(0, bottomNavigationItems.findIndex(item => item.id === tab));
+  }
+
+  function snapToTab(tab: Tab) {
+    if (navWidth.current <= 0) return;
+    Animated.spring(indicatorX, {
+      toValue: navigationTabX(tabIndex(tab), navWidth.current, bottomNavigationItems.length, navigationPadding, navigationGap),
+      speed: 24,
+      bounciness: 5,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  function moveIndicator(locationX: number) {
+    if (navWidth.current <= 0 || indicatorWidthRef.current <= 0) return;
+    indicatorX.setValue(navigationIndicatorX(locationX, navWidth.current, bottomNavigationItems.length, navigationPadding, navigationGap));
+  }
 
   function selectAt(locationX: number) {
     if (navWidth.current <= 0) return;
-    const itemWidth = navWidth.current / bottomNavigationItems.length;
-    const index = Math.max(0, Math.min(bottomNavigationItems.length - 1, Math.floor(locationX / itemWidth)));
+    const index = navigationIndexAtX(locationX, navWidth.current, bottomNavigationItems.length, navigationPadding, navigationGap);
     const next = bottomNavigationItems[index].id;
     if (lastDraggedTab.current === next) return;
     lastDraggedTab.current = next;
     onSelectRef.current(next);
   }
 
+  function moveAtScreenX(screenX: number) {
+    const locationX = screenX - navX.current;
+    moveIndicator(locationX);
+    selectAt(locationX);
+  }
+
+  function finishDrag() {
+    const finalTab = lastDraggedTab.current ?? activeRef.current;
+    dragging.current = false;
+    lastDraggedTab.current = null;
+    snapToTab(finalTab);
+  }
+
   const dragResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onPanResponderGrant: (_event, gesture) => selectAt(gesture.moveX - navX.current),
-    onPanResponderMove: (_event, gesture) => selectAt(gesture.moveX - navX.current),
-    onPanResponderRelease: () => { lastDraggedTab.current = null; },
-    onPanResponderTerminate: () => { lastDraggedTab.current = null; },
+    onPanResponderGrant: (_event, gesture) => { dragging.current = true; moveAtScreenX(gesture.moveX); },
+    onPanResponderMove: (_event, gesture) => moveAtScreenX(gesture.moveX),
+    onPanResponderRelease: (_event, gesture) => { moveAtScreenX(gesture.moveX); finishDrag(); },
+    onPanResponderTerminate: finishDrag,
   })).current;
+
+  useEffect(() => {
+    if (!dragging.current) snapToTab(active);
+  }, [active, indicatorX]);
+
+  function measureNavigation() {
+    navRef.current?.measureInWindow((x, _y, width) => {
+      navX.current = x;
+      navWidth.current = width;
+      const nextWidth = navigationGeometry(width, bottomNavigationItems.length, navigationPadding, navigationGap).itemWidth;
+      indicatorWidthRef.current = nextWidth;
+      setIndicatorWidth(previous => Math.abs(previous - nextWidth) < 0.5 ? previous : nextWidth);
+      indicatorX.setValue(navigationTabX(tabIndex(activeRef.current), width, bottomNavigationItems.length, navigationPadding, navigationGap));
+    });
+  }
 
   const navigationItems = bottomNavigationItems.map(item => {
     const selected = active === item.id;
@@ -1214,7 +1269,7 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
         accessibilityLabel={`${item.label} tab`}
         accessibilityState={{ selected }}
         hitSlop={4}
-        style={({ pressed }) => [styles.navItem, selected && styles.navItemActive, pressed && styles.navItemPressed]}
+        style={({ pressed }) => [styles.navItem, pressed && styles.navItemPressed]}
       >
         <Text style={[styles.navSymbol, selected && styles.navActive]}>{item.symbol}</Text>
         <Text style={[styles.navLabel, selected && styles.navActive]}>{item.label}</Text>
@@ -1222,17 +1277,22 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
       </Pressable>
     );
   });
+  const navigationTrack = <View
+    ref={navRef}
+    style={styles.navTrack}
+    onLayout={measureNavigation}
+    {...dragResponder.panHandlers}
+  >
+    <View pointerEvents="none" style={styles.navGlassSheen} />
+    {indicatorWidth > 0 && <Animated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorX }] }]} />}
+    {navigationItems}
+  </View>;
   const hasNativeLiquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
   return (
-    <View
-      ref={navRef}
-      style={styles.navDockFrame}
-      onLayout={() => navRef.current?.measureInWindow((x, _y, width) => { navX.current = x; navWidth.current = width; })}
-      {...dragResponder.panHandlers}
-    >
+    <View style={styles.navDockFrame}>
       {hasNativeLiquidGlass
-        ? <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(72, 32, 96, 0.46)" isInteractive style={styles.bottomNav}><View pointerEvents="none" style={styles.navGlassSheen} />{navigationItems}</GlassView>
-        : <View style={[styles.bottomNav, styles.bottomNavFallback]}><View pointerEvents="none" style={styles.navGlassSheen} />{navigationItems}</View>}
+        ? <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(72, 32, 96, 0.46)" isInteractive style={styles.bottomNav}>{navigationTrack}</GlassView>
+        : <View style={[styles.bottomNav, styles.bottomNavFallback]}>{navigationTrack}</View>}
     </View>
   );
 }
@@ -1462,11 +1522,12 @@ const styles = StyleSheet.create({
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#4e2831', borderRadius: 18, padding: 15 }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3c3443', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#63313a', backgroundColor: '#281318' }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29' }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47' }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
   navDockFrame: { marginBottom: 8, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(226,134,255,0.58)', shadowColor: '#b837ff', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } },
-  bottomNav: { minHeight: 76, flexDirection: 'row', gap: 2, padding: 6, borderRadius: 24, overflow: 'hidden' },
+  bottomNav: { minHeight: 76, borderRadius: 24, overflow: 'hidden' },
   bottomNavFallback: { backgroundColor: 'rgba(25,12,34,0.96)' },
-  navGlassSheen: { position: 'absolute', top: 1, right: 18, left: 18, height: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
-  navItem: { position: 'relative', flex: 1, minHeight: 62, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 18, borderWidth: 1, borderColor: 'transparent' },
-  navItemActive: { borderColor: 'rgba(255,113,56,0.86)', backgroundColor: 'rgba(255,105,52,0.12)', shadowColor: '#ff5b2d', shadowOpacity: 0.9, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } },
+  navTrack: { flex: 1, minHeight: 76, flexDirection: 'row', gap: 2, padding: 6 },
+  navGlassSheen: { position: 'absolute', zIndex: 3, top: 1, right: 18, left: 18, height: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
+  navGlidingIndicator: { position: 'absolute', zIndex: 0, top: 6, bottom: 6, left: 0, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,113,56,0.86)', backgroundColor: 'rgba(255,105,52,0.12)', shadowColor: '#ff5b2d', shadowOpacity: 0.9, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } },
+  navItem: { position: 'relative', zIndex: 1, flex: 1, minHeight: 62, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 18 },
   navItemPressed: { transform: [{ scale: 0.97 }], backgroundColor: 'rgba(255,255,255,0.06)' },
   navSymbol: { color: '#bba5c8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
   navLabel: { color: '#bba5c8', fontSize: 8, fontWeight: '800' },

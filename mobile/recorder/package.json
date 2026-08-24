@@ -31,6 +31,7 @@
     "test:sync-status": "node --experimental-strip-types tests/sync-status.test.mts",
     "test:music-observations": "node --experimental-strip-types tests/music-observations.test.mts",
     "test:drive-detection": "node --experimental-strip-types tests/drive-detection.test.mts",
+    "test:navigation-motion": "node --experimental-strip-types tests/navigation-motion.test.mts",
     "doctor": "expo-doctor",
     "build:ios:development": "eas build --platform ios --profile development",
     "build:ios:preview": "eas build --platform ios --profile preview",
