@@ -74,8 +74,8 @@
 - Location names use the existing shared `place_aliases` store, so a name is reused when the same place appears in other journeys. Generic phone-recorder locations receive coordinate-derived keys so unrelated `Recorder location` endpoints are not accidentally renamed together.
 - Added a narrowly authenticated Recorder mobile alias endpoint; responses preserve raw locations and return resolved display names plus stable alias keys. Existing cached mobile journey records remain backward compatible.
 - Verification passed: server typecheck/lint and 29/29 server tests; mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
-- Clean branch/worktree: `codex/mobile-journey-location-edit` at `C:\Users\patri\DriveOS-journey-location-edit`, based on `origin/main` at `328918f`. Five source/test files plus this handoff are modified and uncommitted. `mobile/recorder/dist-location-edit-check/` is generated validation output only and must not be staged.
-- Next step: review, commit, and push only the six intended files; switch the cloud Mac clone to the pushed branch for Simulator UI testing. Saving names against the hosted JourneyDeck server requires the server-side endpoint to be deployed first.
+- Branch/worktree: `codex/mobile-journey-location-edit` at `C:\Users\patri\DriveOS-journey-location-edit`, based on `origin/main` at `328918f`. The generated iOS export used for validation has been removed.
+- Feature commit `716c25a` is pushed to `origin/codex/mobile-journey-location-edit`. The MacinCloud workflow has been retired; use a local Apple Silicon Mac Simulator when available or validate the native UI through the established iPhone preview/OTA flow. Saving names against the hosted JourneyDeck server requires the server-side endpoint to be deployed first.
 
 ### Native modal overviews and share cards (implemented; release pending)
 
