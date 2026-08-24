@@ -68,6 +68,16 @@
 
 ## Release State and Next Steps
 
+### Native modal overviews and share cards (implemented; release pending)
+
+- Memories, Collections, and Journeys now open as cinematic native overlay modals above the existing Memories screen instead of replacing or expanding the page.
+- Memory and Collection editors also use scrollable overlays. Collection journey membership moved inside the Collection editor, so managing a Collection no longer stretches the main screen.
+- Added summary/overview cards for all three content levels with photos, descriptive copy, aggregate metrics, nested-item navigation, and direct edit/manage actions.
+- Added privacy-safe 4:5 image share cards for Memories, Collections, and Journeys. Journey exports deliberately omit precise routes, coordinates, and start/end labels. Sharing uses `react-native-view-shot` plus `expo-sharing` and the native iOS share sheet.
+- Mobile app/runtime is now `1.3.0` because sharing and view capture add native dependencies. A fresh EAS preview build is required; this cannot be sent to the installed 1.2.0 binary by OTA.
+- Verification passed: mobile typecheck; recovery 10/10; sync 4/4; music 6/6; drive detection 9/9; iOS Metro export; public Expo config; and `git diff --check`. Expo Doctor remains 20/21 only because of the six known pre-existing SDK 57 patch mismatches.
+- Branch/worktree: `codex/mobile-modal-overviews` at `C:\Users\patri\DriveOS-auto-detection`. Next steps: commit/push, merge after CI, then create and install a JourneyDeck 1.3.0 iOS preview build and physically test modal transitions plus image sharing.
+
 ### Memories and Collections photos (released; physical iPhone test pending)
 
 - Added iPhone photo-library uploads to both Collection and Memory editors. Images are resized/compressed on-device, bounded to 1.5 MB, signature-validated on the server, and stored in the existing Collection/Memory attachment tables.
