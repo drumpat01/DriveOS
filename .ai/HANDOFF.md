@@ -94,6 +94,14 @@
 - Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; public Expo config; and `git diff --check`. Expo Doctor remains 20/21 only because of the six pre-existing SDK 57 patch mismatches.
 - Delivered through PR #120 and merged to `main` as `3d2a1c1`. Next step: install the 1.4.0 preview build over the existing app without deleting it, then physically verify native glass rendering, safe-area placement, scroll clearance, active orange glow, and all four tab hit targets.
 
+### Liquid Glass clarity and drag navigation (implemented; OTA pending)
+
+- Changed the installed 1.4.0 navigation pill from a heavily dark-tinted `regular` glass surface to native `clear` Liquid Glass with a light violet tint, brighter rim, and subtle top sheen so refraction is easier to perceive against JourneyDeck's dark screens.
+- Added horizontal drag selection with React Native `PanResponder`. After a short horizontal movement, the active orange capsule and selected screen follow the finger across Home, Memories, Record, and Connect; ordinary taps and accessibility tab semantics remain intact.
+- This is JavaScript/style-only and can be delivered to the installed JourneyDeck 1.4.0 preview build by OTA without another native build.
+- Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check`.
+- Branch/worktree: `codex/mobile-glass-drag-navigation` at `C:\Users\patri\DriveOS-glass-drag`, based on `origin/main` at `cc79ba9`. Next steps: review, commit/push, merge after CI, publish a preview OTA, then physically verify clarity and drag-through selection on the iPhone.
+
 ### Native modal overviews and share cards (implemented; release pending)
 
 - Memories, Collections, and Journeys now open as cinematic native overlay modals above the existing Memories screen instead of replacing or expanding the page.
