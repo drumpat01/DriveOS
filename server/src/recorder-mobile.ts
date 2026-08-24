@@ -75,6 +75,18 @@ export type RecorderMemoryInput = { id?: string | null; name: string; notes?: st
 export type RecorderPhotoInput = { fileName: string; contentType: string; dataBase64: string };
 export type RecorderPlaceAliasInput = { location: string; label: string };
 
+export type RecorderMusicDashboard = {
+  generatedAt: string;
+  metrics: { milesWithMusic: number; listeningHours: number; songsOnRoad: number; currentStreak: number };
+  recentSelections: SafeSong[];
+  topArtists: { artist: string; plays: number; artworkUrl: string | null }[];
+  tour: { miles: number; changePercent: number | null };
+  mood: { label: string; count: number; percent: number }[];
+  cities: { label: string; songs: number }[];
+  daily: { date: string; label: string; count: number }[];
+  week: { total: number; changePercent: number | null };
+};
+
 type JourneyRow = {
   id: string;
   legacy_drive_id: string;
@@ -173,7 +185,7 @@ function safeSong(value: unknown): SafeSong | null {
   const item = value as Record<string, unknown>;
   const track = boundedText(item.track), artist = boundedText(item.artist);
   if (!track || !artist) return null;
-  const source = boundedText(item.source || (item.spotifyUrl ? "spotify" : "unknown"), 40).toLowerCase().replace(/[^a-z0-9_-]/g, "") || "unknown";
+  const source = boundedText(item.source || (item.spotifyUrl || item.spotify_url ? "spotify" : "unknown"), 40).toLowerCase().replace(/[^a-z0-9_-]/g, "") || "unknown";
   const duration = finiteOrNull(item.durationMs ?? item.duration_ms);
   const confidence = finiteOrNull(item.confidence);
   return {
@@ -183,7 +195,7 @@ function safeSong(value: unknown): SafeSong | null {
     album: boundedText(item.album) || null,
     durationMs: duration === null ? null : Math.max(0, Math.min(3_600_000, Math.round(duration))),
     artworkUrl: safeHttpsUrl(item.artworkUrl ?? item.albumImage ?? item.album_image),
-    externalUrl: safeHttpsUrl(item.externalUrl ?? item.spotifyUrl ?? item.youtubeUrl),
+    externalUrl: safeHttpsUrl(item.externalUrl ?? item.spotifyUrl ?? item.spotify_url ?? item.youtubeUrl),
     source,
     confidence: confidence === null ? null : Math.max(0, Math.min(1, confidence))
   };
@@ -192,6 +204,35 @@ function safeSong(value: unknown): SafeSong | null {
 function soundtrackSongs(payload: unknown) {
   const parsed = safeJson(payload);
   return (Array.isArray(parsed?.songs) ? parsed.songs : []).map(safeSong).filter((song): song is SafeSong => Boolean(song));
+}
+
+function listeningSong(row: Record<string, unknown>) {
+  const payload = safeJson(row.payload_json);
+  return safeSong(payload ? { ...payload, playedAt: payload.playedAt ?? payload.played_at ?? row.played_at } : null);
+}
+
+function rounded(value: number, digits = 1) {
+  const scale = 10 ** digits;
+  return Math.round(value * scale) / scale;
+}
+
+function cityLabel(value: unknown) {
+  const parts = boundedText(value, 200).split(",").map(part => part.trim()).filter(Boolean);
+  if (!parts.length) return "On the road";
+  return (parts.length >= 3 ? parts.at(-3)! : parts[0]).replace(/^\d+\s+/, "") || "On the road";
+}
+
+function localDayIndex(value: string | null, timezoneOffsetMinutes: number) {
+  const parsed = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(parsed) ? Math.floor((parsed - timezoneOffsetMinutes * 60_000) / 86_400_000) : null;
+}
+
+function dayDescriptor(index: number) {
+  const date = new Date(index * 86_400_000);
+  return {
+    date: date.toISOString().slice(0, 10),
+    label: new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(date)
+  };
 }
 
 function uniqueSongs(songs: SafeSong[]) {
@@ -321,6 +362,20 @@ export class RecorderMobileStore {
     return result;
   }
 
+  private async allMobileSongs() {
+    const rows = await this.read({
+      sql: "SELECT payload_json FROM listening_history WHERE json_valid(payload_json) AND json_extract(payload_json,'$.origin')='journeydeck_mobile' AND json_extract(payload_json,'$.householdId')=? ORDER BY played_at,id;",
+      args: [this.householdId]
+    });
+    const result = new Map<string, SafeSong[]>();
+    for (const row of rows) {
+      const payload = safeJson(row.payload_json), sessionId = boundedText(payload?.recorderSessionId, 120), song = safeSong(payload);
+      if (!sessionId || !song) continue;
+      result.set(sessionId, [...(result.get(sessionId) || []), song]);
+    }
+    return result;
+  }
+
   private async journeySummaries(rows: JourneyRow[], loadedMobileSongs?: Map<string, SafeSong[]>) {
     const mobile = loadedMobileSongs || await this.mobileSongs(rows.map(row => row.recorder_session_id || ""));
     const aliasRows = await this.read({ sql: "SELECT location,label FROM place_aliases;" });
@@ -387,6 +442,101 @@ export class RecorderMobileStore {
       latestJourney: recent[0] || null,
       recentJourneys: recent,
       providerPreferences
+    };
+  }
+
+  async musicDashboard(timezoneOffsetMinutes = 0): Promise<RecorderMusicDashboard> {
+    const offset = Math.max(-840, Math.min(840, Math.round(timezoneOffsetMinutes)));
+    const generatedAt = new Date().toISOString();
+    const [historyRows, loadedDriveRows, mobile, aliasRows] = await Promise.all([
+      this.read({ sql: "SELECT played_at,payload_json FROM listening_history WHERE json_valid(payload_json) ORDER BY played_at DESC,id DESC;" }),
+      this.read({ sql: `SELECT ${journeyColumns} FROM drives d JOIN vehicles v ON v.id=d.vehicle_id LEFT JOIN drive_soundtracks ds ON ds.drive_id=d.legacy_drive_id WHERE d.household_id=? ORDER BY d.started_at_epoch DESC,d.id ASC;`, args: [this.householdId] }),
+      this.allMobileSongs(),
+      this.read({ sql: "SELECT location,label FROM place_aliases;" })
+    ]);
+    const driveRows = loadedDriveRows as unknown as JourneyRow[];
+    const history = historyRows.map(listeningSong).filter((song): song is SafeSong => Boolean(song));
+    const aliases = new Map(aliasRows.map(row => [String(row.location), boundedText(row.label, 64)]));
+    const today = localDayIndex(generatedAt, offset)!;
+    const dailyCounts = new Map<number, number>();
+    for (const song of history) {
+      const day = localDayIndex(song.playedAt, offset);
+      if (day !== null) dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+    }
+    const daily = Array.from({ length: 14 }, (_, itemIndex) => {
+      const index = today - (13 - itemIndex);
+      return { ...dayDescriptor(index), count: dailyCounts.get(index) || 0 };
+    });
+    let currentStreak = 0;
+    while ((dailyCounts.get(today - currentStreak) || 0) > 0) currentStreak += 1;
+
+    const journeySongs: SafeSong[] = [];
+    let milesWithMusic = 0, tourMiles = 0, previousTourMiles = 0;
+    const citySongs = new Map<string, number>();
+    for (const row of driveRows) {
+      const songs = uniqueSongs([...soundtrackSongs(row.soundtrack_payload), ...(row.recorder_session_id ? mobile.get(row.recorder_session_id) || [] : [])]);
+      if (!songs.length) continue;
+      journeySongs.push(...songs);
+      const miles = Math.max(0, finiteOrNull(row.distance_miles) || 0);
+      milesWithMusic += miles;
+      const driveDay = localDayIndex(row.started_at_utc, offset);
+      if (driveDay !== null && driveDay >= today - 6 && driveDay <= today) tourMiles += miles;
+      else if (driveDay !== null && driveDay >= today - 13 && driveDay <= today - 7) previousTourMiles += miles;
+      const endingLocation = boundedText(row.ending_location, 200), rawLocation = endingLocation || boundedText(row.starting_location, 200);
+      const aliasKey = placeAliasKey(rawLocation, endingLocation ? row.ending_latitude : row.starting_latitude, endingLocation ? row.ending_longitude : row.starting_longitude);
+      const city = cityLabel(aliases.get(aliasKey) || rawLocation);
+      citySongs.set(city, (citySongs.get(city) || 0) + songs.length);
+    }
+
+    const todaySongs = history.filter(song => localDayIndex(song.playedAt, offset) === today);
+    const selectionSource = todaySongs.length ? todaySongs : history;
+    const selectedKeys = new Set<string>();
+    const recentSelections = selectionSource.filter(song => {
+      const key = `${song.track.toLocaleLowerCase()}\0${song.artist.toLocaleLowerCase()}`;
+      if (selectedKeys.has(key)) return false;
+      selectedKeys.add(key);
+      return true;
+    }).slice(0, 6);
+
+    const artists = new Map<string, { artist: string; plays: number; artworkUrl: string | null }>();
+    for (const song of history) {
+      const key = song.artist.toLocaleLowerCase(), current = artists.get(key);
+      if (current) {
+        current.plays += 1;
+        if (!current.artworkUrl && song.artworkUrl) current.artworkUrl = song.artworkUrl;
+      } else artists.set(key, { artist: song.artist, plays: 1, artworkUrl: song.artworkUrl });
+    }
+    const topArtists = [...artists.values()].sort((a, b) => b.plays - a.plays || a.artist.localeCompare(b.artist)).slice(0, 5);
+
+    const moodLabels = ["Morning", "Midday", "Evening", "Late night"];
+    const moodCounts = [0, 0, 0, 0];
+    for (const song of journeySongs.length ? journeySongs : history) {
+      const parsed = song.playedAt ? Date.parse(song.playedAt) - offset * 60_000 : Number.NaN;
+      if (!Number.isFinite(parsed)) continue;
+      const hour = new Date(parsed).getUTCHours();
+      moodCounts[hour < 10 ? 0 : hour < 16 ? 1 : hour < 22 ? 2 : 3] += 1;
+    }
+    const moodTotal = Math.max(1, moodCounts.reduce((sum, count) => sum + count, 0));
+    const mood = moodLabels.map((label, index) => ({ label, count: moodCounts[index], percent: Math.round((moodCounts[index] / moodTotal) * 100) }));
+    const cities = [...citySongs.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 5).map(([label, songs]) => ({ label, songs }));
+    const durationMs = journeySongs.reduce((sum, song) => sum + (song.durationMs || 0), 0);
+    const weekTotal = daily.slice(-7).reduce((sum, day) => sum + day.count, 0);
+    const previousWeekTotal = daily.slice(0, 7).reduce((sum, day) => sum + day.count, 0);
+    return {
+      generatedAt,
+      metrics: {
+        milesWithMusic: rounded(milesWithMusic),
+        listeningHours: rounded(durationMs / 3_600_000),
+        songsOnRoad: journeySongs.length,
+        currentStreak
+      },
+      recentSelections,
+      topArtists,
+      tour: { miles: rounded(tourMiles), changePercent: previousTourMiles > 0 ? Math.round(((tourMiles - previousTourMiles) / previousTourMiles) * 100) : null },
+      mood,
+      cities,
+      daily,
+      week: { total: weekTotal, changePercent: previousWeekTotal > 0 ? Math.round(((weekTotal - previousWeekTotal) / previousWeekTotal) * 100) : null }
     };
   }
 

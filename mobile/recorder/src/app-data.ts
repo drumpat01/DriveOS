@@ -86,6 +86,18 @@ export type AppDashboard = DashboardData & {
   weeklyJourneys: JourneySummary[];
 };
 
+export type MusicDashboardData = {
+  generatedAt: string;
+  metrics: { milesWithMusic: number; listeningHours: number; songsOnRoad: number; currentStreak: number };
+  recentSelections: SoundtrackTrack[];
+  topArtists: { artist: string; plays: number; artworkUrl: string | null }[];
+  tour: { miles: number; changePercent: number | null };
+  mood: { label: string; count: number; percent: number }[];
+  cities: { label: string; songs: number }[];
+  daily: { date: string; label: string; count: number }[];
+  week: { total: number; changePercent: number | null };
+};
+
 export type ConnectionCapabilities = {
   lastFmConfigured: boolean;
   tessieConfigured: boolean;
@@ -141,6 +153,7 @@ const DASHBOARD_CACHE_KEY = 'app.dashboard.v1';
 const JOURNEYS_CACHE_KEY = 'app.journeys.v1';
 const WEEKLY_JOURNEYS_CACHE_KEY = 'app.weekly-journeys.v1';
 const MEMORIES_CACHE_KEY = 'app.memories.v1';
+const MUSIC_DASHBOARD_CACHE_KEY = 'app.music-dashboard.v1';
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
 const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
@@ -287,6 +300,24 @@ export const appDataClient = {
       const catalog = await request<MemoriesCatalog>(connection, '/api/recorder/memories');
       writeAppCache(MEMORIES_CACHE_KEY, catalog);
       return catalog;
+    } catch (error) {
+      if (cached) return cached;
+      throw error;
+    }
+  },
+
+  async musicDashboard(): Promise<MusicDashboardData> {
+    const connection = await loadConnection();
+    const cached = readAppCache<MusicDashboardData>(MUSIC_DASHBOARD_CACHE_KEY);
+    if (!connection) {
+      if (cached) return cached;
+      throw new Error('Connect this iPhone to JourneyDeck to load your music archive.');
+    }
+    try {
+      const offset = new Date().getTimezoneOffset();
+      const data = await request<MusicDashboardData>(connection, `/api/recorder/music-dashboard?timezoneOffsetMinutes=${encodeURIComponent(String(offset))}`);
+      writeAppCache(MUSIC_DASHBOARD_CACHE_KEY, data);
+      return data;
     } catch (error) {
       if (cached) return cached;
       throw error;

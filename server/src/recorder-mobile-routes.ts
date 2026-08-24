@@ -62,6 +62,15 @@ export async function registerRecorderMobileRoutes(app: FastifyInstance, mobile:
     schema: { querystring: { type: "object", additionalProperties: false, properties: { deviceId: identifier } } }
   }, async (req, reply) => { reply.header("cache-control", "private, no-store"); return mobile.dashboard(req.query.deviceId); });
 
+  app.get<{ Querystring: { timezoneOffsetMinutes?: string } }>("/api/recorder/music-dashboard", {
+    schema: { querystring: { type: "object", additionalProperties: false, properties: { timezoneOffsetMinutes: { type: "string", pattern: "^-?[0-9]{1,4}$" } } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    const offset = req.query.timezoneOffsetMinutes ? Number(req.query.timezoneOffsetMinutes) : 0;
+    if (!Number.isInteger(offset) || offset < -840 || offset > 840) return reply.code(400).send({ error: "Timezone offset must be between -840 and 840 minutes." });
+    return mobile.musicDashboard(offset);
+  });
+
   app.get<{ Querystring: { limit?: string; cursor?: string } }>("/api/recorder/journeys", {
     schema: { querystring: { type: "object", additionalProperties: false, properties: { limit: { type: "string", pattern: "^[0-9]{1,2}$" }, cursor: { type: "string", maxLength: 512 } } } }
   }, async (req, reply) => {

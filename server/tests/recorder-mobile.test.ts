@@ -89,6 +89,10 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     });
     runtime.database.prepare("INSERT INTO drive_soundtracks(drive_id,drive_started_at,drive_ended_at,status,payload_json,updated_at) VALUES(?,?,?,?,?,?)").run(legacyDriveId, iso(-600_000), iso(0), "finalized", soundtrackPayload, iso(0));
     runtime.database.prepare("INSERT INTO listening_history(id,played_at,payload_json) VALUES('malformed-history',?, 'not-json')").run(iso(-100_000));
+    runtime.database.prepare("INSERT INTO listening_history(id,played_at,payload_json) VALUES('spotify-history',?,?)").run(iso(-200_000), JSON.stringify({
+      source: "spotify", played_at: iso(-200_000), track: "Server Song", artist: "Live Artist", album: "Server Album", duration_ms: 210000,
+      album_image: "https://example.com/server-art.jpg", spotify_url: "https://open.spotify.com/track/server-song"
+    }));
 
     const dashboard = await runtime.app.inject({ method: "GET", url: "/api/recorder/dashboard?deviceId=iphone-owner", headers });
     assert.equal(dashboard.statusCode, 200, dashboard.body);
@@ -99,6 +103,20 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.ok(dashboardBody.latestJourney.soundtrackPreview.some((song: any) => song.track === "Night Drive"));
     assert.equal(dashboardBody.providerPreferences.musicProvider, "shazam");
     assert.ok(dashboardBody.summary.last7Days.journeyCount >= 1);
+
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api/recorder/music-dashboard" })).statusCode, 401);
+    const musicDashboard = await runtime.app.inject({ method: "GET", url: "/api/recorder/music-dashboard?timezoneOffsetMinutes=300", headers });
+    assert.equal(musicDashboard.statusCode, 200, musicDashboard.body);
+    assert.equal(musicDashboard.headers["cache-control"], "private, no-store");
+    const musicDashboardBody = JSON.parse(musicDashboard.body);
+    assert.equal(musicDashboardBody.metrics.songsOnRoad, 2);
+    assert.ok(musicDashboardBody.metrics.listeningHours > 0);
+    assert.ok(musicDashboardBody.metrics.currentStreak >= 1);
+    assert.equal(musicDashboardBody.daily.length, 14);
+    assert.ok(musicDashboardBody.recentSelections.some((song: any) => song.track === "Server Song" && song.externalUrl === "https://open.spotify.com/track/server-song"));
+    assert.ok(musicDashboardBody.topArtists.some((artist: any) => artist.artist === "Live Artist" && artist.plays === 1));
+    assert.doesNotMatch(musicDashboard.body, /observationId|recorderSessionId|legacy-private-value/i);
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api/recorder/music-dashboard?timezoneOffsetMinutes=9999", headers })).statusCode, 400);
 
     const firstPage = await runtime.app.inject({ method: "GET", url: "/api/recorder/journeys?limit=1", headers });
     assert.equal(firstPage.statusCode, 200, firstPage.body);
