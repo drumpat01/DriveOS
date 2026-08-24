@@ -7,6 +7,7 @@ import {
   normalizeMusicObservation,
   shazamMatchObservation,
 } from '../src/music-observations.ts';
+import { musicTrackDestination } from '../src/music-destination.ts';
 
 test('Apple Music samples of the same playback produce one stable observation identity', () => {
   const first = appleCurrentTrackObservation({
@@ -116,4 +117,13 @@ test('normalization replaces an unsafe id and rejects missing playback metadata'
     observationId: 'valid', source: 'lastfm', playedAt: 'not-a-time', track: 'Song', artist: 'Artist',
     album: null, durationMs: null, artworkUrl: null, externalUrl: null, confidence: null,
   }), null);
+});
+
+test('music track destinations follow only the selected playback service', () => {
+  const track = { track: 'Night Drive', artist: 'The Test Pilots', externalUrl: 'https://open.spotify.com/track/spotify-id' };
+  assert.equal(musicTrackDestination(track, 'lastfm'), track.externalUrl);
+  assert.equal(musicTrackDestination(track, 'apple-music'), 'https://music.apple.com/us/search?term=Night%20Drive%20The%20Test%20Pilots');
+  assert.equal(musicTrackDestination(track, 'shazam'), null);
+  assert.equal(musicTrackDestination({ ...track, externalUrl: 'https://music.apple.com/us/song/apple-id' }, 'apple-music'), 'https://music.apple.com/us/song/apple-id');
+  assert.equal(musicTrackDestination({ ...track, externalUrl: null }, 'lastfm'), 'https://open.spotify.com/search/Night%20Drive%20The%20Test%20Pilots');
 });
