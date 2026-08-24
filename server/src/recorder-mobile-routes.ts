@@ -7,6 +7,7 @@ import {
   shazamConnectionStatuses,
   type RecorderCollectionInput,
   type RecorderMemoryInput,
+  type RecorderPhotoInput,
   type RecorderMusicObservation,
   type RecorderProviderPreferences
 } from "./recorder-mobile.js";
@@ -16,6 +17,17 @@ const timestamp = { type: "string", minLength: 20, maxLength: 40 } as const;
 const accountStatus = { type: "string", enum: accountConnectionStatuses } as const;
 const shazamStatus = { type: "string", enum: shazamConnectionStatuses } as const;
 const lastFmUsername = { type: "string", minLength: 1, maxLength: 30, pattern: "^[A-Za-z0-9_-]+$" } as const;
+const photoId = { type: "string", pattern: "^(?:attachment|memory_attachment)_[a-f0-9]{32}$" } as const;
+const collectionId = { type: "string", pattern: "^collection_[a-f0-9]{32}$" } as const;
+const memoryId = { type: "string", pattern: "^memory_[a-f0-9]{32}$" } as const;
+const photoBody = {
+  type: "object", additionalProperties: false, required: ["fileName", "contentType", "dataBase64"],
+  properties: {
+    fileName: { type: "string", minLength: 1, maxLength: 120 },
+    contentType: { type: "string", enum: ["image/jpeg", "image/png", "image/webp"] },
+    dataBase64: { type: "string", minLength: 4, maxLength: 2_100_000, pattern: "^[A-Za-z0-9+/]+={0,2}$" }
+  }
+} as const;
 
 export type RecorderMobileRouteOptions = {
   lastFmApiKey: string;
@@ -81,11 +93,42 @@ export async function registerRecorderMobileRoutes(app: FastifyInstance, mobile:
   });
 
   app.put<{ Body: RecorderMemoryInput }>("/api/recorder/memories", {
-    schema: { body: { type: "object", additionalProperties: false, required: ["name", "collectionIds"], properties: { id: { anyOf: [identifier, { type: "null" }] }, name: { type: "string", minLength: 1, maxLength: 80 }, notes: { anyOf: [{ type: "string", maxLength: 1200 }, { type: "null" }] }, artworkKey: { anyOf: [{ type: "string", maxLength: 40 }, { type: "null" }] }, collectionIds: { type: "array", minItems: 2, maxItems: 50, items: identifier } } } }
+    schema: { body: { type: "object", additionalProperties: false, required: ["name", "collectionIds"], properties: { id: { anyOf: [identifier, { type: "null" }] }, name: { type: "string", minLength: 1, maxLength: 80 }, notes: { anyOf: [{ type: "string", maxLength: 1200 }, { type: "null" }] }, artworkKey: { anyOf: [{ type: "string", maxLength: 40 }, { type: "null" }] }, coverPhotoId: { anyOf: [photoId, { type: "null" }] }, collectionIds: { type: "array", minItems: 2, maxItems: 50, items: identifier } } } }
   }, async (req, reply) => {
     reply.header("cache-control", "private, no-store");
     try { return await mobile.saveMemory(req.body); }
     catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Memory could not be saved." }); }
+  });
+
+  app.post<{ Params: { id: string }; Body: RecorderPhotoInput }>("/api/recorder/collections/:id/photos", {
+    schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: collectionId } }, body: photoBody }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.addPhoto({ collectionId: req.params.id }, req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Photo could not be uploaded." }); }
+  });
+
+  app.post<{ Params: { id: string }; Body: RecorderPhotoInput }>("/api/recorder/memories/:id/photos", {
+    schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: memoryId } }, body: photoBody }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.addPhoto({ memoryId: req.params.id }, req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Photo could not be uploaded." }); }
+  });
+
+  app.get<{ Params: { id: string } }>("/api/recorder/photos/:id", {
+    schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: photoId } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, max-age=300");
+    return (await mobile.photo(req.params.id)) || reply.code(404).send({ error: "Photo was not found." });
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/recorder/photos/:id", {
+    schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: photoId } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.removePhoto(req.params.id); }
+    catch (error) { return reply.code(404).send({ error: error instanceof Error ? error.message : "Photo could not be removed." }); }
   });
 
   app.get<{ Params: { deviceId: string } }>("/api/recorder/preferences/:deviceId", {

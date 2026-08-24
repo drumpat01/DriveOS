@@ -44,6 +44,18 @@ export type RecorderJourneyCollection = {
   driveIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  photos: RecorderPhoto[];
+};
+
+export type RecorderPhoto = {
+  id: string;
+  fileName: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  byteLength: number;
+  createdAtUtc: string;
+  source: "collection" | "memory";
+  collectionId: string | null;
+  memoryId: string | null;
 };
 
 export type RecorderJourneyMemory = {
@@ -51,13 +63,16 @@ export type RecorderJourneyMemory = {
   name: string;
   notes: string;
   artworkKey: string;
+  coverPhotoId: string | null;
+  photos: RecorderPhoto[];
   collectionIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
 };
 
 export type RecorderCollectionInput = { id?: string | null; name: string; description?: string | null; driveIds: string[] };
-export type RecorderMemoryInput = { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; collectionIds: string[] };
+export type RecorderMemoryInput = { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] };
+export type RecorderPhotoInput = { fileName: string; contentType: string; dataBase64: string };
 
 type JourneyRow = {
   id: string;
@@ -204,6 +219,33 @@ function preferenceDefaults(deviceId: string): RecorderProviderPreferences {
 const memoryArtworkKeys = new Set(["everyday-life", "weekend-escapes", "summer-2026", "sunday-drives", "road-trips", "texas-weekends", "golden-hour-drives"]);
 const collectionIdPattern = /^collection_[a-f0-9]{32}$/;
 const memoryIdPattern = /^memory_[a-f0-9]{32}$/;
+const attachmentIdPattern = /^(?:attachment|memory_attachment)_[a-f0-9]{32}$/;
+const imageContentTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+const maxPhotoBytes = 1_572_864;
+
+function validatedPhoto(input: RecorderPhotoInput) {
+  const fileName = boundedText(input.fileName, 121), contentType = boundedText(input.contentType, 40).toLowerCase();
+  if (!fileName || fileName.length > 120 || fileName.includes("/") || fileName.includes("\\")) throw new Error("Photo filename is invalid.");
+  if (!imageContentTypes.has(contentType)) throw new Error("Photo must be a JPEG, PNG, or WebP image.");
+  let bytes: Buffer;
+  try { bytes = Buffer.from(input.dataBase64, "base64"); } catch { throw new Error("Photo data is invalid."); }
+  if (!bytes.length || bytes.length > maxPhotoBytes || bytes.toString("base64") !== input.dataBase64.replace(/\s/g, "")) throw new Error("Photo must be a valid image no larger than 1.5 MB.");
+  const signatureValid = contentType === "image/jpeg"
+    ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+    : contentType === "image/png"
+      ? bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      : bytes.length >= 12 && bytes.subarray(0, 4).toString("ascii") === "RIFF" && bytes.subarray(8, 12).toString("ascii") === "WEBP";
+  if (!signatureValid) throw new Error("Photo content does not match its file type.");
+  return { fileName, contentType: contentType as RecorderPhoto["contentType"], byteLength: bytes.length, dataBase64: bytes.toString("base64") };
+}
+
+function photoMetadata(row: Record<string, unknown>, source: RecorderPhoto["source"]): RecorderPhoto {
+  return {
+    id: String(row.id), fileName: boundedText(row.file_name, 120), contentType: String(row.content_type) as RecorderPhoto["contentType"],
+    byteLength: Number(row.byte_length) || 0, createdAtUtc: String(row.created_at_utc), source,
+    collectionId: row.collection_id ? String(row.collection_id) : null, memoryId: row.memory_id ? String(row.memory_id) : null
+  };
+}
 
 function uniqueIdentifiers(values: unknown, maximum: number, label: string) {
   if (!Array.isArray(values)) throw new Error(`${label} must be a list.`);
@@ -334,24 +376,34 @@ export class RecorderMobileStore {
   }
 
   async memoriesCatalog() {
-    const [collectionRows, collectionDriveRows, memoryRows, memoryCollectionRows] = await Promise.all([
+    const [collectionRows, collectionDriveRows, collectionPhotoRows, memoryRows, memoryCollectionRows, memoryPhotoRows] = await Promise.all([
       this.read({ sql: "SELECT id,name,description,created_at_utc,updated_at_utc FROM journey_collections WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
       this.read({ sql: "SELECT jcd.collection_id,jcd.drive_id FROM journey_collection_drives jcd JOIN journey_collections jc ON jc.id=jcd.collection_id WHERE jc.household_id=? ORDER BY jcd.collection_id,jcd.sort_order,jcd.drive_id;", args: [this.householdId] }),
-      this.read({ sql: "SELECT id,name,notes,artwork_key,created_at_utc,updated_at_utc FROM memories WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
-      this.read({ sql: "SELECT mc.memory_id,mc.collection_id FROM memory_collections mc JOIN memories m ON m.id=mc.memory_id WHERE m.household_id=? ORDER BY mc.memory_id,mc.sort_order,mc.collection_id;", args: [this.householdId] })
+      this.read({ sql: "SELECT id,collection_id,file_name,content_type,byte_length,created_at_utc FROM journey_attachments WHERE household_id=? AND content_type LIKE 'image/%' ORDER BY collection_id,created_at_utc,id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT id,name,notes,artwork_key,cover_attachment_id,created_at_utc,updated_at_utc FROM memories WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT mc.memory_id,mc.collection_id FROM memory_collections mc JOIN memories m ON m.id=mc.memory_id WHERE m.household_id=? ORDER BY mc.memory_id,mc.sort_order,mc.collection_id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT id,memory_id,file_name,content_type,byte_length,created_at_utc FROM memory_attachments WHERE household_id=? AND content_type LIKE 'image/%' ORDER BY memory_id,created_at_utc,id;", args: [this.householdId] })
     ]);
-    const drives = new Map<string, string[]>(), collections = new Map<string, string[]>();
+    const drives = new Map<string, string[]>(), collections = new Map<string, string[]>(), collectionPhotos = new Map<string, RecorderPhoto[]>(), memoryPhotos = new Map<string, RecorderPhoto[]>();
     for (const row of collectionDriveRows) drives.set(String(row.collection_id), [...(drives.get(String(row.collection_id)) || []), String(row.drive_id)]);
     for (const row of memoryCollectionRows) collections.set(String(row.memory_id), [...(collections.get(String(row.memory_id)) || []), String(row.collection_id)]);
+    for (const row of collectionPhotoRows) collectionPhotos.set(String(row.collection_id), [...(collectionPhotos.get(String(row.collection_id)) || []), photoMetadata(row, "collection")]);
+    for (const row of memoryPhotoRows) memoryPhotos.set(String(row.memory_id), [...(memoryPhotos.get(String(row.memory_id)) || []), photoMetadata(row, "memory")]);
     return {
       collections: collectionRows.map(row => ({
         id: String(row.id), name: boundedText(row.name, 80), description: boundedText(row.description, 500),
-        driveIds: drives.get(String(row.id)) || [], createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
+        driveIds: drives.get(String(row.id)) || [], photos: collectionPhotos.get(String(row.id)) || [], createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
       } satisfies RecorderJourneyCollection)),
-      memories: memoryRows.map(row => ({
-        id: String(row.id), name: boundedText(row.name, 80), notes: boundedText(row.notes, 1200), artworkKey: boundedText(row.artwork_key, 40) || "summer-2026",
-        collectionIds: collections.get(String(row.id)) || [], createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
-      } satisfies RecorderJourneyMemory))
+      memories: memoryRows.map(row => {
+        const collectionIds = collections.get(String(row.id)) || [];
+        const photos = [...(memoryPhotos.get(String(row.id)) || []), ...collectionIds.flatMap(id => collectionPhotos.get(id) || [])];
+        const coverPhotoId = boundedText(row.cover_attachment_id, 80) || null;
+        return {
+          id: String(row.id), name: boundedText(row.name, 80), notes: boundedText(row.notes, 1200), artworkKey: boundedText(row.artwork_key, 40) || "summer-2026",
+          coverPhotoId: coverPhotoId && photos.some(photo => photo.id === coverPhotoId) ? coverPhotoId : null, photos,
+          collectionIds, createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
+        } satisfies RecorderJourneyMemory;
+      })
     };
   }
 
@@ -378,17 +430,19 @@ export class RecorderMobileStore {
       ...driveIds.map((driveId, index) => ({ sql: "INSERT INTO journey_collection_drives(collection_id,drive_id,sort_order,added_at_utc) VALUES(?,?,?,?);", args: [id, driveId, index, now] }))
     ];
     await this.write(statements);
-    return { id, name, description, driveIds, createdAtUtc: createdAt, updatedAtUtc: now } satisfies RecorderJourneyCollection;
+    const photos = existing.length ? (await this.read({ sql: "SELECT id,collection_id,file_name,content_type,byte_length,created_at_utc FROM journey_attachments WHERE collection_id=? AND household_id=? AND content_type LIKE 'image/%' ORDER BY created_at_utc,id;", args: [id, this.householdId] })).map(row => photoMetadata(row, "collection")) : [];
+    return { id, name, description, driveIds, photos, createdAtUtc: createdAt, updatedAtUtc: now } satisfies RecorderJourneyCollection;
   }
 
   async saveMemory(input: RecorderMemoryInput) {
     const name = boundedText(input.name, 81), notes = boundedText(input.notes, 1201), collectionIds = uniqueIdentifiers(input.collectionIds, 50, "Memory collections");
-    const artworkKey = boundedText(input.artworkKey, 40) || "summer-2026";
+    const artworkKey = boundedText(input.artworkKey, 40) || "summer-2026", coverPhotoId = boundedText(input.coverPhotoId, 80) || null;
     if (!name) throw new Error("Memory name is required.");
     if (name.length > 80) throw new Error("Memory name must be 80 characters or fewer.");
     if (notes.length > 1200) throw new Error("Memory notes must be 1200 characters or fewer.");
     if (collectionIds.length < 2) throw new Error("A memory must contain at least two collections.");
     if (!memoryArtworkKeys.has(artworkKey)) throw new Error("Memory artwork is invalid.");
+    if (coverPhotoId && !attachmentIdPattern.test(coverPhotoId)) throw new Error("Memory cover photo is invalid.");
     if (collectionIds.some(id => !collectionIdPattern.test(id))) throw new Error("Memory collection ID is invalid.");
     const id = boundedText(input.id, 80) || `memory_${randomUUID().replaceAll("-", "")}`;
     if (!memoryIdPattern.test(id)) throw new Error("Memory ID is invalid.");
@@ -398,16 +452,57 @@ export class RecorderMobileStore {
     ]);
     if (input.id && !existing.length) throw new Error("Memory was not found.");
     if (available.length !== collectionIds.length) throw new Error("One or more memory collections no longer exist.");
+    if (coverPhotoId) {
+      const direct = await this.read({ sql: "SELECT id FROM memory_attachments WHERE id=? AND memory_id=? AND household_id=? AND content_type LIKE 'image/%' LIMIT 1;", args: [coverPhotoId, id, this.householdId] });
+      const inherited = direct.length ? direct : await this.read({ sql: `SELECT ja.id FROM journey_attachments ja WHERE ja.id=? AND ja.household_id=? AND ja.content_type LIKE 'image/%' AND ja.collection_id IN (${collectionIds.map(() => "?").join(",")}) LIMIT 1;`, args: [coverPhotoId, this.householdId, ...collectionIds] });
+      if (!inherited.length) throw new Error("Choose a cover photo that belongs to this Memory.");
+    }
     const now = new Date().toISOString(), createdAt = existing.length ? String(existing[0].created_at_utc) : now;
     const statements: Statement[] = [
       existing.length
-        ? { sql: "UPDATE memories SET name=?,notes=?,artwork_key=?,updated_at_utc=? WHERE id=? AND household_id=?;", args: [name, notes, artworkKey, now, id, this.householdId] }
-        : { sql: "INSERT INTO memories(id,household_id,name,notes,artwork_key,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?);", args: [id, this.householdId, name, notes, artworkKey, createdAt, now] },
+        ? { sql: "UPDATE memories SET name=?,notes=?,artwork_key=?,cover_attachment_id=?,updated_at_utc=? WHERE id=? AND household_id=?;", args: [name, notes, artworkKey, coverPhotoId, now, id, this.householdId] }
+        : { sql: "INSERT INTO memories(id,household_id,name,notes,artwork_key,cover_attachment_id,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?,?);", args: [id, this.householdId, name, notes, artworkKey, coverPhotoId, createdAt, now] },
       { sql: "DELETE FROM memory_collections WHERE memory_id=?;", args: [id] },
       ...collectionIds.map((collectionId, index) => ({ sql: "INSERT INTO memory_collections(memory_id,collection_id,sort_order,added_at_utc) VALUES(?,?,?,?);", args: [id, collectionId, index, now] }))
     ];
     await this.write(statements);
-    return { id, name, notes, artworkKey, collectionIds, createdAtUtc: createdAt, updatedAtUtc: now } satisfies RecorderJourneyMemory;
+    const catalog = await this.memoriesCatalog();
+    return catalog.memories.find(memory => memory.id === id)!;
+  }
+
+  async addPhoto(owner: { collectionId?: string; memoryId?: string }, input: RecorderPhotoInput) {
+    const photo = validatedPhoto(input), now = new Date().toISOString();
+    const collectionId = boundedText(owner.collectionId, 80), memoryId = boundedText(owner.memoryId, 80);
+    if (Boolean(collectionId) === Boolean(memoryId)) throw new Error("Choose exactly one photo destination.");
+    const targetRows = collectionId
+      ? await this.read({ sql: "SELECT id FROM journey_collections WHERE id=? AND household_id=? LIMIT 1;", args: [collectionId, this.householdId] })
+      : await this.read({ sql: "SELECT id FROM memories WHERE id=? AND household_id=? LIMIT 1;", args: [memoryId, this.householdId] });
+    if (!targetRows.length) throw new Error(collectionId ? "Collection was not found." : "Memory was not found.");
+    const table = collectionId ? "journey_attachments" : "memory_attachments", ownerColumn = collectionId ? "collection_id" : "memory_id", ownerId = collectionId || memoryId;
+    const count = await this.read({ sql: `SELECT COUNT(*) AS count FROM ${table} WHERE ${ownerColumn}=? AND household_id=? AND content_type LIKE 'image/%';`, args: [ownerId, this.householdId] });
+    if (Number(count[0]?.count) >= 20) throw new Error("This item may contain at most 20 photos.");
+    const id = `${collectionId ? "attachment" : "memory_attachment"}_${randomUUID().replaceAll("-", "")}`;
+    await this.write([{ sql: `INSERT INTO ${table}(id,household_id,${ownerColumn},file_name,content_type,byte_length,data_base64,created_at_utc) VALUES(?,?,?,?,?,?,?,?);`, args: [id, this.householdId, ownerId, photo.fileName, photo.contentType, photo.byteLength, photo.dataBase64, now] }]);
+    return photoMetadata({ id, collection_id: collectionId || null, memory_id: memoryId || null, file_name: photo.fileName, content_type: photo.contentType, byte_length: photo.byteLength, created_at_utc: now }, collectionId ? "collection" : "memory");
+  }
+
+  async photo(id: string) {
+    if (!attachmentIdPattern.test(id)) return null;
+    const table = id.startsWith("memory_attachment_") ? "memory_attachments" : "journey_attachments";
+    const rows = await this.read({ sql: `SELECT id,file_name,content_type,byte_length,data_base64,created_at_utc FROM ${table} WHERE id=? AND household_id=? AND content_type LIKE 'image/%' LIMIT 1;`, args: [id, this.householdId] });
+    return rows.length ? { ...photoMetadata(rows[0], table === "memory_attachments" ? "memory" : "collection"), dataBase64: String(rows[0].data_base64) } : null;
+  }
+
+  async removePhoto(id: string) {
+    if (!attachmentIdPattern.test(id)) throw new Error("Photo ID is invalid.");
+    const table = id.startsWith("memory_attachment_") ? "memory_attachments" : "journey_attachments";
+    const existing = await this.read({ sql: `SELECT id FROM ${table} WHERE id=? AND household_id=? LIMIT 1;`, args: [id, this.householdId] });
+    if (!existing.length) throw new Error("Photo was not found.");
+    await this.write([
+      { sql: "UPDATE memories SET cover_attachment_id=NULL,updated_at_utc=? WHERE household_id=? AND cover_attachment_id=?;", args: [new Date().toISOString(), this.householdId, id] },
+      { sql: `DELETE FROM ${table} WHERE id=? AND household_id=?;`, args: [id, this.householdId] }
+    ]);
+    return { deleted: true, photoId: id };
   }
 
   async journey(id: string) {

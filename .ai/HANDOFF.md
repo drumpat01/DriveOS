@@ -68,6 +68,16 @@
 
 ## Release State and Next Steps
 
+### Memories and Collections photos (implemented locally, not deployed)
+
+- Added iPhone photo-library uploads to both Collection and Memory editors. Images are resized/compressed on-device, bounded to 1.5 MB, signature-validated on the server, and stored in the existing Collection/Memory attachment tables.
+- A Memory catalog now automatically includes images from every selected Collection without copying them. The Memory editor displays direct and inherited photos and persists an explicit card-cover selection; deleting a selected image safely clears affected covers.
+- Added migration `0009_memory_cover_photo.sql`, narrow authenticated upload/read/delete routes, mobile image caching, real Collection thumbnails, and Memory hero cover rendering.
+- App/runtime version is now `1.2.0`; `expo-image-picker` and `expo-image-manipulator` are new native dependencies. This cannot be delivered to the installed `1.1.0` binary by OTA. A fresh preview build is required after the server/migration is deployed.
+- Verification passed: server typecheck/lint, all 29 server tests (including upload/inheritance/cover/delete/auth coverage), mobile typecheck, recovery 10/10, sync 4/4, music 6/6, drive detection 9/9, iOS Metro export, and `git diff --check`.
+- Expo Doctor reports only six pre-existing SDK 57 patch-version mismatches (`expo`, crypto, dev-client, location, task-manager, updates); the two newly added photo packages match SDK 57.
+- Work is uncommitted in `C:\Users\patri\DriveOS-auto-detection`. Next release order: review changes, commit/push if approved, deploy server so migration/API are live, then create/install an EAS preview build for runtime 1.2.0 and physically test uploads/inheritance/cover choice/deletion.
+
 - The automatic-drive and cinematic-dashboard feature is pushed on `codex/automatic-drive-detection` at commit `3f1c621`; next Git step is review/PR, not reimplementation. Latest device preview is OTA group `b41c17b0-1637-4497-a2eb-bd746343185c`.
 - PR #113 is merged. Render deploy `dep-da5q4r0u01pc7384a930` is live with the Memories API.
 - Render already contains nonempty server-only Last.fm and Tessie secrets; neither secret is stored in or returned to the iPhone app.

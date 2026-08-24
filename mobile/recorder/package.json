@@ -1,11 +1,13 @@
 {
   "name": "journeydeck-recorder",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "main": "index.ts",
   "dependencies": {
     "expo": "~57.0.15",
     "expo-crypto": "~57.0.1",
     "expo-dev-client": "~57.0.14",
+    "expo-image-manipulator": "~57.0.13",
+    "expo-image-picker": "~57.0.13",
     "expo-location": "~57.0.12",
     "expo-secure-store": "~57.0.1",
     "expo-sqlite": "~57.0.1",

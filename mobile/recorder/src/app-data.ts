@@ -94,6 +94,18 @@ export type JourneyCollection = {
   driveIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  photos: JourneyPhoto[];
+};
+
+export type JourneyPhoto = {
+  id: string;
+  fileName: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  byteLength: number;
+  createdAtUtc: string;
+  source: 'collection' | 'memory';
+  collectionId: string | null;
+  memoryId: string | null;
 };
 
 export type JourneyMemory = {
@@ -101,6 +113,8 @@ export type JourneyMemory = {
   name: string;
   notes: string;
   artworkKey: string;
+  coverPhotoId: string | null;
+  photos: JourneyPhoto[];
   collectionIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -124,6 +138,7 @@ const JOURNEYS_CACHE_KEY = 'app.journeys.v1';
 const WEEKLY_JOURNEYS_CACHE_KEY = 'app.weekly-journeys.v1';
 const MEMORIES_CACHE_KEY = 'app.memories.v1';
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
+const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
 function weeklyCutoff() {
   const cutoff = new Date();
@@ -271,10 +286,39 @@ export const appDataClient = {
     return request(connection, '/api/recorder/collections', { method: 'PUT', body: JSON.stringify(input) });
   },
 
-  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
+  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
     const connection = await loadConnection();
     if (!connection) throw new Error('Connect this iPhone to JourneyDeck before changing a memory.');
     return request(connection, '/api/recorder/memories', { method: 'PUT', body: JSON.stringify(input) });
+  },
+
+  async uploadCollectionPhoto(collectionId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before uploading a photo.');
+    return request(connection, `/api/recorder/collections/${encodeURIComponent(collectionId)}/photos`, { method: 'POST', body: JSON.stringify(input) }, 35_000);
+  },
+
+  async uploadMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before uploading a photo.');
+    return request(connection, `/api/recorder/memories/${encodeURIComponent(memoryId)}/photos`, { method: 'POST', body: JSON.stringify(input) }, 35_000);
+  },
+
+  async photoDataUrl(photo: JourneyPhoto): Promise<string> {
+    const cached = readAppCache<string>(photoCacheKey(photo.id));
+    if (cached) return cached;
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck to load this photo.');
+    const loaded = await request<JourneyPhoto & { dataBase64: string }>(connection, `/api/recorder/photos/${encodeURIComponent(photo.id)}`);
+    const dataUrl = `data:${loaded.contentType};base64,${loaded.dataBase64}`;
+    writeAppCache(photoCacheKey(photo.id), dataUrl);
+    return dataUrl;
+  },
+
+  async removePhoto(photoId: string): Promise<void> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before removing a photo.');
+    await request(connection, `/api/recorder/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' });
   },
 
   async providerPreferences(): Promise<ProviderPreferences | null> {

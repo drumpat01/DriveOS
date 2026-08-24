@@ -119,6 +119,14 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.equal(collectionOneResponse.statusCode, 200, collectionOneResponse.body);
     assert.equal(collectionTwoResponse.statusCode, 200, collectionTwoResponse.body);
     const collectionOne = JSON.parse(collectionOneResponse.body), collectionTwo = JSON.parse(collectionTwoResponse.body);
+    const collectionPhotoResponse = await runtime.app.inject({
+      method: "POST", url: `/api/recorder/collections/${collectionOne.id}/photos`, headers,
+      payload: { fileName: "night-drive.jpg", contentType: "image/jpeg", dataBase64: "/9j/2Q==" }
+    });
+    assert.equal(collectionPhotoResponse.statusCode, 200, collectionPhotoResponse.body);
+    const collectionPhoto = JSON.parse(collectionPhotoResponse.body);
+    assert.equal(collectionPhoto.source, "collection");
+    assert.equal((await runtime.app.inject({ method: "POST", url: `/api/recorder/collections/${collectionOne.id}/photos`, payload: { fileName: "private.jpg", contentType: "image/jpeg", dataBase64: "/9j/2Q==" } })).statusCode, 401);
     const memoryResponse = await runtime.app.inject({ method: "PUT", url: "/api/recorder/memories", headers, payload: { name: "Open road", notes: "A mobile memory", artworkKey: "road-trips", collectionIds: [collectionOne.id, collectionTwo.id] } });
     assert.equal(memoryResponse.statusCode, 200, memoryResponse.body);
     const memory = JSON.parse(memoryResponse.body);
@@ -126,6 +134,24 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.equal(catalogResponse.statusCode, 200, catalogResponse.body);
     assert.deepEqual(JSON.parse(catalogResponse.body).memories.find((item: any) => item.id === memory.id).collectionIds, [collectionOne.id, collectionTwo.id]);
     assert.deepEqual(JSON.parse(catalogResponse.body).collections.find((item: any) => item.id === collectionOne.id).driveIds, [driveId]);
+    assert.deepEqual(JSON.parse(catalogResponse.body).collections.find((item: any) => item.id === collectionOne.id).photos.map((photo: any) => photo.id), [collectionPhoto.id]);
+    assert.deepEqual(JSON.parse(catalogResponse.body).memories.find((item: any) => item.id === memory.id).photos.map((photo: any) => photo.id), [collectionPhoto.id]);
+    const directPhotoResponse = await runtime.app.inject({ method: "POST", url: `/api/recorder/memories/${memory.id}/photos`, headers, payload: { fileName: "memory.jpg", contentType: "image/jpeg", dataBase64: "/9j/2Q==" } });
+    assert.equal(directPhotoResponse.statusCode, 200, directPhotoResponse.body);
+    const directPhoto = JSON.parse(directPhotoResponse.body);
+    const selectedCover = await runtime.app.inject({ method: "PUT", url: "/api/recorder/memories", headers, payload: { id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: collectionPhoto.id, collectionIds: memory.collectionIds } });
+    assert.equal(selectedCover.statusCode, 200, selectedCover.body);
+    assert.equal(JSON.parse(selectedCover.body).coverPhotoId, collectionPhoto.id);
+    assert.deepEqual(JSON.parse(selectedCover.body).photos.map((photo: any) => photo.id), [directPhoto.id, collectionPhoto.id]);
+    const loadedPhoto = await runtime.app.inject({ method: "GET", url: `/api/recorder/photos/${collectionPhoto.id}`, headers });
+    assert.equal(loadedPhoto.statusCode, 200, loadedPhoto.body);
+    assert.equal(JSON.parse(loadedPhoto.body).dataBase64, "/9j/2Q==");
+    const removedPhoto = await runtime.app.inject({ method: "DELETE", url: `/api/recorder/photos/${collectionPhoto.id}`, headers });
+    assert.equal(removedPhoto.statusCode, 200, removedPhoto.body);
+    const afterRemoval = await runtime.app.inject({ method: "GET", url: "/api/recorder/memories", headers });
+    const memoryAfterRemoval = JSON.parse(afterRemoval.body).memories.find((item: any) => item.id === memory.id);
+    assert.equal(memoryAfterRemoval.coverPhotoId, null);
+    assert.deepEqual(memoryAfterRemoval.photos.map((photo: any) => photo.id), [directPhoto.id]);
     const removedJourney = await runtime.app.inject({ method: "PUT", url: "/api/recorder/collections", headers, payload: { id: collectionOne.id, name: collectionOne.name, description: collectionOne.description, driveIds: [] } });
     assert.equal(removedJourney.statusCode, 200, removedJourney.body);
     assert.deepEqual(JSON.parse(removedJourney.body).driveIds, []);
