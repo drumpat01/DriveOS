@@ -6,9 +6,10 @@ import {
 } from '../modules/journeydeck-music';
 import { loadMusicPreferences } from './music-preferences';
 import { appleCurrentTrackObservation, appleRecentSongObservation, shazamMatchObservation, type MusicObservation } from './music-observations';
-import { activeSession, getSession, queueMusicObservation } from './storage';
+import { activeSession, getSession, queueMusicObservation, readAppCache, writeAppCache } from './storage';
 
 const APPLE_SAMPLE_INTERVAL_MS = 20_000;
+const SHAZAM_SAMPLE_INTERVAL_MS = 60_000;
 const lastAppleSampleAttempt = new Map<string, number>();
 let appleSampleInFlight: Promise<MusicCaptureResult> | null = null;
 let shazamInFlight: Promise<MusicCaptureResult> | null = null;
@@ -68,6 +69,19 @@ export async function recognizeAndQueueActiveSessionMusic(durationMilliseconds =
   })();
   try { return await shazamInFlight; }
   finally { shazamInFlight = null; }
+}
+
+export async function sampleShazamForActiveSession(options: { force?: boolean } = {}): Promise<MusicCaptureResult> {
+  const session = activeSession();
+  if (!session || session.status !== 'recording') return { status: 'skipped' };
+  const preferences = await loadMusicPreferences();
+  if (!preferences.onboardingCompleted || preferences.provider !== 'shazam') return { status: 'skipped' };
+  const cacheKey = `shazam-sample-attempt-${session.id}`;
+  const lastAttempt = readAppCache<number>(cacheKey) ?? 0;
+  if (!options.force && Date.now() - lastAttempt < SHAZAM_SAMPLE_INTERVAL_MS) return { status: 'skipped' };
+  writeAppCache(cacheKey, Date.now());
+  try { return await recognizeAndQueueActiveSessionMusic(10_000); }
+  catch { return { status: 'unavailable' }; }
 }
 
 export async function captureAppleMusicHistoryForSession(sessionId: string) {

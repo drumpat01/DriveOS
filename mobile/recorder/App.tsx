@@ -20,6 +20,13 @@ import { isLocationTrackingActive, startLocationTracking, stopLocationTracking }
 import { JourneyDeckShell } from './src/shell';
 import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
+import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
+import {
+  loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
+} from './src/recording-mode';
+import {
+  isAutomaticDetectionActive, startAutomaticDetection, stopAutomaticDetection,
+} from './src/tracking';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -60,10 +67,13 @@ function RecorderScreen() {
   const [backgroundPermission, setBackgroundPermission] = useState(false);
   const [taskAvailable, setTaskAvailable] = useState(false);
   const [trackingActive, setTrackingActive] = useState(false);
+  const [automaticDetectionActive, setAutomaticDetectionActive] = useState(false);
+  const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences>(() => loadRecordingModePreferences());
   const operation = useRef<Promise<void>>(Promise.resolve());
   const refreshPending = useRef<Promise<void> | null>(null);
   const busyRef = useRef(false);
   const remoteRecordingConfirmed = useRef(new Set<string>());
+  const announcedAutomaticEvent = useRef('');
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('Working…');
   const [syncStage, setSyncStage] = useState<SyncStage>('idle');
@@ -87,6 +97,10 @@ function RecorderScreen() {
     let taskRunning = false;
     if (available) {
       try { taskRunning = await isLocationTrackingActive(); } catch { taskRunning = false; }
+    }
+    let automaticTaskRunning = false;
+    if (available) {
+      try { automaticTaskRunning = await isAutomaticDetectionActive(); } catch { automaticTaskRunning = false; }
     }
     const current = activeSession();
     const action = decideRecovery(current?.status ?? null, taskRunning, permissionsReadyNow);
@@ -150,6 +164,19 @@ function RecorderScreen() {
     setBackgroundPermission(background.status === 'granted');
     setTaskAvailable(available);
     setTrackingActive(taskRunning);
+    setAutomaticDetectionActive(automaticTaskRunning);
+    const automaticEvent = loadAutomaticDriveEvent();
+    if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
+      && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
+      announcedAutomaticEvent.current = automaticEvent.occurredAt;
+      setNotice(automaticEvent.kind === 'started'
+        ? 'JourneyDeck detected driving and started this journey automatically.'
+        : automaticEvent.kind === 'finished'
+          ? 'JourneyDeck detected that you parked and finished the journey automatically.'
+          : automaticEvent.kind === 'finish_waiting'
+            ? 'The automatic journey ended and is safe on this iPhone. Sync will retry when JourneyDeck is reachable.'
+            : 'Driving was detected, but route recording could not start. Check background location access.');
+    }
     });
     const tracked = pending.finally(() => {
       if (refreshPending.current === tracked) refreshPending.current = null;
@@ -157,6 +184,26 @@ function RecorderScreen() {
     refreshPending.current = tracked;
     return tracked;
   }, [connection, runExclusive]);
+
+  useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const shouldRun = Boolean(connection && foregroundPermission && backgroundPermission && taskAvailable
+      && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic');
+    const updateTask = async () => {
+      if (shouldRun) await startAutomaticDetection();
+      else {
+        await stopAutomaticDetection();
+        if (recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
+      }
+    };
+    void updateTask()
+      .then(() => isAutomaticDetectionActive())
+      .then(active => { if (!cancelled) setAutomaticDetectionActive(active); })
+      .catch(() => { if (!cancelled) setAutomaticDetectionActive(false); });
+    return () => { cancelled = true; };
+  }, [backgroundPermission, connection, foregroundPermission, recordingPreferences, taskAvailable]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,6 +314,7 @@ function RecorderScreen() {
       await runExclusive(async () => {
         await captureCurrentPoint();
         await stopLocationTracking();
+        resetAutomaticDriveState();
         setLocalStatus(currentSummary.id, 'finishing');
         savedForSync = true;
         setTrackingActive(false);
@@ -323,6 +371,7 @@ function RecorderScreen() {
   const metrics = useMemo(() => [
     ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], ['GPS QUEUED', String(summary?.queuedCount ?? 0)], ['MUSIC QUEUED', String(summary?.musicQueuedCount ?? 0)],
   ], [summary]);
+  const automaticMode = recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -352,9 +401,9 @@ function RecorderScreen() {
             </View>
           ) : (
             <>
-              <View style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : 'Start when you begin driving'}</Text></View>
+              <View style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></View>
               <View style={styles.metrics}>{metrics.map(([label, value]) => <View style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>)}</View>
-              {!active && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
+              {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Sync saved data'} onPress={syncNow} disabled={busy} />}
@@ -363,7 +412,7 @@ function RecorderScreen() {
           )}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
-          <View style={styles.warning}><Text style={styles.warningTitle}>KEEP THE RECORDER RUNNING</Text><Text style={styles.warningText}>Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.</Text></View>
+          <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
           <Text style={styles.footer}>Private single-iPhone recorder • {connection ? 'Connected' : 'Not connected'}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
