@@ -68,17 +68,20 @@
 
 ## Release State and Next Steps
 
-### Memories and Collections photos (implemented locally, not deployed)
+### Memories and Collections photos (released; physical iPhone test pending)
 
 - Added iPhone photo-library uploads to both Collection and Memory editors. Images are resized/compressed on-device, bounded to 1.5 MB, signature-validated on the server, and stored in the existing Collection/Memory attachment tables.
 - A Memory catalog now automatically includes images from every selected Collection without copying them. The Memory editor displays direct and inherited photos and persists an explicit card-cover selection; deleting a selected image safely clears affected covers.
 - Added migration `0009_memory_cover_photo.sql`, narrow authenticated upload/read/delete routes, mobile image caching, real Collection thumbnails, and Memory hero cover rendering.
-- App/runtime version is now `1.2.0`; `expo-image-picker` and `expo-image-manipulator` are new native dependencies. This cannot be delivered to the installed `1.1.0` binary by OTA. A fresh preview build is required after the server/migration is deployed.
+- App/runtime version is now `1.2.0`; `expo-image-picker` and `expo-image-manipulator` are new native dependencies. The new native preview build is ready for installation over the existing app.
 - Verification passed: server typecheck/lint, all 29 server tests (including upload/inheritance/cover/delete/auth coverage), mobile typecheck, recovery 10/10, sync 4/4, music 6/6, drive detection 9/9, iOS Metro export, and `git diff --check`.
 - Expo Doctor reports only six pre-existing SDK 57 patch-version mismatches (`expo`, crypto, dev-client, location, task-manager, updates); the two newly added photo packages match SDK 57.
-- Work is uncommitted in `C:\Users\patri\DriveOS-auto-detection`. Next release order: review changes, commit/push if approved, deploy server so migration/API are live, then create/install an EAS preview build for runtime 1.2.0 and physically test uploads/inheritance/cover choice/deletion.
+- Feature commit `28c939d` and migration-test update `cb60cae` were merged through PR #114 to `main` as `d7b0d34244bef2be83bede98844e56f8f25cdd51`. GitHub validation passed.
+- Render deploy `dep-da63cc2d0e5s73c46cmg` is live. `https://driveos.onrender.com/readyz` returned HTTP 200 and the release produced no new error logs.
+- EAS iOS preview build `c6e30728-6689-4f0e-88e3-cda81982d27f` succeeded for JourneyDeck 1.2.0. Install page: `https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/c6e30728-6689-4f0e-88e3-cda81982d27f`.
+- Next step: install the 1.2.0 preview over the current app, then physically test Collection upload, inherited Memory visibility, direct Memory upload, cover selection, deletion/cover clearing, and preserved Recorder data.
 
-- The automatic-drive and cinematic-dashboard feature is pushed on `codex/automatic-drive-detection` at commit `3f1c621`; next Git step is review/PR, not reimplementation. Latest device preview is OTA group `b41c17b0-1637-4497-a2eb-bd746343185c`.
+- Automatic-drive detection, the cinematic dashboard, and Memories photos are merged to `main` through PR #114. Latest native device build is JourneyDeck 1.2.0 build `c6e30728-6689-4f0e-88e3-cda81982d27f`.
 - PR #113 is merged. Render deploy `dep-da5q4r0u01pc7384a930` is live with the Memories API.
 - Render already contains nonempty server-only Last.fm and Tessie secrets; neither secret is stored in or returned to the iPhone app.
 - Apple Developer App Services MusicKit and ShazamKit are enabled for `com.journeydeck.recorder`.
