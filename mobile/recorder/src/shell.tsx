@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Modal, Pressable, SafeAreaView, ScrollView, StatusBar,
+  ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Modal, PanResponder, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -32,6 +32,13 @@ import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 
 type Tab = 'home' | 'journeys' | 'record' | 'connections';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
+
+const bottomNavigationItems: { id: Tab; label: string; symbol: string }[] = [
+  { id: 'home', label: 'Home', symbol: '⌂' },
+  { id: 'journeys', label: 'Memories', symbol: '≋' },
+  { id: 'record', label: 'Record', symbol: '●' },
+  { id: 'connections', label: 'Connect', symbol: '◎' },
+];
 
 async function choosePhoto() {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1159,13 +1166,33 @@ function ConnectionsScreen({
 }
 
 function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: Tab) => void }) {
-  const items: { id: Tab; label: string; symbol: string }[] = [
-    { id: 'home', label: 'Home', symbol: '⌂' },
-    { id: 'journeys', label: 'Memories', symbol: '≋' },
-    { id: 'record', label: 'Record', symbol: '●' },
-    { id: 'connections', label: 'Connect', symbol: '◎' },
-  ];
-  const navigationItems = items.map(item => {
+  const navRef = useRef<View>(null);
+  const navX = useRef(0);
+  const navWidth = useRef(0);
+  const lastDraggedTab = useRef<Tab | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+
+  function selectAt(locationX: number) {
+    if (navWidth.current <= 0) return;
+    const itemWidth = navWidth.current / bottomNavigationItems.length;
+    const index = Math.max(0, Math.min(bottomNavigationItems.length - 1, Math.floor(locationX / itemWidth)));
+    const next = bottomNavigationItems[index].id;
+    if (lastDraggedTab.current === next) return;
+    lastDraggedTab.current = next;
+    onSelectRef.current(next);
+  }
+
+  const dragResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderGrant: (_event, gesture) => selectAt(gesture.moveX - navX.current),
+    onPanResponderMove: (_event, gesture) => selectAt(gesture.moveX - navX.current),
+    onPanResponderRelease: () => { lastDraggedTab.current = null; },
+    onPanResponderTerminate: () => { lastDraggedTab.current = null; },
+  })).current;
+
+  const navigationItems = bottomNavigationItems.map(item => {
     const selected = active === item.id;
     return (
       <Pressable
@@ -1185,10 +1212,15 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
   });
   const hasNativeLiquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
   return (
-    <View style={styles.navDockFrame}>
+    <View
+      ref={navRef}
+      style={styles.navDockFrame}
+      onLayout={() => navRef.current?.measureInWindow((x, _y, width) => { navX.current = x; navWidth.current = width; })}
+      {...dragResponder.panHandlers}
+    >
       {hasNativeLiquidGlass
-        ? <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(24, 10, 32, 0.72)" isInteractive style={styles.bottomNav}>{navigationItems}</GlassView>
-        : <View style={[styles.bottomNav, styles.bottomNavFallback]}>{navigationItems}</View>}
+        ? <GlassView glassEffectStyle="clear" colorScheme="dark" tintColor="rgba(104, 48, 128, 0.20)" isInteractive style={styles.bottomNav}><View pointerEvents="none" style={styles.navGlassSheen} />{navigationItems}</GlassView>
+        : <View style={[styles.bottomNav, styles.bottomNavFallback]}><View pointerEvents="none" style={styles.navGlassSheen} />{navigationItems}</View>}
     </View>
   );
 }
@@ -1417,14 +1449,15 @@ const styles = StyleSheet.create({
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#131019', borderWidth: 1, borderRadius: 21, padding: 15 }, connectionTile: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#292333', borderRadius: 18, padding: 14 }, connectionIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#7e7489', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f1ecf6', fontSize: 15, fontWeight: '800', marginTop: 2 }, connectionDetail: { color: '#888091', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#938999', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#43e6ae' }, connectionAction: { backgroundColor: '#211a2c', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#b59cff', fontSize: 9, fontWeight: '900' }, changeButton: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#211a2c' }, changeButtonText: { color: '#b59cff', fontSize: 11, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#9b7cff', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#c2b3ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#918897', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#4e2831', borderRadius: 18, padding: 15 }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3c3443', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#63313a', backgroundColor: '#281318' }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29' }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47' }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
-  navDockFrame: { marginBottom: 8, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(206,82,255,0.48)', shadowColor: '#b837ff', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } },
+  navDockFrame: { marginBottom: 8, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(226,134,255,0.58)', shadowColor: '#b837ff', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } },
   bottomNav: { minHeight: 76, flexDirection: 'row', gap: 4, padding: 6, borderRadius: 24, overflow: 'hidden' },
   bottomNavFallback: { backgroundColor: 'rgba(25,12,34,0.96)' },
+  navGlassSheen: { position: 'absolute', top: 1, right: 18, left: 18, height: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
   navItem: { position: 'relative', flex: 1, minHeight: 62, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 18, borderWidth: 1, borderColor: 'transparent' },
-  navItemActive: { borderColor: 'rgba(255,113,56,0.82)', backgroundColor: 'rgba(255,105,52,0.16)', shadowColor: '#ff5b2d', shadowOpacity: 0.82, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } },
+  navItemActive: { borderColor: 'rgba(255,113,56,0.86)', backgroundColor: 'rgba(255,105,52,0.12)', shadowColor: '#ff5b2d', shadowOpacity: 0.9, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } },
   navItemPressed: { transform: [{ scale: 0.97 }], backgroundColor: 'rgba(255,255,255,0.06)' },
-  navSymbol: { color: '#a78db8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
-  navLabel: { color: '#a78db8', fontSize: 9, fontWeight: '800' },
+  navSymbol: { color: '#bba5c8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
+  navLabel: { color: '#bba5c8', fontSize: 9, fontWeight: '800' },
   navActive: { color: '#ff8b4f', textShadowColor: 'rgba(255,95,47,0.95)', textShadowRadius: 7 },
   navActiveLine: { position: 'absolute', right: '24%', bottom: 3, left: '24%', height: 3, borderRadius: 2, backgroundColor: '#ff7138', shadowColor: '#ff5f2f', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
   onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
