@@ -165,7 +165,29 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.ok(detailBody.soundtrack.some((song: any) => song.source === "shazam" && song.track === "Night Drive"));
     assert.equal(detailBody.route.type, "LineString");
     assert.equal(detailBody.route.coordinates.length, 3);
+    assert.equal(detailBody.rawStartingLocation, "Recorder location");
+    assert.equal(detailBody.rawEndingLocation, "Recorder location");
+    assert.match(detailBody.startingLocationKey, /^geo:/);
+    assert.match(detailBody.endingLocationKey, /^geo:/);
+    assert.notEqual(detailBody.startingLocationKey, detailBody.endingLocationKey);
     assert.doesNotMatch(detail.body, /observationId|recorderSessionId|rawAudio|must-never-be-stored|legacy-private-value/i);
+
+    assert.equal((await runtime.app.inject({ method: "PUT", url: "/api/recorder/places/alias", payload: { location: detailBody.startingLocationKey, label: "Home" } })).statusCode, 401);
+    const namedStart = await runtime.app.inject({ method: "PUT", url: "/api/recorder/places/alias", headers, payload: { location: detailBody.startingLocationKey, label: "Home" } });
+    const namedEnd = await runtime.app.inject({ method: "PUT", url: "/api/recorder/places/alias", headers, payload: { location: detailBody.endingLocationKey, label: "Coffee shop" } });
+    assert.equal(namedStart.statusCode, 200, namedStart.body);
+    assert.equal(namedEnd.statusCode, 200, namedEnd.body);
+    const namedDetail = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys/${driveId}`, headers });
+    assert.equal(JSON.parse(namedDetail.body).startingLocation, "Home");
+    assert.equal(JSON.parse(namedDetail.body).endingLocation, "Coffee shop");
+    assert.equal(JSON.parse(namedDetail.body).rawStartingLocation, "Recorder location");
+    const removedName = await runtime.app.inject({ method: "PUT", url: "/api/recorder/places/alias", headers, payload: { location: detailBody.startingLocationKey, label: "" } });
+    assert.equal(removedName.statusCode, 200, removedName.body);
+    assert.equal(JSON.parse(removedName.body).removed, true);
+    const restoredDetail = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys/${driveId}`, headers });
+    assert.equal(JSON.parse(restoredDetail.body).startingLocation, "Recorder location");
+    const oversizedName = await runtime.app.inject({ method: "PUT", url: "/api/recorder/places/alias", headers, payload: { location: detailBody.startingLocationKey, label: "x".repeat(65) } });
+    assert.equal(oversizedName.statusCode, 400, oversizedName.body);
     const missing = await runtime.app.inject({ method: "GET", url: "/api/recorder/journeys/does-not-exist", headers });
     assert.equal(missing.statusCode, 404);
   } finally { await runtime.app.close(); fixture.cleanup(); }
