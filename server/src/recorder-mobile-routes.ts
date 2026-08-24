@@ -5,6 +5,8 @@ import {
   musicProviders,
   RecorderMobileStore,
   shazamConnectionStatuses,
+  type RecorderCollectionInput,
+  type RecorderMemoryInput,
   type RecorderMusicObservation,
   type RecorderProviderPreferences
 } from "./recorder-mobile.js";
@@ -64,6 +66,27 @@ export async function registerRecorderMobileRoutes(app: FastifyInstance, mobile:
   app.get<{ Params: { id: string } }>("/api/recorder/journeys/:id", {
     schema: { params: { type: "object", additionalProperties: false, required: ["id"], properties: { id: identifier } } }
   }, async (req, reply) => { reply.header("cache-control", "private, no-store"); return (await mobile.journey(req.params.id)) || reply.code(404).send({ error: "Journey was not found." }); });
+
+  app.get("/api/recorder/memories", async (_req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    return mobile.memoriesCatalog();
+  });
+
+  app.put<{ Body: RecorderCollectionInput }>("/api/recorder/collections", {
+    schema: { body: { type: "object", additionalProperties: false, required: ["name", "driveIds"], properties: { id: { anyOf: [identifier, { type: "null" }] }, name: { type: "string", minLength: 1, maxLength: 80 }, description: { anyOf: [{ type: "string", maxLength: 500 }, { type: "null" }] }, driveIds: { type: "array", maxItems: 100, items: identifier } } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.saveCollection(req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Collection could not be saved." }); }
+  });
+
+  app.put<{ Body: RecorderMemoryInput }>("/api/recorder/memories", {
+    schema: { body: { type: "object", additionalProperties: false, required: ["name", "collectionIds"], properties: { id: { anyOf: [identifier, { type: "null" }] }, name: { type: "string", minLength: 1, maxLength: 80 }, notes: { anyOf: [{ type: "string", maxLength: 1200 }, { type: "null" }] }, artworkKey: { anyOf: [{ type: "string", maxLength: 40 }, { type: "null" }] }, collectionIds: { type: "array", minItems: 2, maxItems: 50, items: identifier } } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.saveMemory(req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Memory could not be saved." }); }
+  });
 
   app.get<{ Params: { deviceId: string } }>("/api/recorder/preferences/:deviceId", {
     schema: { params: { type: "object", additionalProperties: false, required: ["deviceId"], properties: { deviceId: identifier } } }

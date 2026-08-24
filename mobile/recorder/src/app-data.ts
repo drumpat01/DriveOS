@@ -77,12 +77,36 @@ export type LocalRecorderHealth = {
   capturedPoints: number;
 };
 
-export type AppDashboard = DashboardData & { recorder: LocalRecorderHealth };
+export type AppDashboard = DashboardData & {
+  recorder: LocalRecorderHealth;
+  weeklyJourneys: JourneySummary[];
+};
 
 export type ConnectionCapabilities = {
   lastFmConfigured: boolean;
   tessieConfigured: boolean;
 };
+
+export type JourneyCollection = {
+  id: string;
+  name: string;
+  description: string;
+  driveIds: string[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+};
+
+export type JourneyMemory = {
+  id: string;
+  name: string;
+  notes: string;
+  artworkKey: string;
+  collectionIds: string[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+};
+
+export type MemoriesCatalog = { memories: JourneyMemory[]; collections: JourneyCollection[] };
 
 const emptyDashboard = (): DashboardData => ({
   generatedAt: new Date().toISOString(),
@@ -97,7 +121,24 @@ const emptyDashboard = (): DashboardData => ({
 
 const DASHBOARD_CACHE_KEY = 'app.dashboard.v1';
 const JOURNEYS_CACHE_KEY = 'app.journeys.v1';
+const WEEKLY_JOURNEYS_CACHE_KEY = 'app.weekly-journeys.v1';
+const MEMORIES_CACHE_KEY = 'app.memories.v1';
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
+
+function weeklyCutoff() {
+  const cutoff = new Date();
+  cutoff.setHours(0, 0, 0, 0);
+  cutoff.setDate(cutoff.getDate() - 6);
+  return cutoff.getTime();
+}
+
+function journeysInsideWeeklyWindow(journeys: JourneySummary[]) {
+  const cutoff = weeklyCutoff();
+  return journeys.filter(journey => {
+    const startedAt = Date.parse(journey.startedAt);
+    return Number.isFinite(startedAt) && startedAt >= cutoff;
+  });
+}
 
 function localRecorderHealth(connected: boolean): LocalRecorderHealth {
   const session = activeSession();
@@ -135,18 +176,45 @@ async function request<T>(connection: Connection, path: string, init?: RequestIn
   }
 }
 
+async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {
+  const journeys: JourneySummary[] = [];
+  let cursor: string | undefined;
+  const cutoff = weeklyCutoff();
+
+  // A busy week may contain more journeys than the dashboard preview. Follow the
+  // existing history cursor until the first journey outside the visible week.
+  for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
+    const query = new URLSearchParams({ limit: '50' });
+    if (cursor) query.set('cursor', cursor);
+    const page = await request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, `/api/recorder/journeys?${query.toString()}`);
+    journeys.push(...page.items);
+    const oldest = page.items.at(-1);
+    if (!page.nextCursor || !oldest || Date.parse(oldest.startedAt) < cutoff) break;
+    cursor = page.nextCursor;
+  }
+
+  const weekly = journeysInsideWeeklyWindow(journeys);
+  writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weekly);
+  return weekly;
+}
+
 export const appDataClient = {
   async dashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    if (!connection) return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false) };
-    const dashboard = await request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`);
+    const cachedWeekly = readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? [];
+    if (!connection) return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false), weeklyJourneys: journeysInsideWeeklyWindow(cachedWeekly) };
+    const [dashboard, weeklyJourneys] = await Promise.all([
+      request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
+      loadWeeklyJourneys(connection).catch(() => journeysInsideWeeklyWindow(cachedWeekly)),
+    ]);
     writeAppCache(DASHBOARD_CACHE_KEY, dashboard);
-    return { ...dashboard, recorder: localRecorderHealth(true) };
+    return { ...dashboard, recorder: localRecorderHealth(true), weeklyJourneys };
   },
 
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(Boolean(connection)) };
+    const weeklyJourneys = journeysInsideWeeklyWindow(readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? []);
+    return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(Boolean(connection)), weeklyJourneys };
   },
 
   async journeys(limit = 25, cursor?: string): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
@@ -181,6 +249,32 @@ export const appDataClient = {
       if (cached) return cached;
       throw error;
     }
+  },
+
+  async memories(): Promise<MemoriesCatalog> {
+    const connection = await loadConnection();
+    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
+    if (!connection) return cached ?? { memories: [], collections: [] };
+    try {
+      const catalog = await request<MemoriesCatalog>(connection, '/api/recorder/memories');
+      writeAppCache(MEMORIES_CACHE_KEY, catalog);
+      return catalog;
+    } catch (error) {
+      if (cached) return cached;
+      throw error;
+    }
+  },
+
+  async saveCollection(input: { id?: string | null; name: string; description?: string | null; driveIds: string[] }): Promise<JourneyCollection> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before changing a collection.');
+    return request(connection, '/api/recorder/collections', { method: 'PUT', body: JSON.stringify(input) });
+  },
+
+  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
+    const connection = await loadConnection();
+    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before changing a memory.');
+    return request(connection, '/api/recorder/memories', { method: 'PUT', body: JSON.stringify(input) });
   },
 
   async providerPreferences(): Promise<ProviderPreferences | null> {

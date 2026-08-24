@@ -108,9 +108,29 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.ok(firstPageBody.nextCursor);
     const secondPage = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys?limit=1&cursor=${encodeURIComponent(firstPageBody.nextCursor)}`, headers });
     assert.equal(secondPage.statusCode, 200, secondPage.body);
-    assert.notEqual(JSON.parse(secondPage.body).items[0].id, driveId);
+    const secondDriveId = JSON.parse(secondPage.body).items[0].id;
+    assert.notEqual(secondDriveId, driveId);
     const badCursor = await runtime.app.inject({ method: "GET", url: "/api/recorder/journeys?cursor=not-a-cursor", headers });
     assert.equal(badCursor.statusCode, 400, badCursor.body);
+
+    assert.equal((await runtime.app.inject({ method: "GET", url: "/api/recorder/memories" })).statusCode, 401);
+    const collectionOneResponse = await runtime.app.inject({ method: "PUT", url: "/api/recorder/collections", headers, payload: { name: "Night drives", description: "After dark", driveIds: [driveId] } });
+    const collectionTwoResponse = await runtime.app.inject({ method: "PUT", url: "/api/recorder/collections", headers, payload: { name: "Weekend roads", driveIds: [secondDriveId] } });
+    assert.equal(collectionOneResponse.statusCode, 200, collectionOneResponse.body);
+    assert.equal(collectionTwoResponse.statusCode, 200, collectionTwoResponse.body);
+    const collectionOne = JSON.parse(collectionOneResponse.body), collectionTwo = JSON.parse(collectionTwoResponse.body);
+    const memoryResponse = await runtime.app.inject({ method: "PUT", url: "/api/recorder/memories", headers, payload: { name: "Open road", notes: "A mobile memory", artworkKey: "road-trips", collectionIds: [collectionOne.id, collectionTwo.id] } });
+    assert.equal(memoryResponse.statusCode, 200, memoryResponse.body);
+    const memory = JSON.parse(memoryResponse.body);
+    const catalogResponse = await runtime.app.inject({ method: "GET", url: "/api/recorder/memories", headers });
+    assert.equal(catalogResponse.statusCode, 200, catalogResponse.body);
+    assert.deepEqual(JSON.parse(catalogResponse.body).memories.find((item: any) => item.id === memory.id).collectionIds, [collectionOne.id, collectionTwo.id]);
+    assert.deepEqual(JSON.parse(catalogResponse.body).collections.find((item: any) => item.id === collectionOne.id).driveIds, [driveId]);
+    const removedJourney = await runtime.app.inject({ method: "PUT", url: "/api/recorder/collections", headers, payload: { id: collectionOne.id, name: collectionOne.name, description: collectionOne.description, driveIds: [] } });
+    assert.equal(removedJourney.statusCode, 200, removedJourney.body);
+    assert.deepEqual(JSON.parse(removedJourney.body).driveIds, []);
+    const oneCollectionMemory = await runtime.app.inject({ method: "PUT", url: "/api/recorder/memories", headers, payload: { id: memory.id, name: memory.name, collectionIds: [collectionOne.id] } });
+    assert.equal(oneCollectionMemory.statusCode, 400, oneCollectionMemory.body);
 
     const detail = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys/${driveId}`, headers });
     assert.equal(detail.statusCode, 200, detail.body);
