@@ -3,7 +3,7 @@
     "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -47,6 +47,14 @@
           "locationWhenInUsePermission": "JourneyDeck uses your location to record the route of a journey you start.",
           "locationAlwaysAndWhenInUsePermission": "JourneyDeck records your route while your phone is locked or another app is open.",
           "isIosBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "JourneyDeck accesses photos you choose so you can add them to Collections and Memories.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ],
       "expo-sqlite",

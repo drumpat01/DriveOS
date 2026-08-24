@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, AppState, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
+  ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import * as Updates from 'expo-updates';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 import {
   appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyCollection, type JourneyDetail,
-  type JourneyMemory, type JourneySummary, type MemoriesCatalog, type ProviderPreferences,
+  type JourneyMemory, type JourneyPhoto, type JourneySummary, type MemoriesCatalog, type ProviderPreferences,
 } from './app-data';
 import {
   loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
@@ -19,9 +23,28 @@ import {
   isJourneyDeckMusicNativeAvailable, type JourneyDeckMusicCapabilityStatus,
 } from '../modules/journeydeck-music';
 import { syncRecentLastFmNow } from './lastfm-sync';
+import {
+  loadRecordingModePreferences, saveRecordingModePreferences, type RecordingMode,
+  type RecordingModePreferences,
+} from './recording-mode';
 
 type Tab = 'home' | 'journeys' | 'record' | 'connections';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
+
+async function choosePhoto() {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) throw new Error('Allow JourneyDeck to access your selected photos in iPhone Settings.');
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 1 });
+  if (result.canceled || !result.assets[0]) return null;
+  const asset = result.assets[0], largest = Math.max(asset.width, asset.height);
+  const resize = largest > 1600 ? [{ resize: asset.width >= asset.height ? { width: 1600 } : { height: 1600 } }] : [];
+  let prepared = await manipulateAsync(asset.uri, resize, { base64: true, compress: 0.72, format: SaveFormat.JPEG });
+  if (prepared.base64 && Math.ceil(prepared.base64.length * 0.75) > 1_572_864) {
+    prepared = await manipulateAsync(asset.uri, [{ resize: asset.width >= asset.height ? { width: 1200 } : { height: 1200 } }], { base64: true, compress: 0.52, format: SaveFormat.JPEG });
+  }
+  if (!prepared.base64 || Math.ceil(prepared.base64.length * 0.75) > 1_572_864) throw new Error('That photo is still too large. Try a smaller image.');
+  return { fileName: `journeydeck-${Date.now()}.jpg`, contentType: 'image/jpeg' as const, dataBase64: prepared.base64 };
+}
 
 type ProviderOption = {
   id: MusicProvider;
@@ -35,6 +58,37 @@ type ProviderOption = {
   drawbacks: string[];
   privacy: string;
 };
+
+type RecordingModeOption = {
+  id: RecordingMode;
+  name: string;
+  tabDetail: string;
+  kicker: string;
+  symbol: string;
+  color: string;
+  tint: string;
+  summary: string;
+  benefits: string[];
+  drawbacks: string[];
+  privacy: string;
+};
+
+const recordingModeOptions: RecordingModeOption[] = [
+  {
+    id: 'automatic', name: 'Automatic Drive Detection', tabDetail: 'Drive Detection', kicker: 'HANDS-FREE', symbol: '◎', color: '#62dfbe', tint: '#0d2421',
+    summary: 'Starts a journey after sustained driving speed is detected.',
+    benefits: ['Starts without opening the app', 'Shazam checks music automatically when selected', 'Stops after you have been parked'],
+    drawbacks: ['Requires Always Allow location', 'Uses more battery in the background', 'Can start late or mistake passenger travel', 'Background recognition depends on iOS'],
+    privacy: 'Location is used to detect and record journeys. JourneyDeck never saves microphone audio.',
+  },
+  {
+    id: 'manual', name: 'Manual Recording', tabDetail: 'Start and Finish', kicker: "YOU'RE IN CONTROL", symbol: '●', color: '#9b6cff', tint: '#211536',
+    summary: 'Tap Start when your journey begins and Finish when you are done.',
+    benefits: ['Every journey starts only when you choose', 'Lower background battery use', 'Simple and predictable controls'],
+    drawbacks: ['You can forget to press Start', 'Route and music before Start are missed', 'Requires safe interaction with the phone'],
+    privacy: 'Location and music recognition run only while you are recording.',
+  },
+];
 
 const providerOptions: ProviderOption[] = [
   {
@@ -84,6 +138,8 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
+  const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
+  const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [detailRefresh, setDetailRefresh] = useState(0);
@@ -121,6 +177,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   useEffect(() => {
     let alive = true;
     void loadMusicPreferences().then(value => { if (alive) setPreferences(value); });
+    setRecordingPreferences(loadRecordingModePreferences());
     void loadLastFmUsername().then(value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); } });
     return () => { alive = false; };
   }, []);
@@ -239,6 +296,26 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     void refreshDashboard();
   }, [refreshDashboard]);
 
+  const chooseRecordingMode = useCallback(async (mode: RecordingMode) => {
+    const next = saveRecordingModePreferences({ mode, onboardingCompleted: true });
+    setRecordingPreferences(next);
+    setEditingRecordingMode(false);
+    if (mode !== 'automatic') return;
+    try {
+      let foreground = await Location.getForegroundPermissionsAsync();
+      if (foreground.status !== 'granted') foreground = await Location.requestForegroundPermissionsAsync();
+      if (foreground.status !== 'granted') throw new Error('Location While Using the App was not enabled.');
+      const background = await Location.requestBackgroundPermissionsAsync();
+      if (background.status !== 'granted') throw new Error('Always Allow location was not enabled.');
+      if (!(await TaskManager.isAvailableAsync())) throw new Error('Automatic detection requires the installed JourneyDeck build.');
+    } catch (error) {
+      Alert.alert(
+        'Automatic detection needs location access',
+        `${error instanceof Error ? error.message : 'Background location is not ready.'} Manual Start remains available, and you can enable location from the Record screen.`,
+      );
+    }
+  }, []);
+
   const saveConnectionState = useCallback(async (next: Partial<ProviderPreferences['connections']>, providerOverride?: MusicProvider | null, onboardingOverride?: boolean) => {
     const existing = await appDataClient.providerPreferences().catch(() => null);
     await appDataClient.updateProviderPreferences({
@@ -264,7 +341,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     }
   }, [musicCapabilities, refreshMusicCapabilities, saveConnectionState]);
 
-  const enableRecognition = useCallback(async () => {
+  const enableRecognition = useCallback(async (providerOverride?: MusicProvider) => {
     if (!isJourneyDeckMusicNativeAvailable || musicCapabilities?.shazamKitAvailable === false) {
       Alert.alert('Auto Recognition is not ready', 'ShazamKit needs the new native JourneyDeck build and its Apple developer capability before it can ask for microphone access.');
       return;
@@ -272,8 +349,8 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     try {
       const status = await authorizeShazamMicrophone();
       await refreshMusicCapabilities();
-      await saveConnectionState({ shazam: status === 'authorized' ? 'enabled' : status === 'denied' || status === 'restricted' ? 'permission_denied' : 'not_enabled' });
-      Alert.alert(status === 'authorized' ? 'Auto Recognition enabled' : 'Microphone access was not enabled', status === 'authorized' ? 'When Auto Recognition is your selected method, JourneyDeck listens briefly when a journey starts or resumes. You can also tap Identify music while recording.' : 'Recording still works without music recognition.');
+      await saveConnectionState({ shazam: status === 'authorized' ? 'enabled' : status === 'denied' || status === 'restricted' ? 'permission_denied' : 'not_enabled' }, providerOverride, true);
+      Alert.alert(status === 'authorized' ? 'Auto Recognition enabled' : 'Microphone access was not enabled', status === 'authorized' ? 'When Auto Recognition is your selected method, JourneyDeck listens briefly when a journey starts and about once per minute while it continues.' : 'Recording still works without music recognition.');
     } catch {
       Alert.alert('Auto Recognition could not be enabled', 'Nothing changed. Recording will continue to work normally.');
     }
@@ -318,42 +395,113 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   };
 
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
+  const activeRecordingPreferences = recordingPreferences?.onboardingCompleted && !editingRecordingMode ? recordingPreferences : null;
+  const appReady = Boolean(activePreferences && activeRecordingPreferences);
 
   return (
     <View style={styles.app}>
       <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
       <View style={styles.screenBody}>
-        {!preferences && <AppLoading />}
-        {preferences && !activePreferences && <ProviderPicker
+        {(!preferences || !recordingPreferences) && <AppLoading />}
+        {recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
+          initial={recordingPreferences.mode ?? 'automatic'}
+          onContinue={chooseRecordingMode}
+          onCancel={recordingPreferences.onboardingCompleted ? () => setEditingRecordingMode(false) : undefined}
+        />}
+        {activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
           onContinue={async provider => {
             await chooseProvider(provider);
             if (provider === 'apple-music') await connectAppleMusic(provider);
+            if (provider === 'shazam') await enableRecognition(provider);
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
-        {activePreferences && tab === 'home' && <HomeScreen state={dashboard} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
-        {activePreferences && tab === 'journeys' && (selectedJourneyId
+        {appReady && tab === 'home' && <HomeScreen state={dashboard} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
+        {appReady && tab === 'journeys' && (selectedJourneyId
           ? <JourneyDetailScreen state={journeyDetail} onBack={() => setSelectedJourneyId(null)} onRetry={() => setDetailRefresh(value => value + 1)} />
           : <MemoriesScreen catalog={memories} journeys={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); }} onLoadMore={() => void loadMoreJourneys()} />)}
-        {activePreferences && tab === 'connections' && <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences.provider!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
+        {appReady && tab === 'connections' && <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
         <View
           key="persistent-recorder-engine"
-          accessibilityElementsHidden={!activePreferences || tab !== 'record'}
-          importantForAccessibility={activePreferences && tab === 'record' ? 'auto' : 'no-hide-descendants'}
-          pointerEvents={activePreferences && tab === 'record' ? 'auto' : 'none'}
-          style={activePreferences && tab === 'record' ? styles.recorderVisible : styles.recorderHidden}
+          accessibilityElementsHidden={!appReady || tab !== 'record'}
+          importantForAccessibility={appReady && tab === 'record' ? 'auto' : 'no-hide-descendants'}
+          pointerEvents={appReady && tab === 'record' ? 'auto' : 'none'}
+          style={appReady && tab === 'record' ? styles.recorderVisible : styles.recorderHidden}
         >
           {recorder}
         </View>
       </View>
-      {activePreferences && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} /></SafeAreaView>}
+      {appReady && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} /></SafeAreaView>}
     </View>
   );
 }
 
 function AppLoading() {
   return <SafeAreaView style={styles.loadingScreen}><ExpoStatusBar style="light" /><ActivityIndicator color="#a88aff" size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
+}
+
+function RecordingModePicker({ initial, onContinue, onCancel }: { initial: RecordingMode; onContinue: (mode: RecordingMode) => Promise<void>; onCancel?: () => void }) {
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.max(280, width - 44);
+  const initialIndex = Math.max(0, recordingModeOptions.findIndex(option => option.id === initial));
+  const [index, setIndex] = useState(initialIndex);
+  const [saving, setSaving] = useState(false);
+  const carousel = useRef<any>(null);
+  const selected = recordingModeOptions[index];
+
+  const finish = async () => {
+    setSaving(true);
+    try { await onContinue(selected.id); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <SafeAreaView style={styles.onboardingSafe}>
+      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.onboardingEyebrow}>HOW SHOULD JOURNEYS BEGIN</Text>
+        <Text style={styles.onboardingTitle}>Choose how JourneyDeck starts recording</Text>
+        <Text style={styles.onboardingBody}>You can change this later. Manual Start and Finish always remain available.</Text>
+        <View style={styles.recordingModeTabs}>
+          {recordingModeOptions.map((option, optionIndex) => (
+            <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.recordingModeTab, index === optionIndex && { borderColor: option.color, backgroundColor: option.tint }]}>
+              <Text style={[styles.recordingModeTabTitle, index === optionIndex && { color: option.color }]}>{option.id === 'automatic' ? 'Automatic' : 'Manual'}</Text>
+              <Text style={styles.recordingModeTabDetail}>{option.tabDetail}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <ScrollView
+          ref={carousel}
+          horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast"
+          contentOffset={{ x: initialIndex * (cardWidth + 12), y: 0 }}
+          onMomentumScrollEnd={event => setIndex(Math.max(0, Math.min(recordingModeOptions.length - 1, Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 12)))))}
+          contentContainerStyle={styles.providerCarousel}
+        >
+          {recordingModeOptions.map(option => <RecordingModeCard key={option.id} option={option} width={cardWidth} />)}
+        </ScrollView>
+        <View style={styles.pageDots}>{recordingModeOptions.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: selected.color }]} />)}</View>
+        <PrimaryAction label={saving ? 'Saving your choice…' : selected.id === 'automatic' ? 'Use Automatic Detection' : 'Use Manual Recording'} onPress={() => void finish()} disabled={saving} />
+        {onCancel && <Pressable onPress={onCancel} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Keep my current choice</Text></Pressable>}
+        <Text style={styles.providerFootnote}>{selected.id === 'automatic' ? 'Open the Recorder anytime to check detection or finish an active journey.' : 'Automatic detection can be enabled later from Connections.'}</Text>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+function RecordingModeCard({ option, width }: { option: RecordingModeOption; width: number }) {
+  return (
+    <View style={[styles.providerCard, { width, borderColor: option.color }]}>
+      <View style={styles.providerCardHeader}>
+        <View style={[styles.providerIcon, { backgroundColor: option.color }]}><Text style={styles.providerIconText}>{option.symbol}</Text></View>
+        <View style={styles.flex}><Text style={[styles.providerKicker, { color: option.color }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
+      </View>
+      <Text style={styles.providerSummary}>{option.summary}</Text>
+      <ProsCons title="WHY YOU MAY LOVE IT" color="#4ce1b1" items={option.benefits} symbol="+" />
+      <ProsCons title="WHAT TO KNOW" color="#ffb15c" items={option.drawbacks} symbol="–" />
+      <View style={[styles.privacyNote, { backgroundColor: option.tint }]}><Text style={[styles.privacyTitle, { color: option.color }]}>PRIVACY</Text><Text style={styles.privacyCopy}>{option.privacy}</Text></View>
+    </View>
+  );
 }
 
 function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvider; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
@@ -423,7 +571,7 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ state, onRecord, onJourneys, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; onRecord: () => void; onJourneys: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; recordingMode: RecordingMode; onRecord: () => void; onJourneys: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
   const { data } = state;
   const week = data.summary.last7Days;
   const allTime = data.summary.allTime;
@@ -433,96 +581,125 @@ function HomeScreen({ state, onRecord, onJourneys, onConnections, onJourney, onR
   const todayMinutes = todayJourneys.reduce((sum, journey) => sum + journey.durationMinutes, 0);
   const recentJourneys = data.recentJourneys.slice(0, 2);
   const activity = weeklyActivity(data.weeklyJourneys);
-  const longestRecent = data.recentJourneys.reduce<JourneySummary | null>((longest, journey) => !longest || journey.miles > longest.miles ? journey : longest, null);
-  const soundtrackedRecent = data.recentJourneys.filter(journey => journey.songCount > 0).length;
+  const todayBars = hourlyDrivingActivity(todayJourneys);
   const connections = data.providerPreferences?.connections ?? defaultConnections;
   const selectedProvider = providerOptions.find(option => toApiMusicProvider(option.id) === data.providerPreferences?.musicProvider);
   const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || connections.lastFm === 'connected';
+  const recorderHealthy = data.recorder.connected && data.recorder.queuedPoints + data.recorder.queuedMusic === 0;
+  const automaticMode = recordingMode === 'automatic';
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-        <BrandHeader />
+      <ScrollView contentContainerStyle={styles.webDashboardPage} showsVerticalScrollIndicator={false}>
         {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
-        <View style={styles.heroCard}>
-          <View style={styles.heroGlowOrange} />
-          <View style={styles.heroGlowPurple} />
-          <OpenRoadArtwork />
-          <Text style={styles.heroEyebrow}>YOUR WEEK IN MOTION</Text>
-          <Text style={styles.heroTitle}>{week.journeyCount ? `${week.journeyCount} ${week.journeyCount === 1 ? 'journey' : 'journeys'}` : 'Your road is waiting'}</Text>
-          <Text style={styles.heroBody}>{week.journeyCount ? `${formatMiles(week.miles)} with ${week.songCount} soundtrack ${week.songCount === 1 ? 'song' : 'songs'}.` : 'Record a drive and JourneyDeck will bring its route, vehicle, and music together.'}</Text>
-          <View style={styles.heroMetrics}>
-            <Metric value={formatMiles(week.miles)} label="DISTANCE" />
-            <Metric value={formatDuration(week.minutes)} label="DRIVE TIME" />
-            <Metric value={String(week.songCount)} label="SONGS" />
+        <View style={styles.webDashboardShell}>
+          <ImageBackground source={require('../assets/dashboard-neon-road-v2.png')} style={styles.webHero} imageStyle={styles.webHeroImage}>
+            <View style={styles.webHeroShade} />
+            <View style={styles.webHeroTop}>
+              <View><Text style={styles.webHeroKicker}>YOUR ROAD</Text><Text style={styles.webHeroScript}>In motion</Text></View>
+              <View style={styles.webLivePill}><View style={[styles.webLiveDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /><Text style={styles.webLiveText}>{data.recorder.state === 'recording' ? 'RECORDING' : automaticMode ? 'WATCHING' : 'READY'}</Text></View>
+            </View>
+            <View style={styles.webHeroBottom}>
+              <Text style={styles.webHeroWeekLabel}>LAST 7 DAYS</Text>
+              <Text style={styles.webHeroWeekValue}>{formatMiles(week.miles)}</Text>
+              <Text style={styles.webHeroWeekDetail}>{week.journeyCount} journeys  ·  {formatDuration(week.minutes)}  ·  {week.songCount} songs</Text>
+              <View style={styles.webHeroMetricRail}>
+                <Metric value={String(week.journeyCount)} label="JOURNEYS" />
+                <Metric value={formatDuration(week.minutes)} label="ROAD TIME" />
+                <Metric value={String(week.songCount)} label="SONGS" />
+              </View>
+            </View>
+          </ImageBackground>
+
+          <View style={styles.webMusicCard}>
+            <View style={styles.webMusicGlow} />
+            {latestTrack ? <Artwork track={latestTrack} size={92} /> : <View style={styles.webEmptyAlbum}><Text style={styles.webEmptyAlbumWord}>JOURNEY{`\n`}DECK</Text><Text style={styles.webEmptyAlbumNote}>♪</Text></View>}
+            <View style={styles.webTrackCopy}>
+              <Text style={styles.webCardKicker}>{latestTrack ? 'LATEST ROAD SOUNDTRACK' : 'READY FOR YOUR SOUNDTRACK'}</Text>
+              <Text style={styles.webTrackTitle} numberOfLines={1}>{latestTrack?.track ?? 'Your next song belongs here'}</Text>
+              <Text style={styles.webTrackArtist} numberOfLines={1}>{latestTrack?.artist ?? selectedProvider?.name ?? 'Choose a music connection'}</Text>
+              <DashboardWaveform />
+              <View style={styles.webTrackTime}><Text style={styles.webTrackTimeText}>{latestTrack ? 'MATCHED' : 'LISTENING READY'}</Text><Text style={styles.webTrackTimeText}>{data.latestJourney ? formatCompactDate(data.latestJourney.startedAt) : 'NEXT DRIVE'}</Text></View>
+            </View>
           </View>
-        </View>
 
-        <View style={styles.pulseCard}>
-          <View style={styles.pulseHeader}><View><Text style={styles.pulseKicker}>JOURNEY PULSE</Text><Text style={styles.pulseTitle}>Seven days on the road</Text></View><View style={styles.livePill}><View style={styles.liveDot} /><Text style={styles.liveText}>LIVE</Text></View></View>
-          <View style={styles.pulseChart}>{activity.map(day => <View key={day.key} style={styles.pulseColumn}><View style={styles.pulseTrack}><View style={[styles.pulseBar, { height: `${Math.max(7, day.ratio * 100)}%` }]}><View style={styles.pulseBarCap} /></View></View><Text style={[styles.pulseDay, day.isToday && styles.pulseDayToday]}>{day.label}</Text></View>)}</View>
-          <View style={styles.pulseFooter}><Text style={styles.pulseFooterValue}>{formatMiles(week.miles)}</Text><Text style={styles.pulseFooterLabel}>across {week.journeyCount} journeys this week</Text></View>
-        </View>
-
-        <View style={styles.recorderHealth}>
-          <View style={[styles.healthDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
-          <View style={styles.flex}><Text style={styles.healthTitle}>{recorderTitle(data.recorder.state, data.recorder.connected)}</Text><Text style={styles.healthBody}>{recorderDetail(data.recorder.state, data.recorder.queuedPoints, data.recorder.queuedMusic)}</Text></View>
-          <Text style={styles.healthPoints}>{data.recorder.capturedPoints || ''}</Text>
-        </View>
-        <PrimaryAction label={data.recorder.state === 'recording' ? 'Open active recording' : 'Start a journey'} onPress={onRecord} />
-
-        <SectionHeading title="Today at a glance" />
-        <View style={styles.dashboardGrid}>
-          <DashboardStatCard symbol="↗" kicker="TODAY'S DRIVING" value={todayJourneys.length ? formatMiles(todayMiles) : 'No drives'} detail={todayJourneys.length ? `${todayJourneys.length} ${todayJourneys.length === 1 ? 'journey' : 'journeys'} · ${formatDuration(todayMinutes)}` : 'Your next journey starts here'} color="#ff8a68" />
-          <DashboardStatCard symbol="⌁" kicker="ALL TIME" value={formatMiles(allTime.miles)} detail={`${allTime.journeyCount} journeys · ${formatDuration(allTime.minutes)}`} color="#a88aff" />
-        </View>
-
-        <View style={styles.insightStrip}>
-          <View style={styles.insightCard}><View style={styles.insightRoute}><View style={styles.insightRouteLine} /><View style={styles.insightRouteStart} /><View style={styles.insightRouteEnd} /></View><Text style={styles.insightKicker}>LONGEST RECENT</Text><Text style={styles.insightValue}>{longestRecent ? formatMiles(longestRecent.miles) : '—'}</Text><Text style={styles.insightDetail} numberOfLines={1}>{longestRecent ? locationPair(longestRecent) : 'Waiting for a journey'}</Text></View>
-          <View style={styles.insightCard}><View style={styles.musicRings}><View style={styles.musicRingOuter}><View style={styles.musicRingInner}><Text style={styles.musicRingNote}>♪</Text></View></View></View><Text style={styles.insightKicker}>SOUNDTRACKED</Text><Text style={styles.insightValue}>{soundtrackedRecent}</Text><Text style={styles.insightDetail}>of {data.recentJourneys.length} recent journeys</Text></View>
-        </View>
-
-        <SectionHeading title="Quick actions" />
-        <View style={styles.quickActions}>
-          <QuickAction symbol="●" title="Record" detail="Start a journey" onPress={onRecord} color="#ff7b54" />
-          <QuickAction symbol="≋" title="Journeys" detail="Open timeline" onPress={onJourneys} color="#a88aff" />
-          <QuickAction symbol="◎" title="Connect" detail="Music & vehicle" onPress={onConnections} color="#43e6ae" />
-        </View>
-
-        <SectionHeading title="Vehicle" />
-        <View style={styles.vehicleCard}>
-          <View style={styles.vehicleIcon}><Text style={styles.vehicleIconText}>T</Text></View>
-          <View style={styles.flex}>
-            <Text style={styles.vehicleKicker}>LATEST VEHICLE CONTEXT</Text>
-            <Text style={styles.vehicleName}>{data.latestJourney?.vehicleName ?? 'JourneyDeck Recorder'}</Text>
-            <Text style={styles.vehicleDetail}>{data.latestJourney ? `Last seen on ${formatCompactDate(data.latestJourney.startedAt)} · ${formatMiles(data.latestJourney.miles)}` : 'Vehicle details will appear after your next journey.'}</Text>
+          <View style={styles.webDrivingCard}>
+            <View style={styles.webDrivingGlow} />
+            <View style={styles.webDrivingHeading}><Text style={styles.webCardKicker}>TODAY'S DRIVING</Text><Text style={styles.webDrivingValue}>{todayJourneys.length ? formatNumber(todayMiles) : '0'}<Text style={styles.webDrivingUnit}> mi</Text></Text></View>
+            <View style={styles.webDrivingFacts}><View><Text style={styles.webFactValue}>{todayJourneys.length}</Text><Text style={styles.webFactLabel}>journeys</Text></View><View><Text style={styles.webFactValue}>{formatDuration(todayMinutes)}</Text><Text style={styles.webFactLabel}>road time</Text></View></View>
+            <View style={styles.webHourlyChart}>{todayBars.map((height, index) => <View key={index} style={[styles.webHourlyBar, { height: `${Math.max(4, height * 100)}%` }]} />)}</View>
+            <View style={styles.webChartAxis}><Text style={styles.webChartAxisText}>12 AM</Text><Text style={styles.webChartAxisText}>6 AM</Text><Text style={styles.webChartAxisText}>NOON</Text><Text style={styles.webChartAxisText}>6 PM</Text><Text style={styles.webChartAxisText}>12 AM</Text></View>
+            <View style={styles.webScoreRing}><View style={styles.webScoreRingInner}><Text style={styles.webScoreIcon}>⌁</Text><Text style={styles.webScoreValue}>{todayJourneys.length ? Math.min(99, 70 + todayJourneys.length * 4) : '—'}</Text><Text style={styles.webScoreLabel}>PULSE</Text></View></View>
           </View>
-          <View style={[styles.connectionDot, { backgroundColor: connections.tessie === 'connected' ? '#43e6ae' : '#ffb15c' }]} />
-        </View>
 
-        <SectionHeading title="Road soundtrack" action="Connections" onAction={onConnections} />
-        <View style={styles.soundtrackCard}>
-          {latestTrack ? <Artwork track={latestTrack} size={72} /> : <View style={styles.emptyArtwork}><Text style={styles.emptyArtworkNote}>♪</Text></View>}
-          <View style={styles.flex}>
-            <Text style={styles.soundtrackLabel}>{latestTrack ? 'LATEST JOURNEY SONG' : 'READY FOR YOUR NEXT DRIVE'}</Text>
-            <Text style={styles.soundtrackTitle} numberOfLines={1}>{latestTrack?.track ?? 'Your soundtrack will appear here'}</Text>
-            <Text style={styles.soundtrackArtist} numberOfLines={1}>{latestTrack?.artist ?? 'Apple Music, recognition, or Last.fm'}</Text>
+          <Pressable onPress={onRecord} style={({ pressed }) => [styles.webRecorderStrip, pressed && styles.pressed]}>
+            <View style={[styles.webRecorderBeacon, { borderColor: recorderColor(data.recorder.state, data.recorder.connected) }]}><View style={[styles.webRecorderBeaconCore, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /></View>
+            <View style={styles.flex}><Text style={styles.webRecorderTitle}>{automaticMode && data.recorder.state === 'ready' ? 'Automatic detection is watching' : recorderTitle(data.recorder.state, data.recorder.connected)}</Text><Text style={styles.webRecorderDetail}>{automaticMode && data.recorder.state === 'ready' ? 'JourneyDeck will begin after sustained driving speed.' : recorderDetail(data.recorder.state, data.recorder.queuedPoints, data.recorder.queuedMusic)}</Text></View>
+            <Text style={styles.webRecorderChevron}>›</Text>
+          </Pressable>
+          {(recordingMode === 'manual' || data.recorder.state === 'recording') && <PrimaryAction label={data.recorder.state === 'recording' ? 'Open active recording' : 'Start a journey'} onPress={onRecord} />}
+
+          <View style={styles.webActions}>
+            <WebAction symbol="↻" title="Sync" detail="Latest data" color="#ff645d" onPress={onRefresh} />
+            <WebAction symbol="▶" title="Replay" detail="Latest journey" color="#a75cff" onPress={data.latestJourney ? () => onJourney(data.latestJourney!.id) : onJourneys} />
+            <WebAction symbol="≋" title="Journeys" detail="Your archive" color="#45bdf4" onPress={onJourneys} />
+            <WebAction symbol="◎" title="Connect" detail="Music & car" color="#ff9a5d" onPress={onConnections} />
           </View>
-        </View>
 
-        <SectionHeading title="Recent journeys" action={recentJourneys.length ? 'View all' : undefined} onAction={recentJourneys.length ? onJourneys : undefined} />
-        {recentJourneys.length ? recentJourneys.map(journey => <JourneyCard key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />) : <EmptyCard title="No journeys yet" body="Your completed recordings will collect here with their soundtrack and vehicle context." />}
+          <View style={styles.webBottomGrid}>
+            <View style={styles.webJourneysPanel}>
+              <View style={styles.webPanelHeader}><Text style={styles.webPanelTitle}>RECENT JOURNEYS</Text><Pressable onPress={onJourneys}><Text style={styles.webPanelAction}>View all  ›</Text></Pressable></View>
+              {recentJourneys.length ? recentJourneys.map(journey => <CompactJourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />) : <Text style={styles.webPanelEmpty}>Your completed journeys will appear here.</Text>}
+            </View>
+            <View style={styles.webHealthPanel}>
+              <View style={styles.webPanelHeader}><Text style={[styles.webPanelTitle, { color: '#45c6f0' }]}>DATA HEALTH</Text></View>
+              <CompactHealthRow symbol="J" label="JourneyDeck" detail={data.recorder.connected ? 'Connected' : 'Offline'} healthy={data.recorder.connected} />
+              <CompactHealthRow symbol="♪" label="Music" detail={musicConnected ? 'Ready' : 'Check'} healthy={musicConnected} />
+              <CompactHealthRow symbol="T" label="Tessie" detail={connections.tessie === 'connected' ? 'Connected' : 'Check'} healthy={connections.tessie === 'connected'} />
+            </View>
+          </View>
 
-        <SectionHeading title="Data health" />
-        <View style={styles.dataHealthCard}>
-          <DashboardHealthRow label="JourneyDeck" detail={data.recorder.connected ? 'Recorder and dashboard connected' : 'This iPhone is not connected'} healthy={data.recorder.connected} />
-          <DashboardHealthRow label="Music" detail={musicConnected ? `${selectedProvider?.name ?? 'Soundtrack'} is ready` : 'Choose or reconnect a music method'} healthy={musicConnected} />
-          <DashboardHealthRow label="Tessie" detail={connections.tessie === 'connected' ? 'Vehicle context connected' : 'Server connection may need attention'} healthy={connections.tessie === 'connected'} />
-          <DashboardHealthRow label="Local queue" detail={data.recorder.queuedPoints + data.recorder.queuedMusic ? `${data.recorder.queuedPoints + data.recorder.queuedMusic} saved items waiting` : 'Everything on this iPhone is synced'} healthy={data.recorder.queuedPoints + data.recorder.queuedMusic === 0} />
+          <View style={styles.webWeekCard}>
+            <View style={styles.webPanelHeader}><View><Text style={styles.webPanelTitle}>THIS WEEK</Text><Text style={styles.webWeekSubtitle}>Seven days on the road</Text></View><View style={styles.livePill}><View style={styles.liveDot} /><Text style={styles.liveText}>LIVE</Text></View></View>
+            <View style={styles.webWeekChart}>{activity.map(day => <View key={day.key} style={styles.webWeekColumn}><View style={styles.webWeekTrack}><View style={[styles.webWeekBar, { height: `${Math.max(6, day.ratio * 100)}%` }]} /></View><Text style={[styles.webWeekDay, day.isToday && styles.pulseDayToday]}>{day.label}</Text></View>)}</View>
+            <View style={styles.webWeekStats}><View><Text style={styles.webWeekStatValue}>{formatMiles(week.miles)}</Text><Text style={styles.webWeekStatLabel}>MILES DRIVEN</Text></View><View><Text style={styles.webWeekStatValue}>{week.journeyCount}</Text><Text style={styles.webWeekStatLabel}>JOURNEYS</Text></View><View><Text style={styles.webWeekStatValue}>{week.songCount}</Text><Text style={styles.webWeekStatLabel}>SONGS MATCHED</Text></View></View>
+          </View>
+
+          <View style={styles.webAllTimeRail}><View><Text style={styles.webAllTimeKicker}>YOUR JOURNEYDECK</Text><Text style={styles.webAllTimeTitle}>The road so far</Text></View><View style={styles.webAllTimeMetric}><Text style={styles.webAllTimeMetricValue}>{formatMiles(allTime.miles)}</Text><Text style={styles.webAllTimeMetricLabel}>ALL-TIME DISTANCE</Text></View><View style={styles.webAllTimeMetric}><Text style={styles.webAllTimeMetricValue}>{allTime.journeyCount}</Text><Text style={styles.webAllTimeMetricLabel}>JOURNEYS</Text></View></View>
+          {!recorderHealthy && <Text style={styles.webQueueNote}>{data.recorder.queuedPoints + data.recorder.queuedMusic} items are safely waiting to sync on this iPhone.</Text>}
         </View>
         {state.status === 'loading' && <LoadingLine label="Refreshing your dashboard…" />}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function DashboardWaveform() {
+  const bars = [8, 16, 27, 13, 31, 20, 38, 17, 29, 42, 20, 34, 14, 27, 37, 18, 31, 11, 24, 35, 16, 27, 9, 20];
+  return <View style={styles.webWaveform}>{bars.map((height, index) => <View key={index} style={[styles.webWaveBar, { height }]} />)}</View>;
+}
+
+function WebAction({ symbol, title, detail, color, onPress }: { symbol: string; title: string; detail: string; color: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webAction, { borderColor: `${color}55`, backgroundColor: `${color}18` }, pressed && styles.pressed]}><View style={[styles.webActionGlow, { backgroundColor: color }]} /><Text style={[styles.webActionSymbol, { color }]}>{symbol}</Text><Text style={styles.webActionTitle}>{title}</Text><Text style={styles.webActionDetail}>{detail}</Text></Pressable>;
+}
+
+function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}><View style={styles.webPlaceIcon}><Text>⌂</Text></View><View style={styles.flex}><Text style={styles.webJourneyOrigin} numberOfLines={1}>{journey.startingLocation ?? 'Journey start'}</Text><Text style={styles.webJourneyDestination} numberOfLines={1}>{journey.endingLocation ?? 'Recorded destination'}</Text><Text style={styles.webJourneyMeta}>{formatMiles(journey.miles)} · {formatDuration(journey.durationMinutes)}</Text></View><View style={styles.webRouteThumb}><View style={styles.webRouteThumbLine} /><View style={styles.webRouteThumbStart} /><View style={styles.webRouteThumbEnd} /></View></Pressable>;
+}
+
+function CompactHealthRow({ symbol, label, detail, healthy }: { symbol: string; label: string; detail: string; healthy: boolean }) {
+  return <View style={styles.webCompactHealth}><View style={[styles.webServiceIcon, { backgroundColor: healthy ? '#2589c8' : '#62334c' }]}><Text style={styles.webServiceIconText}>{symbol}</Text></View><View style={styles.flex}><Text style={styles.webServiceName} numberOfLines={1}>{label}</Text><Text style={styles.webServiceDetail} numberOfLines={1}>{detail}</Text></View><View style={[styles.webHealthCheck, { backgroundColor: healthy ? '#2caeea' : '#ff9a5d' }]}><Text style={styles.webHealthCheckText}>{healthy ? '✓' : '!'}</Text></View></View>;
+}
+
+function hourlyDrivingActivity(journeys: JourneySummary[]) {
+  const bins = Array.from({ length: 16 }, () => 0);
+  journeys.forEach(journey => {
+    const startedAt = new Date(journey.startedAt);
+    if (Number.isNaN(startedAt.getTime())) return;
+    const index = Math.min(15, Math.floor((startedAt.getHours() + startedAt.getMinutes() / 60) / 1.5));
+    bins[index] += Math.max(0.2, journey.miles);
+  });
+  const maximum = Math.max(1, ...bins);
+  return bins.map(value => value / maximum);
 }
 
 function DashboardStatCard({ symbol, kicker, value, detail, color }: { symbol: string; kicker: string; value: string; detail: string; color: string }) {
@@ -565,30 +742,40 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   const scrollX = useRef(new Animated.Value(0)).current;
   const carousel = useRef<any>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [memoryDraft, setMemoryDraft] = useState<{ id: string | null; name: string; notes: string; collectionIds: string[] } | null>(null);
-  const [collectionDraft, setCollectionDraft] = useState<{ id: string | null; name: string; description: string; driveIds: string[] } | null>(null);
+  const [memoryDraft, setMemoryDraft] = useState<{ id: string | null; name: string; notes: string; collectionIds: string[]; coverPhotoId: string | null; photos: JourneyPhoto[] } | null>(null);
+  const [collectionDraft, setCollectionDraft] = useState<{ id: string | null; name: string; description: string; driveIds: string[]; photos: JourneyPhoto[] } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const selectedMemory = catalog.data.memories[Math.min(selectedIndex, Math.max(0, catalog.data.memories.length - 1))] ?? null;
   const selectedCollections = selectedMemory
     ? selectedMemory.collectionIds.map(id => catalog.data.collections.find(collection => collection.id === id)).filter((collection): collection is JourneyCollection => Boolean(collection))
     : [];
   const managedCollection = collectionDraft?.id ? catalog.data.collections.find(collection => collection.id === collectionDraft.id) ?? null : null;
+  const availableMemoryPhotos = memoryDraft ? [
+    ...memoryDraft.photos.filter(photo => photo.source === 'memory'),
+    ...memoryDraft.collectionIds.flatMap(id => catalog.data.collections.find(collection => collection.id === id)?.photos ?? []),
+  ].filter((photo, index, photos) => photos.findIndex(candidate => candidate.id === photo.id) === index) : [];
 
   useEffect(() => { if (selectedIndex >= catalog.data.memories.length && catalog.data.memories.length) setSelectedIndex(catalog.data.memories.length - 1); }, [catalog.data.memories.length, selectedIndex]);
 
   const editMemory = (memory: JourneyMemory | null) => setMemoryDraft({
-    id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', collectionIds: [...(memory?.collectionIds ?? [])],
+    id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', collectionIds: [...(memory?.collectionIds ?? [])], coverPhotoId: memory?.coverPhotoId ?? null, photos: [...(memory?.photos ?? [])],
   });
-  const toggleMemoryCollection = (id: string) => setMemoryDraft(current => current ? { ...current, collectionIds: current.collectionIds.includes(id) ? current.collectionIds.filter(value => value !== id) : [...current.collectionIds, id] } : current);
+  const toggleMemoryCollection = (id: string) => setMemoryDraft(current => {
+    if (!current) return current;
+    const collectionIds = current.collectionIds.includes(id) ? current.collectionIds.filter(value => value !== id) : [...current.collectionIds, id];
+    const allowed = new Set([...current.photos.filter(photo => photo.source === 'memory').map(photo => photo.id), ...collectionIds.flatMap(collectionId => catalog.data.collections.find(collection => collection.id === collectionId)?.photos.map(photo => photo.id) ?? [])]);
+    return { ...current, collectionIds, coverPhotoId: current.coverPhotoId && allowed.has(current.coverPhotoId) ? current.coverPhotoId : null };
+  });
   const editCollection = (collection: JourneyCollection | null) => setCollectionDraft({
-    id: collection?.id ?? null, name: collection?.name ?? '', description: collection?.description ?? '', driveIds: [...(collection?.driveIds ?? [])],
+    id: collection?.id ?? null, name: collection?.name ?? '', description: collection?.description ?? '', driveIds: [...(collection?.driveIds ?? [])], photos: [...(collection?.photos ?? [])],
   });
   const toggleCollectionJourney = async (journeyId: string) => {
     if (!collectionDraft?.id) return;
     const next = { ...collectionDraft, driveIds: collectionDraft.driveIds.includes(journeyId) ? collectionDraft.driveIds.filter(id => id !== journeyId) : [...collectionDraft.driveIds, journeyId] };
     setCollectionDraft(next);
     try {
-      await appDataClient.saveCollection(next);
+      await appDataClient.saveCollection({ id: next.id, name: next.name, description: next.description, driveIds: next.driveIds });
       onRefresh();
     } catch (error) {
       setCollectionDraft(collectionDraft);
@@ -601,7 +788,7 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
     if (memoryDraft.collectionIds.length < 2) return Alert.alert('Choose two collections', 'A Memory brings together at least two Collections.');
     setSaving(true);
     try {
-      await appDataClient.saveMemory({ ...memoryDraft, artworkKey: selectedMemory?.artworkKey ?? 'road-trips' });
+      await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, collectionIds: memoryDraft.collectionIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: selectedMemory?.artworkKey ?? 'road-trips' });
       setMemoryDraft(null); onRefresh();
     } catch (error) { Alert.alert('Memory not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this memory.'); }
     finally { setSaving(false); }
@@ -611,11 +798,46 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
     if (!collectionDraft.name.trim()) return Alert.alert('Name this collection', 'Give the collection a short name first.');
     setSaving(true);
     try {
-      const saved = await appDataClient.saveCollection(collectionDraft);
-      setCollectionDraft({ ...collectionDraft, id: saved.id, driveIds: saved.driveIds }); onRefresh();
+      const saved = await appDataClient.saveCollection({ id: collectionDraft.id, name: collectionDraft.name, description: collectionDraft.description, driveIds: collectionDraft.driveIds });
+      setCollectionDraft({ ...collectionDraft, id: saved.id, driveIds: saved.driveIds, photos: saved.photos }); onRefresh();
     } catch (error) { Alert.alert('Collection not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this collection.'); }
     finally { setSaving(false); }
   };
+  const uploadMemoryPhoto = async () => {
+    if (!memoryDraft?.id) return Alert.alert('Save this Memory first', 'Create the Memory, then open Edit memory to add photos.');
+    setPhotoBusy(true);
+    try {
+      const selected = await choosePhoto(); if (!selected) return;
+      const uploaded = await appDataClient.uploadMemoryPhoto(memoryDraft.id, selected);
+      setMemoryDraft(current => current ? { ...current, photos: [...current.photos, uploaded], coverPhotoId: current.coverPhotoId ?? uploaded.id } : current);
+      onRefresh();
+    } catch (error) { Alert.alert('Photo not added', error instanceof Error ? error.message : 'JourneyDeck could not upload this photo.'); }
+    finally { setPhotoBusy(false); }
+  };
+  const uploadCollectionPhoto = async () => {
+    if (!collectionDraft?.id) return Alert.alert('Save this Collection first', 'Create the Collection, then open Manage to add photos.');
+    setPhotoBusy(true);
+    try {
+      const selected = await choosePhoto(); if (!selected) return;
+      const uploaded = await appDataClient.uploadCollectionPhoto(collectionDraft.id, selected);
+      setCollectionDraft(current => current ? { ...current, photos: [...current.photos, uploaded] } : current);
+      onRefresh();
+    } catch (error) { Alert.alert('Photo not added', error instanceof Error ? error.message : 'JourneyDeck could not upload this photo.'); }
+    finally { setPhotoBusy(false); }
+  };
+  const removePhoto = (photo: JourneyPhoto, owner: 'memory' | 'collection') => Alert.alert('Remove photo?', owner === 'collection' ? 'This removes the photo from this Collection and every Memory that inherits it.' : 'This removes the photo from this Memory.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'Remove', style: 'destructive', onPress: () => void (async () => {
+      setPhotoBusy(true);
+      try {
+        await appDataClient.removePhoto(photo.id);
+        if (owner === 'memory') setMemoryDraft(current => current ? { ...current, photos: current.photos.filter(item => item.id !== photo.id), coverPhotoId: current.coverPhotoId === photo.id ? null : current.coverPhotoId } : current);
+        else setCollectionDraft(current => current ? { ...current, photos: current.photos.filter(item => item.id !== photo.id) } : current);
+        onRefresh();
+      } catch (error) { Alert.alert('Photo not removed', error instanceof Error ? error.message : 'JourneyDeck could not remove this photo.'); }
+      finally { setPhotoBusy(false); }
+    })() },
+  ]);
 
   return <SafeAreaView style={styles.safe}>
     <ScrollView contentContainerStyle={styles.memoriesPage} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -638,7 +860,7 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
           const collectionIds = new Set(memory.collectionIds), journeyIds = new Set(catalog.data.collections.filter(collection => collectionIds.has(collection.id)).flatMap(collection => collection.driveIds));
           return <Animated.View key={memory.id} style={{ width: cardWidth, transform: [{ scale }, { translateY }] }}>
             <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); }} style={styles.memoryHeroCard}>
-              <MemoryArtwork artworkKey={memory.artworkKey} />
+              <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.coverPhotoId ? memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null : null} />
               <View style={styles.memoryHeroShade} />
               <Text style={styles.memoryHeroKicker}>MEMORY {String(index + 1).padStart(2, '0')}</Text>
               <Text style={styles.memoryHeroTitle}>{memory.name}</Text>
@@ -654,6 +876,9 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
         <Text style={styles.editorKicker}>{memoryDraft.id ? 'EDIT MEMORY' : 'NEW MEMORY'}</Text>
         <TextInput value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor="#716879" maxLength={80} style={styles.editorInput} />
         <TextInput value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor="#716879" maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
+        <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>MEMORY PHOTOS</Text><Text style={styles.photoEditorHelp}>Add your own or choose one inherited from a Collection as the card image.</Text></View><Pressable onPress={() => void uploadMemoryPhoto()} disabled={photoBusy || !memoryDraft.id} style={[styles.photoAddButton, (!memoryDraft.id || photoBusy) && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add photo'}</Text></Pressable></View>
+        {!memoryDraft.id && <Text style={styles.photoSaveFirst}>Save the Memory once before adding its own photos.</Text>}
+        {availableMemoryPhotos.length ? <View style={styles.photoGrid}>{availableMemoryPhotos.map(photo => <PhotoTile key={photo.id} photo={photo} selected={memoryDraft.coverPhotoId === photo.id} label={photo.source === 'collection' ? 'COLLECTION' : 'MEMORY'} onPress={() => setMemoryDraft(current => current ? { ...current, coverPhotoId: photo.id } : current)} onRemove={photo.source === 'memory' ? () => removePhoto(photo, 'memory') : undefined} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Photos added to selected Collections will appear here automatically.</Text></View>}
         <Text style={styles.editorInstruction}>Choose at least two Collections</Text>
         {catalog.data.collections.map(collection => <MembershipRow key={collection.id} title={collection.name} detail={`${collection.driveIds.length} journeys`} selected={memoryDraft.collectionIds.includes(collection.id)} onPress={() => toggleMemoryCollection(collection.id)} />)}
         <View style={styles.editorActions}><Pressable onPress={() => setMemoryDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveMemory()} disabled={saving} style={[styles.editorSave, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'Saving…' : 'Save memory'}</Text></Pressable></View>
@@ -666,6 +891,9 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
         <Text style={styles.editorKicker}>{collectionDraft.id ? 'MANAGE COLLECTION' : 'NEW COLLECTION'}</Text>
         <TextInput value={collectionDraft.name} onChangeText={name => setCollectionDraft(current => current ? { ...current, name } : current)} placeholder="Collection name" placeholderTextColor="#716879" maxLength={80} style={styles.editorInput} />
         <TextInput value={collectionDraft.description} onChangeText={description => setCollectionDraft(current => current ? { ...current, description } : current)} placeholder="Optional description" placeholderTextColor="#716879" maxLength={500} style={styles.editorInput} />
+        <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>COLLECTION PHOTOS</Text><Text style={styles.photoEditorHelp}>These photos automatically appear in every Memory that includes this Collection.</Text></View><Pressable onPress={() => void uploadCollectionPhoto()} disabled={photoBusy || !collectionDraft.id} style={[styles.photoAddButton, (!collectionDraft.id || photoBusy) && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add photo'}</Text></Pressable></View>
+        {!collectionDraft.id && <Text style={styles.photoSaveFirst}>Create the Collection once before adding photos.</Text>}
+        {collectionDraft.photos.length ? <View style={styles.photoGrid}>{collectionDraft.photos.map(photo => <PhotoTile key={photo.id} photo={photo} label="COLLECTION" onPress={() => undefined} onRemove={() => removePhoto(photo, 'collection')} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Add the views, stops, and moments that made these journeys memorable.</Text></View>}
         <View style={styles.editorActions}><Pressable onPress={() => setCollectionDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>Done</Text></Pressable><Pressable onPress={() => void saveCollection()} disabled={saving} style={[styles.editorSave, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'Saving…' : collectionDraft.id ? 'Save details' : 'Create collection'}</Text></Pressable></View>
       </View>}
 
@@ -679,9 +907,19 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   </SafeAreaView>;
 }
 
-function MemoryArtwork({ artworkKey }: { artworkKey: string }) {
+function MemoryArtwork({ artworkKey, photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
   const night = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
-  return <View style={[styles.memoryArtwork, night && styles.memoryArtworkNight]}><View style={styles.memoryArtworkGlow} /><View style={styles.memoryArtworkMoon} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineLeft]} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineRight]} /><View style={styles.memoryArtworkDashOne} /><View style={styles.memoryArtworkDashTwo} /><View style={styles.memoryArtworkDashThree} /></View>;
+  return photo ? <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} /> : <View style={[styles.memoryArtwork, night && styles.memoryArtworkNight]}><View style={styles.memoryArtworkGlow} /><View style={styles.memoryArtworkMoon} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineLeft]} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineRight]} /><View style={styles.memoryArtworkDashOne} /><View style={styles.memoryArtworkDashTwo} /><View style={styles.memoryArtworkDashThree} /></View>;
+}
+
+function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => { let active = true; void appDataClient.photoDataUrl(photo).then(value => { if (active) setUri(value); }).catch(() => undefined); return () => { active = false; }; }, [photo.id]);
+  return uri ? <Image source={{ uri }} resizeMode="cover" style={style} /> : <View style={[style, styles.photoLoading]}><ActivityIndicator color="#b693ff" /></View>;
+}
+
+function PhotoTile({ photo, selected = false, label, onPress, onRemove }: { photo: JourneyPhoto; selected?: boolean; label: string; onPress: () => void; onRemove?: () => void }) {
+  return <View style={[styles.photoTile, selected && styles.photoTileSelected]}><Pressable onPress={onPress} style={styles.photoTileImage}><JourneyPhotoImage photo={photo} style={styles.photoTileImage} /><View style={styles.photoTileShade} /><Text style={styles.photoTileLabel}>{selected ? '✓ COVER' : label}</Text></Pressable>{onRemove && <Pressable onPress={onRemove} style={styles.photoRemove}><Text style={styles.photoRemoveText}>×</Text></Pressable>}</View>;
 }
 
 function MembershipRow({ title, detail, selected, onPress }: { title: string; detail: string; selected: boolean; onPress: () => void }) {
@@ -691,7 +929,7 @@ function MembershipRow({ title, detail, selected, onPress }: { title: string; de
 function CollectionCard({ collection, index, active, onManage }: { collection: JourneyCollection; index: number; active: boolean; onManage: () => void }) {
   const colors = ['#ff795b', '#9b7cff', '#43e6ae'];
   const color = colors[index % colors.length];
-  return <Pressable onPress={onManage} style={[styles.memoryCollectionCard, active && { borderColor: color }]}><View style={[styles.collectionArtwork, { backgroundColor: `${color}20` }]}><View style={[styles.collectionArtworkOrb, { backgroundColor: color }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: color }]} /></View><View style={styles.flex}><Text style={styles.collectionKicker}>COLLECTION</Text><Text style={styles.collectionTitle}>{collection.name}</Text><Text style={styles.collectionMeta}>{collection.driveIds.length} journeys{collection.description ? `  •  ${collection.description}` : ''}</Text></View><View style={styles.collectionManage}><Text style={styles.collectionManageText}>{active ? 'Managing' : 'Manage'}</Text></View></Pressable>;
+  return <Pressable onPress={onManage} style={[styles.memoryCollectionCard, active && { borderColor: color }]}>{collection.photos[0] ? <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} /> : <View style={[styles.collectionArtwork, { backgroundColor: `${color}20` }]}><View style={[styles.collectionArtworkOrb, { backgroundColor: color }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: color }]} /></View>}<View style={styles.flex}><Text style={styles.collectionKicker}>COLLECTION</Text><Text style={styles.collectionTitle}>{collection.name}</Text><Text style={styles.collectionMeta}>{collection.driveIds.length} journeys  •  {collection.photos.length} photos{collection.description ? `  •  ${collection.description}` : ''}</Text></View><View style={styles.collectionManage}><Text style={styles.collectionManageText}>{active ? 'Managing' : 'Manage'}</Text></View></Pressable>;
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
@@ -743,12 +981,13 @@ function JourneyDetailScreen({ state, onBack, onRetry }: { state: LoadState<Jour
 }
 
 function ConnectionsScreen({
-  dashboard, provider, capabilities, connectionCapabilities, lastFmUsername, editingLastFm, lastFmDraft,
+  dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
-  onConnectAppleMusic, onEnableRecognition,
+  onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition,
 }: {
   dashboard: AppDashboard;
   provider: MusicProvider;
+  recordingMode: RecordingMode;
   capabilities: JourneyDeckMusicCapabilityStatus | null;
   connectionCapabilities: ConnectionCapabilities;
   lastFmUsername: string;
@@ -761,23 +1000,33 @@ function ConnectionsScreen({
   onCancelLastFm: () => void;
   onSaveLastFm: () => void;
   onSyncLastFm: () => void;
+  onChangeRecordingMode: () => void;
   onChangeProvider: () => void;
   onConnectAppleMusic: () => void;
   onEnableRecognition: () => void;
 }) {
   const selected = providerOptions.find(option => option.id === provider)!;
+  const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
         <PageHeader eyebrow="YOUR DATA, YOUR CHOICE" title="Connections" body="JourneyDeck works as a recorder on its own. Add music or vehicle context whenever you are ready." />
+        <SectionHeading title="Recording" />
+        <View style={[styles.selectedProvider, { borderColor: selectedRecordingMode.color }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: selectedRecordingMode.color }]}><Text style={styles.connectionIconText}>{selectedRecordingMode.symbol}</Text></View>
+          <View style={styles.flex}><Text style={styles.connectionKicker}>SELECTED JOURNEY START METHOD</Text><Text style={styles.connectionName}>{selectedRecordingMode.name}</Text><Text style={styles.connectionDetail}>{selectedRecordingMode.summary}</Text></View>
+          <Pressable onPress={onChangeRecordingMode} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></Pressable>
+        </View>
+
+        <SectionHeading title="Soundtrack method" />
         <View style={[styles.selectedProvider, { borderColor: selected.color }]}>
           <View style={[styles.connectionIcon, { backgroundColor: selected.color }]}><Text style={styles.connectionIconText}>{selected.symbol}</Text></View>
           <View style={styles.flex}><Text style={styles.connectionKicker}>SELECTED MUSIC METHOD · NOT A CONNECTION</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
           <Pressable onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></Pressable>
         </View>
 
-        <SectionHeading title="Music" />
+        <SectionHeading title="Music connections" />
         <ConnectionTile name="Apple Music" detail="Native history and artwork" symbol="♪" color="#fa5c74" status={nativeAppleStatus(capabilities, connections.appleMusic)} action={capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Manage' : 'Connect'} onPress={onConnectAppleMusic} />
         <ConnectionTile name="Auto Recognition" detail="ShazamKit for any music source" symbol="S" color="#56a8ff" status={nativeShazamStatus(capabilities, connections.shazam)} action={capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled' : 'Enable'} onPress={onEnableRecognition} />
         <ConnectionTile name="Last.fm" detail="Timestamped Spotify scrobbles" symbol="fm" color="#f23d47" status={!connectionCapabilities.lastFmConfigured ? 'Server setup required' : connections.lastFm === 'connected' ? statusText(connections.lastFm) : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : statusText(connections.lastFm)} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
@@ -892,6 +1141,7 @@ function ConnectionTile({ name, detail, symbol, color, status, action, onPress }
 }
 
 function formatMiles(miles: number) { return `${miles < 10 && miles % 1 ? miles.toFixed(1) : Math.round(miles)} mi`; }
+function formatNumber(value: number) { return value < 10 && value % 1 ? value.toFixed(1) : String(Math.round(value)); }
 function formatDuration(minutes: number) {
   const rounded = Math.max(0, Math.round(minutes));
   return rounded >= 60 ? `${Math.floor(rounded / 60)}h ${rounded % 60}m` : `${rounded} min`;
@@ -954,12 +1204,37 @@ const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1 }, recorderVisible: { flex: 1 }, recorderHidden: { display: 'none' }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
   pageContent: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 36, gap: 16 },
+  webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 24, gap: 8 },
+  webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#34204f', backgroundColor: '#05040e', shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 28, overflow: 'hidden' },
+  webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
+  webHeroImage: { borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
+  webHeroShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#03020a44' },
+  webHeroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  webHeroKicker: { color: '#ff7557', fontSize: 27, fontWeight: '900', letterSpacing: 1.8, textShadowColor: '#441525', textShadowRadius: 18 },
+  webHeroScript: { color: '#ff5365', fontSize: 36, lineHeight: 39, fontWeight: '800', fontStyle: 'italic', marginTop: -2, textShadowColor: '#5f1829', textShadowRadius: 20 },
+  webLivePill: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 34, paddingHorizontal: 11, borderRadius: 12, borderWidth: 1, borderColor: '#ff596044', backgroundColor: '#090816c9' },
+  webLiveDot: { width: 7, height: 7, borderRadius: 4, shadowColor: '#ff5960', shadowOpacity: 1, shadowRadius: 8 }, webLiveText: { color: '#f3ebf4', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },
+  webHeroBottom: { gap: 2 }, webHeroWeekLabel: { color: '#ff7966', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 }, webHeroWeekValue: { color: '#fff8ff', fontSize: 38, lineHeight: 42, fontWeight: '900', letterSpacing: -1.4, textShadowColor: '#05040e', textShadowRadius: 12 }, webHeroWeekDetail: { color: '#c0b7c9', fontSize: 10, fontWeight: '700', textShadowColor: '#05040e', textShadowRadius: 8 },
+  webHeroMetricRail: { flexDirection: 'row', marginTop: 10, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: '#5a326077', backgroundColor: '#090714dd' },
+  webMusicCard: { minHeight: 124, flexDirection: 'row', alignItems: 'center', gap: 13, padding: 13, overflow: 'hidden', borderRadius: 18, borderWidth: 1, borderColor: '#5f347b66', backgroundColor: '#100920', shadowColor: '#5d20a3', shadowOpacity: 0.25, shadowRadius: 14 }, webMusicGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -50, bottom: -95, backgroundColor: '#562093', opacity: 0.22 }, webEmptyAlbum: { width: 92, height: 92, borderRadius: 12, padding: 9, justifyContent: 'space-between', backgroundColor: '#38133e', borderWidth: 1, borderColor: '#7a385e', shadowColor: '#ff526c', shadowOpacity: 0.35, shadowRadius: 12 }, webEmptyAlbumWord: { color: '#ff8a79', fontSize: 8, lineHeight: 9, fontWeight: '900' }, webEmptyAlbumNote: { color: '#f0b7ff', fontSize: 33, fontWeight: '900', alignSelf: 'center' },
+  webTrackCopy: { flex: 1, minWidth: 0 }, webCardKicker: { color: '#ff5f67', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, webTrackTitle: { color: '#f8f3fb', fontSize: 19, lineHeight: 22, fontWeight: '800', marginTop: 3 }, webTrackArtist: { color: '#a15df1', fontSize: 12, fontWeight: '700', marginTop: 2 }, webWaveform: { height: 40, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 5, overflow: 'hidden' }, webWaveBar: { flex: 1, maxWidth: 3, borderRadius: 2, backgroundColor: '#d34cf3', shadowColor: '#ff4e70', shadowOpacity: 0.8, shadowRadius: 4 }, webTrackTime: { flexDirection: 'row', justifyContent: 'space-between' }, webTrackTimeText: { color: '#8b8196', fontSize: 6, fontWeight: '800', letterSpacing: 0.6 },
+  webDrivingCard: { height: 174, overflow: 'hidden', borderRadius: 18, borderWidth: 1, borderColor: '#5f347b66', backgroundColor: '#0e0a1c', padding: 14 }, webDrivingGlow: { position: 'absolute', width: 160, height: 160, borderRadius: 80, left: -85, bottom: -110, backgroundColor: '#ff3b6c', opacity: 0.15 }, webDrivingHeading: { position: 'absolute', left: 14, top: 13 }, webDrivingValue: { color: '#fff8ff', fontSize: 36, lineHeight: 42, fontWeight: '900', letterSpacing: -1.4 }, webDrivingUnit: { color: '#b8b0c1', fontSize: 14, fontWeight: '700' }, webDrivingFacts: { position: 'absolute', left: '53%', top: 18, flexDirection: 'row', gap: 22 }, webFactValue: { color: '#f4eff7', fontSize: 14, fontWeight: '900' }, webFactLabel: { color: '#80788b', fontSize: 8, marginTop: 2 },
+  webHourlyChart: { position: 'absolute', left: 14, right: 77, bottom: 28, height: 58, flexDirection: 'row', alignItems: 'flex-end', gap: 3, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#393049' }, webHourlyBar: { flex: 1, minHeight: 3, borderTopLeftRadius: 2, borderTopRightRadius: 2, backgroundColor: '#d74483', shadowColor: '#ff4b72', shadowOpacity: 0.5, shadowRadius: 4 }, webChartAxis: { position: 'absolute', left: 14, right: 76, bottom: 11, flexDirection: 'row', justifyContent: 'space-between' }, webChartAxisText: { color: '#6f6779', fontSize: 5.5, fontWeight: '700' },
+  webScoreRing: { position: 'absolute', right: 10, bottom: 24, width: 60, height: 60, borderRadius: 30, padding: 5, borderWidth: 5, borderColor: '#ff694f', shadowColor: '#ff694f', shadowOpacity: 0.4, shadowRadius: 8 }, webScoreRingInner: { flex: 1, borderRadius: 25, backgroundColor: '#160e21', alignItems: 'center', justifyContent: 'center' }, webScoreIcon: { color: '#ff7a58', fontSize: 10, fontWeight: '900' }, webScoreValue: { color: '#a25cff', fontSize: 14, fontWeight: '900' }, webScoreLabel: { color: '#777081', fontSize: 5, fontWeight: '900', letterSpacing: 0.8 },
+  webRecorderStrip: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, borderRadius: 16, borderWidth: 1, borderColor: '#442c58', backgroundColor: '#0d0a18' }, webRecorderBeacon: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#9b7cff', shadowOpacity: 0.7, shadowRadius: 8 }, webRecorderBeaconCore: { width: 9, height: 9, borderRadius: 5 }, webRecorderTitle: { color: '#eee8f4', fontSize: 12, fontWeight: '900' }, webRecorderDetail: { color: '#847b8e', fontSize: 9, lineHeight: 13, marginTop: 3 }, webRecorderChevron: { color: '#8f72b5', fontSize: 28, lineHeight: 30 },
+  webActions: { height: 96, flexDirection: 'row', gap: 6 }, webAction: { flex: 1, minWidth: 0, overflow: 'hidden', borderRadius: 15, borderWidth: 1, padding: 8, alignItems: 'center', justifyContent: 'flex-end' }, webActionGlow: { position: 'absolute', width: 74, height: 74, borderRadius: 37, top: -47, opacity: 0.28, shadowOpacity: 0.8, shadowRadius: 16 }, webActionSymbol: { fontSize: 22, fontWeight: '900', marginBottom: 8, textShadowColor: '#000', textShadowRadius: 4 }, webActionTitle: { color: '#f3edf6', fontSize: 10, fontWeight: '900' }, webActionDetail: { color: '#918899', fontSize: 6.5, marginTop: 2 },
+  webBottomGrid: { minHeight: 200, flexDirection: 'row', gap: 7 }, webJourneysPanel: { flex: 1.45, overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#4b2d6566', backgroundColor: '#0c0918' }, webHealthPanel: { flex: 1, overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#4b2d6566', backgroundColor: '#0c0918' }, webPanelHeader: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 11 }, webPanelTitle: { color: '#ff5969', fontSize: 7, fontWeight: '900', letterSpacing: 0.9 }, webPanelAction: { color: '#91889b', fontSize: 7, fontWeight: '700' }, webPanelEmpty: { color: '#81798a', fontSize: 9, lineHeight: 14, padding: 12 },
+  webJourneyRow: { minHeight: 79, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#382643' }, webPlaceIcon: { width: 27, height: 27, borderRadius: 14, backgroundColor: '#481b33', alignItems: 'center', justifyContent: 'center' }, webJourneyOrigin: { color: '#8d8298', fontSize: 6.5 }, webJourneyDestination: { color: '#f0eaf3', fontSize: 9, fontWeight: '900', marginTop: 2 }, webJourneyMeta: { color: '#756c7e', fontSize: 6.5, marginTop: 3 }, webRouteThumb: { width: 45, height: 34, borderRadius: 6, backgroundColor: '#0a0a1c', borderWidth: 1, borderColor: '#35264e', overflow: 'hidden' }, webRouteThumbLine: { position: 'absolute', width: 42, height: 2, borderRadius: 1, backgroundColor: '#ff694f', left: 2, top: 17, transform: [{ rotate: '-18deg' }], shadowColor: '#ff4e60', shadowOpacity: 1, shadowRadius: 4 }, webRouteThumbStart: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#9746f5', left: 3, top: 21 }, webRouteThumbEnd: { position: 'absolute', width: 5, height: 5, borderRadius: 3, backgroundColor: '#ffc2af', right: 2, top: 9 },
+  webCompactHealth: { flex: 1, minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#382643' }, webServiceIcon: { width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, webServiceIconText: { color: '#edf8ff', fontSize: 9, fontWeight: '900' }, webServiceName: { color: '#f0eaf4', fontSize: 8, fontWeight: '900' }, webServiceDetail: { color: '#81788a', fontSize: 6.5, marginTop: 2 }, webHealthCheck: { width: 17, height: 17, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, webHealthCheckText: { color: '#0d0920', fontSize: 8, fontWeight: '900' },
+  webWeekCard: { minHeight: 225, borderRadius: 18, borderWidth: 1, borderColor: '#51336a77', backgroundColor: '#0c0918', padding: 13 }, webWeekSubtitle: { color: '#f0eaf5', fontSize: 14, fontWeight: '900', marginTop: 4 }, webWeekChart: { height: 96, flexDirection: 'row', alignItems: 'flex-end', gap: 10, marginTop: 10 }, webWeekColumn: { flex: 1, height: '100%', alignItems: 'center', gap: 5 }, webWeekTrack: { width: 15, flex: 1, borderRadius: 8, backgroundColor: '#171221', overflow: 'hidden', justifyContent: 'flex-end' }, webWeekBar: { width: '100%', minHeight: 5, borderRadius: 8, backgroundColor: '#8554e6', shadowColor: '#9d63ff', shadowOpacity: 0.8, shadowRadius: 6 }, webWeekDay: { color: '#6d6475', fontSize: 7, fontWeight: '900' }, webWeekStats: { minHeight: 47, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, paddingTop: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#392943' }, webWeekStatValue: { color: '#f8f2fb', fontSize: 13, fontWeight: '900' }, webWeekStatLabel: { color: '#756c7e', fontSize: 5.5, fontWeight: '900', letterSpacing: 0.7, marginTop: 3 },
+  webAllTimeRail: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: '#4c305f66', backgroundColor: '#100a1c' }, webAllTimeKicker: { color: '#ff6b67', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, webAllTimeTitle: { color: '#f4eef8', fontSize: 15, fontWeight: '900', marginTop: 4 }, webAllTimeMetric: { flex: 1, alignItems: 'flex-end' }, webAllTimeMetricValue: { color: '#f7f1fb', fontSize: 13, fontWeight: '900' }, webAllTimeMetricLabel: { color: '#716878', fontSize: 5.5, fontWeight: '900', letterSpacing: 0.6, marginTop: 3 }, webQueueNote: { color: '#ffbb73', fontSize: 9, textAlign: 'center', padding: 8 },
   memoriesPage: { paddingTop: 24, paddingBottom: 38, gap: 16 },
   memoryPageHeader: { marginHorizontal: 20 },
   memorySectionHeader: { marginHorizontal: 20, marginTop: 5, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }, memoryLevel: { color: '#a88aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8 }, memorySectionTitle: { color: '#f5f0fb', fontSize: 19, fontWeight: '900', marginTop: 4 }, memoryHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, memoryHeaderAction: { color: '#ff8767', fontSize: 11, fontWeight: '900' },
   memoryCarouselContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 }, memoryHeroCard: { height: 244, borderRadius: 26, overflow: 'hidden', backgroundColor: '#14101e', borderWidth: 1, borderColor: '#4c375d', padding: 20, justifyContent: 'flex-end', shadowColor: '#9b7cff', shadowOpacity: 0.25, shadowRadius: 18 }, memoryEmptyHero: { marginHorizontal: 20 }, memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 100, bottom: 0, backgroundColor: '#09071099' }, memoryHeroKicker: { color: '#ff9b7c', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, memoryHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 34, fontWeight: '900', marginTop: 7, letterSpacing: -0.7 }, memoryHeroMeta: { color: '#c2b7ca', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDots: { minHeight: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }, memoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#403748' }, memoryDotActive: { width: 24, backgroundColor: '#ff795b' },
   memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' }, memoryArtworkGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#8f3957', opacity: 0.52, left: '50%', marginLeft: -105, top: -78, shadowColor: '#ff7159', shadowOpacity: 0.8, shadowRadius: 30 }, memoryArtworkMoon: { position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: '#ff8463', left: '50%', marginLeft: -29, top: 35, shadowColor: '#ff8463', shadowOpacity: 1, shadowRadius: 20 }, memoryArtworkLine: { position: 'absolute', width: 3, height: 185, backgroundColor: '#9d75ff', top: 80, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, memoryArtworkLineLeft: { left: '50%', marginLeft: -71, transform: [{ rotate: '31deg' }] }, memoryArtworkLineRight: { right: '50%', marginRight: -71, transform: [{ rotate: '-31deg' }] }, memoryArtworkDashOne: { position: 'absolute', width: 3, height: 12, backgroundColor: '#ffd0c4', left: '50%', top: 103 }, memoryArtworkDashTwo: { position: 'absolute', width: 5, height: 24, backgroundColor: '#ff8a68', left: '50%', marginLeft: -1, top: 132 }, memoryArtworkDashThree: { position: 'absolute', width: 7, height: 45, backgroundColor: '#ff795b', left: '50%', marginLeft: -2, top: 180 },
   memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, marginTop: 3 }, editorActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, editorCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 46, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
+  photoEditorHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, photoEditorHelp: { color: '#8e8497', fontSize: 10, lineHeight: 15, marginTop: 4 }, photoAddButton: { minHeight: 36, borderRadius: 999, backgroundColor: '#281b39', borderWidth: 1, borderColor: '#684b8c', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, photoAddDisabled: { opacity: 0.42 }, photoAddText: { color: '#c5a5ff', fontSize: 9, fontWeight: '900' }, photoSaveFirst: { color: '#ffad7f', fontSize: 10, lineHeight: 14 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '31%', aspectRatio: 0.86, borderRadius: 14, overflow: 'visible', borderWidth: 2, borderColor: 'transparent' }, photoTileSelected: { borderColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.4, shadowRadius: 8 }, photoTileImage: { width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }, photoTileShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 38, backgroundColor: '#08060bbb' }, photoTileLabel: { position: 'absolute', left: 7, right: 7, bottom: 8, color: '#fff5fb', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 }, photoRemove: { position: 'absolute', right: -7, top: -7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#32151b', borderWidth: 1, borderColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, photoRemoveText: { color: '#ff9c89', fontSize: 18, lineHeight: 20, fontWeight: '700' }, photoLoading: { backgroundColor: '#1b1524', alignItems: 'center', justifyContent: 'center' }, photoEmpty: { minHeight: 72, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3b3148', backgroundColor: '#0c0a11', padding: 12, justifyContent: 'center' }, photoEmptyTitle: { color: '#d3c6dc', fontSize: 11, fontWeight: '800' }, photoEmptyBody: { color: '#7f7488', fontSize: 9, lineHeight: 14, marginTop: 4 },
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
   memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionArtworkOrb: { position: 'absolute', width: 42, height: 42, borderRadius: 21, opacity: 0.65, right: -8, top: -8, shadowOpacity: 0.8, shadowRadius: 10 }, collectionArtworkRoute: { position: 'absolute', width: 58, height: 3, borderRadius: 2, left: 5, top: 39, transform: [{ rotate: '-25deg' }] }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyWrap: { marginHorizontal: 20, gap: 7 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
@@ -986,5 +1261,5 @@ const styles = StyleSheet.create({
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#131019', borderWidth: 1, borderRadius: 21, padding: 15 }, connectionTile: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#292333', borderRadius: 18, padding: 14 }, connectionIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#7e7489', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f1ecf6', fontSize: 15, fontWeight: '800', marginTop: 2 }, connectionDetail: { color: '#888091', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#938999', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#43e6ae' }, connectionAction: { backgroundColor: '#211a2c', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#b59cff', fontSize: 9, fontWeight: '900' }, changeButton: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#211a2c' }, changeButtonText: { color: '#b59cff', fontSize: 11, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#9b7cff', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#c2b3ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#918897', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#4e2831', borderRadius: 18, padding: 15 }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3c3443', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#63313a', backgroundColor: '#281318' }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29' }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47' }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { backgroundColor: '#0d0b12' }, bottomNav: { minHeight: 66, flexDirection: 'row', backgroundColor: '#0d0b12', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2a2432' }, navItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 }, navSymbol: { color: '#675f70', fontSize: 19, fontWeight: '800' }, navLabel: { color: '#675f70', fontSize: 9, fontWeight: '800' }, navActive: { color: '#a88aff' },
-  onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
+  onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
 });
