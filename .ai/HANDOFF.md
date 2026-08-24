@@ -85,14 +85,14 @@
 - Delivered through PR #118 and merged to `main` as `a722f52`. Preview OTA group `5b633082-b04c-4815-8371-111b4ab43b25` was published for iOS runtime `1.3.0`; no new native build is required.
 - Physical follow-up: open the installed preview app online, accept the downloaded-update restart prompt, and verify the compact Journey rows on Memories at normal and long route-name lengths.
 
-### Native Liquid Glass navigation pill (implemented; native build pending)
+### Native Liquid Glass navigation pill (released; physical test pending)
 
 - Replaced the full-width native bottom navigation bar with a floating four-tab pill modeled on the mobile web navigation: violet glass rim, compact icon/label grid, and a coral/orange active capsule with outline, glow, and underline.
 - Added Expo SDK 57 `expo-glass-effect` (`~57.0.1`). On iOS 26 with the required native API, the pill uses the real `UIVisualEffectView` Liquid Glass surface; unsupported iOS versions receive a deliberate dark translucent fallback without changing navigation behavior.
 - The pill floats above screen content. Home, Memories, Connections, and Recorder layouts reserve enough bottom space for safe scrolling and controls.
-- App/runtime is now `1.4.0` because this introduces a native dependency. A new EAS preview build must be installed before any 1.4.0 OTA updates can be received.
+- App/runtime is now `1.4.0` because this introduces a native dependency. EAS preview build `6541348a-c16b-4c0e-9070-1a9f87e4fcac` completed successfully from merged commit `3d2a1c1`; install page: `https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/6541348a-c16b-4c0e-9070-1a9f87e4fcac`.
 - Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; public Expo config; and `git diff --check`. Expo Doctor remains 20/21 only because of the six pre-existing SDK 57 patch mismatches.
-- Branch/worktree: `codex/mobile-liquid-glass-nav` at `C:\Users\patri\DriveOS-glass-nav`, based on `origin/main` at `61aca71`. Next steps: review, commit/push, merge after CI, create a JourneyDeck 1.4.0 EAS preview build, install it over the existing app, and physically verify the glass rendering and all four tab hit targets.
+- Delivered through PR #120 and merged to `main` as `3d2a1c1`. Next step: install the 1.4.0 preview build over the existing app without deleting it, then physically verify native glass rendering, safe-area placement, scroll clearance, active orange glow, and all four tab hit targets.
 
 ### Native modal overviews and share cards (implemented; release pending)
 
