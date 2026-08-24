@@ -102,14 +102,14 @@
 - Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check`.
 - Delivered through PR #122 and merged to `main` as `875c6eb`. Preview OTA group `dba59599-a4c4-4f1d-9865-769cad487e4c` was published for iOS runtime `1.4.0`; dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/dba59599-a4c4-4f1d-9865-769cad487e4c`. Next step: accept the in-app restart prompt, then physically verify clearer refraction and drag-through selection across all four tabs.
 
-### Native Music dashboard and balanced Liquid Glass (implemented; release pending)
+### Native Music dashboard and balanced Liquid Glass (released to preview)
 
 - Added a fifth Music destination to the draggable native navigation pill and changed the iOS surface from overly transparent `clear` glass at 20% tint to `regular` Liquid Glass at a midpoint 46% violet tint.
 - Added a cinematic native Music page modeled directly on the web Music dashboard: album-led soundtrack hero (without the excluded Now Playing widget), four archive metrics, recent selections, top artists, tour mileage, listening-time mood, cities, seven-day intensity, and weekly play bars.
 - Added narrowly recorder-authenticated `GET /api/recorder/music-dashboard`, which aggregates live listening history and journey soundtracks on the server using the phone's timezone offset. The response contains only bounded display metadata and aggregates; no credentials or raw audio are exposed. Mobile caches the last successful summary for offline viewing.
 - Track taps are provider-conditional and tested: Apple Music opens only Apple Music links/search, Last.fm opens only Spotify links/search, and Shazam/recognition-only mode has no tap action.
 - Verification passed: server typecheck/lint and 29/29 server tests; mobile typecheck; recovery 10/10; sync status 4/4; music observations/destination policy 7/7; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
-- Branch/worktree: `codex/mobile-music-dashboard` at `C:\Users\patri\DriveOS-mobile-music`, based on `origin/main` at `383944e`. No files are staged or committed. Next steps: review, commit/push, merge after CI, allow Render to deploy the new endpoint, publish an iOS preview OTA for runtime `1.4.0`, then physically verify the live page, all five drag destinations, the balanced tint, and Apple Music/Spotify handoffs.
+- Delivered through PR #124 and merged to `main` as `b35b626`. Render deployment `dep-da6bfccs728c73f713ug` is live on that commit, `/readyz` returns 200, and the deployment produced no error logs. Preview OTA group `fb35a19c-7013-4ec4-ba7c-3444bf4a07e0` was published for iOS runtime `1.4.0`; dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/fb35a19c-7013-4ec4-ba7c-3444bf4a07e0`. Physical verification is still pending for the live Music page, all five drag destinations, the balanced tint, and Apple Music/Spotify handoffs.
 
 ### Native modal overviews and share cards (implemented; release pending)
 
