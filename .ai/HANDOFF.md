@@ -77,12 +77,13 @@
 - Delivered through PR #117 and merged to `main` as `3ecc062`. Render deploy `dep-da69a83ncjis73d1n360` succeeded, and preview OTA group `c88499be-6e64-432d-be3b-9cafc769bcae` was published for runtime `1.3.0`.
 - Physical iPhone verification is complete: the user confirmed location-name saving, persistence, and reuse. The MacinCloud workflow has been retired; use a local Apple Silicon Mac Simulator when available or the established physical-iPhone preview/OTA flow.
 
-### Compact Memories journey list (implemented; release pending)
+### Compact Memories journey list (released to preview)
 
 - The Memories page now renders journeys as compact rows so substantially more recent drives fit on one screen. The compact presentation keeps the route, distance, duration, artwork, song/artist, and song count while removing the vehicle label and tightening typography, spacing, and dividers.
 - The compact style is scoped only to the Memories journey list; Home and other Journey cards retain their richer presentation.
 - Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warning only).
-- Branch/worktree: `codex/mobile-compact-journeys` at `C:\Users\patri\DriveOS-compact-journeys`, based on `origin/main` at `3ecc062`. This is JavaScript/style-only and can be delivered to the installed 1.3.0 preview app by OTA without a new native build.
+- Delivered through PR #118 and merged to `main` as `a722f52`. Preview OTA group `5b633082-b04c-4815-8371-111b4ab43b25` was published for iOS runtime `1.3.0`; no new native build is required.
+- Physical follow-up: open the installed preview app online, accept the downloaded-update restart prompt, and verify the compact Journey rows on Memories at normal and long route-name lengths.
 
 ### Native modal overviews and share cards (implemented; release pending)
 
