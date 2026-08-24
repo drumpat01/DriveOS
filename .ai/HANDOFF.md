@@ -68,14 +68,21 @@
 
 ## Release State and Next Steps
 
-### Mobile journey location names (implemented; pending Git review)
+### Mobile journey location names (released and verified)
 
 - Added an **Edit locations** action beside **Create share card** in the native Journey overview modal. Users can name the start and destination (for example Home, Work, or School), cancel edits, or clear a name to restore the original location.
 - Location names use the existing shared `place_aliases` store, so a name is reused when the same place appears in other journeys. Generic phone-recorder locations receive coordinate-derived keys so unrelated `Recorder location` endpoints are not accidentally renamed together.
 - Added a narrowly authenticated Recorder mobile alias endpoint; responses preserve raw locations and return resolved display names plus stable alias keys. Existing cached mobile journey records remain backward compatible.
 - Verification passed: server typecheck/lint and 29/29 server tests; mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
-- Branch/worktree: `codex/mobile-journey-location-edit` at `C:\Users\patri\DriveOS-journey-location-edit`, based on `origin/main` at `328918f`. The generated iOS export used for validation has been removed.
-- Feature commit `716c25a` is pushed to `origin/codex/mobile-journey-location-edit`. The MacinCloud workflow has been retired; use a local Apple Silicon Mac Simulator when available or validate the native UI through the established iPhone preview/OTA flow. Saving names against the hosted JourneyDeck server requires the server-side endpoint to be deployed first.
+- Delivered through PR #117 and merged to `main` as `3ecc062`. Render deploy `dep-da69a83ncjis73d1n360` succeeded, and preview OTA group `c88499be-6e64-432d-be3b-9cafc769bcae` was published for runtime `1.3.0`.
+- Physical iPhone verification is complete: the user confirmed location-name saving, persistence, and reuse. The MacinCloud workflow has been retired; use a local Apple Silicon Mac Simulator when available or the established physical-iPhone preview/OTA flow.
+
+### Compact Memories journey list (implemented; release pending)
+
+- The Memories page now renders journeys as compact rows so substantially more recent drives fit on one screen. The compact presentation keeps the route, distance, duration, artwork, song/artist, and song count while removing the vehicle label and tightening typography, spacing, and dividers.
+- The compact style is scoped only to the Memories journey list; Home and other Journey cards retain their richer presentation.
+- Verification passed: mobile typecheck; recovery 10/10; sync status 4/4; music observations 6/6; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warning only).
+- Branch/worktree: `codex/mobile-compact-journeys` at `C:\Users\patri\DriveOS-compact-journeys`, based on `origin/main` at `3ecc062`. This is JavaScript/style-only and can be delivered to the installed 1.3.0 preview app by OTA without a new native build.
 
 ### Native modal overviews and share cards (implemented; release pending)
 
