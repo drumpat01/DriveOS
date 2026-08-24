@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { queryTurso } from "./turso-client.js";
 
 type Statement = { sql: string; args?: unknown[] };
@@ -36,6 +36,28 @@ export type RecorderMusicObservation = {
   externalUrl?: string | null;
   confidence?: number | null;
 };
+
+export type RecorderJourneyCollection = {
+  id: string;
+  name: string;
+  description: string;
+  driveIds: string[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+};
+
+export type RecorderJourneyMemory = {
+  id: string;
+  name: string;
+  notes: string;
+  artworkKey: string;
+  collectionIds: string[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+};
+
+export type RecorderCollectionInput = { id?: string | null; name: string; description?: string | null; driveIds: string[] };
+export type RecorderMemoryInput = { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; collectionIds: string[] };
 
 type JourneyRow = {
   id: string;
@@ -179,6 +201,22 @@ function preferenceDefaults(deviceId: string): RecorderProviderPreferences {
   };
 }
 
+const memoryArtworkKeys = new Set(["everyday-life", "weekend-escapes", "summer-2026", "sunday-drives", "road-trips", "texas-weekends", "golden-hour-drives"]);
+const collectionIdPattern = /^collection_[a-f0-9]{32}$/;
+const memoryIdPattern = /^memory_[a-f0-9]{32}$/;
+
+function uniqueIdentifiers(values: unknown, maximum: number, label: string) {
+  if (!Array.isArray(values)) throw new Error(`${label} must be a list.`);
+  const result: string[] = [], seen = new Set<string>();
+  for (const value of values) {
+    const id = boundedText(value, 160);
+    if (!id) throw new Error(`${label} must not contain empty IDs.`);
+    if (!seen.has(id)) { seen.add(id); result.push(id); }
+  }
+  if (result.length > maximum) throw new Error(`${label} may contain at most ${maximum} items.`);
+  return result;
+}
+
 function normalizedPreferences(deviceId: string, value: unknown, updatedAt: string | null): RecorderProviderPreferences {
   const defaults = preferenceDefaults(deviceId);
   if (!value || typeof value !== "object" || Array.isArray(value)) return defaults;
@@ -293,6 +331,83 @@ export class RecorderMobileStore {
   async journeys(limit: number, cursor = "") {
     const rows = await this.journeyRows(limit, cursor), page = rows.slice(0, limit);
     return { items: await this.journeySummaries(page), nextCursor: rows.length > limit && page.length ? encodeCursor(page.at(-1)!) : null };
+  }
+
+  async memoriesCatalog() {
+    const [collectionRows, collectionDriveRows, memoryRows, memoryCollectionRows] = await Promise.all([
+      this.read({ sql: "SELECT id,name,description,created_at_utc,updated_at_utc FROM journey_collections WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT jcd.collection_id,jcd.drive_id FROM journey_collection_drives jcd JOIN journey_collections jc ON jc.id=jcd.collection_id WHERE jc.household_id=? ORDER BY jcd.collection_id,jcd.sort_order,jcd.drive_id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT id,name,notes,artwork_key,created_at_utc,updated_at_utc FROM memories WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
+      this.read({ sql: "SELECT mc.memory_id,mc.collection_id FROM memory_collections mc JOIN memories m ON m.id=mc.memory_id WHERE m.household_id=? ORDER BY mc.memory_id,mc.sort_order,mc.collection_id;", args: [this.householdId] })
+    ]);
+    const drives = new Map<string, string[]>(), collections = new Map<string, string[]>();
+    for (const row of collectionDriveRows) drives.set(String(row.collection_id), [...(drives.get(String(row.collection_id)) || []), String(row.drive_id)]);
+    for (const row of memoryCollectionRows) collections.set(String(row.memory_id), [...(collections.get(String(row.memory_id)) || []), String(row.collection_id)]);
+    return {
+      collections: collectionRows.map(row => ({
+        id: String(row.id), name: boundedText(row.name, 80), description: boundedText(row.description, 500),
+        driveIds: drives.get(String(row.id)) || [], createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
+      } satisfies RecorderJourneyCollection)),
+      memories: memoryRows.map(row => ({
+        id: String(row.id), name: boundedText(row.name, 80), notes: boundedText(row.notes, 1200), artworkKey: boundedText(row.artwork_key, 40) || "summer-2026",
+        collectionIds: collections.get(String(row.id)) || [], createdAtUtc: String(row.created_at_utc), updatedAtUtc: String(row.updated_at_utc)
+      } satisfies RecorderJourneyMemory))
+    };
+  }
+
+  async saveCollection(input: RecorderCollectionInput) {
+    const name = boundedText(input.name, 81), description = boundedText(input.description, 501), driveIds = uniqueIdentifiers(input.driveIds, 100, "Collection journeys");
+    if (!name) throw new Error("Collection name is required.");
+    if (name.length > 80) throw new Error("Collection name must be 80 characters or fewer.");
+    if (description.length > 500) throw new Error("Collection description must be 500 characters or fewer.");
+    const id = boundedText(input.id, 80) || `collection_${randomUUID().replaceAll("-", "")}`;
+    if (!collectionIdPattern.test(id)) throw new Error("Collection ID is invalid.");
+    const existing = await this.read({ sql: "SELECT created_at_utc FROM journey_collections WHERE id=? AND household_id=? LIMIT 1;", args: [id, this.householdId] });
+    if (input.id && !existing.length) throw new Error("Collection was not found.");
+    if (driveIds.length) {
+      const placeholders = driveIds.map(() => "?").join(",");
+      const rows = await this.read({ sql: `SELECT id FROM drives WHERE household_id=? AND id IN (${placeholders});`, args: [this.householdId, ...driveIds] });
+      if (rows.length !== driveIds.length) throw new Error("One or more collection journeys no longer exist.");
+    }
+    const now = new Date().toISOString(), createdAt = existing.length ? String(existing[0].created_at_utc) : now;
+    const statements: Statement[] = [
+      existing.length
+        ? { sql: "UPDATE journey_collections SET name=?,description=?,updated_at_utc=? WHERE id=? AND household_id=?;", args: [name, description, now, id, this.householdId] }
+        : { sql: "INSERT INTO journey_collections(id,household_id,name,description,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?);", args: [id, this.householdId, name, description, createdAt, now] },
+      { sql: "DELETE FROM journey_collection_drives WHERE collection_id=?;", args: [id] },
+      ...driveIds.map((driveId, index) => ({ sql: "INSERT INTO journey_collection_drives(collection_id,drive_id,sort_order,added_at_utc) VALUES(?,?,?,?);", args: [id, driveId, index, now] }))
+    ];
+    await this.write(statements);
+    return { id, name, description, driveIds, createdAtUtc: createdAt, updatedAtUtc: now } satisfies RecorderJourneyCollection;
+  }
+
+  async saveMemory(input: RecorderMemoryInput) {
+    const name = boundedText(input.name, 81), notes = boundedText(input.notes, 1201), collectionIds = uniqueIdentifiers(input.collectionIds, 50, "Memory collections");
+    const artworkKey = boundedText(input.artworkKey, 40) || "summer-2026";
+    if (!name) throw new Error("Memory name is required.");
+    if (name.length > 80) throw new Error("Memory name must be 80 characters or fewer.");
+    if (notes.length > 1200) throw new Error("Memory notes must be 1200 characters or fewer.");
+    if (collectionIds.length < 2) throw new Error("A memory must contain at least two collections.");
+    if (!memoryArtworkKeys.has(artworkKey)) throw new Error("Memory artwork is invalid.");
+    if (collectionIds.some(id => !collectionIdPattern.test(id))) throw new Error("Memory collection ID is invalid.");
+    const id = boundedText(input.id, 80) || `memory_${randomUUID().replaceAll("-", "")}`;
+    if (!memoryIdPattern.test(id)) throw new Error("Memory ID is invalid.");
+    const [existing, available] = await Promise.all([
+      this.read({ sql: "SELECT created_at_utc FROM memories WHERE id=? AND household_id=? LIMIT 1;", args: [id, this.householdId] }),
+      this.read({ sql: `SELECT id FROM journey_collections WHERE household_id=? AND id IN (${collectionIds.map(() => "?").join(",")});`, args: [this.householdId, ...collectionIds] })
+    ]);
+    if (input.id && !existing.length) throw new Error("Memory was not found.");
+    if (available.length !== collectionIds.length) throw new Error("One or more memory collections no longer exist.");
+    const now = new Date().toISOString(), createdAt = existing.length ? String(existing[0].created_at_utc) : now;
+    const statements: Statement[] = [
+      existing.length
+        ? { sql: "UPDATE memories SET name=?,notes=?,artwork_key=?,updated_at_utc=? WHERE id=? AND household_id=?;", args: [name, notes, artworkKey, now, id, this.householdId] }
+        : { sql: "INSERT INTO memories(id,household_id,name,notes,artwork_key,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?);", args: [id, this.householdId, name, notes, artworkKey, createdAt, now] },
+      { sql: "DELETE FROM memory_collections WHERE memory_id=?;", args: [id] },
+      ...collectionIds.map((collectionId, index) => ({ sql: "INSERT INTO memory_collections(memory_id,collection_id,sort_order,added_at_utc) VALUES(?,?,?,?);", args: [id, collectionId, index, now] }))
+    ];
+    await this.write(statements);
+    return { id, name, notes, artworkKey, collectionIds, createdAtUtc: createdAt, updatedAtUtc: now } satisfies RecorderJourneyMemory;
   }
 
   async journey(id: string) {
