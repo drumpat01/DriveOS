@@ -11,6 +11,7 @@ import { activeSession, getSession, queueMusicObservation } from './storage';
 const APPLE_SAMPLE_INTERVAL_MS = 20_000;
 const lastAppleSampleAttempt = new Map<string, number>();
 let appleSampleInFlight: Promise<MusicCaptureResult> | null = null;
+let shazamInFlight: Promise<MusicCaptureResult> | null = null;
 
 export type MusicCaptureResult = {
   status: 'queued' | 'duplicate' | 'no_match' | 'skipped' | 'unavailable';
@@ -56,12 +57,17 @@ export async function recognizeAndQueueActiveSessionMusic(durationMilliseconds =
     throw new Error('Choose automatic recognition in Music Connections first.');
   }
   if (!isJourneyDeckMusicNativeAvailable) throw new Error('Automatic recognition requires a new native JourneyDeck build.');
+  if (shazamInFlight) return { status: 'skipped' };
 
-  const result = await recognizeMusic(durationMilliseconds);
-  if (result.status === 'no_match') return { status: 'no_match' };
-  const observation = shazamMatchObservation(result, session.started_at);
-  if (!observation || !getSession(session.id)) return { status: 'no_match' };
-  return { status: queueMusicObservation(session.id, observation) ? 'queued' : 'duplicate', observation };
+  shazamInFlight = (async () => {
+    const result = await recognizeMusic(durationMilliseconds);
+    if (result.status === 'no_match') return { status: 'no_match' };
+    const observation = shazamMatchObservation(result, session.started_at);
+    if (!observation || !getSession(session.id)) return { status: 'no_match' };
+    return { status: queueMusicObservation(session.id, observation) ? 'queued' : 'duplicate', observation };
+  })();
+  try { return await shazamInFlight; }
+  finally { shazamInFlight = null; }
 }
 
 export async function captureAppleMusicHistoryForSession(sessionId: string) {

@@ -305,14 +305,6 @@ function RecorderScreen() {
     ]);
   };
 
-  const identifyMusic = () => withBusy(async () => {
-    const result = await recognizeAndQueueActiveSessionMusic(10_000, { allowAdHoc: true });
-    if (connection) void flushAllQueuedMusicBestEffort(connection);
-    if (result.status === 'queued' && result.observation) setNotice(`Identified “${result.observation.track}” by ${result.observation.artist}.`);
-    else if (result.status === 'duplicate') setNotice('That song is already in this journey soundtrack.');
-    else setNotice('No song matched this time. Try again with the music a little louder.');
-  }, 'Listening for music…');
-
   const syncNow = () => withBusy(async () => {
     if (!connection || !summary) return;
     setSyncStage('syncing');
@@ -365,7 +357,6 @@ function RecorderScreen() {
               {!active && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
-              {summary?.status === 'recording' && <SecondaryButton label="Identify music with Shazam" onPress={identifyMusic} disabled={busy} />}
               {((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Sync saved data'} onPress={syncNow} disabled={busy} />}
               {summary?.status === 'finishing' && (summary?.queuedCount ?? 0) === 0 && (summary?.musicQueuedCount ?? 0) === 0 && <PrimaryButton label="Finish & save" onPress={syncNow} disabled={busy} />}
             </>

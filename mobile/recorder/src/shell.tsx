@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
+  ActivityIndicator, Alert, Animated, AppState, Image, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 
 import {
-  appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyDetail, type JourneySummary, type ProviderPreferences,
+  appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyCollection, type JourneyDetail,
+  type JourneyMemory, type JourneySummary, type MemoriesCatalog, type ProviderPreferences,
 } from './app-data';
 import {
   loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
@@ -73,10 +75,13 @@ function blankDashboard(): AppDashboard {
     recentJourneys: [],
     providerPreferences: null,
     recorder: { connected: false, state: 'ready', queuedPoints: 0, queuedMusic: 0, capturedPoints: 0 },
+    weeklyJourneys: [],
   };
 }
 
 export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
+  const updateState = Updates.useUpdates();
+  const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [editingProvider, setEditingProvider] = useState(false);
@@ -93,8 +98,25 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const [journeys, setJourneys] = useState<LoadState<JourneySummary[]>>({ status: 'loading', data: [] });
   const [journeyCursor, setJourneyCursor] = useState<string | null>(null);
   const [journeysLoadingMore, setJourneysLoadingMore] = useState(false);
+  const [memories, setMemories] = useState<LoadState<MemoriesCatalog>>({ status: 'loading', data: { memories: [], collections: [] } });
   const [journeyDetail, setJourneyDetail] = useState<LoadState<JourneyDetail | null>>({ status: 'ready', data: null });
   const preferenceSyncAttempt = useRef('');
+
+  useEffect(() => {
+    if (!Updates.isEnabled || !updateState.isUpdatePending) return;
+    if (dashboard.data.recorder.state === 'recording' || dashboard.data.recorder.state === 'finishing') return;
+    const updateId = updateState.downloadedUpdate?.updateId ?? 'pending-update';
+    if (announcedUpdate.current === updateId) return;
+    announcedUpdate.current = updateId;
+    Alert.alert(
+      'JourneyDeck update ready',
+      'A new version has finished downloading. Restart JourneyDeck now to use it?',
+      [
+        { text: 'Later', style: 'cancel' },
+        { text: 'Restart now', onPress: () => void Updates.reloadAsync().catch(() => Alert.alert('Restart JourneyDeck', 'Close and reopen JourneyDeck to finish applying the update.')) },
+      ],
+    );
+  }, [dashboard.data.recorder.state, updateState.downloadedUpdate?.updateId, updateState.isUpdatePending]);
 
   useEffect(() => {
     let alive = true;
@@ -125,6 +147,12 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     }
   }, []);
 
+  const refreshMemories = useCallback(async () => {
+    setMemories(current => ({ ...current, status: 'loading', message: undefined }));
+    try { setMemories({ status: 'ready', data: await appDataClient.memories() }); }
+    catch { setMemories(current => ({ status: 'error', data: current.data, message: 'Memories could not refresh. Your saved journeys are still safe.' })); }
+  }, []);
+
   const loadMoreJourneys = useCallback(async () => {
     if (!journeyCursor || journeysLoadingMore) return;
     setJourneysLoadingMore(true);
@@ -143,7 +171,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, [journeyCursor, journeysLoadingMore]);
 
   useEffect(() => { if (tab === 'home' || tab === 'connections') void refreshDashboard(); }, [refreshDashboard, tab]);
-  useEffect(() => { if (tab === 'journeys') void refreshJourneys(); }, [refreshJourneys, tab]);
+  useEffect(() => { if (tab === 'journeys') { void refreshJourneys(); void refreshMemories(); } }, [refreshJourneys, refreshMemories, tab]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
@@ -304,10 +332,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
-        {activePreferences && tab === 'home' && <HomeScreen state={dashboard} onRecord={() => openTab('record')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
+        {activePreferences && tab === 'home' && <HomeScreen state={dashboard} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
         {activePreferences && tab === 'journeys' && (selectedJourneyId
           ? <JourneyDetailScreen state={journeyDetail} onBack={() => setSelectedJourneyId(null)} onRetry={() => setDetailRefresh(value => value + 1)} />
-          : <JourneysScreen state={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={refreshJourneys} onLoadMore={() => void loadMoreJourneys()} />)}
+          : <MemoriesScreen catalog={memories} journeys={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); }} onLoadMore={() => void loadMoreJourneys()} />)}
         {activePreferences && tab === 'connections' && <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences.provider!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
         <View
           key="persistent-recorder-engine"
@@ -334,7 +362,7 @@ function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvi
   const initialIndex = Math.max(0, providerOptions.findIndex(option => option.id === initial));
   const [index, setIndex] = useState(initialIndex);
   const [saving, setSaving] = useState(false);
-  const carousel = useRef<ScrollView>(null);
+  const carousel = useRef<any>(null);
   const selected = providerOptions[index];
 
   const finish = async () => {
@@ -395,16 +423,30 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ state, onRecord, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; onRecord: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+function HomeScreen({ state, onRecord, onJourneys, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; onRecord: () => void; onJourneys: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
   const { data } = state;
   const week = data.summary.last7Days;
+  const allTime = data.summary.allTime;
   const latestTrack = data.latestJourney?.soundtrackPreview?.[0];
+  const todayJourneys = data.recentJourneys.filter(journey => isToday(journey.startedAt));
+  const todayMiles = todayJourneys.reduce((sum, journey) => sum + journey.miles, 0);
+  const todayMinutes = todayJourneys.reduce((sum, journey) => sum + journey.durationMinutes, 0);
+  const recentJourneys = data.recentJourneys.slice(0, 2);
+  const activity = weeklyActivity(data.weeklyJourneys);
+  const longestRecent = data.recentJourneys.reduce<JourneySummary | null>((longest, journey) => !longest || journey.miles > longest.miles ? journey : longest, null);
+  const soundtrackedRecent = data.recentJourneys.filter(journey => journey.songCount > 0).length;
+  const connections = data.providerPreferences?.connections ?? defaultConnections;
+  const selectedProvider = providerOptions.find(option => toApiMusicProvider(option.id) === data.providerPreferences?.musicProvider);
+  const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || connections.lastFm === 'connected';
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
         <BrandHeader />
         {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
         <View style={styles.heroCard}>
+          <View style={styles.heroGlowOrange} />
+          <View style={styles.heroGlowPurple} />
+          <OpenRoadArtwork />
           <Text style={styles.heroEyebrow}>YOUR WEEK IN MOTION</Text>
           <Text style={styles.heroTitle}>{week.journeyCount ? `${week.journeyCount} ${week.journeyCount === 1 ? 'journey' : 'journeys'}` : 'Your road is waiting'}</Text>
           <Text style={styles.heroBody}>{week.journeyCount ? `${formatMiles(week.miles)} with ${week.songCount} soundtrack ${week.songCount === 1 ? 'song' : 'songs'}.` : 'Record a drive and JourneyDeck will bring its route, vehicle, and music together.'}</Text>
@@ -413,6 +455,48 @@ function HomeScreen({ state, onRecord, onConnections, onJourney, onRefresh }: { 
             <Metric value={formatDuration(week.minutes)} label="DRIVE TIME" />
             <Metric value={String(week.songCount)} label="SONGS" />
           </View>
+        </View>
+
+        <View style={styles.pulseCard}>
+          <View style={styles.pulseHeader}><View><Text style={styles.pulseKicker}>JOURNEY PULSE</Text><Text style={styles.pulseTitle}>Seven days on the road</Text></View><View style={styles.livePill}><View style={styles.liveDot} /><Text style={styles.liveText}>LIVE</Text></View></View>
+          <View style={styles.pulseChart}>{activity.map(day => <View key={day.key} style={styles.pulseColumn}><View style={styles.pulseTrack}><View style={[styles.pulseBar, { height: `${Math.max(7, day.ratio * 100)}%` }]}><View style={styles.pulseBarCap} /></View></View><Text style={[styles.pulseDay, day.isToday && styles.pulseDayToday]}>{day.label}</Text></View>)}</View>
+          <View style={styles.pulseFooter}><Text style={styles.pulseFooterValue}>{formatMiles(week.miles)}</Text><Text style={styles.pulseFooterLabel}>across {week.journeyCount} journeys this week</Text></View>
+        </View>
+
+        <View style={styles.recorderHealth}>
+          <View style={[styles.healthDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
+          <View style={styles.flex}><Text style={styles.healthTitle}>{recorderTitle(data.recorder.state, data.recorder.connected)}</Text><Text style={styles.healthBody}>{recorderDetail(data.recorder.state, data.recorder.queuedPoints, data.recorder.queuedMusic)}</Text></View>
+          <Text style={styles.healthPoints}>{data.recorder.capturedPoints || ''}</Text>
+        </View>
+        <PrimaryAction label={data.recorder.state === 'recording' ? 'Open active recording' : 'Start a journey'} onPress={onRecord} />
+
+        <SectionHeading title="Today at a glance" />
+        <View style={styles.dashboardGrid}>
+          <DashboardStatCard symbol="↗" kicker="TODAY'S DRIVING" value={todayJourneys.length ? formatMiles(todayMiles) : 'No drives'} detail={todayJourneys.length ? `${todayJourneys.length} ${todayJourneys.length === 1 ? 'journey' : 'journeys'} · ${formatDuration(todayMinutes)}` : 'Your next journey starts here'} color="#ff8a68" />
+          <DashboardStatCard symbol="⌁" kicker="ALL TIME" value={formatMiles(allTime.miles)} detail={`${allTime.journeyCount} journeys · ${formatDuration(allTime.minutes)}`} color="#a88aff" />
+        </View>
+
+        <View style={styles.insightStrip}>
+          <View style={styles.insightCard}><View style={styles.insightRoute}><View style={styles.insightRouteLine} /><View style={styles.insightRouteStart} /><View style={styles.insightRouteEnd} /></View><Text style={styles.insightKicker}>LONGEST RECENT</Text><Text style={styles.insightValue}>{longestRecent ? formatMiles(longestRecent.miles) : '—'}</Text><Text style={styles.insightDetail} numberOfLines={1}>{longestRecent ? locationPair(longestRecent) : 'Waiting for a journey'}</Text></View>
+          <View style={styles.insightCard}><View style={styles.musicRings}><View style={styles.musicRingOuter}><View style={styles.musicRingInner}><Text style={styles.musicRingNote}>♪</Text></View></View></View><Text style={styles.insightKicker}>SOUNDTRACKED</Text><Text style={styles.insightValue}>{soundtrackedRecent}</Text><Text style={styles.insightDetail}>of {data.recentJourneys.length} recent journeys</Text></View>
+        </View>
+
+        <SectionHeading title="Quick actions" />
+        <View style={styles.quickActions}>
+          <QuickAction symbol="●" title="Record" detail="Start a journey" onPress={onRecord} color="#ff7b54" />
+          <QuickAction symbol="≋" title="Journeys" detail="Open timeline" onPress={onJourneys} color="#a88aff" />
+          <QuickAction symbol="◎" title="Connect" detail="Music & vehicle" onPress={onConnections} color="#43e6ae" />
+        </View>
+
+        <SectionHeading title="Vehicle" />
+        <View style={styles.vehicleCard}>
+          <View style={styles.vehicleIcon}><Text style={styles.vehicleIconText}>T</Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.vehicleKicker}>LATEST VEHICLE CONTEXT</Text>
+            <Text style={styles.vehicleName}>{data.latestJourney?.vehicleName ?? 'JourneyDeck Recorder'}</Text>
+            <Text style={styles.vehicleDetail}>{data.latestJourney ? `Last seen on ${formatCompactDate(data.latestJourney.startedAt)} · ${formatMiles(data.latestJourney.miles)}` : 'Vehicle details will appear after your next journey.'}</Text>
+          </View>
+          <View style={[styles.connectionDot, { backgroundColor: connections.tessie === 'connected' ? '#43e6ae' : '#ffb15c' }]} />
         </View>
 
         <SectionHeading title="Road soundtrack" action="Connections" onAction={onConnections} />
@@ -425,19 +509,189 @@ function HomeScreen({ state, onRecord, onConnections, onJourney, onRefresh }: { 
           </View>
         </View>
 
-        <SectionHeading title="Latest journey" action={data.latestJourney ? 'View' : undefined} onAction={data.latestJourney ? () => onJourney(data.latestJourney!.id) : undefined} />
-        {data.latestJourney ? <JourneyCard journey={data.latestJourney} onPress={() => onJourney(data.latestJourney!.id)} /> : <EmptyCard title="No journeys yet" body="Your completed recordings will collect here with their soundtrack and vehicle context." />}
+        <SectionHeading title="Recent journeys" action={recentJourneys.length ? 'View all' : undefined} onAction={recentJourneys.length ? onJourneys : undefined} />
+        {recentJourneys.length ? recentJourneys.map(journey => <JourneyCard key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />) : <EmptyCard title="No journeys yet" body="Your completed recordings will collect here with their soundtrack and vehicle context." />}
 
-        <View style={styles.recorderHealth}>
-          <View style={[styles.healthDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
-          <View style={styles.flex}><Text style={styles.healthTitle}>{recorderTitle(data.recorder.state, data.recorder.connected)}</Text><Text style={styles.healthBody}>{recorderDetail(data.recorder.state, data.recorder.queuedPoints, data.recorder.queuedMusic)}</Text></View>
-          <Text style={styles.healthPoints}>{data.recorder.capturedPoints || ''}</Text>
+        <SectionHeading title="Data health" />
+        <View style={styles.dataHealthCard}>
+          <DashboardHealthRow label="JourneyDeck" detail={data.recorder.connected ? 'Recorder and dashboard connected' : 'This iPhone is not connected'} healthy={data.recorder.connected} />
+          <DashboardHealthRow label="Music" detail={musicConnected ? `${selectedProvider?.name ?? 'Soundtrack'} is ready` : 'Choose or reconnect a music method'} healthy={musicConnected} />
+          <DashboardHealthRow label="Tessie" detail={connections.tessie === 'connected' ? 'Vehicle context connected' : 'Server connection may need attention'} healthy={connections.tessie === 'connected'} />
+          <DashboardHealthRow label="Local queue" detail={data.recorder.queuedPoints + data.recorder.queuedMusic ? `${data.recorder.queuedPoints + data.recorder.queuedMusic} saved items waiting` : 'Everything on this iPhone is synced'} healthy={data.recorder.queuedPoints + data.recorder.queuedMusic === 0} />
         </View>
-        <PrimaryAction label={data.recorder.state === 'recording' ? 'Open active recording' : 'Start a journey'} onPress={onRecord} />
         {state.status === 'loading' && <LoadingLine label="Refreshing your dashboard…" />}
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function DashboardStatCard({ symbol, kicker, value, detail, color }: { symbol: string; kicker: string; value: string; detail: string; color: string }) {
+  return <View style={styles.dashboardStatCard}><View style={[styles.dashboardStatIcon, { backgroundColor: `${color}20` }]}><Text style={[styles.dashboardStatSymbol, { color }]}>{symbol}</Text></View><Text style={styles.dashboardStatKicker}>{kicker}</Text><Text style={styles.dashboardStatValue} numberOfLines={1}>{value}</Text><Text style={styles.dashboardStatDetail}>{detail}</Text></View>;
+}
+
+function QuickAction({ symbol, title, detail, onPress, color }: { symbol: string; title: string; detail: string; onPress: () => void; color: string }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}><Text style={[styles.quickActionSymbol, { color }]}>{symbol}</Text><Text style={styles.quickActionTitle}>{title}</Text><Text style={styles.quickActionDetail}>{detail}</Text></Pressable>;
+}
+
+function DashboardHealthRow({ label, detail, healthy }: { label: string; detail: string; healthy: boolean }) {
+  return <View style={styles.dashboardHealthRow}><View style={[styles.dashboardHealthDot, { backgroundColor: healthy ? '#43e6ae' : '#ffb15c' }]} /><View style={styles.flex}><Text style={styles.dashboardHealthLabel}>{label}</Text><Text style={styles.dashboardHealthDetail}>{detail}</Text></View><Text style={[styles.dashboardHealthState, { color: healthy ? '#43e6ae' : '#ffb15c' }]}>{healthy ? 'READY' : 'CHECK'}</Text></View>;
+}
+
+function OpenRoadArtwork() {
+  return <View style={styles.openRoad} pointerEvents="none">
+    <View style={styles.roadSunGlow} />
+    <View style={styles.roadSun} />
+    <View style={[styles.roadStar, styles.roadStarOne]} />
+    <View style={[styles.roadStar, styles.roadStarTwo]} />
+    <View style={[styles.roadStar, styles.roadStarThree]} />
+    <View style={styles.roadHorizon} />
+    <View style={styles.roadSurface} />
+    <View style={[styles.roadEdge, styles.roadEdgeLeft]} />
+    <View style={[styles.roadEdge, styles.roadEdgeRight]} />
+    <View style={[styles.roadDash, styles.roadDashFar]} />
+    <View style={[styles.roadDash, styles.roadDashMiddle]} />
+    <View style={[styles.roadDash, styles.roadDashNear]} />
+    <View style={styles.roadSoundwave}><View style={styles.roadSoundBarSmall} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarMedium} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarSmall} /></View>
+    <Text style={styles.roadCaption}>OPEN ROAD  •  YOUR STORY</Text>
+  </View>;
+}
+
+function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: {
+  catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean;
+  onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const cardWidth = Math.max(260, width - 74), cardStep = cardWidth + 14;
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const carousel = useRef<any>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [memoryDraft, setMemoryDraft] = useState<{ id: string | null; name: string; notes: string; collectionIds: string[] } | null>(null);
+  const [collectionDraft, setCollectionDraft] = useState<{ id: string | null; name: string; description: string; driveIds: string[] } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const selectedMemory = catalog.data.memories[Math.min(selectedIndex, Math.max(0, catalog.data.memories.length - 1))] ?? null;
+  const selectedCollections = selectedMemory
+    ? selectedMemory.collectionIds.map(id => catalog.data.collections.find(collection => collection.id === id)).filter((collection): collection is JourneyCollection => Boolean(collection))
+    : [];
+  const managedCollection = collectionDraft?.id ? catalog.data.collections.find(collection => collection.id === collectionDraft.id) ?? null : null;
+
+  useEffect(() => { if (selectedIndex >= catalog.data.memories.length && catalog.data.memories.length) setSelectedIndex(catalog.data.memories.length - 1); }, [catalog.data.memories.length, selectedIndex]);
+
+  const editMemory = (memory: JourneyMemory | null) => setMemoryDraft({
+    id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', collectionIds: [...(memory?.collectionIds ?? [])],
+  });
+  const toggleMemoryCollection = (id: string) => setMemoryDraft(current => current ? { ...current, collectionIds: current.collectionIds.includes(id) ? current.collectionIds.filter(value => value !== id) : [...current.collectionIds, id] } : current);
+  const editCollection = (collection: JourneyCollection | null) => setCollectionDraft({
+    id: collection?.id ?? null, name: collection?.name ?? '', description: collection?.description ?? '', driveIds: [...(collection?.driveIds ?? [])],
+  });
+  const toggleCollectionJourney = async (journeyId: string) => {
+    if (!collectionDraft?.id) return;
+    const next = { ...collectionDraft, driveIds: collectionDraft.driveIds.includes(journeyId) ? collectionDraft.driveIds.filter(id => id !== journeyId) : [...collectionDraft.driveIds, journeyId] };
+    setCollectionDraft(next);
+    try {
+      await appDataClient.saveCollection(next);
+      onRefresh();
+    } catch (error) {
+      setCollectionDraft(collectionDraft);
+      Alert.alert('Collection not changed', error instanceof Error ? error.message : 'JourneyDeck could not update this collection.');
+    }
+  };
+  const saveMemory = async () => {
+    if (!memoryDraft) return;
+    if (!memoryDraft.name.trim()) return Alert.alert('Name this memory', 'Give the memory a short name first.');
+    if (memoryDraft.collectionIds.length < 2) return Alert.alert('Choose two collections', 'A Memory brings together at least two Collections.');
+    setSaving(true);
+    try {
+      await appDataClient.saveMemory({ ...memoryDraft, artworkKey: selectedMemory?.artworkKey ?? 'road-trips' });
+      setMemoryDraft(null); onRefresh();
+    } catch (error) { Alert.alert('Memory not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this memory.'); }
+    finally { setSaving(false); }
+  };
+  const saveCollection = async () => {
+    if (!collectionDraft) return;
+    if (!collectionDraft.name.trim()) return Alert.alert('Name this collection', 'Give the collection a short name first.');
+    setSaving(true);
+    try {
+      const saved = await appDataClient.saveCollection(collectionDraft);
+      setCollectionDraft({ ...collectionDraft, id: saved.id, driveIds: saved.driveIds }); onRefresh();
+    } catch (error) { Alert.alert('Collection not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this collection.'); }
+    finally { setSaving(false); }
+  };
+
+  return <SafeAreaView style={styles.safe}>
+    <ScrollView contentContainerStyle={styles.memoriesPage} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={styles.memoryPageHeader}><PageHeader eyebrow="YOUR STORY ON THE ROAD" title="Memories" body="Memories hold Collections. Collections hold the journeys that made them." /></View>
+      {(catalog.status === 'error' || journeys.status === 'error') && <InlineNotice message={catalog.message ?? journeys.message ?? 'Memories could not refresh.'} onRetry={onRefresh} />}
+
+      <View style={styles.memorySectionHeader}><Text style={styles.memoryLevel}>MEMORIES</Text><Pressable onPress={() => editMemory(null)}><Text style={styles.memoryHeaderAction}>+ New memory</Text></Pressable></View>
+      <Animated.ScrollView
+        ref={carousel}
+        horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={cardStep}
+        contentContainerStyle={styles.memoryCarouselContent}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={event => setSelectedIndex(Math.max(0, Math.min(catalog.data.memories.length - 1, Math.round(event.nativeEvent.contentOffset.x / cardStep))))}
+      >
+        {catalog.data.memories.map((memory, index) => {
+          const inputRange = [(index - 1) * cardStep, index * cardStep, (index + 1) * cardStep];
+          const scale = scrollX.interpolate({ inputRange, outputRange: [0.9, 1, 0.9], extrapolate: 'clamp' });
+          const translateY = scrollX.interpolate({ inputRange, outputRange: [12, 0, 12], extrapolate: 'clamp' });
+          const collectionIds = new Set(memory.collectionIds), journeyIds = new Set(catalog.data.collections.filter(collection => collectionIds.has(collection.id)).flatMap(collection => collection.driveIds));
+          return <Animated.View key={memory.id} style={{ width: cardWidth, transform: [{ scale }, { translateY }] }}>
+            <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); }} style={styles.memoryHeroCard}>
+              <MemoryArtwork artworkKey={memory.artworkKey} />
+              <View style={styles.memoryHeroShade} />
+              <Text style={styles.memoryHeroKicker}>MEMORY {String(index + 1).padStart(2, '0')}</Text>
+              <Text style={styles.memoryHeroTitle}>{memory.name}</Text>
+              <Text style={styles.memoryHeroMeta}>{memory.collectionIds.length} collections  •  {journeyIds.size} journeys</Text>
+            </Pressable>
+          </Animated.View>;
+        })}
+        {!catalog.data.memories.length && <Pressable onPress={() => editMemory(null)} style={[styles.memoryHeroCard, styles.memoryEmptyHero, { width: cardWidth }]}><MemoryArtwork artworkKey="road-trips" /><View style={styles.memoryHeroShade} /><Text style={styles.memoryHeroKicker}>YOUR FIRST MEMORY</Text><Text style={styles.memoryHeroTitle}>Build a chapter</Text><Text style={styles.memoryHeroMeta}>Choose two Collections to begin</Text></Pressable>}
+      </Animated.ScrollView>
+      <View style={styles.memoryDots}>{catalog.data.memories.map((memory, index) => <View key={memory.id} style={[styles.memoryDot, index === selectedIndex && styles.memoryDotActive]} />)}</View>
+
+      {memoryDraft && <View style={styles.memoryEditor}>
+        <Text style={styles.editorKicker}>{memoryDraft.id ? 'EDIT MEMORY' : 'NEW MEMORY'}</Text>
+        <TextInput value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor="#716879" maxLength={80} style={styles.editorInput} />
+        <TextInput value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor="#716879" maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
+        <Text style={styles.editorInstruction}>Choose at least two Collections</Text>
+        {catalog.data.collections.map(collection => <MembershipRow key={collection.id} title={collection.name} detail={`${collection.driveIds.length} journeys`} selected={memoryDraft.collectionIds.includes(collection.id)} onPress={() => toggleMemoryCollection(collection.id)} />)}
+        <View style={styles.editorActions}><Pressable onPress={() => setMemoryDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveMemory()} disabled={saving} style={[styles.editorSave, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'Saving…' : 'Save memory'}</Text></Pressable></View>
+      </View>}
+
+      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>COLLECTIONS</Text><Text style={styles.memorySectionTitle}>{selectedMemory?.name ?? 'Saved collections'}</Text></View><View style={styles.memoryHeaderActions}>{selectedMemory && <Pressable onPress={() => editMemory(selectedMemory)}><Text style={styles.memoryHeaderAction}>Edit memory</Text></Pressable>}<Pressable onPress={() => editCollection(null)}><Text style={styles.memoryHeaderAction}>+ New</Text></Pressable></View></View>
+      {(selectedCollections.length ? selectedCollections : catalog.data.collections).map((collection, index) => <CollectionCard key={collection.id} collection={collection} index={index} active={collectionDraft?.id === collection.id} onManage={() => editCollection(collection)} />)}
+      {!catalog.data.collections.length && <EmptyCard title="No Collections yet" body="Create a Collection, then add the journeys that belong together." />}
+      {collectionDraft && <View style={styles.collectionEditor}>
+        <Text style={styles.editorKicker}>{collectionDraft.id ? 'MANAGE COLLECTION' : 'NEW COLLECTION'}</Text>
+        <TextInput value={collectionDraft.name} onChangeText={name => setCollectionDraft(current => current ? { ...current, name } : current)} placeholder="Collection name" placeholderTextColor="#716879" maxLength={80} style={styles.editorInput} />
+        <TextInput value={collectionDraft.description} onChangeText={description => setCollectionDraft(current => current ? { ...current, description } : current)} placeholder="Optional description" placeholderTextColor="#716879" maxLength={500} style={styles.editorInput} />
+        <View style={styles.editorActions}><Pressable onPress={() => setCollectionDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>Done</Text></Pressable><Pressable onPress={() => void saveCollection()} disabled={saving} style={[styles.editorSave, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'Saving…' : collectionDraft.id ? 'Save details' : 'Create collection'}</Text></Pressable></View>
+      </View>}
+
+      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEYS</Text><Text style={styles.memorySectionTitle}>{managedCollection ? managedCollection.name : 'Your latest drives'}</Text></View>{managedCollection && <Text style={styles.managingPill}>MANAGING</Text>}</View>
+      {collectionDraft?.id && <Text style={styles.journeyManageHelp}>Use Add or Remove to decide which journeys belong in this Collection. Changes save immediately.</Text>}
+      {journeys.data.map(journey => <View key={journey.id} style={styles.memoryJourneyWrap}><JourneyCard journey={journey} onPress={() => onJourney(journey.id)} />{collectionDraft?.id && <Pressable onPress={() => void toggleCollectionJourney(journey.id)} style={[styles.journeyMembershipButton, collectionDraft.driveIds.includes(journey.id) && styles.journeyMembershipRemove]}><Text style={[styles.journeyMembershipText, collectionDraft.driveIds.includes(journey.id) && styles.journeyMembershipRemoveText]}>{collectionDraft.driveIds.includes(journey.id) ? 'Remove from collection' : '+ Add to collection'}</Text></Pressable>}</View>)}
+      {!journeys.data.length && journeys.status !== 'loading' && <EmptyCard title="No journeys yet" body="Finish a recording and it will appear here, ready to organize." />}
+      {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color="#b59cff" /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
+      {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
+    </ScrollView>
+  </SafeAreaView>;
+}
+
+function MemoryArtwork({ artworkKey }: { artworkKey: string }) {
+  const night = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
+  return <View style={[styles.memoryArtwork, night && styles.memoryArtworkNight]}><View style={styles.memoryArtworkGlow} /><View style={styles.memoryArtworkMoon} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineLeft]} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineRight]} /><View style={styles.memoryArtworkDashOne} /><View style={styles.memoryArtworkDashTwo} /><View style={styles.memoryArtworkDashThree} /></View>;
+}
+
+function MembershipRow({ title, detail, selected, onPress }: { title: string; detail: string; selected: boolean; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={[styles.membershipRow, selected && styles.membershipRowSelected]}><View style={[styles.membershipCheck, selected && styles.membershipCheckSelected]}><Text style={styles.membershipCheckText}>{selected ? '✓' : '+'}</Text></View><View style={styles.flex}><Text style={styles.membershipTitle}>{title}</Text><Text style={styles.membershipDetail}>{detail}</Text></View><Text style={[styles.membershipAction, selected && styles.membershipActionRemove]}>{selected ? 'Remove' : 'Add'}</Text></Pressable>;
+}
+
+function CollectionCard({ collection, index, active, onManage }: { collection: JourneyCollection; index: number; active: boolean; onManage: () => void }) {
+  const colors = ['#ff795b', '#9b7cff', '#43e6ae'];
+  const color = colors[index % colors.length];
+  return <Pressable onPress={onManage} style={[styles.memoryCollectionCard, active && { borderColor: color }]}><View style={[styles.collectionArtwork, { backgroundColor: `${color}20` }]}><View style={[styles.collectionArtworkOrb, { backgroundColor: color }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: color }]} /></View><View style={styles.flex}><Text style={styles.collectionKicker}>COLLECTION</Text><Text style={styles.collectionTitle}>{collection.name}</Text><Text style={styles.collectionMeta}>{collection.driveIds.length} journeys{collection.description ? `  •  ${collection.description}` : ''}</Text></View><View style={styles.collectionManage}><Text style={styles.collectionManageText}>{active ? 'Managing' : 'Manage'}</Text></View></Pressable>;
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
@@ -547,7 +801,7 @@ function ConnectionsScreen({
 function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: Tab) => void }) {
   const items: { id: Tab; label: string; symbol: string }[] = [
     { id: 'home', label: 'Home', symbol: '⌂' },
-    { id: 'journeys', label: 'Journeys', symbol: '≋' },
+    { id: 'journeys', label: 'Memories', symbol: '≋' },
     { id: 'record', label: 'Record', symbol: '●' },
     { id: 'connections', label: 'Connect', symbol: '◎' },
   ];
@@ -555,7 +809,7 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
 }
 
 function BrandHeader({ compact = false }: { compact?: boolean }) {
-  return <View style={[styles.brandRow, compact && styles.brandCompact]}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.brandEyebrow}>JOURNEYDECK</Text><Text style={styles.brandTitle}>{compact ? 'Your drive, remembered.' : 'Good to see you.'}</Text></View></View>;
+  return <View style={[styles.brandRow, compact && styles.brandCompact]}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.brandEyebrow}>JOURNEYDECK</Text><Text style={styles.brandTitle}>Your drive, remembered.</Text></View></View>;
 }
 
 function PageHeader({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
@@ -647,6 +901,33 @@ function formatFullDate(value: string) {
   if (Number.isNaN(date.getTime())) return 'Journey';
   return date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
+function formatCompactDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'your latest journey';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function isToday(value: string) {
+  const date = new Date(value), today = new Date();
+  return !Number.isNaN(date.getTime()) && date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+}
+function weeklyActivity(journeys: JourneySummary[]) {
+  const today = new Date();
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setHours(0, 0, 0, 0);
+    date.setDate(today.getDate() - (6 - index));
+    return { key: date.toISOString().slice(0, 10), date, miles: 0, label: date.toLocaleDateString(undefined, { weekday: 'narrow' }), isToday: index === 6 };
+  });
+  for (const journey of journeys) {
+    const date = new Date(journey.startedAt);
+    if (Number.isNaN(date.getTime())) continue;
+    const key = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString().slice(0, 10);
+    const day = days.find(item => item.key === key);
+    if (day) day.miles += journey.miles;
+  }
+  const maximum = Math.max(1, ...days.map(day => day.miles));
+  return days.map(day => ({ ...day, ratio: day.miles / maximum }));
+}
 function locationPair(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation'>) {
   if (journey.startingLocation && journey.endingLocation) return `${journey.startingLocation} → ${journey.endingLocation}`;
   return journey.startingLocation || journey.endingLocation || 'Recorded journey';
@@ -673,9 +954,24 @@ const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1 }, recorderVisible: { flex: 1 }, recorderHidden: { display: 'none' }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
   pageContent: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 36, gap: 16 },
+  memoriesPage: { paddingTop: 24, paddingBottom: 38, gap: 16 },
+  memoryPageHeader: { marginHorizontal: 20 },
+  memorySectionHeader: { marginHorizontal: 20, marginTop: 5, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }, memoryLevel: { color: '#a88aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8 }, memorySectionTitle: { color: '#f5f0fb', fontSize: 19, fontWeight: '900', marginTop: 4 }, memoryHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, memoryHeaderAction: { color: '#ff8767', fontSize: 11, fontWeight: '900' },
+  memoryCarouselContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 }, memoryHeroCard: { height: 244, borderRadius: 26, overflow: 'hidden', backgroundColor: '#14101e', borderWidth: 1, borderColor: '#4c375d', padding: 20, justifyContent: 'flex-end', shadowColor: '#9b7cff', shadowOpacity: 0.25, shadowRadius: 18 }, memoryEmptyHero: { marginHorizontal: 20 }, memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 100, bottom: 0, backgroundColor: '#09071099' }, memoryHeroKicker: { color: '#ff9b7c', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, memoryHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 34, fontWeight: '900', marginTop: 7, letterSpacing: -0.7 }, memoryHeroMeta: { color: '#c2b7ca', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDots: { minHeight: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }, memoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#403748' }, memoryDotActive: { width: 24, backgroundColor: '#ff795b' },
+  memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' }, memoryArtworkGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#8f3957', opacity: 0.52, left: '50%', marginLeft: -105, top: -78, shadowColor: '#ff7159', shadowOpacity: 0.8, shadowRadius: 30 }, memoryArtworkMoon: { position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: '#ff8463', left: '50%', marginLeft: -29, top: 35, shadowColor: '#ff8463', shadowOpacity: 1, shadowRadius: 20 }, memoryArtworkLine: { position: 'absolute', width: 3, height: 185, backgroundColor: '#9d75ff', top: 80, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, memoryArtworkLineLeft: { left: '50%', marginLeft: -71, transform: [{ rotate: '31deg' }] }, memoryArtworkLineRight: { right: '50%', marginRight: -71, transform: [{ rotate: '-31deg' }] }, memoryArtworkDashOne: { position: 'absolute', width: 3, height: 12, backgroundColor: '#ffd0c4', left: '50%', top: 103 }, memoryArtworkDashTwo: { position: 'absolute', width: 5, height: 24, backgroundColor: '#ff8a68', left: '50%', marginLeft: -1, top: 132 }, memoryArtworkDashThree: { position: 'absolute', width: 7, height: 45, backgroundColor: '#ff795b', left: '50%', marginLeft: -2, top: 180 },
+  memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, marginTop: 3 }, editorActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, editorCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 46, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
+  membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
+  memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionArtworkOrb: { position: 'absolute', width: 42, height: 42, borderRadius: 21, opacity: 0.65, right: -8, top: -8, shadowOpacity: 0.8, shadowRadius: 10 }, collectionArtworkRoute: { position: 'absolute', width: 58, height: 3, borderRadius: 2, left: 5, top: 39, transform: [{ rotate: '-25deg' }] }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyWrap: { marginHorizontal: 20, gap: 7 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
   pageHeader: { gap: 5, marginBottom: 4 }, pageEyebrow: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.6 }, pageTitle: { color: '#f8f5ff', fontSize: 34, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#9890a6', fontSize: 14, lineHeight: 21, maxWidth: 350 },
-  heroCard: { backgroundColor: '#191221', borderWidth: 1, borderColor: '#4c3758', borderRadius: 26, padding: 20, gap: 8, overflow: 'hidden' }, heroEyebrow: { color: '#ff9a7a', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, heroBody: { color: '#aca3b6', fontSize: 14, lineHeight: 20 }, heroMetrics: { flexDirection: 'row', backgroundColor: '#100c16', borderRadius: 17, marginTop: 10, paddingVertical: 14 },
+  heroCard: { backgroundColor: '#191221', borderWidth: 1, borderColor: '#654474', borderRadius: 26, padding: 20, gap: 8, overflow: 'hidden', shadowColor: '#9b7cff', shadowOpacity: 0.2, shadowRadius: 24 }, heroGlowOrange: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#5a241d', opacity: 0.32, right: -70, top: -75 }, heroGlowPurple: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#36205b', opacity: 0.32, left: -100, bottom: -145 }, heroEyebrow: { color: '#ff9a7a', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, heroBody: { color: '#aca3b6', fontSize: 14, lineHeight: 20 }, heroMetrics: { flexDirection: 'row', backgroundColor: '#100c16dd', borderRadius: 17, marginTop: 10, paddingVertical: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#493853' },
+  openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 }, roadSunGlow: { position: 'absolute', width: 128, height: 128, borderRadius: 64, backgroundColor: '#7b2b31', opacity: 0.25, left: '50%', marginLeft: -64, top: -35, shadowColor: '#ff7257', shadowOpacity: 0.85, shadowRadius: 30 }, roadSun: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: '#ff765a', opacity: 0.9, left: '50%', marginLeft: -22, top: 18, shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 18 }, roadStar: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: '#c7b5ff', shadowColor: '#b292ff', shadowOpacity: 1, shadowRadius: 5 }, roadStarOne: { left: 38, top: 25 }, roadStarTwo: { right: 54, top: 19 }, roadStarThree: { right: 95, top: 43, width: 2, height: 2 }, roadHorizon: { position: 'absolute', left: 18, right: 18, top: 58, height: 1, backgroundColor: '#764e93', opacity: 0.72, shadowColor: '#a88aff', shadowOpacity: 0.8, shadowRadius: 6 }, roadSurface: { position: 'absolute', width: 0, height: 0, borderLeftWidth: 145, borderRightWidth: 145, borderBottomWidth: 82, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#090810', left: '50%', marginLeft: -145, top: 54 }, roadEdge: { position: 'absolute', width: 2, height: 94, backgroundColor: '#9d70ff', top: 53, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, roadEdgeLeft: { left: '50%', marginLeft: -48, transform: [{ rotate: '47deg' }] }, roadEdgeRight: { right: '50%', marginRight: -48, transform: [{ rotate: '-47deg' }] }, roadDash: { position: 'absolute', left: '50%', backgroundColor: '#ff8767', shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 8 }, roadDashFar: { width: 2, height: 7, marginLeft: -1, top: 64 }, roadDashMiddle: { width: 3, height: 13, marginLeft: -2, top: 79 }, roadDashNear: { width: 5, height: 22, marginLeft: -3, top: 105 }, roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 }, roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' }, roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
+  pulseCard: { backgroundColor: '#0f0d15', borderRadius: 22, borderWidth: 1, borderColor: '#332943', padding: 16, shadowColor: '#9b7cff', shadowOpacity: 0.14, shadowRadius: 18 }, pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, pulseKicker: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.3 }, pulseTitle: { color: '#f4eff9', fontSize: 16, fontWeight: '900', marginTop: 4 }, livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#285d4c', backgroundColor: '#10251f', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#43e6ae', shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, liveText: { color: '#70f1c5', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, pulseChart: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 9, marginTop: 17 }, pulseColumn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }, pulseTrack: { width: 16, flex: 1, justifyContent: 'flex-end', borderRadius: 8, backgroundColor: '#191522', overflow: 'hidden' }, pulseBar: { width: '100%', minHeight: 7, borderRadius: 8, backgroundColor: '#7c55d9', shadowColor: '#a88aff', shadowOpacity: 0.9, shadowRadius: 7 }, pulseBarCap: { height: 4, backgroundColor: '#c6b2ff', opacity: 0.9 }, pulseDay: { color: '#696171', fontSize: 8, fontWeight: '800' }, pulseDayToday: { color: '#ff8a68' }, pulseFooter: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 13, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#31293a' }, pulseFooterValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '900' }, pulseFooterLabel: { color: '#7e7687', fontSize: 10 },
+  dashboardGrid: { flexDirection: 'row', gap: 10 }, dashboardStatCard: { flex: 1, minHeight: 150, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14 }, dashboardStatIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }, dashboardStatSymbol: { fontSize: 18, fontWeight: '900' }, dashboardStatKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, dashboardStatValue: { color: '#f7f2fc', fontSize: 20, fontWeight: '900', marginTop: 7 }, dashboardStatDetail: { color: '#8d8596', fontSize: 10, lineHeight: 15, marginTop: 5 },
+  insightStrip: { flexDirection: 'row', gap: 10 }, insightCard: { flex: 1, minHeight: 152, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14, overflow: 'hidden' }, insightRoute: { height: 42, marginBottom: 9 }, insightRouteLine: { position: 'absolute', width: 105, height: 3, borderRadius: 2, backgroundColor: '#9b7cff', left: 10, top: 19, transform: [{ rotate: '-12deg' }], shadowColor: '#9b7cff', shadowOpacity: 0.9, shadowRadius: 7 }, insightRouteStart: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#43e6ae', left: 7, top: 27, shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, insightRouteEnd: { position: 'absolute', width: 11, height: 11, borderRadius: 6, backgroundColor: '#ff7b54', left: 112, top: 5, shadowColor: '#ff7b54', shadowOpacity: 1, shadowRadius: 7 }, musicRings: { height: 42, justifyContent: 'center', marginBottom: 9 }, musicRingOuter: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#664c9d', backgroundColor: '#1b1427', alignItems: 'center', justifyContent: 'center', shadowColor: '#a88aff', shadowOpacity: 0.5, shadowRadius: 9 }, musicRingInner: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#9b7cff', backgroundColor: '#281b3a', alignItems: 'center', justifyContent: 'center' }, musicRingNote: { color: '#c2aaff', fontSize: 14, fontWeight: '900' }, insightKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, insightValue: { color: '#f5f0fb', fontSize: 22, fontWeight: '900', marginTop: 5 }, insightDetail: { color: '#81798a', fontSize: 9, lineHeight: 14, marginTop: 4 },
+  quickActions: { flexDirection: 'row', gap: 9 }, quickAction: { flex: 1, minHeight: 105, backgroundColor: '#121019', borderRadius: 18, borderWidth: 1, borderColor: '#2b2534', padding: 13, justifyContent: 'flex-end' }, quickActionSymbol: { fontSize: 21, fontWeight: '900', marginBottom: 12 }, quickActionTitle: { color: '#f0ebf5', fontSize: 13, fontWeight: '900' }, quickActionDetail: { color: '#777080', fontSize: 9, marginTop: 4 },
+  vehicleCard: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2c2635', padding: 15 }, vehicleIcon: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#2b1f40', alignItems: 'center', justifyContent: 'center' }, vehicleIconText: { color: '#b795ff', fontSize: 20, fontWeight: '900' }, vehicleKicker: { color: '#8b74c3', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, vehicleName: { color: '#f4eff8', fontSize: 16, fontWeight: '900', marginTop: 5 }, vehicleDetail: { color: '#898190', fontSize: 11, lineHeight: 16, marginTop: 4 }, connectionDot: { width: 10, height: 10, borderRadius: 5 },
+  dataHealthCard: { backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#292331', paddingHorizontal: 15 }, dashboardHealthRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, dashboardHealthDot: { width: 9, height: 9, borderRadius: 5 }, dashboardHealthLabel: { color: '#eee9f3', fontSize: 12, fontWeight: '800' }, dashboardHealthDetail: { color: '#7f7788', fontSize: 10, lineHeight: 14, marginTop: 3 }, dashboardHealthState: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   metric: { flex: 1, alignItems: 'center', gap: 5 }, metricValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] }, metricLabel: { color: '#756c82', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }, sectionTitle: { color: '#f5f1fa', fontSize: 18, fontWeight: '800' }, sectionAction: { color: '#a88aff', fontSize: 12, fontWeight: '800' }, sectionActionMuted: { color: '#777080' },
   soundtrackCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2c2538', padding: 14 }, emptyArtwork: { width: 72, height: 72, borderRadius: 16, backgroundColor: '#2a1b38', alignItems: 'center', justifyContent: 'center' }, emptyArtworkNote: { color: '#b391ff', fontSize: 31, fontWeight: '800' }, soundtrackLabel: { color: '#9a7ee5', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, soundtrackTitle: { color: '#f8f5ff', fontSize: 16, fontWeight: '800', marginTop: 5 }, soundtrackArtist: { color: '#8e8798', fontSize: 12, marginTop: 4 },
