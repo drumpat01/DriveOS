@@ -1,15 +1,24 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Modal, PanResponder, Pressable, SafeAreaView, ScrollView, StatusBar,
+  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Modal, PanResponder, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Updates from 'expo-updates';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
+import { BlurView } from 'expo-blur';
+import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import PagerView from 'react-native-pager-view';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, Stop } from 'react-native-svg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 
 import {
   appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyCollection, type JourneyDetail,
@@ -35,12 +44,12 @@ import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigatio
 type Tab = 'home' | 'journeys' | 'music' | 'record' | 'connections';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
 
-const bottomNavigationItems: { id: Tab; label: string; symbol: string }[] = [
-  { id: 'home', label: 'Home', symbol: '⌂' },
-  { id: 'journeys', label: 'Memories', symbol: '≋' },
-  { id: 'music', label: 'Music', symbol: '♪' },
-  { id: 'record', label: 'Record', symbol: '●' },
-  { id: 'connections', label: 'Connect', symbol: '◎' },
+const bottomNavigationItems: { id: Tab; label: string; symbol: SFSymbol; fallback: string }[] = [
+  { id: 'home', label: 'Home', symbol: 'house', fallback: '⌂' },
+  { id: 'journeys', label: 'Memories', symbol: 'map', fallback: '≋' },
+  { id: 'music', label: 'Music', symbol: 'music.note', fallback: '♪' },
+  { id: 'record', label: 'Record', symbol: 'record.circle', fallback: '●' },
+  { id: 'connections', label: 'Settings', symbol: 'gearshape', fallback: '⚙' },
 ];
 
 async function choosePhoto() {
@@ -63,6 +72,7 @@ type ProviderOption = {
   name: string;
   kicker: string;
   symbol: string;
+  brand: ProviderBrand;
   color: string;
   tint: string;
   summary: string;
@@ -70,6 +80,14 @@ type ProviderOption = {
   drawbacks: string[];
   privacy: string;
 };
+
+type ProviderBrand = 'apple-music' | 'shazam' | 'spotify';
+
+const providerBrandImages = {
+  'apple-music': require('../assets/apple-music-icon.png'),
+  shazam: require('../assets/shazam-icon.png'),
+  spotify: require('../assets/spotify-icon-white.png'),
+} as const;
 
 type RecordingModeOption = {
   id: RecordingMode;
@@ -104,24 +122,24 @@ const recordingModeOptions: RecordingModeOption[] = [
 
 const providerOptions: ProviderOption[] = [
   {
-    id: 'apple-music', name: 'Apple Music', kicker: 'NATIVE & PRIVATE', symbol: '♪', color: '#fa5c74', tint: '#2a121b',
+    id: 'apple-music', name: 'Apple Music', kicker: 'NATIVE & PRIVATE', symbol: '♪', brand: 'apple-music', color: '#fa5c74', tint: '#2a121b',
     summary: 'Use your Apple Music listening history to build a soundtrack after each journey.',
     benefits: ['No microphone needed', 'Fast, familiar iPhone permission', 'Artwork and catalog details included'],
     drawbacks: ['Apple Music subscribers only', 'Some play timestamps may be approximate'],
     privacy: 'JourneyDeck reads only the music details needed for your journey soundtrack.',
   },
   {
-    id: 'shazam', name: 'Auto Recognition', kicker: 'POWERED BY SHAZAMKIT', symbol: 'S', color: '#56a8ff', tint: '#101d31',
+    id: 'shazam', name: 'Auto Recognition', kicker: 'POWERED BY SHAZAMKIT', symbol: 'S', brand: 'shazam', color: '#56a8ff', tint: '#101d31',
     summary: 'Briefly recognize music playing in the car—from Spotify, radio, CDs, or another phone.',
     benefits: ['Works with almost any music source', 'No music account required', 'Audio is never saved by JourneyDeck'],
     drawbacks: ['Uses the microphone and its iOS indicator', 'Road noise or low volume can cause misses'],
     privacy: 'Only recognition results and timestamps are kept. JourneyDeck never stores recordings.',
   },
   {
-    id: 'lastfm', name: 'Last.fm for Spotify', kicker: 'SPOTIFY WORKAROUND', symbol: 'fm', color: '#f23d47', tint: '#2b1115',
-    summary: 'Match timestamped Last.fm scrobbles from Spotify with the time of your journey.',
+    id: 'lastfm', name: 'Spotify history', kicker: 'IMPORTED VIA LAST.FM', symbol: '↻', brand: 'spotify', color: '#1ed760', tint: '#0d2116',
+    summary: 'Import timestamped Spotify listening history through your Last.fm account.',
     benefits: ['Automatic Spotify history', 'No microphone needed', 'Works across Spotify devices'],
-    drawbacks: ['Requires Spotify scrobbling through Last.fm', 'Sync can be delayed or miss tracks'],
+    drawbacks: ['Requires a Last.fm account with Spotify scrobbling', 'Sync can be delayed or miss tracks'],
     privacy: 'JourneyDeck reads only recent scrobbles from the public Last.fm username you provide.',
   },
 ];
@@ -149,6 +167,9 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const updateState = Updates.useUpdates();
   const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
+  const tabRef = useRef<Tab>('home');
+  const requestedTabRef = useRef<Tab>('home');
+  const pagerRef = useRef<PagerView>(null);
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
@@ -416,8 +437,13 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, [saveConnectionState]);
 
   const openTab = (next: Tab) => {
+    if (next === tabRef.current) return;
     setSelectedJourneyId(null);
+    requestedTabRef.current = next;
+    tabRef.current = next;
     setTab(next);
+    pagerRef.current?.setPage(bottomNavigationItems.findIndex(item => item.id === next));
+    void Haptics.selectionAsync().catch(() => undefined);
   };
 
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
@@ -443,19 +469,36 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
-        {appReady && tab === 'home' && <HomeScreen state={dashboard} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { setTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />}
-        {appReady && tab === 'journeys' && <MemoriesScreen catalog={memories} journeys={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); }} onLoadMore={() => void loadMoreJourneys()} />}
-        {appReady && tab === 'music' && <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} onRefresh={() => void refreshMusicDashboard()} />}
-        {appReady && tab === 'connections' && <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
-        <View
-          key="persistent-recorder-engine"
-          accessibilityElementsHidden={!appReady || tab !== 'record'}
-          importantForAccessibility={appReady && tab === 'record' ? 'auto' : 'no-hide-descendants'}
-          pointerEvents={appReady && tab === 'record' ? 'auto' : 'none'}
-          style={appReady && tab === 'record' ? styles.recorderVisible : styles.recorderHidden}
+        {appReady && <PagerView
+          ref={pagerRef}
+          style={styles.pager}
+          initialPage={0}
+          scrollEnabled={false}
+          overdrag
+          offscreenPageLimit={bottomNavigationItems.length}
+          onPageSelected={event => {
+            const selected = bottomNavigationItems[event.nativeEvent.position]?.id;
+            if (!selected || selected !== requestedTabRef.current) return;
+            tabRef.current = selected;
+            setTab(selected);
+          }}
         >
-          {recorder}
-        </View>
+          <View key="home" collapsable={false} style={styles.tabLayer}>
+            <HomeScreen state={dashboard} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />
+          </View>
+          <View key="journeys" collapsable={false} style={styles.tabLayer}>
+            <MemoriesScreen catalog={memories} journeys={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); }} onLoadMore={() => void loadMoreJourneys()} />
+          </View>
+          <View key="music" collapsable={false} style={styles.tabLayer}>
+            <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} onRefresh={refreshMusicDashboard} />
+          </View>
+          <View key="record" collapsable={false} style={styles.tabLayer}>
+            {recorder}
+          </View>
+          <View key="connections" collapsable={false} style={styles.tabLayer}>
+            <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />
+          </View>
+        </PagerView>}
       </View>
       {appReady && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} /></SafeAreaView>}
       <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => setDetailRefresh(value => value + 1)} onLocationsSaved={refreshJourneyLocations} />
@@ -556,7 +599,7 @@ function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvi
         <View style={styles.providerTabs}>
           {providerOptions.map((option, optionIndex) => (
             <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.providerTab, index === optionIndex && { borderColor: option.color, backgroundColor: option.tint }]}>
-              <Text style={[styles.providerTabText, index === optionIndex && { color: option.color }]}>{option.symbol}</Text>
+              <ProviderMark brand={option.brand} size={28} />
             </Pressable>
           ))}
         </View>
@@ -582,7 +625,7 @@ function ProviderCard({ option, width }: { option: ProviderOption; width: number
   return (
     <View style={[styles.providerCard, { width, borderColor: option.color }]}>
       <View style={styles.providerCardHeader}>
-        <View style={[styles.providerIcon, { backgroundColor: option.color }]}><Text style={styles.providerIconText}>{option.symbol}</Text></View>
+        <ProviderMark brand={option.brand} size={50} />
         <View style={styles.flex}><Text style={[styles.providerKicker, { color: option.color }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
       </View>
       <Text style={styles.providerSummary}>{option.summary}</Text>
@@ -593,11 +636,19 @@ function ProviderCard({ option, width }: { option: ProviderOption; width: number
   );
 }
 
+function ProviderMark({ brand, size }: { brand: ProviderBrand; size: number }) {
+  if (brand === 'spotify') {
+    return <View style={[styles.spotifyMarkFrame, { width: size, height: size, borderRadius: size / 2 }]}><Image source={providerBrandImages.spotify} resizeMode="contain" style={{ width: size / 2, height: size / 2 }} /></View>;
+  }
+  return <Image source={providerBrandImages[brand]} resizeMode="contain" style={{ width: size, height: size }} />;
+}
+
 function ProsCons({ title, color, items, symbol }: { title: string; color: string; items: string[]; symbol: string }) {
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
 function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; recordingMode: RecordingMode; onRecord: () => void; onJourneys: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+  const insets = useSafeAreaInsets();
   const { data } = state;
   const week = data.summary.last7Days;
   const allTime = data.summary.allTime;
@@ -614,8 +665,14 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
   const recorderHealthy = data.recorder.connected && data.recorder.queuedPoints + data.recorder.queuedMusic === 0;
   const automaticMode = recordingMode === 'automatic';
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.webDashboardPage} showsVerticalScrollIndicator={false}>
+    <View style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={[styles.webDashboardPage, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustsScrollIndicatorInsets={false}
+        showsVerticalScrollIndicator={false}
+      >
         {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
         <View style={styles.webDashboardShell}>
           <ImageBackground source={require('../assets/dashboard-neon-road-v2.png')} style={styles.webHero} imageStyle={styles.webHeroImage}>
@@ -695,7 +752,7 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
         </View>
         {state.status === 'loading' && <LoadingLine label="Refreshing your dashboard…" />}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -763,6 +820,7 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean;
   onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(260, width - 74), cardStep = cardWidth + 14;
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -773,6 +831,7 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   const [shareCard, setShareCard] = useState<ShareCardPayload | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<{ id: string | null; name: string; notes: string; collectionIds: string[]; coverPhotoId: string | null; photos: JourneyPhoto[] } | null>(null);
   const [collectionDraft, setCollectionDraft] = useState<{ id: string | null; name: string; description: string; driveIds: string[]; photos: JourneyPhoto[] } | null>(null);
+  const memoryTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const selectedMemory = catalog.data.memories[Math.min(selectedIndex, Math.max(0, catalog.data.memories.length - 1))] ?? null;
@@ -785,6 +844,16 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   ].filter((photo, index, photos) => photos.findIndex(candidate => candidate.id === photo.id) === index) : [];
 
   useEffect(() => { if (selectedIndex >= catalog.data.memories.length && catalog.data.memories.length) setSelectedIndex(catalog.data.memories.length - 1); }, [catalog.data.memories.length, selectedIndex]);
+  useEffect(() => () => { if (memoryTransitionTimer.current) clearTimeout(memoryTransitionTimer.current); }, []);
+
+  const closeMemoryThen = (action: () => void) => {
+    if (memoryTransitionTimer.current) clearTimeout(memoryTransitionTimer.current);
+    setMemoryOverview(null);
+    memoryTransitionTimer.current = setTimeout(() => {
+      memoryTransitionTimer.current = null;
+      action();
+    }, 260);
+  };
 
   const editMemory = (memory: JourneyMemory | null) => {
     setMemoryOverview(null);
@@ -883,9 +952,16 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
     setShareCard({ kind: 'collection', eyebrow: 'A JOURNEY COLLECTION', title: collection.name, subtitle: collection.description || 'A set of drives that belong together.', metrics: [{ label: 'JOURNEYS', value: String(collection.driveIds.length) }, { label: 'PHOTOS', value: String(collection.photos.length) }, { label: 'STORY', value: 'SAVED' }], photo: collection.photos[0] ?? null, accent: '#9b7cff' });
   };
 
-  return <SafeAreaView style={styles.safe}>
-    <ScrollView contentContainerStyle={styles.memoriesPage} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-      <View style={styles.memoryPageHeader}><PageHeader eyebrow="YOUR STORY ON THE ROAD" title="Memories" body="Memories hold Collections. Collections hold the journeys that made them." /></View>
+  return <View style={styles.safe}>
+    <ScrollView
+      contentContainerStyle={[styles.memoriesPage, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+      contentInsetAdjustmentBehavior="never"
+      automaticallyAdjustContentInsets={false}
+      automaticallyAdjustsScrollIndicatorInsets={false}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.memoryPageHeader}><PageHeader variant="memories" eyebrow="YOUR STORY ON THE ROAD" title="Memories" body="Memories hold Collections. Collections hold the journeys that made them." /></View>
       {(catalog.status === 'error' || journeys.status === 'error') && <InlineNotice message={catalog.message ?? journeys.message ?? 'Memories could not refresh.'} onRetry={onRefresh} />}
 
       <View style={styles.memorySectionHeader}><Text style={styles.memoryLevel}>MEMORIES</Text><Pressable onPress={() => editMemory(null)}><Text style={styles.memoryHeaderAction}>+ New memory</Text></Pressable></View>
@@ -926,16 +1002,18 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
       {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
     </ScrollView>
 
-    <OverlayModal visible={Boolean(memoryOverview)} kicker="MEMORY OVERVIEW" title={memoryOverview?.name ?? 'Memory'} onClose={() => setMemoryOverview(null)}>
-      {memoryOverview && <>
-        <View style={styles.overviewHero}><MemoryArtwork artworkKey={memoryOverview.artworkKey} photo={memoryCover} /><View style={styles.memoryHeroShade} /><View style={styles.overviewHeroCopy}><Text style={styles.overviewEyebrow}>YOUR STORY, REMEMBERED</Text><Text style={styles.overviewHeroTitle}>{memoryOverview.name}</Text></View></View>
-        <OverviewMetrics items={[{ label: 'COLLECTIONS', value: String(overviewCollections.length) }, { label: 'JOURNEYS', value: String(overviewJourneyIds.size) }, { label: 'PHOTOS', value: String(memoryOverview.photos.length) }]} />
-        {memoryOverview.notes ? <Text style={styles.overviewBody}>{memoryOverview.notes}</Text> : <Text style={styles.overviewBodyMuted}>Add notes to remember what made this chapter special.</Text>}
-        <Text style={styles.overviewSectionLabel}>COLLECTIONS IN THIS MEMORY</Text>
-        {overviewCollections.map(collection => <Pressable key={collection.id} onPress={() => { setMemoryOverview(null); setCollectionOverview(collection); }} style={styles.overviewListRow}><Text style={styles.overviewListTitle}>{collection.name}</Text><Text style={styles.overviewListMeta}>{collection.driveIds.length} journeys  ›</Text></Pressable>)}
-        <View style={styles.overviewActions}><Pressable onPress={() => openMemoryShare(memoryOverview)} style={styles.overviewShare}><Text style={styles.overviewShareText}>Share card</Text></Pressable><Pressable onPress={() => editMemory(memoryOverview)} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Edit memory</Text></Pressable></View>
-      </>}
-    </OverlayModal>
+    <MemoryDetailModal
+      visible={Boolean(memoryOverview)}
+      memory={memoryOverview}
+      cover={memoryCover}
+      collections={overviewCollections}
+      journeys={journeys.data}
+      onClose={() => setMemoryOverview(null)}
+      onOpenCollection={collection => closeMemoryThen(() => setCollectionOverview(collection))}
+      onOpenJourney={journeyId => closeMemoryThen(() => onJourney(journeyId))}
+      onShare={() => memoryOverview && closeMemoryThen(() => openMemoryShare(memoryOverview))}
+      onEdit={() => memoryOverview && closeMemoryThen(() => editMemory(memoryOverview))}
+    />
 
     <OverlayModal visible={Boolean(collectionOverview)} kicker="COLLECTION OVERVIEW" title={collectionOverview?.name ?? 'Collection'} onClose={() => setCollectionOverview(null)}>
       {collectionOverview && <>
@@ -975,7 +1053,111 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
       </View>}
     </OverlayModal>
     <ShareCardModal payload={shareCard} onClose={() => setShareCard(null)} />
-  </SafeAreaView>;
+  </View>;
+}
+
+function MemoryDetailModal({
+  visible, memory, cover, collections, journeys, onClose, onOpenCollection, onOpenJourney, onShare, onEdit,
+}: {
+  visible: boolean;
+  memory: JourneyMemory | null;
+  cover: JourneyPhoto | null;
+  collections: JourneyCollection[];
+  journeys: JourneySummary[];
+  onClose: () => void;
+  onOpenCollection: (collection: JourneyCollection) => void;
+  onOpenJourney: (journeyId: string) => void;
+  onShare: () => void;
+  onEdit: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const sweepX = useSharedValue(-width * 1.4);
+  const sweepStyle = useAnimatedStyle(() => ({ transform: [{ translateX: sweepX.value }] }));
+
+  useEffect(() => {
+    if (!visible) {
+      sweepX.value = -width * 1.4;
+      return;
+    }
+    sweepX.value = -width * 1.4;
+    sweepX.value = withDelay(170, withTiming(width * 1.5, { duration: 540, easing: Easing.out(Easing.cubic) }));
+  }, [sweepX, visible, width]);
+
+  if (!visible || !memory) return null;
+
+  const journeyIds = new Set(collections.flatMap(collection => collection.driveIds));
+
+  return <View style={[styles.memoryDetailRoot, StyleSheet.absoluteFill, { zIndex: 100 }]}>
+      <Reanimated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={styles.memoryDetailBackdrop}>
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+      </Reanimated.View>
+      <Reanimated.View entering={FadeInDown.duration(260).springify().damping(20)} exiting={FadeOut.duration(150)} style={[styles.memoryDetailSheet, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
+        <LinearGradient colors={['#2b172b', '#120d1a', '#08070c'] as const} locations={[0, 0.36, 1]} style={StyleSheet.absoluteFill} />
+        <Reanimated.View pointerEvents="none" style={[styles.memoryDetailSweep, sweepStyle]}>
+          <LinearGradient colors={['transparent', 'rgba(255,127,92,0.34)', 'rgba(176,112,255,0.18)', 'transparent'] as const} locations={[0, 0.43, 0.58, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.memoryDetailSweepGradient} />
+        </Reanimated.View>
+        <View style={styles.memoryDetailHeader}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close memory" onPress={onClose} style={styles.memoryDetailClose}><Text style={styles.memoryDetailCloseText}>‹</Text></Pressable>
+          <View style={styles.memoryDetailHeaderActions}><Pressable onPress={onShare} style={styles.memoryDetailHeaderAction}><Text style={styles.memoryDetailHeaderActionText}>Share</Text></Pressable><Pressable onPress={onEdit} style={styles.memoryDetailHeaderAction}><Text style={styles.memoryDetailHeaderActionText}>Edit</Text></Pressable></View>
+        </View>
+        <ScrollView contentContainerStyle={styles.memoryDetailContent} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}>
+          <Reanimated.View entering={FadeInUp.delay(150).duration(360)} style={styles.memoryDetailHero}>
+            <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} /> : <MemoryArtwork artworkKey={memory.artworkKey} />}</View>
+            <LinearGradient colors={['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
+            <View style={styles.memoryDetailHeroGlowOne} /><View style={styles.memoryDetailHeroGlowTwo} />
+            <View style={styles.memoryDetailHeroContent}><Text style={styles.memoryDetailKicker}>MEMORY</Text><Text style={styles.memoryDetailTitle}>{memory.name}</Text><Text style={styles.memoryDetailMeta}>{collections.length} collections  ·  {journeyIds.size} journeys</Text></View>
+          </Reanimated.View>
+          <Reanimated.View entering={FadeInUp.delay(230).duration(280)} style={styles.memoryDetailBreadcrumb}><Text style={styles.memoryDetailBreadcrumbMuted}>Memory</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbActive}>Collections</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbMuted}>Journeys</Text></Reanimated.View>
+          {memory.notes ? <Reanimated.Text entering={FadeInUp.delay(270).duration(260)} style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text> : null}
+          <Reanimated.Text entering={FadeInUp.delay(300).duration(260)} style={styles.memoryDetailSection}>COLLECTIONS</Reanimated.Text>
+          <View style={styles.memoryDetailAtlas}>
+            <MemoryRoadThread collectionCount={collections.length} />
+            <View style={styles.memoryDetailChapters}>
+              {collections.map((collection, index) => <MemoryCollectionChapter key={collection.id} collection={collection} index={index} journeys={journeys.filter(journey => collection.driveIds.includes(journey.id))} onOpen={() => onOpenCollection(collection)} onOpenJourney={onOpenJourney} />)}
+            </View>
+          </View>
+          {!collections.length && <EmptyCard title="This Memory is waiting for Collections" body="Add at least two Collections to make this chapter come alive." />}
+        </ScrollView>
+      </Reanimated.View>
+  </View>;
+}
+
+function MemoryRoadThread({ collectionCount }: { collectionCount: number }) {
+  const height = Math.max(300, collectionCount * 286 + 88);
+  return <View pointerEvents="none" style={[styles.memoryRoadThread, { height }]}>
+    <Svg width="82" height={height} viewBox="0 0 82 900" preserveAspectRatio="none">
+      <Defs><SvgLinearGradient id="memoryRoad" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ffb19b" /><Stop offset="0.42" stopColor="#a47dff" /><Stop offset="1" stopColor="#ff765c" /></SvgLinearGradient></Defs>
+      <Path d="M 48 0 C 5 70, 78 122, 31 210 S 77 354, 30 454 S 78 635, 30 730 S 70 836, 43 900" stroke="#ff7e67" strokeWidth="15" opacity="0.16" fill="none" />
+      <Path d="M 48 0 C 5 70, 78 122, 31 210 S 77 354, 30 454 S 78 635, 30 730 S 70 836, 43 900" stroke="url(#memoryRoad)" strokeWidth="3" fill="none" />
+    </Svg>
+  </View>;
+}
+
+function MemoryCollectionChapter({ collection, index, journeys, onOpen, onOpenJourney }: { collection: JourneyCollection; index: number; journeys: JourneySummary[]; onOpen: () => void; onOpenJourney: (journeyId: string) => void }) {
+  const preview = journeys.slice(0, 3);
+  return <Reanimated.View entering={FadeInUp.delay(380 + index * 90).duration(340)} style={styles.memoryChapterWrap}>
+    <View style={styles.memoryDetailRoadNode} />
+    <View style={styles.memoryChapterCard}>
+      <Pressable onPress={onOpen} style={styles.memoryChapterHeader}>
+        {collection.photos[0] ? <JourneyPhotoImage photo={collection.photos[0]} style={styles.memoryChapterArtwork} /> : <CollectionPlaceholderArtwork index={index} />}
+        <View style={styles.flex}><Text style={styles.memoryChapterKicker}>COLLECTION  ·  TAP TO OPEN</Text><Text style={styles.memoryChapterTitle}>{collection.name}</Text><Text style={styles.memoryChapterMeta}>{collection.driveIds.length} journeys  ·  {collection.photos.length ? `${collection.photos.length} photos` : 'cinematic placeholders'}</Text></View>
+        <View style={styles.memoryChapterOpen}><Text style={styles.memoryChapterOpenText}>→</Text></View>
+      </Pressable>
+      {preview.length ? <View style={styles.memoryChapterJourneys}>{preview.map((journey, journeyIndex) => <Pressable key={journey.id} onPress={() => onOpenJourney(journey.id)} style={styles.memoryChapterJourney}><View style={[styles.memoryChapterJourneyVisual, { height: 65, alignSelf: 'auto', borderRadius: 13 }]}><JourneyMomentArtwork index={index + journeyIndex} /></View><View style={styles.memoryChapterJourneyIndex}><Text style={styles.memoryChapterJourneyIndexText}>{journeyIndex + 1}</Text></View><View style={styles.flex}><Text style={styles.memoryChapterJourneyRoute} numberOfLines={1}>{locationPair(journey)}</Text><Text style={styles.memoryChapterJourneyMeta}>{formatCompactDate(journey.startedAt)}  ·  {formatMiles(journey.miles)}</Text></View></Pressable>)}</View> : <Text style={styles.memoryChapterEmpty}>Open this Collection to choose its journeys.</Text>}
+      {collection.driveIds.length > preview.length && <Pressable onPress={onOpen} style={styles.memoryChapterMore}><Text style={styles.memoryChapterMoreText}>View all {collection.driveIds.length} journeys</Text><Text style={styles.memoryChapterMoreArrow}>›</Text></Pressable>}
+    </View>
+  </Reanimated.View>;
+}
+
+function CollectionPlaceholderArtwork({ index }: { index: number }) {
+  const palettes = index % 2 ? ['#17122f', '#7450c9', '#ff9473'] as const : ['#301325', '#a7356b', '#ffb071'] as const;
+  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.memoryChapterArtwork}><View style={styles.collectionPlaceholderSun} /><View style={styles.collectionPlaceholderRoad} /><View style={styles.collectionPlaceholderHorizon} /></LinearGradient>;
+}
+
+function JourneyMomentArtwork({ index }: { index: number }) {
+  const palettes = index % 3 === 0 ? ['#301727', '#d35b70', '#ffb06f'] as const : index % 3 === 1 ? ['#101c36', '#466fae', '#d899cb'] as const : ['#23192f', '#7661b6', '#ff9a78'] as const;
+  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill}><View style={styles.journeyPlaceholderGlow} /><View style={styles.journeyPlaceholderRoad} /></LinearGradient>;
 }
 
 function OverlayModal({ visible, kicker, title, onClose, children }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode }) {
@@ -1020,9 +1202,16 @@ function CollectionCard({ collection, index, onOpen }: { collection: JourneyColl
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
+  const insets = useSafeAreaInsets();
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
+    <View style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustsScrollIndicatorInsets={false}
+        showsVerticalScrollIndicator={false}
+      >
         <PageHeader eyebrow="YOUR STORY ON THE ROAD" title="Journeys" body="Routes, vehicle moments, and every soundtrack in one place." />
         {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
         {state.status === 'loading' && state.data.length === 0 ? <LoadingCard /> : state.data.length
@@ -1030,7 +1219,7 @@ function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onL
           : <EmptyCard title="Your timeline starts here" body="Finish your first recording and it will appear here automatically. Recording still works offline." />}
         {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color="#b59cff" /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1074,17 +1263,10 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   };
 
   return <>
-    <OverlayModal visible={visible} kicker="JOURNEY OVERVIEW" title={journey ? formatCompactDate(journey.startedAt) : 'Journey'} onClose={onClose}>
+    <OverlayModal visible={visible} kicker="JOURNEY OVERVIEW" title="Journey" onClose={onClose}>
       {state.status === 'loading' ? <LoadingCard /> : state.status === 'error' || !journey ? <InlineNotice message={state.message ?? 'Journey unavailable.'} onRetry={onRetry} /> : <>
-            <Text style={styles.detailDate}>{formatFullDate(journey.startedAt)}</Text>
-            <Text style={styles.detailTitle}>{locationPair(journey)}</Text>
-            <RouteSketch coordinates={journey.route?.coordinates ?? []} />
-            <View style={styles.detailMetrics}>
-              <Metric value={formatMiles(journey.miles)} label="DISTANCE" />
-              <Metric value={formatDuration(journey.durationMinutes)} label="TIME" />
-              <Metric value={journey.averageSpeedMph == null ? '—' : `${Math.round(journey.averageSpeedMph)} mph`} label="AVG SPEED" />
-            </View>
-            <SectionHeading title="Journey soundtrack" action={`${journey.songCount} songs`} />
+            <JourneyCinematicHero journey={journey} />
+            <SectionHeading title="Soundtrack moments" action={`${journey.songCount} songs`} />
             {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} />) : <EmptyCard title="No songs matched yet" body="JourneyDeck may keep checking briefly after a drive, or you can choose another music connection." />}
             {(journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null) && <>
               <SectionHeading title="Vehicle" />
@@ -1102,7 +1284,7 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
               <View style={styles.editorActions}><Pressable onPress={() => setEditingLocations(false)} disabled={savingLocations} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveLocations()} disabled={savingLocations} style={[styles.editorSave, savingLocations && styles.pressed]}><Text style={styles.editorSaveText}>{savingLocations ? 'Saving…' : 'Save names'}</Text></Pressable></View>
             </View>}
             {!editingLocations && <View style={styles.journeyActions}>
-              <Pressable onPress={() => { onClose(); setShareCard({ kind: 'journey', eyebrow: 'A JOURNEY REMEMBERED', title: formatFullDate(journey.startedAt), subtitle: 'A privacy-safe recap of time on the road—without precise locations.', metrics: [{ label: 'DISTANCE', value: formatMiles(journey.miles) }, { label: 'DRIVE TIME', value: formatDuration(journey.durationMinutes) }, { label: 'SONGS', value: String(journey.songCount) }], accent: '#43e6ae' }); }} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
+              <Pressable onPress={() => { onClose(); const featured = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null; const artistCounts = new Map<string, number>(); journey.soundtrack.forEach(track => artistCounts.set(track.artist, (artistCounts.get(track.artist) ?? 0) + 1)); const topArtist = [...artistCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? featured?.artist ?? null; setShareCard({ kind: 'journey', eyebrow: 'A JOURNEY REMEMBERED', title: formatFullDate(journey.startedAt), subtitle: 'A privacy-safe recap of time on the road—without precise locations.', metrics: [{ label: 'DISTANCE', value: formatMiles(journey.miles) }, { label: 'DRIVE TIME', value: formatDuration(journey.durationMinutes) }, { label: 'SONGS', value: String(journey.songCount) }], accent: '#43e6ae', journey: { startedAt: journey.startedAt, miles: journey.miles, durationMinutes: journey.durationMinutes, energyUsedKwh: journey.energyUsedKwh, songCount: journey.songCount, startLocation: journey.startingLocation, endLocation: journey.endingLocation, routeCoordinates: journey.route?.coordinates ?? [], featured: featured ? { track: featured.track, artist: featured.artist, artworkUrl: featured.artworkUrl } : null, topArtist } }); }} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
               <Pressable onPress={() => setEditingLocations(true)} style={styles.journeyEditButton}><Text style={styles.journeyEditButtonText}>Edit locations</Text></Pressable>
             </View>}
           </>}
@@ -1139,10 +1321,17 @@ function ConnectionsScreen({
   const selected = providerOptions.find(option => option.id === provider)!;
   const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
+  const insets = useSafeAreaInsets();
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-        <PageHeader eyebrow="YOUR DATA, YOUR CHOICE" title="Connections" body="JourneyDeck works as a recorder on its own. Add music or vehicle context whenever you are ready." />
+    <View style={styles.safe}>
+      <ScrollView
+        contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustsScrollIndicatorInsets={false}
+        showsVerticalScrollIndicator={false}
+      >
+        <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="JourneyDeck works as a recorder on its own. Add music or vehicle context whenever you are ready." />
         <SectionHeading title="Recording" />
         <View style={[styles.selectedProvider, { borderColor: selectedRecordingMode.color }]}>
           <View style={[styles.connectionIcon, { backgroundColor: selectedRecordingMode.color }]}><Text style={styles.connectionIconText}>{selectedRecordingMode.symbol}</Text></View>
@@ -1152,17 +1341,17 @@ function ConnectionsScreen({
 
         <SectionHeading title="Soundtrack method" />
         <View style={[styles.selectedProvider, { borderColor: selected.color }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: selected.color }]}><Text style={styles.connectionIconText}>{selected.symbol}</Text></View>
+          <ProviderMark brand={selected.brand} size={50} />
           <View style={styles.flex}><Text style={styles.connectionKicker}>SELECTED MUSIC METHOD · NOT A CONNECTION</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
           <Pressable onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></Pressable>
         </View>
 
         <SectionHeading title="Music connections" />
-        <ConnectionTile name="Apple Music" detail="Native history and artwork" symbol="♪" color="#fa5c74" status={nativeAppleStatus(capabilities, connections.appleMusic)} action={capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Manage' : 'Connect'} onPress={onConnectAppleMusic} />
-        <ConnectionTile name="Auto Recognition" detail="ShazamKit for any music source" symbol="S" color="#56a8ff" status={nativeShazamStatus(capabilities, connections.shazam)} action={capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled' : 'Enable'} onPress={onEnableRecognition} />
-        <ConnectionTile name="Last.fm" detail="Timestamped Spotify scrobbles" symbol="fm" color="#f23d47" status={!connectionCapabilities.lastFmConfigured ? 'Server setup required' : connections.lastFm === 'connected' ? statusText(connections.lastFm) : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : statusText(connections.lastFm)} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
+        <ConnectionTile name="Apple Music" detail="Native history and artwork" symbol="♪" brand="apple-music" color="#fa5c74" status={nativeAppleStatus(capabilities, connections.appleMusic)} action={capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Manage' : 'Connect'} onPress={onConnectAppleMusic} />
+        <ConnectionTile name="Auto Recognition" detail="Music recognition powered by ShazamKit" symbol="S" brand="shazam" color="#2688ff" status={nativeShazamStatus(capabilities, connections.shazam)} action={capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled' : 'Enable'} onPress={onEnableRecognition} />
+        <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Server setup required' : connections.lastFm === 'connected' ? statusText(connections.lastFm) : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : statusText(connections.lastFm)} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
         {editingLastFm && <View style={styles.setupCard}>
-          <Text style={styles.setupTitle}>LAST.FM FOR SPOTIFY</Text>
+          <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
           <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
           <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor="#6f6877" style={styles.setupInput} />
           {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The JourneyDeck server still needs its private Last.fm key before syncing can run.</Text>}
@@ -1174,13 +1363,13 @@ function ConnectionsScreen({
         <ConnectionTile name="Tessie" detail="Tesla battery, energy, and vehicle context" symbol="T" color="#9b7cff" status={connectionCapabilities.tessieConfigured ? 'Connected on JourneyDeck' : statusText(connections.tessie)} action={connectionCapabilities.tessieConfigured ? 'Server managed' : 'Not configured'} onPress={() => Alert.alert('Tessie stays private', connectionCapabilities.tessieConfigured ? 'Tessie is connected securely on the JourneyDeck server. Its token is never copied to this iPhone.' : 'Tessie is not configured on the JourneyDeck server yet. Journey recording and music continue to work normally.')} />
         <View style={styles.securityCard}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and Tessie connections are optional and isolated. A connection problem never blocks recording, finishing, or the on-device point queue.</Text></View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: Tab) => void }) {
   const navigationPadding = 6;
-  const navigationGap = 2;
+  const navigationGap = 4;
   const navRef = useRef<View>(null);
   const navX = useRef(0);
   const navWidth = useRef(0);
@@ -1190,6 +1379,7 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
   const activeRef = useRef(active);
   const dragging = useRef(false);
   const lastDraggedTab = useRef<Tab | null>(null);
+  const [reduceTransparency, setReduceTransparency] = useState(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   activeRef.current = active;
@@ -1219,7 +1409,6 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
     const next = bottomNavigationItems[index].id;
     if (lastDraggedTab.current === next) return;
     lastDraggedTab.current = next;
-    onSelectRef.current(next);
   }
 
   function moveAtScreenX(screenX: number) {
@@ -1233,6 +1422,7 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
     dragging.current = false;
     lastDraggedTab.current = null;
     snapToTab(finalTab);
+    if (finalTab !== activeRef.current) onSelectRef.current(finalTab);
   }
 
   const dragResponder = useRef(PanResponder.create({
@@ -1247,6 +1437,18 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
   useEffect(() => {
     if (!dragging.current) snapToTab(active);
   }, [active, indicatorX]);
+
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceTransparencyEnabled().then(enabled => {
+      if (mounted) setReduceTransparency(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
 
   function measureNavigation() {
     navRef.current?.measureInWindow((x, _y, width) => {
@@ -1271,7 +1473,16 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
         hitSlop={4}
         style={({ pressed }) => [styles.navItem, pressed && styles.navItemPressed]}
       >
-        <Text style={[styles.navSymbol, selected && styles.navActive]}>{item.symbol}</Text>
+        <View style={[styles.navSymbolFrame, selected && styles.navSymbolFrameActive]}>
+          <SymbolView
+            name={item.symbol}
+            fallback={<Text style={[styles.navSymbolFallback, selected && styles.navActive]}>{item.fallback}</Text>}
+            size={25}
+            weight={selected ? 'semibold' : 'medium'}
+            tintColor={selected ? '#ff8b4f' : '#a78db8'}
+            style={styles.navSymbol}
+          />
+        </View>
         <Text style={[styles.navLabel, selected && styles.navActive]}>{item.label}</Text>
         {selected && <View style={styles.navActiveLine} />}
       </Pressable>
@@ -1284,15 +1495,23 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
     {...dragResponder.panHandlers}
   >
     <View pointerEvents="none" style={styles.navGlassSheen} />
-    {indicatorWidth > 0 && <Animated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorX }] }]} />}
+    {indicatorWidth > 0 && <Animated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorX }] }]}>
+      <View style={styles.navGlidingFill}><View style={styles.navGlidingVioletWash} /></View>
+    </Animated.View>}
     {navigationItems}
   </View>;
-  const hasNativeLiquidGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  const hasNativeLiquidGlass = !reduceTransparency && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
   return (
     <View style={styles.navDockFrame}>
-      {hasNativeLiquidGlass
-        ? <GlassView glassEffectStyle="regular" colorScheme="dark" tintColor="rgba(72, 32, 96, 0.46)" isInteractive style={styles.bottomNav}>{navigationTrack}</GlassView>
-        : <View style={[styles.bottomNav, styles.bottomNavFallback]}>{navigationTrack}</View>}
+      <View pointerEvents="none" style={styles.navDockAura} />
+      <View style={styles.bottomNav}>
+        {hasNativeLiquidGlass
+          ? <GlassView pointerEvents="none" glassEffectStyle="clear" colorScheme="dark" tintColor="rgba(46, 18, 58, 0.14)" style={styles.navMaterial} />
+          : <View pointerEvents="none" style={[styles.navMaterial, styles.bottomNavFallback]} />}
+        <View pointerEvents="none" style={styles.navSurfaceTint} />
+        <View pointerEvents="none" style={styles.navSurfaceWarmWash} />
+        {navigationTrack}
+      </View>
     </View>
   );
 }
@@ -1301,12 +1520,65 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
   return <View style={[styles.brandRow, compact && styles.brandCompact]}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.brandEyebrow}>JOURNEYDECK</Text><Text style={styles.brandTitle}>Your drive, remembered.</Text></View></View>;
 }
 
-function PageHeader({ eyebrow, title, body }: { eyebrow: string; title: string; body: string }) {
-  return <View style={styles.pageHeader}><Text style={styles.pageEyebrow}>{eyebrow}</Text><Text style={styles.pageTitle}>{title}</Text><Text style={styles.pageBody}>{body}</Text></View>;
+function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: string; title: string; body: string; variant?: 'standard' | 'memories' | 'settings' }) {
+  return <View style={[styles.pageHeader, variant === 'memories' && pageSceneStyles.memoryHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
+    <PageHeaderScene variant={variant} />
+    <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
+    <Text style={[styles.pageTitle, variant !== 'standard' && pageSceneStyles.sceneTitle]}>{title}</Text>
+    <Text style={[styles.pageBody, variant !== 'standard' && pageSceneStyles.sceneBody]}>{body}</Text>
+  </View>;
+}
+
+function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'settings' }) {
+  if (variant === 'memories') return <>
+    <LinearGradient pointerEvents="none" colors={['#180d27', '#0a1022', '#110817'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff795b" /><Stop offset="0.52" stopColor="#be7cff" /><Stop offset="1" stopColor="#5ce5c2" /></SvgLinearGradient></Defs><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="#9b6dff" strokeWidth="9" opacity="0.18" /><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="url(#memoryHeaderRoad)" strokeWidth="2.5" strokeLinecap="round" /><Circle cx="269" cy="75" r="6" fill="#ff9b7b" stroke="#2a1532" strokeWidth="3" /><Circle cx="160" cy="133" r="5" fill="#c69aff" stroke="#1b1530" strokeWidth="3" /><Circle cx="44" cy="153" r="4" fill="#62e8c2" stroke="#10231f" strokeWidth="2" /></Svg>
+    <View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterOne]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterTwo]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
+  </>;
+  if (variant === 'settings') return <>
+    <LinearGradient pointerEvents="none" colors={['#100e23', '#181029', '#100a1a'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#67e9bf" /><Stop offset="0.5" stopColor="#a37cff" /><Stop offset="1" stopColor="#ff866a" /></SvgLinearGradient></Defs><Path d="M 204 38 L 274 70 L 314 35 M 274 70 L 246 133 L 337 126" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="2" opacity="0.75" /><Circle cx="204" cy="38" r="14" fill="#231943" stroke="#7c5bce" strokeWidth="2" /><Circle cx="274" cy="70" r="19" fill="#2c1741" stroke="#ff7e65" strokeWidth="2" /><Circle cx="314" cy="35" r="11" fill="#172b32" stroke="#62e5ba" strokeWidth="2" /><Circle cx="246" cy="133" r="12" fill="#1a1d38" stroke="#9b7dff" strokeWidth="2" /><Circle cx="337" cy="126" r="8" fill="#372038" stroke="#ff9c80" strokeWidth="2" /></Svg>
+    <View pointerEvents="none" style={pageSceneStyles.settingsOrb} /><View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={[pageSceneStyles.sceneRailCore, pageSceneStyles.settingsRailCore]} /></View>
+  </>;
+  return <><View pointerEvents="none" style={styles.pageHeaderGlow} /><View pointerEvents="none" style={styles.pageHeaderRail}><View style={styles.pageHeaderRailCore} /></View></>;
+}
+
+function JourneyCinematicHero({ journey }: { journey: JourneyDetail }) {
+  const leadTrack = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null;
+  return <View style={styles.journeyHeroCard}>
+    <View style={styles.journeyHeroMapFrame}>
+      <RouteSketch cinematic coordinates={journey.route?.coordinates ?? []} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />
+      <LinearGradient pointerEvents="none" colors={['rgba(7,5,12,0.05)', 'rgba(7,5,12,0.16)', 'rgba(7,5,12,0.94)'] as const} locations={[0, 0.38, 1]} style={styles.journeyHeroMapShade} />
+      <View pointerEvents="none" style={styles.journeyHeroCopy}>
+        <Text style={styles.journeyHeroDate}>{formatFullDate(journey.startedAt).toUpperCase()}</Text>
+        <Text style={styles.journeyHeroRoute} numberOfLines={2}>{locationPair(journey)}</Text>
+      </View>
+    </View>
+    <View style={styles.journeyHeroMetrics}>
+      <JourneyHeroMetric value={formatMiles(journey.miles)} label="DISTANCE" />
+      <View style={styles.journeyHeroMetricDivider} />
+      <JourneyHeroMetric value={formatDuration(journey.durationMinutes)} label="DRIVE TIME" />
+      <View style={styles.journeyHeroMetricDivider} />
+      <JourneyHeroMetric value={journey.averageSpeedMph == null ? '—' : `${Math.round(journey.averageSpeedMph)} mph`} label="AVG SPEED" />
+    </View>
+    <View style={styles.journeyHeroSoundtrack}>
+      {leadTrack ? <Artwork track={leadTrack} size={54} /> : <View style={styles.journeyHeroArtworkFallback}><Text style={styles.journeyHeroArtworkNote}>♪</Text></View>}
+      <View style={styles.flex}>
+        <Text style={styles.journeyHeroSoundtrackLabel}>THE DRIVE'S SOUNDTRACK</Text>
+        <Text style={styles.journeyHeroTrack} numberOfLines={1}>{leadTrack?.track ?? (journey.songCount ? `${journey.songCount} songs captured` : 'No songs matched yet')}</Text>
+        <Text style={styles.journeyHeroArtist} numberOfLines={1}>{leadTrack?.artist ?? 'Your soundtrack will appear here'}</Text>
+      </View>
+      <View style={styles.journeyHeroSongCount}><Text style={styles.journeyHeroSongCountValue}>{journey.songCount}</Text><Text style={styles.journeyHeroSongCountLabel}>SONGS</Text></View>
+    </View>
+  </View>;
+}
+
+function JourneyHeroMetric({ value, label }: { value: string; label: string }) {
+  return <View style={styles.journeyHeroMetric}><Text style={styles.journeyHeroMetricValue} numberOfLines={1}>{value}</Text><Text style={styles.journeyHeroMetricLabel}>{label}</Text></View>;
 }
 
 function SectionHeading({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  return <View style={styles.sectionHeading}><Text style={styles.sectionTitle}>{title}</Text>{action && <Pressable onPress={onAction} disabled={!onAction}><Text style={[styles.sectionAction, !onAction && styles.sectionActionMuted]}>{action}</Text></Pressable>}</View>;
+  return <View style={styles.sectionHeading}><View style={styles.sectionTitleGroup}><View style={styles.sectionAccent} /><Text style={styles.sectionTitle}>{title}</Text></View>{action && <Pressable onPress={onAction} disabled={!onAction} style={styles.sectionActionButton}><Text style={[styles.sectionAction, !onAction && styles.sectionActionMuted]}>{action}</Text></Pressable>}</View>;
 }
 
 function PrimaryAction({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
@@ -1364,11 +1636,13 @@ function InlineNotice({ message, onRetry }: { message: string; onRetry: () => vo
 function LoadingLine({ label }: { label: string }) { return <View style={styles.loadingLine}><ActivityIndicator color="#9b7cff" /><Text style={styles.loadingLineText}>{label}</Text></View>; }
 function LoadingCard() { return <View style={styles.loadingCard}><ActivityIndicator color="#9b7cff" size="large" /><Text style={styles.loadingLineText}>Loading your journeys…</Text></View>; }
 
-function RouteSketch({ coordinates }: { coordinates: [number, number][] }) {
+function RouteSketch({ coordinates, startLabel, endLabel, cinematic = false }: { coordinates: [number, number][]; startLabel: string | null; endLabel: string | null; cinematic?: boolean }) {
   const { width: screenWidth } = useWindowDimensions();
   const plotWidth = Math.max(240, Math.min(480, screenWidth - 72)), plotHeight = 142;
   const valid = coordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
-  const step = Math.max(1, Math.ceil(valid.length / 28));
+  // Preserve enough of a recorded drive to follow its actual turns without asking
+  // the native SVG view to draw every background GPS reading.
+  const step = Math.max(1, Math.ceil(valid.length / 96));
   const sampled = valid.filter((_, index) => index % step === 0 || index === valid.length - 1);
   const longitudes = sampled.map(point => point[0]), latitudes = sampled.map(point => point[1]);
   const minLongitude = Math.min(...longitudes), maxLongitude = Math.max(...longitudes);
@@ -1378,23 +1652,50 @@ function RouteSketch({ coordinates }: { coordinates: [number, number][] }) {
     x: 18 + ((longitude - minLongitude) / longitudeSpan) * (plotWidth - 36),
     y: 18 + (1 - (latitude - minLatitude) / latitudeSpan) * (plotHeight - 36),
   }));
-  return <View style={styles.routeSketch}>
-    <View style={styles.routeGlow} />
-    {points.slice(1).map((point, index) => {
-      const previous = points[index], dx = point.x - previous.x, dy = point.y - previous.y;
-      const length = Math.sqrt(dx * dx + dy * dy), angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      return <View key={`${index}-${point.x}-${point.y}`} style={[styles.routeLine, { left: (previous.x + point.x - length) / 2, top: (previous.y + point.y) / 2 - 2, width: length, transform: [{ rotate: `${angle}deg` }] }]} />;
-    })}
-    {points[0] && <View style={[styles.routeStart, { left: points[0].x - 6, top: points[0].y - 6 }]} />}
-    {points.at(-1) && <View style={[styles.routeEnd, { left: points.at(-1)!.x - 7, top: points.at(-1)!.y - 7 }]} />}
-    <Text style={styles.routeCaption}>{points.length > 1 ? 'Recorded journey route' : 'Route preview becomes available after sync'}</Text>
+  const tileSize = 256, snapshotSize = tileSize * 3;
+  const mercatorPoint = ([longitude, latitude]: [number, number], zoom: number) => {
+    const scale = tileSize * (2 ** zoom), clippedLatitude = Math.max(-85.05112878, Math.min(85.05112878, latitude));
+    return { x: ((longitude + 180) / 360) * scale, y: (1 - Math.asinh(Math.tan(clippedLatitude * Math.PI / 180)) / Math.PI) * scale / 2 };
+  };
+  let snapshotZoom = 3;
+  for (let zoom = 16; zoom >= 3; zoom -= 1) {
+    const candidate = valid.map(point => mercatorPoint(point, zoom)), xs = candidate.map(point => point.x), ys = candidate.map(point => point.y);
+    if (Math.max(...xs) - Math.min(...xs) < snapshotSize * 0.64 && Math.max(...ys) - Math.min(...ys) < snapshotSize * 0.58) { snapshotZoom = zoom; break; }
+  }
+  const worldPoints = sampled.map(point => mercatorPoint(point, snapshotZoom));
+  const centerX = worldPoints.length ? (Math.min(...worldPoints.map(point => point.x)) + Math.max(...worldPoints.map(point => point.x))) / 2 : 0;
+  const centerY = worldPoints.length ? (Math.min(...worldPoints.map(point => point.y)) + Math.max(...worldPoints.map(point => point.y))) / 2 : 0;
+  const tileOriginX = Math.floor(centerX / tileSize) - 1, tileOriginY = Math.floor(centerY / tileSize) - 1, tileCount = 2 ** snapshotZoom;
+  const mapPolyline = worldPoints.map(point => `${point.x - tileOriginX * tileSize},${point.y - tileOriginY * tileSize}`).join(' ');
+  const snapshotTiles = Array.from({ length: 9 }, (_, index) => {
+    const column = index % 3, row = Math.floor(index / 3), x = ((tileOriginX + column) % tileCount + tileCount) % tileCount, y = tileOriginY + row;
+    return { key: `${snapshotZoom}-${x}-${y}`, uri: `https://tile.openstreetmap.org/${snapshotZoom}/${x}/${y}.png`, column, row, valid: y >= 0 && y < tileCount };
+  }).filter(tile => tile.valid);
+  const polyline = points.map(point => `${point.x},${point.y}`).join(' ');
+  const start = points[0], end = points.at(-1);
+  return <View style={[styles.routeSketch, cinematic && styles.routeSketchHero]}>
+    <LinearGradient colors={['#211233', '#101525', '#0a0a13'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={routeVisualStyles.routeGridOne} /><View style={routeVisualStyles.routeGridTwo} /><View style={routeVisualStyles.routeGlow} /><View style={routeVisualStyles.routeAurora} />
+    {points.length > 1 ? <Reanimated.View entering={FadeIn.duration(420)} style={routeVisualStyles.routeSnapshot}>
+      {snapshotTiles.map(tile => <ExpoImage key={tile.key} source={tile.uri} cachePolicy="memory-disk" contentFit="cover" transition={0} style={[routeVisualStyles.routeTile, { left: `${tile.column * 33.333}%`, top: `${tile.row * 33.333}%` }]} />)}
+      <View pointerEvents="none" style={routeVisualStyles.routeTileShade} />
+      <View pointerEvents="none" style={routeVisualStyles.routeCanvas}><Svg width="100%" height="100%" viewBox={`0 0 ${snapshotSize} ${snapshotSize}`}>
+        <Defs><SvgLinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#45efc0" /><Stop offset="0.5" stopColor="#a681ff" /><Stop offset="1" stopColor="#ff765c" /></SvgLinearGradient></Defs>
+        <Polyline points={mapPolyline || polyline} fill="none" stroke="#8e6dff" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" opacity="0.38" />
+        <Polyline points={mapPolyline || polyline} fill="none" stroke="url(#journeyRoute)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
+        {worldPoints[0] && <><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="12" fill="#43e6ae" opacity="0.28" /><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="6" fill="#43e6ae" stroke="#d9fff1" strokeWidth="2" /></>}
+        {worldPoints.at(-1) && <><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="15" fill="#ff795b" opacity="0.3" /><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="7" fill="#ff795b" stroke="#fff0e8" strokeWidth="2" /></>}
+      </Svg></View>
+    </Reanimated.View> : <View style={routeVisualStyles.routeAwaiting}><Text style={routeVisualStyles.routeAwaitingSymbol}>⌁</Text><Text style={routeVisualStyles.routeAwaitingText}>Route will appear after the journey syncs</Text></View>}
+    {!cinematic && <><View style={routeVisualStyles.routeLegend}><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendStart]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{startLabel}</Text></View><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendEnd]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{endLabel}</Text></View></View>
+    <Text style={styles.routeCaption}>{points.length > 1 ? `${points.length} route moments · GPS recorded · © OpenStreetMap contributors` : 'OFFLINE-SAFE ROUTE PREVIEW'}</Text></>}
   </View>;
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) { return <View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>; }
 
-function ConnectionTile({ name, detail, symbol, color, status, action, onPress }: { name: string; detail: string; symbol: string; color: string; status: string; action: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.connectionTile, pressed && styles.pressed]}><View style={[styles.connectionIcon, { backgroundColor: color }]}><Text style={styles.connectionIconText}>{symbol}</Text></View><View style={styles.flex}><Text style={styles.connectionName}>{name}</Text><Text style={styles.connectionDetail}>{detail}</Text><Text style={[styles.connectionStatus, status === 'Connected' || status === 'Enabled' ? styles.goodStatus : undefined]}>{status}</Text></View><View style={styles.connectionAction}><Text style={styles.connectionActionText}>{action}</Text></View></Pressable>;
+function ConnectionTile({ name, detail, symbol, brand, color, status, action, onPress }: { name: string; detail: string; symbol: string; brand?: ProviderBrand; color: string; status: string; action: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.connectionTile, pressed && styles.pressed]}><View pointerEvents="none" style={[styles.connectionEdge, { backgroundColor: color }]} />{brand ? <ProviderMark brand={brand} size={46} /> : <View style={[styles.connectionIcon, { backgroundColor: color, shadowColor: color }]}><Text style={styles.connectionIconText}>{symbol}</Text></View>}<View style={styles.flex}><Text style={styles.connectionName}>{name}</Text><Text style={styles.connectionDetail}>{detail}</Text><Text style={[styles.connectionStatus, status === 'Connected' || status === 'Enabled' ? styles.goodStatus : undefined]}>{status}</Text></View><View style={styles.connectionAction}><Text style={styles.connectionActionText}>{action}</Text></View></Pressable>;
 }
 
 function formatMiles(miles: number) { return `${miles < 10 && miles % 1 ? miles.toFixed(1) : Math.round(miles)} mi`; }
@@ -1457,10 +1758,47 @@ function nativeShazamStatus(capabilities: JourneyDeckMusicCapabilityStatus | nul
   return capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled on this iPhone' : capabilities?.microphonePermissionStatus === 'denied' || capabilities?.microphonePermissionStatus === 'restricted' ? 'Needs attention' : statusText(stored);
 }
 
+const routeVisualStyles = StyleSheet.create({
+  routeGridOne: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(172,132,255,0.16)', left: -95, bottom: -178 },
+  routeGridTwo: { position: 'absolute', width: 210, height: 210, borderRadius: 105, borderWidth: 1, borderColor: 'rgba(255,135,100,0.14)', right: -94, top: -142 },
+  routeGlow: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#45265f', opacity: 0.5, right: -32, top: -52, shadowColor: '#a681ff', shadowOpacity: 0.7, shadowRadius: 26 },
+  routeAurora: { position: 'absolute', left: 20, right: 20, height: 2, top: '49%', backgroundColor: '#b98eff', opacity: 0.24, shadowColor: '#b98eff', shadowOpacity: 1, shadowRadius: 12 },
+  routeSnapshot: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, overflow: 'hidden' },
+  routeTile: { position: 'absolute', width: '33.334%', height: '33.334%', opacity: 0.72 },
+  routeTileShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(13,7,21,0.44)' },
+  routeCanvas: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 },
+  routeAwaiting: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', gap: 7 },
+  routeAwaitingSymbol: { color: '#b795ff', fontSize: 29, fontWeight: '900' },
+  routeAwaitingText: { color: '#91879a', fontSize: 11, fontWeight: '700' },
+  routeLegend: { position: 'absolute', left: 13, right: 13, top: 12, flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  routeLegendItem: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  routeLegendDot: { width: 7, height: 7, borderRadius: 4, shadowOpacity: 0.9, shadowRadius: 7 },
+  routeLegendStart: { backgroundColor: '#43e6ae', shadowColor: '#43e6ae' },
+  routeLegendEnd: { backgroundColor: '#ff795b', shadowColor: '#ff795b' },
+  routeLegendText: { flex: 1, color: '#ded3e5', fontSize: 9, fontWeight: '800' },
+});
+
+const pageSceneStyles = StyleSheet.create({
+  memoryHeader: { minHeight: 166, borderColor: '#583a75', backgroundColor: '#0b0915', shadowColor: '#b16eff', shadowOpacity: 0.32, shadowRadius: 22 },
+  settingsHeader: { minHeight: 166, borderColor: '#4b3b73', backgroundColor: '#0e0b17', shadowColor: '#8564ff', shadowOpacity: 0.3, shadowRadius: 22 },
+  sceneCanvas: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  sceneEyebrow: { color: '#ffc0a9', maxWidth: 235 },
+  sceneTitle: { fontSize: 35, textShadowColor: '#c57fff', textShadowRadius: 12 },
+  sceneBody: { color: '#d0c4d7', maxWidth: 238 },
+  sceneRail: { position: 'absolute', left: 18, top: 13, width: 58, height: 3, borderRadius: 3, backgroundColor: 'rgba(158, 109, 225, 0.32)', overflow: 'hidden' },
+  sceneRailCore: { width: '70%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 8 },
+  settingsRailCore: { backgroundColor: '#6fe8c2', shadowColor: '#6fe8c2' },
+  memoryChapter: { position: 'absolute', width: 43, height: 50, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(215, 174, 255, 0.4)', backgroundColor: '#241533', overflow: 'hidden', shadowColor: '#b680ff', shadowOpacity: 0.4, shadowRadius: 9 },
+  memoryChapterOne: { right: 21, top: 21, transform: [{ rotate: '12deg' }] },
+  memoryChapterTwo: { right: 76, top: 48, transform: [{ rotate: '-9deg' }] },
+  memoryChapterGlow: { position: 'absolute', width: 52, height: 52, borderRadius: 26, backgroundColor: '#ff7660', opacity: 0.46, right: -21, top: -20 },
+  settingsOrb: { position: 'absolute', width: 114, height: 114, borderRadius: 57, right: -36, top: -51, backgroundColor: '#7f42ba', opacity: 0.24, shadowColor: '#a27aff', shadowOpacity: 0.85, shadowRadius: 27 },
+});
+
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1 }, recorderVisible: { flex: 1, paddingBottom: 104 }, recorderHidden: { display: 'none' }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
+  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, backgroundColor: '#08070d' }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
-  pageContent: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 128, gap: 16 },
+  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
   webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#34204f', backgroundColor: '#05040e', shadowColor: '#000', shadowOpacity: 0.7, shadowRadius: 28, overflow: 'hidden' },
   webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
@@ -1496,8 +1834,9 @@ const styles = StyleSheet.create({
   photoEditorHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, photoEditorHelp: { color: '#8e8497', fontSize: 10, lineHeight: 15, marginTop: 4 }, photoAddButton: { minHeight: 36, borderRadius: 999, backgroundColor: '#281b39', borderWidth: 1, borderColor: '#684b8c', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, photoAddDisabled: { opacity: 0.42 }, photoAddText: { color: '#c5a5ff', fontSize: 9, fontWeight: '900' }, photoSaveFirst: { color: '#ffad7f', fontSize: 10, lineHeight: 14 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '31%', aspectRatio: 0.86, borderRadius: 14, overflow: 'visible', borderWidth: 2, borderColor: 'transparent' }, photoTileSelected: { borderColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.4, shadowRadius: 8 }, photoTileImage: { width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }, photoTileShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 38, backgroundColor: '#08060bbb' }, photoTileLabel: { position: 'absolute', left: 7, right: 7, bottom: 8, color: '#fff5fb', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 }, photoRemove: { position: 'absolute', right: -7, top: -7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#32151b', borderWidth: 1, borderColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, photoRemoveText: { color: '#ff9c89', fontSize: 18, lineHeight: 20, fontWeight: '700' }, photoLoading: { backgroundColor: '#1b1524', alignItems: 'center', justifyContent: 'center' }, photoEmpty: { minHeight: 72, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3b3148', backgroundColor: '#0c0a11', padding: 12, justifyContent: 'center' }, photoEmptyTitle: { color: '#d3c6dc', fontSize: 11, fontWeight: '800' }, photoEmptyBody: { color: '#7f7488', fontSize: 9, lineHeight: 14, marginTop: 4 },
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
   memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionArtworkOrb: { position: 'absolute', width: 42, height: 42, borderRadius: 21, opacity: 0.65, right: -8, top: -8, shadowOpacity: 0.8, shadowRadius: 10 }, collectionArtworkRoute: { position: 'absolute', width: 58, height: 3, borderRadius: 2, left: 5, top: 39, transform: [{ rotate: '-25deg' }] }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
+  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 }, collectionPlaceholderSun: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: '#ffcf93', right: 12, top: 10, opacity: 0.9, shadowColor: '#ffb36e', shadowOpacity: 0.9, shadowRadius: 12 }, collectionPlaceholderRoad: { position: 'absolute', width: 126, height: 45, borderRadius: 42, borderWidth: 4, borderColor: '#1b1026', bottom: -24, left: -15, transform: [{ rotate: '-13deg' }] }, collectionPlaceholderHorizon: { position: 'absolute', height: 2, left: 0, right: 0, top: '59%', backgroundColor: '#ffd7ad', opacity: 0.65 }, journeyPlaceholderGlow: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: '#ffd08f', right: -20, top: -26, opacity: 0.72, shadowColor: '#ff9d76', shadowOpacity: 0.9, shadowRadius: 15 }, journeyPlaceholderRoad: { position: 'absolute', left: -12, right: -12, height: 23, bottom: -12, borderRadius: 30, borderWidth: 3, borderColor: '#201128', transform: [{ rotate: '-13deg' }] },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
-  pageHeader: { gap: 5, marginBottom: 4 }, pageEyebrow: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.6 }, pageTitle: { color: '#f8f5ff', fontSize: 34, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#9890a6', fontSize: 14, lineHeight: 21, maxWidth: 350 },
+  pageHeader: { minHeight: 143, gap: 5, marginBottom: 4, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#40274f', backgroundColor: '#100a19', paddingHorizontal: 18, paddingVertical: 18, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, pageHeaderGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -76, top: -100, backgroundColor: '#6b2557', opacity: 0.48 }, pageHeaderRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#402350', overflow: 'hidden' }, pageHeaderRailCore: { width: '55%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 6 }, pageEyebrow: { color: '#c1a2ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 4 }, pageTitle: { color: '#f8f5ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#ada3b4', fontSize: 13, lineHeight: 20, maxWidth: 330 },
   heroCard: { backgroundColor: '#191221', borderWidth: 1, borderColor: '#654474', borderRadius: 26, padding: 20, gap: 8, overflow: 'hidden', shadowColor: '#9b7cff', shadowOpacity: 0.2, shadowRadius: 24 }, heroGlowOrange: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#5a241d', opacity: 0.32, right: -70, top: -75 }, heroGlowPurple: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#36205b', opacity: 0.32, left: -100, bottom: -145 }, heroEyebrow: { color: '#ff9a7a', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, heroBody: { color: '#aca3b6', fontSize: 14, lineHeight: 20 }, heroMetrics: { flexDirection: 'row', backgroundColor: '#100c16dd', borderRadius: 17, marginTop: 10, paddingVertical: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#493853' },
   openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 }, roadSunGlow: { position: 'absolute', width: 128, height: 128, borderRadius: 64, backgroundColor: '#7b2b31', opacity: 0.25, left: '50%', marginLeft: -64, top: -35, shadowColor: '#ff7257', shadowOpacity: 0.85, shadowRadius: 30 }, roadSun: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: '#ff765a', opacity: 0.9, left: '50%', marginLeft: -22, top: 18, shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 18 }, roadStar: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: '#c7b5ff', shadowColor: '#b292ff', shadowOpacity: 1, shadowRadius: 5 }, roadStarOne: { left: 38, top: 25 }, roadStarTwo: { right: 54, top: 19 }, roadStarThree: { right: 95, top: 43, width: 2, height: 2 }, roadHorizon: { position: 'absolute', left: 18, right: 18, top: 58, height: 1, backgroundColor: '#764e93', opacity: 0.72, shadowColor: '#a88aff', shadowOpacity: 0.8, shadowRadius: 6 }, roadSurface: { position: 'absolute', width: 0, height: 0, borderLeftWidth: 145, borderRightWidth: 145, borderBottomWidth: 82, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#090810', left: '50%', marginLeft: -145, top: 54 }, roadEdge: { position: 'absolute', width: 2, height: 94, backgroundColor: '#9d70ff', top: 53, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, roadEdgeLeft: { left: '50%', marginLeft: -48, transform: [{ rotate: '47deg' }] }, roadEdgeRight: { right: '50%', marginRight: -48, transform: [{ rotate: '-47deg' }] }, roadDash: { position: 'absolute', left: '50%', backgroundColor: '#ff8767', shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 8 }, roadDashFar: { width: 2, height: 7, marginLeft: -1, top: 64 }, roadDashMiddle: { width: 3, height: 13, marginLeft: -2, top: 79 }, roadDashNear: { width: 5, height: 22, marginLeft: -3, top: 105 }, roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 }, roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' }, roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
   pulseCard: { backgroundColor: '#0f0d15', borderRadius: 22, borderWidth: 1, borderColor: '#332943', padding: 16, shadowColor: '#9b7cff', shadowOpacity: 0.14, shadowRadius: 18 }, pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, pulseKicker: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.3 }, pulseTitle: { color: '#f4eff9', fontSize: 16, fontWeight: '900', marginTop: 4 }, livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#285d4c', backgroundColor: '#10251f', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#43e6ae', shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, liveText: { color: '#70f1c5', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, pulseChart: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 9, marginTop: 17 }, pulseColumn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }, pulseTrack: { width: 16, flex: 1, justifyContent: 'flex-end', borderRadius: 8, backgroundColor: '#191522', overflow: 'hidden' }, pulseBar: { width: '100%', minHeight: 7, borderRadius: 8, backgroundColor: '#7c55d9', shadowColor: '#a88aff', shadowOpacity: 0.9, shadowRadius: 7 }, pulseBarCap: { height: 4, backgroundColor: '#c6b2ff', opacity: 0.9 }, pulseDay: { color: '#696171', fontSize: 8, fontWeight: '800' }, pulseDayToday: { color: '#ff8a68' }, pulseFooter: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 13, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#31293a' }, pulseFooterValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '900' }, pulseFooterLabel: { color: '#7e7687', fontSize: 10 },
@@ -1507,31 +1846,41 @@ const styles = StyleSheet.create({
   vehicleCard: { flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2c2635', padding: 15 }, vehicleIcon: { width: 50, height: 50, borderRadius: 16, backgroundColor: '#2b1f40', alignItems: 'center', justifyContent: 'center' }, vehicleIconText: { color: '#b795ff', fontSize: 20, fontWeight: '900' }, vehicleKicker: { color: '#8b74c3', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, vehicleName: { color: '#f4eff8', fontSize: 16, fontWeight: '900', marginTop: 5 }, vehicleDetail: { color: '#898190', fontSize: 11, lineHeight: 16, marginTop: 4 }, connectionDot: { width: 10, height: 10, borderRadius: 5 },
   dataHealthCard: { backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#292331', paddingHorizontal: 15 }, dashboardHealthRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, dashboardHealthDot: { width: 9, height: 9, borderRadius: 5 }, dashboardHealthLabel: { color: '#eee9f3', fontSize: 12, fontWeight: '800' }, dashboardHealthDetail: { color: '#7f7788', fontSize: 10, lineHeight: 14, marginTop: 3 }, dashboardHealthState: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   metric: { flex: 1, alignItems: 'center', gap: 5 }, metricValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] }, metricLabel: { color: '#756c82', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }, sectionTitle: { color: '#f5f1fa', fontSize: 18, fontWeight: '800' }, sectionAction: { color: '#a88aff', fontSize: 12, fontWeight: '800' }, sectionActionMuted: { color: '#777080' },
+  sectionHeading: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }, sectionTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 9 }, sectionAccent: { width: 4, height: 20, borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.75, shadowRadius: 7 }, sectionTitle: { color: '#f5f1fa', fontSize: 18, fontWeight: '900', letterSpacing: -0.2 }, sectionActionButton: { minHeight: 30, borderRadius: 999, borderWidth: 1, borderColor: '#49335e', backgroundColor: '#1b1227', paddingHorizontal: 11, justifyContent: 'center' }, sectionAction: { color: '#c4a7ff', fontSize: 11, fontWeight: '900' }, sectionActionMuted: { color: '#777080' },
   soundtrackCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2c2538', padding: 14 }, emptyArtwork: { width: 72, height: 72, borderRadius: 16, backgroundColor: '#2a1b38', alignItems: 'center', justifyContent: 'center' }, emptyArtworkNote: { color: '#b391ff', fontSize: 31, fontWeight: '800' }, soundtrackLabel: { color: '#9a7ee5', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, soundtrackTitle: { color: '#f8f5ff', fontSize: 16, fontWeight: '800', marginTop: 5 }, soundtrackArtist: { color: '#8e8798', fontSize: 12, marginTop: 4 },
   recorderHealth: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#111018', borderRadius: 17, padding: 15, borderWidth: 1, borderColor: '#272331' }, healthDot: { width: 10, height: 10, borderRadius: 5 }, healthTitle: { color: '#eae5f0', fontSize: 14, fontWeight: '800' }, healthBody: { color: '#827b8c', fontSize: 11, lineHeight: 16, marginTop: 2 }, healthPoints: { color: '#9b7cff', fontSize: 16, fontWeight: '800' },
-  primaryAction: { minHeight: 58, borderRadius: 18, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 }, primaryActionText: { color: '#190b07', fontSize: 16, fontWeight: '900' }, pressed: { opacity: 0.62 },
+  primaryAction: { minHeight: 58, borderRadius: 18, borderWidth: 1, borderColor: '#ffaf95', backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, shadowColor: '#ff5d42', shadowOpacity: 0.38, shadowRadius: 13, shadowOffset: { width: 0, height: 7 } }, primaryActionText: { color: '#190b07', fontSize: 16, fontWeight: '900' }, pressed: { opacity: 0.62 },
   journeyCard: { backgroundColor: '#121019', borderRadius: 21, borderWidth: 1, borderColor: '#292334', padding: 16, gap: 11 }, journeyTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 }, journeyDate: { color: '#8f819e', fontSize: 10, fontWeight: '900', letterSpacing: 1 }, journeyRoute: { color: '#f3eef8', fontSize: 17, fontWeight: '800', marginTop: 6, maxWidth: 290 }, journeyChevron: { color: '#6f667a', fontSize: 28, lineHeight: 30 }, journeyStats: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 }, journeyStat: { color: '#a9a1b2', fontSize: 12, fontWeight: '600' }, journeyStatDot: { color: '#4e4657', fontSize: 10 }, journeySoundtrack: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#332c3d', paddingTop: 11 }, journeySong: { color: '#e7e1ed', fontSize: 13, fontWeight: '700' }, journeyArtist: { color: '#827a8c', fontSize: 11, marginTop: 3 }, songCount: { color: '#9b7cff', fontSize: 12, fontWeight: '900' }, miniArtwork: { width: 42, height: 42, borderRadius: 10, backgroundColor: '#281b36', alignItems: 'center', justifyContent: 'center' }, miniArtworkText: { color: '#aa89ff', fontSize: 18, fontWeight: '900' }, artworkFallback: { backgroundColor: '#2a1d38', alignItems: 'center', justifyContent: 'center' }, artworkFallbackText: { color: '#b694ff', fontWeight: '900' },
   journeyCardCompact: { backgroundColor: '#121019', borderRadius: 16, borderWidth: 1, borderColor: '#292334', paddingHorizontal: 12, paddingVertical: 10, gap: 7 }, journeyCompactTop: { flexDirection: 'row', alignItems: 'center', gap: 8 }, journeyDateCompact: { color: '#8f819e', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyRouteCompact: { color: '#f3eef8', fontSize: 13, lineHeight: 17, fontWeight: '800', marginTop: 3 }, journeyChevronCompact: { color: '#6f667a', fontSize: 22, lineHeight: 24 }, journeyStatsCompact: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 3 }, journeyStatCompact: { color: '#928a9c', fontSize: 9, fontWeight: '700' }, journeySoundtrackCompact: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2b2633', paddingTop: 7 }, journeySongCompact: { flex: 1, color: '#bdb5c5', fontSize: 10, fontWeight: '700' }, songCountCompact: { minWidth: 18, color: '#9b7cff', fontSize: 10, fontWeight: '900', textAlign: 'right' }, miniArtworkCompact: { width: 30, height: 30, borderRadius: 7, backgroundColor: '#281b36', alignItems: 'center', justifyContent: 'center' }, miniArtworkTextCompact: { color: '#aa89ff', fontSize: 13, fontWeight: '900' },
   emptyCard: { alignItems: 'center', backgroundColor: '#111018', borderRadius: 21, borderWidth: 1, borderColor: '#272331', padding: 24 }, emptyCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#231a30', alignItems: 'center', justifyContent: 'center', marginBottom: 10 }, emptyCircleText: { color: '#9b7cff', fontWeight: '900', fontSize: 17 }, emptyTitle: { color: '#eee9f5', fontSize: 16, fontWeight: '800' }, emptyBody: { color: '#8b8395', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6, maxWidth: 300 },
   loadMoreButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#3a3048', backgroundColor: '#15111d' }, loadMoreText: { color: '#b59cff', fontSize: 13, fontWeight: '900' },
   inlineNotice: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#21180f', borderWidth: 1, borderColor: '#714c25', borderRadius: 15, padding: 12 }, noticeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffb15c' }, inlineNoticeText: { color: '#c1af9a', fontSize: 11, lineHeight: 16, flex: 1 }, retryText: { color: '#ffb15c', fontSize: 11, fontWeight: '900' }, loadingLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, minHeight: 28 }, loadingLineText: { color: '#8f8799', fontSize: 12 }, loadingCard: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 13, backgroundColor: '#111018', borderRadius: 20 },
-  detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
+  detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeSketchHero: { height: 236, borderWidth: 0, borderRadius: 0 }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
+  journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroMapFrame: { position: 'relative', overflow: 'hidden' }, journeyHeroMapShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, journeyHeroCopy: { position: 'absolute', left: 18, right: 18, bottom: 18 }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8 }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
-  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#131019', borderWidth: 1, borderRadius: 21, padding: 15 }, connectionTile: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#292333', borderRadius: 18, padding: 14 }, connectionIcon: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#7e7489', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f1ecf6', fontSize: 15, fontWeight: '800', marginTop: 2 }, connectionDetail: { color: '#888091', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#938999', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#43e6ae' }, connectionAction: { backgroundColor: '#211a2c', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#b59cff', fontSize: 9, fontWeight: '900' }, changeButton: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#211a2c' }, changeButtonText: { color: '#b59cff', fontSize: 11, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#9b7cff', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#c2b3ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#918897', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#4e2831', borderRadius: 18, padding: 15 }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3c3443', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#63313a', backgroundColor: '#281318' }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29' }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47' }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
-  navDockFrame: { marginBottom: 8, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(226,134,255,0.58)', shadowColor: '#b837ff', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } },
+  navDockFrame: { marginBottom: 10, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(206,82,255,0.42)', shadowColor: '#000', shadowOpacity: 0.52, shadowRadius: 21, shadowOffset: { width: 0, height: 11 } },
+  navDockAura: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(206,82,255,0.28)', shadowColor: '#b837ff', shadowOpacity: 0.17, shadowRadius: 18, shadowOffset: { width: 0, height: 0 } },
   bottomNav: { minHeight: 76, borderRadius: 24, overflow: 'hidden' },
-  bottomNavFallback: { backgroundColor: 'rgba(25,12,34,0.96)' },
-  navTrack: { flex: 1, minHeight: 76, flexDirection: 'row', gap: 2, padding: 6 },
-  navGlassSheen: { position: 'absolute', zIndex: 3, top: 1, right: 18, left: 18, height: 1, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.32)' },
-  navGlidingIndicator: { position: 'absolute', zIndex: 0, top: 6, bottom: 6, left: 0, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,113,56,0.86)', backgroundColor: 'rgba(255,105,52,0.12)', shadowColor: '#ff5b2d', shadowOpacity: 0.9, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } },
-  navItem: { position: 'relative', zIndex: 1, flex: 1, minHeight: 62, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 18 },
-  navItemPressed: { transform: [{ scale: 0.97 }], backgroundColor: 'rgba(255,255,255,0.06)' },
-  navSymbol: { color: '#bba5c8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
-  navLabel: { color: '#bba5c8', fontSize: 8, fontWeight: '800' },
+  navMaterial: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 24 },
+  bottomNavFallback: { backgroundColor: 'rgba(22,10,31,0.94)' },
+  navSurfaceTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(16,7,25,0.78)' },
+  navSurfaceWarmWash: { position: 'absolute', top: 0, right: 0, bottom: 0, width: '42%', backgroundColor: 'rgba(96,27,42,0.08)' },
+  navTrack: { flex: 1, minHeight: 76, flexDirection: 'row', gap: 4, padding: 6 },
+  navGlassSheen: { position: 'absolute', zIndex: 3, top: 1, right: 16, left: 16, height: StyleSheet.hairlineWidth, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.16)' },
+  navGlidingIndicator: { position: 'absolute', zIndex: 0, top: 6, bottom: 6, left: 0, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,113,56,0.78)', shadowColor: '#ff5b2d', shadowOpacity: 0.72, shadowRadius: 11, shadowOffset: { width: 0, height: 0 } },
+  navGlidingFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', borderRadius: 17, backgroundColor: 'rgba(255,112,55,0.17)' },
+  navGlidingVioletWash: { position: 'absolute', top: 0, right: 0, bottom: 0, width: '54%', backgroundColor: 'rgba(122,38,137,0.16)' },
+  navItem: { position: 'relative', zIndex: 1, flex: 1, minHeight: 64, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 6, borderRadius: 18 },
+  navItemPressed: { transform: [{ scale: 0.98 }], backgroundColor: 'rgba(255,255,255,0.04)' },
+  navSymbolFrame: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  navSymbolFrameActive: { shadowColor: '#ff6730', shadowOpacity: 0.92, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  navSymbol: { width: 25, height: 25 },
+  navSymbolFallback: { color: '#a78db8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
+  navLabel: { color: '#a78db8', fontSize: 10, fontWeight: '800', letterSpacing: 0.05 },
   navActive: { color: '#ff8b4f', textShadowColor: 'rgba(255,95,47,0.95)', textShadowRadius: 7 },
   navActiveLine: { position: 'absolute', right: '24%', bottom: 3, left: '24%', height: 3, borderRadius: 2, backgroundColor: '#ff7138', shadowColor: '#ff5f2f', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
-  onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
+  onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, spotifyMarkFrame: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
 });

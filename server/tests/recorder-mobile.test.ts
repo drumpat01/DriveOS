@@ -113,6 +113,7 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.ok(musicDashboardBody.metrics.listeningHours > 0);
     assert.ok(musicDashboardBody.metrics.currentStreak >= 1);
     assert.equal(musicDashboardBody.daily.length, 14);
+    assert.ok(musicDashboardBody.daily.some((day: any) => day.minutes > 0));
     assert.ok(musicDashboardBody.recentSelections.some((song: any) => song.track === "Server Song" && song.externalUrl === "https://open.spotify.com/track/server-song"));
     assert.ok(musicDashboardBody.topArtists.some((artist: any) => artist.artist === "Live Artist" && artist.plays === 1));
     assert.doesNotMatch(musicDashboard.body, /observationId|recorderSessionId|legacy-private-value/i);

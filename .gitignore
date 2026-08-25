@@ -11,6 +11,7 @@ log/
 cache/
 .cache/
 artifacts/
+.codex-video-*/
 desktop/packages/
 node_modules/
 server/dist/
@@ -26,6 +27,7 @@ server/dist/
 *.log
 *.tmp
 *.bak
+vlc-help.txt
 
 bin/
 obj/

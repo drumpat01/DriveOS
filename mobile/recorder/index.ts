@@ -1,10 +1,27 @@
+import 'react-native-gesture-handler';
+
+import { createElement } from 'react';
 import { registerRootComponent } from 'expo';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
+import { enableScreens } from 'react-native-screens';
 
 import './src/location-task';
 import './src/automatic-drive-task';
 import App from './App';
 
-// registerRootComponent calls AppRegistry.registerComponent('main', () => App);
-// It also ensures that whether you load the app in Expo Go or in a native build,
-// the environment is set up appropriately
-registerRootComponent(App);
+enableScreens(true);
+
+function JourneyDeckRoot() {
+  return createElement(
+    GestureHandlerRootView,
+    { style: { flex: 1 } },
+    createElement(
+      SafeAreaProvider,
+      { initialMetrics: initialWindowMetrics },
+      createElement(App),
+    ),
+  );
+}
+
+registerRootComponent(JourneyDeckRoot);
