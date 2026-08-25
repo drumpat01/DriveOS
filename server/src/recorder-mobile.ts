@@ -83,7 +83,7 @@ export type RecorderMusicDashboard = {
   tour: { miles: number; changePercent: number | null };
   mood: { label: string; count: number; percent: number }[];
   cities: { label: string; songs: number }[];
-  daily: { date: string; label: string; count: number }[];
+  daily: { date: string; label: string; count: number; minutes: number }[];
   week: { total: number; changePercent: number | null };
 };
 
@@ -459,13 +459,17 @@ export class RecorderMobileStore {
     const aliases = new Map(aliasRows.map(row => [String(row.location), boundedText(row.label, 64)]));
     const today = localDayIndex(generatedAt, offset)!;
     const dailyCounts = new Map<number, number>();
+    const dailyMinutes = new Map<number, number>();
     for (const song of history) {
       const day = localDayIndex(song.playedAt, offset);
-      if (day !== null) dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+      if (day !== null) {
+        dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+        dailyMinutes.set(day, (dailyMinutes.get(day) || 0) + Math.max(0, song.durationMs || 0) / 60_000);
+      }
     }
     const daily = Array.from({ length: 14 }, (_, itemIndex) => {
       const index = today - (13 - itemIndex);
-      return { ...dayDescriptor(index), count: dailyCounts.get(index) || 0 };
+      return { ...dayDescriptor(index), count: dailyCounts.get(index) || 0, minutes: Math.round(dailyMinutes.get(index) || 0) };
     });
     let currentStreak = 0;
     while ((dailyCounts.get(today - currentStreak) || 0) > 0) currentStreak += 1;

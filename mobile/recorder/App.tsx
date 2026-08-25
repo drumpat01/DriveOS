@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable, SafeAreaView,
+  ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable,
   ScrollView, StatusBar, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import './src/location-task';
 import { loadConnection, saveConnection, type Connection } from './src/credentials';
@@ -59,6 +60,7 @@ function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
 }
 
 function RecorderScreen() {
+  const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [token, setToken] = useState('');
@@ -374,10 +376,16 @@ function RecorderScreen() {
   const automaticMode = recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.safeArea}>
       <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.eyebrow}>JOURNEYDECK</Text><Text style={styles.title}>Recorder</Text></View></View>
 
           {!connection ? (
@@ -416,7 +424,7 @@ function RecorderScreen() {
           <Text style={styles.footer}>Private single-iPhone recorder • {connection ? 'Connected' : 'Not connected'}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 

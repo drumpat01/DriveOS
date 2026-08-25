@@ -94,7 +94,7 @@ export type MusicDashboardData = {
   tour: { miles: number; changePercent: number | null };
   mood: { label: string; count: number; percent: number }[];
   cities: { label: string; songs: number }[];
-  daily: { date: string; label: string; count: number }[];
+  daily: { date: string; label: string; count: number; minutes: number }[];
   week: { total: number; changePercent: number | null };
 };
 

@@ -3,7 +3,7 @@
     "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -15,8 +15,13 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "experiments": {
+      "reactCompiler": true
+    },
     "scheme": "journeydeck-recorder",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.journeydeck.recorder",
@@ -58,7 +63,9 @@
         }
       ],
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-image",
+      "expo-splash-screen"
     ],
     "extra": {
       "eas": {
