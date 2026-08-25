@@ -119,6 +119,15 @@
 - Verification passed: mobile typecheck; navigation motion 4/4; recovery 10/10; sync status 4/4; music observations 7/7; drive detection 9/9; iOS Metro export; and `git diff --check` (line-ending warnings only).
 - Delivered through PR #126 and merged to `main` as `3392dcc`. Render deployment `dep-da6c1e6gekts739b3dk0` is live and healthy. Preview OTA group `4c63be7a-71d3-4c47-8c17-0387d8c2a93b` was published for iOS runtime `1.4.0`; dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/4c63be7a-71d3-4c47-8c17-0387d8c2a93b`. Physical verification is still pending for continuous finger tracking, midpoint tab changes, and the release snap.
 
+### Cinematic iOS navigation recreation (implemented; build pending)
+
+- Recreated the native five-item dock from the supplied Memories-page video: nearly edge-to-edge dark wine/plum surface, restrained mauve rim and shadow, warmer active tile, orange outline/glow/underline, larger readable labels, and proper native line icons.
+- Kept the single continuously gliding selector. It still follows the finger, changes destinations at lane midpoints, and springs to the selected lane on release; taps and accessibility tab semantics remain intact.
+- Changed Liquid Glass into a passive `clear` background layer with a strong 78% dark cinematic wash, leaving only modest color bleed from content beneath. The layer cannot intercept gestures. Reduce Transparency and unsupported runtimes receive an opaque fallback.
+- Added Expo SDK 57 `expo-symbols` (`~57.0.2`) and its required `expo-font` peer (`~57.0.1`) for SF Symbols. App/runtime is now `1.5.0`; a new EAS preview build is required and the change must not be published to installed `1.4.0` clients by OTA.
+- Verification passed: mobile typecheck; navigation motion 4/4; recovery 10/10; sync status 4/4; music observations 7/7; drive detection 9/9; Expo Doctor 21/21; iOS Metro export; public Expo config; and `git diff --check`.
+- Local branch/worktree: `codex/mobile-cinematic-nav` in the current Codex workspace. Changes are intentionally uncommitted and unpushed pending authorization. Next steps: review the diff, commit/push and open a PR, then produce/install a JourneyDeck 1.5.0 preview build and physically verify glass transmission, SF Symbols, safe-area placement, all five hit targets, continuous drag, midpoint changes, and release snap.
+
 ### Native modal overviews and share cards (implemented; release pending)
 
 - Memories, Collections, and Journeys now open as cinematic native overlay modals above the existing Memories screen instead of replacing or expanding the page.
