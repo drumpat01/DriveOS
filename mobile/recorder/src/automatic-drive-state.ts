@@ -23,6 +23,11 @@ export function loadAutomaticDriveState(): AutomaticDriveState {
     candidateLastAt: Number.isFinite(stored.candidateLastAt) ? Number(stored.candidateLastAt) : null,
     candidateSamples: Number.isFinite(stored.candidateSamples) ? Math.max(0, Number(stored.candidateSamples)) : 0,
     stoppedSince: Number.isFinite(stored.stoppedSince) ? Number(stored.stoppedSince) : null,
+    lastLatitude: Number.isFinite(stored.lastLatitude) ? Number(stored.lastLatitude) : null,
+    lastLongitude: Number.isFinite(stored.lastLongitude) ? Number(stored.lastLongitude) : null,
+    lastPositionAt: Number.isFinite(stored.lastPositionAt) ? Number(stored.lastPositionAt) : null,
+    lastPositionAccuracyMeters: Number.isFinite(stored.lastPositionAccuracyMeters)
+      ? Number(stored.lastPositionAccuracyMeters) : null,
     automaticSessionId: typeof stored.automaticSessionId === 'string' ? stored.automaticSessionId : null,
   };
 }
