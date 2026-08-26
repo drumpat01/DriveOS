@@ -41,6 +41,31 @@ type RecorderPointRow = {
   speed_mps: number | string | null;
 };
 
+type CompanionJourneyRow = {
+  id: string;
+  legacy_drive_id: string;
+  provider: string;
+  started_at_utc: string;
+  ended_at_utc: string;
+  started_at_epoch: number | string;
+  ended_at_epoch: number | string;
+  starting_location: string | null;
+  ending_location: string | null;
+  starting_latitude: number | string | null;
+  starting_longitude: number | string | null;
+  ending_latitude: number | string | null;
+  ending_longitude: number | string | null;
+  starting_battery: number | string | null;
+  ending_battery: number | string | null;
+  distance_miles: number | string | null;
+  energy_used_kwh: number | string | null;
+  average_speed_mph: number | string | null;
+  max_speed_mph: number | string | null;
+  tessie_tag: string | null;
+  driver_profile: string | null;
+  soundtrack_json: string | null;
+};
+
 function stableId(entity: string, providerKey: string) {
   return `${entity}_${createHash("sha256").update(`journeydeck\0${entity}\0${providerKey}`).digest("hex").slice(0, 32)}`;
 }
@@ -77,6 +102,70 @@ function pointResult(row: RecorderPointRow) {
     altitudeMeters: finiteOrNull(row.altitude_meters),
     headingDegrees: finiteOrNull(row.heading_degrees),
     speedMps: finiteOrNull(row.speed_mps)
+  };
+}
+
+function textOrNull(value: unknown) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text || null;
+}
+
+function soundtrackResult(value: string | null) {
+  if (!value) return [];
+  try {
+    const payload = JSON.parse(value) as { songs?: unknown };
+    if (!Array.isArray(payload.songs)) return [];
+    return payload.songs.slice(0, 20).flatMap(song => {
+      if (!song || typeof song !== "object") return [];
+      const record = song as Record<string, unknown>, track = textOrNull(record.track);
+      if (!track) return [];
+      return [{
+        track,
+        artist: textOrNull(record.artist),
+        album: textOrNull(record.album),
+        albumImage: textOrNull(record.albumImage),
+        playedAt: textOrNull(record.playedAt)
+      }];
+    });
+  } catch { return []; }
+}
+
+function sourceLabel(provider: string) {
+  if (provider === "tessie") return "Tesla · Tessie";
+  if (provider === "journeydeck_recorder") return "iPhone Recorder";
+  if (provider === "google_timeline") return "Google Timeline";
+  return "JourneyDeck";
+}
+
+function companionJourney(row: CompanionJourneyRow) {
+  const startedEpoch = Number(row.started_at_epoch), endedEpoch = Number(row.ended_at_epoch);
+  const songs = soundtrackResult(row.soundtrack_json);
+  return {
+    id: row.legacy_drive_id,
+    internalId: row.id,
+    provider: row.provider,
+    sourceLabel: sourceLabel(row.provider),
+    startedAt: row.started_at_utc,
+    endedAt: row.ended_at_utc,
+    durationSeconds: Math.max(0, endedEpoch - startedEpoch),
+    startingLocation: textOrNull(row.starting_location) || "Starting point",
+    endingLocation: textOrNull(row.ending_location) || "Destination",
+    startingCoordinate: finiteOrNull(row.starting_latitude) === null || finiteOrNull(row.starting_longitude) === null ? null : {
+      latitude: finiteOrNull(row.starting_latitude)!, longitude: finiteOrNull(row.starting_longitude)!
+    },
+    endingCoordinate: finiteOrNull(row.ending_latitude) === null || finiteOrNull(row.ending_longitude) === null ? null : {
+      latitude: finiteOrNull(row.ending_latitude)!, longitude: finiteOrNull(row.ending_longitude)!
+    },
+    distanceMiles: finiteOrNull(row.distance_miles) || 0,
+    energyUsedKwh: finiteOrNull(row.energy_used_kwh),
+    averageSpeedMph: finiteOrNull(row.average_speed_mph),
+    maxSpeedMph: finiteOrNull(row.max_speed_mph),
+    startingBattery: finiteOrNull(row.starting_battery),
+    endingBattery: finiteOrNull(row.ending_battery),
+    tag: textOrNull(row.tessie_tag),
+    driverProfile: textOrNull(row.driver_profile),
+    songCount: songs.length,
+    songs
   };
 }
 
@@ -181,6 +270,49 @@ export class RecorderStore {
   async get(id: string, deviceId: string) {
     const row = await this.session(id, deviceId);
     return row ? sessionResult(row) : null;
+  }
+
+  async companion(limit = 50) {
+    const boundedLimit = Math.max(1, Math.min(100, Math.trunc(limit) || 50));
+    const rows = await this.read({
+      sql: `SELECT d.id,d.legacy_drive_id,d.provider,d.started_at_utc,d.ended_at_utc,d.started_at_epoch,d.ended_at_epoch,
+        d.starting_location,d.ending_location,d.starting_latitude,d.starting_longitude,d.ending_latitude,d.ending_longitude,
+        d.starting_battery,d.ending_battery,d.distance_miles,d.energy_used_kwh,d.average_speed_mph,d.max_speed_mph,
+        d.tessie_tag,d.driver_profile,ds.payload_json AS soundtrack_json
+        FROM drives d LEFT JOIN drive_soundtracks ds ON ds.drive_id=d.legacy_drive_id
+        WHERE d.household_id=? ORDER BY d.started_at_epoch DESC,d.id LIMIT ?;`,
+      args: [this.householdId, boundedLimit]
+    });
+    return {
+      generatedAt: new Date().toISOString(),
+      journeys: rows.map(row => companionJourney(row as unknown as CompanionJourneyRow))
+    };
+  }
+
+  async journeyRoute(legacyDriveId: string) {
+    const recorded = await this.routeMap(legacyDriveId);
+    if (recorded) return { ...recorded, approximate: false };
+    const rows = await this.read({
+      sql: `SELECT provider,starting_latitude,starting_longitude,ending_latitude,ending_longitude
+        FROM drives WHERE household_id=? AND legacy_drive_id=? LIMIT 1;`,
+      args: [this.householdId, legacyDriveId]
+    });
+    if (!rows[0]) return null;
+    const row = rows[0], startLatitude = finiteOrNull(row.starting_latitude), startLongitude = finiteOrNull(row.starting_longitude);
+    const endLatitude = finiteOrNull(row.ending_latitude), endLongitude = finiteOrNull(row.ending_longitude);
+    const routePoints = startLatitude === null || startLongitude === null || endLatitude === null || endLongitude === null ? [] : [
+      { latitude: startLatitude, longitude: startLongitude },
+      { latitude: endLatitude, longitude: endLongitude }
+    ];
+    return {
+      driveId: legacyDriveId,
+      provider: sourceLabel(String(row.provider || "")),
+      routePoints,
+      startMarker: routePoints[0] || null,
+      endMarker: routePoints.at(-1) || null,
+      stateCount: routePoints.length,
+      approximate: true
+    };
   }
 
   async complete(id: string, deviceId: string, endedAt: string) {

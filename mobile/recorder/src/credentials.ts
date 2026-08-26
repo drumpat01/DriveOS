@@ -26,3 +26,10 @@ export async function saveConnection(value: Omit<Connection, 'deviceId'>): Promi
   ]);
   return { ...value, deviceId };
 }
+
+export async function clearConnection() {
+  await Promise.all([
+    SecureStore.deleteItemAsync(SERVER_KEY),
+    SecureStore.deleteItemAsync(TOKEN_KEY),
+  ]);
+}

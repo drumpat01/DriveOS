@@ -95,6 +95,12 @@ export async function createApp(overrides: Partial<typeof defaultConfig> = {}) {
   } as const;
   const validTimestamp = (value: string) => Number.isFinite(Date.parse(value)) && Date.parse(value) <= Date.now() + 300_000;
   app.get("/api/recorder/status", async () => ({ ready: true, mode: "single-owner", durable: cfg.recorderDurableTurso ? "turso" : "sqlite" }));
+  app.get<{ Querystring: { limit?: string } }>("/api/recorder/companion", {
+    schema: { querystring: { type: "object", additionalProperties: false, properties: { limit: { type: "string", pattern: "^[0-9]{1,3}$" } } } }
+  }, async req => recorder.companion(Number(req.query.limit) || 50));
+  app.get<{ Params: { id: string } }>("/api/recorder/journeys/:id/route", {
+    schema: { params: { type: "object", required: ["id"], properties: { id: recorderIdentifier } } }
+  }, async (req, reply) => (await recorder.journeyRoute(req.params.id)) || reply.code(404).send({ error: "Journey route was not found." }));
   app.post<{ Body: { id: string; deviceId: string; startedAt: string } }>("/api/recorder/sessions", {
     schema: { body: { type: "object", additionalProperties: false, required: ["id", "deviceId", "startedAt"], properties: { id: recorderIdentifier, deviceId: recorderIdentifier, startedAt: recorderTimestamp } } }
   }, async (req, reply) => {
