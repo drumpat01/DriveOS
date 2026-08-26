@@ -1,5 +1,30 @@
 # Handoff: JourneyDeck Mobile Shell and Music Connections
 
+## Agy takeover and 1.6 OTA recovery checkpoint — August 26, 2026
+
+- **CURRENT MOBILE VERSION:** JourneyDeck is app/runtime **`1.6.0`** on Expo SDK 57. Current native preview build is **`62afd5b5-9977-48e7-a580-eda5c25ca38b`** (iOS build 3, fingerprint `4cc3b8f0bfc1787280000c4661c1df9d1f357db6`).
+- **Active Worktree:** Clean development worktree `C:\Users\patri\DriveOS-agy` on branch `agy/journeydeck-1.6`, based on `origin/main` commit `c830969` (PR #128).
+- **Latest Verified Preview OTA:** Update group **`ae3c5daf-5d94-42ab-a600-202df1b1d981`** (`Center Home icons with measured flex layout`) on runtime `1.6.0`.
+- **Recovered 1.6 OTA Files:** Directly recovered from `C:\Users\patri\DriveOS-nav-build` without modifying the protected primary checkout:
+  - `mobile/recorder/assets/tessie-logo-white.png` (authorized official logo asset)
+  - `mobile/recorder/assets/tessie-logo-black.png` (authorized official logo asset)
+  - `mobile/recorder/App.tsx` (recorder atmosphere & static card lighting)
+  - `mobile/recorder/src/music-screen.tsx` (music atmosphere, circular vinyl artwork, tour mileage SVG route glow)
+  - `mobile/recorder/src/shell.tsx` (TessieMark, radial glow backdrops, 118pt flex-centered Home action tiles with SF Symbols, lower widget readability)
+  - `mobile/recorder/tests/tab-runtime.test.mts` (full 9/9 regression coverage for recovered features)
+- **Full Verification Passed on `agy/journeydeck-1.6`:**
+  - Mobile Typecheck: `tsc --noEmit` passed (0 errors)
+  - Tab Runtime Tests: 9/9 passed (`npm run test:tab-runtime`)
+  - Navigation Motion Tests: 4/4 passed (`npm run test:navigation-motion`)
+  - Recovery Tests: 10 passed (`npm run test:recovery`)
+  - Sync Status Tests: 4 passed (`npm run test:sync-status`)
+  - Music Observations Tests: 7/7 passed (`npm run test:music-observations`)
+  - Drive Detection Tests: 9/9 passed (`npm run test:drive-detection`)
+  - Native Capability Tests: 2/2 passed (`npm run test:native-capabilities`)
+  - Expo Doctor: 21/21 checks passed (`npx expo-doctor`)
+  - Production iOS Metro Export: passed (`npx expo export --platform ios` — 6 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - Git Diff Check: `git diff --check` passed cleanly
+
 ## Summary
 
 - Feature branch: `codex/journeydeck-mobile-shell`; implementation merged to `main` in PR #111 as `6eeac09`.
@@ -301,3 +326,33 @@
 - Published iOS preview OTA group `d030d582-1815-40c7-a1d4-44e594956603` for runtime `1.6.0`, message `Use approved music service branding`: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/d030d582-1815-40c7-a1d4-44e594956603`. No native build was used.
 - Current branch/worktree: `codex/journeydeck-1-6-cinematic` at `C:\Users\patri\DriveOS-nav-build`, based on `287e5c0`. This branch consolidates the complete uncommitted JourneyDeck 1.6 native foundation and subsequent OTA-delivered cinematic work; use this worktree as the authoritative source when switching agents.
 - Verification passed before Git handoff: mobile typecheck; recovery 10/10; sync status 4/4; music observations 7/7; drive detection 9/9; native capabilities 2/2; tab runtime 8/8; navigation motion 4/4; iOS Expo export; server typecheck/lint; server tests 29/29; gitleaks with no findings; and `git diff --check` with only existing Windows line-ending notices.
+
+### Tessie connection branding (published; recovered into agy/journeydeck-1.6)
+
+- Tessie Support authorized official written permission to reference Tessie, use official logos, and link to Tessie. The supplied `logo-white.png` and `logo-black.png` are preserved as `mobile/recorder/assets/tessie-logo-white.png` and `mobile/recorder/assets/tessie-logo-black.png`.
+- Settings and Home Data Health display the official white Tessie mark, `Connected through Tessie`, `Better with Tesla + Tessie` copy, and `Visit Tessie` link (`https://www.tessie.com/`).
+- Published iOS preview OTA group `6127e087-e8a0-452a-b050-3f8f2ec654eb` for runtime `1.6.0`, message `Use Tessie-approved branding and service link`.
+
+### Static cinematic widget-lighting pass (published; recovered into agy/journeydeck-1.6)
+
+- Music's lead album artwork is a circular label centered inside the vinyl record treatment. The Tour mileage widget uses a purposeful static winding-road SVG with luminous route, dashed center line (`strokeDasharray="5 7"`), and start/end beacons.
+- Added restrained edge lighting, colored borders, and text highlights across Home, Memories, Music, Record, and Settings cards.
+- Published iOS preview OTA group `c5eb97a2-eb86-4bbc-a4dd-4914bd7cac62` for runtime `1.6.0`, message `Add static cinematic lighting and Music polish`.
+
+### Web-inspired atmospheric depth and exact web-style radial glow (published; recovered into agy/journeydeck-1.6)
+
+- Added page-specific soft radial glow fields (`AtmosphericBackdrop`, `MusicAtmosphere`, `RecorderAtmosphere` with `SvgRadialGradient`) that feather to transparent over the dark page background.
+- Home, Memories, Journeys, Music, Record, and Settings each use page-specific radial bloom fields and edge bloom around cards, eliminating angled gradient lines.
+- Published iOS preview OTA groups `0023ce5c-9aa1-4a07-8d01-7cb6633c1709` and `1563119d-3c29-497e-ad69-0ef6de9b9711` for runtime `1.6.0`, message `Recreate exact web radial glow atmosphere`.
+
+### Web-parity Home action tiles and readable lower widgets (published; recovered into agy/journeydeck-1.6)
+
+- Rebuilt the four Home action tiles around `beta-theme-v2.css`: 118-point row, 19-point radii, per-tile color depth, 42-point circular outlined icon wells, and shadow bloom.
+- Increased Recent Journeys readability (9pt raw origin with 2-line wrap, 12pt destination, 8.5pt metadata, 91pt rows). Increased Data Health names (10pt) and details (8.5pt) with larger icons/status badges and taller rows.
+- Published iOS preview OTA group `cbf73ded-6e6f-4570-be32-f4597f317c4c` for runtime `1.6.0`, message `Match Home widgets to web sizing and glow`.
+
+### Optically centered native action symbols & flex-centered action wells (published; recovered into agy/journeydeck-1.6)
+
+- Replaced Unicode text glyphs with native SF Symbols (`arrow.clockwise`, `play.fill`, `map`, and `link`) in fixed 25×25 frames inside centered 42×42 wells.
+- Removed absolute positioning; icon wells participate in normal vertical flex layout with `alignItems: 'center'` and a flexible spacer, making measured tile width the centering authority.
+- Published iOS preview OTA groups `0798ba82-566c-4aa6-87c6-995b97d41e61` and `ae3c5daf-5d94-42ab-a600-202df1b1d981` for runtime `1.6.0`, message `Center Home icons with measured flex layout`.

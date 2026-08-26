@@ -38,7 +38,7 @@ test('Memories, Music, and Settings each have a distinct cinematic header scene'
   assert.match(musicScreen, /musicHeaderStyles\.spectrum/);
 });
 
-test('music chooser and Settings use approved service marks with honest Last.fm wording', () => {
+test('music chooser and Settings use approved service marks with honest provider wording', () => {
   assert.match(shell, /apple-music-icon\.png/);
   assert.match(shell, /shazam-icon\.png/);
   assert.match(shell, /spotify-icon-white\.png/);
@@ -49,7 +49,49 @@ test('music chooser and Settings use approved service marks with honest Last.fm 
   assert.match(shell, /ConnectionTile name="Auto Recognition"[\s\S]*?brand="shazam"/);
   assert.match(shell, /ConnectionTile name="Spotify history"[\s\S]*?brand="spotify"/);
   assert.match(shell, /SPOTIFY HISTORY VIA LAST\.FM/);
+  assert.match(shell, /tessie-logo-white\.png/);
+  assert.match(shell, /tessie-logo-black\.png/);
+  assert.match(shell, /function TessieMark/);
+  assert.match(shell, /ConnectionTile name="Tessie"[\s\S]*?mark=\{<TessieMark size=\{46\} \/>\}/);
+  assert.match(shell, /Connected through Tessie/);
+  assert.match(shell, /Better with Tesla \+ Tessie/);
+  assert.match(shell, /https:\/\/www\.tessie\.com\//);
   assert.doesNotMatch(shell, /name: 'Last\.fm for Spotify'/);
+});
+
+test('native dashboards use static cinematic lighting and Music has intentional artwork and mileage graphics', () => {
+  assert.match(musicScreen, /function RouteGlow\(\)[\s\S]*?<Svg/);
+  assert.match(musicScreen, /strokeDasharray="5 7"/);
+  assert.doesNotMatch(musicScreen, /routeLineOne|routeLineTwo/);
+  assert.match(musicScreen, /heroArtwork: \{ width: 94, height: 94, borderRadius: 47/);
+  assert.match(musicScreen, /metric: \{[\s\S]*?shadowColor: '#9b61ff'/);
+  assert.match(shell, /staticWidgetGlow/);
+  assert.match(shell, /webDashboardShell: \{[\s\S]*?shadowColor: '#9d58ff'/);
+  assert.match(app, /statusCard: \{[\s\S]*?shadowColor: '#9b61ff'/);
+  assert.match(app, /metrics: \{[\s\S]*?shadowColor: '#9b61ff'/);
+  assert.match(shell, /function AtmosphericBackdrop/);
+  assert.match(shell, /<AtmosphericBackdrop variant="home"/);
+  assert.match(shell, /<AtmosphericBackdrop variant="memories"/);
+  assert.match(shell, /<AtmosphericBackdrop variant="settings"/);
+  assert.match(musicScreen, /function MusicAtmosphere/);
+  assert.match(app, /function RecorderAtmosphere/);
+  assert.match(shell, /SvgRadialGradient id="settingsHeaderBloom"/);
+  assert.doesNotMatch(shell, /settingsOrb/);
+  assert.doesNotMatch(shell, /atmosphereRibbon|atmosphereHorizon|heroGlowPink|heroGlowBlue/);
+  assert.match(musicScreen, /SvgRadialGradient id="musicTopBloom"/);
+  assert.match(app, /SvgRadialGradient id="recorderTopBloom"/);
+  assert.match(shell, /webActions: \{ height: 118/);
+  assert.match(shell, /webActionIcon: \{[\s\S]*?width: 42, height: 42/);
+  assert.match(shell, /webAction: \{[\s\S]*?alignItems: 'center'/);
+  assert.match(shell, /webActionIcon: \{ width: 42, height: 42/);
+  assert.doesNotMatch(shell, /webActionIcon: \{[^}]*position: 'absolute'/);
+  assert.match(shell, /<SymbolView name=\{symbol\} tintColor=\{color\}/);
+  assert.match(shell, /symbol="arrow\.clockwise"/);
+  assert.match(shell, /symbol="play\.fill"/);
+  assert.match(shell, /webJourneyOrigin: \{[\s\S]*?fontSize: 9/);
+  assert.match(shell, /webJourneyDestination: \{[\s\S]*?fontSize: 12/);
+  assert.match(shell, /webServiceName: \{[\s\S]*?fontSize: 10/);
+  assert.match(shell, /style=\{styles\.webJourneyOrigin\} numberOfLines=\{2\}/);
 });
 
 test('every pager page explicitly clears the Dynamic Island and owns its scroll inset', () => {

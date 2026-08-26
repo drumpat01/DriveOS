@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import './src/location-task';
 import { loadConnection, saveConnection, type Connection } from './src/credentials';
@@ -386,6 +387,7 @@ function RecorderScreen() {
           automaticallyAdjustsScrollIndicatorInsets={false}
           keyboardShouldPersistTaps="handled"
         >
+          <RecorderAtmosphere />
           <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.eyebrow}>JOURNEYDECK</Text><Text style={styles.title}>Recorder</Text></View></View>
 
           {!connection ? (
@@ -428,6 +430,10 @@ function RecorderScreen() {
   );
 }
 
+function RecorderAtmosphere() {
+  return <Svg pointerEvents="none" viewBox="0 0 430 1250" preserveAspectRatio="none" style={styles.atmosphere}><Defs><SvgRadialGradient id="recorderTopBloom" cx="50%" cy="3%" rx="68%" ry="34%"><Stop offset="0" stopColor="#8d4fff" stopOpacity="0.25" /><Stop offset="0.5" stopColor="#642eb2" stopOpacity="0.08" /><Stop offset="1" stopColor="#642eb2" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderSideBloom" cx="100%" cy="55%" rx="78%" ry="36%"><Stop offset="0" stopColor="#4ca7ff" stopOpacity="0.17" /><Stop offset="0.55" stopColor="#704cff" stopOpacity="0.05" /><Stop offset="1" stopColor="#704cff" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderLowBloom" cx="0%" cy="88%" rx="82%" ry="30%"><Stop offset="0" stopColor="#ff6540" stopOpacity="0.13" /><Stop offset="1" stopColor="#ff6540" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="430" height="1250" fill="url(#recorderTopBloom)" /><Rect width="430" height="1250" fill="url(#recorderSideBloom)" /><Rect width="430" height="1250" fill="url(#recorderLowBloom)" /></Svg>;
+}
+
 export default function App() {
   return <JourneyDeckShell recorder={<RecorderScreen />} />;
 }
@@ -445,15 +451,16 @@ function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
 }
 
 const styles = StyleSheet.create({
+  atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 22, paddingTop: 34, paddingBottom: 48, gap: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },
   eyebrow: { color: '#8d869c', fontSize: 11, fontWeight: '800', letterSpacing: 2.2 }, title: { color: '#f8f5ff', fontSize: 28, fontWeight: '800', letterSpacing: -0.7 },
-  card: { backgroundColor: '#14111d', borderWidth: 1, borderColor: '#292338', borderRadius: 24, padding: 20, gap: 13 }, cardTitle: { color: '#fff', fontSize: 22, fontWeight: '800' }, body: { color: '#aca5b9', fontSize: 15, lineHeight: 22, marginBottom: 5 }, label: { color: '#888096', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginTop: 5 }, input: { backgroundColor: '#0c0a11', borderWidth: 1, borderColor: '#332c42', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, color: '#fff', fontSize: 15 },
+  card: { backgroundColor: '#14111d', borderWidth: 1, borderColor: '#64427f', borderRadius: 24, padding: 20, gap: 13, shadowColor: '#9b61ff', shadowOpacity: 0.28, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, cardTitle: { color: '#fff', fontSize: 22, fontWeight: '800' }, body: { color: '#aca5b9', fontSize: 15, lineHeight: 22, marginBottom: 5 }, label: { color: '#888096', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginTop: 5 }, input: { backgroundColor: '#0c0a11', borderWidth: 1, borderColor: '#59406c', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, color: '#fff', fontSize: 15, shadowColor: '#9b61ff', shadowOpacity: 0.18, shadowRadius: 9 },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, check: { color: '#43e6ae', fontSize: 21, fontWeight: '800', width: 24 }, checkText: { color: '#d4cede', fontSize: 15 },
-  statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20 }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12 }, statusText: { fontSize: 27, fontWeight: '800' }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6 },
-  metrics: { flexDirection: 'row', backgroundColor: '#121019', borderRadius: 20, overflow: 'hidden' }, metric: { flex: 1, alignItems: 'center', paddingVertical: 18, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#302a3a' }, metricLabel: { color: '#766f83', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }, metricValue: { color: '#f4f0fb', fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '700', marginTop: 7 },
-  primaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1 }, primaryButtonText: { color: '#160a06', fontSize: 16, fontWeight: '800' }, secondaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#1c1726', borderWidth: 1, borderColor: '#3c324c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1 }, secondaryButtonText: { color: '#e8e1f1', fontSize: 16, fontWeight: '700' }, buttonMuted: { opacity: 0.55 }, actionRow: { flexDirection: 'row', gap: 12 },
+  statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#674788', borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20, shadowColor: '#9b61ff', shadowOpacity: 0.34, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12, shadowOpacity: 0.9, shadowRadius: 9 }, statusText: { fontSize: 27, fontWeight: '800', textShadowColor: '#9b61ff55', textShadowRadius: 8 }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6 },
+  metrics: { flexDirection: 'row', backgroundColor: '#121019', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#4c365f', shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, metric: { flex: 1, alignItems: 'center', paddingVertical: 18, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#44334f' }, metricLabel: { color: '#84788f', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }, metricValue: { color: '#f4f0fb', fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '700', marginTop: 7, textShadowColor: '#a36bff55', textShadowRadius: 6 },
+  primaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#ff6b4d', shadowOpacity: 0.48, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, primaryButtonText: { color: '#160a06', fontSize: 16, fontWeight: '800' }, secondaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#1c1726', borderWidth: 1, borderColor: '#654d7e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, secondaryButtonText: { color: '#e8e1f1', fontSize: 16, fontWeight: '700' }, buttonMuted: { opacity: 0.55 }, actionRow: { flexDirection: 'row', gap: 12 },
   progressRow: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 28 }, progressText: { color: '#b9afc7', fontSize: 14 },
-  syncCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 }, syncDot: { width: 10, height: 10, borderRadius: 5 }, syncCopy: { flex: 1 }, syncTitle: { fontSize: 14, fontWeight: '800' }, syncDetail: { color: '#938b9f', fontSize: 12, lineHeight: 17, marginTop: 3 },
-  notice: { color: '#b9afc7', textAlign: 'center', lineHeight: 20 }, warning: { backgroundColor: '#17121b', borderLeftColor: '#9b7cff', borderLeftWidth: 3, borderRadius: 12, padding: 15 }, warningTitle: { color: '#c2b3ff', fontSize: 10, fontWeight: '900', letterSpacing: 1.1 }, warningText: { color: '#9c94a8', fontSize: 13, lineHeight: 19, marginTop: 5 }, footer: { color: '#5e5868', fontSize: 11, textAlign: 'center', marginTop: 4 },
+  syncCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#4f3d63', borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14, shadowColor: '#65c9ff', shadowOpacity: 0.22, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, syncDot: { width: 10, height: 10, borderRadius: 5, shadowOpacity: 0.8, shadowRadius: 7 }, syncCopy: { flex: 1 }, syncTitle: { fontSize: 14, fontWeight: '800' }, syncDetail: { color: '#938b9f', fontSize: 12, lineHeight: 17, marginTop: 3 },
+  notice: { color: '#b9afc7', textAlign: 'center', lineHeight: 20 }, warning: { backgroundColor: '#17121b', borderLeftColor: '#9b7cff', borderLeftWidth: 3, borderRadius: 12, padding: 15, shadowColor: '#9b7cff', shadowOpacity: 0.22, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, warningTitle: { color: '#c2b3ff', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, textShadowColor: '#9b7cff66', textShadowRadius: 6 }, warningText: { color: '#9c94a8', fontSize: 13, lineHeight: 19, marginTop: 5 }, footer: { color: '#5e5868', fontSize: 11, textAlign: 'center', marginTop: 4 },
 });
