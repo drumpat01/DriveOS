@@ -695,3 +695,9 @@
 - Archived the non-merged concepts before cleanup: cinematic Memories as `0172397` on `origin/codex/cinematic-memories`, and the superseded companion API prototype as `356e862` on `origin/codex/ios-companion-screens`. The Siri/commute history remains backed up on `origin/feat/siri-shortcuts-4.4.1`.
 - Verification passed after the ports: mobile typecheck; the complete mobile unit suite (including drive detection 11/11 and tab runtime 9/9); frontend module characterization; Playwright E2E 9/9; gitleaks with no findings; and `git diff --check` with only Windows line-ending notices.
 - `agy/journeydeck-1.6` correctly tracks `origin/agy/journeydeck-1.6` and is the sole active development worktree. `C:\Users\patri\DriveOS` remains registered and clean because it is Git's main worktree and owns the shared `.git` database; converting/removing that anchor is a separate repository-migration operation. The stale AO process chain was terminated and its unregistered orchestrator directory was deleted.
+
+### Automatic-drive fallback preview OTA (published)
+
+- Published the fully consolidated iOS JavaScript/assets bundle from source commit `021a16b` to the `preview` branch for runtime `1.6.0`; no native build was used.
+- Update group `c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`, iOS update `01a03fd7-c8fe-72aa-a79c-734c4c81b728`, message `Improve automatic drive detection for unknown GPS speed`.
+- Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`. EAS verified this group is the current head of the `preview` branch.
