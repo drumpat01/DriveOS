@@ -3,9 +3,9 @@
 ## Agy takeover and 1.6 OTA recovery checkpoint — August 26, 2026
 
 - **CURRENT MOBILE VERSION:** JourneyDeck is app/runtime **`1.6.0`** on Expo SDK 57. Current native preview build is **`62afd5b5-9977-48e7-a580-eda5c25ca38b`** (iOS build 3, fingerprint `4cc3b8f0bfc1787280000c4661c1df9d1f357db6`).
-- **Active Worktree:** Clean development worktree `C:\Users\patri\DriveOS-agy` on branch `agy/journeydeck-1.6`, based on `origin/main` commit `c830969` (PR #128).
+- **Merged to main:** PR #129 merged to `main` as `d30925f` (feature commit `61b8615`). Authoritative remote tip is now `origin/main` at `d30925f`.
 - **Latest Verified Preview OTA:** Update group **`ae3c5daf-5d94-42ab-a600-202df1b1d981`** (`Center Home icons with measured flex layout`) on runtime `1.6.0`.
-- **Recovered 1.6 OTA Files:** Directly recovered from `C:\Users\patri\DriveOS-nav-build` without modifying the protected primary checkout:
+- **Recovered 1.6 OTA Files (Merged in #129):**
   - `mobile/recorder/assets/tessie-logo-white.png` (authorized official logo asset)
   - `mobile/recorder/assets/tessie-logo-black.png` (authorized official logo asset)
   - `mobile/recorder/App.tsx` (recorder atmosphere & static card lighting)
