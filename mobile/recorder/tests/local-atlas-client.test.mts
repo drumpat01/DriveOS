@@ -116,5 +116,8 @@ assert.match(src, /route: null.*populated separately/, 'route is lazy-loaded sep
 assert.match(src, /export const appDataClient/, 'original appDataClient still exported');
 assert.match(src, /async dashboard\(\)/, 'appDataClient.dashboard() is async (server-side)');
 assert.match(src, /localAtlasClient[\s\S]*dashboard\(userId/, 'localAtlasClient.dashboard is sync (local-first)');
+assert.match(src, /localAtlasClient\.dashboard\(getCurrentUser\(\)\.id\)/, 'live dashboard falls back to the on-device Atlas client');
+assert.match(src, /localAtlasClient\.journeys\(getCurrentUser\(\)\.id/, 'live journey history falls back to the on-device store');
+assert.match(src, /localAtlasClient\.musicDashboard\(getCurrentUser\(\)\.id\)/, 'live music dashboard falls back to on-device analytics');
 
 console.log('✅  local-atlas-client: all 10 check groups passed.');

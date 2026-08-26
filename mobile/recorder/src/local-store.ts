@@ -286,6 +286,16 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
+  // Migration 2 -- persisted device-local profile selection
+  () => {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS local_preferences (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+  },
 ];
 
 // --- Initialisation ----------------------------------------------------------
@@ -309,6 +319,15 @@ export function initializeLocalStore(): void {
 function now() { return new Date().toISOString(); }
 function guard(value: number | null | undefined, min: number, max: number): number | null {
   return value != null && Number.isFinite(value) && value >= min && value <= max ? value : null;
+}
+
+type UserOwnedTable = 'local_journeys' | 'local_music_entries' | 'local_places' | 'local_collections' | 'local_memories';
+
+function assertRowOwnership(table: UserOwnedTable, id: string, userId: LocalUserId): void {
+  const existing = db.getFirstSync<{ user_id: string }>(`SELECT user_id FROM ${table} WHERE id=?;`, id);
+  if (existing && existing.user_id !== userId) {
+    throw new Error(`Refusing to modify ${table} row owned by another local user.`);
+  }
 }
 
 // --- User management ---------------------------------------------------------
@@ -341,27 +360,55 @@ export function listLocalUsers(): LocalUser[] {
   );
 }
 
+export function getActiveLocalUserId(): LocalUserId | null {
+  initializeLocalStore();
+  const row = db.getFirstSync<{ value: string }>("SELECT value FROM local_preferences WHERE key='active_user_id';");
+  if (!row) return null;
+  const user = db.getFirstSync<{ id: string }>('SELECT id FROM local_users WHERE id=?;', row.value);
+  return user?.id ?? null;
+}
+
+export function setActiveLocalUserId(userId: LocalUserId): void {
+  initializeLocalStore();
+  const user = db.getFirstSync<{ id: string }>('SELECT id FROM local_users WHERE id=?;', userId);
+  if (!user) throw new Error('Cannot activate an unknown local user.');
+  db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES('active_user_id',?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, userId, now());
+}
+
 // --- Journey management ------------------------------------------------------
 
 export type UpsertJourneyInput = Omit<LocalJourney, 'syncedToCloud' | 'createdAt' | 'updatedAt'>;
+export type UpsertJourneyOptions = {
+  syncedToCloud?: 0 | 1;
+  createdAt?: string;
+  updatedAt?: string;
+};
 
-export function upsertJourney(input: UpsertJourneyInput): void {
+export function upsertJourney(input: UpsertJourneyInput, options: UpsertJourneyOptions = {}): void {
   initializeLocalStore();
+  assertRowOwnership('local_journeys', input.id, input.userId);
   const t = now();
+  const createdAt = options.createdAt ?? t;
+  const updatedAt = options.updatedAt ?? t;
+  const syncedToCloud = options.syncedToCloud ?? 0;
   db.runSync(`
     INSERT INTO local_journeys(id,user_id,legacy_drive_id,started_at,ended_at,duration_minutes,miles,
       start_lat,start_lng,end_lat,end_lng,start_place_id,end_place_id,
       average_speed_mph,max_speed_mph,song_count,vehicle_name,provider,
       synced_to_cloud,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ON CONFLICT(id) DO UPDATE SET
-      legacy_drive_id=excluded.legacy_drive_id, duration_minutes=excluded.duration_minutes,
-      miles=excluded.miles, start_lat=excluded.start_lat, start_lng=excluded.start_lng,
-      end_lat=excluded.end_lat, end_lng=excluded.end_lng,
+      legacy_drive_id=excluded.legacy_drive_id, started_at=excluded.started_at, ended_at=excluded.ended_at,
+      duration_minutes=excluded.duration_minutes, miles=excluded.miles,
+      start_lat=COALESCE(excluded.start_lat,local_journeys.start_lat),
+      start_lng=COALESCE(excluded.start_lng,local_journeys.start_lng),
+      end_lat=COALESCE(excluded.end_lat,local_journeys.end_lat),
+      end_lng=COALESCE(excluded.end_lng,local_journeys.end_lng),
       start_place_id=excluded.start_place_id, end_place_id=excluded.end_place_id,
       average_speed_mph=excluded.average_speed_mph, max_speed_mph=excluded.max_speed_mph,
       song_count=excluded.song_count, vehicle_name=excluded.vehicle_name,
-      provider=excluded.provider, synced_to_cloud=0, updated_at=excluded.updated_at;
+      provider=excluded.provider, synced_to_cloud=excluded.synced_to_cloud, updated_at=excluded.updated_at;
   `,
     input.id, input.userId, input.legacyDriveId ?? null,
     input.startedAt, input.endedAt, input.durationMinutes, input.miles,
@@ -369,7 +416,8 @@ export function upsertJourney(input: UpsertJourneyInput): void {
     guard(input.endLat, -90, 90), guard(input.endLng, -180, 180),
     input.startPlaceId ?? null, input.endPlaceId ?? null,
     guard(input.averageSpeedMph, 0, 300), guard(input.maxSpeedMph, 0, 300),
-    Math.max(0, Math.trunc(input.songCount)), input.vehicleName ?? null, input.provider ?? null, t, t,
+    Math.max(0, Math.trunc(input.songCount)), input.vehicleName ?? null, input.provider ?? null,
+    syncedToCloud, createdAt, updatedAt,
   );
 }
 
@@ -439,7 +487,10 @@ export type UpsertMusicEntryInput = Omit<LocalMusicEntry, 'syncedToCloud' | 'cre
 
 export function upsertMusicEntry(input: UpsertMusicEntryInput): void {
   initializeLocalStore();
+  assertRowOwnership('local_music_entries', input.id, input.userId);
   if (input.journeyId) {
+    const ownedJourney = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', input.journeyId, input.userId);
+    if (!ownedJourney) throw new Error('Cannot attach music to another local user\'s journey.');
     const recent = db.getAllSync<{ played_at: string }>(
       'SELECT played_at FROM local_music_entries WHERE user_id=? AND journey_id=? AND source=? AND LOWER(track)=LOWER(?) AND LOWER(artist)=LOWER(?) ORDER BY played_at DESC LIMIT 8;',
       input.userId, input.journeyId, input.source, input.track, input.artist,
@@ -467,6 +518,7 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
 
 export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>): LocalPlace {
   initializeLocalStore();
+  assertRowOwnership('local_places', input.id, input.userId);
   const t = now();
   db.runSync(`
     INSERT INTO local_places(id,user_id,kind,label,lat,lng,radius_meters,foursquare_id,osm_id,cached_until,created_at,updated_at)
@@ -477,8 +529,8 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>):
   `, input.id, input.userId, input.kind, input.label, input.lat, input.lng, input.radiusMeters,
     input.foursquareId ?? null, input.osmId ?? null, input.cachedUntil ?? null, t, t);
   return db.getFirstSync<LocalPlace>(
-    'SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE id=?;',
-    input.id,
+    'SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE id=? AND user_id=?;',
+    input.id, input.userId,
   )!;
 }
 
@@ -513,6 +565,7 @@ export function findCachedPlace(userId: LocalUserId, lat: number, lng: number, r
 
 export function upsertCollection(input: Omit<LocalCollection, 'syncedToCloud' | 'createdAt' | 'updatedAt'>): void {
   initializeLocalStore();
+  assertRowOwnership('local_collections', input.id, input.userId);
   const t = now();
   db.runSync(
     'INSERT INTO local_collections(id,user_id,name,description,journey_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,journey_ids=excluded.journey_ids,synced_to_cloud=0,updated_at=excluded.updated_at;',
@@ -529,6 +582,7 @@ export function listCollections(userId: LocalUserId): LocalCollection[] {
 
 export function upsertMemory(input: Omit<LocalMemory, 'syncedToCloud' | 'createdAt' | 'updatedAt'>): void {
   initializeLocalStore();
+  assertRowOwnership('local_memories', input.id, input.userId);
   const t = now();
   db.runSync(
     'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_local_path,collection_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_local_path=excluded.cover_photo_local_path,collection_ids=excluded.collection_ids,synced_to_cloud=0,updated_at=excluded.updated_at;',
@@ -589,16 +643,16 @@ export function journeysPendingSync(userId: LocalUserId, limit = 50): string[] {
   return db.getAllSync<{ id: string }>('SELECT id FROM local_journeys WHERE user_id=? AND synced_to_cloud=0 ORDER BY started_at DESC LIMIT ?;', userId, limit).map(r => r.id);
 }
 
-export function markJourneysSynced(ids: string[]): void {
+export function markJourneysSynced(userId: LocalUserId, ids: string[]): void {
   initializeLocalStore();
   if (!ids.length) return;
-  db.runSync(`UPDATE local_journeys SET synced_to_cloud=1,updated_at=? WHERE id IN (${ids.map(() => '?').join(',')});`, now(), ...ids);
+  db.runSync(`UPDATE local_journeys SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
 }
 
-export function markMusicEntriesSynced(ids: string[]): void {
+export function markMusicEntriesSynced(userId: LocalUserId, ids: string[]): void {
   initializeLocalStore();
   if (!ids.length) return;
-  db.runSync(`UPDATE local_music_entries SET synced_to_cloud=1 WHERE id IN (${ids.map(() => '?').join(',')});`, ...ids);
+  db.runSync(`UPDATE local_music_entries SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
 }
 
 // --- Diagnostics -------------------------------------------------------------

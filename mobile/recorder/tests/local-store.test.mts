@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dir, '../src/local-store.ts'), 'utf8');
+const recorderStorageSrc = readFileSync(resolve(__dir, '../src/storage.ts'), 'utf8');
 
 // ============================================================
 // 1. Type exports
@@ -158,4 +159,25 @@ assert.match(src, /\[p\.longitude, p\.latitude\]/, 'GeoJSON uses [lng, lat] orde
 assert.match(src, /6_371_000/, 'haversine uses Earth radius in meters');
 assert.match(src, /Math\.asin/, 'haversine uses asin');
 
-console.log('✅  local-store: all 15 checks passed.');
+// ============================================================
+// 16. Multi-user writes and sync acknowledgements enforce ownership
+// ============================================================
+
+assert.match(src, /function assertRowOwnership/, 'central ownership guard exists for ID-based upserts');
+for (const table of ['local_journeys', 'local_music_entries', 'local_places', 'local_collections', 'local_memories']) {
+  assert.match(src, new RegExp(`assertRowOwnership\\('${table}'`), `${table} upserts enforce local-user ownership`);
+}
+assert.match(src, /UPDATE local_journeys SET synced_to_cloud=1 WHERE user_id=\? AND id IN/, 'journey acknowledgements are scoped to the active user');
+assert.match(src, /UPDATE local_music_entries SET synced_to_cloud=1 WHERE user_id=\? AND id IN/, 'music acknowledgements are scoped to the active user');
+
+// ============================================================
+// 17. Completed recorder sessions feed the master local store
+// ============================================================
+
+assert.match(recorderStorageSrc, /function mirrorCompletedSessionToLocalStore/, 'completed recordings have a local-master ingest path');
+assert.match(recorderStorageSrc, /upsertJourney\(/, 'completed recordings persist a local journey summary');
+assert.match(recorderStorageSrc, /insertGpsPoints\(/, 'completed recordings persist local GPS breadcrumbs');
+assert.match(recorderStorageSrc, /upsertMusicEntry\(/, 'completed recordings persist local soundtrack observations');
+assert.match(recorderStorageSrc, /mirrorCompletedSessionToLocalStore\(sessionId\)/, 'completion invokes local-master ingest');
+
+console.log('✅  local-store: all 17 checks passed.');

@@ -2,6 +2,7 @@ import type { Connection } from './credentials';
 import { loadConnection } from './credentials';
 import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
+import { getCurrentUser } from './auth';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -234,7 +235,12 @@ export const appDataClient = {
   async dashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
     const cachedWeekly = readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? [];
-    if (!connection) return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false), weeklyJourneys: journeysInsideWeeklyWindow(cachedWeekly) };
+    if (!connection) {
+      const local = localAtlasClient.dashboard(getCurrentUser().id);
+      return local.summary.allTime.journeyCount > 0
+        ? local
+        : { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false), weeklyJourneys: journeysInsideWeeklyWindow(cachedWeekly) };
+    }
     const [dashboard, weeklyJourneys] = await Promise.all([
       request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
       loadWeeklyJourneys(connection).catch(() => journeysInsideWeeklyWindow(cachedWeekly)),
@@ -251,7 +257,11 @@ export const appDataClient = {
 
   async journeys(limit = 25, cursor?: string): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
     const connection = await loadConnection();
-    if (!connection) return cursor ? { items: [], nextCursor: null } : (readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) ?? { items: [], nextCursor: null });
+    if (!connection) {
+      const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
+      if (local.items.length || cursor) return local;
+      return readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) ?? local;
+    }
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
     try {
@@ -268,6 +278,8 @@ export const appDataClient = {
   async journey(id: string): Promise<JourneyDetail> {
     const connection = await loadConnection();
     if (!connection) {
+      const local = localAtlasClient.journey(getCurrentUser().id, id);
+      if (local) return local;
       const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
       if (cached) return cached;
       throw new Error('Connect this iPhone to JourneyDeck to load journey details.');
@@ -295,7 +307,10 @@ export const appDataClient = {
   async memories(): Promise<MemoriesCatalog> {
     const connection = await loadConnection();
     const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
-    if (!connection) return cached ?? { memories: [], collections: [] };
+    if (!connection) {
+      const local = localAtlasClient.memories(getCurrentUser().id);
+      return local.memories.length || local.collections.length ? local : (cached ?? local);
+    }
     try {
       const catalog = await request<MemoriesCatalog>(connection, '/api/recorder/memories');
       writeAppCache(MEMORIES_CACHE_KEY, catalog);
@@ -310,8 +325,10 @@ export const appDataClient = {
     const connection = await loadConnection();
     const cached = readAppCache<MusicDashboardData>(MUSIC_DASHBOARD_CACHE_KEY);
     if (!connection) {
+      const local = localAtlasClient.musicDashboard(getCurrentUser().id);
+      if (local.recentSelections.length || local.metrics.songsOnRoad > 0) return local;
       if (cached) return cached;
-      throw new Error('Connect this iPhone to JourneyDeck to load your music archive.');
+      return local;
     }
     try {
       const offset = new Date().getTimezoneOffset();

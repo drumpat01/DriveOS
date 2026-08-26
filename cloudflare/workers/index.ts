@@ -14,16 +14,24 @@ export interface Env extends SpotifyEnv, TessieEnv, PlacesEnv {
 }
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-JourneyDeck-Version',
 };
 
-function addCors(response: Response): Response {
+function allowedOrigin(request: Request, env: Env): string | null {
+  const origin = request.headers.get('Origin');
+  if (!origin) return null;
+  const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map(value => value.trim()).filter(Boolean);
+  return allowed.includes(origin) ? origin : null;
+}
+
+function addCors(response: Response, origin: string | null): Response {
   const newHeaders = new Headers(response.headers);
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     newHeaders.set(key, value);
   }
+  if (origin) newHeaders.set('Access-Control-Allow-Origin', origin);
+  newHeaders.set('Vary', 'Origin');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -33,10 +41,19 @@ function addCors(response: Response): Response {
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+    const requestOrigin = request.headers.get('Origin');
+    const corsOrigin = allowedOrigin(request, env);
+    if (requestOrigin && !corsOrigin) {
+      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Vary': 'Origin' },
+      });
+    }
+
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         status: 204,
-        headers: CORS_HEADERS,
+        headers: { ...CORS_HEADERS, ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}), 'Vary': 'Origin' },
       });
     }
 
@@ -63,6 +80,6 @@ export default {
       });
     }
 
-    return addCors(response);
+    return addCors(response, corsOrigin);
   },
 };

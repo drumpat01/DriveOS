@@ -28,6 +28,7 @@ import {
   upsertPlace,
   upsertCollection,
   upsertMemory,
+  getJourney,
   listJourneys,
   listMusicEntries,
   listCollections,
@@ -65,16 +66,11 @@ export function journeyToCKRecord(j: LocalJourney): CloudKitRecord {
     recordType: 'Journey',
     fields: {
       id: j.id,
-      userId: j.userId,
       legacyDriveId: j.legacyDriveId,
       startedAt: j.startedAt,
       endedAt: j.endedAt,
       durationMinutes: j.durationMinutes,
       miles: j.miles,
-      startLat: j.startLat,
-      startLng: j.startLng,
-      endLat: j.endLat,
-      endLng: j.endLng,
       startPlaceId: j.startPlaceId,
       endPlaceId: j.endPlaceId,
       averageSpeedMph: j.averageSpeedMph,
@@ -88,20 +84,20 @@ export function journeyToCKRecord(j: LocalJourney): CloudKitRecord {
   };
 }
 
-export function ckRecordToJourney(record: CloudKitRecord): LocalJourney {
+export function ckRecordToJourney(record: CloudKitRecord, userId: LocalUserId): LocalJourney {
   const f = record.fields;
   return {
     id: String(f.id),
-    userId: String(f.userId),
+    userId,
     legacyDriveId: f.legacyDriveId ? String(f.legacyDriveId) : null,
     startedAt: String(f.startedAt),
     endedAt: String(f.endedAt),
     durationMinutes: Number(f.durationMinutes) || 0,
     miles: Number(f.miles) || 0,
-    startLat: f.startLat != null ? Number(f.startLat) : null,
-    startLng: f.startLng != null ? Number(f.startLng) : null,
-    endLat: f.endLat != null ? Number(f.endLat) : null,
-    endLng: f.endLng != null ? Number(f.endLng) : null,
+    startLat: null,
+    startLng: null,
+    endLat: null,
+    endLng: null,
     startPlaceId: f.startPlaceId ? String(f.startPlaceId) : null,
     endPlaceId: f.endPlaceId ? String(f.endPlaceId) : null,
     averageSpeedMph: f.averageSpeedMph != null ? Number(f.averageSpeedMph) : null,
@@ -164,7 +160,7 @@ export class CloudKitSyncEngine {
       .map(name => name.replace('journey_', ''));
 
     if (journeyIds.length) {
-      markJourneysSynced(journeyIds);
+      markJourneysSynced(this.userId, journeyIds);
     }
 
     currentSyncState = {
@@ -182,9 +178,17 @@ export class CloudKitSyncEngine {
     let count = 0;
     for (const record of remoteRecords) {
       if (record.recordType === 'Journey') {
-        const remoteJourney = ckRecordToJourney(record);
-        upsertJourney(remoteJourney);
-        count++;
+        const remoteJourney = ckRecordToJourney(record, this.userId);
+        const localJourney = getJourney(this.userId, remoteJourney.id);
+        const winner = localJourney ? resolveConflict(localJourney, remoteJourney) : remoteJourney;
+        if (winner === remoteJourney) {
+          upsertJourney(remoteJourney, {
+            syncedToCloud: 1,
+            createdAt: remoteJourney.createdAt,
+            updatedAt: remoteJourney.updatedAt,
+          });
+          count++;
+        }
       }
     }
     return { updatedCount: count };

@@ -54,5 +54,10 @@ assert.equal(winTie.name, 'Tie Remote Version', 'Resolves timestamp tie determin
 // ============================================================
 assert.match(src, /recordName: `journey_\${j\.id}`/, 'recordName follows consistent naming scheme');
 assert.match(src, /syncedToCloud: 1/, 'remote records mark local syncedToCloud flag');
+assert.doesNotMatch(src, /startLat: j\.startLat|startLng: j\.startLng|endLat: j\.endLat|endLng: j\.endLng/, 'CloudKit payload never contains exact journey endpoints');
+assert.doesNotMatch(src, /userId: j\.userId/, 'CloudKit payload does not expose the local profile identifier');
+assert.match(src, /resolveConflict\(localJourney, remoteJourney\)/, 'remote ingestion applies LWW conflict resolution');
+assert.match(src, /getJourney\(this\.userId, remoteJourney\.id\)/, 'conflicts are resolved only inside the active local profile');
+assert.match(src, /syncedToCloud: 1/, 'downloaded winners remain acknowledged instead of being immediately re-queued');
 
 console.log('✅  cloudkit-sync: all checks passed.');

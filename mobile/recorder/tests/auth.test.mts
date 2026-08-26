@@ -26,6 +26,8 @@ assert.match(src, /export function switchActiveUser/, 'exports switchActiveUser'
 // ============================================================
 assert.match(src, /ensureLocalUser/, 'uses ensureLocalUser from local-store');
 assert.match(src, /listLocalUsers/, 'uses listLocalUsers from local-store');
+assert.match(src, /getActiveLocalUserId/, 'restores the persisted active profile');
+assert.match(src, /setActiveLocalUserId/, 'persists profile changes across launches');
 assert.match(src, /initializeLocalStore/, 'initializes local store');
 
 // ============================================================

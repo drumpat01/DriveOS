@@ -1,5 +1,23 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Codex validation and architecture hardening — August 26, 2026
+
+- **Objective:** Run the complete JourneyDeck validation stack and fix failures plus the privacy, sync, isolation, and runtime-wiring defects found during review of `2515a44`.
+- **Changes:**
+  - CloudKit journey summaries no longer include exact endpoint coordinates or local profile IDs. Remote ingestion now scopes records to the active profile, applies LWW conflict resolution, preserves local-only coordinates, and leaves downloaded winners acknowledged.
+  - Local-store ID upserts and sync acknowledgements enforce `user_id` ownership. Active profile selection is persisted with additive SQLite migration 2.
+  - Completed recorder sessions now mirror journey summaries, raw GPS breadcrumbs, and soundtrack observations into the master local SQLite store. Offline dashboard, journeys, detail, Memories, and Music reads now use `localAtlasClient` before legacy caches.
+  - Cloudflare credential routes now reject unapproved browser origins and return an exact allowlisted CORS origin; production origins are declared in `wrangler.toml`.
+  - Added regression assertions covering coordinate exclusion, LWW use, profile ownership, recorder-to-master-store ingest, live offline fallback, profile persistence, and CORS fail-closed behavior.
+- **Verification:**
+  - All 15 mobile checks passed, including TypeScript, tab runtime, local store/Atlas/privacy/CloudKit/Cloudflare/auth, recovery, sync status, music, drive detection, navigation motion, and native capabilities.
+  - Expo Doctor passed 21/21; production iOS Metro export passed with 1,349 modules and 8 assets.
+  - Root `npm test` passed after creating the documented Atlas development seed fixture: server typecheck/lint, 29 server tests, Atlas benchmark, 9 Playwright tests, PSScriptAnalyzer (136 files), gitleaks, and Trivy (0 HIGH/CRITICAL findings).
+  - `tools/Test-DriveOS.ps1` and `tools/Test-ReleasePreflight.ps1` passed. Their SQLite-provider/migration/durable-round-trip checks were explicitly skipped because the desktop SQLite runtime is unavailable in this environment; all other available checks passed.
+  - `git diff --check` passed with only Windows LF-to-CRLF notices.
+- **Environment:** Branch `agy/journeydeck-1.6`; working tree contains the 12 intentional modified files listed by `git status`. No commit, push, deployment, or OTA publication was performed.
+- **Next steps:** Review the working-tree diff and physically verify a completed offline recording appears in Home/Memories/Music after relaunch and profile switching. A real CloudKit transport adapter is still required before remote synchronization can run on-device; `CloudKitSyncEngine` currently provides safe payload/conflict logic only.
+
 - **Active Branch**: `agy/journeydeck-1.6` (Synced to remote `origin/agy/journeydeck-1.6`)
 - **Authoritative Commit**: [`2515a44`](https://github.com/drumpat01/DriveOS/commit/2515a44) (`feat(arch): implement zero-cost local-first multi-user architecture with SQLite, CloudKit sync, and Cloudflare edge`)
 - **Live Cloudflare Edge**: `https://journeydeck-edge.patrickbstewart.workers.dev` (Deployed on Free Tier)

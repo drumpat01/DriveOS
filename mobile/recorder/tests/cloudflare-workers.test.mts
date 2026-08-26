@@ -23,6 +23,9 @@ const wranglerSrc = readFileSync(resolve(rootDir, 'wrangler.toml'), 'utf8');
 // ============================================================
 assert.match(indexSrc, /export default/, 'index.ts has default export with fetch handler');
 assert.match(indexSrc, /Access-Control-Allow-Origin/, 'CORS headers configured');
+assert.doesNotMatch(indexSrc, /Access-Control-Allow-Origin': '\*'/, 'credential routes never allow every browser origin');
+assert.match(indexSrc, /allowedOrigin\(request, env\)/, 'browser origins are checked against the configured allowlist');
+assert.match(indexSrc, /Origin not allowed/, 'unapproved browser origins fail closed');
 assert.match(indexSrc, /\/api\/auth\/spotify\/token/, 'Spotify token route mapped');
 assert.match(indexSrc, /\/api\/auth\/tessie\/verify/, 'Tessie verify route mapped');
 assert.match(indexSrc, /\/api\/places\/reverse/, 'Places reverse lookup route mapped');
@@ -56,5 +59,6 @@ assert.match(placesSrc, /public, max-age=86400/, 'sets 24-hour cache control hea
 // ============================================================
 assert.match(wranglerSrc, /name = "journeydeck-edge"/, 'worker name configured');
 assert.match(wranglerSrc, /main = "workers\/index\.ts"/, 'entry point configured');
+assert.match(wranglerSrc, /ALLOWED_ORIGINS = /, 'production browser origins are explicitly configured');
 
 console.log('✅  cloudflare-workers: all checks passed.');

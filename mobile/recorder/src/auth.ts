@@ -17,6 +17,8 @@ import {
   ensureLocalUser,
   listLocalUsers,
   initializeLocalStore,
+  getActiveLocalUserId,
+  setActiveLocalUserId,
 } from './local-store';
 
 export { listLocalUsers };
@@ -47,10 +49,12 @@ export function initializeAuth(): LocalUser {
   initializeLocalStore();
   const users = listLocalUsers();
   if (users.length > 0) {
-    activeUser = users[0]!;
+    const savedUserId = getActiveLocalUserId();
+    activeUser = users.find(user => user.id === savedUserId) ?? users[0]!;
   } else {
     activeUser = ensureLocalUser({ displayName: 'Primary Driver' });
   }
+  setActiveLocalUserId(activeUser.id);
   return activeUser;
 }
 
@@ -85,6 +89,7 @@ export function handleAppleSignInResult(credential: AppleAuthCredential): LocalU
   });
 
   activeUser = user;
+  setActiveLocalUserId(user.id);
   return user;
 }
 
@@ -97,6 +102,7 @@ export function switchActiveUser(userId: LocalUserId): LocalUser | null {
   const found = users.find(u => u.id === userId);
   if (found) {
     activeUser = found;
+    setActiveLocalUserId(found.id);
     return found;
   }
   return null;
