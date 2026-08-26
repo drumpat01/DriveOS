@@ -2,6 +2,15 @@
 
 ## Summary
 
+### Cinematic native Memories preview — August 24, 2026
+
+- Fresh worktree/branch: `C:\Users\patri\DriveOS-cinematic-memories` on `codex/cinematic-memories`, based on `origin/main` at `2c892f5`. The stale dirty primary checkout remains untouched.
+- Rebuilt the native Memories presentation in `mobile/recorder/src/shell.tsx` to closely follow mobile web: atmospheric coral/violet background, illuminated chapter header and hierarchy, centered 270×350 portrait carousel with perspective/arrows, scroll-linked selection glow, graded photos, unclipped coral rim lighting, serif card titles, glowing dots, and full-bleed photographic Collection cards.
+- Existing Memory/Collection editors, photo inheritance and cover selection, overview/share modals, compact Journey list, and five-tab gliding navigation remain in place. No dependency, native configuration, or runtime-version changes were made.
+- Published preview OTA group `50e89976-6ec1-4bbf-b52a-f464448a56a4` for iOS runtime `1.4.0`: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/50e89976-6ec1-4bbf-b52a-f464448a56a4`.
+- Verification passed: mobile typecheck; navigation 4/4; recovery 10/10; sync 4/4; music 7/7; drive detection 9/9; iOS Metro export; Expo public config; `git diff --check`. Expo Doctor remains at the known baseline 20/21 because six Expo packages are one patch behind; none were changed.
+- Work is intentionally uncommitted/unpushed pending physical iPhone review. Test multiple Memories, portrait/landscape/selfie/fallback covers, long names, arrow/swipe agreement, inherited photos, Collection opens, final Journey clearance, and nav dragging. Do not republish before reviewing this OTA.
+
 - Feature branch: `codex/journeydeck-mobile-shell`; implementation merged to `main` in PR #111 as `6eeac09`.
 - Expanded the single-purpose Recorder into JourneyDeck 1.1.0 while keeping the existing bundle identity and local recording database.
 - Added Home, Journeys, Record, and Connections tabs; first-run provider selection; offline dashboard/history caches; journey details with real route geometry; pagination; and Tessie/Last.fm capability status.
