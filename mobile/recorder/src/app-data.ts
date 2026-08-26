@@ -395,3 +395,245 @@ export const appDataClient = {
     }, 35_000);
   },
 };
+
+// =============================================================================
+// localAtlasClient — Phase 1.4: On-Device Local-First Data Client
+//
+// Reads ALL data from the on-device SQLite master store (local-store.ts) and
+// the on-device Atlas analytics engine (local-atlas.ts). Zero network calls.
+// Works 100% offline. Used as the primary data source when:
+//   1. The user has no server connection configured (pure local-first mode).
+//   2. The app is offline and the server is unreachable.
+//   3. The client requests a fast, synchronous dashboard (no network latency).
+//
+// The server-side appDataClient above remains available for hybrid mode where
+// the local store is backed up by server sync.
+// =============================================================================
+
+import {
+  initializeLocalStore,
+  ensureLocalUser,
+  listJourneys,
+  getJourney,
+  listMusicEntries,
+  listCollections,
+  listMemories,
+  readAtlasSnapshot,
+  localStoreDiagnostics,
+} from './local-store';
+import type { LocalUserId } from './local-store';
+import {
+  rebuildAtlasSnapshot,
+  computeAllTime,
+  computeLast7Days,
+  computeWeeklyTour,
+  computeDrivingStreak,
+  computeMusicMetrics,
+  computeTopArtists,
+  computeMoodBreakdown,
+} from './local-atlas';
+
+/** How stale a cached Atlas snapshot can be before we rebuild it (5 minutes). */
+const ATLAS_STALE_MS = 5 * 60_000;
+
+function localJourneyToSummary(j: import('./local-store').LocalJourney): JourneySummary {
+  return {
+    id: j.id,
+    legacyDriveId: j.legacyDriveId,
+    provider: j.provider,
+    vehicleName: j.vehicleName,
+    startedAt: j.startedAt,
+    endedAt: j.endedAt,
+    durationMinutes: j.durationMinutes,
+    miles: j.miles,
+    startingLocation: j.startPlaceId ?? null,
+    endingLocation: j.endPlaceId ?? null,
+    averageSpeedMph: j.averageSpeedMph,
+    maxSpeedMph: j.maxSpeedMph,
+    songCount: j.songCount,
+    soundtrackPreview: [],
+  };
+}
+
+export const localAtlasClient = {
+  /**
+   * Ensures a local user record exists (creates one if needed).
+   * Pass an Apple subject ID once Sign in with Apple is implemented;
+   * until then, pass undefined to use or create an anonymous device user.
+   */
+  ensureUser(appleSubject?: string): import('./local-store').LocalUser {
+    initializeLocalStore();
+    return ensureLocalUser({ appleSubject });
+  },
+
+  /**
+   * Returns a fully local AppDashboard built from on-device SQLite.
+   * Never makes a network request. Safe to call while offline.
+   */
+  dashboard(userId: LocalUserId): AppDashboard {
+    initializeLocalStore();
+
+    // Rebuild Atlas snapshot if stale or missing
+    // rebuildAtlasSnapshot always writes + returns a valid snapshot, so the
+    // result is never null -- use ?? to give TS the non-null guarantee.
+    const freshSnapshot = readAtlasSnapshot(userId) ?? rebuildAtlasSnapshot(userId);
+    const isStale = (Date.now() - Date.parse(freshSnapshot.generatedAt)) > ATLAS_STALE_MS;
+    const snapshot = isStale ? rebuildAtlasSnapshot(userId) : freshSnapshot;
+
+    const { items: recentJourneys } = listJourneys(userId, { limit: 10 });
+    const latestJourney = recentJourneys[0] ?? null;
+    const weeklyJourneys = recentJourneys.filter(j => {
+      const t = Date.parse(j.startedAt);
+      const cutoff = Date.now() - 7 * 24 * 60 * 60_000;
+      return Number.isFinite(t) && t >= cutoff;
+    });
+
+    const dashboard: DashboardData = {
+      generatedAt: snapshot.generatedAt,
+      summary: {
+        allTime: {
+          journeyCount: snapshot.allTimeJourneyCount,
+          miles: snapshot.allTimeMiles,
+          minutes: snapshot.allTimeMinutes,
+        },
+        last7Days: {
+          journeyCount: snapshot.last7DaysJourneyCount,
+          miles: snapshot.last7DaysMiles,
+          minutes: snapshot.last7DaysMinutes,
+          songCount: snapshot.last7DaysSongCount,
+        },
+      },
+      latestJourney: latestJourney ? localJourneyToSummary(latestJourney) : null,
+      recentJourneys: recentJourneys.map(localJourneyToSummary),
+      providerPreferences: null,
+    };
+
+    return {
+      ...dashboard,
+      recorder: localRecorderHealth(false),
+      weeklyJourneys: weeklyJourneys.map(localJourneyToSummary),
+    };
+  },
+
+  /**
+   * Returns a paginated list of journeys from the local store.
+   */
+  journeys(userId: LocalUserId, limit = 25, cursor?: string): { items: JourneySummary[]; nextCursor: string | null } {
+    initializeLocalStore();
+    const result = listJourneys(userId, { limit, cursor });
+    return {
+      items: result.items.map(localJourneyToSummary),
+      nextCursor: result.nextCursor,
+    };
+  },
+
+  /**
+   * Returns a single journey detail from the local store.
+   */
+  journey(userId: LocalUserId, journeyId: string): JourneyDetail | null {
+    initializeLocalStore();
+    const j = getJourney(userId, journeyId);
+    if (!j) return null;
+    return {
+      ...localJourneyToSummary(j),
+      startingBatteryPercent: null,
+      endingBatteryPercent: null,
+      energyUsedKwh: null,
+      tessieTag: null,
+      driverProfile: null,
+      soundtrack: [],
+      route: null,  // populated separately via getJourneyRoute() if needed
+    };
+  },
+
+  /**
+   * Returns the local MusicDashboardData built entirely from on-device SQLite.
+   * All metrics are pre-computed by the Atlas engine.
+   */
+  musicDashboard(userId: LocalUserId): MusicDashboardData {
+    initializeLocalStore();
+
+    // Use fresh Atlas computation for music dashboard
+    const allTime  = computeAllTime(userId);
+    const last7    = computeLast7Days(userId);
+    const tour     = computeWeeklyTour(userId);
+    const streak   = computeDrivingStreak(userId);
+    const music    = computeMusicMetrics(userId);
+    const artists  = computeTopArtists(userId, 10);
+    const mood     = computeMoodBreakdown(userId);
+    const recent   = listMusicEntries(userId, 20);
+
+    const recentSelections: SoundtrackTrack[] = recent.map(e => ({
+      playedAt: e.playedAt,
+      track: e.track,
+      artist: e.artist,
+      album: e.album ?? null,
+      durationMs: e.durationMs ?? null,
+      artworkUrl: e.artworkUrl ?? null,
+      externalUrl: e.externalUrl ?? null,
+      source: e.source,
+      confidence: e.confidence ?? null,
+    }));
+
+    return {
+      generatedAt: new Date().toISOString(),
+      metrics: {
+        milesWithMusic: last7.miles,
+        listeningHours: music.listeningHours,
+        songsOnRoad: music.songsOnRoad,
+        currentStreak: streak,
+      },
+      recentSelections,
+      topArtists: artists,
+      tour: { miles: tour.miles, changePercent: tour.changePercent },
+      mood,
+      cities: [],        // requires geocoding — populated in Phase 3 via Cloudflare/Nominatim
+      daily: [],         // requires historical daily aggregation — Phase 1.5
+      week: { total: last7.songCount, changePercent: null },
+    };
+  },
+
+  /**
+   * Returns the local MemoriesCatalog (collections + memories) from on-device SQLite.
+   */
+  memories(userId: LocalUserId): MemoriesCatalog {
+    initializeLocalStore();
+    const collections = listCollections(userId).map(c => ({
+      id: c.id,
+      name: c.name,
+      description: c.description ?? '',
+      driveIds: JSON.parse(c.journeyIds) as string[],
+      createdAtUtc: c.createdAt,
+      updatedAtUtc: c.updatedAt,
+      photos: [] as JourneyPhoto[],
+    } satisfies JourneyCollection));
+
+    const memories = listMemories(userId).map(m => ({
+      id: m.id,
+      name: m.name,
+      notes: m.notes ?? '',
+      artworkKey: m.artworkKey ?? '',
+      coverPhotoId: null,
+      photos: [] as JourneyPhoto[],
+      collectionIds: JSON.parse(m.collectionIds) as string[],
+      createdAtUtc: m.createdAt,
+      updatedAtUtc: m.updatedAt,
+    } satisfies JourneyMemory));
+
+    return { memories, collections };
+  },
+
+  /**
+   * Diagnostic snapshot for debugging / settings screen.
+   */
+  diagnostics(userId: LocalUserId) {
+    return localStoreDiagnostics(userId);
+  },
+
+  /**
+   * Force-rebuilds the Atlas snapshot (call after ingesting new journeys or music).
+   */
+  rebuildAtlas(userId: LocalUserId) {
+    return rebuildAtlasSnapshot(userId);
+  },
+};

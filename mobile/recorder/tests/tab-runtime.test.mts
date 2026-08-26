@@ -29,12 +29,13 @@ test('Music background loading cannot activate the native refresh inset', () => 
 
 test('Memories, Music, and Settings each have a distinct cinematic header scene', () => {
   assert.match(shell, /<PageHeader variant="memories"/);
+  assert.match(shell, /memories-header-hero\.png/);
   assert.match(shell, /<PageHeader variant="settings"/);
   assert.match(shell, /function PageHeaderScene/);
-  assert.match(shell, /memoryHeaderRoad/);
   assert.match(shell, /settingsHeaderLink/);
+  assert.match(musicScreen, /music-header-hero\.png/);
   assert.match(musicScreen, /function MusicHeaderScene/);
-  assert.match(musicScreen, /musicHeaderStyles\.vinylOuter/);
+  assert.match(musicScreen, /musicSceneGlow|soundwaveGrad/);
   assert.match(musicScreen, /musicHeaderStyles\.spectrum/);
 });
 
@@ -63,7 +64,9 @@ test('native dashboards use static cinematic lighting and Music has intentional 
   assert.match(musicScreen, /function RouteGlow\(\)[\s\S]*?<Svg/);
   assert.match(musicScreen, /strokeDasharray="5 7"/);
   assert.doesNotMatch(musicScreen, /routeLineOne|routeLineTwo/);
-  assert.match(musicScreen, /heroArtwork: \{ width: 94, height: 94, borderRadius: 47/);
+  assert.match(musicScreen, /function VinylHeroRecord/);
+  assert.match(musicScreen, /Animated\.loop[\s\S]*?duration: 22000/);
+  assert.match(musicScreen, /vinylCenterLabel: \{ width: 60, height: 60/);
   assert.match(musicScreen, /metric: \{[\s\S]*?shadowColor: '#9b61ff'/);
   assert.match(shell, /staticWidgetGlow/);
   assert.match(shell, /webDashboardShell: \{[\s\S]*?shadowColor: '#9d58ff'/);

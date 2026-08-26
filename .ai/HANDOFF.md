@@ -1,4 +1,301 @@
-# Handoff: JourneyDeck Mobile Shell and Music Connections
+## Phase 4 & 5: Driver Profile, Private iCloud Badge, Pro Membership & Entitlements — August 26, 2026
+
+- **Objective:** Finalize user-facing settings for Apple ID driver profile, private iCloud sync status badge, JourneyDeck Pro $4.99/mo membership card, home/work safe zones, and Apple Sign-In / CloudKit iOS entitlements.
+- **Branch:** `agy/journeydeck-1.6` (working tree)
+- **Changes Implemented:**
+  - `mobile/recorder/app.json` — Configured iOS capabilities (`com.apple.developer.applesignin`, `com.apple.developer.icloud-container-identifiers`, `com.apple.developer.icloud-services`).
+  - `mobile/recorder/src/shell.tsx` — Added Driver Profile tile, Private iCloud encryption badge, JourneyDeck Pro membership tile, and Home/Work Safe Zone indicator to Settings screen.
+  - `mobile/recorder/src/auth.ts` — Multi-user profile management with `listLocalUsers` export.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:tab-runtime`: ✅ 9/9 passed
+  - All 14 unit test suites: ✅ 100% passed
+  - `npx expo export --platform ios`: ✅ 1349 modules bundled
+  - `git diff --check`: ✅ clean
+- **Published Preview OTA:**
+  - Update group ID: **`289d6cbb-2191-43a3-83a5-187cd319c218`**
+  - iOS update ID: **`01a03f5d-1bd4-7792-997c-3083566f253e`**
+  - Message: `Phase 4+5: Driver profile, private iCloud badge, Pro membership card, iOS entitlements`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/289d6cbb-2191-43a3-83a5-187cd319c218`
+
+## Phase 2, 3 & 4: CloudKit Sync, Cloudflare Serverless Edge, Multi-User Auth — August 26, 2026
+
+- **Objective:** Implement the remaining serverless edge infrastructure (Cloudflare Workers), CloudKit sync engine, and multi-user Apple Sign-In identity management.
+- **Branch:** `agy/journeydeck-1.6` (working tree)
+- **New Files Created:**
+  - `cloudflare/workers/oauth-spotify.ts` — Stateless PKCE Spotify OAuth token exchange & refresh broker. Zero server state.
+  - `cloudflare/workers/oauth-tessie.ts` — Stateless Tessie token verification broker.
+  - `cloudflare/workers/places-lookup.ts` — Privacy-preserving Nominatim reverse geocoding proxy with 3-decimal fuzzed coordinates (~110m grid) and 24-hour edge caching.
+  - `cloudflare/workers/index.ts` — Unified Cloudflare edge router with full CORS and healthcheck endpoints.
+  - `cloudflare/wrangler.toml` — Deployed live to Cloudflare Workers free tier: `https://journeydeck-edge.patrickbstewart.workers.dev`
+    - `/readyz` → Healthy (200 OK)
+    - `/api/places/reverse` → Privacy geocoding verified (3-decimal fuzzed grid + edge cached)
+    - `/api/auth/spotify/token` → Stateless PKCE broker ready
+    - `/api/auth/tessie/verify` → Tessie validator ready
+  - `mobile/recorder/src/cloudkit-sync.ts` — CloudKit synchronization engine with CKRecord serialization, queue management, and deterministic Last-Write-Wins (LWW) conflict resolution.
+  - `mobile/recorder/src/auth.ts` — Multi-user profile management, Sign in with Apple credential handler, and local user switching.
+  - `mobile/recorder/tests/cloudflare-workers.test.mts` — 100% passed.
+  - `mobile/recorder/tests/cloudkit-sync.test.mts` — 100% passed.
+  - `mobile/recorder/tests/auth.test.mts` — 100% passed.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:cloudflare-workers`: ✅ passed
+  - `npm run test:cloudkit-sync`: ✅ passed
+  - `npm run test:auth`: ✅ passed
+  - All 11 other unit tests: ✅ 100% passed
+- **Published Preview OTA:**
+  - Update group ID: **`2dbc7032-f84e-4a9a-b7be-15d21f8fe157`**
+  - iOS update ID: **`01a03f55-c5ab-7013-a263-cfdecc0f6eb3`**
+  - Message: `Phase 2+3+4: CloudKit sync engine, Cloudflare serverless edge, Apple multi-user auth`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/2dbc7032-f84e-4a9a-b7be-15d21f8fe157`
+
+## Phase 1: On-Device Master SQLite Store, Privacy Masker & Atlas Engine — August 26, 2026
+
+- **Objective:** Build the complete Local-First SQLite foundation and privacy layer for the zero-cost multi-user architecture. All journey history, music, places, collections, memories, coordinate masking, and analytics live on-device in `journeydeck-local.db`.
+- **Branch:** `agy/journeydeck-1.6` (working tree changes ready)
+- **New Files Created:**
+  - `mobile/recorder/src/local-store.ts` — On-device master SQLite store (8 tables, multi-user isolation, additive `user_version` migration system, CloudKit sync queue).
+  - `mobile/recorder/src/local-atlas.ts` — On-device Atlas Analytics Engine (weekly tour, rolling 7-day, driving streak, top artists, 5-bucket mood breakdown, `rebuildAtlasSnapshot()`).
+  - `mobile/recorder/src/privacy-masker.ts` — On-device coordinate scrubbing and geofence masking (≥300m safe buffer for home/work, Haversine spherical math, deterministic route & label sanitization for share cards).
+  - `mobile/recorder/tests/local-store.test.mts` — 15/15 structural assertions passed.
+  - `mobile/recorder/tests/local-atlas.test.mts` — 12/12 structural assertions passed.
+  - `mobile/recorder/tests/privacy-masker.test.mts` — Structural and mathematical assertions passed.
+  - `mobile/recorder/tests/local-atlas-client.test.mts` — 10/10 check groups passed.
+- **Modified Files:**
+  - `mobile/recorder/src/app-data.ts` — Added `localAtlasClient` export for 100% offline-first synchronous dashboard and catalog reads from on-device SQLite.
+  - `mobile/recorder/package.json` — Added all 4 new test scripts.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:local-store`: ✅ 15/15 passed
+  - `npm run test:local-atlas`: ✅ 12/12 passed
+  - `npm run test:privacy-masker`: ✅ passed
+  - `npm run test:local-atlas-client`: ✅ 10/10 passed
+  - All 7 existing test suites: ✅ 100% pass
+  - `npx expo export --platform ios`: ✅ 8 assets, 1348 modules bundled cleanly
+  - `git diff --check`: ✅ clean
+- **Published Preview OTA:**
+  - Update group ID: **`d7c4d618-bfd5-444d-a1ab-c39b83fa0b17`**
+  - iOS update ID: **`01a03f50-8d6e-7f88-b7e6-a1bff348a788`**
+  - Message: `Phase 1.2+1.4: On-device privacy masker, local Atlas client (full offline dashboard)`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/d7c4d618-bfd5-444d-a1ab-c39b83fa0b17`
+
+## Next Steps (Phase 1 Remaining + Phase 2)
+
+1. **Phase 1.2 — Privacy Masker** (`src/privacy-masker.ts`): On-device coordinate fuzzing function that accepts a coordinate and a set of sensitive places, returns a scrubbed safe point if within a place's `radius_meters`. Used before any export, share card, or CloudKit sync.
+2. **Phase 1.4 — Local Atlas Client in app-data.ts**: Add `localAtlasClient` that reads from `local-store.ts` for the dashboard when offline or when the user has no server connection configured.
+3. **Phase 2 — CloudKit Sync** (`src/cloudkit-sync.ts`): Implement bidirectional CloudKit sync using `journeysPendingSync()` + `markJourneysSynced()` from local-store. Only lightweight journey summaries sync to iCloud; raw GPS breadcrumbs and sensitive home/work coordinates stay local.
+4. **Phase 3 — Cloudflare Workers**: Stateless OAuth broker for Spotify + Tesla, static SPA hosting, Nominatim geocoding proxy.
+
+## Zero-Cost Multi-User Local-First Architecture Plan — August 26, 2026
+
+
+- **Objective:** Plan and architect the multi-user transition for JourneyDeck using a zero-cost local-first foundation with on-device SQLite, Apple CloudKit sync, and Cloudflare Workers/Pages edge brokers.
+- **Architectural Deliverables:**
+  - Designed [`implementation_plan.md`](file:///C:/Users/patri/.gemini/antigravity/brain/d4a22efe-2dc2-4ccc-8e37-49476481f16d/implementation_plan.md) with complete system diagrams, key invariants, and 5 execution phases:
+    1. *Phase 1: Local-First Core & On-Device Storage Engine* (elevating SQLite on iOS as primary master store).
+    2. *Phase 2: Apple CloudKit Sync & iCloud Backup* (private E2EE sync at $0 developer cost).
+    3. *Phase 3: Cloudflare Serverless Edge* (stateless OAuth brokers for Spotify/Tesla + static SPA on Pages).
+    4. *Phase 4: Multi-User Onboarding Flow* (Sign in with Apple, vehicle/music selection, privacy geofences).
+    5. *Phase 5: App Store Readiness & Release* (privacy disclosures, StoreKit subscriptions, TestFlight beta).
+- **Cost Scaling Analysis:**
+  - 0 to 1,000 active users: **$0.00 / month** running costs (100% free-tier serverless/CloudKit).
+  - 1,000+ active users: ~$29/mo (EAS update threshold, easily funded by subscription revenue).
+
+## Full-Bleed Music & Memories Header Artwork Assets — August 26, 2026
+
+- **Objective:** Implement full-bleed cropped artwork headers for both Music and Memories tabs in the exact same cohesive cinematic style, removing all old paragraph/eyebrow text overlays.
+- **Changes Implemented:**
+  - **Music Header Artwork (`mobile/recorder/assets/music-header-hero.png`):**
+    - High-resolution cropped image asset (1270x674) featuring the bold white "MUSIC" title, glowing multi-lane neon soundwaves (magenta, cyan, coral), vinyl echo grooves, and floating acoustic bokeh particles.
+    - Rendered inside `musicHeaderStyles.heroCardHeader` (`aspectRatio: 1270 / 674`, `borderRadius: 24`, `overflow: 'hidden'`, outer neon glow shadow `#ff4594`).
+  - **Memories Header Artwork (`mobile/recorder/assets/memories-header-hero.png`):**
+    - High-resolution cropped image asset (673x331) featuring the bold white "MEMORIES" title, multi-lane neon highway ribbons, moon, stars, and waypoint beacons.
+    - Rendered inside `styles.memoryHeroCardHeader` (`aspectRatio: 673 / 331`, `borderRadius: 24`, `overflow: 'hidden'`, outer neon glow shadow `#9b61ff`).
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread with 14 micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (8 assets bundled including `music-header-hero.png` and `memories-header-hero.png`, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`3e8ae4e1-5a09-401c-943e-620d410b06d4`**
+  - iOS update ID: **`01a03edf-9ec5-7e73-95f4-cd5a06f5a6af`**
+  - Message: `Add full-bleed cropped Music header artwork`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/3e8ae4e1-5a09-401c-943e-620d410b06d4`
+
+## Cropped Edge-to-Edge Memories Header Image & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Crop out the exterior margin behind the neon rounded rectangle and size the Memories header card to fill the screen width edge-to-edge.
+- **Changes Implemented:**
+  - **Cropped High-Res Asset (`mobile/recorder/assets/memories-header-hero.png`):**
+    - Updated image asset to the exact cropped artwork (673x331, aspect ratio 2.033) where the glowing neon rounded border extends right to the edges of the file.
+  - **Layout & Container Sizing (`mobile/recorder/src/shell.tsx`):**
+    - Updated `styles.memoryPageHeader` to `marginHorizontal: 16` and `memoryHeroCardHeader` to `aspectRatio: 673 / 331`, `borderRadius: 24`, `overflow: 'hidden'`, and enhanced outer glow shadow (`shadowColor: '#9b61ff'`, `shadowOpacity: 0.45`, `shadowRadius: 24`).
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (7 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`94554d20-a9e3-491a-b06e-0dc25fb193be`**
+  - iOS update ID: **`01a03ec6-6400-7aaa-8282-658ff6942fd0`**
+  - Message: `Update Memories header with cropped edge-to-edge neon artwork`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/94554d20-a9e3-491a-b06e-0dc25fb193be`
+
+## Full-Bleed Memories Header Image Asset & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Replace the entire red-circled Memories header card with the high-resolution image asset (`assets/memories-header-hero.png`), removing all standard text overlays so the header is 100% the clean, high-res artwork image.
+- **Changes Implemented:**
+  - **Bundled Image Asset (`mobile/recorder/assets/memories-header-hero.png`):**
+    - Saved the high-resolution Memories header artwork featuring the clean modern "MEMORIES" title, glowing multi-lane neon highway ribbon (cyan, magenta, coral), starlit twilight sky with moon, topographic contours, and glowing waypoint pin markers.
+  - **Memories Header Integration (`PageHeader` in `mobile/recorder/src/shell.tsx`):**
+    - Updated `PageHeader` for `variant="memories"` to render `<Image source={require('../assets/memories-header-hero.png')} style={styles.memoryHeroHeaderImage} resizeMode="cover" />` inside `styles.memoryHeroCardHeader` (16:9 aspect ratio, `borderRadius: 24`, glowing border and shadow).
+    - Removed old paragraph and eyebrow text from the card so the artwork displays clean and unobstructed.
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread with 14 micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (7 assets bundled including `memories-header-hero.png`, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`1e20695a-2775-4763-b37f-eec8f2096164`**
+  - iOS update ID: **`01a03ec0-9aa1-7cf1-b26b-61ca29b568e5`**
+  - Message: `Set full-bleed Memories header artwork image`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/1e20695a-2775-4763-b37f-eec8f2096164`
+
+## Refined Memories Header & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Recreate and implement the refined Memories header inspired by Mockup 1 (clean "Memories" label, multi-lane neon highway with cyan, magenta, and coral trails, moonlit mountain pass with topographic contour lines, and glowing waypoint pin markers without cluttering text labels or statistics).
+- **Changes Implemented:**
+  - **Refined Memories Header Scene (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Multi-lane sweeping neon highway ribbon (cyan/mint `#38bdf8`, magenta/pink `#ff3f82`, coral/amber `#ff8c6d`) with wide soft underglow.
+    - Luminous twilight moon (`#eaf2ff`) with lunar aura and starlit sky.
+    - Topographic mountain elevation contour ribbons (`url(#topoLines)`).
+    - Glowing waypoint GPS pin beacons positioned at curve apexes without text clutter.
+    - Distant horizon city shimmer effect.
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread.
+    - 148pt disc body with 14 prominent micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`7ff7f820-fdb1-4a85-98a9-8c21287a147c`**
+  - iOS update ID: **`01a03eb3-6d33-7f7f-a140-dac24aa99a03`**
+  - Message: `Implement refined Memories header with multi-lane neon highway`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/7ff7f820-fdb1-4a85-98a9-8c21287a147c`
+
+## Spinning Vinyl Record & Brand-New Cinematic Header Heroes — August 26, 2026
+
+- **Objective:** Create brand-new, visually striking header hero scenes for Music, Memories, and Settings tabs, and animate the vinyl record with prominent micro-grooves and continuous slow rotation.
+- **Changes Implemented:**
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous slow rotation using `Animated.loop` with `Easing.linear` (22 seconds per 360° rotation) running on the native Core Animation thread.
+    - Expanded vinyl diameter to 148pt with 60pt center label and chrome-core spindle hole.
+    - Enhanced groove contrast with 14 prominent concentric micro-grooves, spiral run-out track, and quad specular reflection cones at 45°, 135°, 225°, and 315° that realistically catch light as the record spins.
+    - Album artwork and spindle hole rotate in exact lockstep inside the animated container.
+    - Refined right-hand hero copy layout (`heroEyebrow`, `heroTitle`, `heroAccent`, `heroService`) with ample breathing room.
+  - **Music Holographic Soundscape Header (`MusicHeaderScene` in `mobile/recorder/src/music-screen.tsx`):**
+    - Multi-frequency neon sine waves, harmonic wave interference patterns, floating audio particle nodes, and dual-tone gradient spectrum bars.
+  - **Memories Cosmic Route Odyssey Header (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Sweeping perspective ribbon highway traversing a cosmic twilight horizon, topographic contour elevation ribbons, glowing waypoint milestone portal nodes with pulsing radar rings, and floating luminous constellation coordinates.
+  - **Settings Orbital Telemetry Hub Header (`PageHeaderScene variant='settings'` in `mobile/recorder/src/shell.tsx`):**
+    - Multi-axis gyro orbital sensor rings (`#43e6ae`, `#9b7cff`, `#ff795b`), cybernetic node interlinks, glowing telemetry target nodes with concentric halo rings, and precision HUD brackets.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`434f59b5-0fb2-460d-bd63-7d05a25ebcce`**
+  - iOS update ID: **`01a03e86-a0cc-7f56-8036-3887f51f60c1`**
+  - Message: `Add spinning vinyl record and new cinematic header heroes`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/434f59b5-0fb2-460d-bd63-7d05a25ebcce`
+
+## Mobile Graphics Redesign & Vinyl Record Hero — August 26, 2026
+
+- **Objective:** Redesign generic placeholder shapes/blobs across the iOS app and replace the Music hero with an authentic vinyl record disc.
+- **Changes Implemented:**
+  - **Vinyl Record Hero (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Built a realistic vinyl record component with an onyx vinyl disc body (`#1c0f2b` to `#050308`), 10 concentric micro-groove tracks, dashed run-out groove track, dual 45°/225° specular sheen reflection cones, a 56px center label with clipped album artwork, and central spindle hole.
+  - **Dynamic Listening Time Area Chart (`IntensityChart` in `mobile/recorder/src/music-screen.tsx`):**
+    - Removed the artificial rounded dome rectangle (`borderTopLeftRadius: 120`) and replaced it with a dynamic data-driven SVG gradient area fill (`#ff6c50` → `#ff3f82` → transparent) + line stroke + dashed guide lines + point dots.
+  - **Acoustic Wave Visualizer (`MusicHeaderScene` in `mobile/recorder/src/music-screen.tsx`):**
+    - Replaced concentric circle halos with an acoustic soundstage visualizer wave and spectrum bars.
+  - **Memories Header Scene (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Replaced rotated boxes and background glow blobs with a journey waypoint route SVG featuring glowing destination nodes.
+  - **Settings Header Scene (`PageHeaderScene variant='settings'` in `mobile/recorder/src/shell.tsx`):**
+    - Replaced primitive thick-bordered circle blobs with a sleek telemetry constellation network.
+  - **Collection & Memory Vector Placeholders (`shell.tsx`):**
+    - Replaced `CollectionPlaceholderArtwork`, `JourneyMomentArtwork`, `MemoryArtwork`, and `CollectionCard` fallback CSS shapes with bespoke vector road and perspective route illustrations.
+  - **Open Road Vector Artwork (`OpenRoadArtwork` in `shell.tsx`):**
+    - Replaced CSS rectangle/star/horizon shapes with a full SVG vector sunset road scene.
+  - **Mini Route Thumb (`CompactJourneyRow` in `shell.tsx`):**
+    - Replaced 3 rotated box views with a clean mini SVG vector path.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+- **Published Preview OTA:**
+  - Update group ID: **`16c7b717-3926-4875-b0aa-a38e4d6c1eaf`**
+  - iOS update ID: **`01a03e7a-9cac-75f1-be22-77aedcda7c1d`**
+  - Message: `Redesign placeholder graphics and add authentic vinyl record hero`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/16c7b717-3926-4875-b0aa-a38e4d6c1eaf`
 
 ## Agy takeover and 1.6 OTA recovery checkpoint — August 26, 2026
 

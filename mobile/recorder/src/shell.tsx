@@ -40,6 +40,8 @@ import {
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
+import { getCurrentUser, switchActiveUser, listLocalUsers } from './auth';
+import { getSensitivePlaces, upsertPlace } from './local-store';
 
 type Tab = 'home' | 'journeys' | 'music' | 'record' | 'connections';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
@@ -776,7 +778,23 @@ function WebAction({ symbol, title, detail, color, onPress }: { symbol: SFSymbol
 }
 
 function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}><View style={styles.webPlaceIcon}><Text>⌂</Text></View><View style={styles.flex}><Text style={styles.webJourneyOrigin} numberOfLines={2}>{journey.startingLocation ?? 'Journey start'}</Text><Text style={styles.webJourneyDestination} numberOfLines={1}>{journey.endingLocation ?? 'Recorded destination'}</Text><Text style={styles.webJourneyMeta}>{formatMiles(journey.miles)} · {formatDuration(journey.durationMinutes)}</Text></View><View style={styles.webRouteThumb}><View style={styles.webRouteThumbLine} /><View style={styles.webRouteThumbStart} /><View style={styles.webRouteThumbEnd} /></View></Pressable>;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}>
+      <View style={styles.webPlaceIcon}><Text>⌂</Text></View>
+      <View style={styles.flex}>
+        <Text style={styles.webJourneyOrigin} numberOfLines={2}>{journey.startingLocation ?? 'Journey start'}</Text>
+        <Text style={styles.webJourneyDestination} numberOfLines={1}>{journey.endingLocation ?? 'Recorded destination'}</Text>
+        <Text style={styles.webJourneyMeta}>{formatMiles(journey.miles)} · {formatDuration(journey.durationMinutes)}</Text>
+      </View>
+      <View style={styles.webRouteThumb}>
+        <Svg width={48} height={38} viewBox="0 0 48 38">
+          <Path d="M 6 30 Q 20 10 42 12" fill="none" stroke="#ff694f" strokeWidth="2.5" strokeLinecap="round" />
+          <Circle cx="6" cy="30" r="3" fill="#9746f5" />
+          <Circle cx="42" cy="12" r="3" fill="#ffc2af" />
+        </Svg>
+      </View>
+    </Pressable>
+  );
 }
 
 function CompactHealthRow({ symbol, icon, label, detail, healthy }: { symbol: string; icon?: ReactNode; label: string; detail: string; healthy: boolean }) {
@@ -809,18 +827,42 @@ function DashboardHealthRow({ label, detail, healthy }: { label: string; detail:
 
 function OpenRoadArtwork() {
   return <View style={styles.openRoad} pointerEvents="none">
-    <View style={styles.roadSunGlow} />
-    <View style={styles.roadSun} />
-    <View style={[styles.roadStar, styles.roadStarOne]} />
-    <View style={[styles.roadStar, styles.roadStarTwo]} />
-    <View style={[styles.roadStar, styles.roadStarThree]} />
-    <View style={styles.roadHorizon} />
-    <View style={styles.roadSurface} />
-    <View style={[styles.roadEdge, styles.roadEdgeLeft]} />
-    <View style={[styles.roadEdge, styles.roadEdgeRight]} />
-    <View style={[styles.roadDash, styles.roadDashFar]} />
-    <View style={[styles.roadDash, styles.roadDashMiddle]} />
-    <View style={[styles.roadDash, styles.roadDashNear]} />
+    <Svg width="100%" height={132} viewBox="0 0 360 132" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <SvgLinearGradient id="openRoadSky" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#1a0c28" />
+          <Stop offset="0.6" stopColor="#0d0918" />
+          <Stop offset="1" stopColor="#050308" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadSun" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#ff9a78" />
+          <Stop offset="1" stopColor="#ff5a43" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadGlow" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#ff5a43" stopOpacity={0} />
+          <Stop offset="0.5" stopColor="#ff7b54" stopOpacity={0.6} />
+          <Stop offset="1" stopColor="#ff5a43" stopOpacity={0} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadPav" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#1e142e" />
+          <Stop offset="1" stopColor="#0a0612" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width="360" height="132" fill="url(#openRoadSky)" />
+      <Circle cx={45} cy={22} r={1.5} fill="#e4d6ff" opacity={0.7} />
+      <Circle cx={120} cy={35} r={1} fill="#e4d6ff" opacity={0.5} />
+      <Circle cx={275} cy={18} r={1.5} fill="#e4d6ff" opacity={0.8} />
+      <Circle cx={320} cy={38} r={1} fill="#e4d6ff" opacity={0.6} />
+      <Circle cx={180} cy={56} r={28} fill="url(#openRoadSun)" opacity={0.9} />
+      <Circle cx={180} cy={56} r={44} fill="#ff5a43" opacity={0.15} />
+      <Path d="M 16 58 L 344 58" stroke="url(#openRoadGlow)" strokeWidth={1.5} />
+      <Path d="M 162 58 L 198 58 L 290 132 L 70 132 Z" fill="url(#openRoadPav)" />
+      <Path d="M 162 58 L 70 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
+      <Path d="M 198 58 L 290 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
+      <Path d="M 180 62 L 180 70" stroke="#ff8767" strokeWidth={1.5} opacity={0.8} />
+      <Path d="M 180 76 L 180 90" stroke="#ff8767" strokeWidth={2.5} opacity={0.9} />
+      <Path d="M 180 98 L 180 124" stroke="#ff8767" strokeWidth={4} opacity={1} />
+    </Svg>
     <View style={styles.roadSoundwave}><View style={styles.roadSoundBarSmall} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarMedium} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarSmall} /></View>
     <Text style={styles.roadCaption}>OPEN ROAD  •  YOUR STORY</Text>
   </View>;
@@ -1028,12 +1070,11 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
 
     <OverlayModal visible={Boolean(collectionOverview)} kicker="COLLECTION OVERVIEW" title={collectionOverview?.name ?? 'Collection'} onClose={() => setCollectionOverview(null)}>
       {collectionOverview && <>
-        <View style={styles.overviewCollectionHero}>{collectionOverview.photos[0] ? <JourneyPhotoImage photo={collectionOverview.photos[0]} style={styles.overviewCollectionImage} /> : <View style={[styles.overviewCollectionImage, styles.overviewCollectionFallback]}><View style={[styles.collectionArtworkOrb, { backgroundColor: '#9b7cff' }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: '#43e6ae' }]} /></View>}<View style={styles.memoryHeroShade} /><View style={styles.overviewHeroCopy}><Text style={styles.overviewEyebrow}>ROADS THAT BELONG TOGETHER</Text><Text style={styles.overviewHeroTitle}>{collectionOverview.name}</Text></View></View>
+        <View style={styles.overviewCollectionHero}>{collectionOverview.photos[0] ? <JourneyPhotoImage photo={collectionOverview.photos[0]} style={styles.overviewCollectionImage} /> : <View style={[styles.overviewCollectionImage, styles.overviewCollectionFallback]}><LinearGradient colors={['#241238', '#140c20']} style={StyleSheet.absoluteFill} /><Svg width="100%" height="100%" viewBox="0 0 320 230" style={StyleSheet.absoluteFill}><Path d="M 40 210 Q 140 130 180 140 T 280 40" fill="none" stroke="#ff795b" strokeWidth="3.5" strokeLinecap="round" /><Circle cx="280" cy="40" r="5" fill="#43e6ae" stroke="#fff" strokeWidth="2" /></Svg></View>}<View style={styles.memoryHeroShade} /><View style={styles.overviewHeroCopy}><Text style={styles.overviewEyebrow}>ROADS THAT BELONG TOGETHER</Text><Text style={styles.overviewHeroTitle}>{collectionOverview.name}</Text></View></View>
         <OverviewMetrics items={[{ label: 'JOURNEYS', value: String(collectionOverview.driveIds.length) }, { label: 'PHOTOS', value: String(collectionOverview.photos.length) }, { label: 'MEMORIES', value: String(catalog.data.memories.filter(memory => memory.collectionIds.includes(collectionOverview.id)).length) }]} />
         {collectionOverview.description ? <Text style={styles.overviewBody}>{collectionOverview.description}</Text> : <Text style={styles.overviewBodyMuted}>Add a description to give this Collection more context.</Text>}
         <Text style={styles.overviewSectionLabel}>JOURNEYS IN THIS COLLECTION</Text>
         {journeys.data.filter(journey => collectionOverview.driveIds.includes(journey.id)).slice(0, 6).map(journey => <Pressable key={journey.id} onPress={() => { setCollectionOverview(null); onJourney(journey.id); }} style={[styles.overviewListRow, styles.staticWidgetGlow]}><View style={styles.flex}><Text style={styles.overviewListTitle}>{locationPair(journey)}</Text><Text style={styles.overviewListMeta}>{formatCompactDate(journey.startedAt)}  •  {formatMiles(journey.miles)}</Text></View><Text style={styles.overviewChevron}>›</Text></Pressable>)}
-        {!collectionOverview.driveIds.length && <Text style={styles.overviewBodyMuted}>No journeys have been added yet.</Text>}
         <View style={styles.overviewActions}><Pressable onPress={() => openCollectionShare(collectionOverview)} style={styles.overviewShare}><Text style={styles.overviewShareText}>Share card</Text></Pressable><Pressable onPress={() => editCollection(collectionOverview)} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Manage collection</Text></Pressable></View>
       </>}
     </OverlayModal>
@@ -1162,13 +1203,55 @@ function MemoryCollectionChapter({ collection, index, journeys, onOpen, onOpenJo
 }
 
 function CollectionPlaceholderArtwork({ index }: { index: number }) {
-  const palettes = index % 2 ? ['#17122f', '#7450c9', '#ff9473'] as const : ['#301325', '#a7356b', '#ffb071'] as const;
-  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.memoryChapterArtwork}><View style={styles.collectionPlaceholderSun} /><View style={styles.collectionPlaceholderRoad} /><View style={styles.collectionPlaceholderHorizon} /></LinearGradient>;
+  const isAlt = index % 2 === 1;
+  return (
+    <View style={styles.memoryChapterArtwork}>
+      <LinearGradient
+        colors={isAlt ? ['#170e28', '#2a1640', '#0f0a1c'] : ['#220d20', '#3b1633', '#110714']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width="100%" height="100%" viewBox="0 0 92 82" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id={`colRoadGrad-${index}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={isAlt ? '#a47dff' : '#ff795b'} />
+            <Stop offset="100%" stopColor={isAlt ? '#5ce5c2' : '#ff4d87'} />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d="M 0 44 L 92 44" stroke="#4a2d59" strokeWidth="0.75" opacity="0.6" />
+        <Path d="M 0 52 Q 28 36 50 48 T 92 42" fill="none" stroke="#3d214c" strokeWidth="1.5" opacity="0.7" />
+        <Path d="M 12 82 C 26 62, 54 56, 46 44" fill="none" stroke={`url(#colRoadGrad-${index})`} strokeWidth="2.5" strokeLinecap="round" />
+        <Path d="M 14 82 C 27 63, 53 57, 46 45" fill="none" stroke="#fff" strokeWidth="0.75" strokeDasharray="3 3" opacity="0.75" />
+        <Circle cx="46" cy="44" r="2.5" fill={isAlt ? '#5ce5c2' : '#ff795b'} />
+      </Svg>
+    </View>
+  );
 }
 
 function JourneyMomentArtwork({ index }: { index: number }) {
-  const palettes = index % 3 === 0 ? ['#301727', '#d35b70', '#ffb06f'] as const : index % 3 === 1 ? ['#101c36', '#466fae', '#d899cb'] as const : ['#23192f', '#7661b6', '#ff9a78'] as const;
-  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill}><View style={styles.journeyPlaceholderGlow} /><View style={styles.journeyPlaceholderRoad} /></LinearGradient>;
+  const palettes = index % 3 === 0
+    ? ['#261021', '#130a17'] as const
+    : index % 3 === 1
+      ? ['#0f172a', '#080c18'] as const
+      : ['#1d1228', '#0c0714'] as const;
+  const accent = index % 3 === 0 ? '#ff795b' : index % 3 === 1 ? '#43e6ae' : '#b583ff';
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <Svg width="100%" height="100%" viewBox="0 0 74 65" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id={`momentGrad-${index}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={accent} />
+            <Stop offset="100%" stopColor="#ff4d87" />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d="M 8 65 C 20 45, 52 40, 48 20" fill="none" stroke={`url(#momentGrad-${index})`} strokeWidth="2" strokeLinecap="round" />
+        <Circle cx="48" cy="20" r="2" fill="#fff" />
+      </Svg>
+    </View>
+  );
 }
 
 function OverlayModal({ visible, kicker, title, onClose, children }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode }) {
@@ -1188,8 +1271,43 @@ function OverviewMetrics({ items }: { items: { label: string; value: string }[] 
 }
 
 function MemoryArtwork({ artworkKey, photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
-  const night = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
-  return photo ? <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} /> : <View style={[styles.memoryArtwork, night && styles.memoryArtworkNight]}><View style={styles.memoryArtworkGlow} /><View style={styles.memoryArtworkMoon} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineLeft]} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineRight]} /><View style={styles.memoryArtworkDashOne} /><View style={styles.memoryArtworkDashTwo} /><View style={styles.memoryArtworkDashThree} /></View>;
+  const isNight = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
+  if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} />;
+
+  return (
+    <View style={[styles.memoryArtwork, isNight && styles.memoryArtworkNight]}>
+      <LinearGradient
+        colors={isNight ? ['#0d142b', '#180f2c', '#080611'] : ['#281023', '#391230', '#100713']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width="100%" height="100%" viewBox="0 0 320 240" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgRadialGradient id="memoryArtGlow" cx="50%" cy="30%" rx="40%" ry="40%">
+            <Stop offset="0%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0.3" />
+            <Stop offset="100%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0" />
+          </SvgRadialGradient>
+          <SvgLinearGradient id="memoryArtRoad" x1="0" y1="1" x2="0" y2="0">
+            <Stop offset="0%" stopColor={isNight ? '#5ce5c2' : '#ff795b'} />
+            <Stop offset="60%" stopColor={isNight ? '#b17aff' : '#ff4d87'} />
+            <Stop offset="100%" stopColor={isNight ? '#ff8bb9' : '#9b61ff'} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect width="320" height="240" fill="url(#memoryArtGlow)" />
+        <Path d="M 0 110 L 320 110" stroke="#482b57" strokeWidth="1" opacity="0.4" />
+        <Path d="M 120 240 L 157 110 L 163 110 L 200 240 Z" fill="#0d0915" opacity="0.85" />
+        <Path d="M 120 240 L 157 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
+        <Path d="M 200 240 L 163 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
+        <Path d="M 160 230 L 160 210" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
+        <Path d="M 160 190 L 160 174" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+        <Path d="M 160 160 L 160 148" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+        <Path d="M 160 138 L 160 130" stroke="#fff" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
+        <Circle cx="160" cy="110" r="5" fill={isNight ? '#5ce5c2' : '#ff8c6d'} />
+        <Circle cx="160" cy="110" r="10" fill="none" stroke={isNight ? '#5ce5c2' : '#ff8c6d'} strokeWidth="1" opacity="0.35" />
+      </Svg>
+    </View>
+  );
 }
 
 function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
@@ -1209,7 +1327,32 @@ function MembershipRow({ title, detail, selected, onPress }: { title: string; de
 function CollectionCard({ collection, index, onOpen }: { collection: JourneyCollection; index: number; onOpen: () => void }) {
   const colors = ['#ff795b', '#9b7cff', '#43e6ae'];
   const color = colors[index % colors.length];
-  return <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}>{collection.photos[0] ? <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} /> : <View style={[styles.collectionArtwork, { backgroundColor: `${color}20` }]}><View style={[styles.collectionArtworkOrb, { backgroundColor: color }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: color }]} /></View>}<View style={styles.flex}><Text style={styles.collectionKicker}>COLLECTION</Text><Text style={styles.collectionTitle}>{collection.name}</Text><Text style={styles.collectionMeta}>{collection.driveIds.length} journeys  •  {collection.photos.length} photos{collection.description ? `  •  ${collection.description}` : ''}</Text></View><View style={styles.collectionManage}><Text style={styles.collectionManageText}>Open</Text></View></Pressable>;
+  return (
+    <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}>
+      {collection.photos[0] ? (
+        <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} />
+      ) : (
+        <View style={styles.collectionArtwork}>
+          <LinearGradient colors={['#1c1028', '#100a18']} style={StyleSheet.absoluteFill} />
+          <Svg width={68} height={68} viewBox="0 0 68 68" style={StyleSheet.absoluteFill}>
+            <Path d="M 10 58 Q 30 38 42 42 T 58 16" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+            <Circle cx="58" cy="16" r="3" fill="#fff" />
+            <Circle cx="10" cy="58" r="2.5" fill={color} />
+          </Svg>
+        </View>
+      )}
+      <View style={styles.flex}>
+        <Text style={styles.collectionKicker}>COLLECTION</Text>
+        <Text style={styles.collectionTitle}>{collection.name}</Text>
+        <Text style={styles.collectionMeta}>
+          {collection.driveIds.length} journeys • {collection.photos.length} photos{collection.description ? ` • ${collection.description}` : ''}
+        </Text>
+      </View>
+      <View style={styles.collectionManage}>
+        <Text style={styles.collectionManageText}>Open</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
@@ -1345,6 +1488,39 @@ function ConnectionsScreen({
       >
         <AtmosphericBackdrop variant="settings" />
         <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="JourneyDeck works as a recorder on its own. Add music or vehicle context whenever you are ready." />
+
+        <SectionHeading title="Driver profile & iCloud" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#a88aff' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#a88aff' }]}><Text style={styles.connectionIconText}></Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>LOCAL-FIRST · PRIVATE ICLOUD</Text>
+            <Text style={styles.connectionName}>{getCurrentUser().displayName || 'Primary Driver'}</Text>
+            <Text style={styles.connectionDetail}>Encrypted with your Apple ID · Zero server tracking</Text>
+          </View>
+          <Pressable onPress={() => Alert.alert('Apple ID & Privacy', 'All GPS routes and memories are stored on this device and synced privately to your personal iCloud database. JourneyDeck servers never store your location or personal data.', [{ text: 'Done' }])} style={styles.changeButton}><Text style={styles.changeButtonText}>Active</Text></Pressable>
+        </View>
+
+        <SectionHeading title="Membership" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#ff69b4' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#ff4594' }]}><Text style={styles.connectionIconText}>★</Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>PRO MEMBERSHIP · $4.99 / MONTH</Text>
+            <Text style={styles.connectionName}>JourneyDeck Pro</Text>
+            <Text style={styles.connectionDetail}>Unlimited trips · Private iCloud backup · Music analytics</Text>
+          </View>
+          <Pressable onPress={() => Alert.alert('JourneyDeck Pro', 'Your device is currently running with full local-first access unlocked during preview.', [{ text: 'Great' }])} style={[styles.changeButton, { borderColor: '#ff4594' }]}><Text style={[styles.changeButtonText, { color: '#ff4594' }]}>Unlocked</Text></Pressable>
+        </View>
+
+        <SectionHeading title="Privacy geofences" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#43e6ae' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#10b981' }]}><Text style={styles.connectionIconText}>🛡</Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>AUTOMATIC PRIVACY MASKING</Text>
+            <Text style={styles.connectionName}>Home & Work Safe Zones</Text>
+            <Text style={styles.connectionDetail}>300m safety radius active · Coordinates scrubbed on share cards</Text>
+          </View>
+        </View>
+
         <SectionHeading title="Recording" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: selectedRecordingMode.color }]}>
           <View style={[styles.connectionIcon, { backgroundColor: selectedRecordingMode.color }]}><Text style={styles.connectionIconText}>{selectedRecordingMode.symbol}</Text></View>
@@ -1534,7 +1710,12 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
 }
 
 function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: string; title: string; body: string; variant?: 'standard' | 'memories' | 'settings' }) {
-  return <View style={[styles.pageHeader, variant === 'memories' && pageSceneStyles.memoryHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
+  if (variant === 'memories') {
+    return <View style={styles.memoryHeroCardHeader}>
+      <Image source={require('../assets/memories-header-hero.png')} style={styles.memoryHeroHeaderImage} resizeMode="cover" />
+    </View>;
+  }
+  return <View style={[styles.pageHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
     <PageHeaderScene variant={variant} />
     <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
     <Text style={[styles.pageTitle, variant !== 'standard' && pageSceneStyles.sceneTitle]}>{title}</Text>
@@ -1557,13 +1738,137 @@ function AtmosphericBackdrop({ variant }: { variant: 'home' | 'memories' | 'sett
 
 function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'settings' }) {
   if (variant === 'memories') return <>
-    <LinearGradient pointerEvents="none" colors={['#180d27', '#0a1022', '#110817'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff795b" /><Stop offset="0.52" stopColor="#be7cff" /><Stop offset="1" stopColor="#5ce5c2" /></SvgLinearGradient></Defs><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="#9b6dff" strokeWidth="9" opacity="0.18" /><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="url(#memoryHeaderRoad)" strokeWidth="2.5" strokeLinecap="round" /><Circle cx="269" cy="75" r="6" fill="#ff9b7b" stroke="#2a1532" strokeWidth="3" /><Circle cx="160" cy="133" r="5" fill="#c69aff" stroke="#1b1530" strokeWidth="3" /><Circle cx="44" cy="153" r="4" fill="#62e8c2" stroke="#10231f" strokeWidth="2" /></Svg>
-    <View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterOne]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterTwo]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
+    <LinearGradient pointerEvents="none" colors={['#180c26', '#0d091b', '#06030c'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
+      <Defs>
+        <SvgRadialGradient id="memorySkyGlow" cx="76%" cy="25%" rx="55%" ry="60%">
+          <Stop offset="0" stopColor="#7a4fb2" stopOpacity="0.32" />
+          <Stop offset="50%" stopColor="#ff4d87" stopOpacity="0.08" />
+          <Stop offset="100%" stopColor="#06030c" stopOpacity="0" />
+        </SvgRadialGradient>
+        <SvgRadialGradient id="moonAura" cx="78%" cy="22%" rx="20%" ry="35%">
+          <Stop offset="0" stopColor="#dce8ff" stopOpacity="0.4" />
+          <Stop offset="40%" stopColor="#7a96d4" stopOpacity="0.12" />
+          <Stop offset="100%" stopColor="#7a96d4" stopOpacity="0" />
+        </SvgRadialGradient>
+        <SvgLinearGradient id="highwayCoral" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ff8c6d" />
+          <Stop offset="60%" stopColor="#ff5a43" />
+          <Stop offset="100%" stopColor="#ff9a7a" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="highwayMagenta" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ff3f82" />
+          <Stop offset="55%" stopColor="#d946ef" />
+          <Stop offset="100%" stopColor="#a855f7" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="highwayCyan" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#38bdf8" />
+          <Stop offset="50%" stopColor="#43e6ae" />
+          <Stop offset="100%" stopColor="#818cf8" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0%" stopColor="#ff795b" />
+          <Stop offset="45%" stopColor="#ff3f82" />
+          <Stop offset="80%" stopColor="#c57fff" />
+          <Stop offset="100%" stopColor="#43e6ae" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="topoLines" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#68478c" stopOpacity="0.08" />
+          <Stop offset="50%" stopColor="#8b5cb8" stopOpacity="0.28" />
+          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.15" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width="360" height="170" fill="url(#memorySkyGlow)" />
+      <Rect width="360" height="170" fill="url(#moonAura)" />
+
+      {/* Luminous Moon & Stars */}
+      <Circle cx="280" cy="34" r="6" fill="#eaf2ff" />
+      <Circle cx="280" cy="34" r="12" fill="none" stroke="#90b2f0" strokeWidth="1" opacity="0.3" />
+      <Circle cx="230" cy="22" r="1" fill="#ffffff" opacity="0.8" />
+      <Circle cx="250" cy="45" r="1.2" fill="#ffffff" opacity="0.6" />
+      <Circle cx="320" cy="26" r="1" fill="#ffffff" opacity="0.85" />
+      <Circle cx="340" cy="50" r="1.2" fill="#ffd9ea" opacity="0.65" />
+      <Circle cx="215" cy="40" r="0.8" fill="#ffffff" opacity="0.5" />
+
+      {/* Topographic Mountain Elevation Contours */}
+      <Path d="M 140 38 Q 210 60 355 35" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="3 3" />
+      <Path d="M 130 68 Q 205 92 355 65" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="4 4" />
+      <Path d="M 120 102 Q 195 125 355 98" fill="none" stroke="url(#topoLines)" strokeWidth="1.2" opacity="0.4" />
+      <Path d="M 110 135 Q 185 152 355 130" fill="none" stroke="url(#topoLines)" strokeWidth="1" opacity="0.25" />
+
+      {/* Distant Horizon City Shimmer */}
+      <Path d="M 230 70 Q 285 75 340 68" fill="none" stroke="#ff8bb9" strokeWidth="1.5" opacity="0.3" strokeDasharray="1 3" />
+
+      {/* Multi-Lane Glowing Highway Ribbon */}
+      {/* Highway Underglow Bloom */}
+      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="#ff3f82" strokeWidth="16" opacity="0.18" strokeLinecap="round" />
+
+      {/* Lane 1: Cyan/Mint Light Trail */}
+      <Path d="M 355 69 C 295 69, 280 99, 235 103 S 185 149, 130 143 S 65 159, 0 153" fill="none" stroke="url(#highwayCyan)" strokeWidth="2.5" strokeLinecap="round" />
+
+      {/* Lane 2: Magenta/Pink Light Trail */}
+      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="url(#highwayMagenta)" strokeWidth="3" strokeLinecap="round" />
+
+      {/* Lane 3: Coral/Amber Light Trail */}
+      <Path d="M 355 75 C 295 75, 280 105, 235 109 S 185 155, 130 149 S 65 165, 0 159" fill="none" stroke="url(#highwayCoral)" strokeWidth="3" strokeLinecap="round" />
+
+      {/* Waypoint Pin Beacons along the Road without Text */}
+      {/* Waypoint 1 (Distant apex) */}
+      <Path d="M 295 64 C 291 64, 291 70, 295 74 C 299 70, 299 64, 295 64 Z" fill="#d946ef" />
+      <Circle cx="295" cy="67" r="1.5" fill="#ffffff" />
+      <Circle cx="295" cy="69" r="7" fill="none" stroke="#d946ef" strokeWidth="0.8" opacity="0.4" />
+
+      {/* Waypoint 2 (Mid curve) */}
+      <Path d="M 235 94 C 230 94, 230 101, 235 106 C 240 101, 240 94, 235 94 Z" fill="#ff795b" />
+      <Circle cx="235" cy="98" r="2" fill="#ffffff" />
+      <Circle cx="235" cy="100" r="10" fill="none" stroke="#ff795b" strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
+
+      {/* Waypoint 3 (Near foreground) */}
+      <Path d="M 130 134 C 125 134, 125 141, 130 146 C 135 141, 135 134, 130 134 Z" fill="#38bdf8" />
+      <Circle cx="130" cy="138" r="2" fill="#ffffff" />
+      <Circle cx="130" cy="140" r="10" fill="none" stroke="#38bdf8" strokeWidth="1" opacity="0.45" />
+
+      {/* Waypoint 4 (Front bend) */}
+      <Path d="M 50 146 C 46 146, 46 152, 50 156 C 54 152, 54 146, 50 146 Z" fill="#c084fc" />
+      <Circle cx="50" cy="149" r="1.5" fill="#ffffff" />
+    </Svg>
+    <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
   </>;
   if (variant === 'settings') return <>
-    <LinearGradient pointerEvents="none" colors={['#100e23', '#181029', '#100a1a'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#67e9bf" /><Stop offset="0.5" stopColor="#a37cff" /><Stop offset="1" stopColor="#ff866a" /></SvgLinearGradient><SvgRadialGradient id="settingsHeaderBloom" cx="82%" cy="28%" rx="58%" ry="72%"><Stop offset="0" stopColor="#8c4dce" stopOpacity="0.34" /><Stop offset="0.5" stopColor="#55247d" stopOpacity="0.13" /><Stop offset="1" stopColor="#55247d" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="360" height="170" fill="url(#settingsHeaderBloom)" /><Path d="M 204 38 L 274 70 L 314 35 M 274 70 L 246 133 L 337 126" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="2" opacity="0.75" /><Circle cx="204" cy="38" r="14" fill="#231943" stroke="#7c5bce" strokeWidth="2" /><Circle cx="274" cy="70" r="19" fill="#2c1741" stroke="#ff7e65" strokeWidth="2" /><Circle cx="314" cy="35" r="11" fill="#172b32" stroke="#62e5ba" strokeWidth="2" /><Circle cx="246" cy="133" r="12" fill="#1a1d38" stroke="#9b7dff" strokeWidth="2" /><Circle cx="337" cy="126" r="8" fill="#372038" stroke="#ff9c80" strokeWidth="2" /></Svg>
+    <LinearGradient pointerEvents="none" colors={['#0e1026', '#160f29', '#0d0918'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
+      <Defs>
+        <SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0%" stopColor="#43e6ae" stopOpacity="0.85" />
+          <Stop offset="50%" stopColor="#9b7cff" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.85" />
+        </SvgLinearGradient>
+        <SvgRadialGradient id="settingsHeaderBloom" cx="80%" cy="35%" rx="60%" ry="70%">
+          <Stop offset="0" stopColor="#5570ff" stopOpacity="0.25" />
+          <Stop offset="45%" stopColor="#7658dd" stopOpacity="0.1" />
+          <Stop offset="100%" stopColor="#9b61ff" stopOpacity="0" />
+        </SvgRadialGradient>
+      </Defs>
+      <Rect width="360" height="170" fill="url(#settingsHeaderBloom)" />
+
+      {/* Orbital Telemetry Sensor Rings */}
+      <Circle cx="280" cy="72" r="48" fill="none" stroke="#3b2b5c" strokeWidth="1" strokeDasharray="5 5" opacity="0.6" />
+      <Circle cx="280" cy="72" r="32" fill="none" stroke="#7658dd" strokeWidth="1.25" opacity="0.4" />
+      <Circle cx="280" cy="72" r="18" fill="none" stroke="#43e6ae" strokeWidth="1" strokeDasharray="3 3" opacity="0.75" />
+
+      {/* Cybernetic Node Interlinks */}
+      <Path d="M 185 45 L 245 72 L 280 72 L 335 38 M 245 72 L 230 132 L 315 125 L 342 90" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="1.75" strokeDasharray="4 3" opacity="0.7" />
+      <Path d="M 280 72 L 315 125" fill="none" stroke="#ff795b" strokeWidth="1.2" opacity="0.4" />
+
+      {/* Telemetry Target Nodes */}
+      <Circle cx="185" cy="45" r="4.5" fill="#43e6ae" stroke="#dffff5" strokeWidth="1.5" />
+      <Circle cx="245" cy="72" r="4" fill="#9b7cff" stroke="#f4ebff" strokeWidth="1.5" />
+      <Circle cx="280" cy="72" r="7" fill="#ff795b" stroke="#fff0ea" strokeWidth="2.5" />
+      <Circle cx="335" cy="38" r="4.5" fill="#54b8ff" stroke="#e6f5ff" strokeWidth="1.5" />
+      <Circle cx="230" cy="132" r="5" fill="#7658dd" stroke="#ebe2ff" strokeWidth="1.5" />
+      <Circle cx="315" cy="125" r="4.5" fill="#ff795b" stroke="#fff1ed" strokeWidth="1.5" />
+      <Circle cx="342" cy="90" r="3.5" fill="#43e6ae" stroke="#e6fff7" strokeWidth="1.5" />
+    </Svg>
     <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={[pageSceneStyles.sceneRailCore, pageSceneStyles.settingsRailCore]} /></View>
   </>;
   return <><LinearGradient pointerEvents="none" colors={['#ff6a4d28', '#9b61ff22', '#05030b00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /><View pointerEvents="none" style={styles.pageHeaderRail}><View style={styles.pageHeaderRailCore} /></View></>;
@@ -1793,10 +2098,10 @@ function nativeShazamStatus(capabilities: JourneyDeckMusicCapabilityStatus | nul
 }
 
 const routeVisualStyles = StyleSheet.create({
-  routeGridOne: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(172,132,255,0.16)', left: -95, bottom: -178 },
-  routeGridTwo: { position: 'absolute', width: 210, height: 210, borderRadius: 105, borderWidth: 1, borderColor: 'rgba(255,135,100,0.14)', right: -94, top: -142 },
-  routeGlow: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#45265f', opacity: 0.5, right: -32, top: -52, shadowColor: '#a681ff', shadowOpacity: 0.7, shadowRadius: 26 },
-  routeAurora: { position: 'absolute', left: 20, right: 20, height: 2, top: '49%', backgroundColor: '#b98eff', opacity: 0.24, shadowColor: '#b98eff', shadowOpacity: 1, shadowRadius: 12 },
+  routeGridOne: { position: 'absolute', left: 0, right: 0, top: '35%', height: 1, backgroundColor: 'rgba(172,132,255,0.12)' },
+  routeGridTwo: { position: 'absolute', left: 0, right: 0, top: '65%', height: 1, backgroundColor: 'rgba(255,135,100,0.1)' },
+  routeGlow: { position: 'absolute', left: '20%', right: '20%', top: '25%', bottom: '25%', backgroundColor: '#45265f', opacity: 0.25, borderRadius: 30 },
+  routeAurora: { position: 'absolute', left: 20, right: 20, height: 2, top: '49%', backgroundColor: '#b98eff', opacity: 0.2, shadowColor: '#b98eff', shadowOpacity: 0.8, shadowRadius: 10 },
   routeSnapshot: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, overflow: 'hidden' },
   routeTile: { position: 'absolute', width: '33.334%', height: '33.334%', opacity: 0.72 },
   routeTileShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(13,7,21,0.44)' },
@@ -1822,10 +2127,6 @@ const pageSceneStyles = StyleSheet.create({
   sceneRail: { position: 'absolute', left: 18, top: 13, width: 58, height: 3, borderRadius: 3, backgroundColor: 'rgba(158, 109, 225, 0.32)', overflow: 'hidden' },
   sceneRailCore: { width: '70%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 8 },
   settingsRailCore: { backgroundColor: '#6fe8c2', shadowColor: '#6fe8c2' },
-  memoryChapter: { position: 'absolute', width: 43, height: 50, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(215, 174, 255, 0.4)', backgroundColor: '#241533', overflow: 'hidden', shadowColor: '#b680ff', shadowOpacity: 0.4, shadowRadius: 9 },
-  memoryChapterOne: { right: 21, top: 21, transform: [{ rotate: '12deg' }] },
-  memoryChapterTwo: { right: 76, top: 48, transform: [{ rotate: '-9deg' }] },
-  memoryChapterGlow: { position: 'absolute', width: 52, height: 52, borderRadius: 26, backgroundColor: '#ff7660', opacity: 0.46, right: -21, top: -20 },
 });
 
 const styles = StyleSheet.create({
@@ -1860,20 +2161,27 @@ const styles = StyleSheet.create({
   webAllTimeRail: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: '#4c305f66', backgroundColor: '#100a1c' }, webAllTimeKicker: { color: '#ff6b67', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, webAllTimeTitle: { color: '#f4eef8', fontSize: 15, fontWeight: '900', marginTop: 4 }, webAllTimeMetric: { flex: 1, alignItems: 'flex-end' }, webAllTimeMetricValue: { color: '#f7f1fb', fontSize: 13, fontWeight: '900' }, webAllTimeMetricLabel: { color: '#716878', fontSize: 5.5, fontWeight: '900', letterSpacing: 0.6, marginTop: 3 }, webQueueNote: { color: '#ffbb73', fontSize: 9, textAlign: 'center', padding: 8 },
   memoriesPage: { paddingTop: 24, paddingBottom: 128, gap: 16 },
   overlayRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#030106cc' }, overlaySheet: { maxHeight: '94%', margin: 8, overflow: 'hidden', borderRadius: 28, borderWidth: 1, borderColor: '#5d4273', backgroundColor: '#0a0710', shadowColor: '#000', shadowOpacity: 0.85, shadowRadius: 30, shadowOffset: { width: 0, height: -8 } }, overlayHeader: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#382641' }, overlayKicker: { color: '#ff795b', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 }, overlayTitle: { color: '#f7f1fa', fontSize: 21, fontWeight: '900', marginTop: 3 }, overlayClose: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#4b3758', backgroundColor: '#17101f' }, overlayCloseText: { color: '#d7c9df', fontSize: 27, lineHeight: 29 }, overlayContent: { padding: 16, paddingBottom: 26, gap: 14 },
-  overviewHero: { height: 260, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionHero: { height: 230, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, overviewCollectionFallback: { backgroundColor: '#241433' }, overviewHeroCopy: { position: 'absolute', left: 20, right: 20, bottom: 19 }, overviewEyebrow: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.4 }, overviewHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -0.7, marginTop: 6 }, overviewMetrics: { flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#352b40', backgroundColor: '#111018' }, overviewMetric: { flex: 1, minHeight: 70, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#342b3d' }, overviewMetricValue: { color: '#f7f2fb', fontSize: 19, fontWeight: '900' }, overviewMetricLabel: { color: '#81758b', fontSize: 7, fontWeight: '900', letterSpacing: 1, marginTop: 5 }, overviewBody: { color: '#c7bdce', fontSize: 13, lineHeight: 20 }, overviewBodyMuted: { color: '#857d8d', fontSize: 12, lineHeight: 18, fontStyle: 'italic' }, overviewSectionLabel: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.4, marginTop: 3 }, overviewListRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#30283a', backgroundColor: '#111018' }, overviewListTitle: { color: '#eee8f3', fontSize: 13, fontWeight: '800' }, overviewListMeta: { color: '#8c8295', fontSize: 10, marginTop: 3 }, overviewChevron: { color: '#a88aff', fontSize: 24 }, overviewActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, overviewShare: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, overviewShareText: { color: '#c2a7ff', fontSize: 12, fontWeight: '900' }, overviewPrimary: { flex: 1.25, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#ff795b' }, overviewPrimaryText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, modalEditorBody: { gap: 12 }, journeyActions: { flexDirection: 'row', gap: 9, marginTop: 6 }, journeyShareButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, journeyShareButtonText: { color: '#c7adff', fontSize: 12, fontWeight: '900', textAlign: 'center' }, journeyEditButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#ff795b' }, journeyEditButtonText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, locationEditor: { gap: 11, marginTop: 6, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#4e3b60', backgroundColor: '#100d16' }, locationEditorKicker: { color: '#b99cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 }, locationEditorHelp: { color: '#9b91a4', fontSize: 11, lineHeight: 17 }, locationField: { gap: 5 }, locationFieldLabel: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, locationRaw: { color: '#6f6877', fontSize: 9, lineHeight: 13, paddingHorizontal: 3 },
-  memoryPageHeader: { marginHorizontal: 20 },
+  overviewHero: { height: 260, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionHero: { height: 230, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, overviewCollectionFallback: { backgroundColor: '#241433' }, overviewHeroCopy: { position: 'absolute', left: 20, right: 20, bottom: 19 }, overviewEyebrow: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.4 }, overviewHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -0.7, marginTop: 6 }, overviewMetrics: { flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#352b40', backgroundColor: '#111018' }, overviewMetric: { flex: 1, minHeight: 70, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#342b3d' }, overviewMetricValue: { color: '#f7f2fb', fontSize: 19, fontWeight: '900' }, overviewMetricLabel: { color: '#81758b', fontSize: 7, fontWeight: '900', letterSpacing: 1, marginTop: 5 }, overviewBody: { color: '#c7bdce', fontSize: 13, lineHeight: 20 }, overviewBodyMuted: { color: '#857d8d', fontSize: 12, lineHeight: 18, fontStyle: 'italic' }, overviewSectionLabel: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.4, marginTop: 3 }, overviewListRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#30283a', backgroundColor: '#111018' }, overviewListTitle: { color: '#eee8f3', fontSize: 13, fontWeight: '800' }, overviewListMeta: { color: '#8c8295', fontSize: 10, marginTop: 3 }, overviewChevron: { color: '#a88aff', fontSize: 24 }, overviewActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, overviewShare: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, overviewShareText: { color: '#c2a7ff', fontSize: 12, fontWeight: '900' }, overviewPrimary: { flex: 1.25, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#ff795b' }, overviewPrimaryText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, modalEditorBody: { gap: 12 }, journeyActions: { flexDirection: 'row', gap: 9, marginTop: 6 }, journeyShareButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, journeyShareButtonText: { color: '#c7adff', fontSize: 12, fontWeight: '900', textAlign: 'center' }, journeyEditButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#ff795b' }, journeyEditButtonText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
+  locationEditor: { gap: 11, marginTop: 6, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#4e3b60', backgroundColor: '#100d16' }, locationEditorKicker: { color: '#b99cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 }, locationEditorHelp: { color: '#9b91a4', fontSize: 11, lineHeight: 17 }, locationField: { gap: 5 }, locationFieldLabel: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, locationRaw: { color: '#6f6877', fontSize: 9, lineHeight: 13, paddingHorizontal: 3 },
+  memoryPageHeader: { marginHorizontal: 16, marginBottom: 6 },
+  memoryHeroCardHeader: { width: '100%', aspectRatio: 673 / 331, borderRadius: 24, overflow: 'hidden', backgroundColor: '#07040d', shadowColor: '#9b61ff', shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  memoryHeroHeaderImage: { width: '100%', height: '100%' },
   memorySectionHeader: { marginHorizontal: 20, marginTop: 5, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }, memoryLevel: { color: '#a88aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8 }, memorySectionTitle: { color: '#f5f0fb', fontSize: 19, fontWeight: '900', marginTop: 4 }, memoryHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, memoryHeaderAction: { color: '#ff8767', fontSize: 11, fontWeight: '900' },
   memoryCarouselContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 }, memoryHeroCard: { height: 244, borderRadius: 26, overflow: 'hidden', backgroundColor: '#14101e', borderWidth: 1, borderColor: '#4c375d', padding: 20, justifyContent: 'flex-end', shadowColor: '#9b7cff', shadowOpacity: 0.25, shadowRadius: 18 }, memoryEmptyHero: { marginHorizontal: 20 }, memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 100, bottom: 0, backgroundColor: '#09071099' }, memoryHeroKicker: { color: '#ff9b7c', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, memoryHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 34, fontWeight: '900', marginTop: 7, letterSpacing: -0.7 }, memoryHeroMeta: { color: '#c2b7ca', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDots: { minHeight: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }, memoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#403748' }, memoryDotActive: { width: 24, backgroundColor: '#ff795b' },
-  memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' }, memoryArtworkGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#8f3957', opacity: 0.52, left: '50%', marginLeft: -105, top: -78, shadowColor: '#ff7159', shadowOpacity: 0.8, shadowRadius: 30 }, memoryArtworkMoon: { position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: '#ff8463', left: '50%', marginLeft: -29, top: 35, shadowColor: '#ff8463', shadowOpacity: 1, shadowRadius: 20 }, memoryArtworkLine: { position: 'absolute', width: 3, height: 185, backgroundColor: '#9d75ff', top: 80, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, memoryArtworkLineLeft: { left: '50%', marginLeft: -71, transform: [{ rotate: '31deg' }] }, memoryArtworkLineRight: { right: '50%', marginRight: -71, transform: [{ rotate: '-31deg' }] }, memoryArtworkDashOne: { position: 'absolute', width: 3, height: 12, backgroundColor: '#ffd0c4', left: '50%', top: 103 }, memoryArtworkDashTwo: { position: 'absolute', width: 5, height: 24, backgroundColor: '#ff8a68', left: '50%', marginLeft: -1, top: 132 }, memoryArtworkDashThree: { position: 'absolute', width: 7, height: 45, backgroundColor: '#ff795b', left: '50%', marginLeft: -2, top: 180 },
+  memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' },
   memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, marginTop: 3 }, editorActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, editorCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 46, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
   photoEditorHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, photoEditorHelp: { color: '#8e8497', fontSize: 10, lineHeight: 15, marginTop: 4 }, photoAddButton: { minHeight: 36, borderRadius: 999, backgroundColor: '#281b39', borderWidth: 1, borderColor: '#684b8c', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, photoAddDisabled: { opacity: 0.42 }, photoAddText: { color: '#c5a5ff', fontSize: 9, fontWeight: '900' }, photoSaveFirst: { color: '#ffad7f', fontSize: 10, lineHeight: 14 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '31%', aspectRatio: 0.86, borderRadius: 14, overflow: 'visible', borderWidth: 2, borderColor: 'transparent' }, photoTileSelected: { borderColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.4, shadowRadius: 8 }, photoTileImage: { width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }, photoTileShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 38, backgroundColor: '#08060bbb' }, photoTileLabel: { position: 'absolute', left: 7, right: 7, bottom: 8, color: '#fff5fb', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 }, photoRemove: { position: 'absolute', right: -7, top: -7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#32151b', borderWidth: 1, borderColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, photoRemoveText: { color: '#ff9c89', fontSize: 18, lineHeight: 20, fontWeight: '700' }, photoLoading: { backgroundColor: '#1b1524', alignItems: 'center', justifyContent: 'center' }, photoEmpty: { minHeight: 72, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3b3148', backgroundColor: '#0c0a11', padding: 12, justifyContent: 'center' }, photoEmptyTitle: { color: '#d3c6dc', fontSize: 11, fontWeight: '800' }, photoEmptyBody: { color: '#7f7488', fontSize: 9, lineHeight: 14, marginTop: 4 },
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
-  memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionArtworkOrb: { position: 'absolute', width: 42, height: 42, borderRadius: 21, opacity: 0.65, right: -8, top: -8, shadowOpacity: 0.8, shadowRadius: 10 }, collectionArtworkRoute: { position: 'absolute', width: 58, height: 3, borderRadius: 2, left: 5, top: 39, transform: [{ rotate: '-25deg' }] }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
-  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 }, collectionPlaceholderSun: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: '#ffcf93', right: 12, top: 10, opacity: 0.9, shadowColor: '#ffb36e', shadowOpacity: 0.9, shadowRadius: 12 }, collectionPlaceholderRoad: { position: 'absolute', width: 126, height: 45, borderRadius: 42, borderWidth: 4, borderColor: '#1b1026', bottom: -24, left: -15, transform: [{ rotate: '-13deg' }] }, collectionPlaceholderHorizon: { position: 'absolute', height: 2, left: 0, right: 0, top: '59%', backgroundColor: '#ffd7ad', opacity: 0.65 }, journeyPlaceholderGlow: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: '#ffd08f', right: -20, top: -26, opacity: 0.72, shadowColor: '#ff9d76', shadowOpacity: 0.9, shadowRadius: 15 }, journeyPlaceholderRoad: { position: 'absolute', left: -12, right: -12, height: 23, bottom: -12, borderRadius: 30, borderWidth: 3, borderColor: '#201128', transform: [{ rotate: '-13deg' }] },
+  memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
+  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
   pageHeader: { minHeight: 143, gap: 5, marginBottom: 4, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#40274f', backgroundColor: '#100a19', paddingHorizontal: 18, paddingVertical: 18, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, pageHeaderGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -76, top: -100, backgroundColor: '#6b2557', opacity: 0.48 }, pageHeaderRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#402350', overflow: 'hidden' }, pageHeaderRailCore: { width: '55%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 6 }, pageEyebrow: { color: '#c1a2ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 4 }, pageTitle: { color: '#f8f5ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#ada3b4', fontSize: 13, lineHeight: 20, maxWidth: 330 },
-  heroCard: { backgroundColor: '#191221', borderWidth: 1, borderColor: '#654474', borderRadius: 26, padding: 20, gap: 8, overflow: 'hidden', shadowColor: '#9b7cff', shadowOpacity: 0.2, shadowRadius: 24 }, heroGlowOrange: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#5a241d', opacity: 0.32, right: -70, top: -75 }, heroGlowPurple: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#36205b', opacity: 0.32, left: -100, bottom: -145 }, heroEyebrow: { color: '#ff9a7a', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, heroBody: { color: '#aca3b6', fontSize: 14, lineHeight: 20 }, heroMetrics: { flexDirection: 'row', backgroundColor: '#100c16dd', borderRadius: 17, marginTop: 10, paddingVertical: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#493853' },
-  openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 }, roadSunGlow: { position: 'absolute', width: 128, height: 128, borderRadius: 64, backgroundColor: '#7b2b31', opacity: 0.25, left: '50%', marginLeft: -64, top: -35, shadowColor: '#ff7257', shadowOpacity: 0.85, shadowRadius: 30 }, roadSun: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: '#ff765a', opacity: 0.9, left: '50%', marginLeft: -22, top: 18, shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 18 }, roadStar: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: '#c7b5ff', shadowColor: '#b292ff', shadowOpacity: 1, shadowRadius: 5 }, roadStarOne: { left: 38, top: 25 }, roadStarTwo: { right: 54, top: 19 }, roadStarThree: { right: 95, top: 43, width: 2, height: 2 }, roadHorizon: { position: 'absolute', left: 18, right: 18, top: 58, height: 1, backgroundColor: '#764e93', opacity: 0.72, shadowColor: '#a88aff', shadowOpacity: 0.8, shadowRadius: 6 }, roadSurface: { position: 'absolute', width: 0, height: 0, borderLeftWidth: 145, borderRightWidth: 145, borderBottomWidth: 82, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#090810', left: '50%', marginLeft: -145, top: 54 }, roadEdge: { position: 'absolute', width: 2, height: 94, backgroundColor: '#9d70ff', top: 53, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, roadEdgeLeft: { left: '50%', marginLeft: -48, transform: [{ rotate: '47deg' }] }, roadEdgeRight: { right: '50%', marginRight: -48, transform: [{ rotate: '-47deg' }] }, roadDash: { position: 'absolute', left: '50%', backgroundColor: '#ff8767', shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 8 }, roadDashFar: { width: 2, height: 7, marginLeft: -1, top: 64 }, roadDashMiddle: { width: 3, height: 13, marginLeft: -2, top: 79 }, roadDashNear: { width: 5, height: 22, marginLeft: -3, top: 105 }, roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 }, roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' }, roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
+  openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 },
+  roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 },
+  roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
   pulseCard: { backgroundColor: '#0f0d15', borderRadius: 22, borderWidth: 1, borderColor: '#332943', padding: 16, shadowColor: '#9b7cff', shadowOpacity: 0.14, shadowRadius: 18 }, pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, pulseKicker: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.3 }, pulseTitle: { color: '#f4eff9', fontSize: 16, fontWeight: '900', marginTop: 4 }, livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#285d4c', backgroundColor: '#10251f', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#43e6ae', shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, liveText: { color: '#70f1c5', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, pulseChart: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 9, marginTop: 17 }, pulseColumn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }, pulseTrack: { width: 16, flex: 1, justifyContent: 'flex-end', borderRadius: 8, backgroundColor: '#191522', overflow: 'hidden' }, pulseBar: { width: '100%', minHeight: 7, borderRadius: 8, backgroundColor: '#7c55d9', shadowColor: '#a88aff', shadowOpacity: 0.9, shadowRadius: 7 }, pulseBarCap: { height: 4, backgroundColor: '#c6b2ff', opacity: 0.9 }, pulseDay: { color: '#696171', fontSize: 8, fontWeight: '800' }, pulseDayToday: { color: '#ff8a68' }, pulseFooter: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 13, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#31293a' }, pulseFooterValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '900' }, pulseFooterLabel: { color: '#7e7687', fontSize: 10 },
   dashboardGrid: { flexDirection: 'row', gap: 10 }, dashboardStatCard: { flex: 1, minHeight: 150, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14 }, dashboardStatIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }, dashboardStatSymbol: { fontSize: 18, fontWeight: '900' }, dashboardStatKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, dashboardStatValue: { color: '#f7f2fc', fontSize: 20, fontWeight: '900', marginTop: 7 }, dashboardStatDetail: { color: '#8d8596', fontSize: 10, lineHeight: 15, marginTop: 5 },
   insightStrip: { flexDirection: 'row', gap: 10 }, insightCard: { flex: 1, minHeight: 152, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14, overflow: 'hidden' }, insightRoute: { height: 42, marginBottom: 9 }, insightRouteLine: { position: 'absolute', width: 105, height: 3, borderRadius: 2, backgroundColor: '#9b7cff', left: 10, top: 19, transform: [{ rotate: '-12deg' }], shadowColor: '#9b7cff', shadowOpacity: 0.9, shadowRadius: 7 }, insightRouteStart: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#43e6ae', left: 7, top: 27, shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, insightRouteEnd: { position: 'absolute', width: 11, height: 11, borderRadius: 6, backgroundColor: '#ff7b54', left: 112, top: 5, shadowColor: '#ff7b54', shadowOpacity: 1, shadowRadius: 7 }, musicRings: { height: 42, justifyContent: 'center', marginBottom: 9 }, musicRingOuter: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#664c9d', backgroundColor: '#1b1427', alignItems: 'center', justifyContent: 'center', shadowColor: '#a88aff', shadowOpacity: 0.5, shadowRadius: 9 }, musicRingInner: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#9b7cff', backgroundColor: '#281b3a', alignItems: 'center', justifyContent: 'center' }, musicRingNote: { color: '#c2aaff', fontSize: 14, fontWeight: '900' }, insightKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, insightValue: { color: '#f5f0fb', fontSize: 22, fontWeight: '900', marginTop: 5 }, insightDetail: { color: '#81798a', fontSize: 9, lineHeight: 14, marginTop: 4 },

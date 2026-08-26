@@ -25,6 +25,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.journeydeck.recorder",
+      "entitlements": {
+        "com.apple.developer.applesignin": ["Default"],
+        "com.apple.developer.icloud-container-identifiers": ["iCloud.com.journeydeck.recorder"],
+        "com.apple.developer.icloud-services": ["CloudKit"],
+        "com.apple.developer.ubiquity-kvstore-identifier": "$(TeamIdentifierPrefix)$(CFBundleIdentifier)"
+      },
       "infoPlist": {
         "NSAppleMusicUsageDescription": "JourneyDeck reads your Apple Music activity to build the soundtrack for journeys you record.",
         "NSMicrophoneUsageDescription": "JourneyDeck briefly listens for music you choose to recognize. Audio is never saved."

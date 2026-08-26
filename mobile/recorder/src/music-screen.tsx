@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ActivityIndicator, Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Alert, Animated, Easing, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
@@ -60,11 +60,8 @@ export function MusicScreen({ state, provider, onRefresh }: { state: MusicDashbo
       refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={colors.pink} />}
     >
       <MusicAtmosphere />
-      <View style={[styles.header, musicHeaderStyles.header]}>
-        <MusicHeaderScene />
-        <Text style={[styles.eyebrow, musicHeaderStyles.eyebrow]}>YOUR ROAD, YOUR SOUNDTRACK</Text>
-        <Text style={[styles.pageTitle, musicHeaderStyles.title]}>MUSIC</Text>
-        <Text style={[styles.pageBody, musicHeaderStyles.body]}>The songs that turn every journey into part of your story.</Text>
+      <View style={musicHeaderStyles.heroCardHeader}>
+        <Image source={require('../assets/music-header-hero.png')} style={musicHeaderStyles.heroHeaderImage} resizeMode="cover" />
       </View>
 
       {state.status === 'loading' && !data ? <View style={styles.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.loadingText}>Building your soundtrack…</Text></View> : null}
@@ -73,10 +70,7 @@ export function MusicScreen({ state, provider, onRefresh }: { state: MusicDashbo
       {data ? <>
         <Pressable disabled={!latest || !canOpenTracks} onPress={() => latest && void openTrack(latest, provider)} style={styles.hero}>
           <MusicHeroHaze />
-          <View style={styles.heroArtworkShell}>
-            <View style={styles.vinylRingOuter}><View style={styles.vinylRingMiddle}><View style={styles.vinylRingInner} /></View></View>
-            {latest?.artworkUrl ? <Image source={{ uri: latest.artworkUrl }} style={styles.heroArtwork} contentFit="cover" cachePolicy="memory-disk" transition={140} /> : <View style={styles.heroArtworkFallback}><Text style={styles.heroNote}>♪</Text></View>}
-          </View>
+          <VinylHeroRecord artworkUrl={latest?.artworkUrl} />
           <View style={styles.heroCopy}>
             <Text style={styles.heroEyebrow}>THE ROAD SOUNDS BETTER WITH MUSIC</Text>
             <Text style={styles.heroTitle}>YOUR LIFE HAS A</Text>
@@ -144,6 +138,96 @@ export function MusicScreen({ state, provider, onRefresh }: { state: MusicDashbo
   );
 }
 
+function VinylHeroRecord({ artworkUrl }: { artworkUrl?: string | null }) {
+  const spinAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 22000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [spinAnim]);
+
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <View style={styles.heroRecordOuterShell}>
+      <Animated.View style={[styles.heroRecordShell, { transform: [{ rotate: spin }] }]}>
+        <Svg width={148} height={148} viewBox="0 0 148 148" style={StyleSheet.absoluteFill}>
+          <Defs>
+            <SvgLinearGradient id="vinylSheenTop" x1="0" y1="0" x2="1" y2="1">
+              <Stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
+              <Stop offset="45%" stopColor="#c58bff" stopOpacity="0.06" />
+              <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </SvgLinearGradient>
+            <SvgLinearGradient id="vinylSheenBottom" x1="1" y1="1" x2="0" y2="0">
+              <Stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
+              <Stop offset="45%" stopColor="#ff8bb9" stopOpacity="0.06" />
+              <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </SvgLinearGradient>
+            <SvgRadialGradient id="vinylBody" cx="50%" cy="50%" rx="50%" ry="50%">
+              <Stop offset="0%" stopColor="#1e102e" />
+              <Stop offset="40%" stopColor="#0a0612" />
+              <Stop offset="75%" stopColor="#160c23" />
+              <Stop offset="100%" stopColor="#040207" />
+            </SvgRadialGradient>
+          </Defs>
+          {/* Vinyl Disc Body */}
+          <Circle cx="74" cy="74" r="73" fill="url(#vinylBody)" stroke="#4d2869" strokeWidth="1.75" />
+
+          {/* Prominent Concentric Micro-Groove Tracks */}
+          <Circle cx="74" cy="74" r="70" fill="none" stroke="#2c1740" strokeWidth="1.2" />
+          <Circle cx="74" cy="74" r="67" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.8" />
+          <Circle cx="74" cy="74" r="64" fill="none" stroke="#221133" strokeWidth="1" />
+          <Circle cx="74" cy="74" r="61" fill="none" stroke="#63348e" strokeWidth="0.85" opacity="0.9" />
+          <Circle cx="74" cy="74" r="58" fill="none" stroke="#1f0f2d" strokeWidth="1" />
+          <Circle cx="74" cy="74" r="55" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.85" />
+          <Circle cx="74" cy="74" r="52" fill="none" stroke="#2c1740" strokeWidth="1.2" />
+          <Circle cx="74" cy="74" r="49" fill="none" stroke="#6a3899" strokeWidth="0.9" opacity="0.9" />
+          <Circle cx="74" cy="74" r="46" fill="none" stroke="#221133" strokeWidth="1" />
+          <Circle cx="74" cy="74" r="43" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.8" />
+          <Circle cx="74" cy="74" r="40" fill="none" stroke="#2c1740" strokeWidth="1.1" />
+          <Circle cx="74" cy="74" r="37" fill="none" stroke="#63348e" strokeWidth="0.9" opacity="0.85" />
+          <Circle cx="74" cy="74" r="34" fill="none" stroke="#2a153c" strokeWidth="1.2" />
+
+          {/* Quad Specular Sheen Reflection Cones */}
+          <Path d="M 74 74 L 22 22 A 71 71 0 0 1 74 3 Z" fill="url(#vinylSheenTop)" />
+          <Path d="M 74 74 L 126 126 A 71 71 0 0 1 74 145 Z" fill="url(#vinylSheenBottom)" />
+          <Path d="M 74 74 L 126 22 A 71 71 0 0 1 145 74 Z" fill="url(#vinylSheenTop)" opacity="0.5" />
+          <Path d="M 74 74 L 22 126 A 71 71 0 0 1 3 74 Z" fill="url(#vinylSheenBottom)" opacity="0.5" />
+
+          {/* Run-Out Lead-in Spiral Groove */}
+          <Circle cx="74" cy="74" r="32" fill="none" stroke="#68358c" strokeWidth="1.2" strokeDasharray="6 3.5" opacity="0.85" />
+          <Circle cx="74" cy="74" r="30" fill="none" stroke="#33184a" strokeWidth="1" />
+        </Svg>
+
+        {/* Center Record Label with Spinning Artwork */}
+        <View style={styles.vinylCenterLabel}>
+          {artworkUrl ? (
+            <Image source={{ uri: artworkUrl }} style={styles.vinylArtwork} contentFit="cover" cachePolicy="memory-disk" transition={140} />
+          ) : (
+            <View style={styles.vinylArtworkFallback}>
+              <Text style={styles.vinylNote}>♪</Text>
+            </View>
+          )}
+          <View pointerEvents="none" style={styles.spindleHole}>
+            <View style={styles.spindleCore} />
+          </View>
+        </View>
+      </Animated.View>
+    </View>
+  );
+}
+
 function Waveform() {
   const heights = [8, 18, 12, 26, 34, 19, 11, 27, 38, 22, 15, 31, 42, 25, 13, 28, 17, 35, 21, 9];
   return <View style={styles.waveform}>{heights.map((height, index) => <View key={index} style={[styles.waveBar, { height }]} />)}</View>;
@@ -172,10 +256,9 @@ function Empty({ text }: { text: string }) { return <Text style={styles.empty}>{
 
 function RouteGlow() {
   return <View style={styles.routeGraphic}>
-    <View style={styles.routeAura} />
     <Svg width="100%" height="100%" viewBox="0 0 150 70">
       <Defs><SvgLinearGradient id="mileageRoad" x1="8" y1="58" x2="142" y2="12" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor="#ff795b" /><Stop offset="0.55" stopColor="#ff4d87" /><Stop offset="1" stopColor="#b46cff" /></SvgLinearGradient></Defs>
-      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="#28152f" strokeWidth="13" strokeLinecap="round" />
+      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="#28152f" strokeWidth="11" strokeLinecap="round" />
       <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="url(#mileageRoad)" strokeWidth="3" strokeLinecap="round" />
       <Path d="M15 54 C37 49 38 27 61 25 C87 23 101 48 133 18" fill="none" stroke="#ffe3d8" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="5 7" opacity="0.78" />
       <Circle cx="8" cy="57" r="5" fill="#ffb39d" stroke="#fff2ec" strokeWidth="2" />
@@ -209,14 +292,46 @@ function CityBars({ items }: { items: MusicDashboardData['cities'] }) {
 function IntensityChart({ daily }: { daily: MusicDashboardData['daily'] }) {
   const [width, setWidth] = useState(0), height = 116;
   const maximum = Math.max(1, ...daily.map(day => day.minutes ?? 0));
-  const points = useMemo(() => daily.map((day, index) => ({ x: daily.length > 1 ? 10 + index * ((Math.max(20, width) - 20) / (daily.length - 1)) : width / 2, y: 12 + (1 - (day.minutes ?? 0) / maximum) * 78 })), [daily, maximum, width]);
+  const points = useMemo(() => daily.map((day, index) => ({
+    x: daily.length > 1 ? 14 + index * ((Math.max(30, width) - 28) / (daily.length - 1)) : width / 2,
+    y: 12 + (1 - (day.minutes ?? 0) / maximum) * 78,
+  })), [daily, maximum, width]);
+  const areaPath = useMemo(() => {
+    if (points.length < 2) return '';
+    const baselineY = 100;
+    const pathSegments = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+    return `${pathSegments} L ${points[points.length - 1].x} ${baselineY} L ${points[0].x} ${baselineY} Z`;
+  }, [points]);
+  const linePath = useMemo(() => {
+    if (points.length < 2) return '';
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  }, [points]);
+
   return <View><View style={styles.chart} onLayout={event => setWidth(event.nativeEvent.layout.width)}>
-    <View style={styles.chartGlow} />
-    {width > 0 ? points.slice(1).map((point, index) => {
-      const previous = points[index], dx = point.x - previous.x, dy = point.y - previous.y, length = Math.sqrt(dx * dx + dy * dy), angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      return <View key={index} style={[styles.chartLine, { left: (previous.x + point.x - length) / 2, top: (previous.y + point.y) / 2, width: length, transform: [{ rotate: `${angle}deg` }] }]} />;
-    }) : null}
-    {width > 0 ? points.map((point, index) => <View key={index} style={[styles.chartDot, { left: point.x - 4, top: point.y - 4 }]} />) : null}
+    {width > 0 ? (
+      <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id="intensityAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0%" stopColor="#ff6c50" stopOpacity="0.32" />
+            <Stop offset="55%" stopColor="#ff3f82" stopOpacity="0.12" />
+            <Stop offset="100%" stopColor="#9b61ff" stopOpacity="0.0" />
+          </SvgLinearGradient>
+          <SvgLinearGradient id="intensityLineGrad" x1="0" y1="0" x2="1" y2="0">
+            <Stop offset="0%" stopColor="#ff795b" />
+            <Stop offset="50%" stopColor="#ff4d87" />
+            <Stop offset="100%" stopColor="#b46cff" />
+          </SvgLinearGradient>
+        </Defs>
+        {areaPath ? <Path d={areaPath} fill="url(#intensityAreaGrad)" /> : null}
+        {points.map((point, index) => (
+          <Path key={`guide-${index}`} d={`M ${point.x} ${point.y} L ${point.x} 100`} stroke="#3b204e" strokeWidth="1" strokeDasharray="3 3" opacity="0.45" />
+        ))}
+        {linePath ? <Path d={linePath} fill="none" stroke="url(#intensityLineGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : null}
+        {points.map((point, index) => (
+          <Circle key={`dot-${index}`} cx={point.x} cy={point.y} r="4.5" fill="#ff765a" stroke="#fff0ea" strokeWidth="2" />
+        ))}
+      </Svg>
+    ) : null}
   </View><View style={styles.chartLabels}>{daily.map(day => <Text key={day.date} style={styles.chartLabel}>{day.label.slice(0, 1)}</Text>)}</View></View>;
 }
 
@@ -226,51 +341,95 @@ function WeekBars({ daily }: { daily: MusicDashboardData['daily'] }) {
 }
 
 function MusicHeaderScene() {
-  const bars = [25, 43, 70, 38, 83, 57, 98, 45, 74];
+  const bars = [26, 48, 76, 42, 92, 60, 105, 52, 82, 45, 68, 38, 74];
   return <>
-    <LinearGradient pointerEvents="none" colors={['#0b102b', '#1b0b29', '#100611'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <View pointerEvents="none" style={musicHeaderStyles.vinylHalo} />
-    <View pointerEvents="none" style={musicHeaderStyles.vinylOuter}><View style={musicHeaderStyles.vinylMiddle}><View style={musicHeaderStyles.vinylInner}><View style={musicHeaderStyles.vinylLabel} /></View></View></View>
+    <LinearGradient pointerEvents="none" colors={['#0c102c', '#1b0b29', '#100611'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={musicHeaderStyles.sceneCanvas}>
+      <Defs>
+        <SvgRadialGradient id="musicSceneGlow" cx="82%" cy="32%" rx="65%" ry="75%">
+          <Stop offset="0" stopColor="#ff3f82" stopOpacity="0.3" />
+          <Stop offset="45%" stopColor="#9b61ff" stopOpacity="0.1" />
+          <Stop offset="1" stopColor="#9b61ff" stopOpacity="0" />
+        </SvgRadialGradient>
+        <SvgLinearGradient id="soundwaveGrad1" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ff795b" stopOpacity="0.8" />
+          <Stop offset="50%" stopColor="#ff3f82" stopOpacity="0.95" />
+          <Stop offset="100%" stopColor="#c57fff" stopOpacity="0.9" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="soundwaveGrad2" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#43e6ae" stopOpacity="0.4" />
+          <Stop offset="50%" stopColor="#7658dd" stopOpacity="0.75" />
+          <Stop offset="100%" stopColor="#ff3f82" stopOpacity="0.8" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width="360" height="170" fill="url(#musicSceneGlow)" />
+
+      {/* Harmonic Wave Interference Lines */}
+      <Path d="M 140 115 Q 185 45 235 95 T 310 70 T 360 110" fill="none" stroke="url(#soundwaveGrad2)" strokeWidth="1.5" opacity="0.4" strokeDasharray="3 3" />
+      <Path d="M 155 90 Q 200 130 250 80 T 325 105 T 360 75" fill="none" stroke="url(#soundwaveGrad2)" strokeWidth="1.75" opacity="0.5" />
+
+      {/* Primary Harmonic Neon Equalizer Beam */}
+      <Path d="M 150 78 C 190 32, 220 120, 265 65 S 315 110, 355 60" fill="none" stroke="#ff3f82" strokeWidth="8" opacity="0.18" strokeLinecap="round" />
+      <Path d="M 150 78 C 190 32, 220 120, 265 65 S 315 110, 355 60" fill="none" stroke="url(#soundwaveGrad1)" strokeWidth="2.5" strokeLinecap="round" />
+
+      {/* Floating Audio Nodes / Constellation */}
+      <Circle cx="210" cy="55" r="4" fill="#ff795b" stroke="#fff0ea" strokeWidth="1.5" />
+      <Circle cx="265" cy="65" r="5.5" fill="#ff3f82" stroke="#fff" strokeWidth="2" />
+      <Circle cx="265" cy="65" r="11" fill="none" stroke="#ff3f82" strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
+      <Circle cx="315" cy="88" r="4.5" fill="#c57fff" stroke="#f6efff" strokeWidth="1.5" />
+      <Circle cx="348" cy="62" r="3.5" fill="#43e6ae" stroke="#eafff8" strokeWidth="1.5" />
+    </Svg>
     <View pointerEvents="none" style={musicHeaderStyles.spectrum}>{bars.map((height, index) => <View key={`${height}-${index}`} style={[musicHeaderStyles.spectrumBar, { height }]} />)}</View>
     <View pointerEvents="none" style={musicHeaderStyles.rail}><View style={musicHeaderStyles.railCore} /></View>
   </>;
 }
 
 const musicHeaderStyles = StyleSheet.create({
+  heroCardHeader: { width: '100%', aspectRatio: 1270 / 674, borderRadius: 24, overflow: 'hidden', backgroundColor: '#0c0716', shadowColor: '#ff4594', shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  heroHeaderImage: { width: '100%', height: '100%' },
   header: { minHeight: 166, borderColor: '#652d70', backgroundColor: '#0d0818', shadowColor: '#ff4594', shadowOpacity: 0.3, shadowRadius: 24 },
   eyebrow: { color: '#ff9fc4', maxWidth: 208 },
   title: { maxWidth: 208, textShadowColor: '#ff4f9a', textShadowRadius: 13 },
   body: { color: '#d2c3d8', maxWidth: 215 },
-  vinylHalo: { position: 'absolute', width: 150, height: 150, borderRadius: 75, right: -44, top: -54, backgroundColor: '#a9347c', opacity: 0.31, shadowColor: '#e858ae', shadowOpacity: 0.82, shadowRadius: 28 },
-  vinylOuter: { position: 'absolute', width: 100, height: 100, borderRadius: 50, right: 19, top: 23, borderWidth: 1, borderColor: 'rgba(255, 158, 217, 0.68)', backgroundColor: '#14091d', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff62aa', shadowOpacity: 0.56, shadowRadius: 17 },
-  vinylMiddle: { width: 78, height: 78, borderRadius: 39, borderWidth: 1, borderColor: 'rgba(158, 109, 255, 0.72)', alignItems: 'center', justifyContent: 'center' },
-  vinylInner: { width: 54, height: 54, borderRadius: 27, borderWidth: 1, borderColor: 'rgba(255, 110, 172, 0.58)', alignItems: 'center', justifyContent: 'center' },
-  vinylLabel: { width: 17, height: 17, borderRadius: 9, backgroundColor: '#ff785f', shadowColor: '#ff785f', shadowOpacity: 1, shadowRadius: 7 },
-  spectrum: { position: 'absolute', right: 19, bottom: 13, height: 36, width: 126, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', opacity: 0.88 },
-  spectrumBar: { width: 5, borderRadius: 6, backgroundColor: '#ff5aa1', shadowColor: '#ff5aa1', shadowOpacity: 0.94, shadowRadius: 5 },
+  sceneCanvas: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  spectrum: { position: 'absolute', right: 18, bottom: 16, height: 38, width: 136, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', opacity: 0.92 },
+  spectrumBar: { width: 4.5, borderRadius: 5, backgroundColor: '#ff5aa1', shadowColor: '#ff5aa1', shadowOpacity: 0.94, shadowRadius: 6 },
   rail: { position: 'absolute', left: 18, top: 13, width: 60, height: 3, borderRadius: 3, backgroundColor: 'rgba(235, 117, 202, 0.3)', overflow: 'hidden' },
   railCore: { width: '72%', height: '100%', borderRadius: 3, backgroundColor: '#ff8467', shadowColor: '#ff8467', shadowOpacity: 1, shadowRadius: 8 },
 });
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.page },
-  pageContent: { paddingHorizontal: 18, gap: 13 },
+  pageContent: { paddingHorizontal: 16, gap: 13 },
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1460 },
-  header: { minHeight: 142, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#482756', backgroundColor: '#110919', paddingHorizontal: 18, paddingVertical: 19, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, headerGlow: { position: 'absolute', width: 185, height: 185, borderRadius: 93, backgroundColor: '#6d1f55', opacity: 0.42, right: -77, top: -104 }, headerRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#47214c', overflow: 'hidden' }, headerRailCore: { width: '58%', height: '100%', borderRadius: 3, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 1, shadowRadius: 6 }, eyebrow: { color: '#c5a1ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.9, marginTop: 4 }, pageTitle: { color: colors.text, fontSize: 37, lineHeight: 41, fontWeight: '900', marginTop: 7, letterSpacing: -0.8 }, pageBody: { color: '#aca0b1', fontSize: 13, lineHeight: 20, marginTop: 3, maxWidth: 310 },
+  header: { minHeight: 142, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#482756', backgroundColor: '#110919', paddingHorizontal: 18, paddingVertical: 19, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  eyebrow: { color: '#c5a1ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.9, marginTop: 4 },
+  pageTitle: { color: colors.text, fontSize: 37, lineHeight: 41, fontWeight: '900', marginTop: 7, letterSpacing: -0.8 },
+  pageBody: { color: '#aca0b1', fontSize: 13, lineHeight: 20, marginTop: 3, maxWidth: 310 },
   loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { color: colors.muted, fontSize: 12 },
   notice: { borderWidth: 1, borderColor: '#744152', backgroundColor: '#1a0b15', borderRadius: 18, padding: 15, gap: 7, shadowColor: '#ff4d82', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, noticeTitle: { color: '#ff9a83', fontWeight: '900', fontSize: 14 }, noticeBody: { color: '#ad9da8', fontSize: 12, lineHeight: 18 }, retry: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#3b1930', paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#ff4d82', shadowOpacity: 0.35, shadowRadius: 10 }, retryText: { color: '#ff8bb6', fontWeight: '900', fontSize: 10 },
-  hero: { minHeight: 210, borderRadius: 27, borderWidth: 1, borderColor: '#5c2672', backgroundColor: '#090413', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 17, gap: 15, shadowColor: '#9b36ff', shadowOpacity: 0.28, shadowRadius: 22 },
-  heroArtworkShell: { width: 128, height: 128, alignItems: 'center', justifyContent: 'center' }, vinylRingOuter: { position: 'absolute', width: 128, height: 128, borderRadius: 64, borderWidth: 1, borderColor: '#b15fc3', backgroundColor: '#0a0710', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff4e9a', shadowOpacity: 0.45, shadowRadius: 18 }, vinylRingMiddle: { width: 105, height: 105, borderRadius: 53, borderWidth: 1, borderColor: '#75427d', alignItems: 'center', justifyContent: 'center' }, vinylRingInner: { width: 82, height: 82, borderRadius: 41, borderWidth: 1, borderColor: '#4d2858' }, heroArtwork: { width: 94, height: 94, borderRadius: 47, borderWidth: 2, borderColor: '#ff91b9', shadowColor: colors.pink, shadowOpacity: 0.9, shadowRadius: 17 }, heroArtworkFallback: { width: 94, height: 94, borderRadius: 47, alignItems: 'center', justifyContent: 'center', backgroundColor: '#37132f', borderWidth: 2, borderColor: '#ff91b9', shadowColor: colors.pink, shadowOpacity: 0.7, shadowRadius: 14 }, heroNote: { color: '#ff6f9b', fontSize: 40, fontWeight: '900' },
-  heroCopy: { flex: 1, alignItems: 'flex-start' }, heroEyebrow: { color: '#ff7559', fontSize: 7, fontWeight: '900', letterSpacing: 1.1, marginBottom: 9 }, heroTitle: { color: colors.text, fontSize: 19, lineHeight: 21, fontWeight: '900' }, heroAccent: { color: '#ff4e8b', fontSize: 26, lineHeight: 29, fontStyle: 'italic', fontWeight: '900', textShadowColor: '#ff2f79', textShadowRadius: 12 }, heroService: { color: '#81748b', fontSize: 7, letterSpacing: 1.1, fontWeight: '900', marginTop: 8 },
+  hero: { minHeight: 216, borderRadius: 27, borderWidth: 1, borderColor: '#5c2672', backgroundColor: '#090413', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, shadowColor: '#9b36ff', shadowOpacity: 0.28, shadowRadius: 22 },
+  heroRecordOuterShell: { width: 148, height: 148, alignItems: 'center', justifyContent: 'center' },
+  heroRecordShell: { width: 148, height: 148, alignItems: 'center', justifyContent: 'center', shadowColor: '#9b36ff', shadowOpacity: 0.5, shadowRadius: 20 },
+  vinylCenterLabel: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1.5, borderColor: '#ff7e9e', shadowColor: '#ff4e9a', shadowOpacity: 0.65, shadowRadius: 9 },
+  vinylArtwork: { width: 60, height: 60, borderRadius: 30 },
+  vinylArtworkFallback: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2f132a' },
+  vinylNote: { color: '#ff709b', fontSize: 26, fontWeight: '900' },
+  spindleHole: { position: 'absolute', width: 13, height: 13, borderRadius: 6.5, backgroundColor: '#060309', borderWidth: 1.5, borderColor: '#7c5e93', alignItems: 'center', justifyContent: 'center' },
+  spindleCore: { width: 4.5, height: 4.5, borderRadius: 2.25, backgroundColor: '#020104' },
+  heroCopy: { flex: 1, alignItems: 'flex-start', paddingLeft: 2 }, heroEyebrow: { color: '#ff7559', fontSize: 6.5, fontWeight: '900', letterSpacing: 1.0, marginBottom: 7 }, heroTitle: { color: colors.text, fontSize: 17, lineHeight: 19, fontWeight: '900' }, heroAccent: { color: '#ff4e8b', fontSize: 23, lineHeight: 26, fontStyle: 'italic', fontWeight: '900', textShadowColor: '#ff2f79', textShadowRadius: 12 }, heroService: { color: '#81748b', fontSize: 6.5, letterSpacing: 1.0, fontWeight: '900', marginTop: 7 },
   waveform: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 5 }, waveBar: { width: 2, borderRadius: 2, backgroundColor: colors.pink, shadowColor: colors.pink, shadowOpacity: 0.85, shadowRadius: 4 },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, metric: { width: '48.6%', minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 19, borderWidth: 1, borderColor: '#553267', backgroundColor: colors.panel, padding: 11, shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, metricIcon: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.55, shadowRadius: 12 }, metricSymbol: { fontSize: 18, fontWeight: '900' }, metricCopy: { flex: 1 }, metricLabel: { color: '#94899d', fontSize: 8, lineHeight: 11 }, metricValue: { color: colors.text, fontSize: 21, fontWeight: '900', marginTop: 2, textShadowColor: '#9b61ff55', textShadowRadius: 7 }, metricDetail: { color: '#7f7389', fontSize: 7, lineHeight: 10, marginTop: 1 },
   panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.28, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.9, shadowRadius: 8 }, cardTitle: { flex: 1, color: colors.text, fontSize: 15, fontWeight: '900', textShadowColor: '#a34cff55', textShadowRadius: 6 }, cardKicker: { color: '#ff6b89', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
   albumStrip: { gap: 11, paddingRight: 4 }, albumCard: { width: 112, shadowColor: '#ff4d91', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }, albumPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] }, albumArtwork: { width: 112, height: 112, borderRadius: 13, borderWidth: 1, borderColor: '#75416c' }, albumFallback: { width: 112, height: 112, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#27142c', borderWidth: 1, borderColor: '#75416c' }, albumNote: { color: colors.pink, fontSize: 35, fontWeight: '900' }, albumTitle: { color: colors.text, fontSize: 11, fontWeight: '900', marginTop: 8 }, albumArtist: { color: '#8d8295', fontSize: 9, marginTop: 2 }, empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },
-  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 175, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, routeAura: { position: 'absolute', width: 112, height: 88, borderRadius: 50, backgroundColor: '#fa4a1e', opacity: 0.13, right: -10, top: -8 }, change: { color: '#ff795c', fontSize: 7, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
+  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 175, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 7, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
   moodBlock: { flex: 1, justifyContent: 'space-between', paddingTop: 8 }, moodBar: { height: 17, borderRadius: 9, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 10, fontWeight: '900' }, moodLabel: { color: '#817589', fontSize: 7, marginTop: 3 }, moodFootnote: { color: '#ff765a', fontSize: 6.5, marginTop: 15 },
   cityList: { gap: 12, paddingTop: 2 }, cityRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, cityName: { width: 103, color: '#d8cfdd', fontSize: 9 }, cityTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: '#27172f', overflow: 'hidden' }, cityFill: { height: 6, borderRadius: 3, backgroundColor: colors.pink, shadowColor: colors.pink, shadowOpacity: 1, shadowRadius: 6 }, cityCount: { width: 25, color: '#b9a9c1', fontSize: 9, fontWeight: '800', textAlign: 'right' },
-  chart: { height: 116, overflow: 'hidden' }, chartGlow: { position: 'absolute', left: 0, right: 0, bottom: 10, height: 67, backgroundColor: '#6f162d', opacity: 0.22, borderTopLeftRadius: 120, borderTopRightRadius: 120 }, chartLine: { position: 'absolute', height: 3, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.pink, shadowOpacity: 1, shadowRadius: 8 }, chartDot: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: colors.coral, borderWidth: 2, borderColor: '#ff9b84' }, chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }, chartLabel: { width: 16, textAlign: 'center', color: '#74697d', fontSize: 7 }, chartFootnote: { color: '#ff876f', fontSize: 8, fontWeight: '700', marginTop: 8 },
+  chart: { height: 116, overflow: 'hidden' },
+  chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
+  chartLabel: { width: 16, textAlign: 'center', color: '#74697d', fontSize: 7 },
+  chartFootnote: { color: '#ff876f', fontSize: 8, fontWeight: '700', marginTop: 8 },
   weekBars: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 3 }, weekBarItem: { flex: 1, height: 105, alignItems: 'center', justifyContent: 'flex-end' }, weekBarTrack: { width: '100%', flex: 1, justifyContent: 'flex-end' }, weekBarFill: { width: '100%', minHeight: 2, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: colors.coral, shadowColor: colors.pink, shadowOpacity: 0.75, shadowRadius: 7 }, weekBarLabel: { color: '#81758a', fontSize: 7, marginTop: 7 }, weekTotal: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 12 }, weekTotalValue: { color: colors.text, fontSize: 27, fontWeight: '900' }, weekTotalLabel: { flex: 1, color: '#8d8294', fontSize: 8 }, weekChange: { color: colors.coral, fontSize: 10, fontWeight: '900' },
   linkFootnote: { color: '#766b7d', fontSize: 9, lineHeight: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 2 },
 });
