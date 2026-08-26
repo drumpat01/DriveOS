@@ -1,3 +1,12 @@
+# Current Handoff State: Zero-Cost Multi-User Local-First Architecture
+
+- **Active Branch**: `agy/journeydeck-1.6` (Synced to remote `origin/agy/journeydeck-1.6`)
+- **Authoritative Commit**: [`2515a44`](https://github.com/drumpat01/DriveOS/commit/2515a44) (`feat(arch): implement zero-cost local-first multi-user architecture with SQLite, CloudKit sync, and Cloudflare edge`)
+- **Live Cloudflare Edge**: `https://journeydeck-edge.patrickbstewart.workers.dev` (Deployed on Free Tier)
+- **Live Mobile Preview OTA**: Update Group `289d6cbb-2191-43a3-83a5-187cd319c218` (Runtime `1.6.0`)
+- **Apple Developer Setup**: CloudKit container `iCloud.com.journeydeck.recorder` and Sign in with Apple enabled on App ID `com.journeydeck.recorder`.
+- **Validation**: All 14 test suites passing (`100%`), `tsc --noEmit` 0 errors, Metro export clean.
+
 ## Phase 4 & 5: Driver Profile, Private iCloud Badge, Pro Membership & Entitlements — August 26, 2026
 
 - **Objective:** Finalize user-facing settings for Apple ID driver profile, private iCloud sync status badge, JourneyDeck Pro $4.99/mo membership card, home/work safe zones, and Apple Sign-In / CloudKit iOS entitlements.
