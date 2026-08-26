@@ -15,7 +15,14 @@
   - Root `npm test` passed after creating the documented Atlas development seed fixture: server typecheck/lint, 29 server tests, Atlas benchmark, 9 Playwright tests, PSScriptAnalyzer (136 files), gitleaks, and Trivy (0 HIGH/CRITICAL findings).
   - `tools/Test-DriveOS.ps1` and `tools/Test-ReleasePreflight.ps1` passed. Their SQLite-provider/migration/durable-round-trip checks were explicitly skipped because the desktop SQLite runtime is unavailable in this environment; all other available checks passed.
   - `git diff --check` passed with only Windows LF-to-CRLF notices.
-- **Environment:** Branch `agy/journeydeck-1.6`; working tree contains the 12 intentional modified files listed by `git status`. No commit, push, deployment, or OTA publication was performed.
+- **Published Preview OTA:**
+  - Source commit: `8792596` (`fix(mobile): harden local-first sync and offline data`), pushed to `origin/agy/journeydeck-1.6`.
+  - Update group ID: **`c1b8422c-bbfa-4eff-a368-4bafe18528a1`**
+  - iOS update ID: **`01a03f9d-0570-7e68-a7d0-66ff4436c463`**
+  - Message: `Harden local-first privacy sync and offline data`
+  - Runtime/channel: `1.6.0` / `preview`; Expo reports a clean Git working tree for the published update.
+  - Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/c1b8422c-bbfa-4eff-a368-4bafe18528a1`
+- **Environment:** Branch `agy/journeydeck-1.6`; Cloudflare worker source changes are committed but were not deployed as part of the iOS OTA.
 - **Next steps:** Review the working-tree diff and physically verify a completed offline recording appears in Home/Memories/Music after relaunch and profile switching. A real CloudKit transport adapter is still required before remote synchronization can run on-device; `CloudKitSyncEngine` currently provides safe payload/conflict logic only.
 
 - **Active Branch**: `agy/journeydeck-1.6` (Synced to remote `origin/agy/journeydeck-1.6`)
