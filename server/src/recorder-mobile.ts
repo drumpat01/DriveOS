@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { queryTurso } from "./turso-client.js";
+import type { TimedRouteCoordinate } from "./tessie-route.js";
 
 type Statement = { sql: string; args?: unknown[] };
 
@@ -112,7 +113,10 @@ type JourneyRow = {
   driver_profile: string | null;
   soundtrack_payload: string | null;
   recorder_session_id: string | null;
+  vehicle_vin: string | null;
 };
+
+export type RecorderJourneyRouteLoader = (input: { vin: string; startedAtEpoch: number; endedAtEpoch: number }) => Promise<TimedRouteCoordinate[]>;
 
 type SafeSong = {
   playedAt: string | null;
@@ -133,6 +137,7 @@ const journeyColumns = `
   d.ending_latitude,d.ending_longitude,d.starting_battery,d.ending_battery,
   d.distance_miles,d.energy_used_kwh,d.average_speed_mph,d.max_speed_mph,
   d.tessie_tag,d.driver_profile,ds.payload_json AS soundtrack_payload,
+  v.vin AS vehicle_vin,
   (SELECT rs.id FROM recorder_sessions rs WHERE rs.drive_id=d.id AND rs.household_id=d.household_id ORDER BY rs.updated_at_utc DESC LIMIT 1) AS recorder_session_id`;
 
 function finiteOrNull(value: unknown) {
@@ -329,7 +334,7 @@ function normalizedPreferences(deviceId: string, value: unknown, updatedAt: stri
 }
 
 export class RecorderMobileStore {
-  constructor(private database: DatabaseSync, private householdId: string, private durableTurso: boolean) {}
+  constructor(private database: DatabaseSync, private householdId: string, private durableTurso: boolean, private journeyRouteLoader?: RecorderJourneyRouteLoader) {}
 
   private async read(statement: Statement) {
     if (this.durableTurso) return (await queryTurso([statement]))[0];
@@ -699,18 +704,51 @@ export class RecorderMobileStore {
     const summary = (await this.journeySummaries([row], mobile))[0];
     const soundtrack = uniqueSongs([...soundtrackSongs(row.soundtrack_payload), ...(row.recorder_session_id ? mobile.get(row.recorder_session_id) || [] : [])]);
     let coordinates: [number, number][] = [];
+    let timedCoordinates: { recordedAtEpochMs: number; coordinate: [number, number] }[] = [];
     if (row.recorder_session_id) {
-      const points = await this.read({ sql: "SELECT longitude,latitude FROM recorder_points WHERE session_id=? ORDER BY recorded_at_epoch_ms,sequence;", args: [row.recorder_session_id] });
-      coordinates = points.map(point => [Number(point.longitude), Number(point.latitude)] as [number, number]).filter(point => validCoordinate(point[0], point[1]));
+      const points = await this.read({ sql: "SELECT recorded_at_epoch_ms,longitude,latitude FROM recorder_points WHERE session_id=? ORDER BY recorded_at_epoch_ms,sequence;", args: [row.recorder_session_id] });
+      timedCoordinates = points.map(point => ({
+        recordedAtEpochMs: Number(point.recorded_at_epoch_ms),
+        coordinate: [Number(point.longitude), Number(point.latitude)] as [number, number]
+      })).filter(point => Number.isFinite(point.recordedAtEpochMs) && validCoordinate(point.coordinate[0], point.coordinate[1]));
+      coordinates = timedCoordinates.map(point => point.coordinate);
       if (coordinates.length > 2500) {
         const last = coordinates.at(-1)!, step = (coordinates.length - 1) / 2499;
         coordinates = Array.from({ length: 2499 }, (_, index) => coordinates[Math.floor(index * step)]).concat([last]);
+      }
+    }
+    if (!timedCoordinates.length && row.vehicle_vin && /tessie/i.test(row.provider) && this.journeyRouteLoader) {
+      try {
+        timedCoordinates = await this.journeyRouteLoader({
+          vin: row.vehicle_vin,
+          startedAtEpoch: Number(row.started_at_epoch),
+          endedAtEpoch: Number(row.ended_at_epoch)
+        });
+        const routeStartMs = Number(row.started_at_epoch) * 1000, routeEndMs = Number(row.ended_at_epoch) * 1000;
+        coordinates = timedCoordinates
+          .filter(point => point.recordedAtEpochMs >= routeStartMs && point.recordedAtEpochMs <= routeEndMs)
+          .map(point => point.coordinate);
+        if (coordinates.length > 2500) {
+          const last = coordinates.at(-1)!, step = (coordinates.length - 1) / 2499;
+          coordinates = Array.from({ length: 2499 }, (_, index) => coordinates[Math.floor(index * step)]).concat([last]);
+        }
+      } catch {
+        timedCoordinates = [];
       }
     }
     if (!coordinates.length) {
       const endpoints = [[finiteOrNull(row.starting_longitude), finiteOrNull(row.starting_latitude)], [finiteOrNull(row.ending_longitude), finiteOrNull(row.ending_latitude)]];
       if (endpoints.every(point => point[0] !== null && point[1] !== null && validCoordinate(point[0], point[1]))) coordinates = endpoints as [number, number][];
     }
+    const soundtrackWithCoordinates = soundtrack.map(song => {
+      const playedAt = song.playedAt ? Date.parse(song.playedAt) : Number.NaN;
+      if (!Number.isFinite(playedAt) || !timedCoordinates.length) return { ...song, mapCoordinate: null };
+      let nearest = timedCoordinates[0]!;
+      for (const point of timedCoordinates.slice(1)) {
+        if (Math.abs(point.recordedAtEpochMs - playedAt) < Math.abs(nearest.recordedAtEpochMs - playedAt)) nearest = point;
+      }
+      return { ...song, mapCoordinate: nearest.coordinate };
+    });
     return {
       ...summary,
       startingBatteryPercent: finiteOrNull(row.starting_battery),
@@ -718,7 +756,7 @@ export class RecorderMobileStore {
       energyUsedKwh: finiteOrNull(row.energy_used_kwh),
       tessieTag: boundedText(row.tessie_tag, 120) || null,
       driverProfile: boundedText(row.driver_profile, 120) || null,
-      soundtrack,
+      soundtrack: soundtrackWithCoordinates,
       route: coordinates.length >= 2 ? { type: "LineString" as const, coordinates } : null
     };
   }
