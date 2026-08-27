@@ -45,7 +45,7 @@ test('normal archive navigation is local-first and remote refresh is explicit', 
   assert.match(appData, /async dashboard\(refreshRemote = false\)/);
   assert.match(appData, /async journeys\(limit = 25, cursor\?: string, refreshRemote = false\)/);
   assert.match(appData, /async memories\(refreshRemote = false\)/);
-  assert.match(appData, /async musicDashboard\(refreshRemote = false\)/);
+  assert.match(appData, /async musicDashboard\(refreshRemote = false, details: JourneyDetail\[\] = \[\]\)/);
   assert.match(primaryData, /appDataClient\.dashboard\(forceRefresh\)/);
   assert.match(primaryData, /loadJourneyArchive\(8, forceRefresh\)/);
 });

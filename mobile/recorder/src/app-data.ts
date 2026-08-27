@@ -547,24 +547,13 @@ export const appDataClient = {
     }
   },
 
-  async musicDashboard(refreshRemote = false): Promise<MusicDashboardData> {
-    const connection = await loadConnection();
-    const cached = readAppCache<MusicDashboardData>(MUSIC_DASHBOARD_CACHE_KEY);
-    if (!connection || !refreshRemote) {
-      const local = localAtlasClient.musicDashboard(getCurrentUser().id);
-      if (local.recentSelections.length || local.metrics.songsOnRoad > 0) return local;
-      if (cached) return cached;
-      return local;
-    }
-    try {
-      const offset = new Date().getTimezoneOffset();
-      const data = await request<MusicDashboardData>(connection, `/api/recorder/music-dashboard?timezoneOffsetMinutes=${encodeURIComponent(String(offset))}`);
-      writeAppCache(MUSIC_DASHBOARD_CACHE_KEY, data);
-      return data;
-    } catch (error) {
-      if (cached) return cached;
-      throw error;
-    }
+  async musicDashboard(refreshRemote = false, details: JourneyDetail[] = []): Promise<MusicDashboardData> {
+    const userId = getCurrentUser().id;
+    const local = localAtlasClient.musicDashboard(userId);
+    const cities = await loadMusicCitySummary(userId, refreshRemote, details);
+    const data = { ...local, cities };
+    writeAppCache(MUSIC_DASHBOARD_CACHE_KEY, data);
+    return data;
   },
 
   async saveCollection(input: { id?: string | null; name: string; description?: string | null; driveIds: string[] }): Promise<JourneyCollection> {
@@ -705,6 +694,7 @@ import {
   computeTopArtists,
   computeMoodBreakdown,
 } from './local-atlas';
+import { loadMusicCitySummary } from './music-city-summary';
 
 /** How stale a cached Atlas snapshot can be before we rebuild it (5 minutes). */
 const ATLAS_STALE_MS = 5 * 60_000;
@@ -874,7 +864,7 @@ export const localAtlasClient = {
       topArtists: artists,
       tour: { miles: tour.miles, changePercent: tour.changePercent },
       mood,
-      cities: [],        // requires geocoding — populated in Phase 3 via Cloudflare/Nominatim
+      cities: [],        // enriched from privacy-reduced coordinates on deliberate refresh
       daily: [],         // requires historical daily aggregation — Phase 1.5
       week: { total: last7.songCount, changePercent: null },
     };

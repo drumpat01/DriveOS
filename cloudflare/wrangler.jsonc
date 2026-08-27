@@ -1,0 +1,32 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "journeydeck-edge",
+  "main": "workers/index.ts",
+  "compatibility_date": "2026-08-27",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.05,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true
+    }
+  },
+  "vars": {
+    "ENVIRONMENT": "production",
+    "NOMINATIM_USER_AGENT": "JourneyDeck-Edge/1.7 (contact@journeydeck.app)",
+    "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",
+    "SPOTIFY_REDIRECT_URIS": "journeydeck-recorder://spotify-callback,https://journeydeck.app/auth/spotify/callback"
+  },
+  "env": {
+    "preview": {
+      "name": "journeydeck-edge-preview",
+      "vars": {
+        "ENVIRONMENT": "preview",
+        "NOMINATIM_USER_AGENT": "JourneyDeck-Edge-Preview/1.7 (contact@journeydeck.app)",
+        "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",
+        "SPOTIFY_REDIRECT_URIS": "journeydeck-recorder://spotify-callback,https://journeydeck.app/auth/spotify/callback"
+      }
+    }
+  }
+}

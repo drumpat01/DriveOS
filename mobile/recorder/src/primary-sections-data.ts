@@ -334,7 +334,7 @@ export async function loadPrimarySectionsData(forceRefresh = false): Promise<Pri
   const cacheKey = primarySectionsCacheKey(getCurrentUser().id);
   const [dashboard, journeys, memories, music, vehicle] = await Promise.all([
     appDataClient.dashboard(forceRefresh).catch(() => appDataClient.localDashboard()),
-    loadJourneyArchive(8, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(forceRefresh), appDataClient.vehicleIntelligence(forceRefresh),
+    loadJourneyArchive(8, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(false), appDataClient.vehicleIntelligence(forceRefresh),
   ]);
   const detailCandidates = journeys.slice(0, 18);
   const details = (await Promise.all(detailCandidates.map(journey => {

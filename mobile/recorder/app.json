@@ -84,8 +84,11 @@
     ],
     "extra": {
       "release": {
-        "label": "Phase 2.1 — visible update identity",
-        "sequence": "P2.1"
+        "label": "Phase 3 — privacy-safe edge cities",
+        "sequence": "P3.1"
+      },
+      "edge": {
+        "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"
       },
       "eas": {
         "projectId": "ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4"

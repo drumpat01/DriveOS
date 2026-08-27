@@ -5,28 +5,17 @@
  * Operates on the Cloudflare Free Tier with zero server storage.
  */
 
-export interface TessieEnv {
-  ALLOWED_ORIGINS?: string;
-}
+import { jsonResponse, readBoundedJson, stringField } from './http.ts';
 
-export async function handleTessieVerification(request: Request, _env: TessieEnv): Promise<Response> {
+export async function handleTessieVerification(request: Request): Promise<Response> {
   if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
   }
 
   try {
-    const body = await request.json() as { apiKey?: string };
-    if (!body.apiKey || typeof body.apiKey !== 'string' || body.apiKey.trim().length === 0) {
-      return new Response(JSON.stringify({ error: 'Missing Tessie apiKey' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const cleanKey = body.apiKey.trim();
+    const body = await readBoundedJson(request, 4_096);
+    const cleanKey = body ? stringField(body, 'apiKey') : null;
+    if (!cleanKey) return jsonResponse({ error: 'Missing Tessie apiKey' }, 400, { 'Cache-Control': 'no-store' });
 
     // Verify token validity by requesting vehicles list from Tessie
     const tessieRes = await fetch('https://api.tessie.com/vehicles', {
@@ -35,39 +24,22 @@ export async function handleTessieVerification(request: Request, _env: TessieEnv
         'Authorization': `Bearer ${cleanKey}`,
         'Accept': 'application/json',
       },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!tessieRes.ok) {
-      return new Response(JSON.stringify({ 
+      return jsonResponse({
         valid: false, 
         error: 'Invalid Tessie API Key or unauthorized access' 
-      }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      }, 401, { 'Cache-Control': 'no-store' });
     }
 
-    const payload = await tessieRes.json() as { results?: Array<{ vin?: string; display_name?: string }> };
-    const vehicles = (payload.results || []).map(v => ({
-      vin: v.vin || 'unknown',
-      name: v.display_name || 'Tesla',
-    }));
-
-    return new Response(JSON.stringify({
+    const payload = await tessieRes.json() as { results?: unknown[] };
+    return jsonResponse({
       valid: true,
-      vehicles,
-      verifiedAt: new Date().toISOString(),
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-      },
-    });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || 'Internal Server Error' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+      vehicleCount: Array.isArray(payload.results) ? payload.results.length : 0,
+    }, 200, { 'Cache-Control': 'no-store' });
+  } catch {
+    return jsonResponse({ error: 'Tessie verification failed' }, 502, { 'Cache-Control': 'no-store' });
   }
 }

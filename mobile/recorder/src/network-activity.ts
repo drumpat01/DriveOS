@@ -1,4 +1,4 @@
-export type NetworkActivityCategory = 'journeydeck_server' | 'private_icloud';
+export type NetworkActivityCategory = 'journeydeck_server' | 'private_icloud' | 'privacy_edge';
 export type NetworkActivityReason =
   | 'connection_check'
   | 'archive_refresh'
@@ -6,6 +6,7 @@ export type NetworkActivityReason =
   | 'user_content'
   | 'preferences'
   | 'external_import'
+  | 'place_lookup'
   | 'private_sync';
 export type NetworkActivityOutcome = 'active' | 'succeeded' | 'failed' | 'blocked' | 'skipped';
 
@@ -36,6 +37,7 @@ export type NetworkActivitySnapshot = {
   downloadBytes: number;
   journeyDeckOperations: number;
   privateICloudOperations: number;
+  privacyEdgeOperations: number;
   byReason: Partial<Record<NetworkActivityReason, number>>;
   recentEvents: NetworkActivityEvent[];
 };
@@ -70,6 +72,7 @@ function emptyTotals() {
     downloadBytes: 0,
     journeyDeckOperations: 0,
     privateICloudOperations: 0,
+    privacyEdgeOperations: 0,
     byReason: {} as Partial<Record<NetworkActivityReason, number>>,
   };
 }
@@ -165,6 +168,7 @@ export function beginNetworkActivity(input: BeginNetworkActivityInput) {
   totals.uploadBytes += event.uploadBytes;
   totals.journeyDeckOperations += event.category === 'journeydeck_server' ? 1 : 0;
   totals.privateICloudOperations += event.category === 'private_icloud' ? 1 : 0;
+  totals.privacyEdgeOperations += event.category === 'privacy_edge' ? 1 : 0;
   totals.byReason[event.reason] = (totals.byReason[event.reason] ?? 0) + 1;
   scheduleEmit();
   let finished = false;

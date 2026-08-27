@@ -263,6 +263,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <View style={styles.networkGrid}>
         <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
         <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
+        <NetworkMetric label="PRIVATE EDGE" value={`${network.privacyEdgeOperations}`} detail="city label lookups" />
         <NetworkMetric label="TRANSFERRED" value={formatBytes(network.uploadBytes + network.downloadBytes)} detail={`${formatBytes(network.uploadBytes)} up · ${formatBytes(network.downloadBytes)} down`} />
         <NetworkMetric label="BLOCKED" value={`${network.blockedOperations}`} detail="local-only test" />
       </View>
@@ -270,11 +271,12 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         <Text style={styles.networkReasonText}>Archive {network.byReason.archive_refresh ?? 0}</Text>
         <Text style={styles.networkReasonText}>Recorder {network.byReason.recorder_mirror ?? 0}</Text>
         <Text style={styles.networkReasonText}>Imports {network.byReason.external_import ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Cities {network.byReason.place_lookup ?? 0}</Text>
         <Text style={styles.networkReasonText}>Writes {(network.byReason.user_content ?? 0) + (network.byReason.preferences ?? 0)}</Text>
       </View>
       {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
-        : <Text style={styles.networkEmpty}>No observed JourneyDeck or private iCloud activity since these counters started.</Text>}
-      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+        : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
     </View>
     <Pressable
       accessibilityRole="switch"
@@ -311,7 +313,8 @@ function NetworkMetric({ label, value, detail }: { label: string; value: string;
 
 function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
   const outcome = event.outcome === 'succeeded' ? 'DONE' : event.outcome === 'active' ? 'ACTIVE' : event.outcome.toUpperCase();
-  return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{event.category === 'private_icloud' ? 'Apple private service' : event.reason.replaceAll('_', ' ')} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
+  const source = event.category === 'private_icloud' ? 'Apple private service' : event.category === 'privacy_edge' ? 'JourneyDeck private edge' : event.reason.replaceAll('_', ' ');
+  return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{source} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
 }
 
 function ProviderHealth({ provider }: { provider: ProviderPreferences | null }) {

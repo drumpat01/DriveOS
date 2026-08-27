@@ -7,6 +7,7 @@ import {
 
 type JourneyDeckConnection = { serverUrl: string; token: string };
 type RequestOptions = { timeoutMs?: number; timeoutMessage?: string };
+type EdgeRequestOptions = RequestOptions & { operation?: string };
 
 export class JourneyDeckNetworkBlockedError extends Error {
   constructor() {
@@ -77,6 +78,45 @@ export async function requestJourneyDeckJson<T>(
     activity.finish({ outcome: 'failed' });
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(options.timeoutMessage || 'JourneyDeck took too long to respond.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function requestPrivacyEdgeJson<T>(
+  edgeUrl: string,
+  path: string,
+  body: Record<string, string>,
+  options: EdgeRequestOptions = {},
+): Promise<T> {
+  const serializedBody = JSON.stringify(body);
+  const activity = beginNetworkActivity({
+    category: 'privacy_edge',
+    reason: 'place_lookup',
+    operation: options.operation ?? 'City label lookup',
+    method: 'POST',
+    uploadBytes: requestUploadBytes(serializedBody),
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
+  try {
+    const response = await fetch(`${edgeUrl.replace(/\/$/, '')}${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      body: serializedBody,
+      headers: { accept: 'application/json', 'content-type': 'application/json', 'x-journeydeck-version': '1.7' },
+    });
+    const downloadBytes = reportedDownloadBytes(response);
+    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
+    if (!response.ok) throw new Error(payload?.error || `JourneyDeck privacy edge returned ${response.status}.`);
+    return payload as T;
+  } catch (error) {
+    activity.finish({ outcome: 'failed' });
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(options.timeoutMessage || 'The privacy-safe city lookup took too long.');
     }
     throw error;
   } finally {

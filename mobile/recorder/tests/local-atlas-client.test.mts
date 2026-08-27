@@ -90,9 +90,9 @@ assert.match(src, /endingLocation: j\.endPlaceId/, 'maps endPlaceId → endingLo
 // 7. MusicDashboard offline fields
 // ============================================================
 
-assert.match(src, /cities: \[\]/, 'cities empty pending Phase 3 geocoding');
+assert.match(src, /cities: \[\]/, 'local engine starts with an offline-safe city list');
 assert.match(src, /daily: \[\]/, 'daily empty pending Phase 1.5 aggregation');
-assert.match(src, /requires geocoding/, 'cities has TODO comment for Cloudflare geocoding');
+assert.match(src, /loadMusicCitySummary/, 'music dashboard enriches city labels through the privacy-safe Phase 3 boundary');
 
 // ============================================================
 // 8. Pagination support
@@ -121,6 +121,6 @@ assert.match(src, /if \(!connection \|\| !refreshRemote\)/, 'normal appDataClien
 assert.match(src, /localAtlasClient[\s\S]*dashboard\(userId/, 'localAtlasClient.dashboard is sync (local-first)');
 assert.match(src, /localAtlasClient\.dashboard\(getCurrentUser\(\)\.id\)/, 'live dashboard falls back to the on-device Atlas client');
 assert.match(src, /localAtlasClient\.journeys\(getCurrentUser\(\)\.id/, 'live journey history falls back to the on-device store');
-assert.match(src, /localAtlasClient\.musicDashboard\(getCurrentUser\(\)\.id\)/, 'live music dashboard falls back to on-device analytics');
+assert.match(src, /localAtlasClient\.musicDashboard\(userId\)/, 'live music dashboard is built from on-device analytics');
 
 console.log('✅  local-atlas-client: all 10 check groups passed.');
