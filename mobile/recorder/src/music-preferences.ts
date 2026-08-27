@@ -1,6 +1,6 @@
 import { getCurrentUser } from './auth';
 import { getPrivatePreference, upsertPrivatePreference } from './local-store';
-import { deleteProfileSecret, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
+import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 
 const MUSIC_PREFERENCES_KEY = 'journeydeck.music.preferences.v1';
 const LASTFM_USERNAME_KEY = 'journeydeck.music.lastfm.username.v1';
@@ -69,6 +69,14 @@ export async function markLastFmConnected(username: string) {
 export async function isLastFmConnected(username: string) {
   const connected = await loadProfileSecret(LASTFM_CONNECTED_USERNAME_KEY);
   return Boolean(username && connected && username.toLowerCase() === connected.toLowerCase());
+}
+
+export async function deleteCurrentProfileMusicSecrets(): Promise<void> {
+  await Promise.all([
+    deleteProfileSecretAndOwnedLegacy(MUSIC_PREFERENCES_KEY),
+    deleteProfileSecretAndOwnedLegacy(LASTFM_USERNAME_KEY),
+    deleteProfileSecretAndOwnedLegacy(LASTFM_CONNECTED_USERNAME_KEY),
+  ]);
 }
 
 export function toApiMusicProvider(provider: MusicProvider): ApiMusicProvider | null {

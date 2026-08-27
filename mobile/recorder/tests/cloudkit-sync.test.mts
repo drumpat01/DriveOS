@@ -32,6 +32,7 @@ assert.match(src, /collectionToCKRecord/, 'syncs collections');
 assert.match(src, /memoryToCKRecord/, 'syncs memories');
 assert.match(src, /photoToCKRecord/, 'syncs private photo assets');
 assert.match(src, /preferenceToCKRecord/, 'syncs user-scoped private preferences');
+assert.match(src, /routeArchiveToCKRecord/, 'syncs exact routes as private assets');
 
 // ============================================================
 // 2. Pure logic tests: LWW Conflict Resolution
@@ -70,7 +71,7 @@ assert.doesNotMatch(src, /coverPhotoLocalPath: memory\.coverPhotoLocalPath/, 'Cl
 assert.match(src, /resolveConflict\(localJourney, remoteJourney\)/, 'remote ingestion applies LWW conflict resolution');
 assert.match(src, /getJourney\(this\.userId, remoteJourney\.id\)/, 'conflicts are resolved only inside the active local profile');
 assert.match(src, /syncedToCloud: 1/, 'downloaded winners remain acknowledged instead of being immediately re-queued');
-assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0, MusicEntry: 1/, 'ingests journeys before music records that reference them');
+assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0, RouteArchive: 1, MusicEntry: 2/, 'ingests journey summaries before route and music records that reference them');
 
 // ============================================================
 // 4. Real private CloudKit transport
@@ -87,10 +88,12 @@ assert.match(nativeModule, /savePolicy: \.ifServerRecordUnchanged/, 'prevents a 
 assert.match(nativeModule, /changeTokenExpired/, 'recovers from expired CloudKit tokens');
 assert.match(nativeModule, /allowedRecordTypes/, 'restricts native record types');
 const deployedTypes = [...productionSchema.matchAll(/RECORD TYPE (\w+)/g)].map(match => match[1]).filter(type => type !== 'Users').sort();
-assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference'], 'checked-in schema contains every JourneyDeck private record type');
+assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference', 'RouteArchive'], 'checked-in schema contains every JourneyDeck private record type');
 assert.match(productionSchema, /RECORD TYPE Journey[\s\S]*durationMinutes DOUBLE[\s\S]*songCount INT64/, 'Journey numeric fields retain their CloudKit production types');
 assert.match(productionSchema, /RECORD TYPE MusicEntry[\s\S]*confidence DOUBLE[\s\S]*durationMs INT64/, 'Music numeric fields retain their CloudKit production types');
 assert.match(productionSchema, /RECORD TYPE Photo[\s\S]*asset ASSET[\s\S]*syncRevision INT64/, 'private photos use CloudKit assets and versioned metadata');
+assert.match(productionSchema, /RECORD TYPE RouteArchive[\s\S]*asset ASSET[\s\S]*pointCount INT64[\s\S]*sha256 STRING/, 'exact routes use checksummed private CloudKit assets');
+assert.match(src, /Crypto\.digestStringAsync[\s\S]*RouteArchive/, 'route assets are checksummed before upload');
 assert.match(nativeModule, /getCapabilitiesAsync[\s\S]*privateContentVersion/, 'new native builds advertise private-content asset support');
 assert.match(podspec, /frameworks.*CloudKit/, 'links the native CloudKit framework');
 assert.match(app, /enrichCompletedJourney[\s\S]*syncCurrentUserWithPrivateICloud/, 'queues private iCloud sync after a completed journey and its local music enrichment');

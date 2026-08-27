@@ -32,9 +32,9 @@ const requiredCapabilities = [
   'react-native-worklets',
 ] as const;
 
-test('the 1.7 native runtime contains the complete native foundation', () => {
-  assert.equal(packageJson.version, '1.7.0');
-  assert.equal(appJson.expo.version, '1.7.0');
+test('the 1.8 native runtime contains the complete native foundation', () => {
+  assert.equal(packageJson.version, '1.8.0');
+  assert.equal(appJson.expo.version, '1.8.0');
   assert.deepEqual(appJson.expo.runtimeVersion, { policy: 'appVersion' });
   assert.equal(appJson.expo.experiments?.reactCompiler, true);
 

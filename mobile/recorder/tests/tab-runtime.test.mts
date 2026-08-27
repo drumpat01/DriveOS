@@ -227,7 +227,7 @@ test('Settings exposes real Apple identity and private iCloud sync without confu
   assert.match(shell, /onPrivateCloudSync/);
   assert.match(shell, /Apple identity linked to this local profile/);
   assert.match(shell, /Private iCloud sync separately uses the iCloud account signed into this iPhone/);
-  assert.match(shell, /Raw route points, Home\/Work coordinates, Apple credentials, and local photo paths stay on this iPhone/);
+  assert.match(shell, /exact GPS route points[\s\S]*Home\/Work labels, Apple credentials, and local photo paths stay on this iPhone/);
 });
 
 test('Journey sharing has web-parity controls and never exports raw Home or Work geometry', () => {

@@ -45,6 +45,7 @@ import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
+import { deleteCurrentJourneyDeckAccount, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, upsertPlace, type LocalUser } from './local-store';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { buildSongRouteMoments } from './route-moments';
@@ -224,12 +225,13 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   const [lastFmConnected, setLastFmConnected] = useState(false);
   const [ownerSpotifyEligible, setOwnerSpotifyEligible] = useState(false);
   const [spotifyOwnerState, setSpotifyOwnerState] = useState<'not_connected' | 'connecting' | 'connected' | 'syncing'>('not_connected');
-  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+  const [currentUser] = useState(() => getCurrentUser());
   const [appleIdentityStatus, setAppleIdentityStatus] = useState<AppleIdentityStatus>('unknown');
   const [signingInWithApple, setSigningInWithApple] = useState(false);
+  const [accountActionPending, setAccountActionPending] = useState(false);
   const [privateCloud, setPrivateCloud] = useState<PrivateCloudUiState>(() => isPrivateICloudNativeAvailable()
     ? { status: 'idle', detail: 'Ready to sync privately through iCloud.' }
-    : { status: 'unavailable', detail: 'Available after installing JourneyDeck 1.7.' });
+    : { status: 'unavailable', detail: 'Available after installing JourneyDeck 1.8.' });
   const [dashboard, setDashboard] = useState<LoadState<AppDashboard>>({ status: 'loading', data: blankDashboard() });
   const [journeys, setJourneys] = useState<LoadState<JourneySummary[]>>({ status: 'loading', data: [] });
   const [journeyCursor, setJourneyCursor] = useState<string | null>(null);
@@ -376,7 +378,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
       return;
     }
     if (!isPrivateICloudNativeAvailable()) {
-      setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.7.' });
+      setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.8.' });
       return;
     }
     setPrivateCloud({ status: 'syncing', detail: 'Checking this profile’s private iCloud zone…' });
@@ -407,7 +409,15 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
     }
     Alert.alert('Create a clean test profile?', 'Your current profile and all of its data will remain unchanged. JourneyDeck will reload into a separate empty local profile.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Create test profile', onPress: () => { createIsolationTestProfile(); onProfileChanged(); } },
+      { text: 'Create test profile', onPress: () => void (async () => {
+        try {
+          await prepareForProfileSwitch();
+          createIsolationTestProfile();
+          onProfileChanged();
+        } catch (error) {
+          Alert.alert('Test profile was not created', error instanceof Error ? error.message : 'No profile data was changed.');
+        }
+      })() },
     ]);
   }, [dashboard.data.recorder.state, onProfileChanged]);
 
@@ -416,18 +426,70 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
       Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
       return;
     }
-    const user = switchActiveUser(userId);
-    if (!user) { Alert.alert('Profile unavailable', 'JourneyDeck could not find that local profile. No data was changed.'); return; }
-    onProfileChanged();
+    void (async () => {
+      try {
+        await prepareForProfileSwitch();
+        const user = switchActiveUser(userId);
+        if (!user) { Alert.alert('Profile unavailable', 'JourneyDeck could not find that local profile. No data was changed.'); return; }
+        onProfileChanged();
+      } catch (error) {
+        Alert.alert('Profile was not changed', error instanceof Error ? error.message : 'No profile data was changed.');
+      }
+    })();
   }, [dashboard.data.recorder.state, onProfileChanged]);
 
+  const signOutJourneyDeck = useCallback(() => {
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Sign-out is disabled while the recorder is active.');
+      return;
+    }
+    Alert.alert('Sign out of JourneyDeck?', 'This switches to a new empty local profile. Your current profile, private iCloud backup, and data stay intact so you can sign in again.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', onPress: () => void (async () => {
+        setAccountActionPending(true);
+        try {
+          await signOutOfJourneyDeck();
+          onProfileChanged();
+        } catch (error) {
+          Alert.alert('Sign-out did not finish', error instanceof Error ? error.message : 'Your profile was not changed.');
+          setAccountActionPending(false);
+        }
+      })() },
+    ]);
+  }, [dashboard.data.recorder.state, onProfileChanged]);
+
+  const deleteJourneyDeckAccount = useCallback(() => {
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Account deletion is disabled while the recorder is active.');
+      return;
+    }
+    Alert.alert('Delete this JourneyDeck account?', 'This permanently removes this profile’s private iCloud backup, exact routes, photos, journeys, Memories, Collections, preferences, and Keychain connections. This cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Continue', style: 'destructive', onPress: () => Alert.alert('Final confirmation', `Permanently delete ${currentUser.displayName || 'this profile'} everywhere?`, [
+        { text: 'Keep account', style: 'cancel' },
+        { text: 'Delete forever', style: 'destructive', onPress: () => void (async () => {
+          setAccountActionPending(true);
+          try {
+            await deleteCurrentJourneyDeckAccount();
+            onProfileChanged();
+          } catch (error) {
+            Alert.alert('Account was not deleted', error instanceof Error ? error.message : 'Your local profile was kept so deletion can be retried safely.');
+            setAccountActionPending(false);
+          }
+        })() },
+      ]) },
+    ]);
+  }, [currentUser.displayName, dashboard.data.recorder.state, onProfileChanged]);
+
   const connectAppleIdentity = useCallback(async () => {
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Apple sign-in can switch driver profiles, so it is disabled while the recorder is active.');
+      return;
+    }
     setSigningInWithApple(true);
     try {
-      const user = await signInWithApple();
-      setCurrentUser(user);
-      setAppleIdentityStatus('authorized');
-      await syncPrivateCloud(false);
+      await signInWithApple(prepareForProfileSwitch);
+      onProfileChanged();
     } catch (error) {
       if ((error as { code?: string }).code !== 'ERR_REQUEST_CANCELED') {
         Alert.alert('Apple sign-in did not finish', error instanceof Error ? error.message : 'Try again from Settings. Your local data was not changed.');
@@ -435,7 +497,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
     } finally {
       setSigningInWithApple(false);
     }
-  }, [syncPrivateCloud]);
+  }, [dashboard.data.recorder.state, onProfileChanged]);
 
   useEffect(() => { if (tab === 'home' || tab === 'more') void refreshDashboard(); }, [refreshDashboard, tab]);
   useEffect(() => { void refreshPrimarySections(false); }, [refreshPrimarySections]);
@@ -708,7 +770,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
               privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
               music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />}
               recorder={recorder}
-              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onTessieChanged={connected => setConnectionCapabilities(current => ({ ...current, tessieConfigured: connected }))} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
+              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onTessieChanged={connected => setConnectionCapabilities(current => ({ ...current, tessieConfigured: connected }))} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onSignOut={signOutJourneyDeck} onDeleteAccount={deleteJourneyDeckAccount} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
             />
           </View>
         </PagerView>}
@@ -1829,7 +1891,7 @@ function ConnectionsScreen({
   dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition, currentUser, appleIdentityStatus, signingInWithApple,
-  privateCloud, onAppleSignIn, onPrivateCloudSync, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onTessieChanged,
+  privateCloud, onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onTessieChanged,
 }: {
   dashboard: AppDashboard;
   provider: MusicProvider;
@@ -1839,6 +1901,7 @@ function ConnectionsScreen({
   currentUser: LocalUser;
   appleIdentityStatus: AppleIdentityStatus;
   signingInWithApple: boolean;
+  accountActionPending: boolean;
   privateCloud: PrivateCloudUiState;
   lastFmUsername: string;
   lastFmConnected: boolean;
@@ -1862,6 +1925,8 @@ function ConnectionsScreen({
   onEnableRecognition: () => void;
   onAppleSignIn: () => void;
   onPrivateCloudSync: () => void;
+  onSignOut: () => void;
+  onDeleteAccount: () => void;
 }) {
   const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
   const [editingTessie, setEditingTessie] = useState(false);
@@ -1928,12 +1993,16 @@ function ConnectionsScreen({
         </View>
         <View style={styles.privateCloudCard}>
           <Text style={styles.privateCloudTitle}>PRIVATE ICLOUD SYNC</Text>
-          <Text style={styles.privateCloudBody}>{privateCloud.detail} Journey summaries, music, collections, and memories use your private iCloud database. Raw route points, Home/Work coordinates, Apple credentials, and local photo paths stay on this iPhone.</Text>
+          <Text style={styles.privateCloudBody}>{privateCloud.detail} Journey summaries, exact GPS route points, music, collections, memories, photos, and preferences use your private iCloud database. Home/Work labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
           <Pressable onPress={() => Alert.alert('Apple identity and iCloud', 'Sign in with Apple links this local JourneyDeck profile. Private iCloud sync separately uses the iCloud account signed into this iPhone. JourneyDeck’s server does not receive these CloudKit records.', [{ text: 'Done' }])}><Text style={styles.privateCloudLearn}>How privacy works</Text></Pressable>
         </View>
         {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
         {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
         {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
+        <View style={styles.accountActions}>
+          {Boolean(currentUser.appleSubject) && <Pressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></Pressable>}
+          <Pressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></Pressable>
+        </View>
 
         <SectionHeading title="Membership" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#ff69b4' }]}>
@@ -2663,7 +2732,7 @@ const styles = StyleSheet.create({
   journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroMapFrame: { position: 'relative', overflow: 'hidden' }, journeyHeroMapShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, journeyHeroCopy: { position: 'absolute', left: 18, right: 18, bottom: 18 }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
   journeyMapHeading: { marginTop: 8, paddingHorizontal: 2, gap: 5 }, journeyMapKicker: { color: '#ff8d72', fontSize: 9, fontWeight: '900', letterSpacing: 1.65 }, journeyMapTitle: { color: '#fff8ff', fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.5 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
-  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#713e58', borderRadius: 18, padding: 15, shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5d466b', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15, shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 9 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#7f4151', backgroundColor: '#281318', shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 10 }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29', shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 8 }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47', shadowColor: '#ff4f65', shadowOpacity: 0.42, shadowRadius: 11 }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
   navDockFrame: { marginBottom: 10, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(206,82,255,0.42)', shadowColor: '#000', shadowOpacity: 0.52, shadowRadius: 21, shadowOffset: { width: 0, height: 11 } },

@@ -51,8 +51,10 @@ assert.match(appData, /return savePrivatePhoto\('collection'/, 'Collection photo
 assert.match(appData, /return savePrivatePhoto\('memory'/, 'Memory photos no longer require the JourneyDeck server');
 assert.match(appData, /upsertPrivatePreference\(userId, 'vehicle\.preferences'/, 'vehicle preferences join the private sync model');
 assert.match(nativeModule, /CKAsset\(fileURL:/, 'native CloudKit transport uploads photos as CKAsset');
-assert.match(nativeModule, /JourneyDeckPrivatePhotos/, 'downloaded CloudKit assets are copied out of the temporary staging area');
-assert.match(nativeModule, /maximumAssetBytes/, 'native photo transport enforces a size boundary');
+assert.match(nativeModule, /JourneyDeckPrivateAssets/, 'downloaded CloudKit assets are copied out of the temporary staging area');
+assert.match(nativeModule, /maximumPhotoAssetBytes/, 'native photo transport enforces a size boundary');
+assert.match(nativeModule, /remoteDeleted != localDeleted \? remoteDeleted/, 'native conflict handling makes equal-revision tombstones authoritative');
+assert.match(nativeModule, /serverRecordChangedWinner/, 'server-record-changed conflicts return the server winner for immediate local ingestion');
 assert.match(nativeModule, /savePendingToken[\s\S]*commitPendingToken/, 'native change tokens use two-phase acknowledgement');
 assert.match(shell, /<MemoriesScreen[\s\S]*onRefresh=\{\(\) => \{ void refreshMemories\(false\); void refreshPrimarySections\(false\); \}\}/, 'private-content saves refresh the narrow local catalog even if another dashboard section fails');
 

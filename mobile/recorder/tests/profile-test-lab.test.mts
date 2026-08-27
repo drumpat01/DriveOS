@@ -9,6 +9,8 @@ const profileSecrets = await readFile(new URL('../src/profile-secure-store.ts', 
 const musicPreferences = await readFile(new URL('../src/music-preferences.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
 const tessie = await readFile(new URL('../src/tessie-direct.ts', import.meta.url), 'utf8');
+const internalTesting = await readFile(new URL('../src/internal-testing.ts', import.meta.url), 'utf8');
+const eas = await readFile(new URL('../eas.json', import.meta.url), 'utf8');
 
 test('the temporary lab creates a distinct local profile and never deletes the original', () => {
   assert.match(auth, /export function createIsolationTestProfile\(\)/);
@@ -17,9 +19,17 @@ test('the temporary lab creates a distinct local profile and never deletes the o
   assert.doesNotMatch(auth, /delete.*Isolation|DELETE FROM local_users/i);
 });
 
+test('the temporary lab is excluded from production builds', () => {
+  assert.match(auth, /isInternalTestingBuild\(\)/);
+  assert.match(health, /isInternalTestingBuild\(\)/);
+  assert.match(internalTesting, /__DEV__ \|\| process\.env\.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING === '1'/);
+  assert.match(eas, /"production"[\s\S]*"EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "0"/);
+});
+
 test('profile switching is blocked during recording and remounts every profile-bound service in app', () => {
   assert.match(shell, /dashboard\.data\.recorder\.state !== 'ready'/);
   assert.match(shell, /switchActiveUser\(userId\)/);
+  assert.match(shell, /await prepareForProfileSwitch\(\)/);
   assert.match(shell, /JourneyDeckShellContent key=\{profileRevision\}/);
   assert.match(shell, /onProfileChanged\(\)/);
   const profileSwitching = shell.slice(shell.indexOf('const createProfileIsolationTest'), shell.indexOf('const connectAppleIdentity'));

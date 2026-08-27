@@ -290,6 +290,21 @@ export function writeAppCache(key: string, value: unknown) {
     ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;`, scopedKey, JSON.stringify(value), now);
 }
 
+/** Hard deletion is reserved for the explicit, confirmed account-deletion flow. */
+export function deleteCurrentProfileRecorderData(): void {
+  initializeDatabase();
+  const userId = getCurrentUser().id;
+  const prefix = `user:${userId}:`;
+  const legacyOwner = db.getFirstSync<{ value_json: string }>("SELECT value_json FROM recording_app_cache WHERE key='__legacy_cache_owner_v1';");
+  let ownsLegacyCache = false;
+  try { ownsLegacyCache = Boolean(legacyOwner && JSON.parse(legacyOwner.value_json) === userId); } catch { ownsLegacyCache = false; }
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM recording_sessions WHERE owner_user_id=?;', userId);
+    db.runSync('DELETE FROM recording_app_cache WHERE substr(key,1,?)=?;', prefix.length, prefix);
+    if (ownsLegacyCache) db.runSync("DELETE FROM recording_app_cache WHERE key NOT LIKE 'user:%';");
+  });
+}
+
 export function markRemoteCreated(sessionId: string) { initializeDatabase(); db.runSync('UPDATE recording_sessions SET remote_created=1,updated_at=? WHERE id=? AND owner_user_id=?;', new Date().toISOString(), sessionId, getCurrentUser().id); }
 export function markPointsUploaded(sessionId: string, sequences: number[]) {
   initializeDatabase();

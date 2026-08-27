@@ -13,17 +13,22 @@ export async function getCloudKitCapabilities() {
 }
 
 export async function ensureCloudKitPrivateZone(profileScope: string) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.7 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
   return JourneyDeckCloudKitModule.ensurePrivateZoneAsync(profileScope);
 }
 
+export async function deleteCloudKitPrivateZone(profileScope: string) {
+  if (!JourneyDeckCloudKitModule?.deletePrivateZoneAsync) throw new Error('Private iCloud account deletion requires the next JourneyDeck native build.');
+  return JourneyDeckCloudKitModule.deletePrivateZoneAsync(profileScope);
+}
+
 export async function pushCloudKitRecords(profileScope: string, records: Parameters<NonNullable<typeof JourneyDeckCloudKitModule>['pushRecordsAsync']>[1]) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.7 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
   return JourneyDeckCloudKitModule.pushRecordsAsync(profileScope, records);
 }
 
 export async function pullCloudKitChanges(profileScope: string) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.7 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
   return JourneyDeckCloudKitModule.pullChangesAsync(profileScope);
 }
 

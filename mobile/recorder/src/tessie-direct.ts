@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 
 import { requestPrivacyEdgeJson } from './network-request';
-import { deleteProfileSecret, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
+import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 
 const TESSIE_TOKEN_KEY = 'journeydeck.vehicle.tessie.token.v1';
 
@@ -56,6 +56,10 @@ export async function connectTessieDirect(accessToken: string) {
 
 export async function disconnectTessieDirect() {
   await deleteProfileSecret(TESSIE_TOKEN_KEY);
+}
+
+export async function deleteCurrentProfileTessieSecrets(): Promise<void> {
+  await deleteProfileSecretAndOwnedLegacy(TESSIE_TOKEN_KEY);
 }
 
 export async function syncTessieDirect(): Promise<TessieSnapshot> {

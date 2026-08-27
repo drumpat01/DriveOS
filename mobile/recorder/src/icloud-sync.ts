@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 
 import {
   ensureCloudKitPrivateZone,
+  deleteCloudKitPrivateZone,
   commitCloudKitChangeToken,
   getCloudKitCapabilities,
   getCloudKitAccountStatus,
@@ -35,6 +36,19 @@ export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
 }
 
+export async function privateCloudProfileScope(user: LocalUser): Promise<string> {
+  const stableIdentity = user.appleSubject ? `apple:${user.appleSubject}` : `local:${user.id}`;
+  return (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-profile:${stableIdentity}`)).slice(0, 48);
+}
+
+export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<void> {
+  if (!isJourneyDeckCloudKitAvailable) throw new Error('Private iCloud deletion requires the next JourneyDeck native build.');
+  const accountStatus = await getCloudKitAccountStatus();
+  if (accountStatus !== 'available') throw new Error('Private iCloud must be available before this account can be deleted safely.');
+  await deleteCloudKitPrivateZone(await privateCloudProfileScope(user));
+  recentSyncs.delete(user.appleSubject ?? user.id);
+}
+
 export async function syncCurrentUserWithPrivateICloud(options: { force?: boolean } = {}): Promise<PrivateICloudSyncResult> {
   const user = getCurrentUser();
   const profileKey = user.appleSubject ?? user.id;
@@ -56,7 +70,10 @@ export async function syncCurrentUserWithPrivateICloud(options: { force?: boolea
 
 async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
   const capabilities = await getCloudKitCapabilities();
-  const engine = new CloudKitSyncEngine(user.id, { privateContentV2: capabilities.privateContentVersion >= 2 });
+  const engine = new CloudKitSyncEngine(user.id, {
+    privateContentV2: capabilities.privateContentVersion >= 2,
+    privateRouteAssets: capabilities.privateContentVersion >= 3,
+  });
   const activity = beginNetworkActivity({
     category: 'private_icloud',
     reason: 'private_sync',
@@ -76,20 +93,19 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     }
 
     engine.setSyncInProgress();
-    const stableIdentity = user.appleSubject ? `apple:${user.appleSubject}` : `local:${user.id}`;
-    const profileScope = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-profile:${stableIdentity}`)).slice(0, 48);
+    const profileScope = await privateCloudProfileScope(user);
     await ensureCloudKitPrivateZone(profileScope);
     const pulled = await pullCloudKitChanges(profileScope);
     engine.ingestRemoteDeletions(pulled.deletedRecordNames);
-    let downloaded = engine.ingestRemoteRecords(pulled.records).updatedCount;
+    let downloaded = (await engine.ingestRemoteRecords(pulled.records)).updatedCount;
     if (capabilities.privateContentVersion >= 2) await commitCloudKitChangeToken(profileScope);
     let uploaded = 0;
     let failedUploads = 0;
     for (let batch = 0; batch < 5; batch++) {
-      const pending = engine.preparePushPayload(50);
+      const pending = await engine.preparePushPayload(50);
       if (!pending.length) break;
       const pushed = await pushCloudKitRecords(profileScope, pending);
-      if (pushed.remoteRecords.length) downloaded += engine.ingestRemoteRecords(pushed.remoteRecords).updatedCount;
+      if (pushed.remoteRecords.length) downloaded += (await engine.ingestRemoteRecords(pushed.remoteRecords)).updatedCount;
       engine.acknowledgeSuccessfulPush(pushed.savedRecordNames);
       uploaded += pushed.savedRecordNames.length;
       failedUploads += pushed.failedRecordNames.length;

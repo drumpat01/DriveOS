@@ -12,7 +12,8 @@
  *   or renamed -- new columns are added with sensible defaults.
  * - Privacy by design: raw home/work coordinates are stored ONLY here, inside
  *   the Secure Enclave-backed app sandbox. They never leave the device in plain text.
- * - CloudKit sync uses lightweight summary records; raw GPS points stay local.
+ * - Exact GPS points leave the device only as private CloudKit route assets;
+ *   they never cross the JourneyDeck application server or privacy edge.
  */
 
 import * as Crypto from 'expo-crypto';
@@ -170,6 +171,15 @@ export type QuarantinedCloudDeletion = {
   userId: LocalUserId;
   recordName: string;
   observedAt: string;
+};
+
+export type LocalRouteArchive = {
+  journeyId: string;
+  userId: LocalUserId;
+  syncRevision: number;
+  syncedToCloud: number;
+  updatedAt: string;
+  pointCount: number;
 };
 
 export type LocalAtlasSnapshot = {
@@ -392,6 +402,16 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
+  // Migration 4 -- exact private route-asset backup metadata
+  () => {
+    db.execSync(`
+      ALTER TABLE local_journeys ADD COLUMN route_synced_to_cloud INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE local_journeys ADD COLUMN route_sync_revision INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE local_journeys ADD COLUMN route_updated_at TEXT;
+      UPDATE local_journeys SET route_updated_at=updated_at WHERE route_updated_at IS NULL;
+      CREATE INDEX IF NOT EXISTS ix_lj_user_route_cloud ON local_journeys(user_id,route_synced_to_cloud,route_updated_at);
+    `);
+  },
 ];
 
 // --- Initialisation ----------------------------------------------------------
@@ -456,6 +476,15 @@ export function listLocalUsers(): LocalUser[] {
   );
 }
 
+/** Hard deletion is reserved for the explicit, confirmed account-deletion flow. */
+export function deleteLocalUserData(userId: LocalUserId): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM local_users WHERE id=?;', userId);
+    db.runSync("DELETE FROM local_preferences WHERE key='active_user_id' AND value=?;", userId);
+  });
+}
+
 export function linkLocalUserToAppleIdentity(userId: LocalUserId, input: { appleSubject: string; displayName?: string; email?: string }): LocalUser {
   initializeLocalStore();
   const existingIdentity = db.getFirstSync<LocalUser>(
@@ -472,7 +501,7 @@ export function linkLocalUserToAppleIdentity(userId: LocalUserId, input: { apple
       input.appleSubject, input.displayName ?? null, input.email ?? null, now(), userId,
     );
     if (localUser.appleSubject !== input.appleSubject) {
-      db.runSync('UPDATE local_journeys SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_journeys SET synced_to_cloud=0,route_synced_to_cloud=0 WHERE user_id=?;', userId);
       db.runSync('UPDATE local_music_entries SET synced_to_cloud=0 WHERE user_id=?;', userId);
       db.runSync('UPDATE local_collections SET synced_to_cloud=0 WHERE user_id=?;', userId);
       db.runSync('UPDATE local_memories SET synced_to_cloud=0 WHERE user_id=?;', userId);
@@ -592,15 +621,77 @@ export function insertGpsPoints(userId: LocalUserId, journeyId: string, points: 
   initializeLocalStore();
   const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
   if (!owned || !points.length) return;
+  let inserted = 0;
   db.withTransactionSync(() => {
     for (const p of points) {
-      db.runSync(
+      const result = db.runSync(
         'INSERT OR IGNORE INTO local_gps_points(journey_id,sequence,recorded_at,latitude,longitude,accuracy_meters,altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,?,?,?,?);',
         journeyId, p.sequence, p.recordedAt, p.latitude, p.longitude,
         guard(p.accuracyMeters, 0, 10_000), guard(p.altitudeMeters, -1000, 100_000),
         guard(p.headingDegrees, 0, 360), guard(p.speedMps, 0, 150),
       );
+      inserted += result.changes;
     }
+    if (inserted > 0) {
+      db.runSync(`UPDATE local_journeys SET route_synced_to_cloud=0,route_sync_revision=route_sync_revision+1,
+        route_updated_at=? WHERE id=? AND user_id=?;`, now(), journeyId, userId);
+    }
+  });
+}
+
+export function listJourneyGpsPoints(userId: LocalUserId, journeyId: string): LocalGpsPoint[] {
+  initializeLocalStore();
+  const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
+  if (!owned) return [];
+  return db.getAllSync<LocalGpsPoint>(`SELECT journey_id AS journeyId,sequence,recorded_at AS recordedAt,latitude,longitude,
+    accuracy_meters AS accuracyMeters,altitude_meters AS altitudeMeters,heading_degrees AS headingDegrees,speed_mps AS speedMps
+    FROM local_gps_points WHERE journey_id=? ORDER BY sequence;`, journeyId);
+}
+
+export function routeArchivesPendingSync(userId: LocalUserId, limit = 10): LocalRouteArchive[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalRouteArchive>(`SELECT j.id AS journeyId,j.user_id AS userId,j.route_sync_revision AS syncRevision,
+    j.route_synced_to_cloud AS syncedToCloud,COALESCE(j.route_updated_at,j.updated_at) AS updatedAt,
+    (SELECT COUNT(*) FROM local_gps_points p WHERE p.journey_id=j.id) AS pointCount
+    FROM local_journeys j WHERE j.user_id=? AND j.route_synced_to_cloud=0
+      AND EXISTS(SELECT 1 FROM local_gps_points p WHERE p.journey_id=j.id)
+    ORDER BY COALESCE(j.route_updated_at,j.updated_at) DESC LIMIT ?;`, userId, Math.max(1, Math.min(25, Math.trunc(limit))));
+}
+
+export function getRouteArchive(userId: LocalUserId, journeyId: string): LocalRouteArchive | null {
+  initializeLocalStore();
+  return db.getFirstSync<LocalRouteArchive>(`SELECT j.id AS journeyId,j.user_id AS userId,j.route_sync_revision AS syncRevision,
+    j.route_synced_to_cloud AS syncedToCloud,COALESCE(j.route_updated_at,j.updated_at) AS updatedAt,
+    (SELECT COUNT(*) FROM local_gps_points p WHERE p.journey_id=j.id) AS pointCount
+    FROM local_journeys j WHERE j.id=? AND j.user_id=?;`, journeyId, userId);
+}
+
+export function replaceJourneyGpsPointsFromCloud(
+  userId: LocalUserId,
+  journeyId: string,
+  points: Omit<LocalGpsPoint, 'journeyId'>[],
+  syncRevision: number,
+  updatedAt: string,
+): void {
+  initializeLocalStore();
+  const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
+  if (!owned) throw new Error('Cannot restore a route without its local journey summary.');
+  const validated = points.map(point => {
+    const latitude = guard(point.latitude, -90, 90);
+    const longitude = guard(point.longitude, -180, 180);
+    if (latitude == null || longitude == null) throw new Error('Cloud route contains an invalid coordinate.');
+    return { ...point, latitude, longitude };
+  });
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM local_gps_points WHERE journey_id=?;', journeyId);
+    for (const p of validated) {
+      db.runSync(`INSERT INTO local_gps_points(journey_id,sequence,recorded_at,latitude,longitude,accuracy_meters,
+        altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,?,?,?,?);`, journeyId, p.sequence, p.recordedAt,
+      p.latitude, p.longitude, guard(p.accuracyMeters, 0, 10_000),
+      guard(p.altitudeMeters, -1000, 100_000), guard(p.headingDegrees, 0, 360), guard(p.speedMps, 0, 150));
+    }
+    db.runSync(`UPDATE local_journeys SET route_synced_to_cloud=1,route_sync_revision=?,route_updated_at=?
+      WHERE id=? AND user_id=?;`, Math.max(1, Math.trunc(syncRevision)), updatedAt, journeyId, userId);
   });
 }
 
@@ -880,7 +971,7 @@ export function listPrivatePreferences(userId: LocalUserId, includeDeleted = fal
 
 export function softDeletePrivatePreference(userId: LocalUserId, key: string, deletedAt = now()): void {
   initializeLocalStore();
-  db.runSync('UPDATE local_private_preferences SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND key=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, key);
+  db.runSync("UPDATE local_private_preferences SET value_json='null',deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND key=? AND deleted_at IS NULL;", deletedAt, deletedAt, userId, key);
 }
 
 // --- Atlas snapshot ----------------------------------------------------------
@@ -952,6 +1043,23 @@ export function photosPendingSync(userId: LocalUserId, limit = 50): string[] {
 export function preferencesPendingSync(userId: LocalUserId, limit = 50): string[] {
   initializeLocalStore();
   return db.getAllSync<{ key: string }>('SELECT key FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.key);
+}
+
+export function getMusicEntry(userId: LocalUserId, id: string): LocalMusicEntry | null {
+  initializeLocalStore();
+  return db.getFirstSync<LocalMusicEntry>(`SELECT id,user_id AS userId,journey_id AS journeyId,source,played_at AS playedAt,
+    track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,external_url AS externalUrl,
+    confidence,synced_to_cloud AS syncedToCloud,created_at AS createdAt
+    FROM local_music_entries WHERE id=? AND user_id=?;`, id, userId);
+}
+
+export function markRouteArchiveRevisionsSynced(userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    for (const item of acknowledgements) {
+      db.runSync('UPDATE local_journeys SET route_synced_to_cloud=1 WHERE user_id=? AND id=? AND route_sync_revision=?;', userId, item.id, item.syncRevision);
+    }
+  });
 }
 
 export function listCollectionsIncludingDeleted(userId: LocalUserId): LocalCollection[] {
@@ -1041,6 +1149,9 @@ export function quarantineCloudDeletions(userId: LocalUserId, recordNames: strin
         const encoded = recordName.slice('preference_'.length);
         try { db.runSync('UPDATE local_private_preferences SET synced_to_cloud=0 WHERE user_id=? AND key=?;', userId, decodeURIComponent(encoded)); } catch { /* invalid names stay quarantined */ }
       }
+      if (recordName.startsWith('route_')) {
+        db.runSync('UPDATE local_journeys SET route_synced_to_cloud=0 WHERE user_id=? AND id=?;', userId, recordName.slice('route_'.length));
+      }
     }
   });
 }
@@ -1076,11 +1187,12 @@ export function localStoreDiagnostics(userId: LocalUserId): {
     quarantinedCloudDeletionCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_cloud_deletion_quarantine WHERE user_id=?;', userId)?.n ?? 0),
     pendingSyncCount: Number(db.getFirstSync<{ n: number }>(`SELECT
       (SELECT COUNT(*) FROM local_journeys WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_journeys j WHERE j.user_id=? AND j.route_synced_to_cloud=0 AND EXISTS(SELECT 1 FROM local_gps_points p WHERE p.journey_id=j.id)) +
       (SELECT COUNT(*) FROM local_music_entries WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_collections WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_memories WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_photos WHERE user_id=? AND synced_to_cloud=0) +
-      (SELECT COUNT(*) FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId, userId, userId)?.n ?? 0),
+      (SELECT COUNT(*) FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId, userId, userId, userId)?.n ?? 0),
   };
 }
 

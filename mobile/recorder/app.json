@@ -3,7 +3,7 @@
     "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Closure Bundle D — server-independent core",
-        "sequence": "P3.D"
+        "label": "Native Runtime 1.8 — private continuity",
+        "sequence": "N1.8-RC1"
       },
       "edge": {
         "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"

@@ -71,7 +71,7 @@ const userFkCount = (src.match(/user_id TEXT NOT NULL REFERENCES local_users\(id
 assert.ok(userFkCount >= 5, `at least 5 tables have user_id FK, found ${userFkCount}`);
 
 // ============================================================
-// 6. GPS points privacy (raw GPS stays local)
+// 6. GPS points privacy (the local master owns exact GPS; private CloudKit backup is separate)
 // ============================================================
 
 assert.match(src, /journey_id TEXT NOT NULL REFERENCES local_journeys\(id\) ON DELETE CASCADE/, 'GPS points deleted when journey deleted');

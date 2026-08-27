@@ -2,7 +2,7 @@ export type CloudKitAccountStatus = 'available' | 'no_account' | 'restricted' | 
 
 export type CloudTransportRecord = {
   recordName: string;
-  recordType: 'Journey' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
+  recordType: 'Journey' | 'RouteArchive' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
   fields: Record<string, string | number | boolean | null>;
   assetFilePath?: string;
   modificationDate?: string;

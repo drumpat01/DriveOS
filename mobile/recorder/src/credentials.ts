@@ -55,3 +55,19 @@ export async function saveConnection(value: Omit<Connection, 'deviceId'>): Promi
   ]);
   return { ...value, deviceId };
 }
+
+export async function deleteCurrentProfileConnection(): Promise<void> {
+  const currentUserId = getCurrentUser().id;
+  const ownerId = await SecureStore.getItemAsync(CONNECTION_OWNER_KEY, secureOptions);
+  await Promise.all([
+    SecureStore.deleteItemAsync(profileKey(SERVER_KEY), secureOptions),
+    SecureStore.deleteItemAsync(profileKey(TOKEN_KEY), secureOptions),
+  ]);
+  if (ownerId === currentUserId) {
+    await Promise.all([
+      SecureStore.deleteItemAsync(SERVER_KEY, secureOptions),
+      SecureStore.deleteItemAsync(TOKEN_KEY, secureOptions),
+      SecureStore.deleteItemAsync(CONNECTION_OWNER_KEY, secureOptions),
+    ]);
+  }
+}

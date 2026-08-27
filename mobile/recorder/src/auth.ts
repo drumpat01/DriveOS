@@ -20,8 +20,10 @@ import {
   initializeLocalStore,
   getActiveLocalUserId,
   linkLocalUserToAppleIdentity,
+  deleteLocalUserData,
   setActiveLocalUserId,
 } from './local-store';
+import { isInternalTestingBuild } from './internal-testing';
 
 export { listLocalUsers };
 
@@ -100,7 +102,7 @@ export function handleAppleSignInResult(credential: AppleAuthCredential): LocalU
 }
 
 /** Starts Apple's native authorization sheet and preserves the active profile's local data. */
-export async function signInWithApple(): Promise<LocalUser> {
+export async function signInWithApple(beforeProfileCommit?: () => Promise<void>): Promise<LocalUser> {
   if (!(await AppleAuthentication.isAvailableAsync())) throw new Error('Sign in with Apple is unavailable on this device.');
   const state = Crypto.randomUUID();
   const credential = await AppleAuthentication.signInAsync({
@@ -108,6 +110,7 @@ export async function signInWithApple(): Promise<LocalUser> {
     state,
   });
   if (credential.state !== state) throw new Error('Apple sign-in state validation failed.');
+  await beforeProfileCommit?.();
   return handleAppleSignInResult(credential);
 }
 
@@ -143,6 +146,7 @@ export function switchActiveUser(userId: LocalUserId): LocalUser | null {
 
 /** Creates a separate, non-destructive local profile for temporary release testing. */
 export function createIsolationTestProfile(): LocalUser {
+  if (!isInternalTestingBuild()) throw new Error('The Profile Test Lab is available only in internal JourneyDeck builds.');
   const suffix = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const user = ensureLocalUser({ displayName: `${ISOLATION_TEST_PROFILE_PREFIX} · ${suffix}` });
   activeUser = user;
@@ -152,4 +156,23 @@ export function createIsolationTestProfile(): LocalUser {
 
 export function isIsolationTestProfile(user = getCurrentUser()): boolean {
   return Boolean(user.displayName?.startsWith(ISOLATION_TEST_PROFILE_PREFIX));
+}
+
+/** Leaves an Apple-linked profile intact and enters a new empty local profile. */
+export function signOutToFreshLocalProfile(): LocalUser {
+  const user = ensureLocalUser({ displayName: 'Local Driver' });
+  activeUser = user;
+  setActiveLocalUserId(user.id);
+  return user;
+}
+
+/** Called only after private-cloud, file, recorder, and Keychain deletion succeeds. */
+export function finalizeActiveProfileDeletion(userId: LocalUserId): LocalUser {
+  if (getCurrentUser().id !== userId) throw new Error('The active profile changed before deletion finished.');
+  deleteLocalUserData(userId);
+  const remaining = listLocalUsers();
+  const next = remaining.find(user => !isIsolationTestProfile(user)) ?? remaining[0] ?? ensureLocalUser({ displayName: 'Local Driver' });
+  activeUser = next;
+  setActiveLocalUserId(next.id);
+  return next;
 }

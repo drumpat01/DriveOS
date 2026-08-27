@@ -8,11 +8,13 @@
  * -------------------------------------
  * 1. Uses Apple CloudKit Private Database (scoped to the user’s personal iCloud account).
  * 2. Developer/Server has ZERO access to CloudKit private records.
- * 3. Raw GPS breadcrumbs stay on the local device; only journey summaries sync to iCloud.
- * 4. Conflict resolution uses deterministic Last-Write-Wins (LWW) with updatedAt timestamps.
+ * 3. Exact GPS breadcrumbs sync only as integrity-checked private CloudKit assets.
+ * 4. Conflict resolution is revision-first for private mutable content and routes.
  * 5. Sync runs non-blockingly in the background.
  */
 
+import * as Crypto from 'expo-crypto';
+import * as FileSystem from 'expo-file-system/legacy';
 import {
   LocalUserId,
   LocalJourney,
@@ -21,18 +23,21 @@ import {
   LocalMemory,
   LocalPhoto,
   LocalPrivatePreference,
+  LocalRouteArchive,
   journeysPendingSync,
   musicEntriesPendingSync,
   collectionsPendingSync,
   memoriesPendingSync,
   photosPendingSync,
   preferencesPendingSync,
+  routeArchivesPendingSync,
   markJourneysSynced,
   markMusicEntriesSynced,
   markCollectionRevisionsSynced,
   markMemoryRevisionsSynced,
   markPhotoRevisionsSynced,
   markPreferenceRevisionsSynced,
+  markRouteArchiveRevisionsSynced,
   upsertJourney,
   upsertMusicEntry,
   upsertCollection,
@@ -40,20 +45,23 @@ import {
   upsertPhoto,
   upsertPrivatePreference,
   getJourney,
-  listJourneys,
-  listMusicEntries,
   getCollectionIncludingDeleted,
   getMemoryIncludingDeleted,
+  getMusicEntry,
   getPhotoIncludingDeleted,
   listCollectionsIncludingDeleted,
   listMemoriesIncludingDeleted,
   listPhotosIncludingDeleted,
   listPrivatePreferences,
+  listJourneyGpsPoints,
+  getRouteArchive,
+  replaceJourneyGpsPointsFromCloud,
   quarantineCloudDeletions,
 } from './local-store';
 import { resolveVersionedPrivateConflict } from './private-content-conflicts';
+import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive } from './route-archive';
 
-export type CloudKitRecordType = 'Journey' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
+export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
 
 export interface CloudKitRecord {
   recordName: string;
@@ -71,6 +79,17 @@ export interface SyncState {
 }
 
 const syncStates = new Map<LocalUserId, SyncState>();
+
+async function routeStagingDirectory(userId: LocalUserId): Promise<string> {
+  const base = FileSystem.cacheDirectory;
+  if (!base) throw new Error('JourneyDeck could not access its private route staging directory.');
+  const profileDigest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, userId);
+  return `${base}journeydeck-private-route-assets/${profileDigest}/`;
+}
+
+export async function deletePrivateRouteStagingAssets(userId: LocalUserId): Promise<void> {
+  await FileSystem.deleteAsync(await routeStagingDirectory(userId), { idempotent: true });
+}
 
 function stateFor(userId: LocalUserId): SyncState {
   return syncStates.get(userId) ?? { lastSyncAt: null, syncInProgress: false, pendingUploadCount: 0, lastError: null };
@@ -127,6 +146,56 @@ export function ckRecordToJourney(record: CloudKitRecord, userId: LocalUserId): 
     createdAt: f.startedAt ? String(f.startedAt) : new Date().toISOString(),
     updatedAt: record.modificationDate || String(f.updatedAt || new Date().toISOString()),
   };
+}
+
+export async function routeArchiveToCKRecord(archive: LocalRouteArchive): Promise<CloudKitRecord> {
+  const points = listJourneyGpsPoints(archive.userId, archive.journeyId);
+  if (points.length !== archive.pointCount) throw new Error('The local route changed while its private backup was being prepared.');
+  const payload = serializeRouteArchive(archive.journeyId, points);
+  const checksum = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, payload);
+  const directory = await routeStagingDirectory(archive.userId);
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  // One stable staging file per journey prevents old route revisions from
+  // accumulating in the app cache between iOS cache-pruning cycles.
+  const journeyDigest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, archive.journeyId);
+  const assetFilePath = `${directory}${journeyDigest}.json`;
+  await FileSystem.writeAsStringAsync(assetFilePath, payload, { encoding: FileSystem.EncodingType.UTF8 });
+  return {
+    recordName: `route_${archive.journeyId}`,
+    recordType: 'RouteArchive',
+    assetFilePath,
+    fields: {
+      journeyId: archive.journeyId,
+      formatVersion: ROUTE_ARCHIVE_FORMAT_VERSION,
+      pointCount: archive.pointCount,
+      sha256: checksum,
+      deletedAt: null,
+      syncRevision: archive.syncRevision,
+      updatedAt: archive.updatedAt,
+    },
+    modificationDate: archive.updatedAt,
+  };
+}
+
+async function readRouteArchiveRecord(record: CloudKitRecord): Promise<{
+  journeyId: string;
+  points: ReturnType<typeof parseRouteArchive>;
+  syncRevision: number;
+  updatedAt: string;
+}> {
+  const fields = record.fields;
+  const journeyId = String(fields.journeyId || '');
+  const pointCount = Number(fields.pointCount);
+  const syncRevision = Math.max(1, Math.trunc(Number(fields.syncRevision) || 1));
+  const updatedAt = String(fields.updatedAt || record.modificationDate || '');
+  const expectedChecksum = String(fields.sha256 || '').toLowerCase();
+  if (!journeyId || Number(fields.formatVersion) !== ROUTE_ARCHIVE_FORMAT_VERSION || !Number.isInteger(pointCount)
+    || pointCount < 1 || !Number.isFinite(Date.parse(updatedAt)) || !/^[a-f0-9]{64}$/.test(expectedChecksum)
+    || !record.assetFilePath) throw new Error('A private route backup record is incomplete.');
+  const payload = await FileSystem.readAsStringAsync(record.assetFilePath, { encoding: FileSystem.EncodingType.UTF8 });
+  const actualChecksum = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, payload);
+  if (actualChecksum.toLowerCase() !== expectedChecksum) throw new Error('A private route backup failed its integrity check.');
+  return { journeyId, points: parseRouteArchive(payload, journeyId, pointCount), syncRevision, updatedAt };
 }
 
 export function musicEntryToCKRecord(entry: LocalMusicEntry): CloudKitRecord {
@@ -261,11 +330,13 @@ export function resolvePrivateConflict<T extends { updatedAt: string; syncRevisi
 export class CloudKitSyncEngine {
   private userId: LocalUserId;
   private privateContentV2: boolean;
+  private privateRouteAssets: boolean;
   private preparedRevisions = new Map<string, number>();
 
-  constructor(userId: LocalUserId, options: { privateContentV2?: boolean } = {}) {
+  constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean } = {}) {
     this.userId = userId;
     this.privateContentV2 = options.privateContentV2 === true;
+    this.privateRouteAssets = options.privateRouteAssets === true;
   }
 
   public getSyncState(): SyncState {
@@ -287,19 +358,23 @@ export class CloudKitSyncEngine {
   /**
    * Prepares local records that need to be pushed to CloudKit.
    */
-  public preparePushPayload(limit = 50): CloudKitRecord[] {
+  public async preparePushPayload(limit = 50): Promise<CloudKitRecord[]> {
     const pendingJourneyIds = journeysPendingSync(this.userId, limit);
     const pendingMusicIds = musicEntriesPendingSync(this.userId, limit);
     const pendingCollectionIds = collectionsPendingSync(this.userId, limit);
     const pendingMemoryIds = memoriesPendingSync(this.userId, limit);
     const pendingPhotoIds = this.privateContentV2 ? photosPendingSync(this.userId, limit) : [];
     const pendingPreferenceKeys = this.privateContentV2 ? preferencesPendingSync(this.userId, limit) : [];
-    const { items: allJourneys } = listJourneys(this.userId, { limit: 100 });
+    const pendingRoutes = this.privateRouteAssets ? routeArchivesPendingSync(this.userId, Math.min(10, limit)) : [];
+    const pendingJourneys = pendingJourneyIds.map(id => getJourney(this.userId, id)).filter((item): item is LocalJourney => Boolean(item));
+    const pendingMusic = pendingMusicIds.map(id => getMusicEntry(this.userId, id)).filter((item): item is LocalMusicEntry => Boolean(item));
     const collections = listCollectionsIncludingDeleted(this.userId).filter(item => pendingCollectionIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
     const memories = listMemoriesIncludingDeleted(this.userId).filter(item => pendingMemoryIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
+    const routeRecords = await Promise.all(pendingRoutes.map(routeArchiveToCKRecord));
     const records = [
-      ...allJourneys.filter(item => pendingJourneyIds.includes(item.id)).map(journeyToCKRecord),
-      ...listMusicEntries(this.userId, 500).filter(item => pendingMusicIds.includes(item.id)).map(musicEntryToCKRecord),
+      ...pendingJourneys.map(journeyToCKRecord),
+      ...routeRecords,
+      ...pendingMusic.map(musicEntryToCKRecord),
       ...collections.map(collectionToCKRecord),
       ...memories.map(memoryToCKRecord),
       ...listPhotosIncludingDeleted(this.userId).filter(item => pendingPhotoIds.includes(item.id)).map(photoToCKRecord),
@@ -333,6 +408,7 @@ export class CloudKitSyncEngine {
     markMemoryRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'memory_', this.preparedRevisions));
     markPhotoRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'photo_', this.preparedRevisions));
     markPreferenceRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'preference_', this.preparedRevisions, true));
+    markRouteArchiveRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'route_', this.preparedRevisions));
     for (const name of pushedRecordNames) this.preparedRevisions.delete(name);
 
     syncStates.set(this.userId, {
@@ -347,9 +423,9 @@ export class CloudKitSyncEngine {
   /**
    * Processes incoming records downloaded from CloudKit.
    */
-  public ingestRemoteRecords(remoteRecords: CloudKitRecord[]): { updatedCount: number } {
+  public async ingestRemoteRecords(remoteRecords: CloudKitRecord[]): Promise<{ updatedCount: number }> {
     let count = 0;
-    const priority: Record<CloudKitRecordType, number> = { Journey: 0, MusicEntry: 1, Collection: 2, Memory: 3, Photo: 4, PrivatePreference: 5 };
+    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, MusicEntry: 2, Collection: 3, Memory: 4, Photo: 5, PrivatePreference: 6 };
     for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType])) {
       if (record.recordType === 'Journey') {
         const remoteJourney = ckRecordToJourney(record, this.userId);
@@ -363,6 +439,15 @@ export class CloudKitSyncEngine {
           });
           count++;
         }
+      } else if (record.recordType === 'RouteArchive') {
+        const remote = await readRouteArchiveRecord(record);
+        const local = getRouteArchive(this.userId, remote.journeyId);
+        if (!local) continue;
+        const remoteVersion = { updatedAt: remote.updatedAt, syncRevision: remote.syncRevision, deletedAt: null };
+        const localVersion = { updatedAt: local.updatedAt, syncRevision: local.syncRevision, deletedAt: null };
+        if (local.pointCount > 0 && resolvePrivateConflict(localVersion, remoteVersion) !== remoteVersion) continue;
+        replaceJourneyGpsPointsFromCloud(this.userId, remote.journeyId, remote.points, remote.syncRevision, remote.updatedAt);
+        count++;
       } else if (record.recordType === 'MusicEntry') {
         const entry = ckRecordToMusicEntry(record, this.userId);
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });
@@ -411,7 +496,8 @@ export class CloudKitSyncEngine {
   private pendingCount(): number {
     return journeysPendingSync(this.userId, 500).length + musicEntriesPendingSync(this.userId, 500).length +
       collectionsPendingSync(this.userId, 500).length + memoriesPendingSync(this.userId, 500).length +
-      photosPendingSync(this.userId, 500).length + preferencesPendingSync(this.userId, 500).length;
+      photosPendingSync(this.userId, 500).length + preferencesPendingSync(this.userId, 500).length +
+      (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0);
   }
 }
 

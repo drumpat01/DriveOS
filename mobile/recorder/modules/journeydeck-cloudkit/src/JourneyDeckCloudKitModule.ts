@@ -6,6 +6,7 @@ declare class JourneyDeckCloudKitModule extends NativeModule<{}> {
   getAccountStatusAsync(): Promise<CloudKitAccountStatus>;
   getCapabilitiesAsync?(): Promise<CloudKitCapabilities>;
   ensurePrivateZoneAsync(profileScope: string): Promise<{ ready: true }>;
+  deletePrivateZoneAsync?(profileScope: string): Promise<{ deleted: true }>;
   pushRecordsAsync(profileScope: string, records: CloudTransportRecord[]): Promise<CloudKitPushResult>;
   pullChangesAsync(profileScope: string): Promise<CloudKitPullResult>;
   commitChangeTokenAsync?(profileScope: string): Promise<void>;

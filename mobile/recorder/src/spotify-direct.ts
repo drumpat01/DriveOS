@@ -3,7 +3,7 @@ import * as Crypto from 'expo-crypto';
 import { AppState, Linking } from 'react-native';
 
 import { requestExternalProviderJson, requestPrivacyEdgeJson } from './network-request';
-import { deleteProfileSecret, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
+import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 import { getSession, recentCompletedSessionIds, saveImportedMusicForCompletedSession } from './storage';
 
 const TOKEN_KEY = 'journeydeck.music.spotify.owner-token.v1';
@@ -65,6 +65,10 @@ async function saveToken(payload: SpotifyTokenResponse, priorRefreshToken = '') 
 }
 
 export async function spotifyDirectStatus() { return (await loadToken()) ? 'connected' as const : 'not_connected' as const; }
+
+export async function deleteCurrentProfileSpotifySecrets(): Promise<void> {
+  await Promise.all([deleteProfileSecretAndOwnedLegacy(TOKEN_KEY), deleteProfileSecretAndOwnedLegacy(PENDING_KEY)]);
+}
 
 export async function beginSpotifyDirectConnection() {
   const edge = edgeUrl();

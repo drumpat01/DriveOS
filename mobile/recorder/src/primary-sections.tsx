@@ -24,6 +24,7 @@ import {
 import { getCurrentUser, isIsolationTestProfile } from './auth';
 import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
+import { isInternalTestingBuild } from './internal-testing';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
@@ -319,8 +320,9 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
     </Pressable>
     <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
-    <SectionTitle title="Profile Test Lab" detail="Temporary · non-destructive" />
-    <View style={styles.profileLabCard}>
+    {isInternalTestingBuild() && <>
+      <SectionTitle title="Profile Test Lab" detail="Internal · non-destructive" />
+      <View style={styles.profileLabCard}>
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.profileLabEyebrow}>{testProfile ? 'TEST PROFILE ACTIVE' : 'CURRENT PROFILE'}</Text><Text style={styles.profileLabTitle}>{currentUser.displayName || 'Unnamed local profile'}</Text></View>{testProfile && <Text style={[styles.profileLabResult, profileIsClean && styles.profileLabResultGood]}>{profileIsClean ? 'CLEAN' : 'HAS DATA'}</Text>}</View>
       <Text style={styles.profileLabDetail}>{testProfile ? 'Private iCloud is paused for this synthetic profile so the empty-profile check cannot download existing records.' : 'Create a separate local profile to verify that journeys, recorder state, screen caches, and owner backup do not carry over.'}</Text>
       <View style={styles.profileLabGrid}>
@@ -338,7 +340,8 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         <Pressable style={styles.profileLabPrimary} onPress={onCreateProfileTest}><Text style={styles.profileLabPrimaryText}>Create clean test profile</Text></Pressable>
         <Text style={styles.profileLabNote}>This never deletes, merges, or edits your current data. The test profile remains separate until this temporary lab is removed.</Text>
       </>}
-    </View>
+      </View>
+    </>}
     <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
     <View style={styles.retentionCard}>
       <View style={styles.retentionChoiceRow}>
@@ -366,7 +369,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
     </View>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
-    <Text style={styles.privacyNote}>Safe retries never erase local data. Raw route coordinates, Home/Work locations, Apple credentials, and local photo paths stay on this iPhone.</Text>
+    <Text style={styles.privacyNote}>Safe retries never erase local data. Exact routes can be backed up only to your private iCloud database; they never go to JourneyDeck’s server or privacy edge. Saved-place labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
 }
 
