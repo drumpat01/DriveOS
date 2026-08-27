@@ -8,7 +8,15 @@ const headers = { authorization: `Bearer ${recorderToken}` };
 
 test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, and durable provider preferences", async () => {
   const fixture = fixtureDatabase();
-  const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", recorderToken, recorderDurableTurso: false });
+  const tessieFetch: typeof fetch = async input => {
+    const url = new URL(String(input)), start = Number(url.searchParams.get('from')) + 60, end = Number(url.searchParams.get('to')) - 60;
+    return Response.json({ results: [
+      { timestamp: start, latitude: 32.8, longitude: -97.4 },
+      { timestamp: Math.floor((start + end) / 2), latitude: 32.95, longitude: -97.1 },
+      { timestamp: end, latitude: 32.82, longitude: -96.9 },
+    ] });
+  };
+  const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", recorderToken, recorderDurableTurso: false, tessieToken: 'test-tessie-token', tessieFetch });
   try {
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api/recorder/dashboard" })).statusCode, 401);
 
@@ -129,6 +137,11 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.equal(secondPage.statusCode, 200, secondPage.body);
     const secondDriveId = JSON.parse(secondPage.body).items[0].id;
     assert.notEqual(secondDriveId, driveId);
+    runtime.database.prepare("UPDATE vehicles SET vin='VIN-HISTORICAL-ROUTE',provider='tessie' WHERE id=(SELECT vehicle_id FROM drives WHERE id=?)").run(secondDriveId);
+    runtime.database.prepare("UPDATE drives SET provider='tessie' WHERE id=?").run(secondDriveId);
+    const tessieDetail = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys/${secondDriveId}`, headers });
+    assert.equal(tessieDetail.statusCode, 200, tessieDetail.body);
+    assert.deepEqual(JSON.parse(tessieDetail.body).route.coordinates, [[-97.4, 32.8], [-97.1, 32.95], [-96.9, 32.82]]);
     const badCursor = await runtime.app.inject({ method: "GET", url: "/api/recorder/journeys?cursor=not-a-cursor", headers });
     assert.equal(badCursor.statusCode, 400, badCursor.body);
 
@@ -182,6 +195,8 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     const detailBody = JSON.parse(detail.body);
     assert.equal(detailBody.soundtrack.length, 2);
     assert.ok(detailBody.soundtrack.some((song: any) => song.source === "shazam" && song.track === "Night Drive"));
+    assert.deepEqual(detailBody.soundtrack.find((song: any) => song.track === "Night Drive").mapCoordinate, [-97.3501, 32.8701]);
+    assert.deepEqual(detailBody.soundtrack.find((song: any) => song.track === "Archived Song").mapCoordinate, [-97.3501, 32.8701]);
     assert.equal(detailBody.route.type, "LineString");
     assert.equal(detailBody.route.coordinates.length, 3);
     assert.equal(detailBody.rawStartingLocation, "Recorder location");

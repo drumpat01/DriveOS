@@ -13,6 +13,7 @@ import { getSpotifyPlayerSession, startSpotifyPlaybackAuthorization } from "./sp
 import { RecorderStore, type RecorderPoint } from "./recorder.js";
 import { RecorderMobileStore } from "./recorder-mobile.js";
 import { registerRecorderMobileRoutes } from "./recorder-mobile-routes.js";
+import { loadTessieRouteCoordinates } from "./tessie-route.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
@@ -43,14 +44,19 @@ function requestOriginAllowed(req: FastifyRequest, publicOrigin: string) {
   }
 }
 
-type CreateAppOverrides = Partial<typeof defaultConfig> & { lastFmFetch?: typeof fetch };
+type CreateAppOverrides = Partial<typeof defaultConfig> & { lastFmFetch?: typeof fetch; tessieFetch?: typeof fetch };
 
 export async function createApp(overrides: CreateAppOverrides = {}) {
-  const { lastFmFetch, ...configOverrides } = overrides;
+  const { lastFmFetch, tessieFetch, ...configOverrides } = overrides;
   const cfg = { ...defaultConfig, ...configOverrides }, database = openDatabase(cfg.databasePath); applyMigrations(database, cfg.root);
   const store = new AtlasStore(database, cfg.householdId, cfg.databasePath, cfg.root, cfg.atlasDurableTurso ? tursoAtlasDurableState : undefined);
   const recorder = new RecorderStore(database, cfg.householdId, cfg.recorderDurableTurso);
-  const recorderMobile = new RecorderMobileStore(database, cfg.householdId, cfg.recorderDurableTurso);
+  const recorderMobile = new RecorderMobileStore(
+    database,
+    cfg.householdId,
+    cfg.recorderDurableTurso,
+    cfg.tessieToken ? input => loadTessieRouteCoordinates(input, cfg.tessieToken, tessieFetch) : undefined,
+  );
   const app = Fastify({ logger: { level: process.env.DRIVEOS_NODE_LOG_LEVEL || "info", redact: ["req.headers.cookie", "req.headers.authorization", "req.headers.x-driveos-sync-token", "req.body.password", "res.headers.set-cookie"] }, bodyLimit: 4 * 1024 * 1024, trustProxy: false });
   await app.register(compress, { global: true, threshold: 1024, encodings: ["br", "gzip", "identity"] });
   app.decorateRequest("principal", null);
