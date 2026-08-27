@@ -1,4 +1,6 @@
 import { readAppCache, writeAppCache } from './storage';
+import { getCurrentUser } from './auth';
+import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 
 const RECORDING_MODE_KEY = 'recording-mode-preferences-v1';
 
@@ -16,7 +18,7 @@ function isRecordingMode(value: unknown): value is RecordingMode {
 }
 
 export function loadRecordingModePreferences(): RecordingModePreferences {
-  const stored = readAppCache<Partial<RecordingModePreferences>>(RECORDING_MODE_KEY);
+  const stored = getPrivatePreference<Partial<RecordingModePreferences>>(getCurrentUser().id, 'recording.mode') ?? readAppCache<Partial<RecordingModePreferences>>(RECORDING_MODE_KEY);
   if (!stored || !isRecordingMode(stored.mode)) return emptyPreferences;
   return { mode: stored.mode, onboardingCompleted: stored.onboardingCompleted === true };
 }
@@ -27,6 +29,7 @@ export function saveRecordingModePreferences(preferences: RecordingModePreferenc
     onboardingCompleted: preferences.onboardingCompleted === true && isRecordingMode(preferences.mode),
   } satisfies RecordingModePreferences;
   writeAppCache(RECORDING_MODE_KEY, next);
+  upsertPrivatePreference(getCurrentUser().id, 'recording.mode', next);
   listeners.forEach(listener => listener(next));
   return next;
 }

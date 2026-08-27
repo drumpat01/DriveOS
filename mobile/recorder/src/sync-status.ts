@@ -1,4 +1,4 @@
-export type SyncStage = 'idle' | 'saving' | 'syncing' | 'synced' | 'retry';
+export type SyncStage = 'idle' | 'saving' | 'saved' | 'syncing' | 'synced' | 'retry';
 
 export type SyncPresentation = {
   title: string;
@@ -13,6 +13,12 @@ const presentations: Record<Exclude<SyncStage, 'idle'>, SyncPresentation> = {
     detail: 'Stopping GPS and securing the final point.',
     color: '#c2b3ff',
     spinning: true,
+  },
+  saved: {
+    title: 'Saved on this iPhone',
+    detail: 'The journey is already in your local archive. Optional backup continues in the background.',
+    color: '#43e6ae',
+    spinning: false,
   },
   syncing: {
     title: 'Saved on this iPhone',

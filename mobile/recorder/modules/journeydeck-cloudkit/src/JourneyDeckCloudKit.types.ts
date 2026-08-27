@@ -2,10 +2,13 @@ export type CloudKitAccountStatus = 'available' | 'no_account' | 'restricted' | 
 
 export type CloudTransportRecord = {
   recordName: string;
-  recordType: 'Journey' | 'MusicEntry' | 'Collection' | 'Memory';
+  recordType: 'Journey' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
   fields: Record<string, string | number | boolean | null>;
+  assetFilePath?: string;
   modificationDate?: string;
 };
+
+export type CloudKitCapabilities = { privateContentVersion: number };
 
 export type CloudKitPushResult = {
   savedRecordNames: string[];

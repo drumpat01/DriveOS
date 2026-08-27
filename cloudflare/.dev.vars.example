@@ -1,0 +1,5 @@
+# Used only to generate and check the Worker binding types locally.
+# Set the real value with `wrangler secret put SPOTIFY_CLIENT_ID --env preview`.
+SPOTIFY_CLIENT_ID="replace-with-spotify-client-id"
+# Public Last.fm API key. Configure the real value with Wrangler secrets.
+LASTFM_API_KEY="replace-with-lastfm-api-key"

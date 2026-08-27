@@ -7,45 +7,43 @@
  * Zero logs, zero analytics tracking on user locations.
  */
 
-export interface PlacesEnv {
-  NOMINATIM_USER_AGENT?: string;
-}
+import { jsonResponse, readBoundedJson, stringField } from './http.ts';
+import { upstreamTimeout } from './edge-policy.ts';
 
-export async function handlePlacesLookup(request: Request, env: PlacesEnv): Promise<Response> {
-  if (request.method !== 'GET') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
+const CITY_GRID_DECIMALS = 2;
+const CITY_CACHE_SECONDS = 30 * 24 * 60 * 60;
+const CITY_COORDINATE = /^-?\d{1,3}(?:\.\d{1,2})?$/;
+
+export async function handlePlacesLookup(request: Request, env: Pick<Env, 'NOMINATIM_USER_AGENT' | 'UPSTREAM_TIMEOUT_MS'>, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
+  if (request.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
   }
 
-  const url = new URL(request.url);
-  const latStr = url.searchParams.get('lat');
-  const lngStr = url.searchParams.get('lng');
+  const body = await readBoundedJson(request, 1_024);
+  const latStr = body ? stringField(body, 'lat') : null;
+  const lngStr = body ? stringField(body, 'lng') : null;
 
-  if (!latStr || !lngStr) {
-    return new Response(JSON.stringify({ error: 'Missing lat or lng query parameters' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (!latStr || !lngStr || !CITY_COORDINATE.test(latStr) || !CITY_COORDINATE.test(lngStr)) {
+    return jsonResponse({ error: 'Coordinates must already be reduced to two decimal places' }, 400, { 'Cache-Control': 'no-store' });
   }
 
   const rawLat = parseFloat(latStr);
   const rawLng = parseFloat(lngStr);
 
-  if (isNaN(rawLat) || isNaN(rawLng) || rawLat < -90 || rawLat > 90 || rawLng < -180 || rawLng > 180) {
-    return new Response(JSON.stringify({ error: 'Invalid coordinate bounds' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
+  if (!Number.isFinite(rawLat) || !Number.isFinite(rawLng) || rawLat < -90 || rawLat > 90 || rawLng < -180 || rawLng > 180) {
+    return jsonResponse({ error: 'Invalid coordinate bounds' }, 400, { 'Cache-Control': 'no-store' });
   }
 
-  // Fuzz to 3 decimal places (~110m grid) for privacy and edge cache efficiency
-  const fuzzedLat = rawLat.toFixed(3);
-  const fuzzedLng = rawLng.toFixed(3);
+  // Defense in depth: the iPhone reduces precision before transmission, and the
+  // edge enforces the same city-level grid before calling the upstream service.
+  const fuzzedLat = rawLat.toFixed(CITY_GRID_DECIMALS);
+  const fuzzedLng = rawLng.toFixed(CITY_GRID_DECIMALS);
+  const cacheKey = new Request(`https://journeydeck-city-cache.invalid/${fuzzedLat}/${fuzzedLng}`);
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
 
-  const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${fuzzedLat}&lon=${fuzzedLng}&zoom=14&addressdetails=1`;
-  const userAgent = env.NOMINATIM_USER_AGENT || 'JourneyDeck-Edge/1.6 (contact@journeydeck.app)';
+  const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${fuzzedLat}&lon=${fuzzedLng}&zoom=10&addressdetails=1&accept-language=en`;
+  const userAgent = env.NOMINATIM_USER_AGENT || 'JourneyDeck-Edge/1.7 (contact@journeydeck.app)';
 
   try {
     const geoRes = await fetch(nominatimUrl, {
@@ -54,18 +52,15 @@ export async function handlePlacesLookup(request: Request, env: PlacesEnv): Prom
         'User-Agent': userAgent,
         'Accept': 'application/json',
       },
-      // Cache this at the Cloudflare edge for 24 hours (86,400 seconds)
       cf: {
-        cacheTtl: 86400,
+        cacheTtl: CITY_CACHE_SECONDS,
         cacheEverything: true,
       },
-    } as any);
+      signal: AbortSignal.timeout(upstreamTimeout(env, 8_000)),
+    });
 
     if (!geoRes.ok) {
-      return new Response(JSON.stringify({ error: 'Upstream geocoding service unavailable' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonResponse({ error: 'Upstream geocoding service unavailable' }, 502, { 'Cache-Control': 'no-store', 'Retry-After': '60' });
     }
 
     const payload = await geoRes.json() as {
@@ -90,24 +85,16 @@ export async function handlePlacesLookup(request: Request, env: PlacesEnv): Prom
 
     const label = state ? `${city}, ${state}` : `${city}, ${country}`;
 
-    return new Response(JSON.stringify({
+    const response = jsonResponse({
       city,
       state,
       country,
       label,
-      fuzzedLat: parseFloat(fuzzedLat),
-      fuzzedLng: parseFloat(fuzzedLng),
-    }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=86400, s-maxage=86400',
-      },
-    });
-  } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || 'Geocoding request failed' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+      attribution: '© OpenStreetMap contributors',
+    }, 200, { 'Cache-Control': `public, max-age=${CITY_CACHE_SECONDS}, s-maxage=${CITY_CACHE_SECONDS}` });
+    ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+    return response;
+  } catch {
+    return jsonResponse({ error: 'Geocoding request failed' }, 502, { 'Cache-Control': 'no-store', 'Retry-After': '60' });
   }
 }

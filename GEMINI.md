@@ -86,8 +86,8 @@ The project is structured as a **modular monolith** with hybrid multi-target run
 ## 6. Integration Overview
 
 - **Tessie**: Vehicle status, telemetry, charging sessions, and drive history. Ingested via background workers with bounded sync windows.
-- **Spotify**: Primary active music service for listening history, playback SDK integration, and album artwork proxying (`/api/artwork`).
-- **Last.fm**: Active synchronization has been removed; legacy historical compatibility and read paths remain supported.
+- **Spotify**: Direct Web API history is an owner-only development capability and must never be presented as the public mobile path. Tokens remain in the owner iPhone Keychain; the stateless edge performs PKCE exchange only.
+- **Last.fm**: Public mobile Spotify history uses bounded recent-scrobble requests through the stateless privacy edge. The iPhone performs journey matching, deduplication, persistence, and private iCloud sync. Do not send route coordinates, Apple identity, JourneyDeck records, or Last.fm credentials to the edge. Public/commercial release remains gated on written Last.fm permission.
 - **Foursquare**: Place name enrichment for unnamed coordinates, subject to strict rate limits and caching rules.
 - **OpenFreeMap / OpenStreetMap**: Self-hosted/embedded vector tiles for route and place maps (no API key required).
 
