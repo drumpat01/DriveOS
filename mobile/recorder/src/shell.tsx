@@ -265,7 +265,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let finishingSpotify = false;
     const finish = (url: string) => {
+      if (finishingSpotify || !url.startsWith('journeydeck-recorder://spotify-callback')) return;
+      finishingSpotify = true;
       void finishSpotifyDirectConnection(url).then(handled => {
         if (!handled) return;
         setSpotifyOwnerState('connected');
@@ -273,7 +276,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       }).catch(error => {
         setSpotifyOwnerState('not_connected');
         Alert.alert('Spotify did not connect', error instanceof Error ? error.message : 'Try again from Settings.');
-      });
+      }).finally(() => { finishingSpotify = false; });
     };
     const subscription = Linking.addEventListener('url', event => finish(event.url));
     void Linking.getInitialURL().then(url => { if (url) finish(url); });

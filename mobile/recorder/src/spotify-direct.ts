@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 
 import { requestExternalProviderJson, requestPrivacyEdgeJson } from './network-request';
 import { getSession, recentCompletedSessionIds, saveImportedMusicForCompletedSession } from './storage';
@@ -29,6 +29,22 @@ function httpsUrl(value: unknown) {
   if (!candidate) return null;
   try { return new URL(candidate).protocol === 'https:' ? candidate : null; }
   catch { return null; }
+}
+
+async function waitForResumedNetwork() {
+  if (AppState.currentState !== 'active') {
+    await new Promise<void>(resolve => {
+      const timeout = setTimeout(() => { subscription.remove(); resolve(); }, 5_000);
+      const subscription = AppState.addEventListener('change', state => {
+        if (state !== 'active') return;
+        clearTimeout(timeout);
+        subscription.remove();
+        resolve();
+      });
+    });
+  }
+  // iOS can report the app active before URLSession has fully resumed after OAuth.
+  await new Promise<void>(resolve => setTimeout(resolve, 750));
 }
 
 async function loadToken() {
@@ -68,14 +84,21 @@ export async function finishSpotifyDirectConnection(callbackUrl: string) {
   const callback = new URL(callbackUrl), raw = await SecureStore.getItemAsync(PENDING_KEY, secureOptions);
   if (!raw) throw new Error('The Spotify connection request expired. Try again.');
   const pending = JSON.parse(raw) as SpotifyPending;
-  await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
-  if (Date.now() - pending.createdAt > 10 * 60_000 || callback.searchParams.get('state') !== pending.state) throw new Error('Spotify returned an invalid connection state.');
+  if (Date.now() - pending.createdAt > 10 * 60_000 || callback.searchParams.get('state') !== pending.state) {
+    await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
+    throw new Error('Spotify returned an invalid connection state.');
+  }
   const code = callback.searchParams.get('code');
-  if (!code || callback.searchParams.get('error')) throw new Error('Spotify access was not approved.');
+  if (!code || callback.searchParams.get('error')) {
+    await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
+    throw new Error('Spotify access was not approved.');
+  }
   const edge = edgeUrl();
   if (!edge) throw new Error('JourneyDeck privacy edge is not configured.');
+  await waitForResumedNetwork();
   const payload = await requestPrivacyEdgeJson<SpotifyTokenResponse>(edge, '/api/auth/spotify/token', { grant_type: 'authorization_code', code, code_verifier: pending.verifier, redirect_uri: pending.redirectUri }, { reason: 'external_import', operation: 'Spotify owner connection', timeoutMs: 15_000 });
   await saveToken(payload);
+  await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
   return true;
 }
 
