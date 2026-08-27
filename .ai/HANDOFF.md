@@ -1,5 +1,11 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Visible preview/OTA identity — August 27, 2026
+
+- Added a prominent `Version & update` panel to Data Health so a tester can identify the exact code currently running. It reports the human release sequence/label, `Live Metro` vs. `Published OTA` vs. `Embedded build`, native app version and build number, runtime version, channel when Expo can truthfully provide one, short and full OTA UUID, publication time, and whether a newer update is downloaded and waiting for restart.
+- Added the OTA-carried release label `P2.1 — Phase 2.1 — visible update identity` to Expo config. Future preview publications should update both `extra.release.sequence` and `extra.release.label` so screenshots remain human-readable while the immutable OTA UUID provides exact identification.
+- Verification passed: TypeScript; complete mobile suite 77/77; Expo Doctor 21/21; production iOS export (11 assets, 4.1 MB bundle); and live Tailscale Metro bundle. The change is available through live Metro but has not been committed, pushed, or published as an OTA.
+
 ## Server Independence Phase 2 — on-device finish and quiet local reads — August 27, 2026
 
 - Reversed recorder ownership so manual and automatic journeys finish into the active user's SQLite archive before any server work. Completion immediately writes the journey summary, exact GPS route, captured music, and rebuilt Atlas snapshot; the UI now presents `Saved on this iPhone` instead of waiting for JourneyDeck.

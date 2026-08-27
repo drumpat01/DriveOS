@@ -7,6 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 
 import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
 import { getLiveRecorderSnapshot, type LiveRecorderSnapshot } from './storage';
@@ -222,11 +224,33 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   onRefresh: () => void;
   onCloudSync: () => void;
 }) {
+  const updates = Updates.useUpdates();
+  const running = updates.currentlyRunning;
+  const configuredRelease = Constants.expoConfig?.extra?.release as { label?: string; sequence?: string } | undefined;
+  const launchKind = __DEV__ ? 'Live Metro' : running.isEmbeddedLaunch ? 'Embedded build' : 'Published OTA';
+  const updateIdentity = running.updateId ? running.updateId.slice(0, 8) : (__DEV__ ? 'development' : 'embedded');
+  const nativeVersion = Constants.expoConfig?.version ?? 'Unknown';
+  const nativeBuild = Constants.platform?.ios?.buildNumber ?? 'Unknown';
+  const runtime = running.runtimeVersion ?? Updates.runtimeVersion ?? 'Unknown';
+  const channel = running.channel ?? Updates.channel;
+  const releaseLabel = configuredRelease?.label ?? 'JourneyDeck release';
   const provider = dashboard.providerPreferences;
   const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
   const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
   useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+    <SectionTitle title="Version & update" detail="What is running now" />
+    <View style={styles.releaseCard}>
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
+      <View style={styles.releaseGrid}>
+        <ReleaseMetric label="APP" value={nativeVersion} detail={`native build ${nativeBuild}`} />
+        <ReleaseMetric label="RUNTIME" value={runtime} detail={channel ? `${channel} channel` : 'no fixed channel'} />
+        <ReleaseMetric label="UPDATE ID" value={updateIdentity} detail={running.updateId ? running.updateId : 'No published OTA UUID in Metro'} wide />
+      </View>
+      <Text style={styles.releaseDate}>{running.createdAt ? `Published ${formatReleaseDate(running.createdAt)}` : 'Loaded directly from the local development server'}</Text>
+      {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
+      <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
+    </View>
     <View style={styles.healthHero}><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
@@ -271,6 +295,14 @@ function formatBytes(bytes: number) {
   if (bytes < 1_024) return `${bytes} B`;
   if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+function formatReleaseDate(value: Date) {
+  return value.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function ReleaseMetric({ label, value, detail, wide = false }: { label: string; value: string; detail: string; wide?: boolean }) {
+  return <View style={[styles.releaseMetric, wide && styles.releaseMetricWide]}><Text style={styles.releaseMetricLabel}>{label}</Text><Text style={styles.releaseMetricValue}>{value}</Text><Text style={styles.releaseMetricDetail} numberOfLines={wide ? 1 : 2}>{detail}</Text></View>;
 }
 
 function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -464,6 +496,20 @@ const styles = StyleSheet.create({
   searchKindText: { color: '#fff', fontSize: 20, fontWeight: '900' },
   searchType: { color: '#a77abc', fontSize: 8, fontWeight: '900', letterSpacing: 1.1, marginBottom: 3 },
   healthHero: { borderRadius: 26, backgroundColor: '#0b1714', borderWidth: 1, borderColor: '#255a4c', padding: 22, marginBottom: 12 },
+  releaseCard: { borderRadius: 24, backgroundColor: '#100918', borderWidth: 1, borderColor: '#6e3c8a', padding: 17, marginBottom: 14 },
+  releaseSequence: { color: '#cf8cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.6, marginBottom: 5 },
+  releaseLabel: { color: '#fff7ff', fontSize: 18, lineHeight: 23, fontWeight: '900', paddingRight: 8 },
+  releaseKindBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#8051a0', backgroundColor: '#21102d', paddingHorizontal: 9, paddingVertical: 6 },
+  releaseKindText: { color: '#d9a6ff', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  releaseGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 15 },
+  releaseMetric: { width: '48.5%', borderRadius: 15, backgroundColor: '#09050d', borderWidth: 1, borderColor: '#302039', padding: 10 },
+  releaseMetricWide: { width: '100%' },
+  releaseMetricLabel: { color: '#9f79b2', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 },
+  releaseMetricValue: { color: '#fff8ff', fontSize: 17, fontWeight: '900', marginTop: 3 },
+  releaseMetricDetail: { color: '#807086', fontSize: 9, lineHeight: 13, marginTop: 2 },
+  releaseDate: { color: '#b6a5bc', fontSize: 11, fontWeight: '700', marginTop: 13 },
+  releasePending: { color: '#ffbc6f', fontSize: 11, lineHeight: 16, fontWeight: '800', marginTop: 9 },
+  releaseHelp: { color: '#746879', fontSize: 10, lineHeight: 15, marginTop: 8 },
   healthHeroValue: { color: '#5de0b9', fontSize: 31, fontWeight: '900', letterSpacing: -0.7 },
   healthRow: { borderRadius: 19, backgroundColor: '#0b070f', borderWidth: 1, borderColor: '#302038', padding: 15, marginBottom: 9, flexDirection: 'row', gap: 12 },
   healthDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#ff7b62', marginTop: 5 },

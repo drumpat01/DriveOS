@@ -83,6 +83,10 @@
       "expo-apple-authentication"
     ],
     "extra": {
+      "release": {
+        "label": "Phase 2.1 — visible update identity",
+        "sequence": "P2.1"
+      },
       "eas": {
         "projectId": "ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4"
       }
