@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Bundle B — vehicle edge",
-        "sequence": "P3.4"
+        "label": "Bundle C — private content",
+        "sequence": "P3.5"
       },
       "edge": {
         "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"

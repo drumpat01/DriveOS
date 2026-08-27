@@ -1,4 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
+import { getCurrentUser } from './auth';
+import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 
 const MUSIC_PREFERENCES_KEY = 'journeydeck.music.preferences.v1';
 const LASTFM_USERNAME_KEY = 'journeydeck.music.lastfm.username.v1';
@@ -23,6 +25,11 @@ function isMusicProvider(value: unknown): value is MusicProvider {
 
 export async function loadMusicPreferences(): Promise<MusicPreferences> {
   try {
+    const local = getPrivatePreference<Partial<MusicPreferences>>(getCurrentUser().id, 'music.capture');
+    if (local) return {
+      provider: isMusicProvider(local.provider) ? local.provider : null,
+      onboardingCompleted: local.onboardingCompleted === true && isMusicProvider(local.provider),
+    };
     const raw = await SecureStore.getItemAsync(MUSIC_PREFERENCES_KEY, secureOptions);
     if (!raw) return emptyPreferences;
     const parsed = JSON.parse(raw) as { provider?: unknown; onboardingCompleted?: unknown };
@@ -37,6 +44,7 @@ export async function loadMusicPreferences(): Promise<MusicPreferences> {
 
 export async function saveMusicPreferences(preferences: MusicPreferences) {
   await SecureStore.setItemAsync(MUSIC_PREFERENCES_KEY, JSON.stringify(preferences), secureOptions);
+  upsertPrivatePreference(getCurrentUser().id, 'music.capture', preferences);
 }
 
 export async function loadLastFmUsername() {
