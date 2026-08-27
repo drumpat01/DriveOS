@@ -1,5 +1,11 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## CloudKit production schema — August 27, 2026
+
+- Real-device private iCloud testing reached CloudKit successfully but returned `0 uploaded · 0 downloaded · 4 will retry`; all four per-record saves were rejected because the JourneyDeck record types had never been deployed beyond the default `Users` development schema.
+- Imported the checked-in `mobile/recorder/cloudkit/journeydeck-development.ckdb` schema into `iCloud.com.journeydeck.recorder` Development after Apple validation passed, then deployed it successfully to Production. The deployment created `Journey`, `MusicEntry`, `Collection`, and `Memory`, added their exact privacy-safe fields, preserved `Users`, and changed only the `_creator`/`_world` grants required for the new types; there were no deletions or indexes.
+- Added schema-drift assertions to the CloudKit sync test. Physical acceptance is pending: tap `Retry private iCloud sync` and confirm the four queued records upload with zero remaining retries. No native build or OTA is required for the server-side schema change.
+
 ## Visible preview/OTA identity — August 27, 2026
 
 - Added a prominent `Version & update` panel to Data Health so a tester can identify the exact code currently running. It reports the human release sequence/label, `Live Metro` vs. `Published OTA` vs. `Embedded build`, native app version and build number, runtime version, channel when Expo can truthfully provide one, short and full OTA UUID, publication time, and whether a newer update is downloaded and waiting for restart.

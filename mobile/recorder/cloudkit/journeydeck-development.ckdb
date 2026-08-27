@@ -1,0 +1,97 @@
+DEFINE SCHEMA
+
+RECORD TYPE Users (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    roles LIST<INT64>,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE Journey (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    averageSpeedMph DOUBLE,
+    durationMinutes DOUBLE,
+    endedAt STRING,
+    endPlaceId STRING,
+    id STRING,
+    legacyDriveId STRING,
+    maxSpeedMph DOUBLE,
+    miles DOUBLE,
+    provider STRING,
+    songCount INT64,
+    startedAt STRING,
+    startPlaceId STRING,
+    updatedAt STRING,
+    vehicleName STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE MusicEntry (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    album STRING,
+    artist STRING,
+    artworkUrl STRING,
+    confidence DOUBLE,
+    createdAt STRING,
+    durationMs INT64,
+    externalUrl STRING,
+    id STRING,
+    journeyId STRING,
+    playedAt STRING,
+    source STRING,
+    track STRING,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE Collection (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    createdAt STRING,
+    description STRING,
+    id STRING,
+    journeyIds STRING,
+    name STRING,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE Memory (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    artworkKey STRING,
+    collectionIds STRING,
+    createdAt STRING,
+    id STRING,
+    name STRING,
+    notes STRING,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
