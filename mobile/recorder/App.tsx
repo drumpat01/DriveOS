@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import './src/location-task';
-import { loadConnection, saveConnection, type Connection } from './src/credentials';
+import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
 import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, syncPendingCompletedRecordingsBestEffort } from './src/api';
 import {
   activeSession, beginLocalSession, completeSessionLocally, getSessionSummary, initializeDatabase,
@@ -20,6 +20,7 @@ import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
 import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
 import { JourneyDeckShell } from './src/shell';
+import { appDataClient } from './src/app-data';
 import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
 import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
@@ -71,6 +72,7 @@ function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
 function RecorderScreen() {
   const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [token, setToken] = useState('');
   const [summary, setSummary] = useState<SessionSummary | null>(null);
@@ -141,7 +143,7 @@ function RecorderScreen() {
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
     if (action === 'stop-and-finish' && current) {
-      completeSessionLocally(current.id);
+      completeSessionLocally(current.id, Boolean(connection));
       if (connection) {
         enrichCompletedJourney(connection, current.id);
         if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
@@ -180,7 +182,7 @@ function RecorderScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    const shouldRun = Boolean(connection && foregroundPermission && backgroundPermission && taskAvailable
+    const shouldRun = Boolean(deviceId && foregroundPermission && backgroundPermission && taskAvailable
       && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic');
     const updateTask = async () => {
       if (shouldRun) await startAutomaticDetection();
@@ -194,14 +196,14 @@ function RecorderScreen() {
       .then(active => { if (!cancelled) setAutomaticDetectionActive(active); })
       .catch(() => { if (!cancelled) setAutomaticDetectionActive(false); });
     return () => { cancelled = true; };
-  }, [backgroundPermission, connection, foregroundPermission, recordingPreferences, taskAvailable]);
+  }, [backgroundPermission, deviceId, foregroundPermission, recordingPreferences, taskAvailable]);
 
   useEffect(() => {
     let cancelled = false;
-    void loadConnection().then(saved => {
-      if (cancelled || !saved) return;
-      setConnection(saved);
-      setServerUrl(saved.serverUrl);
+    void Promise.all([loadOrCreateDeviceId(), loadConnection()]).then(([localDeviceId, saved]) => {
+      if (cancelled) return;
+      setDeviceId(localDeviceId);
+      if (saved) { setConnection(saved); setServerUrl(saved.serverUrl); }
     });
     return () => { cancelled = true; };
   }, []);
@@ -269,9 +271,9 @@ function RecorderScreen() {
   }, 'Checking location access…');
 
   const start = () => withBusy(async () => {
-    if (!connection) throw new Error('Connect this recorder to JourneyDeck first.');
+    if (!deviceId) throw new Error('The local recorder is still getting ready.');
     if (!permissionsReady) throw new Error('Enable background location first.');
-    const session = beginLocalSession(connection.deviceId);
+    const session = beginLocalSession(deviceId);
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
     void sampleAppleMusicForActiveSession({ force: true });
@@ -280,13 +282,13 @@ function RecorderScreen() {
   }, 'Starting background recording…');
 
   const pause = () => withBusy(async () => {
-    if (!connection || !summary) return;
+    if (!summary) return;
     await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
     setNotice('Recording paused. Every captured point remains on this phone.');
   }, 'Pausing recording…');
 
   const resume = () => withBusy(async () => {
-    if (!connection || !summary) return;
+    if (!summary) return;
     setLocalStatus(summary.id, 'recording');
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
@@ -295,7 +297,7 @@ function RecorderScreen() {
     setNotice('Recording resumed on this iPhone.');
   }, 'Resuming recording…');
 
-  const finishSession = useCallback(async (currentConnection: Connection, currentSummary: SessionSummary) => {
+  const finishSession = useCallback(async (currentSummary: SessionSummary) => {
     busyRef.current = true; setBusy(true); setSyncStage('saving'); setNotice('');
     try {
       await runExclusive(async () => {
@@ -304,12 +306,17 @@ function RecorderScreen() {
         resetAutomaticDriveState();
         setLocalStatus(currentSummary.id, 'finishing');
         setTrackingActive(false);
-        completeSessionLocally(currentSummary.id);
-        enrichCompletedJourney(currentConnection, currentSummary.id);
+        completeSessionLocally(currentSummary.id, Boolean(connection));
+        if (connection) enrichCompletedJourney(connection, currentSummary.id);
+        else {
+          void captureAppleMusicHistoryForSession(currentSummary.id).finally(() => refreshCompletedSessionLocalMirror(currentSummary.id));
+          void queueLastFmForCompletedSession(currentSummary.id);
+          void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
+        }
         setSummary(null);
         setSyncStage('saved');
         setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
-        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(currentConnection);
+        if (connection && !areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
       });
     } catch (error) {
       const message = messageOf(error);
@@ -321,13 +328,13 @@ function RecorderScreen() {
       setBusy(false);
       void refresh().catch(() => {});
     }
-  }, [refresh, runExclusive]);
+  }, [connection, refresh, runExclusive]);
 
   const finish = () => {
-    if (!connection || !summary) return;
+    if (!summary) return;
     Alert.alert('Finish this journey?', 'Recording will stop and the journey will appear immediately in your on-device archive.', [
       { text: 'Keep recording', style: 'cancel' },
-      { text: 'Finish journey', style: 'destructive', onPress: () => void finishSession(connection, summary) },
+      { text: 'Finish journey', style: 'destructive', onPress: () => void finishSession(summary) },
     ]);
   };
 
@@ -347,9 +354,14 @@ function RecorderScreen() {
     }
   }, 'Syncing to JourneyDeck…');
 
+  const importLegacyArchive = () => withBusy(async () => {
+    const result = await appDataClient.importLegacyOwnerArchive();
+    Alert.alert('Legacy archive imported', `${result.journeys} journeys · ${result.memories} Memories · ${result.collections} Collections are now cached for this profile.`);
+  }, 'Importing legacy archive…');
+
   const metrics = useMemo(() => [
-    ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], ['GPS QUEUED', String(summary?.queuedCount ?? 0)], ['MUSIC QUEUED', String(summary?.musicQueuedCount ?? 0)],
-  ], [summary]);
+    ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
+  ], [connection, summary]);
   const automaticMode = recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
 
   return (
@@ -366,16 +378,8 @@ function RecorderScreen() {
           <RecorderAtmosphere />
           <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.eyebrow}>JOURNEYDECK</Text><Text style={styles.title}>Recorder</Text></View></View>
 
-          {!connection ? (
-            <View style={styles.card}>
-              <Text style={styles.cardTitle}>Connect this iPhone</Text>
-              <Text style={styles.body}>Enter the private recorder key from your JourneyDeck server. It will be stored in iOS Keychain.</Text>
-              <Text style={styles.label}>JOURNEYDECK ADDRESS</Text>
-              <TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
-              <Text style={styles.label}>RECORDER KEY</Text>
-              <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor="#655f74" style={styles.input} />
-              <PrimaryButton label="Connect securely" onPress={connect} disabled={busy} />
-            </View>
+          {!deviceId ? (
+            <View style={styles.card}><ActivityIndicator color="#9b7cff" /><Text style={styles.body}>Preparing the private on-device recorder…</Text></View>
           ) : !permissionsReady ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Allow background location</Text>
@@ -392,14 +396,26 @@ function RecorderScreen() {
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
-              {((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Sync saved data'} onPress={syncNow} disabled={busy} />}
-              {summary?.status === 'finishing' && (summary?.queuedCount ?? 0) === 0 && (summary?.musicQueuedCount ?? 0) === 0 && <PrimaryButton label="Finish & save" onPress={syncNow} disabled={busy} />}
+              {connection && ((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Back up saved data'} onPress={syncNow} disabled={busy} />}
+              {!connection && summary?.status === 'finishing' && <PrimaryButton label="Finish & save" onPress={() => void finishSession(summary)} disabled={busy} />}
             </>
           )}
+          {!connection && deviceId ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Optional owner backup</Text>
+              <Text style={styles.body}>Recording works entirely on this iPhone. Existing JourneyDeck owners can connect a legacy server only to migrate or back up old data.</Text>
+              <Text style={styles.label}>JOURNEYDECK ADDRESS</Text>
+              <TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
+              <Text style={styles.label}>RECORDER KEY</Text>
+              <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor="#655f74" style={styles.input} />
+              <SecondaryButton label="Connect owner backup" onPress={connect} disabled={busy} />
+            </View>
+          ) : null}
+          {connection ? <View style={styles.card}><Text style={styles.cardTitle}>Owner legacy tools</Text><Text style={styles.body}>Normal JourneyDeck use stays on this iPhone. Import is an explicit one-time owner action.</Text><SecondaryButton label="Import legacy archive" onPress={importLegacyArchive} disabled={busy} /></View> : null}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
-          <Text style={styles.footer}>Private single-iPhone recorder • {connection ? 'Connected' : 'Not connected'}</Text>
+          <Text style={styles.footer}>Private on-device recorder • {connection ? 'Owner backup connected' : 'No server required'}</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

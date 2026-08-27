@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Bundle C — private content",
-        "sequence": "P3.5"
+        "label": "Closure Bundle D — server-independent core",
+        "sequence": "P3.D"
       },
       "edge": {
         "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"

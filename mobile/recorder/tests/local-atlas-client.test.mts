@@ -116,8 +116,8 @@ assert.match(src, /coordinateAtRecordedTime\(samples, entry\.playedAt\)/, 'song 
 // ============================================================
 
 assert.match(src, /export const appDataClient/, 'original appDataClient still exported');
-assert.match(src, /async dashboard\(refreshRemote = false\)/, 'appDataClient.dashboard() is local-first with explicit remote refresh');
-assert.match(src, /if \(!connection \|\| !refreshRemote\)/, 'normal appDataClient reads do not require the server');
+assert.match(src, /async dashboard\(_refreshRemote = false\)/, 'appDataClient.dashboard() stays local even when the user refreshes');
+assert.match(src, /async importLegacyOwnerArchive\(\)/, 'legacy server reads require an explicit owner import action');
 assert.match(src, /localAtlasClient[\s\S]*dashboard\(userId/, 'localAtlasClient.dashboard is sync (local-first)');
 assert.match(src, /localAtlasClient\.dashboard\(getCurrentUser\(\)\.id\)/, 'live dashboard falls back to the on-device Atlas client');
 assert.match(src, /localAtlasClient\.journeys\(getCurrentUser\(\)\.id/, 'live journey history falls back to the on-device store');

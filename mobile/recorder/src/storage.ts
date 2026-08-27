@@ -10,7 +10,7 @@ import { notifyLocalArchiveChanged } from './local-archive-events';
 const db = SQLite.openDatabaseSync('journeydeck-recorder.db');
 let initialized = false;
 export type LocalSessionStatus = 'recording' | 'paused' | 'finishing' | 'completed';
-export type SessionRow = { id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; remote_completed: number; drive_id: string | null };
+export type SessionRow = { id: string; owner_user_id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; remote_completed: number; drive_id: string | null };
 export type SessionSummary = { id: string; deviceId: string; status: LocalSessionStatus; startedAt: string; endedAt: string | null; pointCount: number; queuedCount: number; musicQueuedCount: number; remoteCreated: boolean; remoteCompleted: boolean; driveId: string | null; lastAccuracyMeters: number | null };
 export type QueuedPoint = { sequence: number; recordedAt: string; latitude: number; longitude: number; accuracyMeters: number | null; altitudeMeters: number | null; headingDegrees: number | null; speedMps: number | null };
 export type LiveRecorderSnapshot = {
@@ -29,7 +29,7 @@ export function initializeDatabase() {
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     CREATE TABLE IF NOT EXISTS recording_sessions (
-      id TEXT PRIMARY KEY NOT NULL, device_id TEXT NOT NULL,
+      id TEXT PRIMARY KEY NOT NULL, owner_user_id TEXT, device_id TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('recording','paused','finishing','completed')),
       started_at TEXT NOT NULL, ended_at TEXT, next_sequence INTEGER NOT NULL DEFAULT 0,
       remote_created INTEGER NOT NULL DEFAULT 0, remote_completed INTEGER NOT NULL DEFAULT 0,
@@ -68,19 +68,24 @@ export function initializeDatabase() {
   if (!sessionColumns.some(column => column.name === 'remote_completed')) {
     db.execSync('ALTER TABLE recording_sessions ADD COLUMN remote_completed INTEGER NOT NULL DEFAULT 0;');
   }
+  if (!sessionColumns.some(column => column.name === 'owner_user_id')) {
+    db.execSync('ALTER TABLE recording_sessions ADD COLUMN owner_user_id TEXT;');
+  }
+  db.runSync('UPDATE recording_sessions SET owner_user_id=? WHERE owner_user_id IS NULL;', getCurrentUser().id);
+  db.execSync('CREATE INDEX IF NOT EXISTS ix_recording_sessions_owner ON recording_sessions(owner_user_id,status,created_at);');
   db.runSync('UPDATE recording_sessions SET remote_completed=1 WHERE drive_id IS NOT NULL AND remote_completed=0;');
   initialized = true;
 }
 
-export function activeSession() { initializeDatabase(); return db.getFirstSync<SessionRow>("SELECT * FROM recording_sessions WHERE status!='completed' ORDER BY created_at DESC LIMIT 1;"); }
+export function activeSession() { initializeDatabase(); return db.getFirstSync<SessionRow>("SELECT * FROM recording_sessions WHERE owner_user_id=? AND status!='completed' ORDER BY created_at DESC LIMIT 1;", getCurrentUser().id); }
 
 export function beginLocalSession(deviceId: string) {
   initializeDatabase();
   const existing = activeSession();
   if (existing) return existing;
   const id = `recording_${Crypto.randomUUID()}`, now = new Date().toISOString();
-  db.runSync("INSERT INTO recording_sessions(id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,'recording',?,?,?);", id, deviceId, now, now, now);
-  return db.getFirstSync<SessionRow>('SELECT * FROM recording_sessions WHERE id=?;', id)!;
+  db.runSync("INSERT INTO recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);", id, getCurrentUser().id, deviceId, now, now, now);
+  return getSession(id)!;
 }
 
 function valid(value: number | null, minimum: number, maximum: number) { return value !== null && Number.isFinite(value) && value >= minimum && value <= maximum ? value : null; }
@@ -107,7 +112,7 @@ export function recordLocations(locations: LocationObject[]) {
   return inserted;
 }
 
-export function getSession(sessionId: string) { initializeDatabase(); return db.getFirstSync<SessionRow>('SELECT * FROM recording_sessions WHERE id=?;', sessionId); }
+export function getSession(sessionId: string) { initializeDatabase(); return db.getFirstSync<SessionRow>('SELECT * FROM recording_sessions WHERE id=? AND owner_user_id=?;', sessionId, getCurrentUser().id); }
 
 export function getSessionSummary(sessionId: string): SessionSummary | null {
   initializeDatabase();
@@ -115,8 +120,8 @@ export function getSessionSummary(sessionId: string): SessionSummary | null {
     SELECT s.*, COUNT(p.sequence) AS point_count, COALESCE(SUM(CASE WHEN p.uploaded=0 THEN 1 ELSE 0 END),0) AS queued_count,
       (SELECT COUNT(*) FROM recording_music_observations m WHERE m.session_id=s.id AND m.uploaded=0) AS music_queued_count,
       (SELECT accuracy_meters FROM recording_points WHERE session_id=s.id ORDER BY sequence DESC LIMIT 1) AS last_accuracy
-    FROM recording_sessions s LEFT JOIN recording_points p ON p.session_id=s.id WHERE s.id=? GROUP BY s.id;
-  `, sessionId);
+    FROM recording_sessions s LEFT JOIN recording_points p ON p.session_id=s.id WHERE s.id=? AND s.owner_user_id=? GROUP BY s.id;
+  `, sessionId, getCurrentUser().id);
   return row ? { id: row.id, deviceId: row.device_id, status: row.status, startedAt: row.started_at, endedAt: row.ended_at,
     pointCount: Number(row.point_count), queuedCount: Number(row.queued_count), musicQueuedCount: Number(row.music_queued_count), remoteCreated: Boolean(row.remote_created), remoteCompleted: Boolean(row.remote_completed), driveId: row.drive_id, lastAccuracyMeters: row.last_accuracy } : null;
 }
@@ -125,14 +130,15 @@ export function sessionsPendingRemoteCompletion(limit = 5) {
   initializeDatabase();
   return db.getAllSync<{ sessionId: string }>(`
     SELECT s.id AS sessionId FROM recording_sessions s
-    WHERE s.status='completed' AND s.remote_completed=0 AND s.ended_at IS NOT NULL
+    WHERE s.owner_user_id=? AND s.status='completed' AND s.remote_completed=0 AND s.ended_at IS NOT NULL
       AND EXISTS (SELECT 1 FROM recording_points p WHERE p.session_id=s.id)
     ORDER BY s.ended_at LIMIT ?;
-  `, Math.max(1, Math.min(20, Math.trunc(limit)))).map(row => row.sessionId);
+  `, getCurrentUser().id, Math.max(1, Math.min(20, Math.trunc(limit)))).map(row => row.sessionId);
 }
 
 export function queuedPoints(sessionId: string, limit = 250) {
   initializeDatabase();
+  if (!getSession(sessionId)) return [];
   return db.getAllSync<QueuedPoint>(`SELECT sequence,recorded_at AS recordedAt,latitude,longitude,accuracy_meters AS accuracyMeters,
     altitude_meters AS altitudeMeters,heading_degrees AS headingDegrees,speed_mps AS speedMps
     FROM recording_points WHERE session_id=? AND uploaded=0 ORDER BY sequence LIMIT ?;`, sessionId, limit);
@@ -167,6 +173,7 @@ export function queueMusicObservation(sessionId: string, value: MusicObservation
 
 export function queuedMusicObservations(sessionId: string, limit = 100) {
   initializeDatabase();
+  if (!getSession(sessionId)) return [];
   return db.getAllSync<MusicObservation>(`
     SELECT observation_id AS observationId,source,played_at AS playedAt,track,artist,album,
       duration_ms AS durationMs,artwork_url AS artworkUrl,external_url AS externalUrl,confidence
@@ -177,7 +184,7 @@ export function queuedMusicObservations(sessionId: string, limit = 100) {
 
 export function markMusicObservationsUploaded(sessionId: string, observationIds: string[]) {
   initializeDatabase();
-  if (!observationIds.length) return;
+  if (!observationIds.length || !getSession(sessionId)) return;
   db.runSync(`UPDATE recording_music_observations SET uploaded=1
     WHERE session_id=? AND observation_id IN (${observationIds.map(() => '?').join(',')});`, sessionId, ...observationIds);
 }
@@ -185,13 +192,15 @@ export function markMusicObservationsUploaded(sessionId: string, observationIds:
 export function sessionsWithQueuedMusic(limit = 20) {
   initializeDatabase();
   return db.getAllSync<{ sessionId: string }>(`
-    SELECT session_id AS sessionId FROM recording_music_observations
-    WHERE uploaded=0 GROUP BY session_id ORDER BY MIN(played_at) LIMIT ?;
-  `, Math.max(1, Math.min(100, Math.trunc(limit)))).map(row => row.sessionId);
+    SELECT m.session_id AS sessionId FROM recording_music_observations m
+    JOIN recording_sessions s ON s.id=m.session_id
+    WHERE s.owner_user_id=? AND m.uploaded=0 GROUP BY m.session_id ORDER BY MIN(m.played_at) LIMIT ?;
+  `, getCurrentUser().id, Math.max(1, Math.min(100, Math.trunc(limit)))).map(row => row.sessionId);
 }
 
 export function queuedMusicObservationCount(sessionId: string) {
   initializeDatabase();
+  if (!getSession(sessionId)) return 0;
   return Number(db.getFirstSync<{ total: number }>(
     'SELECT COUNT(*) AS total FROM recording_music_observations WHERE session_id=? AND uploaded=0;', sessionId,
   )?.total || 0);
@@ -199,7 +208,7 @@ export function queuedMusicObservationCount(sessionId: string) {
 
 export function totalQueuedMusicObservationCount() {
   initializeDatabase();
-  return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_music_observations WHERE uploaded=0;')?.total || 0);
+  return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_music_observations m JOIN recording_sessions s ON s.id=m.session_id WHERE s.owner_user_id=? AND m.uploaded=0;', getCurrentUser().id)?.total || 0);
 }
 
 export function queueLastFmSync(sessionId: string, username: string) {
@@ -224,9 +233,9 @@ export function queueLastFmSync(sessionId: string, username: string) {
 export function queueRecentCompletedLastFmSyncs(username: string, limit = 5) {
   initializeDatabase();
   const rows = db.getAllSync<{ id: string }>(`
-    SELECT id FROM recording_sessions WHERE status='completed'
+    SELECT id FROM recording_sessions WHERE owner_user_id=? AND status='completed'
     ORDER BY COALESCE(ended_at,updated_at) DESC LIMIT ?;
-  `, Math.max(1, Math.min(10, Math.trunc(limit))));
+  `, getCurrentUser().id, Math.max(1, Math.min(10, Math.trunc(limit))));
   return rows.reduce((count, row) => count + Number(queueLastFmSync(row.id, username)), 0);
 }
 
@@ -234,8 +243,8 @@ export function pendingLastFmSyncs(options: { force?: boolean; limit?: number } 
   initializeDatabase();
   const limit = Math.max(1, Math.min(10, Math.trunc(options.limit ?? 5)));
   const rows = options.force
-    ? db.getAllSync<Record<string, unknown>>(`SELECT * FROM recording_lastfm_sync ORDER BY updated_at DESC LIMIT ?;`, limit)
-    : db.getAllSync<Record<string, unknown>>(`SELECT * FROM recording_lastfm_sync WHERE status='pending' AND next_attempt_at<=? ORDER BY next_attempt_at LIMIT ?;`, new Date().toISOString(), limit);
+    ? db.getAllSync<Record<string, unknown>>(`SELECT f.* FROM recording_lastfm_sync f JOIN recording_sessions s ON s.id=f.session_id WHERE s.owner_user_id=? ORDER BY f.updated_at DESC LIMIT ?;`, getCurrentUser().id, limit)
+    : db.getAllSync<Record<string, unknown>>(`SELECT f.* FROM recording_lastfm_sync f JOIN recording_sessions s ON s.id=f.session_id WHERE s.owner_user_id=? AND f.status='pending' AND f.next_attempt_at<=? ORDER BY f.next_attempt_at LIMIT ?;`, getCurrentUser().id, new Date().toISOString(), limit);
   return rows.map(row => ({
     sessionId: String(row.session_id), username: String(row.username), status: row.status === 'synced' ? 'synced' : 'pending',
     attemptCount: Number(row.attempt_count) || 0, successCount: Number(row.success_count) || 0,
@@ -245,6 +254,7 @@ export function pendingLastFmSyncs(options: { force?: boolean; limit?: number } 
 
 export function markLastFmSyncResult(sessionId: string, success: boolean) {
   initializeDatabase();
+  if (!getSession(sessionId)) return;
   const row = db.getFirstSync<{ success_count: number }>('SELECT success_count FROM recording_lastfm_sync WHERE session_id=?;', sessionId);
   if (!row) return;
   const now = new Date(), successCount = Number(row.success_count) + Number(success);
@@ -257,7 +267,16 @@ export function markLastFmSyncResult(sessionId: string, success: boolean) {
 
 export function readAppCache<T>(key: string): T | null {
   initializeDatabase();
-  const row = db.getFirstSync<{ value_json: string }>('SELECT value_json FROM recording_app_cache WHERE key=?;', key);
+  const scopedKey = `user:${getCurrentUser().id}:${key}`;
+  let row = db.getFirstSync<{ value_json: string }>('SELECT value_json FROM recording_app_cache WHERE key=?;', scopedKey);
+  if (!row) {
+    const ownerKey = '__legacy_cache_owner_v1';
+    const owner = db.getFirstSync<{ value_json: string }>('SELECT value_json FROM recording_app_cache WHERE key=?;', ownerKey);
+    let ownerId = getCurrentUser().id;
+    try { if (owner) ownerId = JSON.parse(owner.value_json) as string; } catch { ownerId = ''; }
+    if (!owner) db.runSync('INSERT INTO recording_app_cache(key,value_json,updated_at) VALUES(?,?,?);', ownerKey, JSON.stringify(ownerId), new Date().toISOString());
+    if (ownerId === getCurrentUser().id) row = db.getFirstSync<{ value_json: string }>('SELECT value_json FROM recording_app_cache WHERE key=?;', key);
+  }
   if (!row) return null;
   try { return JSON.parse(row.value_json) as T; }
   catch { return null; }
@@ -265,32 +284,33 @@ export function readAppCache<T>(key: string): T | null {
 
 export function writeAppCache(key: string, value: unknown) {
   initializeDatabase();
+  const scopedKey = `user:${getCurrentUser().id}:${key}`;
   const now = new Date().toISOString();
   db.runSync(`INSERT INTO recording_app_cache(key,value_json,updated_at) VALUES(?,?,?)
-    ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;`, key, JSON.stringify(value), now);
+    ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;`, scopedKey, JSON.stringify(value), now);
 }
 
-export function markRemoteCreated(sessionId: string) { initializeDatabase(); db.runSync('UPDATE recording_sessions SET remote_created=1,updated_at=? WHERE id=?;', new Date().toISOString(), sessionId); }
+export function markRemoteCreated(sessionId: string) { initializeDatabase(); db.runSync('UPDATE recording_sessions SET remote_created=1,updated_at=? WHERE id=? AND owner_user_id=?;', new Date().toISOString(), sessionId, getCurrentUser().id); }
 export function markPointsUploaded(sessionId: string, sequences: number[]) {
   initializeDatabase();
-  if (!sequences.length) return;
+  if (!sequences.length || !getSession(sessionId)) return;
   db.runSync(`UPDATE recording_points SET uploaded=1 WHERE session_id=? AND sequence IN (${sequences.map(() => '?').join(',')});`, sessionId, ...sequences);
 }
 export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionStatus, 'completed'>) {
   initializeDatabase();
   const endedAt = status === 'finishing' ? new Date().toISOString() : null;
-  db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=?;', status, endedAt, new Date().toISOString(), sessionId);
+  db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=? AND owner_user_id=?;', status, endedAt, new Date().toISOString(), sessionId, getCurrentUser().id);
 }
 
 export function recentCompletedSessionIds(limit = 5) {
   initializeDatabase();
-  return db.getAllSync<{ id: string }>(`SELECT id FROM recording_sessions WHERE status='completed' ORDER BY COALESCE(ended_at,updated_at) DESC LIMIT ?;`,
-    Math.max(1, Math.min(10, Math.trunc(limit)))).map(row => row.id);
+  return db.getAllSync<{ id: string }>(`SELECT id FROM recording_sessions WHERE owner_user_id=? AND status='completed' ORDER BY COALESCE(ended_at,updated_at) DESC LIMIT ?;`,
+    getCurrentUser().id, Math.max(1, Math.min(10, Math.trunc(limit)))).map(row => row.id);
 }
 
 export function totalQueuedPointCount() {
   initializeDatabase();
-  return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_points WHERE uploaded=0;')?.total || 0);
+  return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_points p JOIN recording_sessions s ON s.id=p.session_id WHERE s.owner_user_id=? AND p.uploaded=0;', getCurrentUser().id)?.total || 0);
 }
 
 /** Reads the active drive directly from this iPhone, including points already uploaded. */
@@ -417,8 +437,9 @@ export function saveImportedMusicForCompletedSession(sessionId: string, source: 
 
 export function completeSessionLocally(sessionId: string, queueRemote = true) {
   initializeDatabase();
+  if (!getSession(sessionId)) return;
   const now = new Date().toISOString();
-  db.runSync("UPDATE recording_sessions SET status='completed',remote_completed=CASE WHEN ? THEN remote_completed ELSE 1 END,ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", Number(queueRemote), now, now, sessionId);
+  db.runSync("UPDATE recording_sessions SET status='completed',remote_completed=CASE WHEN ? THEN remote_completed ELSE 1 END,ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND owner_user_id=?;", Number(queueRemote), now, now, sessionId, getCurrentUser().id);
   mirrorCompletedSessionToLocalStore(sessionId);
 }
 
@@ -429,7 +450,8 @@ export function refreshCompletedSessionLocalMirror(sessionId: string) {
 
 export function markSessionRemoteCompleted(sessionId: string, driveId: string | null) {
   initializeDatabase();
+  if (!getSession(sessionId)) return;
   const now = new Date().toISOString();
-  db.runSync("UPDATE recording_sessions SET status='completed',remote_created=1,remote_completed=1,drive_id=COALESCE(?,drive_id),ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", driveId, now, now, sessionId);
+  db.runSync("UPDATE recording_sessions SET status='completed',remote_created=1,remote_completed=1,drive_id=COALESCE(?,drive_id),ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND owner_user_id=?;", driveId, now, now, sessionId, getCurrentUser().id);
   mirrorCompletedSessionToLocalStore(sessionId);
 }

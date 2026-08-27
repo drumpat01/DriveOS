@@ -5,7 +5,7 @@ import { flushAllQueuedMusicBestEffort, syncPendingCompletedRecordingsBestEffort
 import {
   loadAutomaticDriveState, resetAutomaticDriveState, saveAutomaticDriveEvent, saveAutomaticDriveState,
 } from './automatic-drive-state';
-import { loadConnection } from './credentials';
+import { loadConnection, loadOrCreateDeviceId } from './credentials';
 import { emptyDriveDetectionState, evaluateDriveDetection } from './drive-detection';
 import { syncCurrentUserWithPrivateICloud } from './icloud-sync';
 import { queueLastFmForCompletedSession } from './lastfm-sync';
@@ -21,9 +21,8 @@ import {
 } from './tracking';
 
 async function startDetectedJourney(location: LocationObject) {
-  const connection = await loadConnection();
-  if (!connection || activeSession()) return null;
-  const session = beginLocalSession(connection.deviceId);
+  if (activeSession()) return null;
+  const session = beginLocalSession(await loadOrCreateDeviceId());
   saveAutomaticDriveState({ ...emptyDriveDetectionState(), automaticSessionId: session.id });
   try {
     if (!(await startLocationTracking())) throw new Error('iOS did not confirm route tracking.');
@@ -44,9 +43,9 @@ async function finishDetectedJourney(sessionId: string, location: LocationObject
   recordLocations([location]);
   await stopLocationTracking().catch(() => {});
   setLocalStatus(sessionId, 'finishing');
-  completeSessionLocally(sessionId);
-  resetAutomaticDriveState();
   const connection = await loadConnection();
+  completeSessionLocally(sessionId, Boolean(connection));
+  resetAutomaticDriveState();
   void captureAppleMusicHistoryForSession(sessionId)
     .catch(() => undefined)
     .finally(() => {

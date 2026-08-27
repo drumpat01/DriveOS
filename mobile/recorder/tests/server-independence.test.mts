@@ -14,11 +14,12 @@ const localArchiveEvents = await readFile(new URL('../src/local-archive-events.t
 const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
 const tessie = await readFile(new URL('../src/tessie-direct.ts', import.meta.url), 'utf8');
+const credentials = await readFile(new URL('../src/credentials.ts', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
-  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id)') >= 0);
-  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id)') < finish.indexOf('syncPendingCompletedRecordingsBestEffort(currentConnection)'));
+  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id, Boolean(connection))') >= 0);
+  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id, Boolean(connection))') < finish.indexOf('syncPendingCompletedRecordingsBestEffort(connection)'));
   assert.match(finish, /setSyncStage\('saved'\)/);
   assert.doesNotMatch(finish, /await completeRecording|await flushRecording/);
 });
@@ -33,7 +34,7 @@ test('active recording has no automatic JourneyDeck mirror loop', () => {
   assert.equal((app.match(/await flushRecording\(/g) ?? []).length, 1, 'only the explicit Sync saved data action may flush an active recording');
   assert.doesNotMatch(app, /setTimeout\([\s\S]{0,220}flushRecording/);
   assert.doesNotMatch(automaticDrive, /flushRecording|completeRecording/);
-  assert.match(automaticDrive, /completeSessionLocally\(sessionId\)/);
+  assert.match(automaticDrive, /completeSessionLocally\(sessionId, Boolean\(connection\)\)/);
 });
 
 test('completed sessions remain queued locally and remote retries stop after one connectivity failure', () => {
@@ -44,13 +45,44 @@ test('completed sessions remain queued locally and remote retries stop after one
   assert.match(api, /catch \{[\s\S]{0,240}break;/);
 });
 
-test('normal archive navigation is local-first and remote refresh is explicit', () => {
-  assert.match(appData, /async dashboard\(refreshRemote = false\)/);
-  assert.match(appData, /async journeys\(limit = 25, cursor\?: string, refreshRemote = false\)/);
-  assert.match(appData, /async memories\(refreshRemote = false\)/);
+test('normal archive navigation stays local even when the user refreshes', () => {
+  assert.match(appData, /async dashboard\(_refreshRemote = false\)/);
+  assert.match(appData, /async journeys\(limit = 25, cursor\?: string, _refreshRemote = false\)/);
+  assert.match(appData, /async memories\(_refreshRemote = false\)/);
   assert.match(appData, /async musicDashboard\(refreshRemote = false, details: JourneyDetail\[\] = \[\]\)/);
   assert.match(primaryData, /appDataClient\.dashboard\(forceRefresh\)/);
   assert.match(primaryData, /loadJourneyArchive\(8, forceRefresh\)/);
+  const normalDashboard = appData.slice(appData.indexOf('async dashboard('), appData.indexOf('async localDashboard('));
+  const normalJourneys = appData.slice(appData.indexOf('async journeys('), appData.indexOf('async journey('));
+  const normalMemories = appData.slice(appData.indexOf('async memories('), appData.indexOf('async musicDashboard('));
+  assert.doesNotMatch(`${normalDashboard}${normalJourneys}${normalMemories}`, /request<|request\(/);
+  assert.match(appData, /async importLegacyOwnerArchive\(\)/);
+});
+
+test('clean profiles can record manually and automatically without JourneyDeck credentials', () => {
+  assert.match(credentials, /export async function loadOrCreateDeviceId\(\)/);
+  assert.match(app, /beginLocalSession\(deviceId\)/);
+  assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
+  const automaticStart = automaticDrive.slice(automaticDrive.indexOf('async function startDetectedJourney'), automaticDrive.indexOf('async function finishDetectedJourney'));
+  assert.match(automaticStart, /beginLocalSession\(await loadOrCreateDeviceId\(\)\)/);
+  assert.doesNotMatch(automaticStart, /loadConnection/);
+});
+
+test('recorder sessions and screen caches are isolated by active profile', () => {
+  assert.match(storage, /owner_user_id TEXT/);
+  assert.match(storage, /WHERE owner_user_id=\? AND status!='completed'/);
+  assert.match(storage, /`user:\$\{getCurrentUser\(\)\.id\}:\$\{key\}`/);
+  assert.match(storage, /__legacy_cache_owner_v1/);
+  assert.match(credentials, /profileKey\(SERVER_KEY\)/);
+  assert.match(credentials, /CONNECTION_OWNER_KEY/);
+});
+
+test('preferences and place names are private profile data, not normal server writes', () => {
+  const places = appData.slice(appData.indexOf('async savePlaceAlias('), appData.indexOf('async memories('));
+  const preferences = appData.slice(appData.indexOf('async providerPreferences('), appData.indexOf('async importLegacyOwnerArchive('));
+  assert.match(places, /upsertPrivatePreference/);
+  assert.match(preferences, /upsertPrivatePreference/);
+  assert.doesNotMatch(`${places}${preferences}`, /request<|request\(/);
 });
 
 test('automatic iCloud checks are coalesced while explicit sync can force a pass', () => {
