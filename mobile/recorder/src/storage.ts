@@ -2,6 +2,8 @@ import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
 import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
+import { getCurrentUser } from './auth';
+import { insertGpsPoints, upsertJourney, upsertMusicEntry } from './local-store';
 
 const db = SQLite.openDatabaseSync('journeydeck-recorder.db');
 let initialized = false;
@@ -9,6 +11,12 @@ export type LocalSessionStatus = 'recording' | 'paused' | 'finishing' | 'complet
 export type SessionRow = { id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; drive_id: string | null };
 export type SessionSummary = { id: string; deviceId: string; status: LocalSessionStatus; startedAt: string; endedAt: string | null; pointCount: number; queuedCount: number; musicQueuedCount: number; remoteCreated: boolean; driveId: string | null; lastAccuracyMeters: number | null };
 export type QueuedPoint = { sequence: number; recordedAt: string; latitude: number; longitude: number; accuracyMeters: number | null; altitudeMeters: number | null; headingDegrees: number | null; speedMps: number | null };
+export type LiveRecorderSnapshot = {
+  session: SessionSummary | null;
+  route: QueuedPoint[];
+  music: MusicObservation[];
+  lastPoint: QueuedPoint | null;
+};
 export type LastFmSyncRow = { sessionId: string; username: string; status: 'pending' | 'synced'; attemptCount: number; successCount: number; nextAttemptAt: string; lastAttemptAt: string | null };
 export type { MusicObservation } from './music-observations';
 
@@ -254,8 +262,94 @@ export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionSt
   const endedAt = status === 'finishing' ? new Date().toISOString() : null;
   db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=?;', status, endedAt, new Date().toISOString(), sessionId);
 }
+
+/** Reads the active drive directly from this iPhone, including points already uploaded. */
+export function getLiveRecorderSnapshot(limit = 500): LiveRecorderSnapshot {
+  initializeDatabase();
+  const session = activeSession();
+  if (!session) return { session: null, route: [], music: [], lastPoint: null };
+  const boundedLimit = Math.max(2, Math.min(2_000, Math.trunc(limit)));
+  const route = db.getAllSync<QueuedPoint>(`SELECT sequence,recorded_at AS recordedAt,latitude,longitude,
+    accuracy_meters AS accuracyMeters,altitude_meters AS altitudeMeters,
+    heading_degrees AS headingDegrees,speed_mps AS speedMps
+    FROM recording_points WHERE session_id=? ORDER BY sequence DESC LIMIT ?;`, session.id, boundedLimit).reverse();
+  const music = db.getAllSync<MusicObservation>(`SELECT observation_id AS observationId,source,
+    played_at AS playedAt,track,artist,album,duration_ms AS durationMs,
+    artwork_url AS artworkUrl,external_url AS externalUrl,confidence
+    FROM recording_music_observations WHERE session_id=? ORDER BY played_at DESC LIMIT 20;`, session.id).reverse();
+  return { session: getSessionSummary(session.id), route, music, lastPoint: route.at(-1) ?? null };
+}
+
+function distanceMeters(a: QueuedPoint, b: QueuedPoint): number {
+  const earthRadius = 6_371_000;
+  const toRad = (degrees: number) => (degrees * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLng = toRad(b.longitude - a.longitude);
+  const chord = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 2 * earthRadius * Math.asin(Math.sqrt(chord));
+}
+
+function mirrorCompletedSessionToLocalStore(sessionId: string): void {
+  const session = getSession(sessionId);
+  if (!session?.ended_at) return;
+  const user = getCurrentUser();
+  const points = db.getAllSync<QueuedPoint>(`SELECT sequence,recorded_at AS recordedAt,latitude,longitude,
+    accuracy_meters AS accuracyMeters,altitude_meters AS altitudeMeters,
+    heading_degrees AS headingDegrees,speed_mps AS speedMps
+    FROM recording_points WHERE session_id=? ORDER BY sequence;`, sessionId);
+  const music = db.getAllSync<MusicObservation>(`SELECT observation_id AS observationId,source,
+    played_at AS playedAt,track,artist,album,duration_ms AS durationMs,
+    artwork_url AS artworkUrl,external_url AS externalUrl,confidence
+    FROM recording_music_observations WHERE session_id=? ORDER BY played_at,observation_id;`, sessionId);
+  const durationMinutes = Math.max(0, (Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60_000);
+  const meters = points.slice(1).reduce((total, point, index) => total + distanceMeters(points[index]!, point), 0);
+  const miles = meters / 1609.344;
+  const speedMph = points.map(point => point.speedMps == null ? 0 : point.speedMps * 2.2369362921);
+  const journeyId = `local_${session.id}`;
+
+  upsertJourney({
+    id: journeyId,
+    userId: user.id,
+    legacyDriveId: session.drive_id,
+    startedAt: session.started_at,
+    endedAt: session.ended_at,
+    durationMinutes,
+    miles,
+    startLat: points[0]?.latitude ?? null,
+    startLng: points[0]?.longitude ?? null,
+    endLat: points.at(-1)?.latitude ?? null,
+    endLng: points.at(-1)?.longitude ?? null,
+    startPlaceId: null,
+    endPlaceId: null,
+    averageSpeedMph: durationMinutes > 0 ? miles / (durationMinutes / 60) : null,
+    maxSpeedMph: speedMph.length ? Math.max(...speedMph) : null,
+    songCount: music.length,
+    vehicleName: null,
+    provider: 'native_recorder',
+  });
+  insertGpsPoints(user.id, journeyId, points);
+  for (const observation of music) {
+    upsertMusicEntry({
+      id: `${journeyId}_${observation.observationId}`,
+      userId: user.id,
+      journeyId,
+      source: observation.source,
+      playedAt: observation.playedAt,
+      track: observation.track,
+      artist: observation.artist,
+      album: observation.album,
+      durationMs: observation.durationMs,
+      artworkUrl: observation.artworkUrl,
+      externalUrl: observation.externalUrl,
+      confidence: observation.confidence,
+    });
+  }
+}
+
 export function markSessionCompleted(sessionId: string, driveId: string | null) {
   initializeDatabase();
   const now = new Date().toISOString();
   db.runSync("UPDATE recording_sessions SET status='completed',drive_id=?,ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", driveId, now, now, sessionId);
+  mirrorCompletedSessionToLocalStore(sessionId);
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Linking, Modal, PanResponder, Pressable, SafeAreaView, ScrollView, StatusBar,
   StyleSheet, Text, TextInput, View, useWindowDimensions,
@@ -9,6 +9,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Updates from 'expo-updates';
 import * as ImagePicker from 'expo-image-picker';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -40,16 +41,30 @@ import {
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
+import { getAppleIdentityStatus, getCurrentUser, signInWithApple, type AppleIdentityStatus } from './auth';
+import { getSensitivePlaces, upsertPlace, type LocalUser } from './local-store';
+import { InteractiveRouteMap } from './interactive-route-map';
+import { buildSongRouteMoments } from './route-moments';
+import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
+import { VehicleIntelligenceScreen } from './vehicle-intelligence-screen';
+import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type JourneyLibrarySort } from './library-model';
+import { PrimaryMobilityMap } from './primary-mobility-map';
+import { buildHomeSummary } from './home-summary';
+import { loadPrimarySectionsData } from './primary-sections-data';
+import {
+  AtlasScreen, LiveScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
+} from './primary-sections';
 
-type Tab = 'home' | 'journeys' | 'music' | 'record' | 'connections';
+type Tab = 'home' | 'live' | 'journeys' | 'atlas' | 'more';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
+type PrivateCloudUiState = { status: 'unavailable' | 'idle' | 'syncing' | 'synced' | 'needs_icloud' | 'error'; detail: string };
 
 const bottomNavigationItems: { id: Tab; label: string; symbol: SFSymbol; fallback: string }[] = [
   { id: 'home', label: 'Home', symbol: 'house', fallback: '⌂' },
+  { id: 'live', label: 'Live', symbol: 'antenna.radiowaves.left.and.right', fallback: '◉' },
   { id: 'journeys', label: 'Memories', symbol: 'map', fallback: '≋' },
-  { id: 'music', label: 'Music', symbol: 'music.note', fallback: '♪' },
-  { id: 'record', label: 'Record', symbol: 'record.circle', fallback: '●' },
-  { id: 'connections', label: 'Settings', symbol: 'gearshape', fallback: '⚙' },
+  { id: 'atlas', label: 'Atlas', symbol: 'globe.americas', fallback: '◎' },
+  { id: 'more', label: 'More', symbol: 'square.grid.2x2', fallback: '▦' },
 ];
 
 async function choosePhoto() {
@@ -188,6 +203,12 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const [lastFmDraft, setLastFmDraft] = useState('');
   const [savingLastFm, setSavingLastFm] = useState(false);
   const [syncingLastFm, setSyncingLastFm] = useState(false);
+  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+  const [appleIdentityStatus, setAppleIdentityStatus] = useState<AppleIdentityStatus>('unknown');
+  const [signingInWithApple, setSigningInWithApple] = useState(false);
+  const [privateCloud, setPrivateCloud] = useState<PrivateCloudUiState>(() => isPrivateICloudNativeAvailable()
+    ? { status: 'idle', detail: 'Ready to sync privately through iCloud.' }
+    : { status: 'unavailable', detail: 'Available after installing JourneyDeck 1.7.' });
   const [dashboard, setDashboard] = useState<LoadState<AppDashboard>>({ status: 'loading', data: blankDashboard() });
   const [journeys, setJourneys] = useState<LoadState<JourneySummary[]>>({ status: 'loading', data: [] });
   const [journeyCursor, setJourneyCursor] = useState<string | null>(null);
@@ -195,6 +216,8 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const [memories, setMemories] = useState<LoadState<MemoriesCatalog>>({ status: 'loading', data: { memories: [], collections: [] } });
   const [musicDashboard, setMusicDashboard] = useState<MusicDashboardState>({ status: 'loading', data: null });
   const [journeyDetail, setJourneyDetail] = useState<LoadState<JourneyDetail | null>>({ status: 'ready', data: null });
+  const [primarySections, setPrimarySections] = useState<PrimaryDataState>({ status: 'loading', data: null });
+  const [moreDestination, setMoreDestination] = useState<MoreDestination>('menu');
   const preferenceSyncAttempt = useRef('');
 
   useEffect(() => {
@@ -277,19 +300,79 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     await Promise.all([refreshJourneys(), refreshDashboard()]);
   }, [refreshDashboard, refreshJourneys]);
 
-  useEffect(() => { if (tab === 'home' || tab === 'connections') void refreshDashboard(); }, [refreshDashboard, tab]);
+  const refreshAppleIdentity = useCallback(async () => {
+    setAppleIdentityStatus(await getAppleIdentityStatus(getCurrentUser()));
+  }, []);
+
+  const refreshPrimarySections = useCallback(async (forceRefresh = false) => {
+    setPrimarySections(current => ({ ...current, status: 'loading', message: undefined }));
+    try {
+      const data = await loadPrimarySectionsData(forceRefresh);
+      setPrimarySections({ status: 'ready', data });
+      setDashboard({ status: 'ready', data: data.dashboard });
+    } catch (error) {
+      setPrimarySections(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Some JourneyDeck data could not refresh.' }));
+    }
+  }, []);
+
+  const syncPrivateCloud = useCallback(async (announce = false) => {
+    if (!isPrivateICloudNativeAvailable()) {
+      setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.7.' });
+      return;
+    }
+    setPrivateCloud({ status: 'syncing', detail: 'Checking this profile’s private iCloud zone…' });
+    try {
+      const result = await syncCurrentUserWithPrivateICloud();
+      if (result.accountStatus !== 'available') {
+        const detail = result.accountStatus === 'no_account' ? 'Sign into iCloud in iPhone Settings to enable private sync.' : 'Private iCloud is unavailable right now; local data remains safe.';
+        setPrivateCloud({ status: 'needs_icloud', detail });
+        if (announce) Alert.alert('Private iCloud is not available', detail);
+        return;
+      }
+      const detail = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} will retry` : ''}`;
+      setPrivateCloud({ status: result.failedUploads ? 'error' : 'synced', detail });
+      if (announce) Alert.alert('Private iCloud sync finished', detail);
+      await Promise.all([refreshDashboard(), refreshJourneys(), refreshMemories(), refreshMusicDashboard()]);
+    } catch {
+      const detail = 'Sync will retry later. Everything remains saved on this iPhone.';
+      setPrivateCloud({ status: 'error', detail });
+      if (announce) Alert.alert('Private iCloud will retry', detail);
+    }
+  }, [refreshDashboard, refreshJourneys, refreshMemories, refreshMusicDashboard]);
+
+  const connectAppleIdentity = useCallback(async () => {
+    setSigningInWithApple(true);
+    try {
+      const user = await signInWithApple();
+      setCurrentUser(user);
+      setAppleIdentityStatus('authorized');
+      await syncPrivateCloud(false);
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Apple sign-in did not finish', error instanceof Error ? error.message : 'Try again from Settings. Your local data was not changed.');
+      }
+    } finally {
+      setSigningInWithApple(false);
+    }
+  }, [syncPrivateCloud]);
+
+  useEffect(() => { if (tab === 'home' || tab === 'more') void refreshDashboard(); }, [refreshDashboard, tab]);
+  useEffect(() => { void refreshPrimarySections(false); }, [refreshPrimarySections]);
+  useEffect(() => { void refreshAppleIdentity(); void syncPrivateCloud(false); }, [refreshAppleIdentity, syncPrivateCloud]);
   useEffect(() => { if (tab === 'journeys') { void refreshJourneys(); void refreshMemories(); } }, [refreshJourneys, refreshMemories, tab]);
-  useEffect(() => { if (tab === 'music') void refreshMusicDashboard(); }, [refreshMusicDashboard, tab]);
+  useEffect(() => { if (tab === 'more' && moreDestination === 'music') void refreshMusicDashboard(); }, [moreDestination, refreshMusicDashboard, tab]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
+        void refreshAppleIdentity();
+        void syncPrivateCloud(false);
         void refreshDashboard();
         if (tab === 'journeys') void refreshJourneys();
-        if (tab === 'music') void refreshMusicDashboard();
+        if (tab === 'more' && moreDestination === 'music') void refreshMusicDashboard();
       }
     });
     return () => subscription.remove();
-  }, [refreshDashboard, refreshJourneys, refreshMusicDashboard, tab]);
+  }, [moreDestination, refreshAppleIdentity, refreshDashboard, refreshJourneys, refreshMusicDashboard, syncPrivateCloud, tab]);
 
   useEffect(() => {
     if (!preferences?.provider || !preferences.onboardingCompleted || dashboard.status !== 'ready' || !dashboard.data.recorder.connected) return;
@@ -329,7 +412,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (tab !== 'connections') return;
+    if (tab !== 'more') return;
     void refreshMusicCapabilities();
     void refreshConnectionCapabilities();
   }, [refreshConnectionCapabilities, refreshMusicCapabilities, tab]);
@@ -451,6 +534,11 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     void Haptics.selectionAsync().catch(() => undefined);
   };
 
+  const openMore = (destination: MoreDestination) => {
+    setMoreDestination(destination);
+    openTab('more');
+  };
+
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
   const activeRecordingPreferences = recordingPreferences?.onboardingCompleted && !editingRecordingMode ? recordingPreferences : null;
   const appReady = Boolean(activePreferences && activeRecordingPreferences);
@@ -489,19 +577,25 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           }}
         >
           <View key="home" collapsable={false} style={styles.tabLayer}>
-            <HomeScreen state={dashboard} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openTab('record')} onJourneys={() => openTab('journeys')} onConnections={() => openTab('connections')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={refreshDashboard} />
+            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => { void refreshDashboard(); void refreshPrimarySections(true); }} />
+          </View>
+          <View key="live" collapsable={false} style={styles.tabLayer}>
+            <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => void refreshPrimarySections(true)} onRecord={() => openMore('record')} onJourney={setSelectedJourneyId} />
           </View>
           <View key="journeys" collapsable={false} style={styles.tabLayer}>
-            <MemoriesScreen catalog={memories} journeys={journeys} hasMore={Boolean(journeyCursor)} loadingMore={journeysLoadingMore} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); }} onLoadMore={() => void loadMoreJourneys()} />
+            <MemoriesScreen catalog={memories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); void refreshPrimarySections(true); }} />
           </View>
-          <View key="music" collapsable={false} style={styles.tabLayer}>
-            <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} onRefresh={refreshMusicDashboard} />
+          <View key="atlas" collapsable={false} style={styles.tabLayer}>
+            <AtlasScreen state={primarySections} onRefresh={() => void refreshPrimarySections(true)} onJourney={setSelectedJourneyId} />
           </View>
-          <View key="record" collapsable={false} style={styles.tabLayer}>
-            {recorder}
-          </View>
-          <View key="connections" collapsable={false} style={styles.tabLayer}>
-            <ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />
+          <View key="more" collapsable={false} style={styles.tabLayer}>
+            <MoreScreen
+              requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
+              privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
+              music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={refreshMusicDashboard} />}
+              recorder={recorder}
+              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
+            />
           </View>
         </PagerView>}
       </View>
@@ -652,7 +746,7 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; recordingMode: RecordingMode; onRecord: () => void; onJourneys: () => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+function HomeScreen({ state, primary, recordingMode, onRecord, onJourneys, onLive, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
   const insets = useSafeAreaInsets();
   const { data } = state;
   const week = data.summary.last7Days;
@@ -669,6 +763,7 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
   const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || connections.lastFm === 'connected';
   const recorderHealthy = data.recorder.connected && data.recorder.queuedPoints + data.recorder.queuedMusic === 0;
   const automaticMode = recordingMode === 'automatic';
+  const home = useMemo(() => primary.data ? buildHomeSummary(primary.data) : null, [primary.data]);
   return (
     <View style={styles.safe}>
       <ScrollView
@@ -685,7 +780,7 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
             <View style={styles.webHeroShade} />
             <View style={styles.webHeroTop}>
               <View><Text style={styles.webHeroKicker}>YOUR ROAD</Text><Text style={styles.webHeroScript}>In motion</Text></View>
-              <View style={styles.webLivePill}><View style={[styles.webLiveDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /><Text style={styles.webLiveText}>{data.recorder.state === 'recording' ? 'RECORDING' : automaticMode ? 'WATCHING' : 'READY'}</Text></View>
+              <Pressable onPress={onLive} style={styles.webLivePill}><View style={[styles.webLiveDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /><Text style={styles.webLiveText}>{data.recorder.state === 'recording' ? 'RECORDING' : automaticMode ? 'WATCHING' : 'READY'}</Text></Pressable>
             </View>
             <View style={styles.webHeroBottom}>
               <Text style={styles.webHeroWeekLabel}>LAST 7 DAYS</Text>
@@ -732,6 +827,58 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
             <WebAction symbol="link" title="Connect" detail="Music & car" color="#ff9a5d" onPress={onConnections} />
           </View>
 
+          {home && <>
+            <View style={styles.homeSummaryHeading}><View><Text style={styles.webPanelTitle}>YOUR JOURNEYDECK</Text><Text style={styles.homeSummarySubtitle}>Everything the road has saved on this iPhone</Text></View><View style={styles.homeLocalPill}><View style={styles.homeLocalDot} /><Text style={styles.homeLocalText}>LOCAL</Text></View></View>
+            <View style={styles.homeArchiveGrid}>
+              <HomeArchiveTile value={home.archive.journeys} label="Journeys" color="#ff765a" onPress={onJourneys} />
+              <HomeArchiveTile value={home.archive.memories} label="Memories" color="#a876ff" onPress={onJourneys} />
+              <HomeArchiveTile value={home.archive.collections} label="Collections" color="#f0b65d" onPress={onJourneys} />
+              <HomeArchiveTile value={home.archive.places} label="Places" color="#4bd6b1" onPress={onAtlas} />
+            </View>
+
+            <View style={styles.homeSpotlightGrid}>
+              <Pressable onPress={onJourneys} style={[styles.homeSpotlight, styles.homeMemorySpotlight]}>
+                <LinearGradient colors={['#35164a', '#140a20']} style={StyleSheet.absoluteFill} />
+                <Text style={styles.homeSpotlightKicker}>MEMORY SPOTLIGHT</Text>
+                <Text style={styles.homeSpotlightTitle} numberOfLines={2}>{home.memorySpotlight?.name ?? 'Create your first chapter'}</Text>
+                <Text style={styles.homeSpotlightMeta}>{home.memorySpotlight ? `${home.memorySpotlight.collections} collections  •  ${home.memorySpotlight.journeys} journeys  •  ${home.memorySpotlight.photos} photos` : 'Bring two Collections together into a story.'}</Text>
+                <Text style={styles.homeSpotlightAction}>Open Memories  ›</Text>
+              </Pressable>
+              <Pressable onPress={() => onMore('music')} style={[styles.homeSpotlight, styles.homeMusicSpotlight]}>
+                <LinearGradient colors={['#471329', '#150918']} style={StyleSheet.absoluteFill} />
+                <Text style={[styles.homeSpotlightKicker, { color: '#ff769e' }]}>ROAD SOUNDTRACK</Text>
+                <Text style={styles.homeSpotlightTitle} numberOfLines={2}>{home.topTrack?.track ?? 'Your soundtrack is waiting'}</Text>
+                <Text style={styles.homeSpotlightMeta} numberOfLines={2}>{home.topTrack ? `${home.topTrack.artist}  •  ${home.topTrack.plays} road play${home.topTrack.plays === 1 ? '' : 's'}` : 'Matched songs will be ranked locally.'}</Text>
+                <Text style={[styles.homeSpotlightAction, { color: '#ff91b0' }]}>Open Music  ›</Text>
+              </Pressable>
+            </View>
+
+            <Pressable onPress={onAtlas} style={styles.homePatternCard}>
+              <View style={styles.homePatternIcon}><SymbolView name="point.bottomleft.forward.to.point.topright.scurvepath" tintColor="#ff8065" type="hierarchical" style={styles.homePatternSymbol} /></View>
+              <View style={styles.flex}><Text style={styles.homeSpotlightKicker}>YOUR ROAD PATTERN</Text><Text style={styles.homePatternTitle} numberOfLines={1}>{home.favoriteRoute?.label ?? (home.topPlace ? `Back to ${home.topPlace.name}` : 'Atlas is learning your roads')}</Text><Text style={styles.homeSpotlightMeta}>{home.favoriteRoute ? `${home.favoriteRoute.count} drives  •  ${formatMiles(home.favoriteRoute.averageMiles)} average` : home.topPlace ? `${home.topPlace.visits} recorded visits` : 'Recurring routes and places stay on this iPhone.'}</Text></View>
+              <Text style={styles.webRecorderChevron}>›</Text>
+            </Pressable>
+
+            <View style={styles.homeIntelligenceCard}>
+              <View style={styles.homeIntelligenceHeader}><View><Text style={styles.homeSpotlightKicker}>ROAD INTELLIGENCE</Text><Text style={styles.homeIntelligenceTitle}>Your mobility at a glance</Text></View><Pressable onPress={() => onMore('statistics')}><Text style={styles.webPanelAction}>Full statistics  ›</Text></Pressable></View>
+              <View style={styles.homeIntelligenceMetrics}>
+                <HomeIntelligenceMetric value={home.roadScore === null ? '—' : String(home.roadScore)} label="ROAD SCORE" detail="Non-safety insight" />
+                <HomeIntelligenceMetric value={String(home.charging.sessions)} label="CHARGES" detail="Last 30 days" />
+                <HomeIntelligenceMetric value={formatNumber(home.charging.energyKwh)} label="KWH ADDED" detail={home.charging.cost ? `$${home.charging.cost.toFixed(2)} estimated` : 'On-device total'} />
+              </View>
+            </View>
+
+            <View style={styles.homeExploreCard}>
+              <View style={styles.homeSummaryHeading}><View><Text style={styles.webPanelTitle}>EXPLORE YOUR ROAD</Text><Text style={styles.homeSummarySubtitle}>Jump back into your local archive</Text></View></View>
+              <View style={styles.homeExploreGrid}>
+                <HomeExploreAction symbol="clock.arrow.circlepath" title="Timeline" detail={`${home.timelineEvents} recent events`} color="#6b9cff" onPress={() => onMore('timeline')} />
+                <HomeExploreAction symbol="globe.americas" title="Atlas" detail="Places & patterns" color="#4bd6b1" onPress={onAtlas} />
+                <HomeExploreAction symbol="chart.bar.xaxis" title="Statistics" detail="Trends & highlights" color="#ff8065" onPress={() => onMore('statistics')} />
+                <HomeExploreAction symbol="magnifyingglass" title="Search" detail="Find anything" color="#d57aff" onPress={() => onMore('search')} />
+              </View>
+            </View>
+          </>}
+
           <View style={styles.webBottomGrid}>
             <View style={styles.webJourneysPanel}>
               <View style={styles.webPanelHeader}><Text style={styles.webPanelTitle}>RECENT JOURNEYS</Text><Pressable onPress={onJourneys}><Text style={styles.webPanelAction}>View all  ›</Text></Pressable></View>
@@ -760,6 +907,18 @@ function HomeScreen({ state, recordingMode, onRecord, onJourneys, onConnections,
   );
 }
 
+function HomeArchiveTile({ value, label, color, onPress }: { value: number; label: string; color: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={[styles.homeArchiveTile, { borderColor: `${color}66`, shadowColor: color }]}><View style={[styles.homeArchiveGlow, { backgroundColor: `${color}22` }]} /><Text style={[styles.homeArchiveValue, { color }]}>{value.toLocaleString()}</Text><Text style={styles.homeArchiveLabel}>{label}</Text></Pressable>;
+}
+
+function HomeIntelligenceMetric({ value, label, detail }: { value: string; label: string; detail: string }) {
+  return <View style={styles.homeIntelligenceMetric}><Text style={styles.homeIntelligenceValue} numberOfLines={1}>{value}</Text><Text style={styles.homeIntelligenceLabel}>{label}</Text><Text style={styles.homeIntelligenceDetail} numberOfLines={1}>{detail}</Text></View>;
+}
+
+function HomeExploreAction({ symbol, title, detail, color, onPress }: { symbol: SFSymbol; title: string; detail: string; color: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={styles.homeExploreAction}><View style={[styles.homeExploreIcon, { backgroundColor: `${color}18`, borderColor: `${color}55` }]}><SymbolView name={symbol} tintColor={color} type="hierarchical" style={styles.homeExploreSymbol} /></View><View style={styles.flex}><Text style={styles.homeExploreTitle}>{title}</Text><Text style={styles.homeExploreDetail}>{detail}</Text></View><Text style={[styles.webRecorderChevron, { color }]}>›</Text></Pressable>;
+}
+
 function DashboardWaveform() {
   const bars = [8, 16, 27, 13, 31, 20, 38, 17, 29, 42, 20, 34, 14, 27, 37, 18, 31, 11, 24, 35, 16, 27, 9, 20];
   return <View style={styles.webWaveform}>{bars.map((height, index) => <View key={index} style={[styles.webWaveBar, { height }]} />)}</View>;
@@ -776,7 +935,23 @@ function WebAction({ symbol, title, detail, color, onPress }: { symbol: SFSymbol
 }
 
 function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}><View style={styles.webPlaceIcon}><Text>⌂</Text></View><View style={styles.flex}><Text style={styles.webJourneyOrigin} numberOfLines={2}>{journey.startingLocation ?? 'Journey start'}</Text><Text style={styles.webJourneyDestination} numberOfLines={1}>{journey.endingLocation ?? 'Recorded destination'}</Text><Text style={styles.webJourneyMeta}>{formatMiles(journey.miles)} · {formatDuration(journey.durationMinutes)}</Text></View><View style={styles.webRouteThumb}><View style={styles.webRouteThumbLine} /><View style={styles.webRouteThumbStart} /><View style={styles.webRouteThumbEnd} /></View></Pressable>;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}>
+      <View style={styles.webPlaceIcon}><Text>⌂</Text></View>
+      <View style={styles.flex}>
+        <Text style={styles.webJourneyOrigin} numberOfLines={2}>{journey.startingLocation ?? 'Journey start'}</Text>
+        <Text style={styles.webJourneyDestination} numberOfLines={1}>{journey.endingLocation ?? 'Recorded destination'}</Text>
+        <Text style={styles.webJourneyMeta}>{formatMiles(journey.miles)} · {formatDuration(journey.durationMinutes)}</Text>
+      </View>
+      <View style={styles.webRouteThumb}>
+        <Svg width={48} height={38} viewBox="0 0 48 38">
+          <Path d="M 6 30 Q 20 10 42 12" fill="none" stroke="#ff694f" strokeWidth="2.5" strokeLinecap="round" />
+          <Circle cx="6" cy="30" r="3" fill="#9746f5" />
+          <Circle cx="42" cy="12" r="3" fill="#ffc2af" />
+        </Svg>
+      </View>
+    </Pressable>
+  );
 }
 
 function CompactHealthRow({ symbol, icon, label, detail, healthy }: { symbol: string; icon?: ReactNode; label: string; detail: string; healthy: boolean }) {
@@ -809,26 +984,50 @@ function DashboardHealthRow({ label, detail, healthy }: { label: string; detail:
 
 function OpenRoadArtwork() {
   return <View style={styles.openRoad} pointerEvents="none">
-    <View style={styles.roadSunGlow} />
-    <View style={styles.roadSun} />
-    <View style={[styles.roadStar, styles.roadStarOne]} />
-    <View style={[styles.roadStar, styles.roadStarTwo]} />
-    <View style={[styles.roadStar, styles.roadStarThree]} />
-    <View style={styles.roadHorizon} />
-    <View style={styles.roadSurface} />
-    <View style={[styles.roadEdge, styles.roadEdgeLeft]} />
-    <View style={[styles.roadEdge, styles.roadEdgeRight]} />
-    <View style={[styles.roadDash, styles.roadDashFar]} />
-    <View style={[styles.roadDash, styles.roadDashMiddle]} />
-    <View style={[styles.roadDash, styles.roadDashNear]} />
+    <Svg width="100%" height={132} viewBox="0 0 360 132" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <SvgLinearGradient id="openRoadSky" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#1a0c28" />
+          <Stop offset="0.6" stopColor="#0d0918" />
+          <Stop offset="1" stopColor="#050308" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadSun" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#ff9a78" />
+          <Stop offset="1" stopColor="#ff5a43" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadGlow" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0" stopColor="#ff5a43" stopOpacity={0} />
+          <Stop offset="0.5" stopColor="#ff7b54" stopOpacity={0.6} />
+          <Stop offset="1" stopColor="#ff5a43" stopOpacity={0} />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="openRoadPav" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#1e142e" />
+          <Stop offset="1" stopColor="#0a0612" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width="360" height="132" fill="url(#openRoadSky)" />
+      <Circle cx={45} cy={22} r={1.5} fill="#e4d6ff" opacity={0.7} />
+      <Circle cx={120} cy={35} r={1} fill="#e4d6ff" opacity={0.5} />
+      <Circle cx={275} cy={18} r={1.5} fill="#e4d6ff" opacity={0.8} />
+      <Circle cx={320} cy={38} r={1} fill="#e4d6ff" opacity={0.6} />
+      <Circle cx={180} cy={56} r={28} fill="url(#openRoadSun)" opacity={0.9} />
+      <Circle cx={180} cy={56} r={44} fill="#ff5a43" opacity={0.15} />
+      <Path d="M 16 58 L 344 58" stroke="url(#openRoadGlow)" strokeWidth={1.5} />
+      <Path d="M 162 58 L 198 58 L 290 132 L 70 132 Z" fill="url(#openRoadPav)" />
+      <Path d="M 162 58 L 70 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
+      <Path d="M 198 58 L 290 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
+      <Path d="M 180 62 L 180 70" stroke="#ff8767" strokeWidth={1.5} opacity={0.8} />
+      <Path d="M 180 76 L 180 90" stroke="#ff8767" strokeWidth={2.5} opacity={0.9} />
+      <Path d="M 180 98 L 180 124" stroke="#ff8767" strokeWidth={4} opacity={1} />
+    </Svg>
     <View style={styles.roadSoundwave}><View style={styles.roadSoundBarSmall} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarMedium} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarSmall} /></View>
     <Text style={styles.roadCaption}>OPEN ROAD  •  YOUR STORY</Text>
   </View>;
 }
 
-function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: {
-  catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean;
-  onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void;
+function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
+  catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; details: JourneyDetail[];
+  onJourney: (id: string) => void; onRefresh: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -844,6 +1043,17 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
   const memoryTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [section, setSection] = useState<'library' | 'memories' | 'collections'>('memories');
+  const [query, setQuery] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<JourneyLibraryFilter>('all');
+  const [librarySort, setLibrarySort] = useState<JourneyLibrarySort>('newest');
+  const [assignJourneyId, setAssignJourneyId] = useState<string | null>(null);
+  const visibleJourneys = useMemo(() => filterJourneyLibrary(journeys.data, query, libraryFilter, librarySort), [journeys.data, query, libraryFilter, librarySort]);
+  const recurringRoutes = useMemo(() => favoriteRoutes(journeys.data).slice(0, 3), [journeys.data]);
+  const visibleMemories = useMemo(() => catalog.data.memories.filter(item => `${item.name} ${item.notes}`.toLowerCase().includes(query.trim().toLowerCase())), [catalog.data.memories, query]);
+  const visibleCollections = useMemo(() => catalog.data.collections.filter(item => `${item.name} ${item.description}`.toLowerCase().includes(query.trim().toLowerCase())), [catalog.data.collections, query]);
+  const collectionJourneys = collectionOverview ? journeys.data.filter(journey => collectionOverview.driveIds.includes(journey.id)) : [];
+  const collectionRoutes = collectionOverview ? details.filter(detail => collectionOverview.driveIds.includes(detail.id) && detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates })) : [];
   const selectedMemory = catalog.data.memories[Math.min(selectedIndex, Math.max(0, catalog.data.memories.length - 1))] ?? null;
   const selectedCollections = selectedMemory
     ? selectedMemory.collectionIds.map(id => catalog.data.collections.find(collection => collection.id === id)).filter((collection): collection is JourneyCollection => Boolean(collection))
@@ -961,6 +1171,16 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
     setCollectionOverview(null);
     setShareCard({ kind: 'collection', eyebrow: 'A JOURNEY COLLECTION', title: collection.name, subtitle: collection.description || 'A set of drives that belong together.', metrics: [{ label: 'JOURNEYS', value: String(collection.driveIds.length) }, { label: 'PHOTOS', value: String(collection.photos.length) }, { label: 'STORY', value: 'SAVED' }], photo: collection.photos[0] ?? null, accent: '#9b7cff' });
   };
+  const assignToCollection = async (collection: JourneyCollection) => {
+    if (!assignJourneyId) return;
+    if (collection.driveIds.includes(assignJourneyId)) { setAssignJourneyId(null); return; }
+    setSaving(true);
+    try {
+      await appDataClient.saveCollection({ id: collection.id, name: collection.name, description: collection.description, driveIds: [...collection.driveIds, assignJourneyId] });
+      setAssignJourneyId(null);
+      onRefresh();
+    } finally { setSaving(false); }
+  };
 
   return <View style={styles.safe}>
     <ScrollView
@@ -975,6 +1195,10 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
       <View style={styles.memoryPageHeader}><PageHeader variant="memories" eyebrow="YOUR STORY ON THE ROAD" title="Memories" body="Memories hold Collections. Collections hold the journeys that made them." /></View>
       {(catalog.status === 'error' || journeys.status === 'error') && <InlineNotice message={catalog.message ?? journeys.message ?? 'Memories could not refresh.'} onRetry={onRefresh} />}
 
+      <View style={styles.libraryTabs}>{(['library', 'memories', 'collections'] as const).map(item => <Pressable key={item} onPress={() => { setSection(item); setQuery(''); }} style={[styles.libraryTab, section === item && styles.libraryTabActive]}><Text style={[styles.libraryTabText, section === item && styles.libraryTabTextActive]}>{item === 'library' ? 'Journeys' : item[0].toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
+      <TextInput value={query} onChangeText={setQuery} placeholder={`Search ${section}`} placeholderTextColor="#716879" style={styles.librarySearch} />
+
+      {section === 'memories' && <>
       <View style={styles.memorySectionHeader}><Text style={styles.memoryLevel}>MEMORIES</Text><Pressable onPress={() => editMemory(null)}><Text style={styles.memoryHeaderAction}>+ New memory</Text></Pressable></View>
       <Animated.ScrollView
         ref={carousel}
@@ -984,7 +1208,7 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
         scrollEventThrottle={16}
         onMomentumScrollEnd={event => setSelectedIndex(Math.max(0, Math.min(catalog.data.memories.length - 1, Math.round(event.nativeEvent.contentOffset.x / cardStep))))}
       >
-        {catalog.data.memories.map((memory, index) => {
+        {visibleMemories.map((memory, index) => {
           const inputRange = [(index - 1) * cardStep, index * cardStep, (index + 1) * cardStep];
           const scale = scrollX.interpolate({ inputRange, outputRange: [0.9, 1, 0.9], extrapolate: 'clamp' });
           const translateY = scrollX.interpolate({ inputRange, outputRange: [12, 0, 12], extrapolate: 'clamp' });
@@ -1001,15 +1225,26 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
         })}
         {!catalog.data.memories.length && <Pressable onPress={() => editMemory(null)} style={[styles.memoryHeroCard, styles.memoryEmptyHero, { width: cardWidth }]}><MemoryArtwork artworkKey="road-trips" /><View style={styles.memoryHeroShade} /><Text style={styles.memoryHeroKicker}>YOUR FIRST MEMORY</Text><Text style={styles.memoryHeroTitle}>Build a chapter</Text><Text style={styles.memoryHeroMeta}>Choose two Collections to begin</Text></Pressable>}
       </Animated.ScrollView>
-      <View style={styles.memoryDots}>{catalog.data.memories.map((memory, index) => <View key={memory.id} style={[styles.memoryDot, index === selectedIndex && styles.memoryDotActive]} />)}</View>
+      <View style={styles.memoryDots}>{visibleMemories.map((memory, index) => <View key={memory.id} style={[styles.memoryDot, index === selectedIndex && styles.memoryDotActive]} />)}</View>
 
+      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>CHAPTERS</Text><Text style={styles.memorySectionTitle}>{selectedMemory?.name ?? 'Build your first Memory'}</Text></View>{selectedMemory && <Pressable onPress={() => editMemory(selectedMemory)}><Text style={styles.memoryHeaderAction}>Edit</Text></Pressable>}</View>
+      {selectedCollections.map((collection, index) => <CollectionCard key={collection.id} collection={collection} index={index} onOpen={() => setCollectionOverview(collection)} />)}
+      </>}
+
+      {section === 'collections' && <>
       <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>COLLECTIONS</Text><Text style={styles.memorySectionTitle}>{selectedMemory?.name ?? 'Saved collections'}</Text></View><View style={styles.memoryHeaderActions}>{selectedMemory && <Pressable onPress={() => editMemory(selectedMemory)}><Text style={styles.memoryHeaderAction}>Edit memory</Text></Pressable>}<Pressable onPress={() => editCollection(null)}><Text style={styles.memoryHeaderAction}>+ New</Text></Pressable></View></View>
-      {(selectedCollections.length ? selectedCollections : catalog.data.collections).map((collection, index) => <CollectionCard key={collection.id} collection={collection} index={index} onOpen={() => setCollectionOverview(collection)} />)}
+      {visibleCollections.map((collection, index) => <CollectionCard key={collection.id} collection={collection} index={index} onOpen={() => setCollectionOverview(collection)} />)}
       {!catalog.data.collections.length && <EmptyCard title="No Collections yet" body="Create a Collection, then add the journeys that belong together." />}
-      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEYS</Text><Text style={styles.memorySectionTitle}>Your latest drives</Text></View></View>
-      <View style={styles.memoryJourneyList}>{journeys.data.map(journey => <JourneyCard key={journey.id} journey={journey} compact onPress={() => onJourney(journey.id)} />)}</View>
+      </>}
+
+      {section === 'library' && <>
+      <View style={styles.libraryFilterRow}>{([['all', 'All'], ['music', 'With music'], ['long', '10+ miles'], ['efficient', 'Easy pace']] as const).map(([id, label]) => <Pressable key={id} onPress={() => setLibraryFilter(id)} style={[styles.libraryChip, libraryFilter === id && styles.libraryChipActive]}><Text style={[styles.libraryChipText, libraryFilter === id && styles.libraryChipTextActive]}>{label}</Text></Pressable>)}</View>
+      <View style={styles.libraryFilterRow}>{([['newest', 'Newest'], ['oldest', 'Oldest'], ['distance', 'Distance'], ['duration', 'Drive time']] as const).map(([id, label]) => <Pressable key={id} onPress={() => setLibrarySort(id)} style={[styles.librarySortChip, librarySort === id && styles.librarySortChipActive]}><Text style={styles.librarySortText}>{label}</Text></Pressable>)}</View>
+      {recurringRoutes.length > 0 && <><View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>FAVORITE ROUTES</Text><Text style={styles.memorySectionTitle}>Roads you return to</Text></View></View>{recurringRoutes.map(route => <View key={route.key} style={styles.favoriteRoute}><View style={styles.flex}><Text style={styles.favoriteRouteTitle}>{route.label}</Text><Text style={styles.favoriteRouteMeta}>{route.count} drives  •  {formatMiles(route.averageMiles)} average  •  {Math.round(route.averageMinutes)} min</Text></View><Text style={styles.favoriteRouteCount}>{route.count}×</Text></View>)}</>}
+      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEY LIBRARY</Text><Text style={styles.memorySectionTitle}>{visibleJourneys.length} archived drives</Text></View></View>
+      <View style={styles.memoryJourneyList}>{visibleJourneys.map(journey => <View key={journey.id} style={styles.libraryJourneyWrap}><JourneyCard journey={journey} compact onPress={() => onJourney(journey.id)} /><Pressable onPress={() => setAssignJourneyId(journey.id)} style={styles.libraryAddButton}><Text style={styles.libraryAddText}>+ Collection</Text></Pressable></View>)}</View>
       {!journeys.data.length && journeys.status !== 'loading' && <EmptyCard title="No journeys yet" body="Finish a recording and it will appear here, ready to organize." />}
-      {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color="#b59cff" /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
+      </>}
       {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
     </ScrollView>
 
@@ -1028,12 +1263,13 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
 
     <OverlayModal visible={Boolean(collectionOverview)} kicker="COLLECTION OVERVIEW" title={collectionOverview?.name ?? 'Collection'} onClose={() => setCollectionOverview(null)}>
       {collectionOverview && <>
-        <View style={styles.overviewCollectionHero}>{collectionOverview.photos[0] ? <JourneyPhotoImage photo={collectionOverview.photos[0]} style={styles.overviewCollectionImage} /> : <View style={[styles.overviewCollectionImage, styles.overviewCollectionFallback]}><View style={[styles.collectionArtworkOrb, { backgroundColor: '#9b7cff' }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: '#43e6ae' }]} /></View>}<View style={styles.memoryHeroShade} /><View style={styles.overviewHeroCopy}><Text style={styles.overviewEyebrow}>ROADS THAT BELONG TOGETHER</Text><Text style={styles.overviewHeroTitle}>{collectionOverview.name}</Text></View></View>
-        <OverviewMetrics items={[{ label: 'JOURNEYS', value: String(collectionOverview.driveIds.length) }, { label: 'PHOTOS', value: String(collectionOverview.photos.length) }, { label: 'MEMORIES', value: String(catalog.data.memories.filter(memory => memory.collectionIds.includes(collectionOverview.id)).length) }]} />
+        <View style={styles.overviewCollectionHero}>{collectionOverview.photos[0] ? <JourneyPhotoImage photo={collectionOverview.photos[0]} style={styles.overviewCollectionImage} /> : <View style={[styles.overviewCollectionImage, styles.overviewCollectionFallback]}><LinearGradient colors={['#241238', '#140c20']} style={StyleSheet.absoluteFill} /><Svg width="100%" height="100%" viewBox="0 0 320 230" style={StyleSheet.absoluteFill}><Path d="M 40 210 Q 140 130 180 140 T 280 40" fill="none" stroke="#ff795b" strokeWidth="3.5" strokeLinecap="round" /><Circle cx="280" cy="40" r="5" fill="#43e6ae" stroke="#fff" strokeWidth="2" /></Svg></View>}<View style={styles.memoryHeroShade} /><View style={styles.overviewHeroCopy}><Text style={styles.overviewEyebrow}>ROADS THAT BELONG TOGETHER</Text><Text style={styles.overviewHeroTitle}>{collectionOverview.name}</Text></View></View>
+        <OverviewMetrics items={[{ label: 'JOURNEYS', value: String(collectionOverview.driveIds.length) }, { label: 'MILES', value: formatMiles(collectionJourneys.reduce((sum, journey) => sum + journey.miles, 0)) }, { label: 'SONGS', value: String(collectionJourneys.reduce((sum, journey) => sum + journey.songCount, 0)) }]} />
         {collectionOverview.description ? <Text style={styles.overviewBody}>{collectionOverview.description}</Text> : <Text style={styles.overviewBodyMuted}>Add a description to give this Collection more context.</Text>}
+        <Text style={styles.overviewSectionLabel}>COLLECTION MAP</Text>
+        <PrimaryMobilityMap routes={collectionRoutes} height={260} emptyMessage="Open a journey once to cache its recorded route for this Collection map." />
         <Text style={styles.overviewSectionLabel}>JOURNEYS IN THIS COLLECTION</Text>
         {journeys.data.filter(journey => collectionOverview.driveIds.includes(journey.id)).slice(0, 6).map(journey => <Pressable key={journey.id} onPress={() => { setCollectionOverview(null); onJourney(journey.id); }} style={[styles.overviewListRow, styles.staticWidgetGlow]}><View style={styles.flex}><Text style={styles.overviewListTitle}>{locationPair(journey)}</Text><Text style={styles.overviewListMeta}>{formatCompactDate(journey.startedAt)}  •  {formatMiles(journey.miles)}</Text></View><Text style={styles.overviewChevron}>›</Text></Pressable>)}
-        {!collectionOverview.driveIds.length && <Text style={styles.overviewBodyMuted}>No journeys have been added yet.</Text>}
         <View style={styles.overviewActions}><Pressable onPress={() => openCollectionShare(collectionOverview)} style={styles.overviewShare}><Text style={styles.overviewShareText}>Share card</Text></Pressable><Pressable onPress={() => editCollection(collectionOverview)} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Manage collection</Text></Pressable></View>
       </>}
     </OverlayModal>
@@ -1062,6 +1298,11 @@ function MemoriesScreen({ catalog, journeys, hasMore, loadingMore, onJourney, on
         {journeys.data.map(journey => <MembershipRow key={journey.id} title={locationPair(journey)} detail={`${formatCompactDate(journey.startedAt)}  •  ${formatMiles(journey.miles)}`} selected={collectionDraft.driveIds.includes(journey.id)} onPress={() => void toggleCollectionJourney(journey.id)} />)}
         <View style={styles.editorActions}><Pressable onPress={() => setCollectionDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>Done</Text></Pressable><Pressable onPress={() => void saveCollection()} disabled={saving} style={[styles.editorSave, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'Saving…' : collectionDraft.id ? 'Save details' : 'Create collection'}</Text></Pressable></View>
       </View>}
+    </OverlayModal>
+    <OverlayModal visible={Boolean(assignJourneyId)} kicker="QUICK ORGANIZE" title="Add to a Collection" onClose={() => setAssignJourneyId(null)}>
+      <Text style={styles.overviewBodyMuted}>Choose where this journey belongs. The change is saved on this iPhone first.</Text>
+      {catalog.data.collections.map(collection => <MembershipRow key={collection.id} title={collection.name} detail={`${collection.driveIds.length} journeys`} selected={Boolean(assignJourneyId && collection.driveIds.includes(assignJourneyId))} onPress={() => void assignToCollection(collection)} />)}
+      {!catalog.data.collections.length && <Pressable onPress={() => { setAssignJourneyId(null); editCollection(null); }} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Create your first Collection</Text></Pressable>}
     </OverlayModal>
     <ShareCardModal payload={shareCard} onClose={() => setShareCard(null)} />
   </View>;
@@ -1162,13 +1403,55 @@ function MemoryCollectionChapter({ collection, index, journeys, onOpen, onOpenJo
 }
 
 function CollectionPlaceholderArtwork({ index }: { index: number }) {
-  const palettes = index % 2 ? ['#17122f', '#7450c9', '#ff9473'] as const : ['#301325', '#a7356b', '#ffb071'] as const;
-  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.memoryChapterArtwork}><View style={styles.collectionPlaceholderSun} /><View style={styles.collectionPlaceholderRoad} /><View style={styles.collectionPlaceholderHorizon} /></LinearGradient>;
+  const isAlt = index % 2 === 1;
+  return (
+    <View style={styles.memoryChapterArtwork}>
+      <LinearGradient
+        colors={isAlt ? ['#170e28', '#2a1640', '#0f0a1c'] : ['#220d20', '#3b1633', '#110714']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width="100%" height="100%" viewBox="0 0 92 82" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id={`colRoadGrad-${index}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={isAlt ? '#a47dff' : '#ff795b'} />
+            <Stop offset="100%" stopColor={isAlt ? '#5ce5c2' : '#ff4d87'} />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d="M 0 44 L 92 44" stroke="#4a2d59" strokeWidth="0.75" opacity="0.6" />
+        <Path d="M 0 52 Q 28 36 50 48 T 92 42" fill="none" stroke="#3d214c" strokeWidth="1.5" opacity="0.7" />
+        <Path d="M 12 82 C 26 62, 54 56, 46 44" fill="none" stroke={`url(#colRoadGrad-${index})`} strokeWidth="2.5" strokeLinecap="round" />
+        <Path d="M 14 82 C 27 63, 53 57, 46 45" fill="none" stroke="#fff" strokeWidth="0.75" strokeDasharray="3 3" opacity="0.75" />
+        <Circle cx="46" cy="44" r="2.5" fill={isAlt ? '#5ce5c2' : '#ff795b'} />
+      </Svg>
+    </View>
+  );
 }
 
 function JourneyMomentArtwork({ index }: { index: number }) {
-  const palettes = index % 3 === 0 ? ['#301727', '#d35b70', '#ffb06f'] as const : index % 3 === 1 ? ['#101c36', '#466fae', '#d899cb'] as const : ['#23192f', '#7661b6', '#ff9a78'] as const;
-  return <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill}><View style={styles.journeyPlaceholderGlow} /><View style={styles.journeyPlaceholderRoad} /></LinearGradient>;
+  const palettes = index % 3 === 0
+    ? ['#261021', '#130a17'] as const
+    : index % 3 === 1
+      ? ['#0f172a', '#080c18'] as const
+      : ['#1d1228', '#0c0714'] as const;
+  const accent = index % 3 === 0 ? '#ff795b' : index % 3 === 1 ? '#43e6ae' : '#b583ff';
+
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <LinearGradient colors={palettes} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+      <Svg width="100%" height="100%" viewBox="0 0 74 65" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgLinearGradient id={`momentGrad-${index}`} x1="0" y1="0" x2="1" y2="1">
+            <Stop offset="0%" stopColor={accent} />
+            <Stop offset="100%" stopColor="#ff4d87" />
+          </SvgLinearGradient>
+        </Defs>
+        <Path d="M 8 65 C 20 45, 52 40, 48 20" fill="none" stroke={`url(#momentGrad-${index})`} strokeWidth="2" strokeLinecap="round" />
+        <Circle cx="48" cy="20" r="2" fill="#fff" />
+      </Svg>
+    </View>
+  );
 }
 
 function OverlayModal({ visible, kicker, title, onClose, children }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode }) {
@@ -1188,8 +1471,43 @@ function OverviewMetrics({ items }: { items: { label: string; value: string }[] 
 }
 
 function MemoryArtwork({ artworkKey, photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
-  const night = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
-  return photo ? <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} /> : <View style={[styles.memoryArtwork, night && styles.memoryArtworkNight]}><View style={styles.memoryArtworkGlow} /><View style={styles.memoryArtworkMoon} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineLeft]} /><View style={[styles.memoryArtworkLine, styles.memoryArtworkLineRight]} /><View style={styles.memoryArtworkDashOne} /><View style={styles.memoryArtworkDashTwo} /><View style={styles.memoryArtworkDashThree} /></View>;
+  const isNight = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
+  if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} />;
+
+  return (
+    <View style={[styles.memoryArtwork, isNight && styles.memoryArtworkNight]}>
+      <LinearGradient
+        colors={isNight ? ['#0d142b', '#180f2c', '#080611'] : ['#281023', '#391230', '#100713']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <Svg width="100%" height="100%" viewBox="0 0 320 240" style={StyleSheet.absoluteFill}>
+        <Defs>
+          <SvgRadialGradient id="memoryArtGlow" cx="50%" cy="30%" rx="40%" ry="40%">
+            <Stop offset="0%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0.3" />
+            <Stop offset="100%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0" />
+          </SvgRadialGradient>
+          <SvgLinearGradient id="memoryArtRoad" x1="0" y1="1" x2="0" y2="0">
+            <Stop offset="0%" stopColor={isNight ? '#5ce5c2' : '#ff795b'} />
+            <Stop offset="60%" stopColor={isNight ? '#b17aff' : '#ff4d87'} />
+            <Stop offset="100%" stopColor={isNight ? '#ff8bb9' : '#9b61ff'} />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect width="320" height="240" fill="url(#memoryArtGlow)" />
+        <Path d="M 0 110 L 320 110" stroke="#482b57" strokeWidth="1" opacity="0.4" />
+        <Path d="M 120 240 L 157 110 L 163 110 L 200 240 Z" fill="#0d0915" opacity="0.85" />
+        <Path d="M 120 240 L 157 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
+        <Path d="M 200 240 L 163 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
+        <Path d="M 160 230 L 160 210" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
+        <Path d="M 160 190 L 160 174" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
+        <Path d="M 160 160 L 160 148" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
+        <Path d="M 160 138 L 160 130" stroke="#fff" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
+        <Circle cx="160" cy="110" r="5" fill={isNight ? '#5ce5c2' : '#ff8c6d'} />
+        <Circle cx="160" cy="110" r="10" fill="none" stroke={isNight ? '#5ce5c2' : '#ff8c6d'} strokeWidth="1" opacity="0.35" />
+      </Svg>
+    </View>
+  );
 }
 
 function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
@@ -1209,7 +1527,32 @@ function MembershipRow({ title, detail, selected, onPress }: { title: string; de
 function CollectionCard({ collection, index, onOpen }: { collection: JourneyCollection; index: number; onOpen: () => void }) {
   const colors = ['#ff795b', '#9b7cff', '#43e6ae'];
   const color = colors[index % colors.length];
-  return <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}>{collection.photos[0] ? <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} /> : <View style={[styles.collectionArtwork, { backgroundColor: `${color}20` }]}><View style={[styles.collectionArtworkOrb, { backgroundColor: color }]} /><View style={[styles.collectionArtworkRoute, { backgroundColor: color }]} /></View>}<View style={styles.flex}><Text style={styles.collectionKicker}>COLLECTION</Text><Text style={styles.collectionTitle}>{collection.name}</Text><Text style={styles.collectionMeta}>{collection.driveIds.length} journeys  •  {collection.photos.length} photos{collection.description ? `  •  ${collection.description}` : ''}</Text></View><View style={styles.collectionManage}><Text style={styles.collectionManageText}>Open</Text></View></Pressable>;
+  return (
+    <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}>
+      {collection.photos[0] ? (
+        <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} />
+      ) : (
+        <View style={styles.collectionArtwork}>
+          <LinearGradient colors={['#1c1028', '#100a18']} style={StyleSheet.absoluteFill} />
+          <Svg width={68} height={68} viewBox="0 0 68 68" style={StyleSheet.absoluteFill}>
+            <Path d="M 10 58 Q 30 38 42 42 T 58 16" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+            <Circle cx="58" cy="16" r="3" fill="#fff" />
+            <Circle cx="10" cy="58" r="2.5" fill={color} />
+          </Svg>
+        </View>
+      )}
+      <View style={styles.flex}>
+        <Text style={styles.collectionKicker}>COLLECTION</Text>
+        <Text style={styles.collectionTitle}>{collection.name}</Text>
+        <Text style={styles.collectionMeta}>
+          {collection.driveIds.length} journeys • {collection.photos.length} photos{collection.description ? ` • ${collection.description}` : ''}
+        </Text>
+      </View>
+      <View style={styles.collectionManage}>
+        <Text style={styles.collectionManageText}>Open</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
@@ -1246,10 +1589,18 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   const [startingName, setStartingName] = useState('');
   const [endingName, setEndingName] = useState('');
   const [savingLocations, setSavingLocations] = useState(false);
+  const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
+  const songMoments = useMemo(() => journey ? buildSongRouteMoments(
+    journey.soundtrack,
+    journey.route?.coordinates ?? [],
+    journey.startedAt,
+    journey.endedAt,
+  ) : [], [journey]);
 
   useEffect(() => {
-    if (!visible) { setEditingLocations(false); return; }
+    if (!visible) { setEditingLocations(false); setSelectedSongIndex(null); return; }
     if (!journey) return;
+    setSelectedSongIndex(null);
     setStartingName(journey.startingLocation && journey.startingLocation !== rawStartingLocation ? journey.startingLocation : '');
     setEndingName(journey.endingLocation && journey.endingLocation !== rawEndingLocation ? journey.endingLocation : '');
   }, [journey, visible]);
@@ -1278,8 +1629,27 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
     <OverlayModal visible={visible} kicker="JOURNEY OVERVIEW" title="Journey" onClose={onClose}>
       {state.status === 'loading' ? <LoadingCard /> : state.status === 'error' || !journey ? <InlineNotice message={state.message ?? 'Journey unavailable.'} onRetry={onRetry} /> : <>
             <JourneyCinematicHero journey={journey} />
+            <View style={styles.journeyMapHeading}>
+              <Text style={styles.journeyMapKicker}>JOURNEY MAP</Text>
+              <Text style={styles.journeyMapTitle}>ROUTE + SONG LOCATIONS</Text>
+            </View>
+            <InteractiveRouteMap
+              coordinates={journey.route?.coordinates ?? []}
+              routeSamples={journey.route?.points}
+              songMoments={songMoments}
+              totalSongCount={Math.max(journey.songCount, journey.soundtrack.length)}
+              startedAt={journey.startedAt}
+              endedAt={journey.endedAt}
+              startingBatteryPercent={journey.startingBatteryPercent}
+              endingBatteryPercent={journey.endingBatteryPercent}
+              startLabel={journey.startingLocation}
+              endLabel={journey.endingLocation}
+              selectedSongIndex={selectedSongIndex}
+              onSelectSong={setSelectedSongIndex}
+              fallback={<RouteSketch expanded coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />}
+            />
             <SectionHeading title="Soundtrack moments" action={`${journey.songCount} songs`} />
-            {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} />) : <EmptyCard title="No songs matched yet" body="JourneyDeck may keep checking briefly after a drive, or you can choose another music connection." />}
+            {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} selected={selectedSongIndex === index + 1} onPress={() => setSelectedSongIndex(index + 1)} />) : <EmptyCard title="No songs matched yet" body="JourneyDeck may keep checking briefly after a drive, or you can choose another music connection." />}
             {(journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null) && <>
               <SectionHeading title="Vehicle" />
               <View style={styles.infoCard}>
@@ -1308,13 +1678,18 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
 function ConnectionsScreen({
   dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
-  onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition,
+  onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition, currentUser, appleIdentityStatus, signingInWithApple,
+  privateCloud, onAppleSignIn, onPrivateCloudSync,
 }: {
   dashboard: AppDashboard;
   provider: MusicProvider;
   recordingMode: RecordingMode;
   capabilities: JourneyDeckMusicCapabilityStatus | null;
   connectionCapabilities: ConnectionCapabilities;
+  currentUser: LocalUser;
+  appleIdentityStatus: AppleIdentityStatus;
+  signingInWithApple: boolean;
+  privateCloud: PrivateCloudUiState;
   lastFmUsername: string;
   editingLastFm: boolean;
   lastFmDraft: string;
@@ -1329,7 +1704,10 @@ function ConnectionsScreen({
   onChangeProvider: () => void;
   onConnectAppleMusic: () => void;
   onEnableRecognition: () => void;
+  onAppleSignIn: () => void;
+  onPrivateCloudSync: () => void;
 }) {
+  const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
   const selected = providerOptions.find(option => option.id === provider)!;
   const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
@@ -1345,6 +1723,47 @@ function ConnectionsScreen({
       >
         <AtmosphericBackdrop variant="settings" />
         <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="JourneyDeck works as a recorder on its own. Add music or vehicle context whenever you are ready." />
+
+        <SectionHeading title="Driver profile & iCloud" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#a88aff' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#a88aff' }]}><Text style={styles.connectionIconText}></Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>LOCAL-FIRST · PRIVATE ICLOUD</Text>
+            <Text style={styles.connectionName}>{currentUser.displayName || 'Primary Driver'}</Text>
+            <Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple identity linked to this local profile' : 'Local profile · Apple sign-in is optional'}</Text>
+          </View>
+          <Pressable onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Install 1.7' : 'Sync'}</Text></Pressable>
+        </View>
+        <View style={styles.privateCloudCard}>
+          <Text style={styles.privateCloudTitle}>PRIVATE ICLOUD SYNC</Text>
+          <Text style={styles.privateCloudBody}>{privateCloud.detail} Journey summaries, music, collections, and memories use your private iCloud database. Raw route points, Home/Work coordinates, Apple credentials, and local photo paths stay on this iPhone.</Text>
+          <Pressable onPress={() => Alert.alert('Apple identity and iCloud', 'Sign in with Apple links this local JourneyDeck profile. Private iCloud sync separately uses the iCloud account signed into this iPhone. JourneyDeck’s server does not receive these CloudKit records.', [{ text: 'Done' }])}><Text style={styles.privateCloudLearn}>How privacy works</Text></Pressable>
+        </View>
+        {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
+        {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
+        {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
+
+        <SectionHeading title="Membership" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#ff69b4' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#ff4594' }]}><Text style={styles.connectionIconText}>★</Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>PRO MEMBERSHIP · $4.99 / MONTH</Text>
+            <Text style={styles.connectionName}>JourneyDeck Pro</Text>
+            <Text style={styles.connectionDetail}>Unlimited trips · Private iCloud backup · Music analytics</Text>
+          </View>
+          <Pressable onPress={() => Alert.alert('JourneyDeck Pro', 'Your device is currently running with full local-first access unlocked during preview.', [{ text: 'Great' }])} style={[styles.changeButton, { borderColor: '#ff4594' }]}><Text style={[styles.changeButtonText, { color: '#ff4594' }]}>Unlocked</Text></Pressable>
+        </View>
+
+        <SectionHeading title="Privacy geofences" />
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#43e6ae' }]}>
+          <View style={[styles.connectionIcon, { backgroundColor: '#10b981' }]}><Text style={styles.connectionIconText}>🛡</Text></View>
+          <View style={styles.flex}>
+            <Text style={styles.connectionKicker}>AUTOMATIC PRIVACY MASKING</Text>
+            <Text style={styles.connectionName}>Home & Work Safe Zones</Text>
+            <Text style={styles.connectionDetail}>300m safety radius active · Coordinates scrubbed on share cards</Text>
+          </View>
+        </View>
+
         <SectionHeading title="Recording" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: selectedRecordingMode.color }]}>
           <View style={[styles.connectionIcon, { backgroundColor: selectedRecordingMode.color }]}><Text style={styles.connectionIconText}>{selectedRecordingMode.symbol}</Text></View>
@@ -1374,8 +1793,10 @@ function ConnectionsScreen({
 
         <SectionHeading title="Vehicle" />
         <ConnectionTile name="Tessie" detail="Battery, energy, and vehicle context" symbol="T" mark={<TessieMark size={46} />} color="#65c9ff" status={connectionCapabilities.tessieConfigured ? 'Connected through Tessie' : statusText(connections.tessie)} action={connectionCapabilities.tessieConfigured ? 'Server managed' : 'Learn more'} onPress={() => Alert.alert('Better with Tesla + Tessie', connectionCapabilities.tessieConfigured ? 'Tessie is connected securely on the JourneyDeck server. Its token is never copied to this iPhone.' : 'Tessie can add Tesla battery, energy, charging, and vehicle context. Journey recording and music continue to work normally without it.', [{ text: 'Not now', style: 'cancel' }, { text: 'Visit Tessie', onPress: () => void Linking.openURL('https://www.tessie.com/') }])} />
+        <ConnectionTile name="Drive intelligence" detail="Charging, saved places, and route efficiency" symbol="↗" color="#ff7547" status="Private · cached on this iPhone" action="Open" onPress={() => setVehicleIntelligenceVisible(true)} />
         <View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and Tessie connections are optional and isolated. A connection problem never blocks recording, finishing, or the on-device point queue.</Text></View>
       </ScrollView>
+      <VehicleIntelligenceScreen visible={vehicleIntelligenceVisible} onClose={() => setVehicleIntelligenceVisible(false)} />
     </View>
   );
 }
@@ -1534,7 +1955,12 @@ function BrandHeader({ compact = false }: { compact?: boolean }) {
 }
 
 function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: string; title: string; body: string; variant?: 'standard' | 'memories' | 'settings' }) {
-  return <View style={[styles.pageHeader, variant === 'memories' && pageSceneStyles.memoryHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
+  if (variant === 'memories') {
+    return <View style={styles.memoryHeroCardHeader}>
+      <Image source={require('../assets/memories-header-hero.png')} style={styles.memoryHeroHeaderImage} resizeMode="cover" />
+    </View>;
+  }
+  return <View style={[styles.pageHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
     <PageHeaderScene variant={variant} />
     <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
     <Text style={[styles.pageTitle, variant !== 'standard' && pageSceneStyles.sceneTitle]}>{title}</Text>
@@ -1557,13 +1983,137 @@ function AtmosphericBackdrop({ variant }: { variant: 'home' | 'memories' | 'sett
 
 function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'settings' }) {
   if (variant === 'memories') return <>
-    <LinearGradient pointerEvents="none" colors={['#180d27', '#0a1022', '#110817'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff795b" /><Stop offset="0.52" stopColor="#be7cff" /><Stop offset="1" stopColor="#5ce5c2" /></SvgLinearGradient></Defs><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="#9b6dff" strokeWidth="9" opacity="0.18" /><Path d="M 360 18 C 287 18, 333 66, 269 75 S 220 136, 160 133 S 90 164, 5 151" fill="none" stroke="url(#memoryHeaderRoad)" strokeWidth="2.5" strokeLinecap="round" /><Circle cx="269" cy="75" r="6" fill="#ff9b7b" stroke="#2a1532" strokeWidth="3" /><Circle cx="160" cy="133" r="5" fill="#c69aff" stroke="#1b1530" strokeWidth="3" /><Circle cx="44" cy="153" r="4" fill="#62e8c2" stroke="#10231f" strokeWidth="2" /></Svg>
-    <View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterOne]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={[pageSceneStyles.memoryChapter, pageSceneStyles.memoryChapterTwo]}><View style={pageSceneStyles.memoryChapterGlow} /></View><View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
+    <LinearGradient pointerEvents="none" colors={['#180c26', '#0d091b', '#06030c'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
+      <Defs>
+        <SvgRadialGradient id="memorySkyGlow" cx="76%" cy="25%" rx="55%" ry="60%">
+          <Stop offset="0" stopColor="#7a4fb2" stopOpacity="0.32" />
+          <Stop offset="50%" stopColor="#ff4d87" stopOpacity="0.08" />
+          <Stop offset="100%" stopColor="#06030c" stopOpacity="0" />
+        </SvgRadialGradient>
+        <SvgRadialGradient id="moonAura" cx="78%" cy="22%" rx="20%" ry="35%">
+          <Stop offset="0" stopColor="#dce8ff" stopOpacity="0.4" />
+          <Stop offset="40%" stopColor="#7a96d4" stopOpacity="0.12" />
+          <Stop offset="100%" stopColor="#7a96d4" stopOpacity="0" />
+        </SvgRadialGradient>
+        <SvgLinearGradient id="highwayCoral" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ff8c6d" />
+          <Stop offset="60%" stopColor="#ff5a43" />
+          <Stop offset="100%" stopColor="#ff9a7a" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="highwayMagenta" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#ff3f82" />
+          <Stop offset="55%" stopColor="#d946ef" />
+          <Stop offset="100%" stopColor="#a855f7" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="highwayCyan" x1="0" y1="1" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#38bdf8" />
+          <Stop offset="50%" stopColor="#43e6ae" />
+          <Stop offset="100%" stopColor="#818cf8" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0%" stopColor="#ff795b" />
+          <Stop offset="45%" stopColor="#ff3f82" />
+          <Stop offset="80%" stopColor="#c57fff" />
+          <Stop offset="100%" stopColor="#43e6ae" />
+        </SvgLinearGradient>
+        <SvgLinearGradient id="topoLines" x1="0" y1="0" x2="1" y2="0">
+          <Stop offset="0%" stopColor="#68478c" stopOpacity="0.08" />
+          <Stop offset="50%" stopColor="#8b5cb8" stopOpacity="0.28" />
+          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.15" />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect width="360" height="170" fill="url(#memorySkyGlow)" />
+      <Rect width="360" height="170" fill="url(#moonAura)" />
+
+      {/* Luminous Moon & Stars */}
+      <Circle cx="280" cy="34" r="6" fill="#eaf2ff" />
+      <Circle cx="280" cy="34" r="12" fill="none" stroke="#90b2f0" strokeWidth="1" opacity="0.3" />
+      <Circle cx="230" cy="22" r="1" fill="#ffffff" opacity="0.8" />
+      <Circle cx="250" cy="45" r="1.2" fill="#ffffff" opacity="0.6" />
+      <Circle cx="320" cy="26" r="1" fill="#ffffff" opacity="0.85" />
+      <Circle cx="340" cy="50" r="1.2" fill="#ffd9ea" opacity="0.65" />
+      <Circle cx="215" cy="40" r="0.8" fill="#ffffff" opacity="0.5" />
+
+      {/* Topographic Mountain Elevation Contours */}
+      <Path d="M 140 38 Q 210 60 355 35" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="3 3" />
+      <Path d="M 130 68 Q 205 92 355 65" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="4 4" />
+      <Path d="M 120 102 Q 195 125 355 98" fill="none" stroke="url(#topoLines)" strokeWidth="1.2" opacity="0.4" />
+      <Path d="M 110 135 Q 185 152 355 130" fill="none" stroke="url(#topoLines)" strokeWidth="1" opacity="0.25" />
+
+      {/* Distant Horizon City Shimmer */}
+      <Path d="M 230 70 Q 285 75 340 68" fill="none" stroke="#ff8bb9" strokeWidth="1.5" opacity="0.3" strokeDasharray="1 3" />
+
+      {/* Multi-Lane Glowing Highway Ribbon */}
+      {/* Highway Underglow Bloom */}
+      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="#ff3f82" strokeWidth="16" opacity="0.18" strokeLinecap="round" />
+
+      {/* Lane 1: Cyan/Mint Light Trail */}
+      <Path d="M 355 69 C 295 69, 280 99, 235 103 S 185 149, 130 143 S 65 159, 0 153" fill="none" stroke="url(#highwayCyan)" strokeWidth="2.5" strokeLinecap="round" />
+
+      {/* Lane 2: Magenta/Pink Light Trail */}
+      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="url(#highwayMagenta)" strokeWidth="3" strokeLinecap="round" />
+
+      {/* Lane 3: Coral/Amber Light Trail */}
+      <Path d="M 355 75 C 295 75, 280 105, 235 109 S 185 155, 130 149 S 65 165, 0 159" fill="none" stroke="url(#highwayCoral)" strokeWidth="3" strokeLinecap="round" />
+
+      {/* Waypoint Pin Beacons along the Road without Text */}
+      {/* Waypoint 1 (Distant apex) */}
+      <Path d="M 295 64 C 291 64, 291 70, 295 74 C 299 70, 299 64, 295 64 Z" fill="#d946ef" />
+      <Circle cx="295" cy="67" r="1.5" fill="#ffffff" />
+      <Circle cx="295" cy="69" r="7" fill="none" stroke="#d946ef" strokeWidth="0.8" opacity="0.4" />
+
+      {/* Waypoint 2 (Mid curve) */}
+      <Path d="M 235 94 C 230 94, 230 101, 235 106 C 240 101, 240 94, 235 94 Z" fill="#ff795b" />
+      <Circle cx="235" cy="98" r="2" fill="#ffffff" />
+      <Circle cx="235" cy="100" r="10" fill="none" stroke="#ff795b" strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
+
+      {/* Waypoint 3 (Near foreground) */}
+      <Path d="M 130 134 C 125 134, 125 141, 130 146 C 135 141, 135 134, 130 134 Z" fill="#38bdf8" />
+      <Circle cx="130" cy="138" r="2" fill="#ffffff" />
+      <Circle cx="130" cy="140" r="10" fill="none" stroke="#38bdf8" strokeWidth="1" opacity="0.45" />
+
+      {/* Waypoint 4 (Front bend) */}
+      <Path d="M 50 146 C 46 146, 46 152, 50 156 C 54 152, 54 146, 50 146 Z" fill="#c084fc" />
+      <Circle cx="50" cy="149" r="1.5" fill="#ffffff" />
+    </Svg>
+    <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
   </>;
   if (variant === 'settings') return <>
-    <LinearGradient pointerEvents="none" colors={['#100e23', '#181029', '#100a1a'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}><Defs><SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#67e9bf" /><Stop offset="0.5" stopColor="#a37cff" /><Stop offset="1" stopColor="#ff866a" /></SvgLinearGradient><SvgRadialGradient id="settingsHeaderBloom" cx="82%" cy="28%" rx="58%" ry="72%"><Stop offset="0" stopColor="#8c4dce" stopOpacity="0.34" /><Stop offset="0.5" stopColor="#55247d" stopOpacity="0.13" /><Stop offset="1" stopColor="#55247d" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="360" height="170" fill="url(#settingsHeaderBloom)" /><Path d="M 204 38 L 274 70 L 314 35 M 274 70 L 246 133 L 337 126" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="2" opacity="0.75" /><Circle cx="204" cy="38" r="14" fill="#231943" stroke="#7c5bce" strokeWidth="2" /><Circle cx="274" cy="70" r="19" fill="#2c1741" stroke="#ff7e65" strokeWidth="2" /><Circle cx="314" cy="35" r="11" fill="#172b32" stroke="#62e5ba" strokeWidth="2" /><Circle cx="246" cy="133" r="12" fill="#1a1d38" stroke="#9b7dff" strokeWidth="2" /><Circle cx="337" cy="126" r="8" fill="#372038" stroke="#ff9c80" strokeWidth="2" /></Svg>
+    <LinearGradient pointerEvents="none" colors={['#0e1026', '#160f29', '#0d0918'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
+      <Defs>
+        <SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0%" stopColor="#43e6ae" stopOpacity="0.85" />
+          <Stop offset="50%" stopColor="#9b7cff" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.85" />
+        </SvgLinearGradient>
+        <SvgRadialGradient id="settingsHeaderBloom" cx="80%" cy="35%" rx="60%" ry="70%">
+          <Stop offset="0" stopColor="#5570ff" stopOpacity="0.25" />
+          <Stop offset="45%" stopColor="#7658dd" stopOpacity="0.1" />
+          <Stop offset="100%" stopColor="#9b61ff" stopOpacity="0" />
+        </SvgRadialGradient>
+      </Defs>
+      <Rect width="360" height="170" fill="url(#settingsHeaderBloom)" />
+
+      {/* Orbital Telemetry Sensor Rings */}
+      <Circle cx="280" cy="72" r="48" fill="none" stroke="#3b2b5c" strokeWidth="1" strokeDasharray="5 5" opacity="0.6" />
+      <Circle cx="280" cy="72" r="32" fill="none" stroke="#7658dd" strokeWidth="1.25" opacity="0.4" />
+      <Circle cx="280" cy="72" r="18" fill="none" stroke="#43e6ae" strokeWidth="1" strokeDasharray="3 3" opacity="0.75" />
+
+      {/* Cybernetic Node Interlinks */}
+      <Path d="M 185 45 L 245 72 L 280 72 L 335 38 M 245 72 L 230 132 L 315 125 L 342 90" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="1.75" strokeDasharray="4 3" opacity="0.7" />
+      <Path d="M 280 72 L 315 125" fill="none" stroke="#ff795b" strokeWidth="1.2" opacity="0.4" />
+
+      {/* Telemetry Target Nodes */}
+      <Circle cx="185" cy="45" r="4.5" fill="#43e6ae" stroke="#dffff5" strokeWidth="1.5" />
+      <Circle cx="245" cy="72" r="4" fill="#9b7cff" stroke="#f4ebff" strokeWidth="1.5" />
+      <Circle cx="280" cy="72" r="7" fill="#ff795b" stroke="#fff0ea" strokeWidth="2.5" />
+      <Circle cx="335" cy="38" r="4.5" fill="#54b8ff" stroke="#e6f5ff" strokeWidth="1.5" />
+      <Circle cx="230" cy="132" r="5" fill="#7658dd" stroke="#ebe2ff" strokeWidth="1.5" />
+      <Circle cx="315" cy="125" r="4.5" fill="#ff795b" stroke="#fff1ed" strokeWidth="1.5" />
+      <Circle cx="342" cy="90" r="3.5" fill="#43e6ae" stroke="#e6fff7" strokeWidth="1.5" />
+    </Svg>
     <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={[pageSceneStyles.sceneRailCore, pageSceneStyles.settingsRailCore]} /></View>
   </>;
   return <><LinearGradient pointerEvents="none" colors={['#ff6a4d28', '#9b61ff22', '#05030b00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /><View pointerEvents="none" style={styles.pageHeaderRail}><View style={styles.pageHeaderRailCore} /></View></>;
@@ -1573,7 +2123,7 @@ function JourneyCinematicHero({ journey }: { journey: JourneyDetail }) {
   const leadTrack = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null;
   return <View style={styles.journeyHeroCard}>
     <View style={styles.journeyHeroMapFrame}>
-      <RouteSketch cinematic coordinates={journey.route?.coordinates ?? []} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />
+      <RouteSketch cinematic coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />
       <LinearGradient pointerEvents="none" colors={['rgba(7,5,12,0.05)', 'rgba(7,5,12,0.16)', 'rgba(7,5,12,0.94)'] as const} locations={[0, 0.38, 1]} style={styles.journeyHeroMapShade} />
       <View pointerEvents="none" style={styles.journeyHeroCopy}>
         <Text style={styles.journeyHeroDate}>{formatFullDate(journey.startedAt).toUpperCase()}</Text>
@@ -1647,8 +2197,8 @@ function Artwork({ track, size }: { track: { artworkUrl?: string | null; track: 
   return track.artworkUrl ? <Image source={{ uri: track.artworkUrl }} accessibilityLabel={`${track.track} artwork`} style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), backgroundColor: '#251d31' }} /> : <View style={[styles.artworkFallback, { width: size, height: size, borderRadius: Math.round(size * 0.22) }]}><Text style={[styles.artworkFallbackText, { fontSize: Math.round(size * 0.35) }]}>♪</Text></View>;
 }
 
-function TrackRow({ track, index }: { track: { artworkUrl?: string | null; track: string; artist: string }; index: number }) {
-  return <View style={styles.trackRow}><Text style={styles.trackIndex}>{String(index).padStart(2, '0')}</Text><Artwork track={track} size={48} /><View style={styles.flex}><Text style={styles.trackTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text></View></View>;
+function TrackRow({ track, index, selected = false, onPress }: { track: { artworkUrl?: string | null; track: string; artist: string }; index: number; selected?: boolean; onPress?: () => void }) {
+  return <Pressable accessibilityLabel={`Show ${track.track} on the journey map`} onPress={onPress} style={({ pressed }) => [styles.trackRow, selected && styles.trackRowSelected, pressed && styles.pressed]}><Text style={[styles.trackIndex, selected && styles.trackIndexSelected]}>{String(index).padStart(2, '0')}</Text><Artwork track={track} size={48} /><View style={styles.flex}><Text style={styles.trackTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text></View><Text style={[styles.trackMapLink, selected && styles.trackMapLinkSelected]}>{selected ? 'ON MAP' : 'MAP'}</Text></Pressable>;
 }
 
 function EmptyCard({ title, body }: { title: string; body: string }) {
@@ -1662,7 +2212,7 @@ function InlineNotice({ message, onRetry }: { message: string; onRetry: () => vo
 function LoadingLine({ label }: { label: string }) { return <View style={styles.loadingLine}><ActivityIndicator color="#9b7cff" /><Text style={styles.loadingLineText}>{label}</Text></View>; }
 function LoadingCard() { return <View style={styles.loadingCard}><ActivityIndicator color="#9b7cff" size="large" /><Text style={styles.loadingLineText}>Loading your journeys…</Text></View>; }
 
-function RouteSketch({ coordinates, startLabel, endLabel, cinematic = false }: { coordinates: [number, number][]; startLabel: string | null; endLabel: string | null; cinematic?: boolean }) {
+function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, endLabel, cinematic = false, expanded = false }: { coordinates: [number, number][]; soundtrack: JourneyDetail['soundtrack']; startedAt: string; endedAt: string; startLabel: string | null; endLabel: string | null; cinematic?: boolean; expanded?: boolean }) {
   const { width: screenWidth } = useWindowDimensions();
   const plotWidth = Math.max(240, Math.min(480, screenWidth - 72)), plotHeight = 142;
   const valid = coordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
@@ -1670,6 +2220,7 @@ function RouteSketch({ coordinates, startLabel, endLabel, cinematic = false }: {
   // the native SVG view to draw every background GPS reading.
   const step = Math.max(1, Math.ceil(valid.length / 96));
   const sampled = valid.filter((_, index) => index % step === 0 || index === valid.length - 1);
+  const songMoments = buildSongRouteMoments(soundtrack, valid, startedAt, endedAt);
   const longitudes = sampled.map(point => point[0]), latitudes = sampled.map(point => point[1]);
   const minLongitude = Math.min(...longitudes), maxLongitude = Math.max(...longitudes);
   const minLatitude = Math.min(...latitudes), maxLatitude = Math.max(...latitudes);
@@ -1693,13 +2244,17 @@ function RouteSketch({ coordinates, startLabel, endLabel, cinematic = false }: {
   const centerY = worldPoints.length ? (Math.min(...worldPoints.map(point => point.y)) + Math.max(...worldPoints.map(point => point.y))) / 2 : 0;
   const tileOriginX = Math.floor(centerX / tileSize) - 1, tileOriginY = Math.floor(centerY / tileSize) - 1, tileCount = 2 ** snapshotZoom;
   const mapPolyline = worldPoints.map(point => `${point.x - tileOriginX * tileSize},${point.y - tileOriginY * tileSize}`).join(' ');
+  const fallbackSongPoints = songMoments.map(moment => {
+    const point = mercatorPoint(moment.coordinate, snapshotZoom);
+    return { ...moment, x: point.x - tileOriginX * tileSize, y: point.y - tileOriginY * tileSize };
+  });
   const snapshotTiles = Array.from({ length: 9 }, (_, index) => {
     const column = index % 3, row = Math.floor(index / 3), x = ((tileOriginX + column) % tileCount + tileCount) % tileCount, y = tileOriginY + row;
     return { key: `${snapshotZoom}-${x}-${y}`, uri: `https://tile.openstreetmap.org/${snapshotZoom}/${x}/${y}.png`, column, row, valid: y >= 0 && y < tileCount };
   }).filter(tile => tile.valid);
   const polyline = points.map(point => `${point.x},${point.y}`).join(' ');
   const start = points[0], end = points.at(-1);
-  return <View style={[styles.routeSketch, cinematic && styles.routeSketchHero]}>
+  return <View style={[styles.routeSketch, cinematic && styles.routeSketchHero, expanded && styles.routeSketchExpanded]}>
     <LinearGradient colors={['#211233', '#101525', '#0a0a13'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <View style={routeVisualStyles.routeGridOne} /><View style={routeVisualStyles.routeGridTwo} /><View style={routeVisualStyles.routeGlow} /><View style={routeVisualStyles.routeAurora} />
     {points.length > 1 ? <Reanimated.View entering={FadeIn.duration(420)} style={routeVisualStyles.routeSnapshot}>
@@ -1711,10 +2266,11 @@ function RouteSketch({ coordinates, startLabel, endLabel, cinematic = false }: {
         <Polyline points={mapPolyline || polyline} fill="none" stroke="url(#journeyRoute)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
         {worldPoints[0] && <><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="12" fill="#43e6ae" opacity="0.28" /><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="6" fill="#43e6ae" stroke="#d9fff1" strokeWidth="2" /></>}
         {worldPoints.at(-1) && <><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="15" fill="#ff795b" opacity="0.3" /><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="7" fill="#ff795b" stroke="#fff0e8" strokeWidth="2" /></>}
+        {fallbackSongPoints.map((moment, index) => <Circle key={`${moment.playedAt}-${index}`} cx={moment.x} cy={moment.y} r="8" fill="#ff69b4" stroke="#fff1fa" strokeWidth="3" />)}
       </Svg></View>
     </Reanimated.View> : <View style={routeVisualStyles.routeAwaiting}><Text style={routeVisualStyles.routeAwaitingSymbol}>⌁</Text><Text style={routeVisualStyles.routeAwaitingText}>Route will appear after the journey syncs</Text></View>}
     {!cinematic && <><View style={routeVisualStyles.routeLegend}><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendStart]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{startLabel}</Text></View><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendEnd]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{endLabel}</Text></View></View>
-    <Text style={styles.routeCaption}>{points.length > 1 ? `${points.length} route moments · GPS recorded · © OpenStreetMap contributors` : 'OFFLINE-SAFE ROUTE PREVIEW'}</Text></>}
+    <Text pointerEvents="none" style={styles.routeCaption}>{points.length > 1 ? `${valid.length} GPS points · ${songMoments.length} song markers · OpenFreeMap / © OpenStreetMap` : 'OFFLINE-SAFE ROUTE PREVIEW'}</Text></>}
   </View>;
 }
 
@@ -1793,10 +2349,10 @@ function nativeShazamStatus(capabilities: JourneyDeckMusicCapabilityStatus | nul
 }
 
 const routeVisualStyles = StyleSheet.create({
-  routeGridOne: { position: 'absolute', width: 260, height: 260, borderRadius: 130, borderWidth: 1, borderColor: 'rgba(172,132,255,0.16)', left: -95, bottom: -178 },
-  routeGridTwo: { position: 'absolute', width: 210, height: 210, borderRadius: 105, borderWidth: 1, borderColor: 'rgba(255,135,100,0.14)', right: -94, top: -142 },
-  routeGlow: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#45265f', opacity: 0.5, right: -32, top: -52, shadowColor: '#a681ff', shadowOpacity: 0.7, shadowRadius: 26 },
-  routeAurora: { position: 'absolute', left: 20, right: 20, height: 2, top: '49%', backgroundColor: '#b98eff', opacity: 0.24, shadowColor: '#b98eff', shadowOpacity: 1, shadowRadius: 12 },
+  routeGridOne: { position: 'absolute', left: 0, right: 0, top: '35%', height: 1, backgroundColor: 'rgba(172,132,255,0.12)' },
+  routeGridTwo: { position: 'absolute', left: 0, right: 0, top: '65%', height: 1, backgroundColor: 'rgba(255,135,100,0.1)' },
+  routeGlow: { position: 'absolute', left: '20%', right: '20%', top: '25%', bottom: '25%', backgroundColor: '#45265f', opacity: 0.25, borderRadius: 30 },
+  routeAurora: { position: 'absolute', left: 20, right: 20, height: 2, top: '49%', backgroundColor: '#b98eff', opacity: 0.2, shadowColor: '#b98eff', shadowOpacity: 0.8, shadowRadius: 10 },
   routeSnapshot: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, overflow: 'hidden' },
   routeTile: { position: 'absolute', width: '33.334%', height: '33.334%', opacity: 0.72 },
   routeTileShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(13,7,21,0.44)' },
@@ -1822,10 +2378,6 @@ const pageSceneStyles = StyleSheet.create({
   sceneRail: { position: 'absolute', left: 18, top: 13, width: 58, height: 3, borderRadius: 3, backgroundColor: 'rgba(158, 109, 225, 0.32)', overflow: 'hidden' },
   sceneRailCore: { width: '70%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 8 },
   settingsRailCore: { backgroundColor: '#6fe8c2', shadowColor: '#6fe8c2' },
-  memoryChapter: { position: 'absolute', width: 43, height: 50, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(215, 174, 255, 0.4)', backgroundColor: '#241533', overflow: 'hidden', shadowColor: '#b680ff', shadowOpacity: 0.4, shadowRadius: 9 },
-  memoryChapterOne: { right: 21, top: 21, transform: [{ rotate: '12deg' }] },
-  memoryChapterTwo: { right: 76, top: 48, transform: [{ rotate: '-9deg' }] },
-  memoryChapterGlow: { position: 'absolute', width: 52, height: 52, borderRadius: 26, backgroundColor: '#ff7660', opacity: 0.46, right: -21, top: -20 },
 });
 
 const styles = StyleSheet.create({
@@ -1853,6 +2405,12 @@ const styles = StyleSheet.create({
   webScoreRing: { position: 'absolute', right: 10, bottom: 24, width: 60, height: 60, borderRadius: 30, padding: 5, borderWidth: 5, borderColor: '#ff694f', shadowColor: '#ff694f', shadowOpacity: 0.4, shadowRadius: 8 }, webScoreRingInner: { flex: 1, borderRadius: 25, backgroundColor: '#160e21', alignItems: 'center', justifyContent: 'center' }, webScoreIcon: { color: '#ff7a58', fontSize: 10, fontWeight: '900' }, webScoreValue: { color: '#a25cff', fontSize: 14, fontWeight: '900' }, webScoreLabel: { color: '#777081', fontSize: 5, fontWeight: '900', letterSpacing: 0.8 },
   webRecorderStrip: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, borderRadius: 16, borderWidth: 1, borderColor: '#674381', backgroundColor: '#0d0a18', shadowColor: '#9b61ff', shadowOpacity: 0.28, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } }, webRecorderBeacon: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowColor: '#9b7cff', shadowOpacity: 0.85, shadowRadius: 10 }, webRecorderBeaconCore: { width: 9, height: 9, borderRadius: 5 }, webRecorderTitle: { color: '#eee8f4', fontSize: 12, fontWeight: '900' }, webRecorderDetail: { color: '#847b8e', fontSize: 9, lineHeight: 13, marginTop: 3 }, webRecorderChevron: { color: '#8f72b5', fontSize: 28, lineHeight: 30 },
   webActions: { height: 118, flexDirection: 'row', gap: 8 }, webAction: { flex: 1, minWidth: 0, overflow: 'hidden', borderRadius: 19, borderWidth: 1, paddingHorizontal: 9, paddingTop: 11, paddingBottom: 11, alignItems: 'center', backgroundColor: '#120a1b', shadowOpacity: 0.58, shadowRadius: 22, shadowOffset: { width: 0, height: 8 } }, webActionIcon: { width: 42, height: 42, borderRadius: 21, borderWidth: 1.25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#07040d42', shadowOpacity: 0.9, shadowRadius: 14 }, webActionSymbol: { width: 25, height: 25 }, webActionSpacer: { flex: 1, minHeight: 5 }, webActionTitle: { color: '#fff', fontSize: 12, lineHeight: 15, fontWeight: '900', textAlign: 'center', textShadowColor: '#000', textShadowRadius: 5 }, webActionDetail: { color: '#c1b7c8', fontSize: 8, lineHeight: 11, marginTop: 3, textAlign: 'center' },
+  homeSummaryHeading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 5, marginTop: 5 }, homeSummarySubtitle: { color: '#8b8093', fontSize: 9, marginTop: 4 }, homeLocalPill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, borderWidth: 1, borderColor: '#27624e', backgroundColor: '#10271f', paddingHorizontal: 8, paddingVertical: 5 }, homeLocalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#49e5b1', shadowColor: '#49e5b1', shadowOpacity: 1, shadowRadius: 6 }, homeLocalText: { color: '#66ecc0', fontSize: 7, fontWeight: '900', letterSpacing: 1 },
+  homeArchiveGrid: { flexDirection: 'row', gap: 7 }, homeArchiveTile: { flex: 1, minWidth: 0, minHeight: 82, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderRadius: 17, borderWidth: 1, backgroundColor: '#0f0a16', shadowOpacity: 0.22, shadowRadius: 10 }, homeArchiveGlow: { position: 'absolute', width: 70, height: 70, borderRadius: 35, top: -38 }, homeArchiveValue: { fontSize: 20, fontWeight: '900', fontVariant: ['tabular-nums'] }, homeArchiveLabel: { color: '#9b8fa3', fontSize: 8, fontWeight: '800', marginTop: 5 },
+  homeSpotlightGrid: { flexDirection: 'row', gap: 8 }, homeSpotlight: { flex: 1, minHeight: 165, overflow: 'hidden', borderRadius: 21, borderWidth: 1, padding: 14, justifyContent: 'flex-end', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, homeMemorySpotlight: { borderColor: '#6c3f88', shadowColor: '#a55cff' }, homeMusicSpotlight: { borderColor: '#793148', shadowColor: '#ff4e82' }, homeSpotlightKicker: { color: '#c091ff', fontSize: 7.5, fontWeight: '900', letterSpacing: 1.15 }, homeSpotlightTitle: { color: '#fff7ff', fontSize: 17, lineHeight: 20, fontWeight: '900', marginTop: 7 }, homeSpotlightMeta: { color: '#a99cab', fontSize: 9, lineHeight: 14, marginTop: 6 }, homeSpotlightAction: { color: '#cf9dff', fontSize: 9, fontWeight: '900', marginTop: 10 },
+  homePatternCard: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1, borderColor: '#704253', backgroundColor: '#140b17', padding: 14, shadowColor: '#ff7257', shadowOpacity: 0.18, shadowRadius: 14 }, homePatternIcon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2b1520', borderWidth: 1, borderColor: '#7f463f' }, homePatternSymbol: { width: 27, height: 27 }, homePatternTitle: { color: '#f8eff7', fontSize: 14, fontWeight: '900', marginTop: 5 },
+  homeIntelligenceCard: { borderRadius: 21, borderWidth: 1, borderColor: '#3d476d', backgroundColor: '#0c0d19', padding: 14, shadowColor: '#5e79ff', shadowOpacity: 0.16, shadowRadius: 14 }, homeIntelligenceHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }, homeIntelligenceTitle: { color: '#f1ecf5', fontSize: 15, fontWeight: '900', marginTop: 4 }, homeIntelligenceMetrics: { flexDirection: 'row', marginTop: 15 }, homeIntelligenceMetric: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 5, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#353449' }, homeIntelligenceValue: { color: '#f8f2fb', fontSize: 19, fontWeight: '900', fontVariant: ['tabular-nums'] }, homeIntelligenceLabel: { color: '#7da0ff', fontSize: 7, fontWeight: '900', letterSpacing: 0.8, marginTop: 5 }, homeIntelligenceDetail: { color: '#777483', fontSize: 7, marginTop: 4 },
+  homeExploreCard: { borderRadius: 21, borderWidth: 1, borderColor: '#3b2a48', backgroundColor: '#0e0914', padding: 10 }, homeExploreGrid: { gap: 6 }, homeExploreAction: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 8, borderRadius: 15, backgroundColor: '#15101c', borderWidth: 1, borderColor: '#2d2435' }, homeExploreIcon: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, homeExploreSymbol: { width: 22, height: 22 }, homeExploreTitle: { color: '#eee8f1', fontSize: 12, fontWeight: '900' }, homeExploreDetail: { color: '#83798b', fontSize: 8.5, marginTop: 3 },
   webBottomGrid: { minHeight: 226, flexDirection: 'row', gap: 7 }, webJourneysPanel: { flex: 1.45, overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#774a94', backgroundColor: '#0c0918', shadowColor: '#a45cff', shadowOpacity: 0.34, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, webHealthPanel: { flex: 1, overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#4d6995', backgroundColor: '#0b0a1a', shadowColor: '#28b9ff', shadowOpacity: 0.3, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, webPanelHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 11 }, webPanelTitle: { color: '#ff5969', fontSize: 8.5, fontWeight: '900', letterSpacing: 1, textShadowColor: '#ff596988', textShadowRadius: 7 }, webPanelAction: { color: '#aaa0b2', fontSize: 8, fontWeight: '800' }, webPanelEmpty: { color: '#918698', fontSize: 10, lineHeight: 15, padding: 12 },
   webJourneyRow: { minHeight: 91, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 9, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#493052' }, webPlaceIcon: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#541d3a', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff4f78', shadowOpacity: 0.38, shadowRadius: 9 }, webJourneyOrigin: { color: '#b0a4b7', fontSize: 9, lineHeight: 12, fontWeight: '600' }, webJourneyDestination: { color: '#fff8ff', fontSize: 12, lineHeight: 15, fontWeight: '900', marginTop: 3 }, webJourneyMeta: { color: '#9a8fa1', fontSize: 8.5, lineHeight: 11, marginTop: 3 }, webRouteThumb: { width: 48, height: 38, borderRadius: 7, backgroundColor: '#0a0a1c', borderWidth: 1, borderColor: '#55376c', overflow: 'hidden', shadowColor: '#a85cff', shadowOpacity: 0.3, shadowRadius: 8 }, webRouteThumbLine: { position: 'absolute', width: 44, height: 2, borderRadius: 1, backgroundColor: '#ff694f', left: 2, top: 19, transform: [{ rotate: '-18deg' }], shadowColor: '#ff4e60', shadowOpacity: 1, shadowRadius: 5 }, webRouteThumbStart: { position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: '#9746f5', left: 3, top: 23 }, webRouteThumbEnd: { position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: '#ffc2af', right: 2, top: 10 },
   webCompactHealth: { flex: 1, minHeight: 59, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#293a59' }, webServiceIcon: { width: 29, height: 29, borderRadius: 15, alignItems: 'center', justifyContent: 'center', shadowColor: '#28b9ff', shadowOpacity: 0.4, shadowRadius: 8 }, webServiceIconText: { color: '#edf8ff', fontSize: 10, fontWeight: '900' }, webServiceName: { color: '#f7f1fa', fontSize: 10, lineHeight: 13, fontWeight: '900' }, webServiceDetail: { color: '#a298aa', fontSize: 8.5, lineHeight: 11, marginTop: 2 }, webHealthCheck: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', shadowColor: '#28b9ff', shadowOpacity: 0.45, shadowRadius: 7 }, webHealthCheckText: { color: '#0d0920', fontSize: 9, fontWeight: '900' },
@@ -1860,20 +2418,27 @@ const styles = StyleSheet.create({
   webAllTimeRail: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 12, padding: 13, borderRadius: 17, borderWidth: 1, borderColor: '#4c305f66', backgroundColor: '#100a1c' }, webAllTimeKicker: { color: '#ff6b67', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, webAllTimeTitle: { color: '#f4eef8', fontSize: 15, fontWeight: '900', marginTop: 4 }, webAllTimeMetric: { flex: 1, alignItems: 'flex-end' }, webAllTimeMetricValue: { color: '#f7f1fb', fontSize: 13, fontWeight: '900' }, webAllTimeMetricLabel: { color: '#716878', fontSize: 5.5, fontWeight: '900', letterSpacing: 0.6, marginTop: 3 }, webQueueNote: { color: '#ffbb73', fontSize: 9, textAlign: 'center', padding: 8 },
   memoriesPage: { paddingTop: 24, paddingBottom: 128, gap: 16 },
   overlayRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#030106cc' }, overlaySheet: { maxHeight: '94%', margin: 8, overflow: 'hidden', borderRadius: 28, borderWidth: 1, borderColor: '#5d4273', backgroundColor: '#0a0710', shadowColor: '#000', shadowOpacity: 0.85, shadowRadius: 30, shadowOffset: { width: 0, height: -8 } }, overlayHeader: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#382641' }, overlayKicker: { color: '#ff795b', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 }, overlayTitle: { color: '#f7f1fa', fontSize: 21, fontWeight: '900', marginTop: 3 }, overlayClose: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#4b3758', backgroundColor: '#17101f' }, overlayCloseText: { color: '#d7c9df', fontSize: 27, lineHeight: 29 }, overlayContent: { padding: 16, paddingBottom: 26, gap: 14 },
-  overviewHero: { height: 260, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionHero: { height: 230, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, overviewCollectionFallback: { backgroundColor: '#241433' }, overviewHeroCopy: { position: 'absolute', left: 20, right: 20, bottom: 19 }, overviewEyebrow: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.4 }, overviewHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -0.7, marginTop: 6 }, overviewMetrics: { flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#352b40', backgroundColor: '#111018' }, overviewMetric: { flex: 1, minHeight: 70, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#342b3d' }, overviewMetricValue: { color: '#f7f2fb', fontSize: 19, fontWeight: '900' }, overviewMetricLabel: { color: '#81758b', fontSize: 7, fontWeight: '900', letterSpacing: 1, marginTop: 5 }, overviewBody: { color: '#c7bdce', fontSize: 13, lineHeight: 20 }, overviewBodyMuted: { color: '#857d8d', fontSize: 12, lineHeight: 18, fontStyle: 'italic' }, overviewSectionLabel: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.4, marginTop: 3 }, overviewListRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#30283a', backgroundColor: '#111018' }, overviewListTitle: { color: '#eee8f3', fontSize: 13, fontWeight: '800' }, overviewListMeta: { color: '#8c8295', fontSize: 10, marginTop: 3 }, overviewChevron: { color: '#a88aff', fontSize: 24 }, overviewActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, overviewShare: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, overviewShareText: { color: '#c2a7ff', fontSize: 12, fontWeight: '900' }, overviewPrimary: { flex: 1.25, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#ff795b' }, overviewPrimaryText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, modalEditorBody: { gap: 12 }, journeyActions: { flexDirection: 'row', gap: 9, marginTop: 6 }, journeyShareButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, journeyShareButtonText: { color: '#c7adff', fontSize: 12, fontWeight: '900', textAlign: 'center' }, journeyEditButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#ff795b' }, journeyEditButtonText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, locationEditor: { gap: 11, marginTop: 6, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#4e3b60', backgroundColor: '#100d16' }, locationEditorKicker: { color: '#b99cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 }, locationEditorHelp: { color: '#9b91a4', fontSize: 11, lineHeight: 17 }, locationField: { gap: 5 }, locationFieldLabel: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, locationRaw: { color: '#6f6877', fontSize: 9, lineHeight: 13, paddingHorizontal: 3 },
-  memoryPageHeader: { marginHorizontal: 20 },
+  overviewHero: { height: 260, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionHero: { height: 230, overflow: 'hidden', borderRadius: 22, borderWidth: 1, borderColor: '#593c70', backgroundColor: '#171021' }, overviewCollectionImage: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, overviewCollectionFallback: { backgroundColor: '#241433' }, overviewHeroCopy: { position: 'absolute', left: 20, right: 20, bottom: 19 }, overviewEyebrow: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.4 }, overviewHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 33, fontWeight: '900', letterSpacing: -0.7, marginTop: 6 }, overviewMetrics: { flexDirection: 'row', overflow: 'hidden', borderRadius: 17, borderWidth: 1, borderColor: '#352b40', backgroundColor: '#111018' }, overviewMetric: { flex: 1, minHeight: 70, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#342b3d' }, overviewMetricValue: { color: '#f7f2fb', fontSize: 19, fontWeight: '900' }, overviewMetricLabel: { color: '#81758b', fontSize: 7, fontWeight: '900', letterSpacing: 1, marginTop: 5 }, overviewBody: { color: '#c7bdce', fontSize: 13, lineHeight: 20 }, overviewBodyMuted: { color: '#857d8d', fontSize: 12, lineHeight: 18, fontStyle: 'italic' }, overviewSectionLabel: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.4, marginTop: 3 }, overviewListRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#30283a', backgroundColor: '#111018' }, overviewListTitle: { color: '#eee8f3', fontSize: 13, fontWeight: '800' }, overviewListMeta: { color: '#8c8295', fontSize: 10, marginTop: 3 }, overviewChevron: { color: '#a88aff', fontSize: 24 }, overviewActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, overviewShare: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, overviewShareText: { color: '#c2a7ff', fontSize: 12, fontWeight: '900' }, overviewPrimary: { flex: 1.25, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, backgroundColor: '#ff795b' }, overviewPrimaryText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' }, modalEditorBody: { gap: 12 }, journeyActions: { flexDirection: 'row', gap: 9, marginTop: 6 }, journeyShareButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: '#65468a', backgroundColor: '#20152e' }, journeyShareButtonText: { color: '#c7adff', fontSize: 12, fontWeight: '900', textAlign: 'center' }, journeyEditButton: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: '#ff795b' }, journeyEditButtonText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
+  locationEditor: { gap: 11, marginTop: 6, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#4e3b60', backgroundColor: '#100d16' }, locationEditorKicker: { color: '#b99cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 }, locationEditorHelp: { color: '#9b91a4', fontSize: 11, lineHeight: 17 }, locationField: { gap: 5 }, locationFieldLabel: { color: '#ff9a79', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, locationRaw: { color: '#6f6877', fontSize: 9, lineHeight: 13, paddingHorizontal: 3 },
+  memoryPageHeader: { marginHorizontal: 16, marginBottom: 6 },
+  memoryHeroCardHeader: { width: '100%', aspectRatio: 673 / 331, borderRadius: 24, overflow: 'hidden', backgroundColor: '#07040d', shadowColor: '#9b61ff', shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  memoryHeroHeaderImage: { width: '100%', height: '100%' },
   memorySectionHeader: { marginHorizontal: 20, marginTop: 5, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }, memoryLevel: { color: '#a88aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8 }, memorySectionTitle: { color: '#f5f0fb', fontSize: 19, fontWeight: '900', marginTop: 4 }, memoryHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, memoryHeaderAction: { color: '#ff8767', fontSize: 11, fontWeight: '900' },
   memoryCarouselContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 }, memoryHeroCard: { height: 244, borderRadius: 26, overflow: 'hidden', backgroundColor: '#14101e', borderWidth: 1, borderColor: '#4c375d', padding: 20, justifyContent: 'flex-end', shadowColor: '#9b7cff', shadowOpacity: 0.25, shadowRadius: 18 }, memoryEmptyHero: { marginHorizontal: 20 }, memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 100, bottom: 0, backgroundColor: '#09071099' }, memoryHeroKicker: { color: '#ff9b7c', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, memoryHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 34, fontWeight: '900', marginTop: 7, letterSpacing: -0.7 }, memoryHeroMeta: { color: '#c2b7ca', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDots: { minHeight: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }, memoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#403748' }, memoryDotActive: { width: 24, backgroundColor: '#ff795b' },
-  memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' }, memoryArtworkGlow: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#8f3957', opacity: 0.52, left: '50%', marginLeft: -105, top: -78, shadowColor: '#ff7159', shadowOpacity: 0.8, shadowRadius: 30 }, memoryArtworkMoon: { position: 'absolute', width: 58, height: 58, borderRadius: 29, backgroundColor: '#ff8463', left: '50%', marginLeft: -29, top: 35, shadowColor: '#ff8463', shadowOpacity: 1, shadowRadius: 20 }, memoryArtworkLine: { position: 'absolute', width: 3, height: 185, backgroundColor: '#9d75ff', top: 80, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, memoryArtworkLineLeft: { left: '50%', marginLeft: -71, transform: [{ rotate: '31deg' }] }, memoryArtworkLineRight: { right: '50%', marginRight: -71, transform: [{ rotate: '-31deg' }] }, memoryArtworkDashOne: { position: 'absolute', width: 3, height: 12, backgroundColor: '#ffd0c4', left: '50%', top: 103 }, memoryArtworkDashTwo: { position: 'absolute', width: 5, height: 24, backgroundColor: '#ff8a68', left: '50%', marginLeft: -1, top: 132 }, memoryArtworkDashThree: { position: 'absolute', width: 7, height: 45, backgroundColor: '#ff795b', left: '50%', marginLeft: -2, top: 180 },
+  memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' },
   memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, marginTop: 3 }, editorActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, editorCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 46, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900' },
   photoEditorHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, photoEditorHelp: { color: '#8e8497', fontSize: 10, lineHeight: 15, marginTop: 4 }, photoAddButton: { minHeight: 36, borderRadius: 999, backgroundColor: '#281b39', borderWidth: 1, borderColor: '#684b8c', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, photoAddDisabled: { opacity: 0.42 }, photoAddText: { color: '#c5a5ff', fontSize: 9, fontWeight: '900' }, photoSaveFirst: { color: '#ffad7f', fontSize: 10, lineHeight: 14 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '31%', aspectRatio: 0.86, borderRadius: 14, overflow: 'visible', borderWidth: 2, borderColor: 'transparent' }, photoTileSelected: { borderColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.4, shadowRadius: 8 }, photoTileImage: { width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }, photoTileShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 38, backgroundColor: '#08060bbb' }, photoTileLabel: { position: 'absolute', left: 7, right: 7, bottom: 8, color: '#fff5fb', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 }, photoRemove: { position: 'absolute', right: -7, top: -7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#32151b', borderWidth: 1, borderColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, photoRemoveText: { color: '#ff9c89', fontSize: 18, lineHeight: 20, fontWeight: '700' }, photoLoading: { backgroundColor: '#1b1524', alignItems: 'center', justifyContent: 'center' }, photoEmpty: { minHeight: 72, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3b3148', backgroundColor: '#0c0a11', padding: 12, justifyContent: 'center' }, photoEmptyTitle: { color: '#d3c6dc', fontSize: 11, fontWeight: '800' }, photoEmptyBody: { color: '#7f7488', fontSize: 9, lineHeight: 14, marginTop: 4 },
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
-  memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionArtworkOrb: { position: 'absolute', width: 42, height: 42, borderRadius: 21, opacity: 0.65, right: -8, top: -8, shadowOpacity: 0.8, shadowRadius: 10 }, collectionArtworkRoute: { position: 'absolute', width: 58, height: 3, borderRadius: 2, left: 5, top: 39, transform: [{ rotate: '-25deg' }] }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
-  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 }, collectionPlaceholderSun: { position: 'absolute', width: 34, height: 34, borderRadius: 17, backgroundColor: '#ffcf93', right: 12, top: 10, opacity: 0.9, shadowColor: '#ffb36e', shadowOpacity: 0.9, shadowRadius: 12 }, collectionPlaceholderRoad: { position: 'absolute', width: 126, height: 45, borderRadius: 42, borderWidth: 4, borderColor: '#1b1026', bottom: -24, left: -15, transform: [{ rotate: '-13deg' }] }, collectionPlaceholderHorizon: { position: 'absolute', height: 2, left: 0, right: 0, top: '59%', backgroundColor: '#ffd7ad', opacity: 0.65 }, journeyPlaceholderGlow: { position: 'absolute', width: 70, height: 70, borderRadius: 35, backgroundColor: '#ffd08f', right: -20, top: -26, opacity: 0.72, shadowColor: '#ff9d76', shadowOpacity: 0.9, shadowRadius: 15 }, journeyPlaceholderRoad: { position: 'absolute', left: -12, right: -12, height: 23, bottom: -12, borderRadius: 30, borderWidth: 3, borderColor: '#201128', transform: [{ rotate: '-13deg' }] },
+  memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
+  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
   pageHeader: { minHeight: 143, gap: 5, marginBottom: 4, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#40274f', backgroundColor: '#100a19', paddingHorizontal: 18, paddingVertical: 18, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, pageHeaderGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -76, top: -100, backgroundColor: '#6b2557', opacity: 0.48 }, pageHeaderRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#402350', overflow: 'hidden' }, pageHeaderRailCore: { width: '55%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 6 }, pageEyebrow: { color: '#c1a2ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 4 }, pageTitle: { color: '#f8f5ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#ada3b4', fontSize: 13, lineHeight: 20, maxWidth: 330 },
-  heroCard: { backgroundColor: '#191221', borderWidth: 1, borderColor: '#654474', borderRadius: 26, padding: 20, gap: 8, overflow: 'hidden', shadowColor: '#9b7cff', shadowOpacity: 0.2, shadowRadius: 24 }, heroGlowOrange: { position: 'absolute', width: 170, height: 170, borderRadius: 85, backgroundColor: '#5a241d', opacity: 0.32, right: -70, top: -75 }, heroGlowPurple: { position: 'absolute', width: 210, height: 210, borderRadius: 105, backgroundColor: '#36205b', opacity: 0.32, left: -100, bottom: -145 }, heroEyebrow: { color: '#ff9a7a', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 }, heroTitle: { color: '#fff', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, heroBody: { color: '#aca3b6', fontSize: 14, lineHeight: 20 }, heroMetrics: { flexDirection: 'row', backgroundColor: '#100c16dd', borderRadius: 17, marginTop: 10, paddingVertical: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#493853' },
-  openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 }, roadSunGlow: { position: 'absolute', width: 128, height: 128, borderRadius: 64, backgroundColor: '#7b2b31', opacity: 0.25, left: '50%', marginLeft: -64, top: -35, shadowColor: '#ff7257', shadowOpacity: 0.85, shadowRadius: 30 }, roadSun: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: '#ff765a', opacity: 0.9, left: '50%', marginLeft: -22, top: 18, shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 18 }, roadStar: { position: 'absolute', width: 3, height: 3, borderRadius: 2, backgroundColor: '#c7b5ff', shadowColor: '#b292ff', shadowOpacity: 1, shadowRadius: 5 }, roadStarOne: { left: 38, top: 25 }, roadStarTwo: { right: 54, top: 19 }, roadStarThree: { right: 95, top: 43, width: 2, height: 2 }, roadHorizon: { position: 'absolute', left: 18, right: 18, top: 58, height: 1, backgroundColor: '#764e93', opacity: 0.72, shadowColor: '#a88aff', shadowOpacity: 0.8, shadowRadius: 6 }, roadSurface: { position: 'absolute', width: 0, height: 0, borderLeftWidth: 145, borderRightWidth: 145, borderBottomWidth: 82, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderBottomColor: '#090810', left: '50%', marginLeft: -145, top: 54 }, roadEdge: { position: 'absolute', width: 2, height: 94, backgroundColor: '#9d70ff', top: 53, shadowColor: '#a88aff', shadowOpacity: 1, shadowRadius: 9 }, roadEdgeLeft: { left: '50%', marginLeft: -48, transform: [{ rotate: '47deg' }] }, roadEdgeRight: { right: '50%', marginRight: -48, transform: [{ rotate: '-47deg' }] }, roadDash: { position: 'absolute', left: '50%', backgroundColor: '#ff8767', shadowColor: '#ff765a', shadowOpacity: 1, shadowRadius: 8 }, roadDashFar: { width: 2, height: 7, marginLeft: -1, top: 64 }, roadDashMiddle: { width: 3, height: 13, marginLeft: -2, top: 79 }, roadDashNear: { width: 5, height: 22, marginLeft: -3, top: 105 }, roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 }, roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' }, roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' }, roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
+  openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 },
+  roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 },
+  roadSoundBarSmall: { width: 2, height: 6, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadSoundBarMedium: { width: 2, height: 12, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadSoundBarTall: { width: 2, height: 18, borderRadius: 2, backgroundColor: '#43e6ae' },
+  roadCaption: { position: 'absolute', right: 17, bottom: 10, color: '#9f8ab8', fontSize: 7, fontWeight: '900', letterSpacing: 1.4 },
   pulseCard: { backgroundColor: '#0f0d15', borderRadius: 22, borderWidth: 1, borderColor: '#332943', padding: 16, shadowColor: '#9b7cff', shadowOpacity: 0.14, shadowRadius: 18 }, pulseHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, pulseKicker: { color: '#a88aff', fontSize: 8, fontWeight: '900', letterSpacing: 1.3 }, pulseTitle: { color: '#f4eff9', fontSize: 16, fontWeight: '900', marginTop: 4 }, livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: '#285d4c', backgroundColor: '#10251f', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#43e6ae', shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, liveText: { color: '#70f1c5', fontSize: 7, fontWeight: '900', letterSpacing: 1 }, pulseChart: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 9, marginTop: 17 }, pulseColumn: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'flex-end', gap: 7 }, pulseTrack: { width: 16, flex: 1, justifyContent: 'flex-end', borderRadius: 8, backgroundColor: '#191522', overflow: 'hidden' }, pulseBar: { width: '100%', minHeight: 7, borderRadius: 8, backgroundColor: '#7c55d9', shadowColor: '#a88aff', shadowOpacity: 0.9, shadowRadius: 7 }, pulseBarCap: { height: 4, backgroundColor: '#c6b2ff', opacity: 0.9 }, pulseDay: { color: '#696171', fontSize: 8, fontWeight: '800' }, pulseDayToday: { color: '#ff8a68' }, pulseFooter: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 13, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#31293a' }, pulseFooterValue: { color: '#f5f0fb', fontSize: 17, fontWeight: '900' }, pulseFooterLabel: { color: '#7e7687', fontSize: 10 },
   dashboardGrid: { flexDirection: 'row', gap: 10 }, dashboardStatCard: { flex: 1, minHeight: 150, backgroundColor: '#121019', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14 }, dashboardStatIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }, dashboardStatSymbol: { fontSize: 18, fontWeight: '900' }, dashboardStatKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, dashboardStatValue: { color: '#f7f2fc', fontSize: 20, fontWeight: '900', marginTop: 7 }, dashboardStatDetail: { color: '#8d8596', fontSize: 10, lineHeight: 15, marginTop: 5 },
   insightStrip: { flexDirection: 'row', gap: 10 }, insightCard: { flex: 1, minHeight: 152, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#2d2638', padding: 14, overflow: 'hidden' }, insightRoute: { height: 42, marginBottom: 9 }, insightRouteLine: { position: 'absolute', width: 105, height: 3, borderRadius: 2, backgroundColor: '#9b7cff', left: 10, top: 19, transform: [{ rotate: '-12deg' }], shadowColor: '#9b7cff', shadowOpacity: 0.9, shadowRadius: 7 }, insightRouteStart: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#43e6ae', left: 7, top: 27, shadowColor: '#43e6ae', shadowOpacity: 1, shadowRadius: 6 }, insightRouteEnd: { position: 'absolute', width: 11, height: 11, borderRadius: 6, backgroundColor: '#ff7b54', left: 112, top: 5, shadowColor: '#ff7b54', shadowOpacity: 1, shadowRadius: 7 }, musicRings: { height: 42, justifyContent: 'center', marginBottom: 9 }, musicRingOuter: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#664c9d', backgroundColor: '#1b1427', alignItems: 'center', justifyContent: 'center', shadowColor: '#a88aff', shadowOpacity: 0.5, shadowRadius: 9 }, musicRingInner: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#9b7cff', backgroundColor: '#281b3a', alignItems: 'center', justifyContent: 'center' }, musicRingNote: { color: '#c2aaff', fontSize: 14, fontWeight: '900' }, insightKicker: { color: '#817789', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, insightValue: { color: '#f5f0fb', fontSize: 22, fontWeight: '900', marginTop: 5 }, insightDetail: { color: '#81798a', fontSize: 9, lineHeight: 14, marginTop: 4 },
@@ -1890,10 +2455,11 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', backgroundColor: '#111018', borderRadius: 21, borderWidth: 1, borderColor: '#604077', padding: 24, shadowColor: '#a85cff', shadowOpacity: 0.27, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, emptyCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#231a30', alignItems: 'center', justifyContent: 'center', marginBottom: 10, shadowColor: '#9b7cff', shadowOpacity: 0.65, shadowRadius: 11 }, emptyCircleText: { color: '#9b7cff', fontWeight: '900', fontSize: 17 }, emptyTitle: { color: '#eee9f5', fontSize: 16, fontWeight: '800' }, emptyBody: { color: '#8b8395', fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6, maxWidth: 300 },
   loadMoreButton: { minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 15, borderWidth: 1, borderColor: '#3a3048', backgroundColor: '#15111d' }, loadMoreText: { color: '#b59cff', fontSize: 13, fontWeight: '900' },
   inlineNotice: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#21180f', borderWidth: 1, borderColor: '#714c25', borderRadius: 15, padding: 12 }, noticeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffb15c' }, inlineNoticeText: { color: '#c1af9a', fontSize: 11, lineHeight: 16, flex: 1 }, retryText: { color: '#ffb15c', fontSize: 11, fontWeight: '900' }, loadingLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, minHeight: 28 }, loadingLineText: { color: '#8f8799', fontSize: 12 }, loadingCard: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 13, backgroundColor: '#111018', borderRadius: 20 },
-  detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeSketchHero: { height: 236, borderWidth: 0, borderRadius: 0 }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
+  detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeSketchHero: { height: 236, borderWidth: 0, borderRadius: 0 }, routeSketchExpanded: { height: 430, borderWidth: 0, borderRadius: 0 }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
   journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroMapFrame: { position: 'relative', overflow: 'hidden' }, journeyHeroMapShade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, journeyHeroCopy: { position: 'absolute', left: 18, right: 18, bottom: 18 }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
-  trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8 }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
-  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  journeyMapHeading: { marginTop: 8, paddingHorizontal: 2, gap: 5 }, journeyMapKicker: { color: '#ff8d72', fontSize: 9, fontWeight: '900', letterSpacing: 1.65 }, journeyMapTitle: { color: '#fff8ff', fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.5 },
+  trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
+  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#713e58', borderRadius: 18, padding: 15, shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5d466b', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15, shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 9 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#7f4151', backgroundColor: '#281318', shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 10 }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29', shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 8 }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47', shadowColor: '#ff4f65', shadowOpacity: 0.42, shadowRadius: 11 }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
   navDockFrame: { marginBottom: 10, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(206,82,255,0.42)', shadowColor: '#000', shadowOpacity: 0.52, shadowRadius: 21, shadowOffset: { width: 0, height: 11 } },
@@ -1918,4 +2484,7 @@ const styles = StyleSheet.create({
   navActive: { color: '#ff8b4f', textShadowColor: 'rgba(255,95,47,0.95)', textShadowRadius: 7 },
   navActiveLine: { position: 'absolute', right: '24%', bottom: 3, left: '24%', height: 3, borderRadius: 2, backgroundColor: '#ff7138', shadowColor: '#ff5f2f', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
   onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, spotifyMarkFrame: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
+  libraryTabs: { flexDirection: 'row', gap: 7, padding: 5, borderRadius: 16, backgroundColor: '#100a18', borderWidth: 1, borderColor: '#342043', marginBottom: 12 }, libraryTab: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, libraryTabActive: { backgroundColor: '#2b1636', borderWidth: 1, borderColor: '#9858ba' }, libraryTabText: { color: '#86788f', fontSize: 11, fontWeight: '900' }, libraryTabTextActive: { color: '#f3dfff' },
+  librarySearch: { height: 48, borderRadius: 15, borderWidth: 1, borderColor: '#3d2850', backgroundColor: '#0e0915', color: '#f6eff9', paddingHorizontal: 15, fontSize: 14, marginBottom: 12 }, libraryFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 9 }, libraryChip: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: '#392848', backgroundColor: '#100b17' }, libraryChipActive: { borderColor: '#ff765a', backgroundColor: '#2a151d' }, libraryChipText: { color: '#93879c', fontSize: 10, fontWeight: '800' }, libraryChipTextActive: { color: '#ffab91' }, librarySortChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }, librarySortChipActive: { backgroundColor: '#28183a' }, librarySortText: { color: '#b69bc8', fontSize: 9, fontWeight: '900' },
+  favoriteRoute: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 17, borderWidth: 1, borderColor: '#4b315f', backgroundColor: '#130c1d', marginBottom: 9 }, favoriteRouteTitle: { color: '#f4edf7', fontSize: 13, fontWeight: '900' }, favoriteRouteMeta: { color: '#8f8398', fontSize: 10, marginTop: 5 }, favoriteRouteCount: { color: '#ff8d70', fontSize: 17, fontWeight: '900' }, libraryJourneyWrap: { position: 'relative' }, libraryAddButton: { position: 'absolute', right: 12, bottom: 11, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 11, backgroundColor: '#281636', borderWidth: 1, borderColor: '#65427a' }, libraryAddText: { color: '#d2adf3', fontSize: 9, fontWeight: '900' },
 });

@@ -1,4 +1,424 @@
-# Handoff: JourneyDeck Mobile Shell and Music Connections
+# Current Handoff State: Zero-Cost Multi-User Local-First Architecture
+
+## JourneyDeck 1.7 Git consolidation — August 26, 2026
+
+- Consolidated all intended Phase 1–7, Apple Sign-In, private CloudKit, exact-route mapping/replay, local-first archive, vehicle intelligence, and server-enrichment changes in feature commit `ec4edc6` (`feat(mobile): complete JourneyDeck 1.7 local-first experience`). No generated validation output or credentials were included.
+- Synchronized the branch with current `origin/main` in merge commit `46f050f`. The four Tessie-route conflicts were duplicate cherry-picks of the same earlier fix; resolution preserved the JourneyDeck 1.7 versions, which are strict supersets carrying timestamp, speed, heading, battery, and complete route-point data.
+- Pushed `agy/journeydeck-1.6` and opened PR [#132](https://github.com/drumpat01/DriveOS/pull/132) targeting `main`. Use the PR as the authoritative final merge/check status.
+- Post-merge-resolution verification passed: mobile TypeScript and 62/62 tests; server TypeScript, lint, and 31/31 tests. The immediately preceding complete validation also passed Expo Doctor 21/21, iOS export, Atlas benchmark, Playwright 9/9, PowerShell analysis, gitleaks, and Trivy with zero HIGH/CRITICAL findings. No Expo/EAS native build was started.
+
+## Phase 6 — Home overview — August 26, 2026
+
+- Upgraded the cinematic native Home screen from the older dashboard-only payload to the completed per-user Phase 2 cache. Home now summarizes Journey, Memory, Collection, Place, Music, Atlas, Timeline, Statistics, vehicle, charging, recorder, and Data Health state without adding a network endpoint or background request.
+- Added on-device archive counters; latest Memory spotlight; locally ranked road soundtrack; favorite recurring route/top-place pattern; road score and 30-day charging snapshot; and an Explore section linking directly to Timeline, Atlas, Statistics, Search, Music, Memories, Collections/Journeys, Live, recorder, and Settings. The hero status pill now opens Live.
+- Added `home-summary.ts`, a pure local aggregation layer with no server or connection imports, plus focused aggregation and structural navigation regression coverage.
+- Verification passed: mobile TypeScript; 62/62 mobile tests; Expo Doctor 21/21; iOS Metro export (1,442 modules, 11 assets); full root validation including 31/31 server tests, Atlas benchmark, Playwright 9/9, PowerShell analysis, gitleaks, and Trivy with zero HIGH/CRITICAL findings; `git diff --check` had only Windows line-ending notices.
+- Published the iOS-only runtime `1.7.0` preview OTA: update group `e7ac8488-ff84-4dcd-a60b-b4e150242437`, iOS update `01a0415a-60b3-753d-aa30-42a6f48ff3cb`, message `Phase 6: Add complete local-first Home overview`; dashboard `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/e7ac8488-ff84-4dcd-a60b-b4e150242437`. No native build credit was used. No Render/production deployment, staging, commit, push, revert, or discard was performed. Physical follow-up: review Home card spacing, the four archive counters, both spotlights, road pattern/intelligence, Explore links, and Live status navigation.
+
+## Phases 3, 4, and 7 — Journey Library, Memories, and Music — August 26, 2026
+
+- Added a three-section native Memories workspace: Journey Library, Memories, and Collections. Journey Library searches the cached archive across routes, vehicles, providers, and soundtrack metadata; filters by music, distance, and easy pace; sorts by date/distance/time; derives recurring favorite routes on-device; opens details; and assigns a journey to a Collection with an on-device-first quick picker.
+- Preserved the existing native Memory/Collection editors, photos, covers, story/detail views, share cards, and two-Collection Memory rule. Added independent Memory/Collection search and Collection overview maps assembled from cached recorded routes, plus locally calculated miles and soundtrack totals.
+- Expanded Music with a searchable listening history tied to each Journey and location pair, direct Journey navigation, existing Apple Music/Spotify deep links, and on-device top-track rankings. All archive indexing and ranking runs locally from the Phase 2 cache.
+- Made Collection and Memory saves genuinely local-first: edits write to the active user's SQLite store and cache immediately, work without a server connection, and opportunistically mirror to the legacy server. Catalog reconciliation chooses the newest per-record version while preserving cached photos. SQLite dirty flags remain available to private CloudKit sync.
+- Added pure model tests for library search/filter/sort, recurring routes, journey-linked music search, and play ranking. Verification passed: mobile TypeScript; 60/60 mobile tests; Expo Doctor 21/21; iOS Metro export (1,441 modules, 11 assets); full root validation including 31/31 server tests, Atlas benchmark, Playwright 9/9, PowerShell analysis, gitleaks, and Trivy with zero HIGH/CRITICAL findings; `git diff --check` had only Windows line-ending notices.
+- Published the iOS-only `preview` OTA for runtime `1.7.0`: update group `cda03b0e-cc8d-4b6f-9529-0d0e374e8982`, iOS update `01a04151-201b-71ab-a05a-c728d677fdcc`, message `Phases 3 4 7: Add journey library memories and music archive`; dashboard `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/cda03b0e-cc8d-4b6f-9529-0d0e374e8982`. No native build credit was used. No Render/production deployment, staging, commit, push, revert, or discard was performed. Physical follow-up: verify all three section tabs, offline Collection/Memory edits, quick assignment, Collection maps, listening search, track deep links, and Journey navigation.
+
+## Phase 2 primary iOS sections — August 26, 2026
+
+- Replaced the five-tab iOS shell with `Home`, `Live`, `Memories`, `Atlas`, and `More`. `More` contains global Search, Timeline, Statistics, Music, Record, Data Health, and Settings; Record remains directly reachable from Home and Live. The recorder stays mounted while navigating so an active capture is not interrupted.
+- Added Live from on-device SQLite: current recorder/driving state, speed, active route, distance/time/GPS counts, live-captured soundtrack, upload queue, last archived battery, and an honest unavailable state for live range/current provider battery. It polls only the local database while visible.
+- Added Atlas with the shared JourneyDeck dark-violet OpenFreeMap theme, cached recorded routes, frequently visited places, place details and related drives, representative routes, recurring-route cards, and user-scoped on-device confirm/dismiss decisions.
+- Added a combined Timeline for journeys, soundtrack plays, charging sessions, and vehicle/battery summaries, with a real recorded-route map for each selected day. Added Statistics with an explicitly non-safety driving score, current/prior 30-day comparisons, miles/energy/efficiency, trend chart, streaks, highlights, and monthly archive. Added global local search across journeys, songs, artists, places, Collections, and Memories.
+- Added Data Health with local recorder status, queued GPS/music counts, connection freshness, Apple identity, private iCloud state, provider statuses, and non-destructive refresh/iCloud retry actions. Raw route coordinates and sensitive place data remain on-device.
+- Added a per-user Phase 2 SQLite cache. Normal launches rebuild the views from the saved cache and current local recorder state; only a first load or explicit pull-to-refresh performs the broader archive refresh. Recent Journey detail caches seed route/energy/song enrichment, keeping routine server traffic low.
+- Verification passed: mobile TypeScript; 57/57 mobile tests (including Phase 2 navigation, surface, map, and local-first assertions); Expo Doctor 21/21; iOS Metro export (1,440 modules, 11 assets); root server typecheck/lint; 31/31 server tests; Atlas benchmark; Playwright 9/9; PSScriptAnalyzer; gitleaks; Trivy with zero HIGH/CRITICAL findings; and `git diff --check` with only Windows line-ending notices.
+- Published the corrected final iOS-only preview OTA for runtime `1.7.0`: update group `fcbef705-82d9-4e1a-b909-6bad26c82d2e`, iOS update `01a04142-782a-7fdd-8eb6-e64c6394a65b`, message `Fix Phase 2 route glyph rendering`. It supersedes the earlier Phase 2 previews and includes parked last-location mapping, fully local recurring-route derivation, and the React Native fix that renders the representative-route glyph inside `<Text>` instead of directly inside `<View>`. TypeScript, all 57 mobile tests, and an AST scan for raw Phase 2 JSX text passed before publication. EAS dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/fcbef705-82d9-4e1a-b909-6bad26c82d2e`. No EAS build credit was used.
+- Environment remains branch `agy/journeydeck-1.6` at HEAD `69f2c61` with the preserved dirty Phase 1/Phase 5/Apple/CloudKit work plus these Phase 2 mobile changes. Nothing was staged, committed, pushed, reverted, or deployed to Render/production.
+- Physical follow-up: restart the installed 1.7 development client after it checks for updates, then verify all five tabs, open each More section, start/finish a short recorder session from Live/More, confirm the live route and soundtrack update, inspect a Timeline day and Atlas route, run a search, and exercise the safe Data Health retries. Live range and truly current vehicle-provider battery remain unavailable until a future authenticated live vehicle transport is added; the UI labels the last archived battery rather than fabricating live data.
+
+## Phase 5 vehicle, charging, and place intelligence — August 26, 2026
+
+- Added a Settings-launched native `Drive intelligence` screen without changing the five primary tabs. Its Overview, Charging, Places, and Routes sections cover charging history, 30-day energy/battery/time/cost totals, editable electricity rates, favorite charging locations, complete saved places, Home/Work/School/Favorite/Custom categories, duplicate merge suggestions, cached Foursquare naming suggestions, visit/arrival/departure counts, related journeys, place soundtracks, time-of-day patterns, and route-level Wh/mi/energy/cost comparisons.
+- Added user-scoped SQLite app caching with offline saved-place fallback and a durable dirty-preference retry. The iPhone keeps the most recent intelligence view and local edits; no new paid service or native dependency was added. The private bearer endpoint reads existing canonical Tessie charging, journey energy, soundtrack, place alias, and Foursquare cache data and stores only bounded household preferences—rate, favorites, place overrides, and merge mappings.
+- Verification passed: mobile TypeScript, 55/55 mobile tests, Expo Doctor 21/21, iOS Metro export (1,437 modules, 11 assets), server typecheck/lint, 31/31 server tests, Atlas benchmark, Playwright 9/9, PSScriptAnalyzer, gitleaks, Trivy with zero HIGH/CRITICAL findings, and `git diff --check` with only Windows line-ending notices.
+- Published iOS preview OTA for runtime `1.7.0`: update group `d8809207-741a-4ff5-abf7-41a9ad46a7dd`, iOS update `01a04121-59b4-7c7e-a58c-71b5aa1d569b`, message `Phase 5: Add charging places and route intelligence`. EAS confirms it is the current `preview` branch head: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/d8809207-741a-4ff5-abf7-41a9ad46a7dd`. No EAS build was used.
+- Backend status: the new authenticated vehicle-intelligence endpoint and its tests are implemented in the dirty working tree but were not deployed to Render or committed/pushed. The published client therefore opens with its on-device saved-place fallback against the current live server; complete Tessie charging/energy/Foursquare enrichment becomes available after the server changes are separately reviewed and deployed.
+
+## Phase 1 web-parity journey map and replay — August 26, 2026
+
+- Added a dedicated `Route + song locations` experience to iOS Journey detail. The MapLibre map now uses the same OpenFreeMap dark-violet layer palette and exact coral route glow values as the web app, plus numbered song markers, start/end markers, popups, located-song status, legend, attribution, recenter/zoom controls, and a cached static-map fallback.
+- Linked the map and soundtrack list bidirectionally: tapping a numbered marker selects its soundtrack row, and tapping a soundtrack row highlights/focuses the matching marker.
+- Added on-device nearby-music search for a tapped coordinate with 0.5/1/2/5-mile radii. The distance calculation and matching run locally; map privacy copy explains that only OpenFreeMap basemap tiles are supplied externally.
+- Added Journey Replay with a moving directional marker, draggable scrubber, play/pause/restart, 1x/4x/12x speeds, current-song artwork/details, speed, battery, and progress. Older coordinate-only journeys receive explicit geometry-based estimates; exact recorder/Tessie telemetry is preferred when available.
+- Preserved recorder GPS timestamps, speed, and heading in local Journey detail. Extended the existing private server Journey response and Tessie historical-state normalization to carry timestamps, speed, heading, and battery without changing the old route-coordinate contract. This server enrichment is implemented and tested locally but is not live until the server is deployed.
+- Verification: mobile TypeScript passed; all 52 mobile tests passed; iOS Metro export passed (1,436 modules, 11 assets); server typecheck/lint passed; all 31 server tests passed; and `git diff --check` passed with only Windows line-ending notices. No EAS build, server deploy, commit, or push was performed.
+- Published the iOS preview OTA for runtime `1.7.0`: update group `48167547-310d-4f7c-b84e-60948c251a83`, iOS update `01a04106-c344-7a8c-abd4-6c090876c277`, message `Phase 1: Theme journey maps and add replay`. EAS confirms it is the current `preview` branch head: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/48167547-310d-4f7c-b84e-60948c251a83`.
+- Current state: Phase 1 is live for the installed 1.7 development client after its next update check/restart. Deploying the server afterward enables exact Tessie battery/speed/heading replay data; until then, replay uses the saved route and Journey summary estimates.
+
+## Exact Journey routes and soundtrack map markers — August 26, 2026
+
+- Fixed the 1.7 interactive journey map so MapLibre receives every available recorded GPS coordinate instead of the 96-point SVG fallback sample. The fallback remains sampled for rendering efficiency.
+- Added pink soundtrack markers. Newly recorded/local journeys match each song timestamp to the closest actual on-device GPS breadcrumb; older server-only journeys fall back to time-proportional placement along the ordered route.
+- Completed the previously missing local Journey detail wiring: route breadcrumbs and soundtrack entries now load from the on-device SQLite master store, and a server-loaded journey merges with its matching local copy by remote drive ID so the exact local route remains authoritative.
+- Added server enrichment for both sources: recorder journeys attach the nearest timestamped recorder coordinate to each soundtrack track, while historical Tessie journeys privately fetch the vehicle's one-second historical states for the drive window, return the real route, and match each song to its nearest actual vehicle state. The Tessie token remains server-only.
+- Verification: mobile TypeScript passed; all 47 mobile tests passed; iOS production Metro export passed (1,435 modules, 11 assets). Full root validation passed: server typecheck/lint, 31/31 server tests (including Tessie route normalization and mobile integration), Atlas benchmark, Playwright 9/9, PSScriptAnalyzer, gitleaks, and Trivy with zero HIGH/CRITICAL findings. `git diff --check` reported only existing Windows line-ending notices. The running 1.7 development-client Metro session hot-reloaded the mobile fix successfully with no runtime error. No EAS build and no OTA publish were used.
+- Production deployment completed through PR [#131](https://github.com/drumpat01/DriveOS/pull/131), merged as `9f9d6fd`, and Render deploy `dep-da7omrflk1mc738aq4sg` is live on `driveos`. GitHub validation passed, Render reports no post-startup error logs, and `https://journeydeck.me/readyz` returned HTTP 200 with Atlas and legacy compatibility ready.
+- Deployment initially encountered the intended 45-minute Tessie cursor freshness gate because GitHub's scheduled history sync had been delayed. Manual workflow run `33028629632` refreshed the Turso cursors successfully; its optional soundtrack call received a transient 502 during Render handover. Dedicated Spotify/soundtrack workflow run `33028686681` was then dispatched after production became healthy and passed.
+- Physical finding from screenshots: existing Tessie journeys previously received exactly two endpoint coordinates from the live server, producing a diagonal and evenly spaced fallback markers. Reopen the same journeys in the installed 1.7 app and confirm the line now follows the driven streets and song dots match actual playback locations. Local iPhone-recorded journeys are already exact.
+
+## Real Sign in with Apple + private CloudKit transport — August 26, 2026
+
+- Implemented native Sign in with Apple through `expo-apple-authentication`, including Apple's official button, request-state validation, credential-state/revocation checks, and on-device linking to the active local profile. Apple identity/authorization credentials are never sent to JourneyDeck's server; a missing repeat-return name does not overwrite the existing local display name.
+- Added the auto-linked `JourneyDeckCloudKit` Expo Swift module for `iCloud.com.journeydeck.recorder`. It checks iCloud account availability, creates a custom private record zone, uploads with change-tag race protection, downloads incrementally with persisted CloudKit change tokens, and recovers from expired tokens.
+- Added the production transport orchestration and UI: automatic sync at app start/foreground and after completed journey/music capture, plus a manual Settings action. Apple-linked devices derive the same zone from a SHA-256 hash of the stable Apple subject; anonymous local profiles remain isolated. Journey summaries, music entries, collections, and memories sync bidirectionally with LWW handling and bounded batches.
+- Privacy boundary: raw GPS breadcrumbs, exact journey endpoints, Home/Work coordinates, local user IDs, Apple tokens/codes, and device-local photo paths never enter CloudKit payloads. The Settings copy distinguishes Apple identity from the separate device iCloud account and does not claim end-to-end encryption.
+- Version/native boundary remains `1.7.0`. Added `expo-apple-authentication`, `usesAppleSignIn`, and the config plugin; the existing CloudKit/Apple entitlements remain enabled. No EAS build and no OTA were started.
+- Verification: `npm test` 44/44, TypeScript clean, Expo Doctor 21/21, effective Expo config clean, Expo autolinking finds `journeydeck-cloudkit` and `expo-apple-authentication`, iOS Metro export passed (1,434 modules, 11 assets), and `git diff --check` has only Windows line-ending notices. Windows cannot compile Swift; the first carefully conserved 1.7 iOS build must verify Swift/CocoaPods, Apple capability signing, real Apple sign-in, iCloud account states, two-device sync, and then create/deploy the CloudKit production schema before public distribution.
+
+### JourneyDeck 1.7 development build — successful
+
+- The initial EAS attempt `4d74cd30-682b-463c-bfd7-082f4aa5a26d` fast-failed in under three minutes because the existing Ad Hoc profile predated the Apple Sign-In/iCloud entitlements. Apple authentication regenerated that profile with Developer Portal ID `9735474KU8` for the registered iPhone; Expo's fast-failure policy should waive this attempt (subject to the account's monthly waiver limit).
+- The repaired consolidated development build **finished successfully**: build ID `f2ba64c5-061e-457b-a922-d7c690b93071`, JourneyDeck/runtime `1.7.0`, build number `3`, profile `development`, channel `preview`, fingerprint `8d2b498dc9cafd7cb82b50def2fc75d1353477b2`.
+- Installable IPA: `https://expo.dev/artifacts/eas/ADv_Jxvp-qmofHFUjUx58kUlNkOmgoJh9RsMIOhoYIM.ipa`; dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/f2ba64c5-061e-457b-a922-d7c690b93071`. Next: install over 1.6 without deleting the app, then physically verify launch/local-data preservation, interactive mapping, Apple sign-in, iCloud unavailable/available states, manual sync, and CloudKit round-trip before publishing any 1.7 OTA.
+
+## Interactive mapping native-foundation work — August 26, 2026
+
+- Added MapLibre React Native 11.3.7 and its Expo config plugin, using the no-key OpenFreeMap Liberty vector style. Journey detail routes now open as interactive pan/zoom maps by default, with the existing cached OpenStreetMap snapshot retained as the load/error fallback.
+- Advanced the app/runtime version from 1.6.0 to 1.7.0 so MapLibre JavaScript cannot be delivered to older binaries that do not contain the native module. Aligned Expo SDK 57 packages to Expo Doctor's current compatible patch versions.
+- Verification passed without spending an EAS build: mobile TypeScript, all 14 mobile test scripts, Expo Doctor 21/21, Expo prebuild config resolution (including MapLibre 11.3.7), and production iOS Metro export (1,424 modules, 11 assets). Windows cannot generate the iOS Podfile, so the plugin's CocoaPods hook remains a first-build verification item.
+- No OTA was published and no EAS build was started. The working tree contains the mapping/native-foundation changes and should remain on runtime 1.7.0 for the next native build.
+
+## Codex validation and architecture hardening — August 26, 2026
+
+- **Objective:** Run the complete JourneyDeck validation stack and fix failures plus the privacy, sync, isolation, and runtime-wiring defects found during review of `2515a44`.
+- **Changes:**
+  - CloudKit journey summaries no longer include exact endpoint coordinates or local profile IDs. Remote ingestion now scopes records to the active profile, applies LWW conflict resolution, preserves local-only coordinates, and leaves downloaded winners acknowledged.
+  - Local-store ID upserts and sync acknowledgements enforce `user_id` ownership. Active profile selection is persisted with additive SQLite migration 2.
+  - Completed recorder sessions now mirror journey summaries, raw GPS breadcrumbs, and soundtrack observations into the master local SQLite store. Offline dashboard, journeys, detail, Memories, and Music reads now use `localAtlasClient` before legacy caches.
+  - Cloudflare credential routes now reject unapproved browser origins and return an exact allowlisted CORS origin; production origins are declared in `wrangler.toml`.
+  - Added regression assertions covering coordinate exclusion, LWW use, profile ownership, recorder-to-master-store ingest, live offline fallback, profile persistence, and CORS fail-closed behavior.
+- **Verification:**
+  - All 15 mobile checks passed, including TypeScript, tab runtime, local store/Atlas/privacy/CloudKit/Cloudflare/auth, recovery, sync status, music, drive detection, navigation motion, and native capabilities.
+  - Expo Doctor passed 21/21; production iOS Metro export passed with 1,349 modules and 8 assets.
+  - Root `npm test` passed after creating the documented Atlas development seed fixture: server typecheck/lint, 29 server tests, Atlas benchmark, 9 Playwright tests, PSScriptAnalyzer (136 files), gitleaks, and Trivy (0 HIGH/CRITICAL findings).
+  - `tools/Test-DriveOS.ps1` and `tools/Test-ReleasePreflight.ps1` passed. Their SQLite-provider/migration/durable-round-trip checks were explicitly skipped because the desktop SQLite runtime is unavailable in this environment; all other available checks passed.
+  - `git diff --check` passed with only Windows LF-to-CRLF notices.
+- **Published Preview OTA:**
+  - Source commit: `8792596` (`fix(mobile): harden local-first sync and offline data`), pushed to `origin/agy/journeydeck-1.6`.
+  - Update group ID: **`c1b8422c-bbfa-4eff-a368-4bafe18528a1`**
+  - iOS update ID: **`01a03f9d-0570-7e68-a7d0-66ff4436c463`**
+  - Message: `Harden local-first privacy sync and offline data`
+  - Runtime/channel: `1.6.0` / `preview`; Expo reports a clean Git working tree for the published update.
+  - Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/c1b8422c-bbfa-4eff-a368-4bafe18528a1`
+- **Environment:** Branch `agy/journeydeck-1.6`; Cloudflare worker source changes are committed but were not deployed as part of the iOS OTA.
+- **Next steps:** Review the working-tree diff and physically verify a completed offline recording appears in Home/Memories/Music after relaunch and profile switching. A real CloudKit transport adapter is still required before remote synchronization can run on-device; `CloudKitSyncEngine` currently provides safe payload/conflict logic only.
+
+- **Active Branch**: `agy/journeydeck-1.6` (Synced to remote `origin/agy/journeydeck-1.6`)
+- **Authoritative Commit**: [`2515a44`](https://github.com/drumpat01/DriveOS/commit/2515a44) (`feat(arch): implement zero-cost local-first multi-user architecture with SQLite, CloudKit sync, and Cloudflare edge`)
+- **Live Cloudflare Edge**: `https://journeydeck-edge.patrickbstewart.workers.dev` (Deployed on Free Tier)
+- **Live Mobile Preview OTA**: Update Group `289d6cbb-2191-43a3-83a5-187cd319c218` (Runtime `1.6.0`)
+- **Apple Developer Setup**: CloudKit container `iCloud.com.journeydeck.recorder` and Sign in with Apple enabled on App ID `com.journeydeck.recorder`.
+- **Validation**: All 14 test suites passing (`100%`), `tsc --noEmit` 0 errors, Metro export clean.
+
+## Phase 4 & 5: Driver Profile, Private iCloud Badge, Pro Membership & Entitlements — August 26, 2026
+
+- **Objective:** Finalize user-facing settings for Apple ID driver profile, private iCloud sync status badge, JourneyDeck Pro $4.99/mo membership card, home/work safe zones, and Apple Sign-In / CloudKit iOS entitlements.
+- **Branch:** `agy/journeydeck-1.6` (working tree)
+- **Changes Implemented:**
+  - `mobile/recorder/app.json` — Configured iOS capabilities (`com.apple.developer.applesignin`, `com.apple.developer.icloud-container-identifiers`, `com.apple.developer.icloud-services`).
+  - `mobile/recorder/src/shell.tsx` — Added Driver Profile tile, Private iCloud encryption badge, JourneyDeck Pro membership tile, and Home/Work Safe Zone indicator to Settings screen.
+  - `mobile/recorder/src/auth.ts` — Multi-user profile management with `listLocalUsers` export.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:tab-runtime`: ✅ 9/9 passed
+  - All 14 unit test suites: ✅ 100% passed
+  - `npx expo export --platform ios`: ✅ 1349 modules bundled
+  - `git diff --check`: ✅ clean
+- **Published Preview OTA:**
+  - Update group ID: **`289d6cbb-2191-43a3-83a5-187cd319c218`**
+  - iOS update ID: **`01a03f5d-1bd4-7792-997c-3083566f253e`**
+  - Message: `Phase 4+5: Driver profile, private iCloud badge, Pro membership card, iOS entitlements`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/289d6cbb-2191-43a3-83a5-187cd319c218`
+
+## Phase 2, 3 & 4: CloudKit Sync, Cloudflare Serverless Edge, Multi-User Auth — August 26, 2026
+
+- **Objective:** Implement the remaining serverless edge infrastructure (Cloudflare Workers), CloudKit sync engine, and multi-user Apple Sign-In identity management.
+- **Branch:** `agy/journeydeck-1.6` (working tree)
+- **New Files Created:**
+  - `cloudflare/workers/oauth-spotify.ts` — Stateless PKCE Spotify OAuth token exchange & refresh broker. Zero server state.
+  - `cloudflare/workers/oauth-tessie.ts` — Stateless Tessie token verification broker.
+  - `cloudflare/workers/places-lookup.ts` — Privacy-preserving Nominatim reverse geocoding proxy with 3-decimal fuzzed coordinates (~110m grid) and 24-hour edge caching.
+  - `cloudflare/workers/index.ts` — Unified Cloudflare edge router with full CORS and healthcheck endpoints.
+  - `cloudflare/wrangler.toml` — Deployed live to Cloudflare Workers free tier: `https://journeydeck-edge.patrickbstewart.workers.dev`
+    - `/readyz` → Healthy (200 OK)
+    - `/api/places/reverse` → Privacy geocoding verified (3-decimal fuzzed grid + edge cached)
+    - `/api/auth/spotify/token` → Stateless PKCE broker ready
+    - `/api/auth/tessie/verify` → Tessie validator ready
+  - `mobile/recorder/src/cloudkit-sync.ts` — CloudKit synchronization engine with CKRecord serialization, queue management, and deterministic Last-Write-Wins (LWW) conflict resolution.
+  - `mobile/recorder/src/auth.ts` — Multi-user profile management, Sign in with Apple credential handler, and local user switching.
+  - `mobile/recorder/tests/cloudflare-workers.test.mts` — 100% passed.
+  - `mobile/recorder/tests/cloudkit-sync.test.mts` — 100% passed.
+  - `mobile/recorder/tests/auth.test.mts` — 100% passed.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:cloudflare-workers`: ✅ passed
+  - `npm run test:cloudkit-sync`: ✅ passed
+  - `npm run test:auth`: ✅ passed
+  - All 11 other unit tests: ✅ 100% passed
+- **Published Preview OTA:**
+  - Update group ID: **`2dbc7032-f84e-4a9a-b7be-15d21f8fe157`**
+  - iOS update ID: **`01a03f55-c5ab-7013-a263-cfdecc0f6eb3`**
+  - Message: `Phase 2+3+4: CloudKit sync engine, Cloudflare serverless edge, Apple multi-user auth`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/2dbc7032-f84e-4a9a-b7be-15d21f8fe157`
+
+## Phase 1: On-Device Master SQLite Store, Privacy Masker & Atlas Engine — August 26, 2026
+
+- **Objective:** Build the complete Local-First SQLite foundation and privacy layer for the zero-cost multi-user architecture. All journey history, music, places, collections, memories, coordinate masking, and analytics live on-device in `journeydeck-local.db`.
+- **Branch:** `agy/journeydeck-1.6` (working tree changes ready)
+- **New Files Created:**
+  - `mobile/recorder/src/local-store.ts` — On-device master SQLite store (8 tables, multi-user isolation, additive `user_version` migration system, CloudKit sync queue).
+  - `mobile/recorder/src/local-atlas.ts` — On-device Atlas Analytics Engine (weekly tour, rolling 7-day, driving streak, top artists, 5-bucket mood breakdown, `rebuildAtlasSnapshot()`).
+  - `mobile/recorder/src/privacy-masker.ts` — On-device coordinate scrubbing and geofence masking (≥300m safe buffer for home/work, Haversine spherical math, deterministic route & label sanitization for share cards).
+  - `mobile/recorder/tests/local-store.test.mts` — 15/15 structural assertions passed.
+  - `mobile/recorder/tests/local-atlas.test.mts` — 12/12 structural assertions passed.
+  - `mobile/recorder/tests/privacy-masker.test.mts` — Structural and mathematical assertions passed.
+  - `mobile/recorder/tests/local-atlas-client.test.mts` — 10/10 check groups passed.
+- **Modified Files:**
+  - `mobile/recorder/src/app-data.ts` — Added `localAtlasClient` export for 100% offline-first synchronous dashboard and catalog reads from on-device SQLite.
+  - `mobile/recorder/package.json` — Added all 4 new test scripts.
+- **Verification Results:**
+  - `npm run typecheck`: ✅ 0 errors
+  - `npm run test:local-store`: ✅ 15/15 passed
+  - `npm run test:local-atlas`: ✅ 12/12 passed
+  - `npm run test:privacy-masker`: ✅ passed
+  - `npm run test:local-atlas-client`: ✅ 10/10 passed
+  - All 7 existing test suites: ✅ 100% pass
+  - `npx expo export --platform ios`: ✅ 8 assets, 1348 modules bundled cleanly
+  - `git diff --check`: ✅ clean
+- **Published Preview OTA:**
+  - Update group ID: **`d7c4d618-bfd5-444d-a1ab-c39b83fa0b17`**
+  - iOS update ID: **`01a03f50-8d6e-7f88-b7e6-a1bff348a788`**
+  - Message: `Phase 1.2+1.4: On-device privacy masker, local Atlas client (full offline dashboard)`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/d7c4d618-bfd5-444d-a1ab-c39b83fa0b17`
+
+## Next Steps (Phase 1 Remaining + Phase 2)
+
+1. **Phase 1.2 — Privacy Masker** (`src/privacy-masker.ts`): On-device coordinate fuzzing function that accepts a coordinate and a set of sensitive places, returns a scrubbed safe point if within a place's `radius_meters`. Used before any export, share card, or CloudKit sync.
+2. **Phase 1.4 — Local Atlas Client in app-data.ts**: Add `localAtlasClient` that reads from `local-store.ts` for the dashboard when offline or when the user has no server connection configured.
+3. **Phase 2 — CloudKit Sync** (`src/cloudkit-sync.ts`): Implement bidirectional CloudKit sync using `journeysPendingSync()` + `markJourneysSynced()` from local-store. Only lightweight journey summaries sync to iCloud; raw GPS breadcrumbs and sensitive home/work coordinates stay local.
+4. **Phase 3 — Cloudflare Workers**: Stateless OAuth broker for Spotify + Tesla, static SPA hosting, Nominatim geocoding proxy.
+
+## Zero-Cost Multi-User Local-First Architecture Plan — August 26, 2026
+
+
+- **Objective:** Plan and architect the multi-user transition for JourneyDeck using a zero-cost local-first foundation with on-device SQLite, Apple CloudKit sync, and Cloudflare Workers/Pages edge brokers.
+- **Architectural Deliverables:**
+  - Designed [`implementation_plan.md`](file:///C:/Users/patri/.gemini/antigravity/brain/d4a22efe-2dc2-4ccc-8e37-49476481f16d/implementation_plan.md) with complete system diagrams, key invariants, and 5 execution phases:
+    1. *Phase 1: Local-First Core & On-Device Storage Engine* (elevating SQLite on iOS as primary master store).
+    2. *Phase 2: Apple CloudKit Sync & iCloud Backup* (private E2EE sync at $0 developer cost).
+    3. *Phase 3: Cloudflare Serverless Edge* (stateless OAuth brokers for Spotify/Tesla + static SPA on Pages).
+    4. *Phase 4: Multi-User Onboarding Flow* (Sign in with Apple, vehicle/music selection, privacy geofences).
+    5. *Phase 5: App Store Readiness & Release* (privacy disclosures, StoreKit subscriptions, TestFlight beta).
+- **Cost Scaling Analysis:**
+  - 0 to 1,000 active users: **$0.00 / month** running costs (100% free-tier serverless/CloudKit).
+  - 1,000+ active users: ~$29/mo (EAS update threshold, easily funded by subscription revenue).
+
+## Full-Bleed Music & Memories Header Artwork Assets — August 26, 2026
+
+- **Objective:** Implement full-bleed cropped artwork headers for both Music and Memories tabs in the exact same cohesive cinematic style, removing all old paragraph/eyebrow text overlays.
+- **Changes Implemented:**
+  - **Music Header Artwork (`mobile/recorder/assets/music-header-hero.png`):**
+    - High-resolution cropped image asset (1270x674) featuring the bold white "MUSIC" title, glowing multi-lane neon soundwaves (magenta, cyan, coral), vinyl echo grooves, and floating acoustic bokeh particles.
+    - Rendered inside `musicHeaderStyles.heroCardHeader` (`aspectRatio: 1270 / 674`, `borderRadius: 24`, `overflow: 'hidden'`, outer neon glow shadow `#ff4594`).
+  - **Memories Header Artwork (`mobile/recorder/assets/memories-header-hero.png`):**
+    - High-resolution cropped image asset (673x331) featuring the bold white "MEMORIES" title, multi-lane neon highway ribbons, moon, stars, and waypoint beacons.
+    - Rendered inside `styles.memoryHeroCardHeader` (`aspectRatio: 673 / 331`, `borderRadius: 24`, `overflow: 'hidden'`, outer neon glow shadow `#9b61ff`).
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread with 14 micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (8 assets bundled including `music-header-hero.png` and `memories-header-hero.png`, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`3e8ae4e1-5a09-401c-943e-620d410b06d4`**
+  - iOS update ID: **`01a03edf-9ec5-7e73-95f4-cd5a06f5a6af`**
+  - Message: `Add full-bleed cropped Music header artwork`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/3e8ae4e1-5a09-401c-943e-620d410b06d4`
+
+## Cropped Edge-to-Edge Memories Header Image & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Crop out the exterior margin behind the neon rounded rectangle and size the Memories header card to fill the screen width edge-to-edge.
+- **Changes Implemented:**
+  - **Cropped High-Res Asset (`mobile/recorder/assets/memories-header-hero.png`):**
+    - Updated image asset to the exact cropped artwork (673x331, aspect ratio 2.033) where the glowing neon rounded border extends right to the edges of the file.
+  - **Layout & Container Sizing (`mobile/recorder/src/shell.tsx`):**
+    - Updated `styles.memoryPageHeader` to `marginHorizontal: 16` and `memoryHeroCardHeader` to `aspectRatio: 673 / 331`, `borderRadius: 24`, `overflow: 'hidden'`, and enhanced outer glow shadow (`shadowColor: '#9b61ff'`, `shadowOpacity: 0.45`, `shadowRadius: 24`).
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (7 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`94554d20-a9e3-491a-b06e-0dc25fb193be`**
+  - iOS update ID: **`01a03ec6-6400-7aaa-8282-658ff6942fd0`**
+  - Message: `Update Memories header with cropped edge-to-edge neon artwork`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/94554d20-a9e3-491a-b06e-0dc25fb193be`
+
+## Full-Bleed Memories Header Image Asset & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Replace the entire red-circled Memories header card with the high-resolution image asset (`assets/memories-header-hero.png`), removing all standard text overlays so the header is 100% the clean, high-res artwork image.
+- **Changes Implemented:**
+  - **Bundled Image Asset (`mobile/recorder/assets/memories-header-hero.png`):**
+    - Saved the high-resolution Memories header artwork featuring the clean modern "MEMORIES" title, glowing multi-lane neon highway ribbon (cyan, magenta, coral), starlit twilight sky with moon, topographic contours, and glowing waypoint pin markers.
+  - **Memories Header Integration (`PageHeader` in `mobile/recorder/src/shell.tsx`):**
+    - Updated `PageHeader` for `variant="memories"` to render `<Image source={require('../assets/memories-header-hero.png')} style={styles.memoryHeroHeaderImage} resizeMode="cover" />` inside `styles.memoryHeroCardHeader` (16:9 aspect ratio, `borderRadius: 24`, glowing border and shadow).
+    - Removed old paragraph and eyebrow text from the card so the artwork displays clean and unobstructed.
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread with 14 micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (7 assets bundled including `memories-header-hero.png`, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`1e20695a-2775-4763-b37f-eec8f2096164`**
+  - iOS update ID: **`01a03ec0-9aa1-7cf1-b26b-61ca29b568e5`**
+  - Message: `Set full-bleed Memories header artwork image`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/1e20695a-2775-4763-b37f-eec8f2096164`
+
+## Refined Memories Header & Spinning Vinyl Record — August 26, 2026
+
+- **Objective:** Recreate and implement the refined Memories header inspired by Mockup 1 (clean "Memories" label, multi-lane neon highway with cyan, magenta, and coral trails, moonlit mountain pass with topographic contour lines, and glowing waypoint pin markers without cluttering text labels or statistics).
+- **Changes Implemented:**
+  - **Refined Memories Header Scene (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Multi-lane sweeping neon highway ribbon (cyan/mint `#38bdf8`, magenta/pink `#ff3f82`, coral/amber `#ff8c6d`) with wide soft underglow.
+    - Luminous twilight moon (`#eaf2ff`) with lunar aura and starlit sky.
+    - Topographic mountain elevation contour ribbons (`url(#topoLines)`).
+    - Glowing waypoint GPS pin beacons positioned at curve apexes without text clutter.
+    - Distant horizon city shimmer effect.
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous 22s slow rotation on native Core Animation thread.
+    - 148pt disc body with 14 prominent micro-grooves, 4-quadrant specular sheens, and rotating album label.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`7ff7f820-fdb1-4a85-98a9-8c21287a147c`**
+  - iOS update ID: **`01a03eb3-6d33-7f7f-a140-dac24aa99a03`**
+  - Message: `Implement refined Memories header with multi-lane neon highway`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/7ff7f820-fdb1-4a85-98a9-8c21287a147c`
+
+## Spinning Vinyl Record & Brand-New Cinematic Header Heroes — August 26, 2026
+
+- **Objective:** Create brand-new, visually striking header hero scenes for Music, Memories, and Settings tabs, and animate the vinyl record with prominent micro-grooves and continuous slow rotation.
+- **Changes Implemented:**
+  - **Animated Spinning Vinyl Record (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Smooth continuous slow rotation using `Animated.loop` with `Easing.linear` (22 seconds per 360° rotation) running on the native Core Animation thread.
+    - Expanded vinyl diameter to 148pt with 60pt center label and chrome-core spindle hole.
+    - Enhanced groove contrast with 14 prominent concentric micro-grooves, spiral run-out track, and quad specular reflection cones at 45°, 135°, 225°, and 315° that realistically catch light as the record spins.
+    - Album artwork and spindle hole rotate in exact lockstep inside the animated container.
+    - Refined right-hand hero copy layout (`heroEyebrow`, `heroTitle`, `heroAccent`, `heroService`) with ample breathing room.
+  - **Music Holographic Soundscape Header (`MusicHeaderScene` in `mobile/recorder/src/music-screen.tsx`):**
+    - Multi-frequency neon sine waves, harmonic wave interference patterns, floating audio particle nodes, and dual-tone gradient spectrum bars.
+  - **Memories Cosmic Route Odyssey Header (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Sweeping perspective ribbon highway traversing a cosmic twilight horizon, topographic contour elevation ribbons, glowing waypoint milestone portal nodes with pulsing radar rings, and floating luminous constellation coordinates.
+  - **Settings Orbital Telemetry Hub Header (`PageHeaderScene variant='settings'` in `mobile/recorder/src/shell.tsx`):**
+    - Multi-axis gyro orbital sensor rings (`#43e6ae`, `#9b7cff`, `#ff795b`), cybernetic node interlinks, glowing telemetry target nodes with concentric halo rings, and precision HUD brackets.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+  - `git diff --check`: passed cleanly
+- **Published Preview OTA:**
+  - Update group ID: **`434f59b5-0fb2-460d-bd63-7d05a25ebcce`**
+  - iOS update ID: **`01a03e86-a0cc-7f56-8036-3887f51f60c1`**
+  - Message: `Add spinning vinyl record and new cinematic header heroes`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/434f59b5-0fb2-460d-bd63-7d05a25ebcce`
+
+## Mobile Graphics Redesign & Vinyl Record Hero — August 26, 2026
+
+- **Objective:** Redesign generic placeholder shapes/blobs across the iOS app and replace the Music hero with an authentic vinyl record disc.
+- **Changes Implemented:**
+  - **Vinyl Record Hero (`VinylHeroRecord` in `mobile/recorder/src/music-screen.tsx`):**
+    - Built a realistic vinyl record component with an onyx vinyl disc body (`#1c0f2b` to `#050308`), 10 concentric micro-groove tracks, dashed run-out groove track, dual 45°/225° specular sheen reflection cones, a 56px center label with clipped album artwork, and central spindle hole.
+  - **Dynamic Listening Time Area Chart (`IntensityChart` in `mobile/recorder/src/music-screen.tsx`):**
+    - Removed the artificial rounded dome rectangle (`borderTopLeftRadius: 120`) and replaced it with a dynamic data-driven SVG gradient area fill (`#ff6c50` → `#ff3f82` → transparent) + line stroke + dashed guide lines + point dots.
+  - **Acoustic Wave Visualizer (`MusicHeaderScene` in `mobile/recorder/src/music-screen.tsx`):**
+    - Replaced concentric circle halos with an acoustic soundstage visualizer wave and spectrum bars.
+  - **Memories Header Scene (`PageHeaderScene variant='memories'` in `mobile/recorder/src/shell.tsx`):**
+    - Replaced rotated boxes and background glow blobs with a journey waypoint route SVG featuring glowing destination nodes.
+  - **Settings Header Scene (`PageHeaderScene variant='settings'` in `mobile/recorder/src/shell.tsx`):**
+    - Replaced primitive thick-bordered circle blobs with a sleek telemetry constellation network.
+  - **Collection & Memory Vector Placeholders (`shell.tsx`):**
+    - Replaced `CollectionPlaceholderArtwork`, `JourneyMomentArtwork`, `MemoryArtwork`, and `CollectionCard` fallback CSS shapes with bespoke vector road and perspective route illustrations.
+  - **Open Road Vector Artwork (`OpenRoadArtwork` in `shell.tsx`):**
+    - Replaced CSS rectangle/star/horizon shapes with a full SVG vector sunset road scene.
+  - **Mini Route Thumb (`CompactJourneyRow` in `shell.tsx`):**
+    - Replaced 3 rotated box views with a clean mini SVG vector path.
+- **Verification Results on `agy/journeydeck-1.6`:**
+  - `npm run typecheck`: passed (0 errors)
+  - `npm run test:tab-runtime`: 9/9 passed
+  - `npm run test:navigation-motion`: 4/4 passed
+  - `npm run test:recovery`: 10/10 passed
+  - `npm run test:sync-status`: 4/4 passed
+  - `npm run test:music-observations`: 7/7 passed
+  - `npm run test:drive-detection`: 9/9 passed
+  - `npm run test:native-capabilities`: 2/2 passed
+  - `npx expo-doctor`: 21/21 checks passed
+  - `npx expo export --platform ios`: passed (6 assets bundled, 1 iOS JS bundle, React Compiler active)
+- **Published Preview OTA:**
+  - Update group ID: **`16c7b717-3926-4875-b0aa-a38e4d6c1eaf`**
+  - iOS update ID: **`01a03e7a-9cac-75f1-be22-77aedcda7c1d`**
+  - Message: `Redesign placeholder graphics and add authentic vinyl record hero`
+  - Runtime version: `1.6.0` (channel `preview`, platform `ios`)
+  - EAS Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/16c7b717-3926-4875-b0aa-a38e4d6c1eaf`
 
 ## Agy takeover and 1.6 OTA recovery checkpoint — August 26, 2026
 
@@ -356,3 +776,17 @@
 - Replaced Unicode text glyphs with native SF Symbols (`arrow.clockwise`, `play.fill`, `map`, and `link`) in fixed 25×25 frames inside centered 42×42 wells.
 - Removed absolute positioning; icon wells participate in normal vertical flex layout with `alignItems: 'center'` and a flexible spacer, making measured tile width the centering authority.
 - Published iOS preview OTA groups `0798ba82-566c-4aa6-87c6-995b97d41e61` and `ae3c5daf-5d94-42ab-a600-202df1b1d981` for runtime `1.6.0`, message `Center Home icons with measured flex layout`.
+
+### Local worktree cleanup (2026-08-26)
+
+- Removed 20 obsolete or otherwise preserved registered worktrees after fetching/pruning remotes and checking merge ancestry, patch equivalence, branch preservation, and dirty diffs. The unique Siri/commute history was first backed up to `origin/feat/siri-shortcuts-4.4.1`.
+- Ported the unique GPS/Haversine fallback and parked-state handling from `DriveOS-auto-detection` into the authoritative local-first mobile code, including persisted position state and two regression tests. Ported the approved Tessie logos and web dashboard branding from `DriveOS` while discarding its redundant merged patch/bundle and root Expo stub.
+- Archived the non-merged concepts before cleanup: cinematic Memories as `0172397` on `origin/codex/cinematic-memories`, and the superseded companion API prototype as `356e862` on `origin/codex/ios-companion-screens`. The Siri/commute history remains backed up on `origin/feat/siri-shortcuts-4.4.1`.
+- Verification passed after the ports: mobile typecheck; the complete mobile unit suite (including drive detection 11/11 and tab runtime 9/9); frontend module characterization; Playwright E2E 9/9; gitleaks with no findings; and `git diff --check` with only Windows line-ending notices.
+- `agy/journeydeck-1.6` correctly tracks `origin/agy/journeydeck-1.6` and is the sole active development worktree. `C:\Users\patri\DriveOS` remains registered and clean because it is Git's main worktree and owns the shared `.git` database; converting/removing that anchor is a separate repository-migration operation. The stale AO process chain was terminated and its unregistered orchestrator directory was deleted.
+
+### Automatic-drive fallback preview OTA (published)
+
+- Published the fully consolidated iOS JavaScript/assets bundle from source commit `021a16b` to the `preview` branch for runtime `1.6.0`; no native build was used.
+- Update group `c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`, iOS update `01a03fd7-c8fe-72aa-a79c-734c4c81b728`, message `Improve automatic drive detection for unknown GPS speed`.
+- Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`. EAS verified this group is the current head of the `preview` branch.

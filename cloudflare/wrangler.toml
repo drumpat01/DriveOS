@@ -1,0 +1,12 @@
+﻿name = "journeydeck-edge"
+main = "workers/index.ts"
+compatibility_date = "2024-04-01"
+
+[vars]
+ENVIRONMENT = "production"
+NOMINATIM_USER_AGENT = "JourneyDeck-Edge/1.6 (contact@journeydeck.app)"
+ALLOWED_ORIGINS = "https://journeydeck.app,https://www.journeydeck.app"
+
+# Secrets to set with `wrangler secret put <NAME>`:
+# - SPOTIFY_CLIENT_ID
+# - SPOTIFY_CLIENT_SECRET

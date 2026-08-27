@@ -6,6 +6,12 @@ const sourceRoot = new URL('../src/', import.meta.url);
 const shell = await readFile(new URL('shell.tsx', sourceRoot), 'utf8');
 const musicScreen = await readFile(new URL('music-screen.tsx', sourceRoot), 'utf8');
 const shareCard = await readFile(new URL('share-card-modal.tsx', sourceRoot), 'utf8');
+const interactiveRouteMap = await readFile(new URL('interactive-route-map.tsx', sourceRoot), 'utf8');
+const primarySections = await readFile(new URL('primary-sections.tsx', sourceRoot), 'utf8');
+const primaryData = await readFile(new URL('primary-sections-data.ts', sourceRoot), 'utf8');
+const primaryMap = await readFile(new URL('primary-mobility-map.tsx', sourceRoot), 'utf8');
+const homeSummary = await readFile(new URL('home-summary.ts', sourceRoot), 'utf8');
+const storage = await readFile(new URL('storage.ts', sourceRoot), 'utf8');
 const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
 
 test('tabs use one persistent native pager instead of blackout remounts', () => {
@@ -13,11 +19,57 @@ test('tabs use one persistent native pager instead of blackout remounts', () => 
   assert.match(shell, /scrollEnabled=\{false\}/);
   assert.match(shell, /offscreenPageLimit=\{bottomNavigationItems\.length\}/);
   assert.match(shell, /key="home"/);
+  assert.match(shell, /key="live"/);
   assert.match(shell, /key="journeys"/);
-  assert.match(shell, /key="music"/);
-  assert.match(shell, /key="record"/);
-  assert.match(shell, /key="connections"/);
+  assert.match(shell, /key="atlas"/);
+  assert.match(shell, /key="more"/);
+  assert.match(shell, /type Tab = 'home' \| 'live' \| 'journeys' \| 'atlas' \| 'more'/);
   assert.doesNotMatch(shell, /transitionVeil|visibleTab|recorderHidden/);
+});
+
+test('Phase 2 exposes Live, Atlas, Timeline, Statistics, Search, and Data Health from a local-first model', () => {
+  assert.match(primarySections, /export function LiveScreen/);
+  assert.match(primarySections, /export function AtlasScreen/);
+  assert.match(primarySections, /export function TimelineScreen/);
+  assert.match(primarySections, /export function StatisticsScreen/);
+  assert.match(primarySections, /export function SearchScreen/);
+  assert.match(primarySections, /export function DataHealthScreen/);
+  assert.match(primarySections, /'timeline' \| 'statistics' \| 'music' \| 'record' \| 'health' \| 'settings'/);
+  assert.match(primaryData, /getLiveRecorderSnapshot/);
+  assert.match(primaryData, /primary\.sections\.\$\{userId\}\.v1/);
+  assert.match(primaryData, /buildTimeline/);
+  assert.match(primaryData, /buildStatistics/);
+  assert.match(primaryData, /buildSearchRecords/);
+  assert.match(storage, /including points already uploaded/);
+});
+
+test('Phase 2 maps use recorded geometry and the same themed OpenFreeMap basemap', () => {
+  assert.match(primaryMap, /loadJourneyDeckMapStyle/);
+  assert.match(primaryMap, /OPEN_FREE_MAP_DARK_STYLE/);
+  assert.match(primaryMap, /primary-route-line/);
+  assert.match(primaryMap, /OpenFreeMap · © OpenStreetMap/);
+  assert.match(primarySections, /details.*route/);
+  assert.match(primarySections, /snapshot\.route\.map/);
+  assert.match(primarySections, /<Text style=\{styles\.routeGlyph\}>⌁<\/Text>/);
+  assert.doesNotMatch(primarySections, /<View style=\{styles\.routeGlyph\}>⌁<\/View>/);
+});
+
+test('Phase 6 Home summarizes every completed local-first section and routes into it', () => {
+  assert.match(shell, /primary={primarySections}/);
+  assert.match(shell, /buildHomeSummary/);
+  assert.match(shell, /MEMORY SPOTLIGHT/);
+  assert.match(shell, /ROAD SOUNDTRACK/);
+  assert.match(shell, /YOUR ROAD PATTERN/);
+  assert.match(shell, /ROAD INTELLIGENCE/);
+  assert.match(shell, /EXPLORE YOUR ROAD/);
+  assert.match(shell, /onMore\('timeline'\)/);
+  assert.match(shell, /onMore\('statistics'\)/);
+  assert.match(shell, /onMore\('search'\)/);
+  assert.match(homeSummary, /data\.memories/);
+  assert.match(homeSummary, /data\.vehicle/);
+  assert.match(homeSummary, /data\.statistics/);
+  assert.match(homeSummary, /data\.timeline/);
+  assert.doesNotMatch(homeSummary, /fetch\(|request\(|loadConnection/);
 });
 
 test('Music background loading cannot activate the native refresh inset', () => {
@@ -29,12 +81,13 @@ test('Music background loading cannot activate the native refresh inset', () => 
 
 test('Memories, Music, and Settings each have a distinct cinematic header scene', () => {
   assert.match(shell, /<PageHeader variant="memories"/);
+  assert.match(shell, /memories-header-hero\.png/);
   assert.match(shell, /<PageHeader variant="settings"/);
   assert.match(shell, /function PageHeaderScene/);
-  assert.match(shell, /memoryHeaderRoad/);
   assert.match(shell, /settingsHeaderLink/);
+  assert.match(musicScreen, /music-header-hero\.png/);
   assert.match(musicScreen, /function MusicHeaderScene/);
-  assert.match(musicScreen, /musicHeaderStyles\.vinylOuter/);
+  assert.match(musicScreen, /musicSceneGlow|soundwaveGrad/);
   assert.match(musicScreen, /musicHeaderStyles\.spectrum/);
 });
 
@@ -63,7 +116,9 @@ test('native dashboards use static cinematic lighting and Music has intentional 
   assert.match(musicScreen, /function RouteGlow\(\)[\s\S]*?<Svg/);
   assert.match(musicScreen, /strokeDasharray="5 7"/);
   assert.doesNotMatch(musicScreen, /routeLineOne|routeLineTwo/);
-  assert.match(musicScreen, /heroArtwork: \{ width: 94, height: 94, borderRadius: 47/);
+  assert.match(musicScreen, /function VinylHeroRecord/);
+  assert.match(musicScreen, /Animated\.loop[\s\S]*?duration: 22000/);
+  assert.match(musicScreen, /vinylCenterLabel: \{ width: 60, height: 60/);
   assert.match(musicScreen, /metric: \{[\s\S]*?shadowColor: '#9b61ff'/);
   assert.match(shell, /staticWidgetGlow/);
   assert.match(shell, /webDashboardShell: \{[\s\S]*?shadowColor: '#9d58ff'/);
@@ -139,9 +194,36 @@ test('Journey details render their recorded GPS geometry as a cinematic native r
   assert.match(shell, /cachePolicy="memory-disk"/);
   assert.match(shell, /<Polyline points=\{mapPolyline \|\| polyline\}/);
   assert.match(shell, /id="journeyRoute"/);
-  assert.match(shell, /GPS recorded/);
-  assert.match(shell, /OpenStreetMap contributors/);
+  assert.match(shell, /GPS points/);
+  assert.match(shell, /song markers/);
+  assert.match(shell, /OpenFreeMap \/ © OpenStreetMap/);
   assert.match(shell, /Route will appear after the journey syncs/);
+});
+
+test('Journey details enable an interactive MapLibre route with a cached static fallback', () => {
+  assert.match(shell, /<InteractiveRouteMap/);
+  assert.match(shell, /routeSamples=\{journey\.route\?\.points\}/);
+  assert.match(shell, /fallback=\{<RouteSketch expanded/);
+  assert.match(shell, /OpenFreeMap \/ © OpenStreetMap/);
+  assert.match(shell, /ROUTE \+ SONG LOCATIONS/);
+  assert.match(shell, /selected=\{selectedSongIndex === index \+ 1\}/);
+  assert.match(interactiveRouteMap, /OPEN_FREE_MAP_DARK_STYLE/);
+  assert.match(interactiveRouteMap, /journey-route-bloom/);
+  assert.match(interactiveRouteMap, /<SongMarker index=\{moment\.index\}/);
+  assert.match(interactiveRouteMap, /Tap anywhere on the map for nearby music/);
+  assert.match(interactiveRouteMap, /nearbyRadii = \[0\.5, 1, 2, 5\]/);
+  assert.match(interactiveRouteMap, /JOURNEY REPLAY/);
+  assert.match(interactiveRouteMap, /Replay uses recorded vehicle telemetry/);
+  assert.match(interactiveRouteMap, /OpenFreeMap supplies only the basemap/);
+});
+
+test('Settings exposes real Apple identity and private iCloud sync without confusing the two accounts', () => {
+  assert.match(shell, /AppleAuthentication\.AppleAuthenticationButton/);
+  assert.match(shell, /onAppleSignIn/);
+  assert.match(shell, /onPrivateCloudSync/);
+  assert.match(shell, /Apple identity linked to this local profile/);
+  assert.match(shell, /Private iCloud sync separately uses the iCloud account signed into this iPhone/);
+  assert.match(shell, /Raw route points, Home\/Work coordinates, Apple credentials, and local photo paths stay on this iPhone/);
 });
 
 test('Journey sharing has web-parity controls and never exports raw Home or Work geometry', () => {

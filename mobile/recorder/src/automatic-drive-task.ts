@@ -82,6 +82,8 @@ export async function processAutomaticDriveLocations(locations: LocationObject[]
       timestamp: location.timestamp,
       speedMps: Number.isFinite(location.coords.speed) ? location.coords.speed : null,
       accuracyMeters: Number.isFinite(location.coords.accuracy) ? location.coords.accuracy : null,
+      latitude: Number.isFinite(location.coords.latitude) ? location.coords.latitude : null,
+      longitude: Number.isFinite(location.coords.longitude) ? location.coords.longitude : null,
     }, automaticSessionActive);
     detector = { ...result.state, automaticSessionId: detector.automaticSessionId };
     saveAutomaticDriveState(detector);

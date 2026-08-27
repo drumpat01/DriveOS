@@ -336,7 +336,7 @@ body::before {
   color: #fff;
   font: 400 .9rem/1 var(--jd-display);
 }
-.dashboard-status-widget .stat-tessie::before { content:"T"; background:linear-gradient(135deg,#167ac8,#1ec8ff); }
+.dashboard-status-widget .stat-tessie::before { content:""; background:#168ed1 url("assets/tessie-logo-white.png") center/58% auto no-repeat; }
 .dashboard-status-widget .stat-spotify::before { content:"S"; background:linear-gradient(135deg,#722cff,#d841e9); }
 .dashboard-status-widget .stat-playlist::before { content:"P"; background:linear-gradient(135deg,#e83975,#ff704e); }
 .dashboard-status-widget .stat-card::after {

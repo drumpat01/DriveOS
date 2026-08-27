@@ -23,6 +23,7 @@ import { JourneyDeckShell } from './src/shell';
 import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
 import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
+import { syncCurrentUserWithPrivateICloud } from './src/icloud-sync';
 import {
   loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
 } from './src/recording-mode';
@@ -34,7 +35,10 @@ const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
 
 function enrichCompletedJourney(connection: Connection, sessionId: string) {
-  void captureAppleMusicHistoryForSession(sessionId).then(() => flushAllQueuedMusicBestEffort(connection));
+  void syncCurrentUserWithPrivateICloud().catch(() => {});
+  void captureAppleMusicHistoryForSession(sessionId)
+    .then(() => flushAllQueuedMusicBestEffort(connection))
+    .finally(() => syncCurrentUserWithPrivateICloud().catch(() => {}));
   void queueLastFmForCompletedSession(sessionId);
 }
 

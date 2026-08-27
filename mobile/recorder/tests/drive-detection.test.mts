@@ -6,6 +6,9 @@ import {
 } from '../src/drive-detection.ts';
 
 const sample = (timestamp: number, speedMps: number | null, accuracyMeters: number | null = 10) => ({ timestamp, speedMps, accuracyMeters });
+const positionedSample = (timestamp: number, speedMps: number | null, latitude: number, longitude: number) => ({
+  timestamp, speedMps, accuracyMeters: 10, latitude, longitude,
+});
 
 test('does not start from a single GPS speed spike', () => {
   const result = evaluateDriveDetection(emptyDriveDetectionState(), sample(0, 20), false);
@@ -70,5 +73,20 @@ test('finishes after five continuously parked minutes', () => {
   let result = evaluateDriveDetection(emptyDriveDetectionState(), sample(1_000, 0), true);
   result = evaluateDriveDetection(result.state, sample(1_000 + DRIVE_STOP_DURATION_MS, 0), true);
   assert.equal(result.action, 'finish');
+  assert.equal(result.state.stoppedSince, null);
+});
+
+test('finishes when iOS reports unknown speed after parking', () => {
+  let result = evaluateDriveDetection(emptyDriveDetectionState(), positionedSample(1_000, -1, 32.7555, -97.3308), true);
+  assert.equal(result.action, 'none');
+  result = evaluateDriveDetection(result.state,
+    positionedSample(1_000 + DRIVE_STOP_DURATION_MS, -1, 32.7555, -97.3308), true);
+  assert.equal(result.action, 'finish');
+});
+
+test('position movement prevents an unknown speed from looking parked', () => {
+  let result = evaluateDriveDetection(emptyDriveDetectionState(), positionedSample(1_000, -1, 32.7555, -97.3308), true);
+  result = evaluateDriveDetection(result.state, positionedSample(61_000, -1, 32.7655, -97.3308), true);
+  assert.equal(result.action, 'none');
   assert.equal(result.state.stoppedSince, null);
 });
