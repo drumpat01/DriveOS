@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, InteractionManager, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,6 +21,9 @@ import {
   getNetworkActivitySnapshot, resetNetworkActivity, setJourneyDeckRequestsBlocked, subscribeNetworkActivity,
   type NetworkActivityEvent,
 } from './network-activity';
+import { getCurrentUser } from './auth';
+import { previewLocalRetention } from './local-store';
+import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
@@ -238,7 +241,25 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const provider = dashboard.providerPreferences;
   const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
   const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
+  const [retentionDays, setRetentionDays] = useState<7 | 30>(30);
+  const [retentionRefresh, setRetentionRefresh] = useState(0);
+  const [retentionPreview, setRetentionPreview] = useState<LocalRetentionPreview | null>(null);
+  const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
   useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
+  useEffect(() => {
+    if (!active) return;
+    setRetentionPreviewState('loading');
+    const task = InteractionManager.runAfterInteractions(() => {
+      try {
+        setRetentionPreview(previewLocalRetention(getCurrentUser().id, { retentionDays }));
+        setRetentionPreviewState('ready');
+      } catch {
+        setRetentionPreview(null);
+        setRetentionPreviewState('error');
+      }
+    });
+    return () => task.cancel();
+  }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <SectionTitle title="Version & update" detail="What is running now" />
     <View style={styles.releaseCard}>
@@ -289,6 +310,32 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
     </Pressable>
     <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
+    <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
+    <View style={styles.retentionCard}>
+      <View style={styles.retentionChoiceRow}>
+        {([30, 7] as const).map(days => <Pressable
+          key={days}
+          accessibilityRole="button"
+          accessibilityState={{ selected: retentionDays === days }}
+          onPress={() => setRetentionDays(days)}
+          style={[styles.retentionChoice, retentionDays === days && styles.retentionChoiceActive]}
+        ><Text style={[styles.retentionChoiceText, retentionDays === days && styles.retentionChoiceTextActive]}>Keep {days} days</Text></Pressable>)}
+      </View>
+      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color="#bb79ef" /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
+        : retentionPreviewState === 'error' || !retentionPreview ? <View style={styles.warningCard}><Text style={styles.warningTitle}>PREVIEW UNAVAILABLE</Text><Text style={styles.noticeText}>JourneyDeck could not read the local counts. No data was changed.</Text></View>
+          : <>
+            <View style={styles.retentionHeader}><View style={styles.flex}><Text style={styles.retentionTitle}>{retentionDays}-day detailed history</Text><Text style={styles.retentionCutoff}>Items before {formatRetentionDate(retentionPreview.cutoffAt)} are evaluated</Text></View><Text style={styles.readOnlyBadge}>READ ONLY</Text></View>
+            <View style={styles.retentionColumnLabels}><Text style={styles.retentionItemLabel}>ITEM</Text><View style={styles.retentionNumbers}><Text style={styles.retentionKeptLabel}>KEEP</Text><Text style={styles.retentionRemoveLabel}>REMOVE</Text></View></View>
+            <RetentionRow label="Journeys" count={retentionPreview.counts.journeys} />
+            <RetentionRow label="Route points" count={retentionPreview.counts.routePoints} />
+            <RetentionRow label="Songs" count={retentionPreview.counts.songs} />
+            <RetentionRow label="Memories" count={retentionPreview.counts.memories} />
+            <RetentionRow label="Collections" count={retentionPreview.counts.collections} />
+            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.collectionProtectedJourneys)} Collection-linked journeys protected</Text>
+            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, Collections, native recordings, recent history, and linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
+          </>}
+      <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
+    </View>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
     <Text style={styles.privacyNote}>Safe retries never erase local data. Raw route coordinates, Home/Work locations, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
@@ -310,6 +357,18 @@ function ReleaseMetric({ label, value, detail, wide = false }: { label: string; 
 
 function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
+}
+
+function RetentionRow({ label, count }: { label: string; count: RetentionCount }) {
+  return <View style={styles.retentionRow}><View style={styles.flex}><Text style={styles.retentionRowTitle}>{label}</Text><Text style={styles.retentionRowTotal}>{formatCount(count.total)} total</Text></View><View style={styles.retentionNumbers}><Text style={styles.retentionKept}>{formatCount(count.kept)}</Text><Text style={styles.retentionRemove}>{formatCount(count.removable)}</Text></View></View>;
+}
+
+function formatCount(value: number) {
+  return Math.max(0, value).toLocaleString();
+}
+
+function formatRetentionDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
@@ -548,6 +607,31 @@ const styles = StyleSheet.create({
   networkPolicyDetail: { color: '#8d7e94', fontSize: 10, lineHeight: 15, marginTop: 4 },
   networkReset: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 9, marginTop: 4 },
   networkResetText: { color: '#9876aa', fontSize: 10, fontWeight: '800' },
+  retentionCard: { borderRadius: 22, backgroundColor: '#0b0710', borderWidth: 1, borderColor: '#4b2b59', padding: 14, marginBottom: 13 },
+  retentionChoiceRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  retentionChoice: { flex: 1, minHeight: 38, borderRadius: 13, borderWidth: 1, borderColor: '#35203e', backgroundColor: '#110a16', alignItems: 'center', justifyContent: 'center' },
+  retentionChoiceActive: { borderColor: '#a45dda', backgroundColor: '#281137' },
+  retentionChoiceText: { color: '#8b7a92', fontSize: 10, fontWeight: '900' },
+  retentionChoiceTextActive: { color: '#e4b5ff' },
+  retentionLoading: { minHeight: 90, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  retentionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 13 },
+  retentionTitle: { color: '#f7effa', fontSize: 15, fontWeight: '900' },
+  retentionCutoff: { color: '#807287', fontSize: 9, marginTop: 4 },
+  readOnlyBadge: { color: '#64d9ba', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, borderRadius: 999, borderWidth: 1, borderColor: '#346b5d', backgroundColor: '#0b1d18', paddingHorizontal: 8, paddingVertical: 5 },
+  retentionColumnLabels: { minHeight: 25, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#3b2545' },
+  retentionItemLabel: { flex: 1, color: '#75677d', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },
+  retentionNumbers: { width: 128, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  retentionKeptLabel: { width: 58, color: '#58cbae', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, textAlign: 'right' },
+  retentionRemoveLabel: { width: 62, color: '#eea45f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, textAlign: 'right' },
+  retentionRow: { minHeight: 49, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2b1b32' },
+  retentionRowTitle: { color: '#e8deeB', fontSize: 11, fontWeight: '800' },
+  retentionRowTotal: { color: '#706675', fontSize: 8, marginTop: 2 },
+  retentionKept: { width: 58, color: '#74d9bd', fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  retentionRemove: { width: 62, color: '#f0ad6d', fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  retentionSafeguards: { color: '#bea3ca', fontSize: 9, lineHeight: 14, fontWeight: '800', marginTop: 12 },
+  retentionNote: { color: '#756a7c', fontSize: 9, lineHeight: 14, marginTop: 8 },
+  retentionRefresh: { minHeight: 39, borderRadius: 13, borderWidth: 1, borderColor: '#553063', alignItems: 'center', justifyContent: 'center', marginTop: 13 },
+  retentionRefreshText: { color: '#c99add', fontSize: 10, fontWeight: '900' },
   moreSearch: { minHeight: 60, borderRadius: 20, backgroundColor: '#150a1c', borderWidth: 1, borderColor: '#613375', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 17, marginBottom: 13 },
   moreSearchText: { color: '#eee6f1', fontSize: 14, fontWeight: '800', flex: 1 },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

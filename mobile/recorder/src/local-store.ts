@@ -17,6 +17,9 @@
 
 import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
+import {
+  buildRetentionPreview, DEFAULT_RETENTION_DAYS, type LocalRetentionPreview, type RetentionJourneyCandidate,
+} from './retention-preview';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
@@ -1079,4 +1082,69 @@ export function localStoreDiagnostics(userId: LocalUserId): {
       (SELECT COUNT(*) FROM local_photos WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId, userId, userId)?.n ?? 0),
   };
+}
+
+/**
+ * Builds an exact, read-only preview of the conservative legacy-import policy.
+ * This function only issues SELECT statements. It never changes or deletes data.
+ */
+export function previewLocalRetention(
+  userId: LocalUserId,
+  options: { now?: Date; retentionDays?: number } = {},
+): LocalRetentionPreview {
+  initializeLocalStore();
+  const nowDate = options.now ?? new Date();
+  const retentionDays = options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const cutoffAt = new Date(nowDate.getTime() - retentionDays * 24 * 60 * 60 * 1_000).toISOString();
+  const journeys = db.getAllSync<RetentionJourneyCandidate>(`
+    SELECT
+      j.id AS id,
+      j.legacy_drive_id AS legacyDriveId,
+      j.provider AS provider,
+      j.started_at AS startedAt,
+      (SELECT COUNT(*) FROM local_gps_points p WHERE p.journey_id=j.id) AS routePointCount,
+      (SELECT COUNT(*) FROM local_music_entries m WHERE m.user_id=j.user_id AND m.journey_id=j.id) AS matchedSongCount
+    FROM local_journeys j
+    WHERE j.user_id=?;
+  `, userId).map(journey => ({
+    ...journey,
+    routePointCount: Number(journey.routePointCount ?? 0),
+    matchedSongCount: Number(journey.matchedSongCount ?? 0),
+  }));
+  const protectedJourneyIds = new Set<string>();
+  let collectionMetadataComplete = true;
+  const collections = db.getAllSync<{ journeyIds: string }>(
+    'SELECT journey_ids AS journeyIds FROM local_collections WHERE user_id=? AND deleted_at IS NULL;', userId,
+  );
+  for (const collection of collections) {
+    try {
+      const ids = JSON.parse(collection.journeyIds) as unknown;
+      if (Array.isArray(ids)) for (const id of ids) if (typeof id === 'string' && id) protectedJourneyIds.add(id);
+    } catch { collectionMetadataComplete = false; }
+  }
+  if (!collectionMetadataComplete) for (const journey of journeys) {
+    protectedJourneyIds.add(journey.id);
+    if (journey.legacyDriveId) protectedJourneyIds.add(journey.legacyDriveId);
+  }
+  const totalSongCount = Number(db.getFirstSync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM local_music_entries WHERE user_id=?;', userId,
+  )?.n ?? 0);
+  const oldUnmatchedSpotifySongCount = Number(db.getFirstSync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM local_music_entries WHERE user_id=? AND journey_id IS NULL AND source='spotify' AND julianday(played_at)<julianday(?);",
+    userId, cutoffAt,
+  )?.n ?? 0);
+  const memoryCount = Number(db.getFirstSync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM local_memories WHERE user_id=? AND deleted_at IS NULL;', userId,
+  )?.n ?? 0);
+
+  return buildRetentionPreview({
+    journeys,
+    protectedJourneyIds,
+    totalSongCount,
+    oldUnmatchedSpotifySongCount,
+    memoryCount,
+    collectionCount: collections.length,
+    now: nowDate,
+    retentionDays,
+  });
 }
