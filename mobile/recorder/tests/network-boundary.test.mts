@@ -12,6 +12,7 @@ import {
   recordBlockedJourneyDeckRequest,
   resetNetworkActivity,
   setJourneyDeckRequestsBlocked,
+  subscribeJourneyDeckRequestPolicy,
 } from '../src/network-activity.ts';
 
 const sourceRoot = new URL('../src/', import.meta.url);
@@ -79,6 +80,20 @@ test('local-only test mode records blocked JourneyDeck work without retaining re
     const requestSource = await readFile(new URL('../src/network-request.ts', import.meta.url), 'utf8');
     assert.ok(requestSource.indexOf('if (areJourneyDeckRequestsBlocked())') < requestSource.indexOf('await fetch('));
   } finally {
+    setJourneyDeckRequestsBlocked(false);
+  }
+});
+
+test('turning local-only mode off emits one retry signal without subscribing to request traffic', () => {
+  const states: boolean[] = [];
+  const unsubscribe = subscribeJourneyDeckRequestPolicy(blocked => states.push(blocked));
+  try {
+    setJourneyDeckRequestsBlocked(true);
+    setJourneyDeckRequestsBlocked(true);
+    setJourneyDeckRequestsBlocked(false);
+    assert.deepEqual(states, [true, false]);
+  } finally {
+    unsubscribe();
     setJourneyDeckRequestsBlocked(false);
   }
 });

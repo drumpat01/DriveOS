@@ -11,10 +11,10 @@ import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'reac
 
 import './src/location-task';
 import { loadConnection, saveConnection, type Connection } from './src/credentials';
-import { completeRecording, flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, setRemoteState } from './src/api';
+import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, syncPendingCompletedRecordingsBestEffort } from './src/api';
 import {
-  activeSession, beginLocalSession, getSessionSummary, initializeDatabase, markSessionCompleted,
-  recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
+  activeSession, beginLocalSession, completeSessionLocally, getSessionSummary, initializeDatabase,
+  recordLocations, refreshCompletedSessionLocalMirror, setLocalStatus, type LocalSessionStatus, type SessionSummary,
 } from './src/storage';
 import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
@@ -24,6 +24,7 @@ import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
 import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
 import { syncCurrentUserWithPrivateICloud } from './src/icloud-sync';
+import { areJourneyDeckRequestsBlocked, subscribeJourneyDeckRequestPolicy } from './src/network-activity';
 import {
   loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
 } from './src/recording-mode';
@@ -35,10 +36,13 @@ const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
 
 function enrichCompletedJourney(connection: Connection, sessionId: string) {
-  void syncCurrentUserWithPrivateICloud().catch(() => {});
   void captureAppleMusicHistoryForSession(sessionId)
-    .then(() => flushAllQueuedMusicBestEffort(connection))
-    .finally(() => syncCurrentUserWithPrivateICloud().catch(() => {}));
+    .catch(() => undefined)
+    .finally(() => {
+      refreshCompletedSessionLocalMirror(sessionId);
+      void flushAllQueuedMusicBestEffort(connection);
+      void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
+    });
   void queueLastFmForCompletedSession(sessionId);
 }
 
@@ -79,7 +83,6 @@ function RecorderScreen() {
   const operation = useRef<Promise<void>>(Promise.resolve());
   const refreshPending = useRef<Promise<void> | null>(null);
   const busyRef = useRef(false);
-  const remoteRecordingConfirmed = useRef(new Set<string>());
   const announcedAutomaticEvent = useRef('');
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('Working…');
@@ -115,12 +118,6 @@ function RecorderScreen() {
       if (taskRunning) await stopLocationTracking();
       taskRunning = false;
     }
-    if (action === 'continue-recording' && current && connection && current.remote_created && !remoteRecordingConfirmed.current.has(current.id)) {
-      try {
-        await setRemoteState(connection, current.id, 'recording');
-        remoteRecordingConfirmed.current.add(current.id);
-      } catch {}
-    }
     if (action === 'restart-recording' && current) {
       try {
         if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
@@ -129,16 +126,8 @@ function RecorderScreen() {
         void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
         taskRunning = true;
         setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
-        if (connection && current.remote_created) {
-          try {
-            await setRemoteState(connection, current.id, 'recording');
-            remoteRecordingConfirmed.current.add(current.id);
-          } catch {}
-        }
       } catch {
         setLocalStatus(current.id, 'paused');
-        remoteRecordingConfirmed.current.delete(current.id);
-        if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
         taskRunning = false;
         setNotice('Recording paused because background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
       }
@@ -149,21 +138,16 @@ function RecorderScreen() {
         taskRunning = false;
       }
       setLocalStatus(current.id, 'paused');
-      remoteRecordingConfirmed.current.delete(current.id);
-      if (connection && current.remote_created) { try { await setRemoteState(connection, current.id, 'paused'); } catch {} }
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
-    if (action === 'stop-and-finish' && current && connection) {
-      try {
-        const completed = await completeRecording(connection, current.id);
-        markSessionCompleted(current.id, completed.driveId ?? null);
+    if (action === 'stop-and-finish' && current) {
+      completeSessionLocally(current.id);
+      if (connection) {
         enrichCompletedJourney(connection, current.id);
-        setSyncStage('synced');
-        setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.');
-      } catch {
-        setSyncStage('retry');
-        setNotice('Journey is ready to finish. Points remain safe and completion will retry when JourneyDeck is reachable.');
+        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
       }
+      setSyncStage('saved');
+      setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
     }
     const reconciled = activeSession();
     setSummary(reconciled ? getSessionSummary(reconciled.id) : null);
@@ -225,7 +209,9 @@ function RecorderScreen() {
   useEffect(() => {
     void refresh().catch(() => {});
     void sampleAppleMusicForActiveSession({ force: true });
-    if (connection) void flushAllQueuedMusicBestEffort(connection);
+    if (connection) {
+      if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
+    }
     void syncPendingLastFmBestEffort();
     let ticks = 0;
     const timer = setInterval(() => {
@@ -238,22 +224,20 @@ function RecorderScreen() {
       if (state !== 'active' || busyRef.current) return;
       void refresh().catch(() => {});
       void sampleAppleMusicForActiveSession({ force: true });
-      if (connection) void flushAllQueuedMusicBestEffort(connection);
+      if (connection) {
+        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
+      }
       void syncPendingLastFmBestEffort();
     });
     return () => { clearInterval(timer); subscription.remove(); };
   }, [connection, refresh]);
 
   useEffect(() => {
-    if (!connection || !summary || (summary.queuedCount === 0 && summary.musicQueuedCount === 0) || busy) return;
-    const timer = setTimeout(() => {
-      void runExclusive(async () => {
-        await flushRecording(connection, summary.id);
-        setNotice('Journey points synced.');
-      }).then(() => void refresh()).catch(() => {});
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [busy, connection, refresh, runExclusive, summary]);
+    if (!connection) return;
+    return subscribeJourneyDeckRequestPolicy(blocked => {
+      if (!blocked) void syncPendingCompletedRecordingsBestEffort(connection);
+    });
+  }, [connection]);
 
   const active = Boolean(summary && summary.status !== 'completed');
   const permissionsReady = foregroundPermission && backgroundPermission && taskAvailable;
@@ -291,16 +275,14 @@ function RecorderScreen() {
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
     void sampleAppleMusicForActiveSession({ force: true });
-    void recognizeAndQueueActiveSessionMusic(10_000).then(() => flushAllQueuedMusicBestEffort(connection)).catch(() => {});
-    try { await flushRecording(connection, session.id); remoteRecordingConfirmed.current.add(session.id); setNotice('Recording started and connected.'); }
-    catch { setNotice('Recording started offline. It will sync when JourneyDeck is reachable.'); }
+    void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
+    setNotice('Recording started and is being saved on this iPhone.');
   }, 'Starting background recording…');
 
   const pause = () => withBusy(async () => {
     if (!connection || !summary) return;
-    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused'); remoteRecordingConfirmed.current.delete(summary.id);
-    try { await flushRecording(connection, summary.id); await setRemoteState(connection, summary.id, 'paused'); setNotice('Recording paused and synced.'); }
-    catch { setNotice('Recording paused. Unsynced points are safe on this phone.'); }
+    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
+    setNotice('Recording paused. Every captured point remains on this phone.');
   }, 'Pausing recording…');
 
   const resume = () => withBusy(async () => {
@@ -309,13 +291,11 @@ function RecorderScreen() {
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
     void sampleAppleMusicForActiveSession({ force: true });
-    void recognizeAndQueueActiveSessionMusic(10_000).then(() => flushAllQueuedMusicBestEffort(connection)).catch(() => {});
-    try { await setRemoteState(connection, summary.id, 'recording'); remoteRecordingConfirmed.current.add(summary.id); setNotice('Recording resumed.'); }
-    catch { setNotice('Recording resumed offline.'); }
+    void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
+    setNotice('Recording resumed on this iPhone.');
   }, 'Resuming recording…');
 
   const finishSession = useCallback(async (currentConnection: Connection, currentSummary: SessionSummary) => {
-    let savedForSync = false;
     busyRef.current = true; setBusy(true); setSyncStage('saving'); setNotice('');
     try {
       await runExclusive(async () => {
@@ -323,26 +303,17 @@ function RecorderScreen() {
         await stopLocationTracking();
         resetAutomaticDriveState();
         setLocalStatus(currentSummary.id, 'finishing');
-        savedForSync = true;
         setTrackingActive(false);
-        setSummary(getSessionSummary(currentSummary.id));
-        setSyncStage('syncing');
-        try {
-          const completed = await completeRecording(currentConnection, currentSummary.id);
-          markSessionCompleted(currentSummary.id, completed.driveId ?? null);
-          enrichCompletedJourney(currentConnection, currentSummary.id);
-          setSummary(null);
-          setSyncStage('synced');
-          setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.');
-        } catch {
-          setSummary(getSessionSummary(currentSummary.id));
-          setSyncStage('retry');
-          setNotice('Journey saved on this iPhone. Sync did not finish yet; your points are safe.');
-        }
+        completeSessionLocally(currentSummary.id);
+        enrichCompletedJourney(currentConnection, currentSummary.id);
+        setSummary(null);
+        setSyncStage('saved');
+        setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
+        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(currentConnection);
       });
     } catch (error) {
       const message = messageOf(error);
-      setSyncStage(savedForSync ? 'retry' : 'idle');
+      setSyncStage('idle');
       setNotice(message);
       Alert.alert('JourneyDeck Recorder', message);
     } finally {
@@ -354,7 +325,7 @@ function RecorderScreen() {
 
   const finish = () => {
     if (!connection || !summary) return;
-    Alert.alert('Finish this journey?', 'Recording will stop and the journey will appear in JourneyDeck after its points sync.', [
+    Alert.alert('Finish this journey?', 'Recording will stop and the journey will appear immediately in your on-device archive.', [
       { text: 'Keep recording', style: 'cancel' },
       { text: 'Finish journey', style: 'destructive', onPress: () => void finishSession(connection, summary) },
     ]);
@@ -365,8 +336,9 @@ function RecorderScreen() {
     setSyncStage('syncing');
     try {
       if (summary.status === 'finishing') {
-        const completed = await completeRecording(connection, summary.id);
-        markSessionCompleted(summary.id, completed.driveId ?? null); enrichCompletedJourney(connection, summary.id); setSummary(null); setSyncStage('synced'); setNotice('Journey finished and saved to JourneyDeck. Music details may continue syncing in the background.'); return;
+        completeSessionLocally(summary.id); enrichCompletedJourney(connection, summary.id); setSummary(null); setSyncStage('saved'); setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
+        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
+        return;
       }
       await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('GPS points are synced. Music details continue syncing independently.');
     } catch (error) {

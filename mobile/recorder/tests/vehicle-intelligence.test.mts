@@ -11,7 +11,7 @@ const shell = fs.readFileSync(path.join(root, 'src', 'shell.tsx'), 'utf8');
 test('Phase 5 is a local-first private cache with deferred preference sync', () => {
   assert.match(appData, /vehicleIntelligenceCacheKey\(userId\)/);
   assert.match(appData, /preferencesDirty: true/);
-  assert.match(appData, /if \(!connection\) return cached\?\.data/);
+  assert.match(appData, /if \(!connection \|\| !refreshRemote\) return cached\?\.data \?\? localVehicleIntelligence\(userId\)/);
   assert.match(appData, /api\/recorder\/vehicle-intelligence\?timezoneOffsetMinutes/);
   assert.match(appData, /saveVehicleIntelligencePreferences/);
 });

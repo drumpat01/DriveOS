@@ -51,6 +51,7 @@ type FinishNetworkActivityInput = {
 
 const MAX_EVENTS = 80;
 const listeners = new Set<(snapshot: NetworkActivitySnapshot) => void>();
+const policyListeners = new Set<(blocked: boolean) => void>();
 let sessionStartedAt = new Date().toISOString();
 let journeyDeckRequestsBlocked = false;
 let events: NetworkActivityEvent[] = [];
@@ -120,12 +121,19 @@ export function subscribeNetworkActivity(listener: (snapshot: NetworkActivitySna
 }
 
 export function setJourneyDeckRequestsBlocked(blocked: boolean) {
+  if (journeyDeckRequestsBlocked === blocked) return;
   journeyDeckRequestsBlocked = blocked;
   emitNow();
+  for (const listener of policyListeners) listener(blocked);
 }
 
 export function areJourneyDeckRequestsBlocked() {
   return journeyDeckRequestsBlocked;
+}
+
+export function subscribeJourneyDeckRequestPolicy(listener: (blocked: boolean) => void) {
+  policyListeners.add(listener);
+  return () => { policyListeners.delete(listener); };
 }
 
 export function resetNetworkActivity() {

@@ -69,6 +69,7 @@
     "test:cloudflare-workers": "node --experimental-strip-types tests/cloudflare-workers.test.mts",
     "test:cloudkit-sync": "node --experimental-strip-types tests/cloudkit-sync.test.mts",
     "test:network-boundary": "node --experimental-strip-types --test tests/network-boundary.test.mts",
+    "test:server-independence": "node --experimental-strip-types --test tests/server-independence.test.mts",
     "test:auth": "node --experimental-strip-types tests/auth.test.mts",
     "doctor": "npx expo-doctor",
     "build:ios:development": "eas build --platform ios --profile development",

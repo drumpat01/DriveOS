@@ -51,6 +51,7 @@ import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type J
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import { buildHomeSummary } from './home-summary';
 import { loadPrimarySectionsData } from './primary-sections-data';
+import { subscribeLocalArchiveChanges } from './local-archive-events';
 import {
   AtlasScreen, LiveScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
@@ -195,7 +196,6 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
-  const [detailRefresh, setDetailRefresh] = useState(0);
   const [musicCapabilities, setMusicCapabilities] = useState<JourneyDeckMusicCapabilityStatus | null>(null);
   const [connectionCapabilities, setConnectionCapabilities] = useState<ConnectionCapabilities>({ lastFmConfigured: false, tessieConfigured: false });
   const [lastFmUsername, setLastFmUsername] = useState('');
@@ -244,10 +244,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     return () => { alive = false; };
   }, []);
 
-  const refreshDashboard = useCallback(async () => {
+  const refreshDashboard = useCallback(async (refreshRemote = false) => {
     setDashboard(current => ({ ...current, status: 'loading', message: undefined }));
     try {
-      const data = await appDataClient.dashboard();
+      const data = await appDataClient.dashboard(refreshRemote);
       setDashboard({ status: 'ready', data });
     } catch {
       const local = await appDataClient.localDashboard();
@@ -255,10 +255,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     }
   }, []);
 
-  const refreshJourneys = useCallback(async () => {
+  const refreshJourneys = useCallback(async (refreshRemote = false) => {
     setJourneys(current => ({ ...current, status: 'loading', message: undefined }));
     try {
-      const result = await appDataClient.journeys();
+      const result = await appDataClient.journeys(25, undefined, refreshRemote);
       setJourneys({ status: 'ready', data: result.items });
       setJourneyCursor(result.nextCursor);
     } catch {
@@ -266,15 +266,15 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     }
   }, []);
 
-  const refreshMemories = useCallback(async () => {
+  const refreshMemories = useCallback(async (refreshRemote = false) => {
     setMemories(current => ({ ...current, status: 'loading', message: undefined }));
-    try { setMemories({ status: 'ready', data: await appDataClient.memories() }); }
+    try { setMemories({ status: 'ready', data: await appDataClient.memories(refreshRemote) }); }
     catch { setMemories(current => ({ status: 'error', data: current.data, message: 'Memories could not refresh. Your saved journeys are still safe.' })); }
   }, []);
 
-  const refreshMusicDashboard = useCallback(async () => {
+  const refreshMusicDashboard = useCallback(async (refreshRemote = false) => {
     setMusicDashboard(current => ({ ...current, status: 'loading', message: undefined }));
-    try { setMusicDashboard({ status: 'ready', data: await appDataClient.musicDashboard() }); }
+    try { setMusicDashboard({ status: 'ready', data: await appDataClient.musicDashboard(refreshRemote) }); }
     catch (error) { setMusicDashboard(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Your music archive could not be loaded.' })); }
   }, []);
 
@@ -296,9 +296,13 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, [journeyCursor, journeysLoadingMore]);
 
   const refreshJourneyLocations = useCallback(async () => {
-    setDetailRefresh(value => value + 1);
-    await Promise.all([refreshJourneys(), refreshDashboard()]);
-  }, [refreshDashboard, refreshJourneys]);
+    const [, , detail] = await Promise.all([
+      refreshJourneys(true),
+      refreshDashboard(true),
+      selectedJourneyId ? appDataClient.journey(selectedJourneyId, true).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (detail) setJourneyDetail({ status: 'ready', data: detail });
+  }, [refreshDashboard, refreshJourneys, selectedJourneyId]);
 
   const refreshAppleIdentity = useCallback(async () => {
     setAppleIdentityStatus(await getAppleIdentityStatus(getCurrentUser()));
@@ -310,6 +314,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       const data = await loadPrimarySectionsData(forceRefresh);
       setPrimarySections({ status: 'ready', data });
       setDashboard({ status: 'ready', data: data.dashboard });
+      setJourneys({ status: 'ready', data: data.journeys });
+      setJourneyCursor(null);
+      setMemories({ status: 'ready', data: data.memories });
+      setMusicDashboard({ status: 'ready', data: data.music });
     } catch (error) {
       setPrimarySections(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Some JourneyDeck data could not refresh.' }));
     }
@@ -322,7 +330,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     }
     setPrivateCloud({ status: 'syncing', detail: 'Checking this profile’s private iCloud zone…' });
     try {
-      const result = await syncCurrentUserWithPrivateICloud();
+      const result = await syncCurrentUserWithPrivateICloud({ force: announce });
       if (result.accountStatus !== 'available') {
         const detail = result.accountStatus === 'no_account' ? 'Sign into iCloud in iPhone Settings to enable private sync.' : 'Private iCloud is unavailable right now; local data remains safe.';
         setPrivateCloud({ status: 'needs_icloud', detail });
@@ -358,6 +366,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
 
   useEffect(() => { if (tab === 'home' || tab === 'more') void refreshDashboard(); }, [refreshDashboard, tab]);
   useEffect(() => { void refreshPrimarySections(false); }, [refreshPrimarySections]);
+  useEffect(() => subscribeLocalArchiveChanges(() => { void refreshPrimarySections(false); }), [refreshPrimarySections]);
   useEffect(() => { void refreshAppleIdentity(); void syncPrivateCloud(false); }, [refreshAppleIdentity, syncPrivateCloud]);
   useEffect(() => { if (tab === 'journeys') { void refreshJourneys(); void refreshMemories(); } }, [refreshJourneys, refreshMemories, tab]);
   useEffect(() => { if (tab === 'more' && moreDestination === 'music') void refreshMusicDashboard(); }, [moreDestination, refreshMusicDashboard, tab]);
@@ -385,7 +394,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       musicProvider: desired,
       onboardingCompleted: true,
       connections: remote?.connections ?? defaultConnections,
-    }).then(() => refreshDashboard()).catch(() => {
+    }).then(() => refreshDashboard(true)).catch(() => {
       if (preferenceSyncAttempt.current === attemptKey) preferenceSyncAttempt.current = '';
     });
   }, [dashboard, preferences, refreshDashboard]);
@@ -399,7 +408,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       () => { if (alive) setJourneyDetail({ status: 'error', data: null, message: 'This journey could not be loaded. Try again when JourneyDeck is connected.' }); },
     );
     return () => { alive = false; };
-  }, [detailRefresh, selectedJourneyId]);
+  }, [selectedJourneyId]);
 
   const refreshMusicCapabilities = useCallback(async () => {
     try { setMusicCapabilities(await getMusicCapabilityStatus()); }
@@ -428,7 +437,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       onboardingCompleted: true,
       connections: existing?.connections ?? defaultConnections,
     }).catch(() => null);
-    void refreshDashboard();
+    void refreshDashboard(true);
   }, [refreshDashboard]);
 
   const chooseRecordingMode = useCallback(async (mode: RecordingMode) => {
@@ -458,7 +467,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       onboardingCompleted: onboardingOverride ?? Boolean(preferences?.onboardingCompleted),
       connections: { ...(existing?.connections ?? defaultConnections), ...next },
     }).catch(() => null);
-    await refreshDashboard();
+    await refreshDashboard(true);
   }, [preferences, refreshDashboard]);
 
   const connectAppleMusic = useCallback(async (providerOverride?: MusicProvider) => {
@@ -577,13 +586,13 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           }}
         >
           <View key="home" collapsable={false} style={styles.tabLayer}>
-            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => { void refreshDashboard(); void refreshPrimarySections(true); }} />
+            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
           </View>
           <View key="live" collapsable={false} style={styles.tabLayer}>
             <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => void refreshPrimarySections(true)} onRecord={() => openMore('record')} onJourney={setSelectedJourneyId} />
           </View>
           <View key="journeys" collapsable={false} style={styles.tabLayer}>
-            <MemoriesScreen catalog={memories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(); void refreshJourneys(); void refreshPrimarySections(true); }} />
+            <MemoriesScreen catalog={memories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => void refreshPrimarySections(true)} />
           </View>
           <View key="atlas" collapsable={false} style={styles.tabLayer}>
             <AtlasScreen state={primarySections} onRefresh={() => void refreshPrimarySections(true)} onJourney={setSelectedJourneyId} />
@@ -592,7 +601,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
             <MoreScreen
               active={tab === 'more'} requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
               privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
-              music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={refreshMusicDashboard} />}
+              music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true)} />}
               recorder={recorder}
               settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
             />
@@ -600,7 +609,14 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
         </PagerView>}
       </View>
       {appReady && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} /></SafeAreaView>}
-      <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => setDetailRefresh(value => value + 1)} onLocationsSaved={refreshJourneyLocations} />
+      <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => {
+        if (!selectedJourneyId) return;
+        setJourneyDetail({ status: 'loading', data: null });
+        void appDataClient.journey(selectedJourneyId, true).then(
+          data => setJourneyDetail({ status: 'ready', data }),
+          () => setJourneyDetail({ status: 'error', data: null, message: 'This journey could not be loaded. Try again when JourneyDeck is connected.' }),
+        );
+      }} onLocationsSaved={refreshJourneyLocations} />
     </View>
   );
 }

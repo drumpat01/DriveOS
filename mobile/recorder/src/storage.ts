@@ -4,12 +4,14 @@ import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
 import { getCurrentUser } from './auth';
 import { insertGpsPoints, upsertJourney, upsertMusicEntry } from './local-store';
+import { rebuildAtlasSnapshot } from './local-atlas';
+import { notifyLocalArchiveChanged } from './local-archive-events';
 
 const db = SQLite.openDatabaseSync('journeydeck-recorder.db');
 let initialized = false;
 export type LocalSessionStatus = 'recording' | 'paused' | 'finishing' | 'completed';
-export type SessionRow = { id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; drive_id: string | null };
-export type SessionSummary = { id: string; deviceId: string; status: LocalSessionStatus; startedAt: string; endedAt: string | null; pointCount: number; queuedCount: number; musicQueuedCount: number; remoteCreated: boolean; driveId: string | null; lastAccuracyMeters: number | null };
+export type SessionRow = { id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; remote_completed: number; drive_id: string | null };
+export type SessionSummary = { id: string; deviceId: string; status: LocalSessionStatus; startedAt: string; endedAt: string | null; pointCount: number; queuedCount: number; musicQueuedCount: number; remoteCreated: boolean; remoteCompleted: boolean; driveId: string | null; lastAccuracyMeters: number | null };
 export type QueuedPoint = { sequence: number; recordedAt: string; latitude: number; longitude: number; accuracyMeters: number | null; altitudeMeters: number | null; headingDegrees: number | null; speedMps: number | null };
 export type LiveRecorderSnapshot = {
   session: SessionSummary | null;
@@ -29,7 +31,8 @@ export function initializeDatabase() {
       id TEXT PRIMARY KEY NOT NULL, device_id TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('recording','paused','finishing','completed')),
       started_at TEXT NOT NULL, ended_at TEXT, next_sequence INTEGER NOT NULL DEFAULT 0,
-      remote_created INTEGER NOT NULL DEFAULT 0, drive_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      remote_created INTEGER NOT NULL DEFAULT 0, remote_completed INTEGER NOT NULL DEFAULT 0,
+      drive_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS recording_points (
       session_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE, sequence INTEGER NOT NULL,
@@ -60,6 +63,11 @@ export function initializeDatabase() {
       key TEXT PRIMARY KEY NOT NULL, value_json TEXT NOT NULL, updated_at TEXT NOT NULL
     );
   `);
+  const sessionColumns = db.getAllSync<{ name: string }>('PRAGMA table_info(recording_sessions);');
+  if (!sessionColumns.some(column => column.name === 'remote_completed')) {
+    db.execSync('ALTER TABLE recording_sessions ADD COLUMN remote_completed INTEGER NOT NULL DEFAULT 0;');
+  }
+  db.runSync('UPDATE recording_sessions SET remote_completed=1 WHERE drive_id IS NOT NULL AND remote_completed=0;');
   initialized = true;
 }
 
@@ -109,7 +117,17 @@ export function getSessionSummary(sessionId: string): SessionSummary | null {
     FROM recording_sessions s LEFT JOIN recording_points p ON p.session_id=s.id WHERE s.id=? GROUP BY s.id;
   `, sessionId);
   return row ? { id: row.id, deviceId: row.device_id, status: row.status, startedAt: row.started_at, endedAt: row.ended_at,
-    pointCount: Number(row.point_count), queuedCount: Number(row.queued_count), musicQueuedCount: Number(row.music_queued_count), remoteCreated: Boolean(row.remote_created), driveId: row.drive_id, lastAccuracyMeters: row.last_accuracy } : null;
+    pointCount: Number(row.point_count), queuedCount: Number(row.queued_count), musicQueuedCount: Number(row.music_queued_count), remoteCreated: Boolean(row.remote_created), remoteCompleted: Boolean(row.remote_completed), driveId: row.drive_id, lastAccuracyMeters: row.last_accuracy } : null;
+}
+
+export function sessionsPendingRemoteCompletion(limit = 5) {
+  initializeDatabase();
+  return db.getAllSync<{ sessionId: string }>(`
+    SELECT s.id AS sessionId FROM recording_sessions s
+    WHERE s.status='completed' AND s.remote_completed=0 AND s.ended_at IS NOT NULL
+      AND EXISTS (SELECT 1 FROM recording_points p WHERE p.session_id=s.id)
+    ORDER BY s.ended_at LIMIT ?;
+  `, Math.max(1, Math.min(20, Math.trunc(limit)))).map(row => row.sessionId);
 }
 
 export function queuedPoints(sessionId: string, limit = 250) {
@@ -263,6 +281,11 @@ export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionSt
   db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=?;', status, endedAt, new Date().toISOString(), sessionId);
 }
 
+export function totalQueuedPointCount() {
+  initializeDatabase();
+  return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_points WHERE uploaded=0;')?.total || 0);
+}
+
 /** Reads the active drive directly from this iPhone, including points already uploaded. */
 export function getLiveRecorderSnapshot(limit = 500): LiveRecorderSnapshot {
   initializeDatabase();
@@ -345,11 +368,25 @@ function mirrorCompletedSessionToLocalStore(sessionId: string): void {
       confidence: observation.confidence,
     });
   }
+  rebuildAtlasSnapshot(user.id);
+  notifyLocalArchiveChanged();
 }
 
-export function markSessionCompleted(sessionId: string, driveId: string | null) {
+export function completeSessionLocally(sessionId: string, queueRemote = true) {
   initializeDatabase();
   const now = new Date().toISOString();
-  db.runSync("UPDATE recording_sessions SET status='completed',drive_id=?,ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", driveId, now, now, sessionId);
+  db.runSync("UPDATE recording_sessions SET status='completed',remote_completed=CASE WHEN ? THEN remote_completed ELSE 1 END,ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", Number(queueRemote), now, now, sessionId);
+  mirrorCompletedSessionToLocalStore(sessionId);
+}
+
+export function refreshCompletedSessionLocalMirror(sessionId: string) {
+  initializeDatabase();
+  mirrorCompletedSessionToLocalStore(sessionId);
+}
+
+export function markSessionRemoteCompleted(sessionId: string, driveId: string | null) {
+  initializeDatabase();
+  const now = new Date().toISOString();
+  db.runSync("UPDATE recording_sessions SET status='completed',remote_created=1,remote_completed=1,drive_id=COALESCE(?,drive_id),ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=?;", driveId, now, now, sessionId);
   mirrorCompletedSessionToLocalStore(sessionId);
 }

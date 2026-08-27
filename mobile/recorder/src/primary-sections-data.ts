@@ -317,11 +317,11 @@ export function saveAtlasPatternReview(patternId: string, review: Exclude<AtlasP
   writeAppCache(key, { ...reviews, [patternId]: review });
 }
 
-async function loadJourneyArchive(maxPages = 8) {
+async function loadJourneyArchive(maxPages = 8, refreshRemote = false) {
   const journeys: JourneySummary[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page += 1) {
-    const result = await appDataClient.journeys(50, cursor);
+    const result = await appDataClient.journeys(50, cursor, refreshRemote);
     const existing = new Set(journeys.map(journey => journey.id));
     journeys.push(...result.items.filter(journey => !existing.has(journey.id)));
     if (!result.nextCursor || result.items.length === 0) break;
@@ -332,20 +332,9 @@ async function loadJourneyArchive(maxPages = 8) {
 
 export async function loadPrimarySectionsData(forceRefresh = false): Promise<PrimarySectionsData> {
   const cacheKey = primarySectionsCacheKey(getCurrentUser().id);
-  const cached = readAppCache<PrimarySectionsData>(cacheKey);
-  if (cached && !forceRefresh) {
-    return {
-      ...cached,
-      live: getLiveRecorderSnapshot(),
-      timeline: buildTimeline(cached.journeys, cached.details, cached.vehicle.chargingSessions),
-      statistics: buildStatistics(cached.journeys, cached.details),
-      search: buildSearchRecords(cached.journeys, cached.details, cached.memories, cached.vehicle.places),
-      atlasPatterns: buildAtlasPatterns(cached.journeys, cached.vehicle),
-    };
-  }
   const [dashboard, journeys, memories, music, vehicle] = await Promise.all([
-    appDataClient.dashboard().catch(() => appDataClient.localDashboard()),
-    loadJourneyArchive(), appDataClient.memories(), appDataClient.musicDashboard(), appDataClient.vehicleIntelligence(),
+    appDataClient.dashboard(forceRefresh).catch(() => appDataClient.localDashboard()),
+    loadJourneyArchive(8, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(forceRefresh), appDataClient.vehicleIntelligence(forceRefresh),
   ]);
   const detailCandidates = journeys.slice(0, 18);
   const details = (await Promise.all(detailCandidates.map(journey => {

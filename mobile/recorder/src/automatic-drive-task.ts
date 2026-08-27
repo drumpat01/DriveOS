@@ -1,19 +1,20 @@
 import type { LocationObject } from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import { completeRecording, flushAllQueuedMusicBestEffort, flushRecording } from './api';
+import { flushAllQueuedMusicBestEffort, syncPendingCompletedRecordingsBestEffort } from './api';
 import {
   loadAutomaticDriveState, resetAutomaticDriveState, saveAutomaticDriveEvent, saveAutomaticDriveState,
 } from './automatic-drive-state';
 import { loadConnection } from './credentials';
 import { emptyDriveDetectionState, evaluateDriveDetection } from './drive-detection';
+import { syncCurrentUserWithPrivateICloud } from './icloud-sync';
 import { queueLastFmForCompletedSession } from './lastfm-sync';
 import {
   captureAppleMusicHistoryForSession, sampleAppleMusicForActiveSession, sampleShazamForActiveSession,
 } from './music-capture';
 import { loadRecordingModePreferences } from './recording-mode';
 import {
-  activeSession, beginLocalSession, markSessionCompleted, recordLocations, setLocalStatus,
+  activeSession, beginLocalSession, completeSessionLocally, recordLocations, refreshCompletedSessionLocalMirror, setLocalStatus,
 } from './storage';
 import {
   AUTOMATIC_DETECTION_TASK_NAME, startLocationTracking, stopLocationTracking,
@@ -29,11 +30,10 @@ async function startDetectedJourney(location: LocationObject) {
     recordLocations([{ ...location, timestamp: Math.max(location.timestamp, Date.now()) }]);
     await sampleAppleMusicForActiveSession({ force: true });
     await sampleShazamForActiveSession({ force: true });
-    try { await flushRecording(connection, session.id); } catch {}
     saveAutomaticDriveEvent('started', session.id);
     return session.id;
   } catch {
-    markSessionCompleted(session.id, null);
+    completeSessionLocally(session.id, false);
     resetAutomaticDriveState();
     saveAutomaticDriveEvent('start_failed', session.id);
     return null;
@@ -44,21 +44,19 @@ async function finishDetectedJourney(sessionId: string, location: LocationObject
   recordLocations([location]);
   await stopLocationTracking().catch(() => {});
   setLocalStatus(sessionId, 'finishing');
+  completeSessionLocally(sessionId);
   resetAutomaticDriveState();
   const connection = await loadConnection();
-  if (!connection) {
-    saveAutomaticDriveEvent('finish_waiting', sessionId);
-    return;
-  }
-  try {
-    const completed = await completeRecording(connection, sessionId);
-    markSessionCompleted(sessionId, completed.driveId ?? null);
-    void captureAppleMusicHistoryForSession(sessionId).then(() => flushAllQueuedMusicBestEffort(connection));
-    void queueLastFmForCompletedSession(sessionId);
-    saveAutomaticDriveEvent('finished', sessionId);
-  } catch {
-    saveAutomaticDriveEvent('finish_waiting', sessionId);
-  }
+  void captureAppleMusicHistoryForSession(sessionId)
+    .catch(() => undefined)
+    .finally(() => {
+      refreshCompletedSessionLocalMirror(sessionId);
+      if (connection) void flushAllQueuedMusicBestEffort(connection);
+      void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
+    });
+  void queueLastFmForCompletedSession(sessionId);
+  if (connection) void syncPendingCompletedRecordingsBestEffort(connection);
+  saveAutomaticDriveEvent('finished', sessionId);
 }
 
 export async function processAutomaticDriveLocations(locations: LocationObject[]) {

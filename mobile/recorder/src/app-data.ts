@@ -1,7 +1,7 @@
 import type { Connection } from './credentials';
 import * as Crypto from 'expo-crypto';
 import { loadConnection } from './credentials';
-import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, writeAppCache } from './storage';
+import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
@@ -123,6 +123,35 @@ function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail
     songCount: Math.max(remote.songCount, soundtrack.length),
     route: localPointCount >= remotePointCount ? local.route : remote.route,
   };
+}
+
+function mergeLocalJourneyPage(
+  local: { items: JourneySummary[]; nextCursor: string | null },
+  cached: { items: JourneySummary[]; nextCursor: string | null } | null,
+  limit: number,
+) {
+  if (!cached) return local;
+  const cachedByIdentity = new Map<string, JourneySummary>();
+  for (const journey of cached.items) {
+    cachedByIdentity.set(journey.id, journey);
+    if (journey.legacyDriveId) cachedByIdentity.set(journey.legacyDriveId, journey);
+  }
+  const represented = new Set<string>();
+  const merged = local.items.map(journey => {
+    const remote = cachedByIdentity.get(journey.id) ?? (journey.legacyDriveId ? cachedByIdentity.get(journey.legacyDriveId) : undefined);
+    if (!remote) return journey;
+    represented.add(remote.id);
+    return {
+      ...remote,
+      ...journey,
+      startingLocation: journey.startingLocation ?? remote.startingLocation,
+      endingLocation: journey.endingLocation ?? remote.endingLocation,
+      soundtrackPreview: journey.soundtrackPreview.length ? journey.soundtrackPreview : remote.soundtrackPreview,
+    };
+  });
+  for (const journey of cached.items) if (!represented.has(journey.id)) merged.push(journey);
+  merged.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+  return { items: merged.slice(0, limit), nextCursor: local.nextCursor ?? cached.nextCursor };
 }
 
 export type ConnectionCapabilities = {
@@ -334,7 +363,7 @@ function localRecorderHealth(connected: boolean): LocalRecorderHealth {
   return {
     connected,
     state: !summary || summary.status === 'completed' ? 'ready' : summary.status,
-    queuedPoints: summary?.queuedCount ?? 0,
+    queuedPoints: totalQueuedPointCount(),
     queuedMusic: totalQueuedMusicObservationCount(),
     capturedPoints: summary?.pointCount ?? 0,
   };
@@ -342,6 +371,20 @@ function localRecorderHealth(connected: boolean): LocalRecorderHealth {
 
 async function request<T>(connection: Connection, path: string, init?: RequestInit, timeoutMs = 12_000): Promise<T> {
   return requestJourneyDeckJson<T>(connection, path, init, { timeoutMs, timeoutMessage: 'JourneyDeck took too long to respond.' });
+}
+
+function localDashboardWithCachedContext(connected: boolean): AppDashboard {
+  const local = localAtlasClient.dashboard(getCurrentUser().id);
+  const cached = readAppCache<DashboardData>(DASHBOARD_CACHE_KEY);
+  const cachedWeekly = journeysInsideWeeklyWindow(readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? []);
+  if (local.summary.allTime.journeyCount > 0) {
+    return {
+      ...local,
+      providerPreferences: cached?.providerPreferences ?? local.providerPreferences,
+      recorder: localRecorderHealth(connected),
+    };
+  }
+  return { ...(cached ?? emptyDashboard()), recorder: localRecorderHealth(connected), weeklyJourneys: cachedWeekly };
 }
 
 async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {
@@ -367,14 +410,11 @@ async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummar
 }
 
 export const appDataClient = {
-  async dashboard(): Promise<AppDashboard> {
+  async dashboard(refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
     const cachedWeekly = readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? [];
-    if (!connection) {
-      const local = localAtlasClient.dashboard(getCurrentUser().id);
-      return local.summary.allTime.journeyCount > 0
-        ? local
-        : { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false), weeklyJourneys: journeysInsideWeeklyWindow(cachedWeekly) };
+    if (!connection || !refreshRemote) {
+      return localDashboardWithCachedContext(Boolean(connection));
     }
     const [dashboard, weeklyJourneys] = await Promise.all([
       request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
@@ -386,16 +426,16 @@ export const appDataClient = {
 
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    const weeklyJourneys = journeysInsideWeeklyWindow(readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? []);
-    return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(Boolean(connection)), weeklyJourneys };
+    return localDashboardWithCachedContext(Boolean(connection));
   },
 
-  async journeys(limit = 25, cursor?: string): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
+  async journeys(limit = 25, cursor?: string, refreshRemote = false): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
     const connection = await loadConnection();
-    if (!connection) {
+    if (!connection || !refreshRemote) {
       const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
-      if (local.items.length || cursor) return local;
-      return readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) ?? local;
+      const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
+      if (local.items.length || cached) return mergeLocalJourneyPage(local, cached, limit);
+      return local;
     }
     const query = new URLSearchParams({ limit: String(limit) });
     if (cursor) query.set('cursor', cursor);
@@ -410,12 +450,13 @@ export const appDataClient = {
     }
   },
 
-  async journey(id: string): Promise<JourneyDetail> {
+  async journey(id: string, refreshRemote = false): Promise<JourneyDetail> {
+    const local = localAtlasClient.journey(getCurrentUser().id, id);
+    const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     const connection = await loadConnection();
-    if (!connection) {
-      const local = localAtlasClient.journey(getCurrentUser().id, id);
+    if (!connection || !refreshRemote) {
+      if (local && cached) return mergeJourneyWithLocalDetail(cached, local);
       if (local) return local;
-      const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
       if (cached) return cached;
       throw new Error('Connect this iPhone to JourneyDeck to load journey details.');
     }
@@ -425,7 +466,6 @@ export const appDataClient = {
       writeAppCache(journeyCacheKey(id), merged);
       return merged;
     } catch (error) {
-      const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
       if (cached) return mergeJourneyWithLocalDetail(cached, localAtlasClient.journey(getCurrentUser().id, id));
       throw error;
     }
@@ -437,11 +477,11 @@ export const appDataClient = {
     return local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);
   },
 
-  async vehicleIntelligence(): Promise<VehicleIntelligenceData> {
+  async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
     const connection = await loadConnection();
-    if (!connection) return cached?.data ?? emptyVehicleIntelligence();
+    if (!connection || !refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
     try {
       if (cached?.preferencesDirty) {
         await request<VehicleIntelligencePreferences>(connection, '/api/recorder/vehicle-intelligence/preferences', {
@@ -488,12 +528,12 @@ export const appDataClient = {
     });
   },
 
-  async memories(): Promise<MemoriesCatalog> {
+  async memories(refreshRemote = false): Promise<MemoriesCatalog> {
     const local = localAtlasClient.memories(getCurrentUser().id);
     const connection = await loadConnection();
     const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
-    if (!connection) {
-      return local.memories.length || local.collections.length ? local : (cached ?? local);
+    if (!connection || !refreshRemote) {
+      return local.memories.length || local.collections.length ? mergeMemoriesCatalog(cached ?? local, local, cached) : (cached ?? local);
     }
     try {
       const remote = await request<MemoriesCatalog>(connection, '/api/recorder/memories');
@@ -507,10 +547,10 @@ export const appDataClient = {
     }
   },
 
-  async musicDashboard(): Promise<MusicDashboardData> {
+  async musicDashboard(refreshRemote = false): Promise<MusicDashboardData> {
     const connection = await loadConnection();
     const cached = readAppCache<MusicDashboardData>(MUSIC_DASHBOARD_CACHE_KEY);
-    if (!connection) {
+    if (!connection || !refreshRemote) {
       const local = localAtlasClient.musicDashboard(getCurrentUser().id);
       if (local.recentSelections.length || local.metrics.songsOnRoad > 0) return local;
       if (cached) return cached;

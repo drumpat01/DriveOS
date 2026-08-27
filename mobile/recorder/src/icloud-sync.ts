@@ -25,19 +25,28 @@ export type PrivateICloudSyncResult = {
 };
 
 let activeSync: { profileKey: string; promise: Promise<PrivateICloudSyncResult> } | null = null;
+const recentSyncs = new Map<string, { completedAt: number; result: PrivateICloudSyncResult }>();
+const AUTOMATIC_SYNC_COOLDOWN_MS = 15 * 60_000;
 
 export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
 }
 
-export async function syncCurrentUserWithPrivateICloud(): Promise<PrivateICloudSyncResult> {
+export async function syncCurrentUserWithPrivateICloud(options: { force?: boolean } = {}): Promise<PrivateICloudSyncResult> {
   const user = getCurrentUser();
   const profileKey = user.appleSubject ?? user.id;
   if (activeSync?.profileKey === profileKey) return activeSync.promise;
   if (activeSync) await activeSync.promise.catch(() => undefined);
-  const promise = performSync(user).finally(() => {
-    if (activeSync?.promise === promise) activeSync = null;
-  });
+  const recent = recentSyncs.get(profileKey);
+  if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return recent.result;
+  const promise = performSync(user)
+    .then(result => {
+      recentSyncs.set(profileKey, { completedAt: Date.now(), result });
+      return result;
+    })
+    .finally(() => {
+      if (activeSync?.promise === promise) activeSync = null;
+    });
   activeSync = { profileKey, promise };
   return promise;
 }
