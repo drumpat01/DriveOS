@@ -7,6 +7,7 @@ import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
 import { requestJourneyDeckJson } from './network-request';
+import { syncTessieDirect, tessieDirectStatus, type TessieSnapshot } from './tessie-direct';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -217,6 +218,7 @@ export type SavedPlaceIntelligence = {
 export type VehicleIntelligenceData = {
   generatedAt: string;
   preferences: VehicleIntelligencePreferences;
+  vehicles: { vehicleKey: string; name: string; status: string; batteryPercent: number | null; rangeMiles: number | null; chargingState: string | null; odometerMiles: number | null; updatedAt: string | null }[];
   chargingSummary30Days: { sessions: number; energyAddedKwh: number; batteryGainedPercent: number; durationMinutes: number; cost: number };
   chargingSessions: ChargingSessionSummary[];
   chargingLocations: { locationKey: string; name: string; sessions: number; energyAddedKwh: number; cost: number; lastChargedAt: string; isFavorite: boolean }[];
@@ -284,22 +286,23 @@ function emptyVehicleIntelligence(): VehicleIntelligenceData {
     generatedAt: new Date().toISOString(),
     preferences: { electricityRatePerKwh: 0.14, favoriteChargingLocationKeys: [], placeOverrides: [], placeMerges: [] },
     chargingSummary30Days: { sessions: 0, energyAddedKwh: 0, batteryGainedPercent: 0, durationMinutes: 0, cost: 0 },
-    chargingSessions: [], chargingLocations: [], places: [], duplicateCandidates: [], routeComparisons: [],
+    vehicles: [], chargingSessions: [], chargingLocations: [], places: [], duplicateCandidates: [], routeComparisons: [],
   };
+}
+
+function localPlaceId(label: string) {
+  let hash = 2166136261;
+  for (const character of label.trim().toLocaleLowerCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return `place_local_${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function localVehicleIntelligence(userId: string): VehicleIntelligenceData {
   const localPage = localAtlasClient.journeys(userId, 50);
   const journeys = localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []);
   const places = new Map<string, SavedPlaceIntelligence>();
-  const placeId = (label: string) => {
-    let hash = 2166136261;
-    for (const character of label.trim().toLocaleLowerCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-    return `place_local_${(hash >>> 0).toString(16).padStart(8, '0')}`;
-  };
   const addPlace = (labelValue: string | null, journey: JourneySummary, arrival: boolean) => {
     const label = labelValue?.trim(); if (!label) return;
-    const id = placeId(label), existing = places.get(id);
+    const id = localPlaceId(label), existing = places.get(id);
     const category: SavedPlaceCategory = /^home$/i.test(label) ? 'home' : /^work$/i.test(label) ? 'work' : /school/i.test(label) ? 'school' : 'custom';
     const related = { id: journey.id, startedAt: journey.startedAt, startingLocation: journey.startingLocation || 'Unknown start', endingLocation: journey.endingLocation || 'Unknown destination', miles: journey.miles, energyUsedKwh: null };
     if (existing) {
@@ -341,6 +344,71 @@ function applyVehiclePreferences(data: VehicleIntelligenceData, preferences: Veh
     }),
     routeComparisons: data.routeComparisons.map(route => ({ ...route, cost: Math.round(route.energyKwh * preferences.electricityRatePerKwh * 100) / 100 })),
   };
+}
+
+function vehicleIntelligenceFromTessie(snapshot: TessieSnapshot, base: VehicleIntelligenceData): VehicleIntelligenceData {
+  const preferences = base.preferences;
+  const chargingSessions: ChargingSessionSummary[] = snapshot.charges.map((charge): ChargingSessionSummary => {
+    const recorded = charge.recordedCost != null && charge.recordedCost > 0;
+    return {
+      id: charge.id, locationKey: charge.locationKey, location: charge.location, vehicleName: charge.vehicleName || null, provider: 'tessie',
+      startedAt: charge.startedAt, endedAt: charge.endedAt,
+      durationMinutes: Math.max(0, Math.round((Date.parse(charge.endedAt) - Date.parse(charge.startedAt)) / 60_000)),
+      isSupercharger: charge.isSupercharger, energyAddedKwh: charge.energyAddedKwh, energyUsedKwh: charge.energyUsedKwh, milesAdded: charge.milesAdded,
+      startingBatteryPercent: charge.startingBatteryPercent, endingBatteryPercent: charge.endingBatteryPercent,
+      batteryGainedPercent: charge.startingBatteryPercent != null && charge.endingBatteryPercent != null ? Math.max(0, charge.endingBatteryPercent - charge.startingBatteryPercent) : null,
+      cost: recorded ? charge.recordedCost! : Math.round(charge.energyAddedKwh * preferences.electricityRatePerKwh * 100) / 100,
+      costSource: recorded ? 'recorded' : 'estimated',
+    };
+  }).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+  const locations = new Map<string, VehicleIntelligenceData['chargingLocations'][number]>();
+  for (const session of chargingSessions) {
+    const current = locations.get(session.locationKey);
+    if (current) {
+      current.sessions += 1; current.energyAddedKwh += session.energyAddedKwh; current.cost += session.cost;
+      if (session.startedAt > current.lastChargedAt) current.lastChargedAt = session.startedAt;
+    } else locations.set(session.locationKey, {
+      locationKey: session.locationKey, name: session.location, sessions: 1, energyAddedKwh: session.energyAddedKwh, cost: session.cost,
+      lastChargedAt: session.startedAt, isFavorite: preferences.favoriteChargingLocationKeys.includes(session.locationKey),
+    });
+  }
+  const routeGroups = new Map<string, { startLabel: string; endLabel: string; miles: number; energy: number; efficiencies: number[]; trips: number }>();
+  for (const drive of snapshot.drives) {
+    if (drive.miles <= 0 || drive.energyUsedKwh < 0) continue;
+    const key = `${drive.startingLocation.trim().toLocaleLowerCase()}\u001f${drive.endingLocation.trim().toLocaleLowerCase()}`;
+    const current = routeGroups.get(key) ?? { startLabel: drive.startingLocation, endLabel: drive.endingLocation, miles: 0, energy: 0, efficiencies: [], trips: 0 };
+    current.trips += 1; current.miles += drive.miles; current.energy += drive.energyUsedKwh;
+    if (drive.energyUsedKwh > 0) current.efficiencies.push(drive.energyUsedKwh * 1_000 / drive.miles);
+    routeGroups.set(key, current);
+  }
+  const routeComparisons = [...routeGroups.values()].map(route => {
+    const efficiencies = route.efficiencies.length ? route.efficiencies : [0];
+    return {
+      startPlaceId: localPlaceId(route.startLabel), endPlaceId: localPlaceId(route.endLabel), startLabel: route.startLabel, endLabel: route.endLabel,
+      trips: route.trips, miles: route.miles, energyKwh: route.energy, cost: Math.round(route.energy * preferences.electricityRatePerKwh * 100) / 100,
+      averageWhPerMile: route.miles ? route.energy * 1_000 / route.miles : 0, bestWhPerMile: Math.min(...efficiencies), worstWhPerMile: Math.max(...efficiencies),
+    };
+  }).sort((left, right) => right.trips - left.trips || right.miles - left.miles);
+  const recentCutoff = Date.now() - 30 * 86_400_000;
+  const recent = chargingSessions.filter(session => Date.parse(session.startedAt) >= recentCutoff);
+  return applyVehiclePreferences({
+    ...base, generatedAt: snapshot.generatedAt, vehicles: snapshot.vehicles, chargingSessions,
+    chargingSummary30Days: {
+      sessions: recent.length, energyAddedKwh: recent.reduce((sum, item) => sum + item.energyAddedKwh, 0),
+      batteryGainedPercent: recent.reduce((sum, item) => sum + (item.batteryGainedPercent ?? 0), 0),
+      durationMinutes: recent.reduce((sum, item) => sum + item.durationMinutes, 0), cost: recent.reduce((sum, item) => sum + item.cost, 0),
+    },
+    chargingLocations: [...locations.values()].sort((left, right) => right.sessions - left.sessions || right.lastChargedAt.localeCompare(left.lastChargedAt)),
+    routeComparisons,
+  }, preferences);
+}
+
+async function refreshVehicleIntelligenceFromTessie(userId: string) {
+  const cacheKey = vehicleIntelligenceCacheKey(userId);
+  const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
+  const data = vehicleIntelligenceFromTessie(await syncTessieDirect(), cached?.data ?? localVehicleIntelligence(userId));
+  writeAppCache(cacheKey, { data, preferencesDirty: false } satisfies VehicleIntelligenceCache);
+  return data;
 }
 
 function weeklyCutoff() {
@@ -481,19 +549,10 @@ export const appDataClient = {
   async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
-    const connection = await loadConnection();
-    if (!connection || !refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
+    if (!refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
     try {
-      if (cached?.preferencesDirty) {
-        await request<VehicleIntelligencePreferences>(connection, '/api/recorder/vehicle-intelligence/preferences', {
-          method: 'PUT', body: JSON.stringify(cached.data.preferences),
-        });
-      }
-      const offset = new Date().getTimezoneOffset();
-      const data = await request<VehicleIntelligenceData>(connection, `/api/recorder/vehicle-intelligence?timezoneOffsetMinutes=${encodeURIComponent(String(offset))}`, undefined, 20_000);
-      writeAppCache(cacheKey, { data, preferencesDirty: false } satisfies VehicleIntelligenceCache);
-      return data;
-    } catch (error) {
+      return await refreshVehicleIntelligenceFromTessie(userId);
+    } catch {
       if (cached) return cached.data;
       const local = localVehicleIntelligence(userId);
       writeAppCache(cacheKey, { data: local, preferencesDirty: false } satisfies VehicleIntelligenceCache);
@@ -501,23 +560,16 @@ export const appDataClient = {
     }
   },
 
+  async syncVehicleIntelligence(): Promise<VehicleIntelligenceData> {
+    return refreshVehicleIntelligenceFromTessie(getCurrentUser().id);
+  },
+
   async saveVehicleIntelligencePreferences(preferences: VehicleIntelligencePreferences): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
     const local = applyVehiclePreferences(cached?.data ?? emptyVehicleIntelligence(), preferences);
-    writeAppCache(cacheKey, { data: local, preferencesDirty: true } satisfies VehicleIntelligenceCache);
-    const connection = await loadConnection();
-    if (!connection) return local;
-    try {
-      const saved = await request<VehicleIntelligencePreferences>(connection, '/api/recorder/vehicle-intelligence/preferences', {
-        method: 'PUT', body: JSON.stringify(preferences),
-      });
-      const synchronized = applyVehiclePreferences(local, saved);
-      writeAppCache(cacheKey, { data: synchronized, preferencesDirty: false } satisfies VehicleIntelligenceCache);
-      return synchronized;
-    } catch {
-      return local;
-    }
+    writeAppCache(cacheKey, { data: local, preferencesDirty: false } satisfies VehicleIntelligenceCache);
+    return local;
   },
 
   async savePlaceAlias(location: string, label: string): Promise<{ location: string; label: string; removed: boolean }> {
@@ -640,10 +692,7 @@ export const appDataClient = {
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
     const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
     const lastFmConfigured = typeof edge?.url === 'string' && /^https:\/\//.test(edge.url);
-    const connection = await loadConnection();
-    if (!connection) return { lastFmConfigured, tessieConfigured: false };
-    const server = await request<ConnectionCapabilities>(connection, '/api/recorder/connections/status').catch(() => ({ lastFmConfigured: false, tessieConfigured: false }));
-    return { lastFmConfigured, tessieConfigured: server.tessieConfigured };
+    return { lastFmConfigured, tessieConfigured: await tessieDirectStatus() === 'connected' };
   },
 };
 

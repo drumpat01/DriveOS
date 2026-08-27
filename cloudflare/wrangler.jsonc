@@ -5,8 +5,10 @@
   "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
   "ratelimits": [
+    { "name": "EDGE_RATE_LIMITER", "namespace_id": "17035", "simple": { "limit": 120, "period": 60 } },
     { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17031", "simple": { "limit": 12, "period": 60 } },
-    { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17033", "simple": { "limit": 12, "period": 60 } }
+    { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17033", "simple": { "limit": 12, "period": 60 } },
+    { "name": "TESSIE_RATE_LIMITER", "namespace_id": "17037", "simple": { "limit": 6, "period": 60 } }
   ],
   "observability": {
     "enabled": true,
@@ -19,6 +21,12 @@
   },
   "vars": {
     "ENVIRONMENT": "production",
+    "EDGE_ENABLED": "true",
+    "LASTFM_ENABLED": "true",
+    "SPOTIFY_ENABLED": "true",
+    "TESSIE_ENABLED": "true",
+    "PLACES_ENABLED": "true",
+    "UPSTREAM_TIMEOUT_MS": "10000",
     "NOMINATIM_USER_AGENT": "JourneyDeck-Edge/1.7 (contact@journeydeck.app)",
     "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",
     "SPOTIFY_REDIRECT_URIS": "journeydeck-recorder://spotify-callback,https://journeydeck.app/auth/spotify/callback"
@@ -27,11 +35,19 @@
     "preview": {
       "name": "journeydeck-edge-preview",
       "ratelimits": [
+        { "name": "EDGE_RATE_LIMITER", "namespace_id": "17036", "simple": { "limit": 120, "period": 60 } },
         { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17032", "simple": { "limit": 12, "period": 60 } },
-        { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17034", "simple": { "limit": 12, "period": 60 } }
+        { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17034", "simple": { "limit": 12, "period": 60 } },
+        { "name": "TESSIE_RATE_LIMITER", "namespace_id": "17038", "simple": { "limit": 6, "period": 60 } }
       ],
       "vars": {
         "ENVIRONMENT": "preview",
+        "EDGE_ENABLED": "true",
+        "LASTFM_ENABLED": "true",
+        "SPOTIFY_ENABLED": "true",
+        "TESSIE_ENABLED": "true",
+        "PLACES_ENABLED": "true",
+        "UPSTREAM_TIMEOUT_MS": "10000",
         "NOMINATIM_USER_AGENT": "JourneyDeck-Edge-Preview/1.7 (contact@journeydeck.app)",
         "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",
         "SPOTIFY_REDIRECT_URIS": "journeydeck-recorder://spotify-callback,https://journeydeck.app/auth/spotify/callback"

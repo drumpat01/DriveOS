@@ -6,10 +6,11 @@
  */
 
 import { handleSpotifyConfig, handleSpotifyTokenExchange } from './oauth-spotify.ts';
-import { handleTessieVerification } from './oauth-tessie.ts';
+import { handleTessieSync, handleTessieVerification } from './oauth-tessie.ts';
 import { handlePlacesLookup } from './places-lookup.ts';
 import { handleLastFmHistory } from './lastfm-history.ts';
 import { jsonResponse } from './http.ts';
+import { enforceGlobalRateLimit, featureAvailable, type EdgeFeature, unavailableFeature } from './edge-policy.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -39,6 +40,14 @@ function addCors(response: Response, origin: string | null): Response {
   });
 }
 
+function featureForPath(path: string): EdgeFeature | null {
+  if (path.startsWith('/api/auth/spotify')) return 'spotify';
+  if (path === '/api/music/lastfm/recent') return 'lastfm';
+  if (path.startsWith('/api/auth/tessie') || path.startsWith('/api/vehicle/tessie')) return 'tessie';
+  if (path === '/api/places/reverse') return 'places';
+  return null;
+}
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const startedAt = Date.now();
@@ -59,8 +68,18 @@ export default {
 
     let response: Response;
     try {
+      const feature = featureForPath(path);
+      const featureDisabled = feature ? !featureAvailable(env, feature) : false;
+      const globalLimit = !featureDisabled && path.startsWith('/api/') ? await enforceGlobalRateLimit(request, env) : null;
       if (path === '/health' || path === '/readyz') {
-        response = jsonResponse({ status: 'healthy', runtime: 'cloudflare-worker', environment: env.ENVIRONMENT, time: new Date().toISOString() });
+        response = jsonResponse({
+          status: 'healthy', runtime: 'cloudflare-worker', environment: env.ENVIRONMENT, time: new Date().toISOString(),
+          features: { lastfm: featureAvailable(env, 'lastfm'), spotify: featureAvailable(env, 'spotify'), tessie: featureAvailable(env, 'tessie'), places: featureAvailable(env, 'places') },
+        });
+      } else if (feature && featureDisabled) {
+        response = unavailableFeature(feature);
+      } else if (globalLimit) {
+        response = globalLimit;
       } else if (path === '/api/auth/spotify/config') {
         response = handleSpotifyConfig(request, env);
       } else if (path === '/api/auth/spotify/token' || path === '/api/auth/spotify/refresh') {
@@ -68,7 +87,9 @@ export default {
       } else if (path === '/api/music/lastfm/recent') {
         response = await handleLastFmHistory(request, env);
       } else if (path === '/api/auth/tessie/verify') {
-        response = await handleTessieVerification(request);
+        response = await handleTessieVerification(request, env);
+      } else if (path === '/api/vehicle/tessie/sync') {
+        response = await handleTessieSync(request, env);
       } else if (path === '/api/places/reverse') {
         response = await handlePlacesLookup(request, env, ctx);
       } else {

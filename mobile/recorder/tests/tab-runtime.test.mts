@@ -110,8 +110,9 @@ test('music chooser and Settings use approved service marks with honest provider
   assert.match(shell, /function TessieMark/);
   assert.match(shell, /ConnectionTile name="Tessie"[\s\S]*?mark=\{<TessieMark size=\{46\} \/>\}/);
   assert.match(shell, /Connected through Tessie/);
-  assert.match(shell, /Better with Tesla \+ Tessie/);
-  assert.match(shell, /https:\/\/www\.tessie\.com\//);
+  assert.match(shell, /token in this iPhone Keychain/);
+  assert.match(shell, /stateless privacy edge/);
+  assert.match(shell, /https:\/\/dash\.tessie\.com\/settings\/developer/);
   assert.doesNotMatch(shell, /name: 'Last\.fm for Spotify'/);
 });
 

@@ -215,12 +215,13 @@ export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDa
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, onRefresh, onCloudSync }: {
   active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
   privateCloud: { status: string; detail: string };
   appleIdentityStatus: string;
+  providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
   onRefresh: () => void;
   onCloudSync: () => void;
 }) {
@@ -257,7 +258,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
-    <ProviderHealth provider={provider} />
+    <ProviderHealth provider={provider} capabilities={providerCapabilities} />
     <SectionTitle title="Network boundary" detail="This app session" />
     <View style={styles.networkCard}>
       <View style={styles.networkGrid}>
@@ -276,7 +277,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       </View>
       {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
         : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
-      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window; direct owner Spotify tokens stay in this iPhone Keychain. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify and Tessie tokens stay in this iPhone Keychain; Tessie uses the stateless edge only during a bounded refresh, which strips VINs and precise coordinates. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
     </View>
     <Pressable
       accessibilityRole="switch"
@@ -317,21 +318,21 @@ function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
   return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{source} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
 }
 
-function ProviderHealth({ provider }: { provider: ProviderPreferences | null }) {
-  if (!provider) return <EmptyCard text="Provider status will appear after JourneyDeck connects." />;
+function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferences | null; capabilities: { lastFmConfigured: boolean; tessieConfigured: boolean } }) {
   const rows = [
-    ['Apple Music', provider.connections.appleMusic], ['Auto Recognition', provider.connections.shazam],
-    ['Spotify history', provider.connections.lastFm], ['Vehicle data', provider.connections.tessie],
+    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Auto Recognition', provider?.connections.shazam ?? 'not_enabled'],
+    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'], ['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected'],
   ];
   return <View style={styles.card}>{rows.map(([name, status]) => <View key={name} style={styles.providerRow}><Text style={styles.compactTitle}>{name}</Text><Text style={[styles.providerStatus, /connected|enabled/.test(status) && styles.providerStatusGood]}>{status.replaceAll('_', ' ')}</Text></View>)}</View>;
 }
 
 export function MoreScreen({
   active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
-  music, recorder, settings,
+  providerCapabilities, music, recorder, settings,
 }: {
   active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
   privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
+  providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
   music: ReactNode; recorder: ReactNode; settings: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -341,7 +342,7 @@ export function MoreScreen({
     const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
       : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
         : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={onRefresh} onCloudSync={onCloudSync} />
+          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} onRefresh={onRefresh} onCloudSync={onCloudSync} />
             : destination === 'music' ? music : destination === 'settings' ? settings : null;
     content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
   } else {

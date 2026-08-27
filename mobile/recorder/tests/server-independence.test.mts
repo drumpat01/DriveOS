@@ -13,6 +13,7 @@ const shell = await readFile(new URL('../src/shell.tsx', import.meta.url), 'utf8
 const localArchiveEvents = await readFile(new URL('../src/local-archive-events.ts', import.meta.url), 'utf8');
 const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
+const tessie = await readFile(new URL('../src/tessie-direct.ts', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
@@ -69,4 +70,13 @@ test('direct Spotify remains a local owner capability with PKCE and no JourneyDe
   assert.match(spotify, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
   assert.match(spotify, /user-read-recently-played/);
   assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
+});
+
+test('Tessie vehicle history is imported through the stateless edge and cached on device', () => {
+  assert.match(tessie, /\/api\/vehicle\/tessie\/sync/);
+  assert.match(tessie, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
+  assert.match(appData, /syncTessieDirect/);
+  assert.match(primaryData, /appDataClient\.vehicleIntelligence\(false\)/);
+  assert.doesNotMatch(tessie, /requestJourneyDeckJson|loadConnection/);
+  assert.doesNotMatch(appData, /api\/recorder\/vehicle-intelligence/);
 });

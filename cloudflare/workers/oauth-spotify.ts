@@ -7,6 +7,7 @@
  */
 
 import { jsonResponse, readBoundedJson, readBoundedResponseJson, stringField } from './http.ts';
+import { enforceRateLimit, opaqueKey, upstreamTimeout } from './edge-policy.ts';
 
 export function handleSpotifyConfig(request: Request, env: Env): Response {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
@@ -24,8 +25,8 @@ export async function handleSpotifyTokenExchange(request: Request, env: Env): Pr
   try {
     const body = await readBoundedJson(request);
     if (!body) return jsonResponse({ error: 'Invalid JSON body' }, 400, { 'Cache-Control': 'no-store' });
-    const allowed = await env.SPOTIFY_RATE_LIMITER.limit({ key: 'owner-token-broker' });
-    if (!allowed.success) return jsonResponse({ error: 'Try Spotify again in a minute' }, 429, { 'Cache-Control': 'no-store', 'Retry-After': '60' });
+    const limited = await enforceRateLimit(env.SPOTIFY_RATE_LIMITER, await opaqueKey('spotify', 'owner-token-broker'), 'Try Spotify again in a minute');
+    if (limited) return limited;
     const clientId = env.SPOTIFY_CLIENT_ID?.trim();
     if (!clientId || clientId === 'replace-with-spotify-client-id') {
       return jsonResponse({ error: 'Spotify is not configured' }, 503, { 'Cache-Control': 'no-store' });
@@ -65,7 +66,7 @@ export async function handleSpotifyTokenExchange(request: Request, env: Env): Pr
       method: 'POST',
       headers,
       body: params.toString(),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(upstreamTimeout(env, 10_000)),
     });
 
     const data = await readBoundedResponseJson<Record<string, unknown>>(spotifyRes, 65_536);

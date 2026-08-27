@@ -8,12 +8,13 @@
  */
 
 import { jsonResponse, readBoundedJson, stringField } from './http.ts';
+import { upstreamTimeout } from './edge-policy.ts';
 
 const CITY_GRID_DECIMALS = 2;
 const CITY_CACHE_SECONDS = 30 * 24 * 60 * 60;
 const CITY_COORDINATE = /^-?\d{1,3}(?:\.\d{1,2})?$/;
 
-export async function handlePlacesLookup(request: Request, env: Pick<Env, 'NOMINATIM_USER_AGENT'>, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
+export async function handlePlacesLookup(request: Request, env: Pick<Env, 'NOMINATIM_USER_AGENT' | 'UPSTREAM_TIMEOUT_MS'>, ctx: Pick<ExecutionContext, 'waitUntil'>): Promise<Response> {
   if (request.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST' });
   }
@@ -55,7 +56,7 @@ export async function handlePlacesLookup(request: Request, env: Pick<Env, 'NOMIN
         cacheTtl: CITY_CACHE_SECONDS,
         cacheEverything: true,
       },
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(upstreamTimeout(env, 8_000)),
     });
 
     if (!geoRes.ok) {

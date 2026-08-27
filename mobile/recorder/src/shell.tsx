@@ -35,6 +35,7 @@ import {
 } from '../modules/journeydeck-music';
 import { syncRecentLastFmNow } from './lastfm-sync';
 import { beginSpotifyDirectConnection, finishSpotifyDirectConnection, spotifyDirectStatus, syncRecentSpotifyDirectNow } from './spotify-direct';
+import { connectTessieDirect, disconnectTessieDirect } from './tessie-direct';
 import { loadConnection } from './credentials';
 import {
   loadRecordingModePreferences, saveRecordingModePreferences, type RecordingMode,
@@ -657,7 +658,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           }}
         >
           <View key="home" collapsable={false} style={styles.tabLayer}>
-            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
+            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} tessieConnected={connectionCapabilities.tessieConfigured} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
           </View>
           <View key="live" collapsable={false} style={styles.tabLayer}>
             <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => void refreshPrimarySections(true)} onRecord={() => openMore('record')} onJourney={setSelectedJourneyId} />
@@ -671,10 +672,10 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           <View key="more" collapsable={false} style={styles.tabLayer}>
             <MoreScreen
               active={tab === 'more'} requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
-              privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
+              privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
               music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />}
               recorder={recorder}
-              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
+              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onTessieChanged={connected => setConnectionCapabilities(current => ({ ...current, tessieConfigured: connected }))} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
             />
           </View>
         </PagerView>}
@@ -834,7 +835,7 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ state, primary, recordingMode, onRecord, onJourneys, onLive, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+function HomeScreen({ state, primary, recordingMode, tessieConnected, onRecord, onJourneys, onLive, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; tessieConnected: boolean; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
   const insets = useSafeAreaInsets();
   const { data } = state;
   const week = data.summary.last7Days;
@@ -976,7 +977,7 @@ function HomeScreen({ state, primary, recordingMode, onRecord, onJourneys, onLiv
               <View style={styles.webPanelHeader}><Text style={[styles.webPanelTitle, { color: '#45c6f0' }]}>DATA HEALTH</Text></View>
               <CompactHealthRow symbol="J" label="JourneyDeck" detail={data.recorder.connected ? 'Connected' : 'Offline'} healthy={data.recorder.connected} />
               <CompactHealthRow symbol="♪" label="Music" detail={musicConnected ? 'Ready' : 'Check'} healthy={musicConnected} />
-              <CompactHealthRow icon={<TessieMark size={25} />} symbol="T" label="Tessie" detail={connections.tessie === 'connected' ? 'Connected' : 'Check'} healthy={connections.tessie === 'connected'} />
+              <CompactHealthRow icon={<TessieMark size={25} />} symbol="T" label="Tessie" detail={tessieConnected ? 'On-device' : 'Check'} healthy={tessieConnected} />
             </View>
           </View>
 
@@ -1767,7 +1768,7 @@ function ConnectionsScreen({
   dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition, currentUser, appleIdentityStatus, signingInWithApple,
-  privateCloud, onAppleSignIn, onPrivateCloudSync, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync,
+  privateCloud, onAppleSignIn, onPrivateCloudSync, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onTessieChanged,
 }: {
   dashboard: AppDashboard;
   provider: MusicProvider;
@@ -1793,6 +1794,7 @@ function ConnectionsScreen({
   onSyncLastFm: () => void;
   onSpotifyOwnerConnect: () => void;
   onSpotifyOwnerSync: () => void;
+  onTessieChanged: (connected: boolean) => void;
   onChangeRecordingMode: () => void;
   onChangeProvider: () => void;
   onConnectAppleMusic: () => void;
@@ -1801,10 +1803,46 @@ function ConnectionsScreen({
   onPrivateCloudSync: () => void;
 }) {
   const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
+  const [editingTessie, setEditingTessie] = useState(false);
+  const [tessieDraft, setTessieDraft] = useState('');
+  const [savingTessie, setSavingTessie] = useState(false);
+  const [syncingTessie, setSyncingTessie] = useState(false);
   const selected = allProviderOptions.find(option => option.id === provider) ?? providerOptions[0]!;
   const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
+  const connectTessie = async () => {
+    setSavingTessie(true);
+    let vehicleCount: number;
+    try {
+      vehicleCount = await connectTessieDirect(tessieDraft);
+      setTessieDraft(''); setEditingTessie(false); onTessieChanged(true);
+    } catch (error) {
+      Alert.alert('Tessie did not connect', error instanceof Error ? error.message : 'Try again from Settings.');
+      setSavingTessie(false);
+      return;
+    }
+    try {
+      const data = await appDataClient.syncVehicleIntelligence();
+      Alert.alert('Tessie connected', `${vehicleCount} vehicle${vehicleCount === 1 ? '' : 's'} verified. ${data.chargingSessions.length} recent charging sessions and ${data.routeComparisons.length} route patterns are cached on this iPhone.`);
+    } catch (error) {
+      Alert.alert('Tessie connected', `${vehicleCount} vehicle${vehicleCount === 1 ? '' : 's'} verified and the token is safely stored. The first vehicle-history sync did not finish, but you can retry it without reconnecting.\n\n${error instanceof Error ? error.message : 'Your existing local vehicle data was not changed.'}`);
+    } finally { setSavingTessie(false); }
+  };
+  const syncTessie = async () => {
+    setSyncingTessie(true);
+    try {
+      const data = await appDataClient.syncVehicleIntelligence();
+      Alert.alert('Tessie sync finished', `${data.vehicles?.length ?? 0} vehicles · ${data.chargingSessions.length} recent charges · ${data.routeComparisons.length} route patterns cached locally.`);
+    } catch (error) {
+      Alert.alert('Tessie sync did not finish', error instanceof Error ? error.message : 'Your last saved vehicle data is still available.');
+    } finally { setSyncingTessie(false); }
+  };
+  const disconnectTessie = async () => {
+    await disconnectTessieDirect();
+    setTessieDraft(''); setEditingTessie(false); onTessieChanged(false);
+    Alert.alert('Tessie disconnected', 'The Tessie token was removed from this iPhone. Previously cached vehicle summaries remain available offline.');
+  };
   return (
     <View style={styles.safe}>
       <ScrollView
@@ -1888,7 +1926,16 @@ function ConnectionsScreen({
         {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color="#1ed760" status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
 
         <SectionHeading title="Vehicle" />
-        <ConnectionTile name="Tessie" detail="Battery, energy, and vehicle context" symbol="T" mark={<TessieMark size={46} />} color="#65c9ff" status={connectionCapabilities.tessieConfigured ? 'Connected through Tessie' : statusText(connections.tessie)} action={connectionCapabilities.tessieConfigured ? 'Server managed' : 'Learn more'} onPress={() => Alert.alert('Better with Tesla + Tessie', connectionCapabilities.tessieConfigured ? 'Tessie is connected securely on the JourneyDeck server. Its token is never copied to this iPhone.' : 'Tessie can add Tesla battery, energy, charging, and vehicle context. Journey recording and music continue to work normally without it.', [{ text: 'Not now', style: 'cancel' }, { text: 'Visit Tessie', onPress: () => void Linking.openURL('https://www.tessie.com/') }])} />
+        <ConnectionTile name="Tessie" detail="Battery, energy, charging, and route efficiency" symbol="T" mark={<TessieMark size={46} />} color="#65c9ff" status={connectionCapabilities.tessieConfigured ? 'Connected through Tessie · token in this iPhone Keychain' : 'Not connected'} action={connectionCapabilities.tessieConfigured ? (syncingTessie ? 'Syncing…' : 'Sync now') : 'Connect'} onPress={connectionCapabilities.tessieConfigured ? () => { if (!syncingTessie) void syncTessie(); } : () => setEditingTessie(true)} />
+        {connectionCapabilities.tessieConfigured && <Pressable onPress={() => Alert.alert('Tessie connection', 'Your access token stays in this iPhone Keychain. The stateless privacy edge uses it only while fetching your bounded 30-day vehicle window.', [{ text: 'Keep connected', style: 'cancel' }, { text: 'Disconnect', style: 'destructive', onPress: () => void disconnectTessie() }])}><Text style={styles.privateCloudLearn}>Manage Tessie connection</Text></Pressable>}
+        {editingTessie && <View style={styles.setupCard}>
+          <Text style={styles.setupTitle}>CONNECT TESSIE ON THIS IPHONE</Text>
+          <Text style={styles.setupBody}>Generate a read-capable access token in Tessie developer settings, then paste it below. JourneyDeck stores it only in this iPhone Keychain.</Text>
+          <TextInput value={tessieDraft} onChangeText={setTessieDraft} autoCapitalize="none" autoCorrect={false} secureTextEntry maxLength={512} placeholder="Tessie access token" placeholderTextColor="#6f6877" style={styles.setupInput} />
+          <Text style={styles.connectionDetail}>During a refresh, the token crosses JourneyDeck’s stateless privacy edge over HTTPS and is sent to Tessie in an authorization header. It is never logged, returned, or stored at the edge. VINs and precise coordinates are removed before results return.</Text>
+          <Text onPress={() => void Linking.openURL('https://dash.tessie.com/settings/developer')} style={styles.privateCloudLearn}>Open Tessie developer settings</Text>
+          <View style={styles.setupActions}><Pressable onPress={() => { setTessieDraft(''); setEditingTessie(false); }} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={() => void connectTessie()} disabled={savingTessie || !tessieDraft.trim()} style={[styles.setupPrimary, (savingTessie || !tessieDraft.trim()) && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingTessie ? 'Verifying…' : 'Connect'}</Text></Pressable></View>
+        </View>}
         <ConnectionTile name="Drive intelligence" detail="Charging, saved places, and route efficiency" symbol="↗" color="#ff7547" status="Private · cached on this iPhone" action="Open" onPress={() => setVehicleIntelligenceVisible(true)} />
         <View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and Tessie connections are optional and isolated. A connection problem never blocks recording, finishing, or the on-device point queue.</Text></View>
       </ScrollView>

@@ -1,5 +1,14 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Server Independence Bundle B — Vehicle edge 3.4 + shared 3.7 controls — August 27, 2026
+
+- Implemented but not committed, pushed, deployed, or published on `agy/journeydeck-1.6` from `07d2402`. Release identity is now `P3.4 — Bundle B — vehicle edge`; runtime remains `1.7.0` and no native build is required.
+- Replaced server-managed Tessie reads/preferences with an optional direct connection owned by the iPhone. The Tessie token is verified through the stateless privacy edge and then stored with SecureStore `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`; vehicle snapshots, recent charges, route-efficiency summaries, user electricity rate, favorite chargers, and place overrides are cached locally. Ordinary dashboard refreshes do not spend Tessie requests; sync is explicit in Settings. Disconnect removes the token while preserving local summaries.
+- Added read-only Worker endpoints for Tessie verification and a bounded 30-day history import. The Worker accepts at most four active vehicles and 200 charges/drives per vehicle, exposes no command route, bounds request/upstream bodies and time, never returns VINs or precise coordinates, and emits only fixed-path request logs. The user token is used transiently as Tessie's bearer header and is never logged, returned, or stored at the edge.
+- Added shared Worker controls: global and provider kill switches, a clamped shared upstream timeout, a global IP-hash rate limiter, provider-specific opaque-key rate limiters, no-store failures, and shared helpers now used by Last.fm, Spotify, Tessie, and places. Existing Last.fm/Spotify shared credentials remain Wrangler secrets; no Tessie shared secret was added and no secret value is present in configuration or source.
+- Verification passed: complete mobile suite 83/83, mobile TypeScript, Expo Doctor 21/21, iOS Expo export (1,451 modules, 11 assets, 4.1 MB bundle), generated Worker types, Worker TypeScript, preview dry-run (26.61 KiB / 7.08 KiB gzip with four rate-limit bindings), gitleaks across 398 commits, and `git diff --check` aside from Windows line-ending notices. Temporary dependency-inspection files were removed.
+- Next step: review/commit/push if requested, deploy only the preview Worker, publish the runtime 1.7 P3.4 preview OTA, then connect Tessie from Settings with a user-generated developer token and physically verify sync with JourneyDeck local-only mode enabled. Production Worker remains untouched.
+
 ## Server Independence Bundle A — Music independence 3.2 + 3.3 — August 27, 2026
 
 - Implemented and committed as `1cc7e6c` (`feat(mobile): add independent music imports`), then pushed to `agy/journeydeck-1.6`. Release identity is `P3.3 — Bundle A — music independence`.

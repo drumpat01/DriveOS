@@ -1,4 +1,5 @@
 import { jsonResponse, readBoundedJson, readBoundedResponseJson, stringField } from './http.ts';
+import { enforceRateLimit, opaqueKey, upstreamTimeout } from './edge-policy.ts';
 
 type LastFmTrack = {
   name?: unknown;
@@ -28,11 +29,6 @@ function cleanHttpsUrl(value: unknown) {
   catch { return null; }
 }
 
-async function limiterKey(username: string) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(username.toLowerCase()));
-  return [...new Uint8Array(digest)].slice(0, 12).map(byte => byte.toString(16).padStart(2, '0')).join('');
-}
-
 export async function handleLastFmHistory(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
   const body = await readBoundedJson(request);
@@ -47,8 +43,8 @@ export async function handleLastFmHistory(request: Request, env: Env): Promise<R
   if (!apiKey || apiKey === 'replace-with-lastfm-api-key') {
     return jsonResponse({ error: 'Last.fm is not configured' }, 503, { 'Cache-Control': 'no-store' });
   }
-  const allowed = await env.LASTFM_RATE_LIMITER.limit({ key: await limiterKey(username) });
-  if (!allowed.success) return jsonResponse({ error: 'Try Last.fm again in a minute' }, 429, { 'Cache-Control': 'no-store', 'Retry-After': '60' });
+  const limited = await enforceRateLimit(env.LASTFM_RATE_LIMITER, await opaqueKey('lastfm', username), 'Try Last.fm again in a minute');
+  if (limited) return limited;
 
   const tracks: { playedAt: string; track: string; artist: string; album: string | null; externalUrl: string | null }[] = [];
   const paddedFrom = Math.floor((from - 120_000) / 1_000);
@@ -56,7 +52,7 @@ export async function handleLastFmHistory(request: Request, env: Env): Promise<R
   for (let page = 1; page <= 5; page += 1) {
     const url = new URL('https://ws.audioscrobbler.com/2.0/');
     url.search = new URLSearchParams({ method: 'user.getRecentTracks', user: username, api_key: apiKey, format: 'json', from: String(paddedFrom), to: String(paddedTo), limit: '200', page: String(page) }).toString();
-    const upstream = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
+    const upstream = await fetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(upstreamTimeout(env, 10_000)) });
     if (upstream.status === 429) return jsonResponse({ error: 'Last.fm is temporarily busy' }, 429, { 'Cache-Control': 'no-store', 'Retry-After': upstream.headers.get('retry-after') ?? '60' });
     const payload = await readBoundedResponseJson<LastFmResponse>(upstream);
     if (!upstream.ok || !payload || payload.error) return jsonResponse({ error: 'Last.fm history was unavailable' }, 502, { 'Cache-Control': 'no-store' });

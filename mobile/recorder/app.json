@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Bundle A — music independence",
-        "sequence": "P3.3"
+        "label": "Bundle B — vehicle edge",
+        "sequence": "P3.4"
       },
       "edge": {
         "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"

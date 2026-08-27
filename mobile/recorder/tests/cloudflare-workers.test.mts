@@ -5,6 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handlePlacesLookup } from '../../../cloudflare/workers/places-lookup.ts';
 import { handleLastFmHistory } from '../../../cloudflare/workers/lastfm-history.ts';
+import { handleTessieSync } from '../../../cloudflare/workers/oauth-tessie.ts';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const root = resolve(directory, '../../../cloudflare');
@@ -13,12 +14,16 @@ const spotifySource = readFileSync(resolve(root, 'workers/oauth-spotify.ts'), 'u
 const tessieSource = readFileSync(resolve(root, 'workers/oauth-tessie.ts'), 'utf8');
 const placesSource = readFileSync(resolve(root, 'workers/places-lookup.ts'), 'utf8');
 const lastFmSource = readFileSync(resolve(root, 'workers/lastfm-history.ts'), 'utf8');
+const policySource = readFileSync(resolve(root, 'workers/edge-policy.ts'), 'utf8');
 const config = JSON.parse(readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8')) as Record<string, unknown>;
 
 assert.match(indexSource, /satisfies ExportedHandler<Env>/, 'entry point uses the generated Worker environment type');
 assert.match(indexSource, /Origin not allowed/, 'unapproved browser origins fail closed');
 assert.match(indexSource, /event: 'edge_request'/, 'requests emit structured operational logs');
-assert.doesNotMatch(indexSource + spotifySource + tessieSource + placesSource + lastFmSource, /\bany\b/, 'Worker source avoids any');
+assert.doesNotMatch(indexSource + spotifySource + tessieSource + placesSource + lastFmSource + policySource, /\bany\b/, 'Worker source avoids any');
+assert.match(indexSource, /EDGE_RATE_LIMITER|enforceGlobalRateLimit/, 'all edge APIs share a global abuse limit');
+assert.match(indexSource, /featureAvailable/, 'provider kill switches are enforced by the router');
+assert.match(policySource, /UPSTREAM_TIMEOUT_MS/, 'upstream timeouts share one bounded policy');
 
 assert.match(spotifySource, /code_verifier/, 'Spotify exchange requires PKCE');
 assert.match(spotifySource, /SPOTIFY_REDIRECT_URIS/, 'Spotify redirect URIs are allowlisted');
@@ -35,12 +40,14 @@ assert.doesNotMatch(lastFmSource, /\bimage\b|artwork/i, 'Last.fm artwork is not 
 
 assert.match(tessieSource, /readBoundedJson/, 'Tessie bodies are size bounded');
 assert.match(tessieSource, /vehicleCount/, 'Tessie returns only the minimum verification result');
-assert.doesNotMatch(tessieSource, /\bvin\b|display_name|vehicles,/, 'Tessie never returns vehicle identifiers or names');
+assert.match(tessieSource, /TESSIE_RATE_LIMITER/, 'Tessie reads have a provider-specific edge limit');
+assert.match(tessieSource, /\/charges\?|\/drives\?/, 'Tessie history is fetched through bounded read-only endpoints');
+assert.doesNotMatch(tessieSource, /command\//, 'Tessie edge exposes no vehicle commands');
 
 assert.equal(config.compatibility_date, '2026-08-27');
 assert.equal((config.observability as { enabled?: boolean }).enabled, true);
 assert.equal(((config.env as { preview?: { name?: string } }).preview?.name), 'journeydeck-edge-preview');
-assert.equal(((config.env as { preview?: { ratelimits?: unknown[] } }).preview?.ratelimits?.length), 2);
+assert.equal(((config.env as { preview?: { ratelimits?: unknown[] } }).preview?.ratelimits?.length), 4);
 
 const originalFetch = globalThis.fetch;
 const originalCaches = globalThis.caches;
@@ -104,6 +111,30 @@ try {
   assert.equal(payload.tracks[0]?.track, 'Road Song');
   assert.equal('artworkUrl' in (payload.tracks[0] ?? {}), false);
   assert.match(payload.attribution, /Last\.fm/);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+const syncTo = new Date(), syncFrom = new Date(syncTo.getTime() - 24 * 60 * 60_000);
+globalThis.fetch = async (input, init) => {
+  assert.match(String((init?.headers as Record<string, string> | undefined)?.authorization), /^Bearer test-tessie-token/);
+  const url = new URL(String(input));
+  if (url.pathname === '/vehicles') return new Response(JSON.stringify({ results: [{ vin: '5YJ3E1EA7KF123456', last_state: { state: 'online', display_name: 'Juniper', charge_state: { battery_level: 74, battery_range: 208, charging_state: 'Disconnected', timestamp: Date.now() }, vehicle_state: { odometer: 32000 } } }] }));
+  if (url.pathname.endsWith('/charges')) return new Response(JSON.stringify({ results: [{ id: 1, started_at: Math.floor(syncFrom.getTime() / 1000), ended_at: Math.floor(syncTo.getTime() / 1000), location: 'Home charger', latitude: 32.8, longitude: -97.4, energy_added: 24, energy_used: 25, miles_added: 90, starting_battery: 40, ending_battery: 74, cost: 3.5 }] }));
+  if (url.pathname.endsWith('/drives')) return new Response(JSON.stringify({ results: [{ id: 2, started_at: Math.floor(syncFrom.getTime() / 1000), ended_at: Math.floor(syncTo.getTime() / 1000), starting_location: 'Home', ending_location: 'Work', starting_latitude: 32.8, starting_longitude: -97.4, odometer_distance: 12, energy_used: 3.2 }] }));
+  throw new Error(`Unexpected Tessie path ${url.pathname}`);
+};
+try {
+  const response = await handleTessieSync(new Request('https://edge.example/api/vehicle/tessie/sync', { method: 'POST', body: JSON.stringify({ accessToken: 'test-tessie-token-123456', from: syncFrom.toISOString(), to: syncTo.toISOString() }) }), {
+    TESSIE_RATE_LIMITER: { limit: async () => ({ success: true }) }, UPSTREAM_TIMEOUT_MS: '10000',
+  } as unknown as Env);
+  assert.equal(response.status, 200);
+  const payload = await response.json() as { vehicles: Record<string, unknown>[]; charges: Record<string, unknown>[]; drives: Record<string, unknown>[] };
+  assert.equal(payload.vehicles[0]?.name, 'Juniper');
+  assert.equal(payload.charges.length, 1);
+  assert.equal(payload.drives.length, 1);
+  const serialized = JSON.stringify(payload);
+  assert.doesNotMatch(serialized, /5YJ3E1EA7KF123456|latitude|longitude/, 'VINs and precise coordinates never leave the edge');
 } finally {
   globalThis.fetch = originalFetch;
 }
