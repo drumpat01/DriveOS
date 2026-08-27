@@ -4,7 +4,7 @@
 
 - Added a prominent `Version & update` panel to Data Health so a tester can identify the exact code currently running. It reports the human release sequence/label, `Live Metro` vs. `Published OTA` vs. `Embedded build`, native app version and build number, runtime version, channel when Expo can truthfully provide one, short and full OTA UUID, publication time, and whether a newer update is downloaded and waiting for restart.
 - Added the OTA-carried release label `P2.1 — Phase 2.1 — visible update identity` to Expo config. Future preview publications should update both `extra.release.sequence` and `extra.release.label` so screenshots remain human-readable while the immutable OTA UUID provides exact identification.
-- Verification passed: TypeScript; complete mobile suite 77/77; Expo Doctor 21/21; production iOS export (11 assets, 4.1 MB bundle); and live Tailscale Metro bundle. The change is available through live Metro but has not been committed, pushed, or published as an OTA.
+- Verification passed: TypeScript; complete mobile suite 77/77; Expo Doctor 21/21; production iOS export (11 assets, 4.1 MB bundle); and live Tailscale Metro bundle. Committed as `aaabbf2` (`feat(mobile): show exact preview update identity`) and pushed `agy/journeydeck-1.6`. Published the iOS-only runtime `1.7.0` preview OTA: update group `237b7d63-87aa-4125-b336-79325a89776d`, iOS update `01a0438b-6284-7a53-9f77-c13725c702ae`, message `P2.1: Show exact preview update identity`; dashboard `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/237b7d63-87aa-4125-b336-79325a89776d`. No native build credit was used.
 
 ## Server Independence Phase 2 — on-device finish and quiet local reads — August 27, 2026
 
