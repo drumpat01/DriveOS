@@ -1,17 +1,28 @@
 export type TimedRouteCoordinate = {
   recordedAtEpochMs: number;
   coordinate: [number, number];
+  speedMph?: number | null;
+  headingDegrees?: number | null;
+  batteryPercent?: number | null;
 };
 
 type TessieState = {
   timestamp?: unknown;
   latitude?: unknown;
   longitude?: unknown;
+  speed?: unknown;
+  heading?: unknown;
+  battery_level?: unknown;
 };
 
 function validCoordinate(longitude: number, latitude: number) {
   return Number.isFinite(longitude) && Number.isFinite(latitude)
     && longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90;
+}
+
+function optionalNumber(value: unknown, minimum: number, maximum: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 
 export async function loadTessieRouteCoordinates(
@@ -40,7 +51,13 @@ export async function loadTessieRouteCoordinates(
     return (payload.results as TessieState[]).flatMap(state => {
       const timestamp = Number(state.timestamp), latitude = Number(state.latitude), longitude = Number(state.longitude);
       return Number.isSafeInteger(timestamp) && validCoordinate(longitude, latitude)
-        ? [{ recordedAtEpochMs: timestamp * 1000, coordinate: [longitude, latitude] as [number, number] }]
+        ? [{
+          recordedAtEpochMs: timestamp * 1000,
+          coordinate: [longitude, latitude] as [number, number],
+          speedMph: optionalNumber(state.speed, 0, 250),
+          headingDegrees: optionalNumber(state.heading, 0, 360),
+          batteryPercent: optionalNumber(state.battery_level, 0, 100),
+        }]
         : [];
     }).sort((a, b) => a.recordedAtEpochMs - b.recordedAtEpochMs);
   } finally {

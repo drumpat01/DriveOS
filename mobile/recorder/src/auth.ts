@@ -11,6 +11,7 @@
  */
 
 import * as Crypto from 'expo-crypto';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import {
   LocalUser,
   LocalUserId,
@@ -18,6 +19,7 @@ import {
   listLocalUsers,
   initializeLocalStore,
   getActiveLocalUserId,
+  linkLocalUserToAppleIdentity,
   setActiveLocalUserId,
 } from './local-store';
 
@@ -39,6 +41,8 @@ export type AuthState = {
   availableUsers: LocalUser[];
   isAuthenticated: boolean;
 };
+
+export type AppleIdentityStatus = 'unavailable' | 'signed_out' | 'authorized' | 'revoked' | 'unknown';
 
 let activeUser: LocalUser | null = null;
 
@@ -73,6 +77,7 @@ export function getCurrentUser(): LocalUser {
  */
 export function handleAppleSignInResult(credential: AppleAuthCredential): LocalUser {
   initializeLocalStore();
+  const current = getCurrentUser();
   let displayName: string | undefined;
 
   if (credential.fullName) {
@@ -82,15 +87,42 @@ export function handleAppleSignInResult(credential: AppleAuthCredential): LocalU
     }
   }
 
-  const user = ensureLocalUser({
+  const user = linkLocalUserToAppleIdentity(current.id, {
     appleSubject: credential.user,
     email: credential.email || undefined,
-    displayName: displayName || 'Apple Driver',
+    displayName,
   });
 
   activeUser = user;
   setActiveLocalUserId(user.id);
   return user;
+}
+
+/** Starts Apple's native authorization sheet and preserves the active profile's local data. */
+export async function signInWithApple(): Promise<LocalUser> {
+  if (!(await AppleAuthentication.isAvailableAsync())) throw new Error('Sign in with Apple is unavailable on this device.');
+  const state = Crypto.randomUUID();
+  const credential = await AppleAuthentication.signInAsync({
+    requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+    state,
+  });
+  if (credential.state !== state) throw new Error('Apple sign-in state validation failed.');
+  return handleAppleSignInResult(credential);
+}
+
+/** Rechecks Apple's credential state without deleting any local-first data. */
+export async function getAppleIdentityStatus(user = getCurrentUser()): Promise<AppleIdentityStatus> {
+  if (!(await AppleAuthentication.isAvailableAsync())) return 'unavailable';
+  if (!user.appleSubject) return 'signed_out';
+  try {
+    const state = await AppleAuthentication.getCredentialStateAsync(user.appleSubject);
+    if (state === AppleAuthentication.AppleAuthenticationCredentialState.AUTHORIZED) return 'authorized';
+    if (state === AppleAuthentication.AppleAuthenticationCredentialState.REVOKED) return 'revoked';
+    if (state === AppleAuthentication.AppleAuthenticationCredentialState.NOT_FOUND) return 'signed_out';
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
 }
 
 /**

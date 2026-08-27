@@ -11,9 +11,9 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
   const tessieFetch: typeof fetch = async input => {
     const url = new URL(String(input)), start = Number(url.searchParams.get('from')) + 60, end = Number(url.searchParams.get('to')) - 60;
     return Response.json({ results: [
-      { timestamp: start, latitude: 32.8, longitude: -97.4 },
-      { timestamp: Math.floor((start + end) / 2), latitude: 32.95, longitude: -97.1 },
-      { timestamp: end, latitude: 32.82, longitude: -96.9 },
+      { timestamp: start, latitude: 32.8, longitude: -97.4, speed: 21, heading: 90, battery_level: 76 },
+      { timestamp: Math.floor((start + end) / 2), latitude: 32.95, longitude: -97.1, speed: 34, heading: 100, battery_level: 75 },
+      { timestamp: end, latitude: 32.82, longitude: -96.9, speed: 12, heading: 110, battery_level: 74 },
     ] });
   };
   const runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", recorderToken, recorderDurableTurso: false, tessieToken: 'test-tessie-token', tessieFetch });
@@ -112,6 +112,35 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     assert.equal(dashboardBody.providerPreferences.musicProvider, "shazam");
     assert.ok(dashboardBody.summary.last7Days.journeyCount >= 1);
 
+    const vehicle = runtime.database.prepare("SELECT id,household_id FROM vehicles ORDER BY id LIMIT 1").get() as { id: string; household_id: string };
+    const chargeStarted = Math.floor((now - 3_600_000) / 1000), chargeEnded = chargeStarted + 2_400;
+    runtime.database.prepare(`INSERT INTO charging_sessions(id,household_id,vehicle_id,provider,provider_session_id,started_at_utc,ended_at_utc,started_at_epoch,ended_at_epoch,location,latitude,longitude,is_supercharger,energy_added_kwh,energy_used_kwh,miles_added,starting_battery,ending_battery,recorded_cost,raw_payload_json,created_at_utc,updated_at_utc) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      "mobile-charge-1", vehicle.household_id, vehicle.id, "tessie", "session-charge-1", new Date(chargeStarted * 1000).toISOString(), new Date(chargeEnded * 1000).toISOString(), chargeStarted, chargeEnded,
+      "North Fort Worth Supercharger", 32.91, -97.31, 1, 24.5, 25.1, 90, 31, 72, null, "{}", iso(0), iso(0)
+    );
+    runtime.database.prepare("UPDATE drives SET distance_miles=10,energy_used_kwh=2.5 WHERE id=?").run(driveId);
+    const intelligence = await runtime.app.inject({ method: "GET", url: "/api/recorder/vehicle-intelligence?timezoneOffsetMinutes=300", headers });
+    assert.equal(intelligence.statusCode, 200, intelligence.body);
+    const intelligenceBody = JSON.parse(intelligence.body);
+    assert.equal(intelligenceBody.chargingSummary30Days.sessions, 1);
+    assert.equal(intelligenceBody.chargingSummary30Days.energyAddedKwh, 24.5);
+    assert.equal(intelligenceBody.chargingSessions[0].batteryGainedPercent, 41);
+    assert.equal(intelligenceBody.chargingSessions[0].costSource, "estimated");
+    assert.ok(intelligenceBody.places.length >= 2);
+    assert.ok(intelligenceBody.routeComparisons.some((route: any) => route.averageWhPerMile > 0));
+    const firstPlace = intelligenceBody.places[0];
+    const updatedIntelligence = await runtime.app.inject({
+      method: "PUT", url: "/api/recorder/vehicle-intelligence/preferences", headers,
+      payload: { electricityRatePerKwh: 0.2, favoriteChargingLocationKeys: [intelligenceBody.chargingSessions[0].locationKey], placeOverrides: [{ placeId: firstPlace.id, name: "Favorite stop", category: "favorite" }], placeMerges: [] }
+    });
+    assert.equal(updatedIntelligence.statusCode, 200, updatedIntelligence.body);
+    assert.equal(JSON.parse(updatedIntelligence.body).electricityRatePerKwh, 0.2);
+    const rereadIntelligence = JSON.parse((await runtime.app.inject({ method: "GET", url: "/api/recorder/vehicle-intelligence", headers })).body);
+    assert.equal(rereadIntelligence.chargingSessions[0].cost, 4.9);
+    assert.equal(rereadIntelligence.chargingLocations[0].isFavorite, true);
+    assert.ok(rereadIntelligence.places.some((place: any) => place.id === firstPlace.id && place.name === "Favorite stop" && place.category === "favorite"));
+    assert.equal((await runtime.app.inject({ method: "PUT", url: "/api/recorder/vehicle-intelligence/preferences", headers, payload: { electricityRatePerKwh: 99, favoriteChargingLocationKeys: [], placeOverrides: [], placeMerges: [] } })).statusCode, 400);
+
     assert.equal((await runtime.app.inject({ method: "GET", url: "/api/recorder/music-dashboard" })).statusCode, 401);
     const musicDashboard = await runtime.app.inject({ method: "GET", url: "/api/recorder/music-dashboard?timezoneOffsetMinutes=300", headers });
     assert.equal(musicDashboard.statusCode, 200, musicDashboard.body);
@@ -141,7 +170,13 @@ test("mobile Recorder APIs expose a narrow dashboard, paged journeys, detail, an
     runtime.database.prepare("UPDATE drives SET provider='tessie' WHERE id=?").run(secondDriveId);
     const tessieDetail = await runtime.app.inject({ method: "GET", url: `/api/recorder/journeys/${secondDriveId}`, headers });
     assert.equal(tessieDetail.statusCode, 200, tessieDetail.body);
-    assert.deepEqual(JSON.parse(tessieDetail.body).route.coordinates, [[-97.4, 32.8], [-97.1, 32.95], [-96.9, 32.82]]);
+    const tessieRoute = JSON.parse(tessieDetail.body).route;
+    assert.deepEqual(tessieRoute.coordinates, [[-97.4, 32.8], [-97.1, 32.95], [-96.9, 32.82]]);
+    assert.deepEqual(tessieRoute.points.map((point: Record<string, unknown>) => ({ speedMph: point.speedMph, headingDegrees: point.headingDegrees, batteryPercent: point.batteryPercent })), [
+      { speedMph: 21, headingDegrees: 90, batteryPercent: 76 },
+      { speedMph: 34, headingDegrees: 100, batteryPercent: 75 },
+      { speedMph: 12, headingDegrees: 110, batteryPercent: 74 },
+    ]);
     const badCursor = await runtime.app.inject({ method: "GET", url: "/api/recorder/journeys?cursor=not-a-cursor", headers });
     assert.equal(badCursor.statusCode, 400, badCursor.body);
 

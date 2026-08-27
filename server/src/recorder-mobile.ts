@@ -76,6 +76,16 @@ export type RecorderMemoryInput = { id?: string | null; name: string; notes?: st
 export type RecorderPhotoInput = { fileName: string; contentType: string; dataBase64: string };
 export type RecorderPlaceAliasInput = { location: string; label: string };
 
+export const recorderPlaceCategories = ["home", "work", "school", "favorite", "custom"] as const;
+export type RecorderPlaceCategory = typeof recorderPlaceCategories[number];
+
+export type RecorderVehicleIntelligencePreferences = {
+  electricityRatePerKwh: number;
+  favoriteChargingLocationKeys: string[];
+  placeOverrides: { placeId: string; name: string; category: RecorderPlaceCategory }[];
+  placeMerges: { sourcePlaceId: string; targetPlaceId: string }[];
+};
+
 export type RecorderMusicDashboard = {
   generatedAt: string;
   metrics: { milesWithMusic: number; listeningHours: number; songsOnRoad: number; currentStreak: number };
@@ -148,6 +158,24 @@ function finiteOrNull(value: unknown) {
 
 function validCoordinate(longitude: number, latitude: number) {
   return Number.isFinite(longitude) && Number.isFinite(latitude) && longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90;
+}
+
+function distanceMiles(first: { latitude: number; longitude: number }, second: { latitude: number; longitude: number }) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const latitudeDelta = radians(second.latitude - first.latitude), longitudeDelta = radians(second.longitude - first.longitude);
+  const a = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(radians(first.latitude)) * Math.cos(radians(second.latitude)) * Math.sin(longitudeDelta / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function stablePlaceId(locationKey: string) {
+  return `place_${createHash("sha256").update(locationKey).digest("hex").slice(0, 24)}`;
+}
+
+function chargingLocationKey(location: unknown, latitude: unknown, longitude: unknown) {
+  const raw = boundedText(location, 200), lat = finiteOrNull(latitude), lon = finiteOrNull(longitude);
+  const basis = raw || (lat !== null && lon !== null ? `${lat.toFixed(4)},${lon.toFixed(4)}` : "Unknown charging location");
+  return `charge_${createHash("sha256").update(basis.toLocaleLowerCase()).digest("hex").slice(0, 20)}`;
 }
 
 function boundedText(value: unknown, maximum = 200) {
@@ -330,6 +358,31 @@ function normalizedPreferences(deviceId: string, value: unknown, updatedAt: stri
       tessie: accountConnectionStatuses.includes(connections.tessie) ? connections.tessie : defaults.connections.tessie
     },
     updatedAt
+  };
+}
+
+function normalizedVehicleIntelligencePreferences(value: unknown): RecorderVehicleIntelligencePreferences {
+  const item = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const rate = finiteOrNull(item.electricityRatePerKwh);
+  const favoriteChargingLocationKeys = Array.isArray(item.favoriteChargingLocationKeys)
+    ? [...new Set(item.favoriteChargingLocationKeys.map(value => boundedText(value, 80)).filter(Boolean))].slice(0, 100)
+    : [];
+  const placeOverrides = Array.isArray(item.placeOverrides) ? item.placeOverrides.flatMap(value => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const override = value as Record<string, unknown>, placeId = boundedText(override.placeId, 80), name = boundedText(override.name, 64);
+    const category = boundedText(override.category, 20) as RecorderPlaceCategory;
+    return placeId && name && recorderPlaceCategories.includes(category) ? [{ placeId, name, category }] : [];
+  }).slice(0, 500) : [];
+  const placeMerges = Array.isArray(item.placeMerges) ? item.placeMerges.flatMap(value => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const merge = value as Record<string, unknown>, sourcePlaceId = boundedText(merge.sourcePlaceId, 80), targetPlaceId = boundedText(merge.targetPlaceId, 80);
+    return sourcePlaceId && targetPlaceId && sourcePlaceId !== targetPlaceId ? [{ sourcePlaceId, targetPlaceId }] : [];
+  }).slice(0, 200) : [];
+  return {
+    electricityRatePerKwh: rate !== null && rate >= 0.01 && rate <= 5 ? Math.round(rate * 10_000) / 10_000 : 0.14,
+    favoriteChargingLocationKeys,
+    placeOverrides,
+    placeMerges
   };
 }
 
@@ -564,6 +617,180 @@ export class RecorderMobileStore {
     return { location, label, removed: !label };
   }
 
+  private async vehicleIntelligencePreferences() {
+    const key = `recorder-vehicle-intelligence:${this.householdId}`;
+    const rows = await this.read({ sql: "SELECT value_json FROM app_state WHERE key=? LIMIT 1;", args: [key] });
+    return normalizedVehicleIntelligencePreferences(safeJson(rows[0]?.value_json));
+  }
+
+  async vehicleIntelligence(timezoneOffsetMinutes = 0) {
+    const offset = Math.max(-840, Math.min(840, Math.round(timezoneOffsetMinutes)));
+    const [loadedChargingRows, loadedDriveRows, aliasRows, foursquareRows, preferences] = await Promise.all([
+      this.read({
+        sql: `SELECT c.id,c.provider,c.started_at_utc,c.ended_at_utc,c.started_at_epoch,c.ended_at_epoch,c.location,c.latitude,c.longitude,c.is_supercharger,c.energy_added_kwh,c.energy_used_kwh,c.miles_added,c.starting_battery,c.ending_battery,c.recorded_cost,v.display_name AS vehicle_name FROM charging_sessions c JOIN vehicles v ON v.id=c.vehicle_id WHERE c.household_id=? ORDER BY c.started_at_epoch DESC,c.id LIMIT 500;`,
+        args: [this.householdId]
+      }),
+      this.read({ sql: `SELECT ${journeyColumns} FROM drives d JOIN vehicles v ON v.id=d.vehicle_id LEFT JOIN drive_soundtracks ds ON ds.drive_id=d.legacy_drive_id WHERE d.household_id=? ORDER BY d.started_at_epoch DESC,d.id ASC LIMIT 2000;`, args: [this.householdId] }),
+      this.read({ sql: "SELECT location,label FROM place_aliases;" }),
+      this.read({ sql: "SELECT value_json FROM app_state WHERE key='foursquare-cache' LIMIT 1;" }),
+      this.vehicleIntelligencePreferences()
+    ]);
+    const driveRows = loadedDriveRows as unknown as JourneyRow[], mobile = await this.mobileSongs(driveRows.map(row => row.recorder_session_id || ""));
+    const aliases = new Map(aliasRows.map(row => [String(row.location), boundedText(row.label, 64)]));
+    const overrides = new Map(preferences.placeOverrides.map(item => [item.placeId, item]));
+    const mergeTargets = new Map(preferences.placeMerges.map(item => [item.sourcePlaceId, item.targetPlaceId]));
+    const timeLabels = ["Morning", "Midday", "Evening", "Late night"];
+    const foursquarePayload = safeJson(foursquareRows[0]?.value_json);
+    const foursquareEntries = Array.isArray(foursquarePayload?.entries) ? foursquarePayload.entries.filter(value => value && typeof value === "object" && !Array.isArray(value)) as Record<string, unknown>[] : [];
+    type PlaceAccumulator = {
+      id: string; label: string; category: RecorderPlaceCategory; latitude: number | null; longitude: number | null;
+      arrivals: number; departures: number; firstSeenAt: string; lastSeenAt: string; aliasKeys: Set<string>;
+      timeCounts: number[]; journeyMap: Map<string, { id: string; startedAt: string; startingLocation: string; endingLocation: string; miles: number; energyUsedKwh: number | null }>;
+      songCounts: Map<string, { track: string; artist: string; plays: number; artworkUrl: string | null }>;
+    };
+    const places = new Map<string, PlaceAccumulator>();
+    const placeFor = (location: unknown, latitudeValue: unknown, longitudeValue: unknown, seenAt: string) => {
+      const raw = boundedText(location, 200) || "Unknown place", latitude = finiteOrNull(latitudeValue), longitude = finiteOrNull(longitudeValue);
+      const aliasKey = placeAliasKey(raw, latitude, longitude), id = stablePlaceId(aliasKey), override = overrides.get(id);
+      const aliased = aliases.get(aliasKey) || raw;
+      const inferredCategory: RecorderPlaceCategory = /^home$/i.test(aliased) ? "home" : /^work$/i.test(aliased) ? "work" : /school/i.test(aliased) ? "school" : "custom";
+      let place = places.get(id);
+      if (!place) {
+        place = { id, label: override?.name || aliased, category: override?.category || inferredCategory, latitude, longitude, arrivals: 0, departures: 0, firstSeenAt: seenAt, lastSeenAt: seenAt, aliasKeys: new Set(), timeCounts: [0, 0, 0, 0], journeyMap: new Map(), songCounts: new Map() };
+        places.set(id, place);
+      }
+      place.aliasKeys.add(aliasKey);
+      if (seenAt < place.firstSeenAt) place.firstSeenAt = seenAt;
+      if (seenAt > place.lastSeenAt) place.lastSeenAt = seenAt;
+      return place;
+    };
+    const routeGroups = new Map<string, { startPlaceId: string; endPlaceId: string; startLabel: string; endLabel: string; trips: number; miles: number; energyKwh: number; cost: number; efficiencies: number[] }>();
+    for (const row of driveRows) {
+      const start = placeFor(row.starting_location, row.starting_latitude, row.starting_longitude, row.started_at_utc);
+      const end = placeFor(row.ending_location, row.ending_latitude, row.ending_longitude, row.ended_at_utc);
+      start.departures += 1; end.arrivals += 1;
+      const localHour = new Date(Date.parse(row.ended_at_utc) - offset * 60_000).getUTCHours();
+      end.timeCounts[localHour < 10 ? 0 : localHour < 16 ? 1 : localHour < 22 ? 2 : 3] += 1;
+      const related = { id: row.id, startedAt: row.started_at_utc, startingLocation: start.label, endingLocation: end.label, miles: rounded(Math.max(0, finiteOrNull(row.distance_miles) || 0)), energyUsedKwh: finiteOrNull(row.energy_used_kwh) };
+      start.journeyMap.set(row.id, related); end.journeyMap.set(row.id, related);
+      const songs = uniqueSongs([...soundtrackSongs(row.soundtrack_payload), ...(row.recorder_session_id ? mobile.get(row.recorder_session_id) || [] : [])]);
+      for (const place of [start, end]) for (const song of songs) {
+        const key = `${song.track.toLocaleLowerCase()}\0${song.artist.toLocaleLowerCase()}`, existing = place.songCounts.get(key);
+        if (existing) existing.plays += 1;
+        else place.songCounts.set(key, { track: song.track, artist: song.artist, plays: 1, artworkUrl: song.artworkUrl });
+      }
+      const miles = Math.max(0, finiteOrNull(row.distance_miles) || 0), energyKwh = Math.max(0, finiteOrNull(row.energy_used_kwh) || 0);
+      if (miles > 0 && energyKwh > 0) {
+        const key = `${start.id}\0${end.id}`, group = routeGroups.get(key) || { startPlaceId: start.id, endPlaceId: end.id, startLabel: start.label, endLabel: end.label, trips: 0, miles: 0, energyKwh: 0, cost: 0, efficiencies: [] };
+        group.trips += 1; group.miles += miles; group.energyKwh += energyKwh; group.cost += energyKwh * preferences.electricityRatePerKwh; group.efficiencies.push(energyKwh * 1000 / miles);
+        routeGroups.set(key, group);
+      }
+    }
+    for (const [sourceId, targetId] of mergeTargets) {
+      const source = places.get(sourceId), target = places.get(targetId);
+      if (!source || !target) continue;
+      target.arrivals += source.arrivals; target.departures += source.departures;
+      source.aliasKeys.forEach(key => target.aliasKeys.add(key));
+      source.journeyMap.forEach((journey, id) => target.journeyMap.set(id, journey));
+      source.songCounts.forEach((song, key) => { const existing = target.songCounts.get(key); if (existing) existing.plays += song.plays; else target.songCounts.set(key, { ...song }); });
+      source.timeCounts.forEach((count, index) => { target.timeCounts[index] += count; });
+      if (source.firstSeenAt < target.firstSeenAt) target.firstSeenAt = source.firstSeenAt;
+      if (source.lastSeenAt > target.lastSeenAt) target.lastSeenAt = source.lastSeenAt;
+      places.delete(sourceId);
+    }
+    const placeItems = [...places.values()].map(place => {
+      const suggestion = place.latitude === null || place.longitude === null ? null : foursquareEntries.map(entry => {
+        const latitude = finiteOrNull(entry.latitude), longitude = finiteOrNull(entry.longitude);
+        if (latitude === null || longitude === null) return null;
+        return { distance: distanceMiles({ latitude: place.latitude!, longitude: place.longitude! }, { latitude, longitude }), name: boundedText(entry.name ?? entry.businessName ?? entry.label, 64), category: boundedText(entry.category, 64), address: boundedText(entry.address ?? entry.businessAddress, 160) };
+      }).filter((item): item is NonNullable<typeof item> => Boolean(item?.name) && item!.distance <= 0.3).sort((a, b) => a.distance - b.distance)[0] || null;
+      return {
+        id: place.id, name: place.label, category: place.category, latitude: place.latitude, longitude: place.longitude,
+        visitCount: place.arrivals || place.departures, arrivals: place.arrivals, departures: place.departures, firstSeenAt: place.firstSeenAt, lastSeenAt: place.lastSeenAt,
+        timeOfDay: timeLabels.map((label, index) => ({ label, visits: place.timeCounts[index] })).filter(item => item.visits > 0),
+        relatedJourneys: [...place.journeyMap.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt)).slice(0, 8),
+        soundtrack: [...place.songCounts.values()].sort((a, b) => b.plays - a.plays || a.track.localeCompare(b.track)).slice(0, 5),
+        foursquareSuggestion: suggestion ? { name: suggestion.name, category: suggestion.category || null, address: suggestion.address || null } : null
+      };
+    }).sort((a, b) => b.visitCount - a.visitCount || b.lastSeenAt.localeCompare(a.lastSeenAt));
+    const duplicateCandidates: { sourcePlaceId: string; targetPlaceId: string; reason: string }[] = [];
+    for (let firstIndex = 0; firstIndex < Math.min(placeItems.length, 250); firstIndex += 1) for (let secondIndex = firstIndex + 1; secondIndex < Math.min(placeItems.length, 250); secondIndex += 1) {
+      const first = placeItems[firstIndex]!, second = placeItems[secondIndex]!;
+      const sameName = first.name.trim().toLocaleLowerCase() === second.name.trim().toLocaleLowerCase();
+      const nearby = first.latitude !== null && first.longitude !== null && second.latitude !== null && second.longitude !== null
+        && distanceMiles({ latitude: first.latitude, longitude: first.longitude }, { latitude: second.latitude, longitude: second.longitude }) <= 0.15;
+      if (sameName || nearby) duplicateCandidates.push({ sourcePlaceId: second.id, targetPlaceId: first.id, reason: sameName ? "Same name" : "Within 0.15 miles" });
+      if (duplicateCandidates.length >= 30) break;
+    }
+    const chargingSessions = loadedChargingRows.map(row => {
+      const energyAddedKwh = Math.max(0, finiteOrNull(row.energy_added_kwh) || 0), energyUsedKwh = Math.max(0, finiteOrNull(row.energy_used_kwh) || 0);
+      const recordedCost = finiteOrNull(row.recorded_cost), started = Number(row.started_at_epoch), ended = Number(row.ended_at_epoch);
+      const startingBatteryPercent = finiteOrNull(row.starting_battery), endingBatteryPercent = finiteOrNull(row.ending_battery);
+      return {
+        id: String(row.id), locationKey: chargingLocationKey(row.location, row.latitude, row.longitude), location: boundedText(row.location, 200) || "Charging location",
+        vehicleName: boundedText(row.vehicle_name, 120) || null, provider: boundedText(row.provider, 40), startedAt: String(row.started_at_utc), endedAt: String(row.ended_at_utc),
+        durationMinutes: Math.max(0, Math.round((ended - started) / 60)), isSupercharger: Number(row.is_supercharger) === 1,
+        energyAddedKwh: rounded(energyAddedKwh, 2), energyUsedKwh: rounded(energyUsedKwh, 2), milesAdded: rounded(Math.max(0, finiteOrNull(row.miles_added) || 0), 1),
+        startingBatteryPercent, endingBatteryPercent, batteryGainedPercent: startingBatteryPercent !== null && endingBatteryPercent !== null ? Math.max(0, rounded(endingBatteryPercent - startingBatteryPercent, 1)) : null,
+        cost: rounded(recordedCost !== null ? Math.max(0, recordedCost) : energyAddedKwh * preferences.electricityRatePerKwh, 2), costSource: recordedCost !== null ? "recorded" : "estimated"
+      };
+    });
+    const cutoff = Date.now() - 30 * 86_400_000, recentCharging = chargingSessions.filter(item => Date.parse(item.startedAt) >= cutoff);
+    const favoriteKeys = new Set(preferences.favoriteChargingLocationKeys), chargingLocations = new Map<string, { locationKey: string; name: string; sessions: number; energyAddedKwh: number; cost: number; lastChargedAt: string; isFavorite: boolean }>();
+    for (const session of chargingSessions) {
+      const current = chargingLocations.get(session.locationKey) || { locationKey: session.locationKey, name: session.location, sessions: 0, energyAddedKwh: 0, cost: 0, lastChargedAt: session.startedAt, isFavorite: favoriteKeys.has(session.locationKey) };
+      current.sessions += 1; current.energyAddedKwh += session.energyAddedKwh; current.cost += session.cost;
+      if (session.startedAt > current.lastChargedAt) current.lastChargedAt = session.startedAt;
+      chargingLocations.set(session.locationKey, current);
+    }
+    return {
+      generatedAt: new Date().toISOString(), preferences,
+      chargingSummary30Days: {
+        sessions: recentCharging.length,
+        energyAddedKwh: rounded(recentCharging.reduce((sum, item) => sum + item.energyAddedKwh, 0), 1),
+        batteryGainedPercent: rounded(recentCharging.reduce((sum, item) => sum + (item.batteryGainedPercent || 0), 0), 1),
+        durationMinutes: recentCharging.reduce((sum, item) => sum + item.durationMinutes, 0),
+        cost: rounded(recentCharging.reduce((sum, item) => sum + item.cost, 0), 2)
+      },
+      chargingSessions,
+      chargingLocations: [...chargingLocations.values()].map(item => ({ ...item, energyAddedKwh: rounded(item.energyAddedKwh, 1), cost: rounded(item.cost, 2) })).sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || b.lastChargedAt.localeCompare(a.lastChargedAt)),
+      places: placeItems,
+      duplicateCandidates,
+      routeComparisons: [...routeGroups.values()].map(group => ({
+        ...group, miles: rounded(group.miles, 1), energyKwh: rounded(group.energyKwh, 2), cost: rounded(group.cost, 2),
+        averageWhPerMile: Math.round(group.energyKwh * 1000 / group.miles), bestWhPerMile: Math.round(Math.min(...group.efficiencies)), worstWhPerMile: Math.round(Math.max(...group.efficiencies))
+      })).sort((a, b) => b.trips - a.trips || b.miles - a.miles).slice(0, 50)
+    };
+  }
+
+  async saveVehicleIntelligencePreferences(value: RecorderVehicleIntelligencePreferences) {
+    const preferences = normalizedVehicleIntelligencePreferences(value), now = new Date().toISOString();
+    const key = `recorder-vehicle-intelligence:${this.householdId}`;
+    const rows = await this.read({ sql: "SELECT starting_location,starting_latitude,starting_longitude,ending_location,ending_latitude,ending_longitude FROM drives WHERE household_id=?;", args: [this.householdId] });
+    const aliasKeys = new Map<string, Set<string>>();
+    for (const row of rows) for (const endpoint of [
+      [row.starting_location, row.starting_latitude, row.starting_longitude],
+      [row.ending_location, row.ending_latitude, row.ending_longitude]
+    ]) {
+      const locationKey = placeAliasKey(endpoint[0], endpoint[1], endpoint[2]), placeId = stablePlaceId(locationKey);
+      aliasKeys.set(placeId, (aliasKeys.get(placeId) || new Set()).add(locationKey));
+    }
+    const overrideNames = new Map(preferences.placeOverrides.map(item => [item.placeId, item.name]));
+    const statements: Statement[] = [
+      { sql: "INSERT INTO app_state(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;", args: [key, JSON.stringify(preferences), now] }
+    ];
+    for (const override of preferences.placeOverrides) for (const locationKey of aliasKeys.get(override.placeId) || []) {
+      statements.push({ sql: "INSERT INTO place_aliases(location,label) VALUES(?,?) ON CONFLICT(location) DO UPDATE SET label=excluded.label;", args: [locationKey, override.name] });
+    }
+    for (const merge of preferences.placeMerges) {
+      const targetName = overrideNames.get(merge.targetPlaceId);
+      if (!targetName) continue;
+      for (const locationKey of aliasKeys.get(merge.sourcePlaceId) || []) statements.push({ sql: "INSERT INTO place_aliases(location,label) VALUES(?,?) ON CONFLICT(location) DO UPDATE SET label=excluded.label;", args: [locationKey, targetName] });
+    }
+    await this.write(statements);
+    return preferences;
+  }
+
   async memoriesCatalog() {
     const [collectionRows, collectionDriveRows, collectionPhotoRows, memoryRows, memoryCollectionRows, memoryPhotoRows] = await Promise.all([
       this.read({ sql: "SELECT id,name,description,created_at_utc,updated_at_utc FROM journey_collections WHERE household_id=? ORDER BY updated_at_utc DESC,id;", args: [this.householdId] }),
@@ -704,12 +931,15 @@ export class RecorderMobileStore {
     const summary = (await this.journeySummaries([row], mobile))[0];
     const soundtrack = uniqueSongs([...soundtrackSongs(row.soundtrack_payload), ...(row.recorder_session_id ? mobile.get(row.recorder_session_id) || [] : [])]);
     let coordinates: [number, number][] = [];
-    let timedCoordinates: { recordedAtEpochMs: number; coordinate: [number, number] }[] = [];
+    let timedCoordinates: TimedRouteCoordinate[] = [];
     if (row.recorder_session_id) {
-      const points = await this.read({ sql: "SELECT recorded_at_epoch_ms,longitude,latitude FROM recorder_points WHERE session_id=? ORDER BY recorded_at_epoch_ms,sequence;", args: [row.recorder_session_id] });
+      const points = await this.read({ sql: "SELECT recorded_at_epoch_ms,longitude,latitude,heading_degrees,speed_mps FROM recorder_points WHERE session_id=? ORDER BY recorded_at_epoch_ms,sequence;", args: [row.recorder_session_id] });
       timedCoordinates = points.map(point => ({
         recordedAtEpochMs: Number(point.recorded_at_epoch_ms),
-        coordinate: [Number(point.longitude), Number(point.latitude)] as [number, number]
+        coordinate: [Number(point.longitude), Number(point.latitude)] as [number, number],
+        speedMph: finiteOrNull(point.speed_mps) === null ? null : finiteOrNull(point.speed_mps)! * 2.2369362921,
+        headingDegrees: finiteOrNull(point.heading_degrees),
+        batteryPercent: null
       })).filter(point => Number.isFinite(point.recordedAtEpochMs) && validCoordinate(point.coordinate[0], point.coordinate[1]));
       coordinates = timedCoordinates.map(point => point.coordinate);
       if (coordinates.length > 2500) {
@@ -725,9 +955,8 @@ export class RecorderMobileStore {
           endedAtEpoch: Number(row.ended_at_epoch)
         });
         const routeStartMs = Number(row.started_at_epoch) * 1000, routeEndMs = Number(row.ended_at_epoch) * 1000;
-        coordinates = timedCoordinates
-          .filter(point => point.recordedAtEpochMs >= routeStartMs && point.recordedAtEpochMs <= routeEndMs)
-          .map(point => point.coordinate);
+        timedCoordinates = timedCoordinates.filter(point => point.recordedAtEpochMs >= routeStartMs && point.recordedAtEpochMs <= routeEndMs);
+        coordinates = timedCoordinates.map(point => point.coordinate);
         if (coordinates.length > 2500) {
           const last = coordinates.at(-1)!, step = (coordinates.length - 1) / 2499;
           coordinates = Array.from({ length: 2499 }, (_, index) => coordinates[Math.floor(index * step)]).concat([last]);
@@ -740,6 +969,9 @@ export class RecorderMobileStore {
       const endpoints = [[finiteOrNull(row.starting_longitude), finiteOrNull(row.starting_latitude)], [finiteOrNull(row.ending_longitude), finiteOrNull(row.ending_latitude)]];
       if (endpoints.every(point => point[0] !== null && point[1] !== null && validCoordinate(point[0], point[1]))) coordinates = endpoints as [number, number][];
     }
+    const routePointSource = timedCoordinates.length > 2500
+      ? Array.from({ length: 2499 }, (_, index) => timedCoordinates[Math.floor(index * (timedCoordinates.length - 1) / 2499)]!).concat([timedCoordinates.at(-1)!])
+      : timedCoordinates;
     const soundtrackWithCoordinates = soundtrack.map(song => {
       const playedAt = song.playedAt ? Date.parse(song.playedAt) : Number.NaN;
       if (!Number.isFinite(playedAt) || !timedCoordinates.length) return { ...song, mapCoordinate: null };
@@ -757,7 +989,17 @@ export class RecorderMobileStore {
       tessieTag: boundedText(row.tessie_tag, 120) || null,
       driverProfile: boundedText(row.driver_profile, 120) || null,
       soundtrack: soundtrackWithCoordinates,
-      route: coordinates.length >= 2 ? { type: "LineString" as const, coordinates } : null
+      route: coordinates.length >= 2 ? {
+        type: "LineString" as const,
+        coordinates,
+        points: routePointSource.map(point => ({
+          recordedAt: new Date(point.recordedAtEpochMs).toISOString(),
+          coordinate: point.coordinate,
+          speedMph: point.speedMph ?? null,
+          headingDegrees: point.headingDegrees ?? null,
+          batteryPercent: point.batteryPercent ?? null
+        }))
+      } : null
     };
   }
 

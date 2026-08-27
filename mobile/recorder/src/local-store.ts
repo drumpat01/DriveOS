@@ -360,6 +360,34 @@ export function listLocalUsers(): LocalUser[] {
   );
 }
 
+export function linkLocalUserToAppleIdentity(userId: LocalUserId, input: { appleSubject: string; displayName?: string; email?: string }): LocalUser {
+  initializeLocalStore();
+  const existingIdentity = db.getFirstSync<LocalUser>(
+    'SELECT id,display_name AS displayName,email,apple_subject AS appleSubject,created_at AS createdAt,updated_at AS updatedAt FROM local_users WHERE apple_subject=?;',
+    input.appleSubject,
+  );
+  if (existingIdentity && existingIdentity.id !== userId) return existingIdentity;
+
+  const localUser = db.getFirstSync<{ id: string; appleSubject: string | null }>('SELECT id,apple_subject AS appleSubject FROM local_users WHERE id=?;', userId);
+  if (!localUser) throw new Error('Cannot link Apple identity to an unknown local user.');
+  db.withTransactionSync(() => {
+    db.runSync(
+      `UPDATE local_users SET apple_subject=?,display_name=COALESCE(?,display_name),email=COALESCE(?,email),updated_at=? WHERE id=?;`,
+      input.appleSubject, input.displayName ?? null, input.email ?? null, now(), userId,
+    );
+    if (localUser.appleSubject !== input.appleSubject) {
+      db.runSync('UPDATE local_journeys SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_music_entries SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_collections SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_memories SET synced_to_cloud=0 WHERE user_id=?;', userId);
+    }
+  });
+  return db.getFirstSync<LocalUser>(
+    'SELECT id,display_name AS displayName,email,apple_subject AS appleSubject,created_at AS createdAt,updated_at AS updatedAt FROM local_users WHERE id=?;',
+    userId,
+  )!;
+}
+
 export function getActiveLocalUserId(): LocalUserId | null {
   initializeLocalStore();
   const row = db.getFirstSync<{ value: string }>("SELECT value FROM local_preferences WHERE key='active_user_id';");
@@ -454,6 +482,12 @@ export function getJourney(userId: LocalUserId, journeyId: string): LocalJourney
   return row ? rowToJourney(row) : null;
 }
 
+export function getJourneyByLegacyDriveId(userId: LocalUserId, legacyDriveId: string): LocalJourney | null {
+  initializeLocalStore();
+  const row = db.getFirstSync<Record<string, unknown>>('SELECT * FROM local_journeys WHERE legacy_drive_id=? AND user_id=? ORDER BY updated_at DESC LIMIT 1;', legacyDriveId, userId);
+  return row ? rowToJourney(row) : null;
+}
+
 // --- GPS points --------------------------------------------------------------
 
 export function insertGpsPoints(userId: LocalUserId, journeyId: string, points: Omit<LocalGpsPoint, 'journeyId'>[]): void {
@@ -481,11 +515,27 @@ export function getJourneyRoute(userId: LocalUserId, journeyId: string): { type:
   return { type: 'LineString', coordinates: points.map(p => [p.longitude, p.latitude]) };
 }
 
+export function getJourneyRouteSamples(userId: LocalUserId, journeyId: string): { recordedAt: string; coordinate: [number, number]; speedMph: number | null; headingDegrees: number | null; batteryPercent: null }[] {
+  initializeLocalStore();
+  const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
+  if (!owned) return [];
+  return db.getAllSync<{ recordedAt: string; latitude: number; longitude: number; speedMps: number | null; headingDegrees: number | null }>(
+    'SELECT recorded_at AS recordedAt,latitude,longitude,speed_mps AS speedMps,heading_degrees AS headingDegrees FROM local_gps_points WHERE journey_id=? ORDER BY sequence;', journeyId,
+  ).map(point => ({
+    recordedAt: point.recordedAt,
+    coordinate: [point.longitude, point.latitude],
+    speedMph: point.speedMps == null ? null : point.speedMps * 2.2369362921,
+    headingDegrees: point.headingDegrees,
+    batteryPercent: null,
+  }));
+}
+
 // --- Music entries -----------------------------------------------------------
 
 export type UpsertMusicEntryInput = Omit<LocalMusicEntry, 'syncedToCloud' | 'createdAt'>;
+export type UpsertMusicEntryOptions = { syncedToCloud?: 0 | 1; createdAt?: string };
 
-export function upsertMusicEntry(input: UpsertMusicEntryInput): void {
+export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMusicEntryOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_music_entries', input.id, input.userId);
   if (input.journeyId) {
@@ -496,13 +546,16 @@ export function upsertMusicEntry(input: UpsertMusicEntryInput): void {
       input.userId, input.journeyId, input.source, input.track, input.artist,
     );
     const playedTs = Date.parse(input.playedAt);
-    if (recent.some(r => Math.abs(Date.parse(r.played_at) - playedTs) <= 45_000)) return;
+    if (options.syncedToCloud !== 1 && recent.some(r => Math.abs(Date.parse(r.played_at) - playedTs) <= 45_000)) return;
   }
   db.runSync(
-    'INSERT OR IGNORE INTO local_music_entries(id,user_id,journey_id,source,played_at,track,artist,album,duration_ms,artwork_url,external_url,confidence,synced_to_cloud,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?);',
+    `INSERT INTO local_music_entries(id,user_id,journey_id,source,played_at,track,artist,album,duration_ms,artwork_url,external_url,confidence,synced_to_cloud,created_at)
+     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET journey_id=excluded.journey_id,source=excluded.source,
+       played_at=excluded.played_at,track=excluded.track,artist=excluded.artist,album=excluded.album,duration_ms=excluded.duration_ms,
+       artwork_url=excluded.artwork_url,external_url=excluded.external_url,confidence=excluded.confidence,synced_to_cloud=excluded.synced_to_cloud;`,
     input.id, input.userId, input.journeyId ?? null, input.source, input.playedAt,
-    input.track, input.artist, input.album ?? null, input.durationMs ?? null,
-    input.artworkUrl ?? null, input.externalUrl ?? null, input.confidence ?? null, now(),
+    input.track, input.artist, input.album ?? null, input.durationMs ?? null, input.artworkUrl ?? null,
+    input.externalUrl ?? null, input.confidence ?? null, options.syncedToCloud ?? 0, options.createdAt ?? now(),
   );
 }
 
@@ -512,6 +565,14 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
     'SELECT id,user_id AS userId,journey_id AS journeyId,source,played_at AS playedAt,track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,external_url AS externalUrl,confidence,synced_to_cloud AS syncedToCloud,created_at AS createdAt FROM local_music_entries WHERE user_id=? ORDER BY played_at DESC LIMIT ?;',
     userId, Math.max(1, Math.min(500, Math.trunc(limit))),
   ).map(r => r as unknown as LocalMusicEntry);
+}
+
+export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: string): LocalMusicEntry[] {
+  initializeLocalStore();
+  return db.getAllSync<Record<string, unknown>>(
+    'SELECT id,user_id AS userId,journey_id AS journeyId,source,played_at AS playedAt,track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,external_url AS externalUrl,confidence,synced_to_cloud AS syncedToCloud,created_at AS createdAt FROM local_music_entries WHERE user_id=? AND journey_id=? ORDER BY played_at,id;',
+    userId, journeyId,
+  ).map(row => row as unknown as LocalMusicEntry);
 }
 
 // --- Places ------------------------------------------------------------------
@@ -563,13 +624,15 @@ export function findCachedPlace(userId: LocalUserId, lat: number, lng: number, r
 
 // --- Collections & Memories --------------------------------------------------
 
-export function upsertCollection(input: Omit<LocalCollection, 'syncedToCloud' | 'createdAt' | 'updatedAt'>): void {
+type CloudUpsertOptions = { syncedToCloud?: 0 | 1; createdAt?: string; updatedAt?: string };
+
+export function upsertCollection(input: Omit<LocalCollection, 'syncedToCloud' | 'createdAt' | 'updatedAt'>, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_collections', input.id, input.userId);
-  const t = now();
+  const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
   db.runSync(
-    'INSERT INTO local_collections(id,user_id,name,description,journey_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,journey_ids=excluded.journey_ids,synced_to_cloud=0,updated_at=excluded.updated_at;',
-    input.id, input.userId, input.name, input.description ?? null, input.journeyIds, t, t,
+    'INSERT INTO local_collections(id,user_id,name,description,journey_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,journey_ids=excluded.journey_ids,synced_to_cloud=excluded.synced_to_cloud,updated_at=excluded.updated_at;',
+    input.id, input.userId, input.name, input.description ?? null, input.journeyIds, options.syncedToCloud ?? 0, createdAt, updatedAt,
   );
 }
 
@@ -580,13 +643,13 @@ export function listCollections(userId: LocalUserId): LocalCollection[] {
   );
 }
 
-export function upsertMemory(input: Omit<LocalMemory, 'syncedToCloud' | 'createdAt' | 'updatedAt'>): void {
+export function upsertMemory(input: Omit<LocalMemory, 'syncedToCloud' | 'createdAt' | 'updatedAt'>, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_memories', input.id, input.userId);
-  const t = now();
+  const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
   db.runSync(
-    'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_local_path,collection_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,0,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_local_path=excluded.cover_photo_local_path,collection_ids=excluded.collection_ids,synced_to_cloud=0,updated_at=excluded.updated_at;',
-    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoLocalPath ?? null, input.collectionIds, t, t,
+    'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_local_path,collection_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_local_path=COALESCE(excluded.cover_photo_local_path,local_memories.cover_photo_local_path),collection_ids=excluded.collection_ids,synced_to_cloud=excluded.synced_to_cloud,updated_at=excluded.updated_at;',
+    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoLocalPath ?? null, input.collectionIds, options.syncedToCloud ?? 0, createdAt, updatedAt,
   );
 }
 
@@ -643,6 +706,21 @@ export function journeysPendingSync(userId: LocalUserId, limit = 50): string[] {
   return db.getAllSync<{ id: string }>('SELECT id FROM local_journeys WHERE user_id=? AND synced_to_cloud=0 ORDER BY started_at DESC LIMIT ?;', userId, limit).map(r => r.id);
 }
 
+export function musicEntriesPendingSync(userId: LocalUserId, limit = 50): string[] {
+  initializeLocalStore();
+  return db.getAllSync<{ id: string }>('SELECT id FROM local_music_entries WHERE user_id=? AND synced_to_cloud=0 ORDER BY played_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+}
+
+export function collectionsPendingSync(userId: LocalUserId, limit = 50): string[] {
+  initializeLocalStore();
+  return db.getAllSync<{ id: string }>('SELECT id FROM local_collections WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+}
+
+export function memoriesPendingSync(userId: LocalUserId, limit = 50): string[] {
+  initializeLocalStore();
+  return db.getAllSync<{ id: string }>('SELECT id FROM local_memories WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+}
+
 export function markJourneysSynced(userId: LocalUserId, ids: string[]): void {
   initializeLocalStore();
   if (!ids.length) return;
@@ -653,6 +731,18 @@ export function markMusicEntriesSynced(userId: LocalUserId, ids: string[]): void
   initializeLocalStore();
   if (!ids.length) return;
   db.runSync(`UPDATE local_music_entries SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
+}
+
+export function markCollectionsSynced(userId: LocalUserId, ids: string[]): void {
+  initializeLocalStore();
+  if (!ids.length) return;
+  db.runSync(`UPDATE local_collections SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
+}
+
+export function markMemoriesSynced(userId: LocalUserId, ids: string[]): void {
+  initializeLocalStore();
+  if (!ids.length) return;
+  db.runSync(`UPDATE local_memories SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
 }
 
 // --- Diagnostics -------------------------------------------------------------
@@ -670,6 +760,10 @@ export function localStoreDiagnostics(userId: LocalUserId): {
     placeCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_places WHERE user_id=?;', userId)?.n ?? 0),
     collectionCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_collections WHERE user_id=?;', userId)?.n ?? 0),
     memoryCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_memories WHERE user_id=?;', userId)?.n ?? 0),
-    pendingSyncCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_journeys WHERE user_id=? AND synced_to_cloud=0;', userId)?.n ?? 0),
+    pendingSyncCount: Number(db.getFirstSync<{ n: number }>(`SELECT
+      (SELECT COUNT(*) FROM local_journeys WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_music_entries WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_collections WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_memories WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId)?.n ?? 0),
   };
 }

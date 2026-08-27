@@ -3,6 +3,7 @@ import { LastFmRecorderError, syncLastFmRecorderSession } from "./lastfm-recorde
 import {
   accountConnectionStatuses,
   musicProviders,
+  recorderPlaceCategories,
   RecorderMobileStore,
   shazamConnectionStatuses,
   type RecorderCollectionInput,
@@ -10,7 +11,8 @@ import {
   type RecorderPlaceAliasInput,
   type RecorderPhotoInput,
   type RecorderMusicObservation,
-  type RecorderProviderPreferences
+  type RecorderProviderPreferences,
+  type RecorderVehicleIntelligencePreferences
 } from "./recorder-mobile.js";
 
 const identifier = { type: "string", minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9._:-]+$" } as const;
@@ -100,6 +102,44 @@ export async function registerRecorderMobileRoutes(app: FastifyInstance, mobile:
     reply.header("cache-control", "private, no-store");
     try { return await mobile.savePlaceAlias(req.body); }
     catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Location name could not be saved." }); }
+  });
+
+  app.get<{ Querystring: { timezoneOffsetMinutes?: string } }>("/api/recorder/vehicle-intelligence", {
+    schema: { querystring: { type: "object", additionalProperties: false, properties: { timezoneOffsetMinutes: { type: "string", pattern: "^-?[0-9]{1,4}$" } } } }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    const offset = req.query.timezoneOffsetMinutes ? Number(req.query.timezoneOffsetMinutes) : 0;
+    if (!Number.isInteger(offset) || offset < -840 || offset > 840) return reply.code(400).send({ error: "Timezone offset must be between -840 and 840 minutes." });
+    return mobile.vehicleIntelligence(offset);
+  });
+
+  app.put<{ Body: RecorderVehicleIntelligencePreferences }>("/api/recorder/vehicle-intelligence/preferences", {
+    schema: {
+      body: {
+        type: "object", additionalProperties: false,
+        required: ["electricityRatePerKwh", "favoriteChargingLocationKeys", "placeOverrides", "placeMerges"],
+        properties: {
+          electricityRatePerKwh: { type: "number", minimum: 0.01, maximum: 5 },
+          favoriteChargingLocationKeys: { type: "array", maxItems: 100, uniqueItems: true, items: { type: "string", minLength: 1, maxLength: 80 } },
+          placeOverrides: {
+            type: "array", maxItems: 500, items: {
+              type: "object", additionalProperties: false, required: ["placeId", "name", "category"],
+              properties: { placeId: identifier, name: { type: "string", minLength: 1, maxLength: 64 }, category: { type: "string", enum: recorderPlaceCategories } }
+            }
+          },
+          placeMerges: {
+            type: "array", maxItems: 200, items: {
+              type: "object", additionalProperties: false, required: ["sourcePlaceId", "targetPlaceId"],
+              properties: { sourcePlaceId: identifier, targetPlaceId: identifier }
+            }
+          }
+        }
+      }
+    }
+  }, async (req, reply) => {
+    reply.header("cache-control", "private, no-store");
+    try { return await mobile.saveVehicleIntelligencePreferences(req.body); }
+    catch (error) { return reply.code(400).send({ error: error instanceof Error ? error.message : "Vehicle intelligence settings could not be saved." }); }
   });
 
   app.get("/api/recorder/memories", async (_req, reply) => {

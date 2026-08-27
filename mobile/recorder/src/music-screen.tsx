@@ -2,14 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ActivityIndicator, Alert, Animated, Easing, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
+  ActivityIndicator, Alert, Animated, Easing, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
-import type { MusicDashboardData, SoundtrackTrack } from './app-data';
+import type { JourneyDetail, JourneySummary, MusicDashboardData, SoundtrackTrack } from './app-data';
 import type { MusicProvider } from './music-preferences';
 import { musicTrackDestination } from './music-destination';
+import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
 
 export type MusicDashboardState = {
   status: 'loading' | 'ready' | 'error';
@@ -37,12 +38,16 @@ async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
   catch { Alert.alert('Music app unavailable', `JourneyDeck could not open ${provider === 'lastfm' ? 'Spotify' : 'Apple Music'} right now.`); }
 }
 
-export function MusicScreen({ state, provider, onRefresh }: { state: MusicDashboardState; provider: MusicProvider; onRefresh: () => Promise<void> }) {
+export function MusicScreen({ state, provider, journeys, details, onJourney, onRefresh }: { state: MusicDashboardState; provider: MusicProvider; journeys: JourneySummary[]; details: JourneyDetail[]; onJourney: (id: string) => void; onRefresh: () => Promise<void> }) {
   const data = state.data;
   const latest = data?.recentSelections[0] ?? null;
   const canOpenTracks = provider === 'apple-music' || provider === 'lastfm';
   const insets = useSafeAreaInsets();
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [archiveQuery, setArchiveQuery] = useState('');
+  const archive = useMemo(() => buildMusicArchive(journeys, details), [journeys, details]);
+  const visibleArchive = useMemo(() => filterMusicArchive(archive, archiveQuery), [archive, archiveQuery]);
+  const topTracks = useMemo(() => topArchiveTracks(archive), [archive]);
   const refreshFromGesture = useCallback(async () => {
     if (manualRefreshing) return;
     setManualRefreshing(true);
@@ -100,6 +105,23 @@ export function MusicScreen({ state, provider, onRefresh }: { state: MusicDashbo
             <Text style={styles.artistName} numberOfLines={1}>{artist.artist}</Text>
             <Text style={styles.artistPlays}>{number(artist.plays, 0)} plays</Text>
           </View>)}</View> : <Empty text="Your artist ranking will grow with your listening archive." />}
+        </Panel>
+
+        <Panel title="Listening history" kicker={`${visibleArchive.length} JOURNEY PLAYS`}>
+          <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor="#746a7c" style={styles.archiveSearch} />
+          {visibleArchive.slice(0, 60).map(entry => <View key={entry.key} style={styles.archiveRow}>
+            <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
+              {entry.artworkUrl ? <Image source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
+              <View style={styles.archiveCopy}><Text style={styles.archiveTitle} numberOfLines={1}>{entry.track}</Text><Text style={styles.archiveArtist} numberOfLines={1}>{entry.artist}{entry.album ? `  •  ${entry.album}` : ''}</Text><Text style={styles.archiveRoute} numberOfLines={1}>{entry.routeLabel}</Text></View>
+            </Pressable>
+            <Pressable onPress={() => onJourney(entry.journeyId)} style={styles.archiveJourneyButton}><Text style={styles.archiveJourneyText}>Journey ›</Text></Pressable>
+          </View>)}
+          {!visibleArchive.length && <Empty text={archiveQuery ? 'No listening moments match that search.' : 'Songs matched to journeys will build your searchable archive here.'} />}
+        </Panel>
+
+        <Panel title="Top tracks" kicker="CALCULATED ON THIS IPHONE">
+          {topTracks.map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text style={styles.archiveTitle}>{track.track}</Text><Text style={styles.archiveArtist}>{track.artist}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>)}
+          {!topTracks.length && <Empty text="Your most-played road songs will appear here." />}
         </Panel>
 
         <View style={styles.insightPair}>
@@ -431,5 +453,7 @@ const styles = StyleSheet.create({
   chartLabel: { width: 16, textAlign: 'center', color: '#74697d', fontSize: 7 },
   chartFootnote: { color: '#ff876f', fontSize: 8, fontWeight: '700', marginTop: 8 },
   weekBars: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 3 }, weekBarItem: { flex: 1, height: 105, alignItems: 'center', justifyContent: 'flex-end' }, weekBarTrack: { width: '100%', flex: 1, justifyContent: 'flex-end' }, weekBarFill: { width: '100%', minHeight: 2, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: colors.coral, shadowColor: colors.pink, shadowOpacity: 0.75, shadowRadius: 7 }, weekBarLabel: { color: '#81758a', fontSize: 7, marginTop: 7 }, weekTotal: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 12 }, weekTotalValue: { color: colors.text, fontSize: 27, fontWeight: '900' }, weekTotalLabel: { flex: 1, color: '#8d8294', fontSize: 8 }, weekChange: { color: colors.coral, fontSize: 10, fontWeight: '900' },
+  archiveSearch: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#472759', backgroundColor: '#09060f', color: colors.text, paddingHorizontal: 13, fontSize: 12, marginBottom: 9 },
+  archiveRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1938', paddingVertical: 9, gap: 7 }, archiveTrackButton: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, archiveArtwork: { width: 48, height: 48, borderRadius: 10 }, archiveArtworkFallback: { width: 48, height: 48, borderRadius: 10, backgroundColor: '#26142f', alignItems: 'center', justifyContent: 'center' }, archiveNote: { color: colors.pink, fontSize: 21, fontWeight: '900' }, archiveCopy: { flex: 1, minWidth: 0 }, archiveTitle: { color: '#f3edf6', fontSize: 12, fontWeight: '900' }, archiveArtist: { color: '#9a8da1', fontSize: 9, marginTop: 3 }, archiveRoute: { color: '#776b80', fontSize: 8, marginTop: 4 }, archiveJourneyButton: { paddingHorizontal: 7, paddingVertical: 8, borderRadius: 9, backgroundColor: '#261632' }, archiveJourneyText: { color: '#c79be9', fontSize: 8, fontWeight: '900' }, topTrackRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1938' },
   linkFootnote: { color: '#766b7d', fontSize: 9, lineHeight: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 2 },
 });

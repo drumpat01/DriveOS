@@ -107,7 +107,9 @@ assert.match(src, /nextCursor: result\.nextCursor/, 'journeys() propagates nextC
 assert.match(src, /startingBatteryPercent: null/, 'battery data not available locally');
 assert.match(src, /energyUsedKwh: null/, 'energy data not available locally');
 assert.match(src, /tessieTag: null/, 'tessie tag not available locally');
-assert.match(src, /route: null.*populated separately/, 'route is lazy-loaded separately');
+assert.match(src, /const route = getJourneyRoute\(userId, j\.id\)/, 'journey detail loads its exact on-device route');
+assert.match(src, /listMusicEntriesForJourney\(userId, j\.id\)/, 'journey detail loads its on-device soundtrack');
+assert.match(src, /coordinateAtRecordedTime\(samples, entry\.playedAt\)/, 'song moments use timestamped on-device GPS breadcrumbs');
 
 // ============================================================
 // 10. appDataClient is still present (not replaced)

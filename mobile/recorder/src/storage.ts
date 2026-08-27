@@ -11,6 +11,12 @@ export type LocalSessionStatus = 'recording' | 'paused' | 'finishing' | 'complet
 export type SessionRow = { id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; drive_id: string | null };
 export type SessionSummary = { id: string; deviceId: string; status: LocalSessionStatus; startedAt: string; endedAt: string | null; pointCount: number; queuedCount: number; musicQueuedCount: number; remoteCreated: boolean; driveId: string | null; lastAccuracyMeters: number | null };
 export type QueuedPoint = { sequence: number; recordedAt: string; latitude: number; longitude: number; accuracyMeters: number | null; altitudeMeters: number | null; headingDegrees: number | null; speedMps: number | null };
+export type LiveRecorderSnapshot = {
+  session: SessionSummary | null;
+  route: QueuedPoint[];
+  music: MusicObservation[];
+  lastPoint: QueuedPoint | null;
+};
 export type LastFmSyncRow = { sessionId: string; username: string; status: 'pending' | 'synced'; attemptCount: number; successCount: number; nextAttemptAt: string; lastAttemptAt: string | null };
 export type { MusicObservation } from './music-observations';
 
@@ -255,6 +261,23 @@ export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionSt
   initializeDatabase();
   const endedAt = status === 'finishing' ? new Date().toISOString() : null;
   db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=?;', status, endedAt, new Date().toISOString(), sessionId);
+}
+
+/** Reads the active drive directly from this iPhone, including points already uploaded. */
+export function getLiveRecorderSnapshot(limit = 500): LiveRecorderSnapshot {
+  initializeDatabase();
+  const session = activeSession();
+  if (!session) return { session: null, route: [], music: [], lastPoint: null };
+  const boundedLimit = Math.max(2, Math.min(2_000, Math.trunc(limit)));
+  const route = db.getAllSync<QueuedPoint>(`SELECT sequence,recorded_at AS recordedAt,latitude,longitude,
+    accuracy_meters AS accuracyMeters,altitude_meters AS altitudeMeters,
+    heading_degrees AS headingDegrees,speed_mps AS speedMps
+    FROM recording_points WHERE session_id=? ORDER BY sequence DESC LIMIT ?;`, session.id, boundedLimit).reverse();
+  const music = db.getAllSync<MusicObservation>(`SELECT observation_id AS observationId,source,
+    played_at AS playedAt,track,artist,album,duration_ms AS durationMs,
+    artwork_url AS artworkUrl,external_url AS externalUrl,confidence
+    FROM recording_music_observations WHERE session_id=? ORDER BY played_at DESC LIMIT 20;`, session.id).reverse();
+  return { session: getSessionSummary(session.id), route, music, lastPoint: route.at(-1) ?? null };
 }
 
 function distanceMeters(a: QueuedPoint, b: QueuedPoint): number {

@@ -3,7 +3,7 @@
     "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.6.0",
+    "version": "1.7.0",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -24,11 +24,18 @@
     ],
     "ios": {
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.journeydeck.recorder",
       "entitlements": {
-        "com.apple.developer.applesignin": ["Default"],
-        "com.apple.developer.icloud-container-identifiers": ["iCloud.com.journeydeck.recorder"],
-        "com.apple.developer.icloud-services": ["CloudKit"],
+        "com.apple.developer.applesignin": [
+          "Default"
+        ],
+        "com.apple.developer.icloud-container-identifiers": [
+          "iCloud.com.journeydeck.recorder"
+        ],
+        "com.apple.developer.icloud-services": [
+          "CloudKit"
+        ],
         "com.apple.developer.ubiquity-kvstore-identifier": "$(TeamIdentifierPrefix)$(CFBundleIdentifier)"
       },
       "infoPlist": {
@@ -71,7 +78,9 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-image",
-      "expo-splash-screen"
+      "expo-splash-screen",
+      "@maplibre/maplibre-react-native",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

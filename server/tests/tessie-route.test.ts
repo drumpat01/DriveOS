@@ -9,7 +9,7 @@ test('Tessie historical states are requested privately and normalized into times
     requestedUrl = new URL(String(input));
     authorization = new Headers(init?.headers).get('authorization') ?? '';
     return Response.json({ results: [
-      { timestamp: 1_000, latitude: 32.8, longitude: -97.4 },
+      { timestamp: 1_000, latitude: 32.8, longitude: -97.4, speed: 42, heading: 275, battery_level: 71 },
       { timestamp: 1_001, latitude: 'invalid', longitude: -97.3 },
       { timestamp: 1_002, latitude: 32.9, longitude: -97.2 },
     ] });
@@ -22,8 +22,8 @@ test('Tessie historical states are requested privately and normalized into times
   assert.equal(requestedUrl?.searchParams.get('interval'), '1');
   assert.equal(authorization, 'Bearer private-token');
   assert.deepEqual(result, [
-    { recordedAtEpochMs: 1_000_000, coordinate: [-97.4, 32.8] },
-    { recordedAtEpochMs: 1_002_000, coordinate: [-97.2, 32.9] },
+    { recordedAtEpochMs: 1_000_000, coordinate: [-97.4, 32.8], speedMph: 42, headingDegrees: 275, batteryPercent: 71 },
+    { recordedAtEpochMs: 1_002_000, coordinate: [-97.2, 32.9], speedMph: null, headingDegrees: null, batteryPercent: null },
   ]);
 });
 
