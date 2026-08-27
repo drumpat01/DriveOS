@@ -4,7 +4,7 @@
 
 - Real-device private iCloud testing reached CloudKit successfully but returned `0 uploaded · 0 downloaded · 4 will retry`; all four per-record saves were rejected because the JourneyDeck record types had never been deployed beyond the default `Users` development schema.
 - Imported the checked-in `mobile/recorder/cloudkit/journeydeck-development.ckdb` schema into `iCloud.com.journeydeck.recorder` Development after Apple validation passed, then deployed it successfully to Production. The deployment created `Journey`, `MusicEntry`, `Collection`, and `Memory`, added their exact privacy-safe fields, preserved `Users`, and changed only the `_creator`/`_world` grants required for the new types; there were no deletions or indexes.
-- Added schema-drift assertions to the CloudKit sync test. Physical acceptance is pending: tap `Retry private iCloud sync` and confirm the four queued records upload with zero remaining retries. No native build or OTA is required for the server-side schema change.
+- Added schema-drift assertions to the CloudKit sync test. Physical acceptance passed: after deployment, app launch completed its automatic private sync and the explicit retry reported `0 uploaded · 4 downloaded` with no remaining retry failures, confirming the four records exist in the private Production zone and can be read back on-device. No native build or OTA was required for the server-side schema change.
 
 ## Visible preview/OTA identity — August 27, 2026
 
