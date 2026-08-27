@@ -26,7 +26,7 @@ import {
   type JourneyMemory, type JourneyPhoto, type JourneySummary, type MemoriesCatalog, type ProviderPreferences,
 } from './app-data';
 import {
-  loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
+  isLastFmConnected, loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
   type MusicPreferences, type MusicProvider,
 } from './music-preferences';
 import {
@@ -34,6 +34,8 @@ import {
   isJourneyDeckMusicNativeAvailable, type JourneyDeckMusicCapabilityStatus,
 } from '../modules/journeydeck-music';
 import { syncRecentLastFmNow } from './lastfm-sync';
+import { beginSpotifyDirectConnection, finishSpotifyDirectConnection, spotifyDirectStatus, syncRecentSpotifyDirectNow } from './spotify-direct';
+import { loadConnection } from './credentials';
 import {
   loadRecordingModePreferences, saveRecordingModePreferences, type RecordingMode,
   type RecordingModePreferences,
@@ -165,6 +167,16 @@ const providerOptions: ProviderOption[] = [
   },
 ];
 
+const spotifyDirectOption: ProviderOption = {
+  id: 'spotify-direct', name: 'Owner Spotify', kicker: 'PRIVATE OWNER PREVIEW', symbol: '▶', brand: 'spotify', color: '#1ed760', tint: '#0d2116',
+  summary: 'Use Patrick’s allowlisted Spotify developer account directly on this iPhone.',
+  benefits: ['Exact Spotify playback timestamps', 'Tokens stay in this iPhone Keychain', 'No JourneyDeck server storage'],
+  drawbacks: ['Owner-only developer access', 'Not available to public JourneyDeck accounts'],
+  privacy: 'The privacy edge exchanges PKCE codes without storing tokens. Spotify history goes directly to this iPhone.',
+};
+
+const allProviderOptions = [...providerOptions, spotifyDirectOption];
+
 const defaultConnections: ProviderPreferences['connections'] = {
   appleMusic: 'not_connected', shazam: 'not_enabled', lastFm: 'not_connected', tessie: 'not_connected',
 };
@@ -203,6 +215,9 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   const [lastFmDraft, setLastFmDraft] = useState('');
   const [savingLastFm, setSavingLastFm] = useState(false);
   const [syncingLastFm, setSyncingLastFm] = useState(false);
+  const [lastFmConnected, setLastFmConnected] = useState(false);
+  const [ownerSpotifyEligible, setOwnerSpotifyEligible] = useState(false);
+  const [spotifyOwnerState, setSpotifyOwnerState] = useState<'not_connected' | 'connecting' | 'connected' | 'syncing'>('not_connected');
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [appleIdentityStatus, setAppleIdentityStatus] = useState<AppleIdentityStatus>('unknown');
   const [signingInWithApple, setSigningInWithApple] = useState(false);
@@ -240,8 +255,29 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     let alive = true;
     void loadMusicPreferences().then(value => { if (alive) setPreferences(value); });
     setRecordingPreferences(loadRecordingModePreferences());
-    void loadLastFmUsername().then(value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); } });
+    void loadLastFmUsername().then(async value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); setLastFmConnected(await isLastFmConnected(value)); } });
+    void Promise.all([loadConnection(), spotifyDirectStatus()]).then(([connection, status]) => {
+      if (!alive) return;
+      setOwnerSpotifyEligible(Boolean(connection));
+      setSpotifyOwnerState(status);
+    });
     return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    const finish = (url: string) => {
+      void finishSpotifyDirectConnection(url).then(handled => {
+        if (!handled) return;
+        setSpotifyOwnerState('connected');
+        Alert.alert('Owner Spotify connected', 'Recent playback can now be matched directly on this iPhone. Public users will continue to use Last.fm.');
+      }).catch(error => {
+        setSpotifyOwnerState('not_connected');
+        Alert.alert('Spotify did not connect', error instanceof Error ? error.message : 'Try again from Settings.');
+      });
+    };
+    const subscription = Linking.addEventListener('url', event => finish(event.url));
+    void Linking.getInitialURL().then(url => { if (url) finish(url); });
+    return () => subscription.remove();
   }, []);
 
   const refreshDashboard = useCallback(async (refreshRemote = false) => {
@@ -386,6 +422,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   useEffect(() => {
     if (!preferences?.provider || !preferences.onboardingCompleted || dashboard.status !== 'ready' || !dashboard.data.recorder.connected) return;
     const desired = toApiMusicProvider(preferences.provider), remote = dashboard.data.providerPreferences;
+    if (!desired) return;
     if (remote?.musicProvider === desired && remote.onboardingCompleted) return;
     const attemptKey = `${desired}:${remote?.updatedAt ?? 'new'}`;
     if (preferenceSyncAttempt.current === attemptKey) return;
@@ -416,7 +453,11 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, []);
 
   const refreshConnectionCapabilities = useCallback(async () => {
-    try { setConnectionCapabilities(await appDataClient.connectionCapabilities()); }
+    try {
+      setConnectionCapabilities(await appDataClient.connectionCapabilities());
+      const username = await loadLastFmUsername();
+      setLastFmConnected(await isLastFmConnected(username));
+    }
     catch { setConnectionCapabilities({ lastFmConfigured: false, tessieConfigured: false }); }
   }, []);
 
@@ -431,9 +472,11 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     await saveMusicPreferences(next);
     setPreferences(next);
     setEditingProvider(false);
+    const desired = toApiMusicProvider(provider);
+    if (!desired) return;
     const existing = await appDataClient.providerPreferences().catch(() => null);
     await appDataClient.updateProviderPreferences({
-      musicProvider: toApiMusicProvider(provider),
+      musicProvider: desired,
       onboardingCompleted: true,
       connections: existing?.connections ?? defaultConnections,
     }).catch(() => null);
@@ -507,6 +550,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       const normalized = lastFmDraft.trim();
       setLastFmUsername(normalized);
       setLastFmDraft(normalized);
+      setLastFmConnected(await isLastFmConnected(normalized));
       setEditingLastFm(false);
       if (normalized) Alert.alert('Last.fm username saved', `JourneyDeck will try to match scrobbles for ${normalized} after your next completed journey.`);
     } catch (error) {
@@ -521,6 +565,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
     try {
       const result = await syncRecentLastFmNow();
       if (result.succeeded > 0) {
+        setLastFmConnected(true);
         await saveConnectionState({ lastFm: 'connected' });
         Alert.alert('Last.fm sync finished', result.matchedTracks ? `${result.matchedTracks} ${result.matchedTracks === 1 ? 'song was' : 'songs were'} matched to recent journeys.` : 'The connection worked. No new scrobbles matched those journey times yet.');
       } else if (result.attempted === 0) {
@@ -532,6 +577,27 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       setSyncingLastFm(false);
     }
   }, [saveConnectionState]);
+
+  const connectSpotifyOwner = useCallback(async () => {
+    setSpotifyOwnerState('connecting');
+    try { await beginSpotifyDirectConnection(); }
+    catch (error) {
+      setSpotifyOwnerState('not_connected');
+      Alert.alert('Spotify could not open', error instanceof Error ? error.message : 'Try again from Settings.');
+    }
+  }, []);
+
+  const syncSpotifyOwner = useCallback(async () => {
+    setSpotifyOwnerState('syncing');
+    try {
+      const result = await syncRecentSpotifyDirectNow();
+      setSpotifyOwnerState('connected');
+      Alert.alert('Owner Spotify sync finished', result.attempted === 0 ? 'Finish a journey first.' : result.matchedTracks ? `${result.matchedTracks} new songs matched recent journeys.` : 'The connection worked. No new songs matched those journey times.');
+    } catch (error) {
+      setSpotifyOwnerState(await spotifyDirectStatus());
+      Alert.alert('Owner Spotify sync did not finish', error instanceof Error ? error.message : 'Try again later. Recording is unaffected.');
+    }
+  }, []);
 
   const openTab = (next: Tab) => {
     if (next === tabRef.current) return;
@@ -564,10 +630,12 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
         />}
         {activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
+          ownerSpotifyEnabled={ownerSpotifyEligible}
           onContinue={async provider => {
             await chooseProvider(provider);
             if (provider === 'apple-music') await connectAppleMusic(provider);
             if (provider === 'shazam') await enableRecognition(provider);
+            if (provider === 'spotify-direct') await connectSpotifyOwner();
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
@@ -603,7 +671,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
               privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
               music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />}
               recorder={recorder}
-              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
+              settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
             />
           </View>
         </PagerView>}
@@ -688,14 +756,15 @@ function RecordingModeCard({ option, width }: { option: RecordingModeOption; wid
   );
 }
 
-function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvider; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
+function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: { initial: MusicProvider; ownerSpotifyEnabled: boolean; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
   const { width } = useWindowDimensions();
+  const availableProviders = ownerSpotifyEnabled ? allProviderOptions : providerOptions;
   const cardWidth = Math.max(280, width - 44);
-  const initialIndex = Math.max(0, providerOptions.findIndex(option => option.id === initial));
+  const initialIndex = Math.max(0, availableProviders.findIndex(option => option.id === initial));
   const [index, setIndex] = useState(initialIndex);
   const [saving, setSaving] = useState(false);
   const carousel = useRef<any>(null);
-  const selected = providerOptions[index];
+  const selected = availableProviders[index];
 
   const finish = async () => {
     setSaving(true);
@@ -710,9 +779,9 @@ function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvi
         <BrandHeader compact />
         <Text style={styles.onboardingEyebrow}>YOUR JOURNEY SOUNDTRACK</Text>
         <Text style={styles.onboardingTitle}>Choose how JourneyDeck finds your music</Text>
-        <Text style={styles.onboardingBody}>Swipe through all three choices. You can change this later without affecting recording.</Text>
+        <Text style={styles.onboardingBody}>Swipe through the available choices. You can change this later without affecting recording.</Text>
         <View style={styles.providerTabs}>
-          {providerOptions.map((option, optionIndex) => (
+          {availableProviders.map((option, optionIndex) => (
             <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.providerTab, index === optionIndex && { borderColor: option.color, backgroundColor: option.tint }]}>
               <ProviderMark brand={option.brand} size={28} />
             </Pressable>
@@ -722,12 +791,12 @@ function ProviderPicker({ initial, onContinue, onCancel }: { initial: MusicProvi
           ref={carousel}
           horizontal showsHorizontalScrollIndicator={false} snapToInterval={cardWidth + 12} decelerationRate="fast"
           contentOffset={{ x: initialIndex * (cardWidth + 12), y: 0 }}
-          onMomentumScrollEnd={event => setIndex(Math.max(0, Math.min(providerOptions.length - 1, Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 12)))))}
+          onMomentumScrollEnd={event => setIndex(Math.max(0, Math.min(availableProviders.length - 1, Math.round(event.nativeEvent.contentOffset.x / (cardWidth + 12)))))}
           contentContainerStyle={styles.providerCarousel}
         >
-          {providerOptions.map(option => <ProviderCard key={option.id} option={option} width={cardWidth} />)}
+          {availableProviders.map(option => <ProviderCard key={option.id} option={option} width={cardWidth} />)}
         </ScrollView>
-        <View style={styles.pageDots}>{providerOptions.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: selected.color }]} />)}</View>
+        <View style={styles.pageDots}>{availableProviders.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: selected.color }]} />)}</View>
         <PrimaryAction label={saving ? 'Saving your choice…' : `Continue with ${selected.name}`} onPress={() => void finish()} disabled={saving} />
         {onCancel && <Pressable onPress={onCancel} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Keep my current choice</Text></Pressable>}
         <Text style={styles.providerFootnote}>Music connections are optional. JourneyDeck always records your route safely, even when a music service is unavailable.</Text>
@@ -1692,10 +1761,10 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
 }
 
 function ConnectionsScreen({
-  dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, editingLastFm, lastFmDraft,
+  dashboard, provider, recordingMode, capabilities, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   onChangeRecordingMode, onConnectAppleMusic, onEnableRecognition, currentUser, appleIdentityStatus, signingInWithApple,
-  privateCloud, onAppleSignIn, onPrivateCloudSync,
+  privateCloud, onAppleSignIn, onPrivateCloudSync, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync,
 }: {
   dashboard: AppDashboard;
   provider: MusicProvider;
@@ -1707,15 +1776,20 @@ function ConnectionsScreen({
   signingInWithApple: boolean;
   privateCloud: PrivateCloudUiState;
   lastFmUsername: string;
+  lastFmConnected: boolean;
   editingLastFm: boolean;
   lastFmDraft: string;
   savingLastFm: boolean;
   syncingLastFm: boolean;
+  ownerSpotifyEligible: boolean;
+  spotifyOwnerState: 'not_connected' | 'connecting' | 'connected' | 'syncing';
   onLastFmDraft: (value: string) => void;
   onEditLastFm: () => void;
   onCancelLastFm: () => void;
   onSaveLastFm: () => void;
   onSyncLastFm: () => void;
+  onSpotifyOwnerConnect: () => void;
+  onSpotifyOwnerSync: () => void;
   onChangeRecordingMode: () => void;
   onChangeProvider: () => void;
   onConnectAppleMusic: () => void;
@@ -1724,7 +1798,7 @@ function ConnectionsScreen({
   onPrivateCloudSync: () => void;
 }) {
   const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
-  const selected = providerOptions.find(option => option.id === provider)!;
+  const selected = allProviderOptions.find(option => option.id === provider) ?? providerOptions[0]!;
   const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
@@ -1797,15 +1871,18 @@ function ConnectionsScreen({
         <SectionHeading title="Music connections" />
         <ConnectionTile name="Apple Music" detail="Native history and artwork" symbol="♪" brand="apple-music" color="#fa5c74" status={nativeAppleStatus(capabilities, connections.appleMusic)} action={capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Manage' : 'Connect'} onPress={onConnectAppleMusic} />
         <ConnectionTile name="Auto Recognition" detail="Music recognition powered by ShazamKit" symbol="S" brand="shazam" color="#2688ff" status={nativeShazamStatus(capabilities, connections.shazam)} action={capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled' : 'Enable'} onPress={onEnableRecognition} />
-        <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Server setup required' : connections.lastFm === 'connected' ? statusText(connections.lastFm) : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : statusText(connections.lastFm)} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
+        <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
         {editingLastFm && <View style={styles.setupCard}>
           <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
           <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
           <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor="#6f6877" style={styles.setupInput} />
-          {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The JourneyDeck server still needs its private Last.fm key before syncing can run.</Text>}
+          <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
+          <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
+          {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
           {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
           <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
         </View>}
+        {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color="#1ed760" status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
 
         <SectionHeading title="Vehicle" />
         <ConnectionTile name="Tessie" detail="Battery, energy, and vehicle context" symbol="T" mark={<TessieMark size={46} />} color="#65c9ff" status={connectionCapabilities.tessieConfigured ? 'Connected through Tessie' : statusText(connections.tessie)} action={connectionCapabilities.tessieConfigured ? 'Server managed' : 'Learn more'} onPress={() => Alert.alert('Better with Tesla + Tessie', connectionCapabilities.tessieConfigured ? 'Tessie is connected securely on the JourneyDeck server. Its token is never copied to this iPhone.' : 'Tessie can add Tesla battery, energy, charging, and vehicle context. Journey recording and music continue to work normally without it.', [{ text: 'Not now', style: 'cancel' }, { text: 'Visit Tessie', onPress: () => void Linking.openURL('https://www.tessie.com/') }])} />

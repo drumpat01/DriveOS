@@ -6,7 +6,15 @@
  * Stores ZERO user tokens or state on the server.
  */
 
-import { jsonResponse, optionalSecret, readBoundedJson, stringField } from './http.ts';
+import { jsonResponse, readBoundedJson, readBoundedResponseJson, stringField } from './http.ts';
+
+export function handleSpotifyConfig(request: Request, env: Env): Response {
+  if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
+  const clientId = env.SPOTIFY_CLIENT_ID?.trim();
+  const redirectUri = env.SPOTIFY_REDIRECT_URIS.split(',').map(value => value.trim()).find(value => value.startsWith('journeydeck-recorder://'));
+  if (!clientId || clientId === 'replace-with-spotify-client-id' || !redirectUri) return jsonResponse({ error: 'Spotify is not configured' }, 503, { 'Cache-Control': 'no-store' });
+  return jsonResponse({ clientId, redirectUri }, 200, { 'Cache-Control': 'private, max-age=300' });
+}
 
 export async function handleSpotifyTokenExchange(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
@@ -16,7 +24,9 @@ export async function handleSpotifyTokenExchange(request: Request, env: Env): Pr
   try {
     const body = await readBoundedJson(request);
     if (!body) return jsonResponse({ error: 'Invalid JSON body' }, 400, { 'Cache-Control': 'no-store' });
-    const clientId = optionalSecret(env, 'SPOTIFY_CLIENT_ID');
+    const allowed = await env.SPOTIFY_RATE_LIMITER.limit({ key: 'owner-token-broker' });
+    if (!allowed.success) return jsonResponse({ error: 'Try Spotify again in a minute' }, 429, { 'Cache-Control': 'no-store', 'Retry-After': '60' });
+    const clientId = env.SPOTIFY_CLIENT_ID?.trim();
     if (!clientId || clientId === 'replace-with-spotify-client-id') {
       return jsonResponse({ error: 'Spotify is not configured' }, 503, { 'Cache-Control': 'no-store' });
     }
@@ -58,14 +68,9 @@ export async function handleSpotifyTokenExchange(request: Request, env: Env): Pr
       signal: AbortSignal.timeout(10_000),
     });
 
-    const data = await spotifyRes.text();
-    return new Response(data, {
-      status: spotifyRes.status,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-      },
-    });
+    const data = await readBoundedResponseJson<Record<string, unknown>>(spotifyRes, 65_536);
+    if (!data) return jsonResponse({ error: 'Spotify returned an invalid token response' }, 502, { 'Cache-Control': 'no-store' });
+    return jsonResponse(data, spotifyRes.status, { 'Cache-Control': 'no-store, no-cache, must-revalidate' });
   } catch {
     return jsonResponse({ error: 'Spotify token request failed' }, 502, { 'Cache-Control': 'no-store' });
   }

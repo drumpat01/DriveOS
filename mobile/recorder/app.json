@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Phase 3 — privacy-safe edge cities",
-        "sequence": "P3.1"
+        "label": "Bundle A — music independence",
+        "sequence": "P3.3"
       },
       "edge": {
         "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"

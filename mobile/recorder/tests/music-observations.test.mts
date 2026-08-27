@@ -122,6 +122,7 @@ test('normalization replaces an unsafe id and rejects missing playback metadata'
 test('music track destinations follow only the selected playback service', () => {
   const track = { track: 'Night Drive', artist: 'The Test Pilots', externalUrl: 'https://open.spotify.com/track/spotify-id' };
   assert.equal(musicTrackDestination(track, 'lastfm'), track.externalUrl);
+  assert.equal(musicTrackDestination(track, 'spotify-direct'), track.externalUrl);
   assert.equal(musicTrackDestination(track, 'apple-music'), 'https://music.apple.com/us/search?term=Night%20Drive%20The%20Test%20Pilots');
   assert.equal(musicTrackDestination(track, 'shazam'), null);
   assert.equal(musicTrackDestination({ ...track, externalUrl: 'https://music.apple.com/us/song/apple-id' }, 'apple-music'), 'https://music.apple.com/us/song/apple-id');

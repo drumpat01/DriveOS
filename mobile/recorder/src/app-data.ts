@@ -1,5 +1,6 @@
 import type { Connection } from './credentials';
 import * as Crypto from 'expo-crypto';
+import Constants from 'expo-constants';
 import { loadConnection } from './credentials';
 import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
@@ -637,18 +638,12 @@ export const appDataClient = {
   },
 
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
+    const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
+    const lastFmConfigured = typeof edge?.url === 'string' && /^https:\/\//.test(edge.url);
     const connection = await loadConnection();
-    if (!connection) return { lastFmConfigured: false, tessieConfigured: false };
-    return request(connection, '/api/recorder/connections/status');
-  },
-
-  async syncLastFm(sessionId: string, username: string): Promise<{ synced: number; total: number }> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before syncing Last.fm.');
-    return request(connection, `/api/recorder/sessions/${encodeURIComponent(sessionId)}/lastfm/sync`, {
-      method: 'POST',
-      body: JSON.stringify({ deviceId: connection.deviceId, username: username.trim() }),
-    }, 35_000);
+    if (!connection) return { lastFmConfigured, tessieConfigured: false };
+    const server = await request<ConnectionCapabilities>(connection, '/api/recorder/connections/status').catch(() => ({ lastFmConfigured: false, tessieConfigured: false }));
+    return { lastFmConfigured, tessieConfigured: server.tessieConfigured };
   },
 };
 

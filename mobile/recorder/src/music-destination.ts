@@ -3,7 +3,7 @@ import type { MusicProvider } from './music-preferences';
 
 export function musicTrackDestination(track: Pick<SoundtrackTrack, 'track' | 'artist' | 'externalUrl'>, provider: MusicProvider) {
   const query = encodeURIComponent(`${track.track} ${track.artist}`.trim());
-  if (provider === 'lastfm') {
+  if (provider === 'lastfm' || provider === 'spotify-direct') {
     if (track.externalUrl?.startsWith('https://open.spotify.com/')) return track.externalUrl;
     return `https://open.spotify.com/search/${query}`;
   }

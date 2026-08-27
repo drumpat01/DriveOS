@@ -559,6 +559,15 @@ export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMu
   );
 }
 
+export function refreshJourneySongCount(userId: LocalUserId, journeyId: string): number {
+  initializeLocalStore();
+  const total = Number(db.getFirstSync<{ total: number }>(
+    'SELECT COUNT(*) AS total FROM local_music_entries WHERE user_id=? AND journey_id=?;', userId, journeyId,
+  )?.total ?? 0);
+  db.runSync('UPDATE local_journeys SET song_count=?,synced_to_cloud=0,updated_at=? WHERE id=? AND user_id=?;', total, now(), journeyId, userId);
+  return total;
+}
+
 export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEntry[] {
   initializeLocalStore();
   return db.getAllSync<Record<string, unknown>>(

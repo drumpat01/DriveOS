@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["worker-configuration.d.ts", "workers/**/*.ts"]
+  "include": ["*.d.ts", "workers/**/*.ts"]
 }

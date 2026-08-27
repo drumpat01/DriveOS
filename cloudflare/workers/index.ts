@@ -5,9 +5,10 @@
  * Handles CORS, route matching, and dispatches to sub-handlers.
  */
 
-import { handleSpotifyTokenExchange } from './oauth-spotify.ts';
+import { handleSpotifyConfig, handleSpotifyTokenExchange } from './oauth-spotify.ts';
 import { handleTessieVerification } from './oauth-tessie.ts';
 import { handlePlacesLookup } from './places-lookup.ts';
+import { handleLastFmHistory } from './lastfm-history.ts';
 import { jsonResponse } from './http.ts';
 
 const CORS_HEADERS = {
@@ -60,8 +61,12 @@ export default {
     try {
       if (path === '/health' || path === '/readyz') {
         response = jsonResponse({ status: 'healthy', runtime: 'cloudflare-worker', environment: env.ENVIRONMENT, time: new Date().toISOString() });
+      } else if (path === '/api/auth/spotify/config') {
+        response = handleSpotifyConfig(request, env);
       } else if (path === '/api/auth/spotify/token' || path === '/api/auth/spotify/refresh') {
         response = await handleSpotifyTokenExchange(request, env);
+      } else if (path === '/api/music/lastfm/recent') {
+        response = await handleLastFmHistory(request, env);
       } else if (path === '/api/auth/tessie/verify') {
         response = await handleTessieVerification(request);
       } else if (path === '/api/places/reverse') {

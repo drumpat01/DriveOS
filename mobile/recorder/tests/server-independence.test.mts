@@ -11,6 +11,8 @@ const storage = await readFile(new URL('../src/storage.ts', import.meta.url), 'u
 const iCloud = await readFile(new URL('../src/icloud-sync.ts', import.meta.url), 'utf8');
 const shell = await readFile(new URL('../src/shell.tsx', import.meta.url), 'utf8');
 const localArchiveEvents = await readFile(new URL('../src/local-archive-events.ts', import.meta.url), 'utf8');
+const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
+const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
@@ -54,4 +56,17 @@ test('automatic iCloud checks are coalesced while explicit sync can force a pass
   assert.match(iCloud, /AUTOMATIC_SYNC_COOLDOWN_MS = 15 \* 60_000/);
   assert.match(iCloud, /!options\.force && recent/);
   assert.match(app, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/);
+});
+
+test('public Spotify history is imported through the stateless privacy edge and saved on device', () => {
+  assert.match(lastFm, /\/api\/music\/lastfm\/recent/);
+  assert.match(lastFm, /saveImportedMusicForCompletedSession/);
+  assert.doesNotMatch(lastFm, /appDataClient|\/api\/recorder\/sessions/);
+});
+
+test('direct Spotify remains a local owner capability with PKCE and no JourneyDeck server transport', () => {
+  assert.match(spotify, /code_challenge_method: 'S256'/);
+  assert.match(spotify, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
+  assert.match(spotify, /user-read-recently-played/);
+  assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
 });

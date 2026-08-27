@@ -3,7 +3,7 @@ import * as SQLite from 'expo-sqlite';
 import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
 import { getCurrentUser } from './auth';
-import { insertGpsPoints, upsertJourney, upsertMusicEntry } from './local-store';
+import { insertGpsPoints, listMusicEntriesForJourney, refreshJourneySongCount, upsertJourney, upsertMusicEntry } from './local-store';
 import { rebuildAtlasSnapshot } from './local-atlas';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 
@@ -20,6 +20,7 @@ export type LiveRecorderSnapshot = {
   lastPoint: QueuedPoint | null;
 };
 export type LastFmSyncRow = { sessionId: string; username: string; status: 'pending' | 'synced'; attemptCount: number; successCount: number; nextAttemptAt: string; lastAttemptAt: string | null };
+export type ImportedMusicTrack = { playedAt: string; track: string; artist: string; album: string | null; durationMs?: number | null; artworkUrl?: string | null; externalUrl?: string | null };
 export type { MusicObservation } from './music-observations';
 
 export function initializeDatabase() {
@@ -281,6 +282,12 @@ export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionSt
   db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=?;', status, endedAt, new Date().toISOString(), sessionId);
 }
 
+export function recentCompletedSessionIds(limit = 5) {
+  initializeDatabase();
+  return db.getAllSync<{ id: string }>(`SELECT id FROM recording_sessions WHERE status='completed' ORDER BY COALESCE(ended_at,updated_at) DESC LIMIT ?;`,
+    Math.max(1, Math.min(10, Math.trunc(limit)))).map(row => row.id);
+}
+
 export function totalQueuedPointCount() {
   initializeDatabase();
   return Number(db.getFirstSync<{ total: number }>('SELECT COUNT(*) AS total FROM recording_points WHERE uploaded=0;')?.total || 0);
@@ -311,6 +318,17 @@ function distanceMeters(a: QueuedPoint, b: QueuedPoint): number {
   const chord = Math.sin(dLat / 2) ** 2
     + Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude)) * Math.sin(dLng / 2) ** 2;
   return 2 * earthRadius * Math.asin(Math.sqrt(chord));
+}
+
+function stableImportHash(value: string) {
+  let first = 0x811c9dc5, second = 0x9e3779b9;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    first = Math.imul(first ^ code, 0x01000193);
+    second = Math.imul(second ^ code, 0x85ebca6b);
+    second ^= second >>> 13;
+  }
+  return `${(first >>> 0).toString(36)}${(second >>> 0).toString(36)}`;
 }
 
 function mirrorCompletedSessionToLocalStore(sessionId: string): void {
@@ -368,8 +386,33 @@ function mirrorCompletedSessionToLocalStore(sessionId: string): void {
       confidence: observation.confidence,
     });
   }
+  refreshJourneySongCount(user.id, journeyId);
   rebuildAtlasSnapshot(user.id);
   notifyLocalArchiveChanged();
+}
+
+export function saveImportedMusicForCompletedSession(sessionId: string, source: 'lastfm' | 'spotify', tracks: ImportedMusicTrack[]) {
+  initializeDatabase();
+  const session = getSession(sessionId);
+  if (!session?.ended_at || session.status !== 'completed') throw new Error('That journey is not ready for music matching.');
+  mirrorCompletedSessionToLocalStore(sessionId);
+  const user = getCurrentUser(), journeyId = `local_${sessionId}`;
+  const before = listMusicEntriesForJourney(user.id, journeyId).length;
+  const start = Date.parse(session.started_at) - 120_000, end = Date.parse(session.ended_at) + 120_000;
+  for (const track of tracks) {
+    const playedAt = Date.parse(track.playedAt);
+    if (!Number.isFinite(playedAt) || playedAt < start || playedAt > end) continue;
+    const identity = `${source}\0${track.track.toLowerCase()}\0${track.artist.toLowerCase()}\0${Math.round(playedAt / 30_000)}`;
+    upsertMusicEntry({
+      id: `${journeyId}_import_${source}_${stableImportHash(identity)}`, userId: user.id, journeyId, source,
+      playedAt: new Date(playedAt).toISOString(), track: track.track, artist: track.artist, album: track.album,
+      durationMs: track.durationMs ?? null, artworkUrl: track.artworkUrl ?? null, externalUrl: track.externalUrl ?? null, confidence: null,
+    });
+  }
+  const total = refreshJourneySongCount(user.id, journeyId);
+  rebuildAtlasSnapshot(user.id);
+  notifyLocalArchiveChanged();
+  return Math.max(0, total - before);
 }
 
 export function completeSessionLocally(sessionId: string, queueRemote = true) {

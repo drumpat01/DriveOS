@@ -3,6 +3,11 @@
   "name": "journeydeck-edge",
   "main": "workers/index.ts",
   "compatibility_date": "2026-08-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "ratelimits": [
+    { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17031", "simple": { "limit": 12, "period": 60 } },
+    { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17033", "simple": { "limit": 12, "period": 60 } }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.05,
@@ -21,6 +26,10 @@
   "env": {
     "preview": {
       "name": "journeydeck-edge-preview",
+      "ratelimits": [
+        { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17032", "simple": { "limit": 12, "period": 60 } },
+        { "name": "SPOTIFY_RATE_LIMITER", "namespace_id": "17034", "simple": { "limit": 12, "period": 60 } }
+      ],
       "vars": {
         "ENVIRONMENT": "preview",
         "NOMINATIM_USER_AGENT": "JourneyDeck-Edge-Preview/1.7 (contact@journeydeck.app)",

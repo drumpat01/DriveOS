@@ -4,10 +4,11 @@ import {
   classifyJourneyDeckRequest,
   recordBlockedJourneyDeckRequest,
 } from './network-activity';
+import type { NetworkActivityReason } from './network-activity';
 
 type JourneyDeckConnection = { serverUrl: string; token: string };
 type RequestOptions = { timeoutMs?: number; timeoutMessage?: string };
-type EdgeRequestOptions = RequestOptions & { operation?: string };
+type EdgeRequestOptions = RequestOptions & { operation?: string; reason?: NetworkActivityReason };
 
 export class JourneyDeckNetworkBlockedError extends Error {
   constructor() {
@@ -94,7 +95,7 @@ export async function requestPrivacyEdgeJson<T>(
   const serializedBody = JSON.stringify(body);
   const activity = beginNetworkActivity({
     category: 'privacy_edge',
-    reason: 'place_lookup',
+    reason: options.reason ?? 'place_lookup',
     operation: options.operation ?? 'City label lookup',
     method: 'POST',
     uploadBytes: requestUploadBytes(serializedBody),
@@ -116,8 +117,39 @@ export async function requestPrivacyEdgeJson<T>(
   } catch (error) {
     activity.finish({ outcome: 'failed' });
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(options.timeoutMessage || 'The privacy-safe city lookup took too long.');
+      throw new Error(options.timeoutMessage || 'The privacy edge took too long to respond.');
     }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function requestExternalProviderJson<T>(
+  url: string,
+  accessToken: string,
+  options: EdgeRequestOptions = {},
+): Promise<T> {
+  if (!/^https:\/\/api\.spotify\.com\//.test(url)) throw new Error('Unapproved music provider URL.');
+  const activity = beginNetworkActivity({
+    category: 'privacy_edge', reason: 'external_import', operation: options.operation ?? 'Private music import', method: 'GET', uploadBytes: 0,
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json', authorization: `Bearer ${accessToken}` } });
+    const downloadBytes = reportedDownloadBytes(response);
+    const payload = await response.json().catch(() => null) as ({ error?: { message?: string } } & T) | null;
+    activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
+    if (!response.ok) {
+      const error = new Error(payload?.error?.message || `Spotify returned ${response.status}.`) as Error & { status?: number };
+      error.status = response.status;
+      throw error;
+    }
+    return payload as T;
+  } catch (error) {
+    activity.finish({ outcome: 'failed' });
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(options.timeoutMessage || 'Spotify took too long to respond.');
     throw error;
   } finally {
     clearTimeout(timeout);

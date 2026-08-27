@@ -263,7 +263,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <View style={styles.networkGrid}>
         <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
         <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
-        <NetworkMetric label="PRIVATE EDGE" value={`${network.privacyEdgeOperations}`} detail="city label lookups" />
+        <NetworkMetric label="PRIVATE EDGE" value={`${network.privacyEdgeOperations}`} detail="provider + city requests" />
         <NetworkMetric label="TRANSFERRED" value={formatBytes(network.uploadBytes + network.downloadBytes)} detail={`${formatBytes(network.uploadBytes)} up · ${formatBytes(network.downloadBytes)} down`} />
         <NetworkMetric label="BLOCKED" value={`${network.blockedOperations}`} detail="local-only test" />
       </View>
@@ -276,7 +276,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       </View>
       {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
         : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
-      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window; direct owner Spotify tokens stay in this iPhone Keychain. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
     </View>
     <Pressable
       accessibilityRole="switch"
