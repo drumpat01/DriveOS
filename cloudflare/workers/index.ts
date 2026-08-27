@@ -5,13 +5,12 @@
  * Handles CORS, route matching, and dispatches to sub-handlers.
  */
 
-import { handleSpotifyTokenExchange, SpotifyEnv } from './oauth-spotify';
-import { handleTessieVerification, TessieEnv } from './oauth-tessie';
-import { handlePlacesLookup, PlacesEnv } from './places-lookup';
-
-export interface Env extends SpotifyEnv, TessieEnv, PlacesEnv {
-  ENVIRONMENT?: string;
-}
+import { handleSpotifyConfig, handleSpotifyTokenExchange } from './oauth-spotify.ts';
+import { handleTessieSync, handleTessieVerification } from './oauth-tessie.ts';
+import { handlePlacesLookup } from './places-lookup.ts';
+import { handleLastFmHistory } from './lastfm-history.ts';
+import { jsonResponse } from './http.ts';
+import { enforceGlobalRateLimit, featureAvailable, type EdgeFeature, unavailableFeature } from './edge-policy.ts';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -32,6 +31,8 @@ function addCors(response: Response, origin: string | null): Response {
   }
   if (origin) newHeaders.set('Access-Control-Allow-Origin', origin);
   newHeaders.set('Vary', 'Origin');
+  newHeaders.set('Referrer-Policy', 'no-referrer');
+  newHeaders.set('X-Content-Type-Options', 'nosniff');
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -39,15 +40,23 @@ function addCors(response: Response, origin: string | null): Response {
   });
 }
 
+function featureForPath(path: string): EdgeFeature | null {
+  if (path.startsWith('/api/auth/spotify')) return 'spotify';
+  if (path === '/api/music/lastfm/recent') return 'lastfm';
+  if (path.startsWith('/api/auth/tessie') || path.startsWith('/api/vehicle/tessie')) return 'tessie';
+  if (path === '/api/places/reverse') return 'places';
+  return null;
+}
+
 export default {
-  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
+    const path = new URL(request.url).pathname;
     const requestOrigin = request.headers.get('Origin');
     const corsOrigin = allowedOrigin(request, env);
     if (requestOrigin && !corsOrigin) {
-      return new Response(JSON.stringify({ error: 'Origin not allowed' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', 'Vary': 'Origin' },
-      });
+      return addCors(jsonResponse({ error: 'Origin not allowed', requestId }, 403), null);
     }
 
     if (request.method === 'OPTIONS') {
@@ -57,29 +66,41 @@ export default {
       });
     }
 
-    const url = new URL(request.url);
-    const path = url.pathname;
-
     let response: Response;
-
-    if (path === '/health' || path === '/readyz') {
-      response = new Response(JSON.stringify({ status: 'healthy', runtime: 'cloudflare-worker', time: new Date().toISOString() }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } else if (path === '/api/auth/spotify/token' || path === '/api/auth/spotify/refresh') {
-      response = await handleSpotifyTokenExchange(request, env);
-    } else if (path === '/api/auth/tessie/verify') {
-      response = await handleTessieVerification(request, env);
-    } else if (path === '/api/places/reverse') {
-      response = await handlePlacesLookup(request, env);
-    } else {
-      response = new Response(JSON.stringify({ error: 'Not Found', path }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    try {
+      const feature = featureForPath(path);
+      const featureDisabled = feature ? !featureAvailable(env, feature) : false;
+      const globalLimit = !featureDisabled && path.startsWith('/api/') ? await enforceGlobalRateLimit(request, env) : null;
+      if (path === '/health' || path === '/readyz') {
+        response = jsonResponse({
+          status: 'healthy', runtime: 'cloudflare-worker', environment: env.ENVIRONMENT, time: new Date().toISOString(),
+          features: { lastfm: featureAvailable(env, 'lastfm'), spotify: featureAvailable(env, 'spotify'), tessie: featureAvailable(env, 'tessie'), places: featureAvailable(env, 'places') },
+        });
+      } else if (feature && featureDisabled) {
+        response = unavailableFeature(feature);
+      } else if (globalLimit) {
+        response = globalLimit;
+      } else if (path === '/api/auth/spotify/config') {
+        response = handleSpotifyConfig(request, env);
+      } else if (path === '/api/auth/spotify/token' || path === '/api/auth/spotify/refresh') {
+        response = await handleSpotifyTokenExchange(request, env);
+      } else if (path === '/api/music/lastfm/recent') {
+        response = await handleLastFmHistory(request, env);
+      } else if (path === '/api/auth/tessie/verify') {
+        response = await handleTessieVerification(request, env);
+      } else if (path === '/api/vehicle/tessie/sync') {
+        response = await handleTessieSync(request, env);
+      } else if (path === '/api/places/reverse') {
+        response = await handlePlacesLookup(request, env, ctx);
+      } else {
+        response = jsonResponse({ error: 'Not Found', requestId }, 404);
+      }
+    } catch {
+      response = jsonResponse({ error: 'Edge request failed', requestId }, 500, { 'Cache-Control': 'no-store' });
     }
-
-    return addCors(response, corsOrigin);
+    const finalResponse = addCors(response, corsOrigin);
+    finalResponse.headers.set('X-JourneyDeck-Request-Id', requestId);
+    console.log(JSON.stringify({ event: 'edge_request', requestId, method: request.method, path, status: finalResponse.status, durationMs: Date.now() - startedAt }));
+    return finalResponse;
   },
-};
+} satisfies ExportedHandler<Env>;

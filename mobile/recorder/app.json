@@ -83,6 +83,13 @@
       "expo-apple-authentication"
     ],
     "extra": {
+      "release": {
+        "label": "Closure Bundle D — server-independent core",
+        "sequence": "P3.D"
+      },
+      "edge": {
+        "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"
+      },
       "eas": {
         "projectId": "ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4"
       }

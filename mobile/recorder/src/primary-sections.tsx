@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, InteractionManager, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Constants from 'expo-constants';
+import * as Updates from 'expo-updates';
 
 import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
 import { getLiveRecorderSnapshot, type LiveRecorderSnapshot } from './storage';
@@ -15,6 +17,13 @@ import {
   type SearchRecord, type StatisticsData, type TimelineDay,
 } from './primary-sections-data';
 import { PrimaryMobilityMap } from './primary-mobility-map';
+import {
+  getNetworkActivitySnapshot, resetNetworkActivity, setJourneyDeckRequestsBlocked, subscribeNetworkActivity,
+  type NetworkActivityEvent,
+} from './network-activity';
+import { getCurrentUser, isIsolationTestProfile } from './auth';
+import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
+import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
@@ -113,11 +122,11 @@ export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDat
   const data = state.data;
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Record<string, AtlasPattern['review']>>({});
-  const places = data?.vehicle.places ?? [];
-  const selectedPlace = places.find(place => place.id === selectedPlaceId) ?? places[0];
-  const routes = (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates }));
-  const mapPlaces = places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount }));
-  const patterns = (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed');
+  const places = useMemo(() => data?.vehicle.places ?? [], [data?.vehicle.places]);
+  const selectedPlace = useMemo(() => places.find(place => place.id === selectedPlaceId) ?? places[0], [places, selectedPlaceId]);
+  const routes = useMemo(() => (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates })), [data?.details]);
+  const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
+  const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
   return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
@@ -209,44 +218,214 @@ export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDa
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile }: {
+  active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
   privateCloud: { status: string; detail: string };
   appleIdentityStatus: string;
+  providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
+  currentUser: LocalUser;
+  profiles: LocalUser[];
   onRefresh: () => void;
   onCloudSync: () => void;
+  onCreateProfileTest: () => void;
+  onSwitchProfile: (userId: string) => void;
 }) {
+  const updates = Updates.useUpdates();
+  const running = updates.currentlyRunning;
+  const configuredRelease = Constants.expoConfig?.extra?.release as { label?: string; sequence?: string } | undefined;
+  const launchKind = __DEV__ ? 'Live Metro' : running.isEmbeddedLaunch ? 'Embedded build' : 'Published OTA';
+  const updateIdentity = running.updateId ? running.updateId.slice(0, 8) : (__DEV__ ? 'development' : 'embedded');
+  const nativeVersion = Constants.expoConfig?.version ?? 'Unknown';
+  const nativeBuild = Constants.platform?.ios?.buildNumber ?? 'Unknown';
+  const runtime = running.runtimeVersion ?? Updates.runtimeVersion ?? 'Unknown';
+  const channel = running.channel ?? Updates.channel;
+  const releaseLabel = configuredRelease?.label ?? 'JourneyDeck release';
   const provider = dashboard.providerPreferences;
   const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
+  const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
+  const [retentionDays, setRetentionDays] = useState<7 | 30>(30);
+  const [retentionRefresh, setRetentionRefresh] = useState(0);
+  const [retentionPreview, setRetentionPreview] = useState<LocalRetentionPreview | null>(null);
+  const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const testProfile = isIsolationTestProfile(currentUser);
+  const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
+    && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
+    && profileDiagnostics.collectionCount === 0 && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
+  useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
+  useEffect(() => {
+    if (!active) return;
+    setRetentionPreviewState('loading');
+    const task = InteractionManager.runAfterInteractions(() => {
+      try {
+        setRetentionPreview(previewLocalRetention(getCurrentUser().id, { retentionDays }));
+        setRetentionPreviewState('ready');
+      } catch {
+        setRetentionPreview(null);
+        setRetentionPreviewState('error');
+      }
+    });
+    return () => task.cancel();
+  }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+    <SectionTitle title="Version & update" detail="What is running now" />
+    <View style={styles.releaseCard}>
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
+      <View style={styles.releaseGrid}>
+        <ReleaseMetric label="APP" value={nativeVersion} detail={`native build ${nativeBuild}`} />
+        <ReleaseMetric label="RUNTIME" value={runtime} detail={channel ? `${channel} channel` : 'no fixed channel'} />
+        <ReleaseMetric label="UPDATE ID" value={updateIdentity} detail={running.updateId ? running.updateId : 'No published OTA UUID in Metro'} wide />
+      </View>
+      <Text style={styles.releaseDate}>{running.createdAt ? `Published ${formatReleaseDate(running.createdAt)}` : 'Loaded directly from the local development server'}</Text>
+      {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
+      <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
+    </View>
     <View style={styles.healthHero}><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
-    <ProviderHealth provider={provider} />
+    <ProviderHealth provider={provider} capabilities={providerCapabilities} />
+    <SectionTitle title="Network boundary" detail="This app session" />
+    <View style={styles.networkCard}>
+      <View style={styles.networkGrid}>
+        <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
+        <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
+        <NetworkMetric label="PRIVATE EDGE" value={`${network.privacyEdgeOperations}`} detail="provider + city requests" />
+        <NetworkMetric label="TRANSFERRED" value={formatBytes(network.uploadBytes + network.downloadBytes)} detail={`${formatBytes(network.uploadBytes)} up · ${formatBytes(network.downloadBytes)} down`} />
+        <NetworkMetric label="BLOCKED" value={`${network.blockedOperations}`} detail="local-only test" />
+      </View>
+      <View style={styles.networkReasonRow}>
+        <Text style={styles.networkReasonText}>Archive {network.byReason.archive_refresh ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Recorder {network.byReason.recorder_mirror ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Imports {network.byReason.external_import ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Cities {network.byReason.place_lookup ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Writes {(network.byReason.user_content ?? 0) + (network.byReason.preferences ?? 0)}</Text>
+      </View>
+      {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
+        : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify and Tessie tokens stay in this iPhone Keychain; Tessie uses the stateless edge only during a bounded refresh, which strips VINs and precise coordinates. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+    </View>
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: network.journeyDeckRequestsBlocked }}
+      onPress={() => setJourneyDeckRequestsBlocked(!network.journeyDeckRequestsBlocked)}
+      style={[styles.networkPolicyButton, network.journeyDeckRequestsBlocked && styles.networkPolicyButtonActive]}
+    >
+      <Text style={[styles.networkPolicyTitle, network.journeyDeckRequestsBlocked && styles.networkPolicyTitleActive]}>{network.journeyDeckRequestsBlocked ? 'Local-only test is ON' : 'Test without JourneyDeck server'}</Text>
+      <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
+    </Pressable>
+    <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
+    <SectionTitle title="Profile Test Lab" detail="Temporary · non-destructive" />
+    <View style={styles.profileLabCard}>
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.profileLabEyebrow}>{testProfile ? 'TEST PROFILE ACTIVE' : 'CURRENT PROFILE'}</Text><Text style={styles.profileLabTitle}>{currentUser.displayName || 'Unnamed local profile'}</Text></View>{testProfile && <Text style={[styles.profileLabResult, profileIsClean && styles.profileLabResultGood]}>{profileIsClean ? 'CLEAN' : 'HAS DATA'}</Text>}</View>
+      <Text style={styles.profileLabDetail}>{testProfile ? 'Private iCloud is paused for this synthetic profile so the empty-profile check cannot download existing records.' : 'Create a separate local profile to verify that journeys, recorder state, screen caches, and owner backup do not carry over.'}</Text>
+      <View style={styles.profileLabGrid}>
+        <ProfileLabMetric label="JOURNEYS" value={profileDiagnostics.journeyCount} />
+        <ProfileLabMetric label="GPS POINTS" value={profileDiagnostics.gpsPointCount} />
+        <ProfileLabMetric label="SONGS" value={profileDiagnostics.musicEntryCount} />
+        <ProfileLabMetric label="MEMORIES" value={profileDiagnostics.memoryCount} />
+        <ProfileLabMetric label="COLLECTIONS" value={profileDiagnostics.collectionCount} />
+        <ProfileLabMetric label="RECORDER QUEUE" value={dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic} />
+      </View>
+      {testProfile ? <>
+        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Memories, Atlas, Search, Recorder, and Settings before returning.</Text>
+        {profiles.filter(profile => !isIsolationTestProfile(profile)).map(profile => <Pressable key={profile.id} style={styles.profileLabPrimary} onPress={() => onSwitchProfile(profile.id)}><Text style={styles.profileLabPrimaryText}>Return to {profile.displayName || 'original profile'}</Text></Pressable>)}
+      </> : <>
+        <Pressable style={styles.profileLabPrimary} onPress={onCreateProfileTest}><Text style={styles.profileLabPrimaryText}>Create clean test profile</Text></Pressable>
+        <Text style={styles.profileLabNote}>This never deletes, merges, or edits your current data. The test profile remains separate until this temporary lab is removed.</Text>
+      </>}
+    </View>
+    <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
+    <View style={styles.retentionCard}>
+      <View style={styles.retentionChoiceRow}>
+        {([30, 7] as const).map(days => <Pressable
+          key={days}
+          accessibilityRole="button"
+          accessibilityState={{ selected: retentionDays === days }}
+          onPress={() => setRetentionDays(days)}
+          style={[styles.retentionChoice, retentionDays === days && styles.retentionChoiceActive]}
+        ><Text style={[styles.retentionChoiceText, retentionDays === days && styles.retentionChoiceTextActive]}>Keep {days} days</Text></Pressable>)}
+      </View>
+      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color="#bb79ef" /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
+        : retentionPreviewState === 'error' || !retentionPreview ? <View style={styles.warningCard}><Text style={styles.warningTitle}>PREVIEW UNAVAILABLE</Text><Text style={styles.noticeText}>JourneyDeck could not read the local counts. No data was changed.</Text></View>
+          : <>
+            <View style={styles.retentionHeader}><View style={styles.flex}><Text style={styles.retentionTitle}>{retentionDays}-day detailed history</Text><Text style={styles.retentionCutoff}>Items before {formatRetentionDate(retentionPreview.cutoffAt)} are evaluated</Text></View><Text style={styles.readOnlyBadge}>READ ONLY</Text></View>
+            <View style={styles.retentionColumnLabels}><Text style={styles.retentionItemLabel}>ITEM</Text><View style={styles.retentionNumbers}><Text style={styles.retentionKeptLabel}>KEEP</Text><Text style={styles.retentionRemoveLabel}>REMOVE</Text></View></View>
+            <RetentionRow label="Journeys" count={retentionPreview.counts.journeys} />
+            <RetentionRow label="Route points" count={retentionPreview.counts.routePoints} />
+            <RetentionRow label="Songs" count={retentionPreview.counts.songs} />
+            <RetentionRow label="Memories" count={retentionPreview.counts.memories} />
+            <RetentionRow label="Collections" count={retentionPreview.counts.collections} />
+            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.collectionProtectedJourneys)} Collection-linked journeys protected</Text>
+            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, Collections, native recordings, recent history, and linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
+          </>}
+      <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
+    </View>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
     <Text style={styles.privacyNote}>Safe retries never erase local data. Raw route coordinates, Home/Work locations, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
 }
 
-function ProviderHealth({ provider }: { provider: ProviderPreferences | null }) {
-  if (!provider) return <EmptyCard text="Provider status will appear after JourneyDeck connects." />;
+function formatBytes(bytes: number) {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+function formatReleaseDate(value: Date) {
+  return value.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function ReleaseMetric({ label, value, detail, wide = false }: { label: string; value: string; detail: string; wide?: boolean }) {
+  return <View style={[styles.releaseMetric, wide && styles.releaseMetricWide]}><Text style={styles.releaseMetricLabel}>{label}</Text><Text style={styles.releaseMetricValue}>{value}</Text><Text style={styles.releaseMetricDetail} numberOfLines={wide ? 1 : 2}>{detail}</Text></View>;
+}
+
+function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
+}
+
+function ProfileLabMetric({ label, value }: { label: string; value: number }) {
+  return <View style={styles.profileLabMetric}><Text style={styles.profileLabMetricLabel}>{label}</Text><Text style={styles.profileLabMetricValue}>{Math.max(0, value).toLocaleString()}</Text></View>;
+}
+
+function RetentionRow({ label, count }: { label: string; count: RetentionCount }) {
+  return <View style={styles.retentionRow}><View style={styles.flex}><Text style={styles.retentionRowTitle}>{label}</Text><Text style={styles.retentionRowTotal}>{formatCount(count.total)} total</Text></View><View style={styles.retentionNumbers}><Text style={styles.retentionKept}>{formatCount(count.kept)}</Text><Text style={styles.retentionRemove}>{formatCount(count.removable)}</Text></View></View>;
+}
+
+function formatCount(value: number) {
+  return Math.max(0, value).toLocaleString();
+}
+
+function formatRetentionDate(value: string) {
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
+  const outcome = event.outcome === 'succeeded' ? 'DONE' : event.outcome === 'active' ? 'ACTIVE' : event.outcome.toUpperCase();
+  const source = event.category === 'private_icloud' ? 'Apple private service' : event.category === 'privacy_edge' ? 'JourneyDeck private edge' : event.reason.replaceAll('_', ' ');
+  return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{source} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
+}
+
+function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferences | null; capabilities: { lastFmConfigured: boolean; tessieConfigured: boolean } }) {
   const rows = [
-    ['Apple Music', provider.connections.appleMusic], ['Auto Recognition', provider.connections.shazam],
-    ['Spotify history', provider.connections.lastFm], ['Vehicle data', provider.connections.tessie],
+    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Auto Recognition', provider?.connections.shazam ?? 'not_enabled'],
+    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'], ['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected'],
   ];
   return <View style={styles.card}>{rows.map(([name, status]) => <View key={name} style={styles.providerRow}><Text style={styles.compactTitle}>{name}</Text><Text style={[styles.providerStatus, /connected|enabled/.test(status) && styles.providerStatusGood]}>{status.replaceAll('_', ' ')}</Text></View>)}</View>;
 }
 
 export function MoreScreen({
-  requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
-  music, recorder, settings,
+  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
+  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, music, recorder, settings,
 }: {
-  requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
+  active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
   privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
+  providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
+  currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
   music: ReactNode; recorder: ReactNode; settings: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -256,7 +435,7 @@ export function MoreScreen({
     const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
       : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
         : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={onRefresh} onCloudSync={onCloudSync} />
+          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} />
             : destination === 'music' ? music : destination === 'settings' ? settings : null;
     content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
   } else {
@@ -414,6 +593,20 @@ const styles = StyleSheet.create({
   searchKindText: { color: '#fff', fontSize: 20, fontWeight: '900' },
   searchType: { color: '#a77abc', fontSize: 8, fontWeight: '900', letterSpacing: 1.1, marginBottom: 3 },
   healthHero: { borderRadius: 26, backgroundColor: '#0b1714', borderWidth: 1, borderColor: '#255a4c', padding: 22, marginBottom: 12 },
+  releaseCard: { borderRadius: 24, backgroundColor: '#100918', borderWidth: 1, borderColor: '#6e3c8a', padding: 17, marginBottom: 14 },
+  releaseSequence: { color: '#cf8cff', fontSize: 9, fontWeight: '900', letterSpacing: 1.6, marginBottom: 5 },
+  releaseLabel: { color: '#fff7ff', fontSize: 18, lineHeight: 23, fontWeight: '900', paddingRight: 8 },
+  releaseKindBadge: { borderRadius: 999, borderWidth: 1, borderColor: '#8051a0', backgroundColor: '#21102d', paddingHorizontal: 9, paddingVertical: 6 },
+  releaseKindText: { color: '#d9a6ff', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  releaseGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 15 },
+  releaseMetric: { width: '48.5%', borderRadius: 15, backgroundColor: '#09050d', borderWidth: 1, borderColor: '#302039', padding: 10 },
+  releaseMetricWide: { width: '100%' },
+  releaseMetricLabel: { color: '#9f79b2', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 },
+  releaseMetricValue: { color: '#fff8ff', fontSize: 17, fontWeight: '900', marginTop: 3 },
+  releaseMetricDetail: { color: '#807086', fontSize: 9, lineHeight: 13, marginTop: 2 },
+  releaseDate: { color: '#b6a5bc', fontSize: 11, fontWeight: '700', marginTop: 13 },
+  releasePending: { color: '#ffbc6f', fontSize: 11, lineHeight: 16, fontWeight: '800', marginTop: 9 },
+  releaseHelp: { color: '#746879', fontSize: 10, lineHeight: 15, marginTop: 8 },
   healthHeroValue: { color: '#5de0b9', fontSize: 31, fontWeight: '900', letterSpacing: -0.7 },
   healthRow: { borderRadius: 19, backgroundColor: '#0b070f', borderWidth: 1, borderColor: '#302038', padding: 15, marginBottom: 9, flexDirection: 'row', gap: 12 },
   healthDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#ff7b62', marginTop: 5 },
@@ -425,6 +618,67 @@ const styles = StyleSheet.create({
   providerStatusGood: { color: '#59d4b3' },
   safeActions: { marginTop: 6 },
   privacyNote: { color: '#6f6675', fontSize: 10, lineHeight: 16, marginTop: 18, textAlign: 'center' },
+  networkCard: { borderRadius: 22, backgroundColor: '#09060d', borderWidth: 1, borderColor: '#392343', padding: 13, marginBottom: 10 },
+  networkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  networkMetric: { width: '48.5%', minHeight: 88, borderRadius: 16, backgroundColor: '#120b18', borderWidth: 1, borderColor: '#2f1d39', padding: 11 },
+  networkMetricLabel: { color: '#9d78b3', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  networkMetricValue: { color: '#f8effc', fontSize: 22, fontWeight: '900', marginTop: 4 },
+  networkMetricDetail: { color: '#74687c', fontSize: 9, lineHeight: 13, marginTop: 2 },
+  networkReasonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  networkReasonText: { color: '#a892b4', fontSize: 9, fontWeight: '700', backgroundColor: '#160d1c', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5 },
+  networkEvents: { marginTop: 11, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#35203f' },
+  networkEventRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2b1a34' },
+  networkEventDetail: { color: '#756a7c', fontSize: 9, lineHeight: 13, textTransform: 'capitalize' },
+  networkEventOutcome: { color: '#c88f72', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
+  networkEventOutcomeGood: { color: '#58d5b6' },
+  networkEventOutcomeBlocked: { color: '#f6b85d' },
+  networkEmpty: { color: '#817387', fontSize: 10, lineHeight: 15, marginTop: 12 },
+  networkNote: { color: '#675d6d', fontSize: 9, lineHeight: 14, marginTop: 12 },
+  networkPolicyButton: { borderRadius: 19, borderWidth: 1, borderColor: '#68447a', backgroundColor: '#140b1a', padding: 15, marginTop: 2 },
+  networkPolicyButtonActive: { borderColor: '#b9763c', backgroundColor: '#211208' },
+  networkPolicyTitle: { color: '#dcb7ef', fontSize: 13, fontWeight: '900' },
+  networkPolicyTitleActive: { color: '#ffc27a' },
+  networkPolicyDetail: { color: '#8d7e94', fontSize: 10, lineHeight: 15, marginTop: 4 },
+  networkReset: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 9, marginTop: 4 },
+  networkResetText: { color: '#9876aa', fontSize: 10, fontWeight: '800' },
+  profileLabCard: { borderRadius: 22, backgroundColor: '#0b0710', borderWidth: 1, borderColor: '#68468b', padding: 16, marginBottom: 13, gap: 12 },
+  profileLabEyebrow: { color: '#c48aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
+  profileLabTitle: { color: '#fff7ff', fontSize: 18, fontWeight: '900', marginTop: 4 },
+  profileLabDetail: { color: '#a99caf', fontSize: 12, lineHeight: 18 },
+  profileLabResult: { color: '#ffb266', backgroundColor: '#2b160b', borderWidth: 1, borderColor: '#73401e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, fontSize: 9, fontWeight: '900' },
+  profileLabResultGood: { color: '#68e5be', backgroundColor: '#082019', borderColor: '#23664f' },
+  profileLabGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  profileLabMetric: { width: '31.5%', minHeight: 62, borderRadius: 14, backgroundColor: '#130b19', borderWidth: 1, borderColor: '#35213f', padding: 9 },
+  profileLabMetricLabel: { color: '#9f79b2', fontSize: 7, fontWeight: '900', letterSpacing: 0.9 },
+  profileLabMetricValue: { color: '#fff8ff', fontSize: 18, fontWeight: '900', marginTop: 5 },
+  profileLabPrimary: { minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8b48e8', paddingHorizontal: 14 },
+  profileLabPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '900', textAlign: 'center' },
+  profileLabNote: { color: '#817386', fontSize: 10, lineHeight: 15 },
+  retentionCard: { borderRadius: 22, backgroundColor: '#0b0710', borderWidth: 1, borderColor: '#4b2b59', padding: 14, marginBottom: 13 },
+  retentionChoiceRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  retentionChoice: { flex: 1, minHeight: 38, borderRadius: 13, borderWidth: 1, borderColor: '#35203e', backgroundColor: '#110a16', alignItems: 'center', justifyContent: 'center' },
+  retentionChoiceActive: { borderColor: '#a45dda', backgroundColor: '#281137' },
+  retentionChoiceText: { color: '#8b7a92', fontSize: 10, fontWeight: '900' },
+  retentionChoiceTextActive: { color: '#e4b5ff' },
+  retentionLoading: { minHeight: 90, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  retentionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 13 },
+  retentionTitle: { color: '#f7effa', fontSize: 15, fontWeight: '900' },
+  retentionCutoff: { color: '#807287', fontSize: 9, marginTop: 4 },
+  readOnlyBadge: { color: '#64d9ba', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, borderRadius: 999, borderWidth: 1, borderColor: '#346b5d', backgroundColor: '#0b1d18', paddingHorizontal: 8, paddingVertical: 5 },
+  retentionColumnLabels: { minHeight: 25, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#3b2545' },
+  retentionItemLabel: { flex: 1, color: '#75677d', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },
+  retentionNumbers: { width: 128, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  retentionKeptLabel: { width: 58, color: '#58cbae', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, textAlign: 'right' },
+  retentionRemoveLabel: { width: 62, color: '#eea45f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8, textAlign: 'right' },
+  retentionRow: { minHeight: 49, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2b1b32' },
+  retentionRowTitle: { color: '#e8deeB', fontSize: 11, fontWeight: '800' },
+  retentionRowTotal: { color: '#706675', fontSize: 8, marginTop: 2 },
+  retentionKept: { width: 58, color: '#74d9bd', fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  retentionRemove: { width: 62, color: '#f0ad6d', fontSize: 14, fontWeight: '900', textAlign: 'right' },
+  retentionSafeguards: { color: '#bea3ca', fontSize: 9, lineHeight: 14, fontWeight: '800', marginTop: 12 },
+  retentionNote: { color: '#756a7c', fontSize: 9, lineHeight: 14, marginTop: 8 },
+  retentionRefresh: { minHeight: 39, borderRadius: 13, borderWidth: 1, borderColor: '#553063', alignItems: 'center', justifyContent: 'center', marginTop: 13 },
+  retentionRefreshText: { color: '#c99add', fontSize: 10, fontWeight: '900' },
   moreSearch: { minHeight: 60, borderRadius: 20, backgroundColor: '#150a1c', borderWidth: 1, borderColor: '#613375', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 17, marginBottom: 13 },
   moreSearchText: { color: '#eee6f1', fontSize: 14, fontWeight: '800', flex: 1 },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

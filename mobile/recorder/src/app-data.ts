@@ -1,10 +1,14 @@
 import type { Connection } from './credentials';
 import * as Crypto from 'expo-crypto';
+import Constants from 'expo-constants';
+import * as FileSystem from 'expo-file-system/legacy';
 import { loadConnection } from './credentials';
-import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, writeAppCache } from './storage';
+import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
+import { requestJourneyDeckJson } from './network-request';
+import { syncTessieDirect, tessieDirectStatus, type TessieSnapshot } from './tessie-direct';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -106,6 +110,21 @@ function soundtrackKey(track: Pick<SoundtrackTrack, 'playedAt' | 'track' | 'arti
   return `${track.playedAt ?? ''}\0${track.track.toLocaleLowerCase()}\0${track.artist.toLocaleLowerCase()}`;
 }
 
+function localPlaceAliasKey(location: string) {
+  let hash = 2166136261;
+  for (const character of location.trim().toLocaleLowerCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return `place.alias.${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function applyLocalPlaceAliases<T extends JourneySummary>(journey: T): T {
+  const userId = getCurrentUser().id;
+  const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation;
+  const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation;
+  const start = startKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(startKey)) : null;
+  const end = endKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(endKey)) : null;
+  return { ...journey, startingLocation: start || journey.startingLocation, endingLocation: end || journey.endingLocation };
+}
+
 function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail | null): JourneyDetail {
   if (!local) return remote;
   const localTracks = new Map(local.soundtrack.map(track => [soundtrackKey(track), track]));
@@ -122,6 +141,35 @@ function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail
     songCount: Math.max(remote.songCount, soundtrack.length),
     route: localPointCount >= remotePointCount ? local.route : remote.route,
   };
+}
+
+function mergeLocalJourneyPage(
+  local: { items: JourneySummary[]; nextCursor: string | null },
+  cached: { items: JourneySummary[]; nextCursor: string | null } | null,
+  limit: number,
+) {
+  if (!cached) return local;
+  const cachedByIdentity = new Map<string, JourneySummary>();
+  for (const journey of cached.items) {
+    cachedByIdentity.set(journey.id, journey);
+    if (journey.legacyDriveId) cachedByIdentity.set(journey.legacyDriveId, journey);
+  }
+  const represented = new Set<string>();
+  const merged = local.items.map(journey => {
+    const remote = cachedByIdentity.get(journey.id) ?? (journey.legacyDriveId ? cachedByIdentity.get(journey.legacyDriveId) : undefined);
+    if (!remote) return journey;
+    represented.add(remote.id);
+    return {
+      ...remote,
+      ...journey,
+      startingLocation: journey.startingLocation ?? remote.startingLocation,
+      endingLocation: journey.endingLocation ?? remote.endingLocation,
+      soundtrackPreview: journey.soundtrackPreview.length ? journey.soundtrackPreview : remote.soundtrackPreview,
+    };
+  });
+  for (const journey of cached.items) if (!represented.has(journey.id)) merged.push(journey);
+  merged.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+  return { items: merged.slice(0, limit), nextCursor: local.nextCursor ?? cached.nextCursor };
 }
 
 export type ConnectionCapabilities = {
@@ -162,7 +210,13 @@ export type JourneyMemory = {
   updatedAtUtc: string;
 };
 
-export type MemoriesCatalog = { memories: JourneyMemory[]; collections: JourneyCollection[] };
+export type MemoriesCatalog = {
+  memories: JourneyMemory[];
+  collections: JourneyCollection[];
+  deletedMemoryIds?: string[];
+  deletedCollectionIds?: string[];
+  deletedPhotoIds?: string[];
+};
 
 export type SavedPlaceCategory = 'home' | 'work' | 'school' | 'favorite' | 'custom';
 export type VehicleIntelligencePreferences = {
@@ -186,6 +240,7 @@ export type SavedPlaceIntelligence = {
 export type VehicleIntelligenceData = {
   generatedAt: string;
   preferences: VehicleIntelligencePreferences;
+  vehicles: { vehicleKey: string; name: string; status: string; batteryPercent: number | null; rangeMiles: number | null; chargingState: string | null; odometerMiles: number | null; updatedAt: string | null }[];
   chargingSummary30Days: { sessions: number; energyAddedKwh: number; batteryGainedPercent: number; durationMinutes: number; cost: number };
   chargingSessions: ChargingSessionSummary[];
   chargingLocations: { locationKey: string; name: string; sessions: number; energyAddedKwh: number; cost: number; lastChargedAt: string; isFavorite: boolean }[];
@@ -214,22 +269,29 @@ const MUSIC_DASHBOARD_CACHE_KEY = 'app.music-dashboard.v1';
 function mergeMemoriesCatalog(remote: MemoriesCatalog, local: MemoriesCatalog, cached?: MemoriesCatalog | null): MemoriesCatalog {
   const cachedCollections = new Map((cached?.collections ?? []).map(item => [item.id, item]));
   const cachedMemories = new Map((cached?.memories ?? []).map(item => [item.id, item]));
-  const collections = new Map(remote.collections.map(item => [item.id, item]));
+  const deletedCollections = new Set(local.deletedCollectionIds ?? []), deletedMemories = new Set(local.deletedMemoryIds ?? []), deletedPhotos = new Set(local.deletedPhotoIds ?? []);
+  const cleanPhotos = (photos: JourneyPhoto[]) => photos.filter(photo => !deletedPhotos.has(photo.id));
+  const collections = new Map(remote.collections.filter(item => !deletedCollections.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
   local.collections.forEach(item => {
     const remoteItem = collections.get(item.id);
     const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    collections.set(item.id, { ...winner, photos: cachedCollections.get(item.id)?.photos ?? remoteItem?.photos ?? [] });
+    const inherited = [...item.photos, ...(cachedCollections.get(item.id)?.photos ?? []), ...(remoteItem?.photos ?? [])];
+    collections.set(item.id, { ...winner, photos: cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index)) });
   });
-  const memories = new Map(remote.memories.map(item => [item.id, item]));
+  const memories = new Map(remote.memories.filter(item => !deletedMemories.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
   local.memories.forEach(item => {
     const cachedItem = cachedMemories.get(item.id);
     const remoteItem = memories.get(item.id);
     const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    memories.set(item.id, { ...winner, coverPhotoId: winner.coverPhotoId ?? cachedItem?.coverPhotoId ?? remoteItem?.coverPhotoId ?? null, photos: cachedItem?.photos ?? remoteItem?.photos ?? [] });
+    const inherited = [...item.photos, ...(cachedItem?.photos ?? []), ...(remoteItem?.photos ?? [])];
+    const photos = cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index));
+    const requestedCover = winner.coverPhotoId ?? cachedItem?.coverPhotoId ?? remoteItem?.coverPhotoId ?? null;
+    memories.set(item.id, { ...winner, coverPhotoId: requestedCover && photos.some(photo => photo.id === requestedCover) ? requestedCover : null, photos });
   });
   return {
-    collections: [...collections.values()].sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
-    memories: [...memories.values()].sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
+    collections: [...collections.values()].filter(item => !deletedCollections.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
+    memories: [...memories.values()].filter(item => !deletedMemories.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
+    deletedCollectionIds: [...deletedCollections], deletedMemoryIds: [...deletedMemories], deletedPhotoIds: [...deletedPhotos],
   };
 }
 
@@ -246,6 +308,47 @@ const vehicleIntelligenceCacheKey = (userId: string) => `app.vehicle-intelligenc
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
 const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
+async function savePrivatePhoto(source: JourneyPhoto['source'], ownerId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
+  const userId = getCurrentUser().id, base = FileSystem.documentDirectory;
+  if (!base) throw new Error('JourneyDeck cannot access its private photo folder on this device.');
+  const byteLength = Math.ceil(input.dataBase64.length * 0.75);
+  if (!byteLength || byteLength > 1_572_864) throw new Error('Choose a photo smaller than 1.5 MB after compression.');
+  const id = `local_${Crypto.randomUUID()}`, directory = `${base}journeydeck-private-photos/${encodeURIComponent(userId)}/`;
+  const extension = input.contentType === 'image/png' ? 'png' : input.contentType === 'image/webp' ? 'webp' : 'jpg';
+  const localUri = `${directory}${id}.${extension}`, createdAtUtc = new Date().toISOString();
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
+  try {
+    upsertPhoto({
+      id, userId, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null,
+      fileName: input.fileName, contentType: input.contentType, byteLength, localUri,
+    });
+  } catch (error) {
+    await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
+    throw error;
+  }
+  const photo: JourneyPhoto = { id, fileName: input.fileName, contentType: input.contentType, byteLength, createdAtUtc, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null };
+  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+  if (source === 'collection') {
+    cached.collections = cached.collections.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
+  } else {
+    cached.memories = cached.memories.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
+  }
+  writeAppCache(MEMORIES_CACHE_KEY, cached);
+  return photo;
+}
+
+function removeCachedPhoto(photoId: string): void {
+  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
+  if (!cached) return;
+  writeAppCache(MEMORIES_CACHE_KEY, {
+    ...cached,
+    collections: cached.collections.map(item => ({ ...item, photos: item.photos.filter(photo => photo.id !== photoId) })),
+    memories: cached.memories.map(item => ({ ...item, coverPhotoId: item.coverPhotoId === photoId ? null : item.coverPhotoId, photos: item.photos.filter(photo => photo.id !== photoId) })),
+    deletedPhotoIds: [...new Set([...(cached.deletedPhotoIds ?? []), photoId])],
+  });
+}
+
 type VehicleIntelligenceCache = { data: VehicleIntelligenceData; preferencesDirty: boolean };
 
 function emptyVehicleIntelligence(): VehicleIntelligenceData {
@@ -253,22 +356,23 @@ function emptyVehicleIntelligence(): VehicleIntelligenceData {
     generatedAt: new Date().toISOString(),
     preferences: { electricityRatePerKwh: 0.14, favoriteChargingLocationKeys: [], placeOverrides: [], placeMerges: [] },
     chargingSummary30Days: { sessions: 0, energyAddedKwh: 0, batteryGainedPercent: 0, durationMinutes: 0, cost: 0 },
-    chargingSessions: [], chargingLocations: [], places: [], duplicateCandidates: [], routeComparisons: [],
+    vehicles: [], chargingSessions: [], chargingLocations: [], places: [], duplicateCandidates: [], routeComparisons: [],
   };
+}
+
+function localPlaceId(label: string) {
+  let hash = 2166136261;
+  for (const character of label.trim().toLocaleLowerCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+  return `place_local_${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function localVehicleIntelligence(userId: string): VehicleIntelligenceData {
   const localPage = localAtlasClient.journeys(userId, 50);
   const journeys = localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []);
   const places = new Map<string, SavedPlaceIntelligence>();
-  const placeId = (label: string) => {
-    let hash = 2166136261;
-    for (const character of label.trim().toLocaleLowerCase()) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-    return `place_local_${(hash >>> 0).toString(16).padStart(8, '0')}`;
-  };
   const addPlace = (labelValue: string | null, journey: JourneySummary, arrival: boolean) => {
     const label = labelValue?.trim(); if (!label) return;
-    const id = placeId(label), existing = places.get(id);
+    const id = localPlaceId(label), existing = places.get(id);
     const category: SavedPlaceCategory = /^home$/i.test(label) ? 'home' : /^work$/i.test(label) ? 'work' : /school/i.test(label) ? 'school' : 'custom';
     const related = { id: journey.id, startedAt: journey.startedAt, startingLocation: journey.startingLocation || 'Unknown start', endingLocation: journey.endingLocation || 'Unknown destination', miles: journey.miles, energyUsedKwh: null };
     if (existing) {
@@ -286,7 +390,8 @@ function localVehicleIntelligence(userId: string): VehicleIntelligenceData {
   };
   for (const journey of journeys) { addPlace(journey.startingLocation, journey, false); addPlace(journey.endingLocation, journey, true); }
   const local = emptyVehicleIntelligence();
-  return { ...local, places: [...places.values()].sort((a, b) => b.visitCount - a.visitCount || b.lastSeenAt.localeCompare(a.lastSeenAt)) };
+  const data = { ...local, places: [...places.values()].sort((a, b) => b.visitCount - a.visitCount || b.lastSeenAt.localeCompare(a.lastSeenAt)) };
+  return applyVehiclePreferences(data, getPrivatePreference<VehicleIntelligencePreferences>(userId, 'vehicle.preferences') ?? data.preferences);
 }
 
 function applyVehiclePreferences(data: VehicleIntelligenceData, preferences: VehicleIntelligencePreferences): VehicleIntelligenceData {
@@ -312,6 +417,71 @@ function applyVehiclePreferences(data: VehicleIntelligenceData, preferences: Veh
   };
 }
 
+function vehicleIntelligenceFromTessie(snapshot: TessieSnapshot, base: VehicleIntelligenceData): VehicleIntelligenceData {
+  const preferences = base.preferences;
+  const chargingSessions: ChargingSessionSummary[] = snapshot.charges.map((charge): ChargingSessionSummary => {
+    const recorded = charge.recordedCost != null && charge.recordedCost > 0;
+    return {
+      id: charge.id, locationKey: charge.locationKey, location: charge.location, vehicleName: charge.vehicleName || null, provider: 'tessie',
+      startedAt: charge.startedAt, endedAt: charge.endedAt,
+      durationMinutes: Math.max(0, Math.round((Date.parse(charge.endedAt) - Date.parse(charge.startedAt)) / 60_000)),
+      isSupercharger: charge.isSupercharger, energyAddedKwh: charge.energyAddedKwh, energyUsedKwh: charge.energyUsedKwh, milesAdded: charge.milesAdded,
+      startingBatteryPercent: charge.startingBatteryPercent, endingBatteryPercent: charge.endingBatteryPercent,
+      batteryGainedPercent: charge.startingBatteryPercent != null && charge.endingBatteryPercent != null ? Math.max(0, charge.endingBatteryPercent - charge.startingBatteryPercent) : null,
+      cost: recorded ? charge.recordedCost! : Math.round(charge.energyAddedKwh * preferences.electricityRatePerKwh * 100) / 100,
+      costSource: recorded ? 'recorded' : 'estimated',
+    };
+  }).sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
+  const locations = new Map<string, VehicleIntelligenceData['chargingLocations'][number]>();
+  for (const session of chargingSessions) {
+    const current = locations.get(session.locationKey);
+    if (current) {
+      current.sessions += 1; current.energyAddedKwh += session.energyAddedKwh; current.cost += session.cost;
+      if (session.startedAt > current.lastChargedAt) current.lastChargedAt = session.startedAt;
+    } else locations.set(session.locationKey, {
+      locationKey: session.locationKey, name: session.location, sessions: 1, energyAddedKwh: session.energyAddedKwh, cost: session.cost,
+      lastChargedAt: session.startedAt, isFavorite: preferences.favoriteChargingLocationKeys.includes(session.locationKey),
+    });
+  }
+  const routeGroups = new Map<string, { startLabel: string; endLabel: string; miles: number; energy: number; efficiencies: number[]; trips: number }>();
+  for (const drive of snapshot.drives) {
+    if (drive.miles <= 0 || drive.energyUsedKwh < 0) continue;
+    const key = `${drive.startingLocation.trim().toLocaleLowerCase()}\u001f${drive.endingLocation.trim().toLocaleLowerCase()}`;
+    const current = routeGroups.get(key) ?? { startLabel: drive.startingLocation, endLabel: drive.endingLocation, miles: 0, energy: 0, efficiencies: [], trips: 0 };
+    current.trips += 1; current.miles += drive.miles; current.energy += drive.energyUsedKwh;
+    if (drive.energyUsedKwh > 0) current.efficiencies.push(drive.energyUsedKwh * 1_000 / drive.miles);
+    routeGroups.set(key, current);
+  }
+  const routeComparisons = [...routeGroups.values()].map(route => {
+    const efficiencies = route.efficiencies.length ? route.efficiencies : [0];
+    return {
+      startPlaceId: localPlaceId(route.startLabel), endPlaceId: localPlaceId(route.endLabel), startLabel: route.startLabel, endLabel: route.endLabel,
+      trips: route.trips, miles: route.miles, energyKwh: route.energy, cost: Math.round(route.energy * preferences.electricityRatePerKwh * 100) / 100,
+      averageWhPerMile: route.miles ? route.energy * 1_000 / route.miles : 0, bestWhPerMile: Math.min(...efficiencies), worstWhPerMile: Math.max(...efficiencies),
+    };
+  }).sort((left, right) => right.trips - left.trips || right.miles - left.miles);
+  const recentCutoff = Date.now() - 30 * 86_400_000;
+  const recent = chargingSessions.filter(session => Date.parse(session.startedAt) >= recentCutoff);
+  return applyVehiclePreferences({
+    ...base, generatedAt: snapshot.generatedAt, vehicles: snapshot.vehicles, chargingSessions,
+    chargingSummary30Days: {
+      sessions: recent.length, energyAddedKwh: recent.reduce((sum, item) => sum + item.energyAddedKwh, 0),
+      batteryGainedPercent: recent.reduce((sum, item) => sum + (item.batteryGainedPercent ?? 0), 0),
+      durationMinutes: recent.reduce((sum, item) => sum + item.durationMinutes, 0), cost: recent.reduce((sum, item) => sum + item.cost, 0),
+    },
+    chargingLocations: [...locations.values()].sort((left, right) => right.sessions - left.sessions || right.lastChargedAt.localeCompare(left.lastChargedAt)),
+    routeComparisons,
+  }, preferences);
+}
+
+async function refreshVehicleIntelligenceFromTessie(userId: string) {
+  const cacheKey = vehicleIntelligenceCacheKey(userId);
+  const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
+  const data = vehicleIntelligenceFromTessie(await syncTessieDirect(), cached?.data ?? localVehicleIntelligence(userId));
+  writeAppCache(cacheKey, { data, preferencesDirty: false } satisfies VehicleIntelligenceCache);
+  return data;
+}
+
 function weeklyCutoff() {
   const cutoff = new Date();
   cutoff.setHours(0, 0, 0, 0);
@@ -327,40 +497,36 @@ function journeysInsideWeeklyWindow(journeys: JourneySummary[]) {
   });
 }
 
-function localRecorderHealth(connected: boolean): LocalRecorderHealth {
+function localRecorderHealth(_ownerBackupConnected: boolean): LocalRecorderHealth {
   const session = activeSession();
   const summary = session ? getSessionSummary(session.id) : null;
   return {
-    connected,
+    connected: true,
     state: !summary || summary.status === 'completed' ? 'ready' : summary.status,
-    queuedPoints: summary?.queuedCount ?? 0,
+    queuedPoints: totalQueuedPointCount(),
     queuedMusic: totalQueuedMusicObservationCount(),
     capturedPoints: summary?.pointCount ?? 0,
   };
 }
 
 async function request<T>(connection: Connection, path: string, init?: RequestInit, timeoutMs = 12_000): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${connection.serverUrl}${path}`, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${connection.token}`,
-        'content-type': 'application/json',
-        ...init?.headers,
-      },
-    });
-    const payload = await response.json().catch(() => null) as { error?: string } | null;
-    if (!response.ok) throw new Error(payload?.error || `JourneyDeck returned ${response.status}.`);
-    return payload as T;
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('JourneyDeck took too long to respond.');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+  return requestJourneyDeckJson<T>(connection, path, init, { timeoutMs, timeoutMessage: 'JourneyDeck took too long to respond.' });
+}
+
+function localDashboardWithCachedContext(connected: boolean): AppDashboard {
+  const local = localAtlasClient.dashboard(getCurrentUser().id);
+  const cached = readAppCache<DashboardData>(DASHBOARD_CACHE_KEY);
+  const privatePreferences = getPrivatePreference<ProviderPreferences>(getCurrentUser().id, 'provider.preferences');
+  const cachedWeekly = journeysInsideWeeklyWindow(readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? []);
+  if (local.summary.allTime.journeyCount > 0) {
+    return {
+      ...local,
+      providerPreferences: privatePreferences ?? cached?.providerPreferences ?? local.providerPreferences,
+      recorder: localRecorderHealth(connected),
+    };
   }
+  return { ...(cached ?? emptyDashboard()), providerPreferences: privatePreferences ?? cached?.providerPreferences ?? null,
+    recorder: localRecorderHealth(connected), weeklyJourneys: cachedWeekly };
 }
 
 async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {
@@ -386,92 +552,48 @@ async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummar
 }
 
 export const appDataClient = {
-  async dashboard(): Promise<AppDashboard> {
+  async dashboard(_refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
-    const cachedWeekly = readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? [];
-    if (!connection) {
-      const local = localAtlasClient.dashboard(getCurrentUser().id);
-      return local.summary.allTime.journeyCount > 0
-        ? local
-        : { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(false), weeklyJourneys: journeysInsideWeeklyWindow(cachedWeekly) };
-    }
-    const [dashboard, weeklyJourneys] = await Promise.all([
-      request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
-      loadWeeklyJourneys(connection).catch(() => journeysInsideWeeklyWindow(cachedWeekly)),
-    ]);
-    writeAppCache(DASHBOARD_CACHE_KEY, dashboard);
-    return { ...dashboard, recorder: localRecorderHealth(true), weeklyJourneys };
+    const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    return { ...dashboard, latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
+      recentJourneys: dashboard.recentJourneys.map(applyLocalPlaceAliases), weeklyJourneys: dashboard.weeklyJourneys.map(applyLocalPlaceAliases) };
   },
 
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    const weeklyJourneys = journeysInsideWeeklyWindow(readAppCache<JourneySummary[]>(WEEKLY_JOURNEYS_CACHE_KEY) ?? []);
-    return { ...(readAppCache<DashboardData>(DASHBOARD_CACHE_KEY) ?? emptyDashboard()), recorder: localRecorderHealth(Boolean(connection)), weeklyJourneys };
+    return localDashboardWithCachedContext(Boolean(connection));
   },
 
-  async journeys(limit = 25, cursor?: string): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
-    const connection = await loadConnection();
-    if (!connection) {
-      const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
-      if (local.items.length || cursor) return local;
-      return readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) ?? local;
-    }
-    const query = new URLSearchParams({ limit: String(limit) });
-    if (cursor) query.set('cursor', cursor);
-    try {
-      const page = await request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, `/api/recorder/journeys?${query.toString()}`);
-      if (!cursor) writeAppCache(JOURNEYS_CACHE_KEY, page);
-      return page;
-    } catch (error) {
-      const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
-      if (cached) return cached;
-      throw error;
-    }
+  async journeys(limit = 25, cursor?: string, _refreshRemote = false): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
+    const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
+    const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
+    const page = local.items.length || cached ? mergeLocalJourneyPage(local, cached, limit) : local;
+    return { ...page, items: page.items.map(applyLocalPlaceAliases) };
   },
 
-  async journey(id: string): Promise<JourneyDetail> {
-    const connection = await loadConnection();
-    if (!connection) {
-      const local = localAtlasClient.journey(getCurrentUser().id, id);
-      if (local) return local;
-      const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
-      if (cached) return cached;
-      throw new Error('Connect this iPhone to JourneyDeck to load journey details.');
-    }
-    try {
-      const detail = await request<JourneyDetail>(connection, `/api/recorder/journeys/${encodeURIComponent(id)}`);
-      const merged = mergeJourneyWithLocalDetail(detail, localAtlasClient.journey(getCurrentUser().id, id));
-      writeAppCache(journeyCacheKey(id), merged);
-      return merged;
-    } catch (error) {
-      const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
-      if (cached) return mergeJourneyWithLocalDetail(cached, localAtlasClient.journey(getCurrentUser().id, id));
-      throw error;
-    }
+  async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {
+    const local = localAtlasClient.journey(getCurrentUser().id, id);
+    const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
+    if (local && cached) return applyLocalPlaceAliases(mergeJourneyWithLocalDetail(cached, local));
+    if (local) return applyLocalPlaceAliases(local);
+    if (cached) return applyLocalPlaceAliases(cached);
+    throw new Error('This journey is not in this profile’s on-device archive.');
   },
 
   localOrCachedJourney(id: string): JourneyDetail | null {
     const local = localAtlasClient.journey(getCurrentUser().id, id);
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
-    return local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);
+    const detail = local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);
+    return detail ? applyLocalPlaceAliases(detail) : null;
   },
 
-  async vehicleIntelligence(): Promise<VehicleIntelligenceData> {
+  async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
-    const connection = await loadConnection();
-    if (!connection) return cached?.data ?? emptyVehicleIntelligence();
+    if (!refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
     try {
-      if (cached?.preferencesDirty) {
-        await request<VehicleIntelligencePreferences>(connection, '/api/recorder/vehicle-intelligence/preferences', {
-          method: 'PUT', body: JSON.stringify(cached.data.preferences),
-        });
-      }
-      const offset = new Date().getTimezoneOffset();
-      const data = await request<VehicleIntelligenceData>(connection, `/api/recorder/vehicle-intelligence?timezoneOffsetMinutes=${encodeURIComponent(String(offset))}`, undefined, 20_000);
-      writeAppCache(cacheKey, { data, preferencesDirty: false } satisfies VehicleIntelligenceCache);
-      return data;
-    } catch (error) {
+      return await refreshVehicleIntelligenceFromTessie(userId);
+    } catch {
       if (cached) return cached.data;
       const local = localVehicleIntelligence(userId);
       writeAppCache(cacheKey, { data: local, preferencesDirty: false } satisfies VehicleIntelligenceCache);
@@ -479,122 +601,75 @@ export const appDataClient = {
     }
   },
 
+  async syncVehicleIntelligence(): Promise<VehicleIntelligenceData> {
+    return refreshVehicleIntelligenceFromTessie(getCurrentUser().id);
+  },
+
   async saveVehicleIntelligencePreferences(preferences: VehicleIntelligencePreferences): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
     const local = applyVehiclePreferences(cached?.data ?? emptyVehicleIntelligence(), preferences);
-    writeAppCache(cacheKey, { data: local, preferencesDirty: true } satisfies VehicleIntelligenceCache);
-    const connection = await loadConnection();
-    if (!connection) return local;
-    try {
-      const saved = await request<VehicleIntelligencePreferences>(connection, '/api/recorder/vehicle-intelligence/preferences', {
-        method: 'PUT', body: JSON.stringify(preferences),
-      });
-      const synchronized = applyVehiclePreferences(local, saved);
-      writeAppCache(cacheKey, { data: synchronized, preferencesDirty: false } satisfies VehicleIntelligenceCache);
-      return synchronized;
-    } catch {
-      return local;
-    }
+    writeAppCache(cacheKey, { data: local, preferencesDirty: false } satisfies VehicleIntelligenceCache);
+    upsertPrivatePreference(userId, 'vehicle.preferences', preferences);
+    return local;
   },
 
   async savePlaceAlias(location: string, label: string): Promise<{ location: string; label: string; removed: boolean }> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before naming a location.');
-    return request(connection, '/api/recorder/places/alias', {
-      method: 'PUT',
-      body: JSON.stringify({ location, label: label.trim() }),
-    });
+    const normalized = label.trim();
+    upsertPrivatePreference(getCurrentUser().id, localPlaceAliasKey(location), normalized);
+    return { location, label: normalized, removed: !normalized };
   },
 
-  async memories(): Promise<MemoriesCatalog> {
+  async memories(_refreshRemote = false): Promise<MemoriesCatalog> {
     const local = localAtlasClient.memories(getCurrentUser().id);
-    const connection = await loadConnection();
     const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
-    if (!connection) {
-      return local.memories.length || local.collections.length ? local : (cached ?? local);
-    }
-    try {
-      const remote = await request<MemoriesCatalog>(connection, '/api/recorder/memories');
-      const catalog = mergeMemoriesCatalog(remote, local, cached);
-      writeAppCache(MEMORIES_CACHE_KEY, catalog);
-      return catalog;
-    } catch (error) {
-      if (local.memories.length || local.collections.length) return mergeMemoriesCatalog(cached ?? local, local, cached);
-      if (cached) return cached;
-      throw error;
-    }
+    return local.memories.length || local.collections.length ? mergeMemoriesCatalog(cached ?? local, local, cached) : (cached ?? local);
   },
 
-  async musicDashboard(): Promise<MusicDashboardData> {
-    const connection = await loadConnection();
-    const cached = readAppCache<MusicDashboardData>(MUSIC_DASHBOARD_CACHE_KEY);
-    if (!connection) {
-      const local = localAtlasClient.musicDashboard(getCurrentUser().id);
-      if (local.recentSelections.length || local.metrics.songsOnRoad > 0) return local;
-      if (cached) return cached;
-      return local;
-    }
-    try {
-      const offset = new Date().getTimezoneOffset();
-      const data = await request<MusicDashboardData>(connection, `/api/recorder/music-dashboard?timezoneOffsetMinutes=${encodeURIComponent(String(offset))}`);
-      writeAppCache(MUSIC_DASHBOARD_CACHE_KEY, data);
-      return data;
-    } catch (error) {
-      if (cached) return cached;
-      throw error;
-    }
+  async musicDashboard(refreshRemote = false, details: JourneyDetail[] = []): Promise<MusicDashboardData> {
+    const userId = getCurrentUser().id;
+    const local = localAtlasClient.musicDashboard(userId);
+    const cities = await loadMusicCitySummary(userId, refreshRemote, details);
+    const data = { ...local, cities };
+    writeAppCache(MUSIC_DASHBOARD_CACHE_KEY, data);
+    return data;
   },
 
   async saveCollection(input: { id?: string | null; name: string; description?: string | null; driveIds: string[] }): Promise<JourneyCollection> {
     const userId = getCurrentUser().id;
     const id = input.id ?? `collection_${Crypto.randomUUID()}`;
     const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.collections.find(item => item.id === id);
+    const localExisting = getCollectionIncludingDeleted(userId, id);
     const timestamp = new Date().toISOString();
-    const local: JourneyCollection = { id, name: input.name.trim(), description: input.description?.trim() ?? '', driveIds: [...new Set(input.driveIds)], createdAtUtc: existing?.createdAtUtc ?? timestamp, updatedAtUtc: timestamp, photos: existing?.photos ?? [] };
+    const local: JourneyCollection = { id, name: input.name.trim(), description: input.description?.trim() ?? '', driveIds: [...new Set(input.driveIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp, photos: existing?.photos ?? [] };
     upsertCollection({ id, userId, name: local.name, description: local.description, journeyIds: JSON.stringify(local.driveIds) });
     cacheCollection(local);
-    const connection = await loadConnection();
-    if (!connection) return local;
-    try {
-      const saved = await request<JourneyCollection>(connection, '/api/recorder/collections', { method: 'PUT', body: JSON.stringify({ ...input, id }) });
-      upsertCollection({ id: saved.id, userId, name: saved.name, description: saved.description, journeyIds: JSON.stringify(saved.driveIds) }, { syncedToCloud: 1, createdAt: saved.createdAtUtc, updatedAt: saved.updatedAtUtc });
-      cacheCollection(saved);
-      return saved;
-    } catch { return local; }
+    return local;
   },
 
   async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
     const userId = getCurrentUser().id;
     const id = input.id ?? `memory_${Crypto.randomUUID()}`;
     const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.memories.find(item => item.id === id);
+    const localExisting = getMemoryIncludingDeleted(userId, id);
     const timestamp = new Date().toISOString();
-    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], collectionIds: [...new Set(input.collectionIds)], createdAtUtc: existing?.createdAtUtc ?? timestamp, updatedAtUtc: timestamp };
-    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoLocalPath: null, collectionIds: JSON.stringify(local.collectionIds) });
+    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], collectionIds: [...new Set(input.collectionIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
+    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, collectionIds: JSON.stringify(local.collectionIds) });
     cacheMemory(local);
-    const connection = await loadConnection();
-    if (!connection) return local;
-    try {
-      const saved = await request<JourneyMemory>(connection, '/api/recorder/memories', { method: 'PUT', body: JSON.stringify({ ...input, id }) });
-      upsertMemory({ id: saved.id, userId, name: saved.name, notes: saved.notes, artworkKey: saved.artworkKey, coverPhotoLocalPath: null, collectionIds: JSON.stringify(saved.collectionIds) }, { syncedToCloud: 1, createdAt: saved.createdAtUtc, updatedAt: saved.updatedAtUtc });
-      cacheMemory(saved);
-      return saved;
-    } catch { return local; }
+    return local;
   },
 
   async uploadCollectionPhoto(collectionId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before uploading a photo.');
-    return request(connection, `/api/recorder/collections/${encodeURIComponent(collectionId)}/photos`, { method: 'POST', body: JSON.stringify(input) }, 35_000);
+    return savePrivatePhoto('collection', collectionId, input);
   },
 
   async uploadMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before uploading a photo.');
-    return request(connection, `/api/recorder/memories/${encodeURIComponent(memoryId)}/photos`, { method: 'POST', body: JSON.stringify(input) }, 35_000);
+    return savePrivatePhoto('memory', memoryId, input);
   },
 
   async photoDataUrl(photo: JourneyPhoto): Promise<string> {
+    const local = getPhotoIncludingDeleted(getCurrentUser().id, photo.id);
+    if (local && !local.deletedAt) return local.localUri;
     const cached = readAppCache<string>(photoCacheKey(photo.id));
     if (cached) return cached;
     const connection = await loadConnection();
@@ -606,39 +681,64 @@ export const appDataClient = {
   },
 
   async removePhoto(photoId: string): Promise<void> {
+    const userId = getCurrentUser().id;
+    if (getPhotoIncludingDeleted(userId, photoId)) {
+      softDeletePhoto(userId, photoId);
+      removeCachedPhoto(photoId);
+      return;
+    }
     const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before removing a photo.');
+    if (!connection) throw new Error('That legacy server photo is not available while JourneyDeck is offline.');
     await request(connection, `/api/recorder/photos/${encodeURIComponent(photoId)}`, { method: 'DELETE' });
+    removeCachedPhoto(photoId);
+  },
+
+  async deleteCollection(collectionId: string): Promise<void> {
+    const userId = getCurrentUser().id;
+    softDeleteCollection(userId, collectionId);
+    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+    writeAppCache(MEMORIES_CACHE_KEY, { ...cached, collections: cached.collections.filter(item => item.id !== collectionId), deletedCollectionIds: [...new Set([...(cached.deletedCollectionIds ?? []), collectionId])] });
+  },
+
+  async deleteMemory(memoryId: string): Promise<void> {
+    const userId = getCurrentUser().id;
+    softDeleteMemory(userId, memoryId);
+    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+    writeAppCache(MEMORIES_CACHE_KEY, { ...cached, memories: cached.memories.filter(item => item.id !== memoryId), deletedMemoryIds: [...new Set([...(cached.deletedMemoryIds ?? []), memoryId])] });
   },
 
   async providerPreferences(): Promise<ProviderPreferences | null> {
-    const connection = await loadConnection();
-    if (!connection) return null;
-    return request(connection, `/api/recorder/preferences/${encodeURIComponent(connection.deviceId)}`);
+    return getPrivatePreference<ProviderPreferences>(getCurrentUser().id, 'provider.preferences');
   },
 
   async updateProviderPreferences(input: Pick<ProviderPreferences, 'musicProvider' | 'onboardingCompleted' | 'connections'>): Promise<ProviderPreferences | null> {
+    const userId = getCurrentUser().id;
+    const local: ProviderPreferences = { deviceId: 'this-iphone', ...input, updatedAt: new Date().toISOString() };
+    upsertPrivatePreference(userId, 'provider.preferences', local);
+    return local;
+  },
+
+  /** Explicit owner-only bridge for importing the retained legacy JourneyDeck archive. */
+  async importLegacyOwnerArchive(): Promise<{ journeys: number; memories: number; collections: number }> {
     const connection = await loadConnection();
-    if (!connection) return null;
-    return request(connection, `/api/recorder/preferences/${encodeURIComponent(connection.deviceId)}`, {
-      method: 'PUT',
-      body: JSON.stringify(input),
-    });
+    if (!connection) throw new Error('Connect the optional owner backup before importing legacy data.');
+    const [dashboard, weeklyJourneys, journeyPage, remoteMemories] = await Promise.all([
+      request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
+      loadWeeklyJourneys(connection),
+      request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, '/api/recorder/journeys?limit=50'),
+      request<MemoriesCatalog>(connection, '/api/recorder/memories'),
+    ]);
+    writeAppCache(DASHBOARD_CACHE_KEY, dashboard);
+    writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weeklyJourneys);
+    writeAppCache(JOURNEYS_CACHE_KEY, journeyPage);
+    writeAppCache(MEMORIES_CACHE_KEY, remoteMemories);
+    return { journeys: journeyPage.items.length, memories: remoteMemories.memories.length, collections: remoteMemories.collections.length };
   },
 
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
-    const connection = await loadConnection();
-    if (!connection) return { lastFmConfigured: false, tessieConfigured: false };
-    return request(connection, '/api/recorder/connections/status');
-  },
-
-  async syncLastFm(sessionId: string, username: string): Promise<{ synced: number; total: number }> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect this iPhone to JourneyDeck before syncing Last.fm.');
-    return request(connection, `/api/recorder/sessions/${encodeURIComponent(sessionId)}/lastfm/sync`, {
-      method: 'POST',
-      body: JSON.stringify({ deviceId: connection.deviceId, username: username.trim() }),
-    }, 35_000);
+    const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
+    const lastFmConfigured = typeof edge?.url === 'string' && /^https:\/\//.test(edge.url);
+    return { lastFmConfigured, tessieConfigured: await tessieDirectStatus() === 'connected' };
   },
 };
 
@@ -668,8 +768,21 @@ import {
   listMusicEntriesForJourney,
   listCollections,
   listMemories,
+  listCollectionsIncludingDeleted,
+  listMemoriesIncludingDeleted,
+  listPhotos,
+  listPhotosIncludingDeleted,
+  getPhotoIncludingDeleted,
+  getCollectionIncludingDeleted,
+  getMemoryIncludingDeleted,
   upsertCollection,
   upsertMemory,
+  upsertPhoto,
+  softDeleteCollection,
+  softDeleteMemory,
+  softDeletePhoto,
+  getPrivatePreference,
+  upsertPrivatePreference,
   readAtlasSnapshot,
   localStoreDiagnostics,
 } from './local-store';
@@ -684,6 +797,7 @@ import {
   computeTopArtists,
   computeMoodBreakdown,
 } from './local-atlas';
+import { loadMusicCitySummary } from './music-city-summary';
 
 /** How stale a cached Atlas snapshot can be before we rebuild it (5 minutes). */
 const ATLAS_STALE_MS = 5 * 60_000;
@@ -853,7 +967,7 @@ export const localAtlasClient = {
       topArtists: artists,
       tour: { miles: tour.miles, changePercent: tour.changePercent },
       mood,
-      cities: [],        // requires geocoding — populated in Phase 3 via Cloudflare/Nominatim
+      cities: [],        // enriched from privacy-reduced coordinates on deliberate refresh
       daily: [],         // requires historical daily aggregation — Phase 1.5
       week: { total: last7.songCount, changePercent: null },
     };
@@ -864,6 +978,11 @@ export const localAtlasClient = {
    */
   memories(userId: LocalUserId): MemoriesCatalog {
     initializeLocalStore();
+    const localPhotos = listPhotos(userId);
+    const toPhoto = (photo: import('./local-store').LocalPhoto): JourneyPhoto => ({
+      id: photo.id, fileName: photo.fileName, contentType: photo.contentType, byteLength: photo.byteLength,
+      createdAtUtc: photo.createdAt, source: photo.source, collectionId: photo.collectionId, memoryId: photo.memoryId,
+    });
     const collections = listCollections(userId).map(c => ({
       id: c.id,
       name: c.name,
@@ -871,22 +990,26 @@ export const localAtlasClient = {
       driveIds: JSON.parse(c.journeyIds) as string[],
       createdAtUtc: c.createdAt,
       updatedAtUtc: c.updatedAt,
-      photos: [] as JourneyPhoto[],
+      photos: localPhotos.filter(photo => photo.collectionId === c.id).map(toPhoto),
     } satisfies JourneyCollection));
 
-    const memories = listMemories(userId).map(m => ({
-      id: m.id,
-      name: m.name,
-      notes: m.notes ?? '',
-      artworkKey: m.artworkKey ?? '',
-      coverPhotoId: null,
-      photos: [] as JourneyPhoto[],
-      collectionIds: JSON.parse(m.collectionIds) as string[],
-      createdAtUtc: m.createdAt,
-      updatedAtUtc: m.updatedAt,
-    } satisfies JourneyMemory));
+    const memories = listMemories(userId).map(m => {
+      const collectionIds = JSON.parse(m.collectionIds) as string[];
+      const photos = localPhotos.filter(photo => photo.memoryId === m.id || (photo.collectionId && collectionIds.includes(photo.collectionId))).map(toPhoto)
+        .filter((photo, index, all) => all.findIndex(candidate => candidate.id === photo.id) === index);
+      return {
+        id: m.id, name: m.name, notes: m.notes ?? '', artworkKey: m.artworkKey ?? '',
+        coverPhotoId: m.coverPhotoId && photos.some(photo => photo.id === m.coverPhotoId) ? m.coverPhotoId : null,
+        photos, collectionIds, createdAtUtc: m.createdAt, updatedAtUtc: m.updatedAt,
+      } satisfies JourneyMemory;
+    });
 
-    return { memories, collections };
+    return {
+      memories, collections,
+      deletedCollectionIds: listCollectionsIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
+      deletedMemoryIds: listMemoriesIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
+      deletedPhotoIds: listPhotosIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
+    };
   },
 
   /**

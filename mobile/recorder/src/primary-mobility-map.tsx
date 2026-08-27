@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
-import type { Feature, FeatureCollection, LineString } from 'geojson';
+import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
 
 type RouteLine = { id: string; coordinates: [number, number][] };
@@ -68,9 +68,13 @@ export function PrimaryMobilityMap({
         <Layer id="primary-route-shadow" type="line" paint={{ 'line-color': '#5d236f', 'line-width': 8, 'line-opacity': 0.8 }} />
         <Layer id="primary-route-line" type="line" paint={{ 'line-color': '#ff6750', 'line-width': 4.5, 'line-opacity': 0.96 }} />
       </GeoJSONSource>}
-      {places.map(place => <Marker key={place.id} id={`atlas-place-${place.id}`} lngLat={place.coordinate} anchor="center">
-        <View style={styles.placeMarker}><Text style={styles.placeCount}>{place.count ?? '•'}</Text></View>
-      </Marker>)}
+      {geometry.points.features.length > 0 && <GeoJSONSource id="primary-mobility-places" data={geometry.points} cluster clusterRadius={44} clusterMaxZoom={13}>
+        <Layer id="primary-place-cluster-glow" type="circle" filter={['has', 'point_count']} paint={{ 'circle-color': '#a653ff', 'circle-radius': ['step', ['get', 'point_count'], 25, 10, 31, 50, 38, 250, 46], 'circle-blur': 0.72, 'circle-opacity': 0.62 }} />
+        <Layer id="primary-place-cluster" type="circle" filter={['has', 'point_count']} paint={{ 'circle-color': '#8f45e8', 'circle-radius': ['step', ['get', 'point_count'], 17, 10, 21, 50, 26, 250, 31], 'circle-stroke-color': '#d2a3ff', 'circle-stroke-width': 2, 'circle-opacity': 0.94 }} />
+        <Layer id="primary-place-cluster-count" type="symbol" filter={['has', 'point_count']} layout={{ 'text-field': ['to-string', ['get', 'point_count_abbreviated']], 'text-size': 11, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': '#ffffff' }} />
+        <Layer id="primary-place-dot" type="circle" filter={['!', ['has', 'point_count']]} paint={{ 'circle-color': '#8f45e8', 'circle-radius': 13, 'circle-stroke-color': '#d2a3ff', 'circle-stroke-width': 2, 'circle-opacity': 0.94 }} />
+        <Layer id="primary-place-count" type="symbol" filter={['!', ['has', 'point_count']]} layout={{ 'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': '#ffffff' }} />
+      </GeoJSONSource>}
       {currentCoordinate && <Marker id="live-position" lngLat={currentCoordinate} anchor="center">
         <View style={[styles.currentMarker, { transform: [{ rotate: `${currentHeading ?? 0}deg` }] }]}><Text style={styles.currentArrow}>▲</Text></View>
       </Marker>}
@@ -92,24 +96,29 @@ function validCoordinate(value: [number, number]) {
 }
 
 function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinate?: [number, number] | null) {
-  const features: Feature<LineString>[] = [], all: [number, number][] = [];
+  const features: Feature<LineString>[] = [], pointFeatures: Feature<Point, { count: number }>[] = [], all: [number, number][] = [];
   for (const route of routes) {
     const coordinates = route.coordinates.filter(validCoordinate);
     if (coordinates.length < 2) continue;
     all.push(...coordinates);
     features.push({ type: 'Feature', id: route.id, properties: {}, geometry: { type: 'LineString', coordinates } });
   }
-  for (const place of places) if (validCoordinate(place.coordinate)) all.push(place.coordinate);
+  for (const place of places) {
+    if (!validCoordinate(place.coordinate)) continue;
+    all.push(place.coordinate);
+    pointFeatures.push({ type: 'Feature', id: place.id, properties: { count: place.count ?? 1 }, geometry: { type: 'Point', coordinates: place.coordinate } });
+  }
   if (currentCoordinate && validCoordinate(currentCoordinate)) all.push(currentCoordinate);
   const collection: FeatureCollection<LineString> = { type: 'FeatureCollection', features };
-  if (!all.length) return { lines: collection, bounds: null as [number, number, number, number] | null };
+  const points: FeatureCollection<Point, { count: number }> = { type: 'FeatureCollection', features: pointFeatures };
+  if (!all.length) return { lines: collection, points, bounds: null as [number, number, number, number] | null };
   let west = all[0][0], east = all[0][0], south = all[0][1], north = all[0][1];
   for (const [longitude, latitude] of all.slice(1)) {
     west = Math.min(west, longitude); east = Math.max(east, longitude); south = Math.min(south, latitude); north = Math.max(north, latitude);
   }
   if (west === east) { west -= 0.01; east += 0.01; }
   if (south === north) { south -= 0.01; north += 0.01; }
-  return { lines: collection, bounds: [west, south, east, north] as [number, number, number, number] };
+  return { lines: collection, points, bounds: [west, south, east, north] as [number, number, number, number] };
 }
 
 const styles = StyleSheet.create({
@@ -127,8 +136,6 @@ const styles = StyleSheet.create({
   loading: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(3,1,6,0.76)', gap: 10 },
   loadingText: { color: '#b9a8c4', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
   attribution: { position: 'absolute', left: 12, bottom: 8, color: '#7b6b84', fontSize: 8 },
-  placeMarker: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8f45e8', borderWidth: 2, borderColor: '#d2a3ff', shadowColor: '#a653ff', shadowOpacity: 0.8, shadowRadius: 9 },
-  placeCount: { color: '#fff', fontSize: 11, fontWeight: '900' },
   currentMarker: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff4d57', borderWidth: 3, borderColor: '#ffd6d7', shadowColor: '#ff334f', shadowOpacity: 0.9, shadowRadius: 12 },
   currentArrow: { color: '#fff', fontSize: 17, fontWeight: '900' },
 });

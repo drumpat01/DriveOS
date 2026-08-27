@@ -14,10 +14,10 @@ const homeSummary = await readFile(new URL('home-summary.ts', sourceRoot), 'utf8
 const storage = await readFile(new URL('storage.ts', sourceRoot), 'utf8');
 const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
 
-test('tabs use one persistent native pager instead of blackout remounts', () => {
+test('tabs use one native pager with a bounded offscreen memory budget', () => {
   assert.match(shell, /<PagerView/);
   assert.match(shell, /scrollEnabled=\{false\}/);
-  assert.match(shell, /offscreenPageLimit=\{bottomNavigationItems\.length\}/);
+  assert.match(shell, /offscreenPageLimit=\{1\}/);
   assert.match(shell, /key="home"/);
   assert.match(shell, /key="live"/);
   assert.match(shell, /key="journeys"/);
@@ -47,6 +47,9 @@ test('Phase 2 maps use recorded geometry and the same themed OpenFreeMap basemap
   assert.match(primaryMap, /loadJourneyDeckMapStyle/);
   assert.match(primaryMap, /OPEN_FREE_MAP_DARK_STYLE/);
   assert.match(primaryMap, /primary-route-line/);
+  assert.match(primaryMap, /primary-mobility-places/);
+  assert.match(primaryMap, /clusterRadius=\{44\}/);
+  assert.doesNotMatch(primaryMap, /places\.map\(place => <Marker/);
   assert.match(primaryMap, /OpenFreeMap · © OpenStreetMap/);
   assert.match(primarySections, /details.*route/);
   assert.match(primarySections, /snapshot\.route\.map/);
@@ -107,8 +110,9 @@ test('music chooser and Settings use approved service marks with honest provider
   assert.match(shell, /function TessieMark/);
   assert.match(shell, /ConnectionTile name="Tessie"[\s\S]*?mark=\{<TessieMark size=\{46\} \/>\}/);
   assert.match(shell, /Connected through Tessie/);
-  assert.match(shell, /Better with Tesla \+ Tessie/);
-  assert.match(shell, /https:\/\/www\.tessie\.com\//);
+  assert.match(shell, /token in this iPhone Keychain/);
+  assert.match(shell, /stateless privacy edge/);
+  assert.match(shell, /https:\/\/dash\.tessie\.com\/settings\/developer/);
   assert.doesNotMatch(shell, /name: 'Last\.fm for Spotify'/);
 });
 

@@ -19,31 +19,47 @@ import {
   LocalMusicEntry,
   LocalCollection,
   LocalMemory,
+  LocalPhoto,
+  LocalPrivatePreference,
   journeysPendingSync,
   musicEntriesPendingSync,
   collectionsPendingSync,
   memoriesPendingSync,
+  photosPendingSync,
+  preferencesPendingSync,
   markJourneysSynced,
   markMusicEntriesSynced,
-  markCollectionsSynced,
-  markMemoriesSynced,
+  markCollectionRevisionsSynced,
+  markMemoryRevisionsSynced,
+  markPhotoRevisionsSynced,
+  markPreferenceRevisionsSynced,
   upsertJourney,
   upsertMusicEntry,
   upsertCollection,
   upsertMemory,
+  upsertPhoto,
+  upsertPrivatePreference,
   getJourney,
   listJourneys,
   listMusicEntries,
-  listCollections,
-  listMemories,
+  getCollectionIncludingDeleted,
+  getMemoryIncludingDeleted,
+  getPhotoIncludingDeleted,
+  listCollectionsIncludingDeleted,
+  listMemoriesIncludingDeleted,
+  listPhotosIncludingDeleted,
+  listPrivatePreferences,
+  quarantineCloudDeletions,
 } from './local-store';
+import { resolveVersionedPrivateConflict } from './private-content-conflicts';
 
-export type CloudKitRecordType = 'Journey' | 'MusicEntry' | 'Collection' | 'Memory';
+export type CloudKitRecordType = 'Journey' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
 
 export interface CloudKitRecord {
   recordName: string;
   recordType: CloudKitRecordType;
   fields: Record<string, any>;
+  assetFilePath?: string;
   modificationDate?: string;
 }
 
@@ -143,7 +159,7 @@ export function ckRecordToMusicEntry(record: CloudKitRecord, userId: LocalUserId
 export function collectionToCKRecord(collection: LocalCollection): CloudKitRecord {
   return {
     recordName: `collection_${collection.id}`, recordType: 'Collection',
-    fields: { id: collection.id, name: collection.name, description: collection.description, journeyIds: collection.journeyIds, createdAt: collection.createdAt, updatedAt: collection.updatedAt },
+    fields: { id: collection.id, name: collection.name, description: collection.description, journeyIds: collection.journeyIds, deletedAt: collection.deletedAt, syncRevision: collection.syncRevision, createdAt: collection.createdAt, updatedAt: collection.updatedAt },
     modificationDate: collection.updatedAt,
   };
 }
@@ -153,6 +169,8 @@ export function ckRecordToCollection(record: CloudKitRecord, userId: LocalUserId
   return {
     id: String(f.id), userId, name: String(f.name), description: f.description ? String(f.description) : null,
     journeyIds: String(f.journeyIds || '[]'), syncedToCloud: 1,
+    deletedAt: f.deletedAt ? String(f.deletedAt) : null,
+    syncRevision: Math.max(1, Number(f.syncRevision) || 1),
     createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
     updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
   };
@@ -161,7 +179,7 @@ export function ckRecordToCollection(record: CloudKitRecord, userId: LocalUserId
 export function memoryToCKRecord(memory: LocalMemory): CloudKitRecord {
   return {
     recordName: `memory_${memory.id}`, recordType: 'Memory',
-    fields: { id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, collectionIds: memory.collectionIds, createdAt: memory.createdAt, updatedAt: memory.updatedAt },
+    fields: { id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, collectionIds: memory.collectionIds, deletedAt: memory.deletedAt, syncRevision: memory.syncRevision, createdAt: memory.createdAt, updatedAt: memory.updatedAt },
     modificationDate: memory.updatedAt,
   };
 }
@@ -170,8 +188,57 @@ export function ckRecordToMemory(record: CloudKitRecord, userId: LocalUserId): L
   const f = record.fields;
   return {
     id: String(f.id), userId, name: String(f.name), notes: f.notes ? String(f.notes) : null,
-    artworkKey: f.artworkKey ? String(f.artworkKey) : null, coverPhotoLocalPath: null,
+    artworkKey: f.artworkKey ? String(f.artworkKey) : null, coverPhotoId: f.coverPhotoId ? String(f.coverPhotoId) : null, coverPhotoLocalPath: null,
     collectionIds: String(f.collectionIds || '[]'), syncedToCloud: 1,
+    deletedAt: f.deletedAt ? String(f.deletedAt) : null,
+    syncRevision: Math.max(1, Number(f.syncRevision) || 1),
+    createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
+    updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
+  };
+}
+
+export function photoToCKRecord(photo: LocalPhoto): CloudKitRecord {
+  return {
+    recordName: `photo_${photo.id}`,
+    recordType: 'Photo',
+    assetFilePath: photo.deletedAt ? undefined : photo.localUri,
+    fields: {
+      id: photo.id, source: photo.source, collectionId: photo.collectionId, memoryId: photo.memoryId,
+      fileName: photo.fileName, contentType: photo.contentType, byteLength: photo.byteLength,
+      deletedAt: photo.deletedAt, syncRevision: photo.syncRevision, createdAt: photo.createdAt, updatedAt: photo.updatedAt,
+    },
+    modificationDate: photo.updatedAt,
+  };
+}
+
+export function ckRecordToPhoto(record: CloudKitRecord, userId: LocalUserId): LocalPhoto {
+  const f = record.fields, source = String(f.source) === 'collection' ? 'collection' : 'memory';
+  return {
+    id: String(f.id), userId, source,
+    collectionId: source === 'collection' && f.collectionId ? String(f.collectionId) : null,
+    memoryId: source === 'memory' && f.memoryId ? String(f.memoryId) : null,
+    fileName: String(f.fileName || 'journeydeck-photo.jpg'),
+    contentType: ['image/png', 'image/webp'].includes(String(f.contentType)) ? String(f.contentType) as LocalPhoto['contentType'] : 'image/jpeg',
+    byteLength: Math.max(0, Number(f.byteLength) || 0), localUri: record.assetFilePath ?? '', syncedToCloud: 1,
+    deletedAt: f.deletedAt ? String(f.deletedAt) : null, syncRevision: Math.max(1, Number(f.syncRevision) || 1),
+    createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
+    updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
+  };
+}
+
+export function preferenceToCKRecord(preference: LocalPrivatePreference): CloudKitRecord {
+  return {
+    recordName: `preference_${encodeURIComponent(preference.key)}`, recordType: 'PrivatePreference',
+    fields: { key: preference.key, valueJson: preference.valueJson, deletedAt: preference.deletedAt, syncRevision: preference.syncRevision, createdAt: preference.createdAt, updatedAt: preference.updatedAt },
+    modificationDate: preference.updatedAt,
+  };
+}
+
+export function ckRecordToPreference(record: CloudKitRecord, userId: LocalUserId): LocalPrivatePreference {
+  const f = record.fields;
+  return {
+    userId, key: String(f.key), valueJson: String(f.valueJson || 'null'), syncedToCloud: 1,
+    deletedAt: f.deletedAt ? String(f.deletedAt) : null, syncRevision: Math.max(1, Number(f.syncRevision) || 1),
     createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
     updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
   };
@@ -185,13 +252,20 @@ export function resolveConflict<T extends { updatedAt: string }>(local: T, remot
   return remoteTime >= localTime ? remote : local;
 }
 
+export function resolvePrivateConflict<T extends { updatedAt: string; syncRevision: number; deletedAt: string | null }>(local: T, remote: T): T {
+  return resolveVersionedPrivateConflict(local, remote);
+}
+
 // --- Sync Engine ------------------------------------------------------------
 
 export class CloudKitSyncEngine {
   private userId: LocalUserId;
+  private privateContentV2: boolean;
+  private preparedRevisions = new Map<string, number>();
 
-  constructor(userId: LocalUserId) {
+  constructor(userId: LocalUserId, options: { privateContentV2?: boolean } = {}) {
     this.userId = userId;
+    this.privateContentV2 = options.privateContentV2 === true;
   }
 
   public getSyncState(): SyncState {
@@ -218,13 +292,29 @@ export class CloudKitSyncEngine {
     const pendingMusicIds = musicEntriesPendingSync(this.userId, limit);
     const pendingCollectionIds = collectionsPendingSync(this.userId, limit);
     const pendingMemoryIds = memoriesPendingSync(this.userId, limit);
+    const pendingPhotoIds = this.privateContentV2 ? photosPendingSync(this.userId, limit) : [];
+    const pendingPreferenceKeys = this.privateContentV2 ? preferencesPendingSync(this.userId, limit) : [];
     const { items: allJourneys } = listJourneys(this.userId, { limit: 100 });
-    return [
+    const collections = listCollectionsIncludingDeleted(this.userId).filter(item => pendingCollectionIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
+    const memories = listMemoriesIncludingDeleted(this.userId).filter(item => pendingMemoryIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
+    const records = [
       ...allJourneys.filter(item => pendingJourneyIds.includes(item.id)).map(journeyToCKRecord),
       ...listMusicEntries(this.userId, 500).filter(item => pendingMusicIds.includes(item.id)).map(musicEntryToCKRecord),
-      ...listCollections(this.userId).filter(item => pendingCollectionIds.includes(item.id)).map(collectionToCKRecord),
-      ...listMemories(this.userId).filter(item => pendingMemoryIds.includes(item.id)).map(memoryToCKRecord),
+      ...collections.map(collectionToCKRecord),
+      ...memories.map(memoryToCKRecord),
+      ...listPhotosIncludingDeleted(this.userId).filter(item => pendingPhotoIds.includes(item.id)).map(photoToCKRecord),
+      ...listPrivatePreferences(this.userId, true).filter(item => pendingPreferenceKeys.includes(item.key)).map(preferenceToCKRecord),
     ].slice(0, Math.max(1, Math.min(200, limit * 4)));
+    for (const record of records) {
+      const revision = Number(record.fields.syncRevision);
+      if (Number.isFinite(revision)) this.preparedRevisions.set(record.recordName, revision);
+      if (!this.privateContentV2 && (record.recordType === 'Collection' || record.recordType === 'Memory')) {
+        delete record.fields.deletedAt;
+        delete record.fields.syncRevision;
+        if (record.recordType === 'Memory') delete record.fields.coverPhotoId;
+      }
+    }
+    return records;
   }
 
   /**
@@ -239,8 +329,11 @@ export class CloudKitSyncEngine {
       markJourneysSynced(this.userId, journeyIds);
     }
     markMusicEntriesSynced(this.userId, recordIds(pushedRecordNames, 'music_'));
-    markCollectionsSynced(this.userId, recordIds(pushedRecordNames, 'collection_'));
-    markMemoriesSynced(this.userId, recordIds(pushedRecordNames, 'memory_'));
+    markCollectionRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'collection_', this.preparedRevisions));
+    markMemoryRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'memory_', this.preparedRevisions));
+    markPhotoRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'photo_', this.preparedRevisions));
+    markPreferenceRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'preference_', this.preparedRevisions, true));
+    for (const name of pushedRecordNames) this.preparedRevisions.delete(name);
 
     syncStates.set(this.userId, {
       ...stateFor(this.userId),
@@ -256,7 +349,7 @@ export class CloudKitSyncEngine {
    */
   public ingestRemoteRecords(remoteRecords: CloudKitRecord[]): { updatedCount: number } {
     let count = 0;
-    const priority: Record<CloudKitRecordType, number> = { Journey: 0, MusicEntry: 1, Collection: 2, Memory: 3 };
+    const priority: Record<CloudKitRecordType, number> = { Journey: 0, MusicEntry: 1, Collection: 2, Memory: 3, Photo: 4, PrivatePreference: 5 };
     for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType])) {
       if (record.recordType === 'Journey') {
         const remoteJourney = ckRecordToJourney(record, this.userId);
@@ -276,29 +369,59 @@ export class CloudKitSyncEngine {
         count++;
       } else if (record.recordType === 'Collection') {
         const remote = ckRecordToCollection(record, this.userId);
-        const local = listCollections(this.userId).find(item => item.id === remote.id);
-        if (!local || resolveConflict(local, remote) === remote) {
-          upsertCollection(remote, { syncedToCloud: 1, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        const local = getCollectionIncludingDeleted(this.userId, remote.id);
+        if (!local || resolvePrivateConflict(local, remote) === remote) {
+          upsertCollection(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
           count++;
         }
       } else if (record.recordType === 'Memory') {
         const remote = ckRecordToMemory(record, this.userId);
-        const local = listMemories(this.userId).find(item => item.id === remote.id);
-        if (!local || resolveConflict(local, remote) === remote) {
-          upsertMemory(remote, { syncedToCloud: 1, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        const local = getMemoryIncludingDeleted(this.userId, remote.id);
+        if (!local || resolvePrivateConflict(local, remote) === remote) {
+          upsertMemory(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
           count++;
         }
+      } else if (record.recordType === 'Photo') {
+        const remote = ckRecordToPhoto(record, this.userId), local = getPhotoIncludingDeleted(this.userId, remote.id);
+        if ((remote.source === 'collection' && !remote.collectionId) || (remote.source === 'memory' && !remote.memoryId)) continue;
+        if ((!local && !remote.deletedAt && !remote.localUri) || (local && resolvePrivateConflict(local, remote) !== remote)) continue;
+        if (!remote.localUri && local) remote.localUri = local.localUri;
+        upsertPhoto(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        count++;
+      } else if (record.recordType === 'PrivatePreference') {
+        const remote = ckRecordToPreference(record, this.userId);
+        const local = listPrivatePreferences(this.userId, true).find(item => item.key === remote.key);
+        if (local && resolvePrivateConflict(local, remote) !== remote) continue;
+        let value: unknown = null;
+        try { value = JSON.parse(remote.valueJson); } catch { continue; }
+        upsertPrivatePreference(this.userId, remote.key, value, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        count++;
       }
     }
     return { updatedCount: count };
   }
 
+  public ingestRemoteDeletions(recordNames: string[]): void {
+    // App-originated deletes are synced as versioned tombstones. A physical
+    // CloudKit deletion has no application revision, so quarantine it and
+    // re-queue any surviving local row instead of erasing the only copy.
+    quarantineCloudDeletions(this.userId, recordNames);
+  }
+
   private pendingCount(): number {
     return journeysPendingSync(this.userId, 500).length + musicEntriesPendingSync(this.userId, 500).length +
-      collectionsPendingSync(this.userId, 500).length + memoriesPendingSync(this.userId, 500).length;
+      collectionsPendingSync(this.userId, 500).length + memoriesPendingSync(this.userId, 500).length +
+      photosPendingSync(this.userId, 500).length + preferencesPendingSync(this.userId, 500).length;
   }
 }
 
 function recordIds(names: string[], prefix: string): string[] {
   return names.filter(name => name.startsWith(prefix)).map(name => name.slice(prefix.length));
+}
+
+function revisionAcks(names: string[], prefix: string, revisions: Map<string, number>, decode = false): Array<{ id: string; syncRevision: number }> {
+  return names.filter(name => name.startsWith(prefix) && revisions.has(name)).map(name => ({
+    id: decode ? decodeURIComponent(name.slice(prefix.length)) : name.slice(prefix.length),
+    syncRevision: revisions.get(name)!,
+  }));
 }

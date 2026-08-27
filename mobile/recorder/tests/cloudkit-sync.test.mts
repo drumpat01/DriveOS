@@ -14,6 +14,7 @@ const __dir = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dir, '../src/cloudkit-sync.ts'), 'utf8');
 const transport = readFileSync(resolve(__dir, '../src/icloud-sync.ts'), 'utf8');
 const nativeModule = readFileSync(resolve(__dir, '../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKitModule.swift'), 'utf8');
+const productionSchema = readFileSync(resolve(__dir, '../cloudkit/journeydeck-development.ckdb'), 'utf8');
 const podspec = readFileSync(resolve(__dir, '../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKit.podspec'), 'utf8');
 const app = readFileSync(resolve(__dir, '../App.tsx'), 'utf8');
 
@@ -29,6 +30,8 @@ assert.match(src, /export class CloudKitSyncEngine/, 'exports CloudKitSyncEngine
 assert.match(src, /musicEntryToCKRecord/, 'syncs music entries');
 assert.match(src, /collectionToCKRecord/, 'syncs collections');
 assert.match(src, /memoryToCKRecord/, 'syncs memories');
+assert.match(src, /photoToCKRecord/, 'syncs private photo assets');
+assert.match(src, /preferenceToCKRecord/, 'syncs user-scoped private preferences');
 
 // ============================================================
 // 2. Pure logic tests: LWW Conflict Resolution
@@ -83,6 +86,12 @@ assert.match(nativeModule, /modifyRecords/, 'uploads records through CloudKit');
 assert.match(nativeModule, /savePolicy: \.ifServerRecordUnchanged/, 'prevents a fetch-to-save race from overwriting a newer device update');
 assert.match(nativeModule, /changeTokenExpired/, 'recovers from expired CloudKit tokens');
 assert.match(nativeModule, /allowedRecordTypes/, 'restricts native record types');
+const deployedTypes = [...productionSchema.matchAll(/RECORD TYPE (\w+)/g)].map(match => match[1]).filter(type => type !== 'Users').sort();
+assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference'], 'checked-in schema contains every JourneyDeck private record type');
+assert.match(productionSchema, /RECORD TYPE Journey[\s\S]*durationMinutes DOUBLE[\s\S]*songCount INT64/, 'Journey numeric fields retain their CloudKit production types');
+assert.match(productionSchema, /RECORD TYPE MusicEntry[\s\S]*confidence DOUBLE[\s\S]*durationMs INT64/, 'Music numeric fields retain their CloudKit production types');
+assert.match(productionSchema, /RECORD TYPE Photo[\s\S]*asset ASSET[\s\S]*syncRevision INT64/, 'private photos use CloudKit assets and versioned metadata');
+assert.match(nativeModule, /getCapabilitiesAsync[\s\S]*privateContentVersion/, 'new native builds advertise private-content asset support');
 assert.match(podspec, /frameworks.*CloudKit/, 'links the native CloudKit framework');
 assert.match(app, /enrichCompletedJourney[\s\S]*syncCurrentUserWithPrivateICloud/, 'queues private iCloud sync after a completed journey and its local music enrichment');
 

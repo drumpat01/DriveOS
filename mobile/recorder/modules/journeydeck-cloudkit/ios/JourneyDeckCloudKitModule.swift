@@ -2,7 +2,8 @@ import CloudKit
 import ExpoModulesCore
 
 private let containerIdentifier = "iCloud.com.journeydeck.recorder"
-private let allowedRecordTypes: Set<String> = ["Journey", "MusicEntry", "Collection", "Memory"]
+private let allowedRecordTypes: Set<String> = ["Journey", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
+private let maximumAssetBytes: UInt64 = 10 * 1_024 * 1_024
 
 private enum JourneyDeckCloudKitError {
   static func make(_ code: Int, _ message: String) -> NSError {
@@ -77,16 +78,26 @@ private final class PrivateCloudKitTransport {
         existing = nil
       }
 
-      if let existing,
-         let remoteUpdated = existing["updatedAt"] as? String,
-         let localUpdated = item.fields["updatedAt"] as? String,
-         remoteUpdated >= localUpdated {
-        remoteWinners.append(dictionary(from: existing))
-        continue
+      if let existing {
+        let remoteRevision = (existing["syncRevision"] as? NSNumber)?.intValue ?? 1
+        let localRevision = (item.fields["syncRevision"] as? NSNumber)?.intValue ?? 1
+        let remoteUpdated = existing["updatedAt"] as? String ?? ""
+        let localUpdated = item.fields["updatedAt"] as? String ?? ""
+        if remoteRevision > localRevision || (remoteRevision == localRevision && remoteUpdated >= localUpdated) {
+          remoteWinners.append(dictionary(from: existing))
+          continue
+        }
       }
 
       let record = existing ?? CKRecord(recordType: item.recordType, recordID: item.recordID)
       try apply(fields: item.fields, to: record)
+      if item.recordType == "Photo" {
+        if let path = item.assetFilePath, !path.isEmpty {
+          record["asset"] = CKAsset(fileURL: try validatedAssetURL(path))
+        } else if item.fields["deletedAt"] is String {
+          record["asset"] = nil
+        }
+      }
       recordsToSave.append(record)
     }
 
@@ -120,6 +131,13 @@ private final class PrivateCloudKitTransport {
     clearToken(zoneID: try zoneID(profileScope: profileScope))
   }
 
+  func commitPendingToken(profileScope: String) throws {
+    let id = try zoneID(profileScope: profileScope)
+    guard let token = loadPendingToken(zoneID: id) else { return }
+    saveToken(token, zoneID: id)
+    UserDefaults.standard.removeObject(forKey: pendingTokenKey(zoneID: id))
+  }
+
   private func pull(zoneID: CKRecordZone.ID, startingWith initialToken: CKServerChangeToken?) async throws -> [String: Any] {
     var token = initialToken
     var records: [[String: Any]] = []
@@ -136,7 +154,7 @@ private final class PrivateCloudKitTransport {
       token = result.changeToken
       moreComing = result.moreComing
     }
-    if let token { saveToken(token, zoneID: zoneID) }
+    if let token { savePendingToken(token, zoneID: zoneID) }
     return ["records": records, "deletedRecordNames": deletedNames]
   }
 
@@ -144,6 +162,7 @@ private final class PrivateCloudKitTransport {
     let recordID: CKRecord.ID
     let recordType: String
     let fields: [String: Any]
+    let assetFilePath: String?
   }
 
   private func parseInput(_ input: [String: Any], zoneID: CKRecordZone.ID) throws -> ParsedInput {
@@ -152,7 +171,7 @@ private final class PrivateCloudKitTransport {
           let fields = input["fields"] as? [String: Any] else {
       throw JourneyDeckCloudKitError.make(4, "A CloudKit record payload is invalid.")
     }
-    return ParsedInput(recordID: CKRecord.ID(recordName: name, zoneID: zoneID), recordType: type, fields: fields)
+    return ParsedInput(recordID: CKRecord.ID(recordName: name, zoneID: zoneID), recordType: type, fields: fields, assetFilePath: input["assetFilePath"] as? String)
   }
 
   private func apply(fields: [String: Any], to record: CKRecord) throws {
@@ -167,18 +186,53 @@ private final class PrivateCloudKitTransport {
     }
   }
 
+  private func validatedAssetURL(_ path: String) throws -> URL {
+    let url = URL(string: path)?.isFileURL == true ? URL(string: path)! : URL(fileURLWithPath: path)
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      throw JourneyDeckCloudKitError.make(7, "A private photo file is missing from this device.")
+    }
+    let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
+    guard size > 0 && size <= maximumAssetBytes else {
+      throw JourneyDeckCloudKitError.make(8, "A private photo file is empty or too large to sync.")
+    }
+    return url
+  }
+
+  private func persistentAssetPath(recordName: String, zoneName: String, asset: CKAsset) -> String? {
+    guard let source = asset.fileURL else { return nil }
+    do {
+      let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        .appendingPathComponent("JourneyDeckPrivatePhotos", isDirectory: true)
+      let safeZone = String((zoneName.isEmpty ? "unknown" : zoneName).map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" })
+      let profileBase = base.appendingPathComponent(safeZone, isDirectory: true)
+      try FileManager.default.createDirectory(at: profileBase, withIntermediateDirectories: true)
+      let safeName = String(recordName.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" })
+      let destination = profileBase.appendingPathComponent(safeName).appendingPathExtension(source.pathExtension.isEmpty ? "jpg" : source.pathExtension)
+      if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
+      try FileManager.default.copyItem(at: source, to: destination)
+      return destination.absoluteString
+    } catch {
+      return nil
+    }
+  }
+
   private func dictionary(from record: CKRecord) -> [String: Any] {
     var fields: [String: Any] = [:]
     for key in record.allKeys() {
       if let value = record[key] as? String { fields[key] = value }
       else if let value = record[key] as? NSNumber { fields[key] = value }
     }
-    return [
+    var output: [String: Any] = [
       "recordName": record.recordID.recordName,
       "recordType": record.recordType,
       "fields": fields,
       "modificationDate": iso8601(record.modificationDate ?? Date())
     ]
+    if let asset = record["asset"] as? CKAsset,
+       let path = persistentAssetPath(recordName: record.recordID.recordName, zoneName: record.recordID.zoneID.zoneName, asset: asset) {
+      output["assetFilePath"] = path
+    }
+    return output
   }
 
   private func isUnknownItem(_ error: Error) -> Bool {
@@ -187,6 +241,10 @@ private final class PrivateCloudKitTransport {
 
   private func tokenKey(zoneID: CKRecordZone.ID) -> String {
     "journeydeck.cloudkit.token.\(zoneID.zoneName)"
+  }
+
+  private func pendingTokenKey(zoneID: CKRecordZone.ID) -> String {
+    "journeydeck.cloudkit.pending-token.\(zoneID.zoneName)"
   }
 
   private func loadToken(zoneID: CKRecordZone.ID) -> CKServerChangeToken? {
@@ -200,8 +258,20 @@ private final class PrivateCloudKitTransport {
     }
   }
 
+  private func loadPendingToken(zoneID: CKRecordZone.ID) -> CKServerChangeToken? {
+    guard let data = UserDefaults.standard.data(forKey: pendingTokenKey(zoneID: zoneID)) else { return nil }
+    return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+  }
+
+  private func savePendingToken(_ token: CKServerChangeToken, zoneID: CKRecordZone.ID) {
+    if let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) {
+      UserDefaults.standard.set(data, forKey: pendingTokenKey(zoneID: zoneID))
+    }
+  }
+
   private func clearToken(zoneID: CKRecordZone.ID) {
     UserDefaults.standard.removeObject(forKey: tokenKey(zoneID: zoneID))
+    UserDefaults.standard.removeObject(forKey: pendingTokenKey(zoneID: zoneID))
   }
 }
 
@@ -215,6 +285,10 @@ public final class JourneyDeckCloudKitModule: Module {
       try await self.transport.accountStatus()
     }
 
+    AsyncFunction("getCapabilitiesAsync") { () -> [String: Int] in
+      ["privateContentVersion": 2]
+    }
+
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in
       _ = try await self.transport.ensureZone(profileScope: profileScope)
       return ["ready": true]
@@ -226,6 +300,10 @@ public final class JourneyDeckCloudKitModule: Module {
 
     AsyncFunction("pullChangesAsync") { (profileScope: String) async throws -> [String: Any] in
       try await self.transport.pull(profileScope: profileScope)
+    }
+
+    AsyncFunction("commitChangeTokenAsync") { (profileScope: String) throws in
+      try self.transport.commitPendingToken(profileScope: profileScope)
     }
 
     AsyncFunction("resetChangeTokenAsync") { (profileScope: String) throws in

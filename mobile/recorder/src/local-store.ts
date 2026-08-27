@@ -17,6 +17,9 @@
 
 import * as Crypto from 'expo-crypto';
 import * as SQLite from 'expo-sqlite';
+import {
+  buildRetentionPreview, DEFAULT_RETENTION_DAYS, type LocalRetentionPreview, type RetentionJourneyCandidate,
+} from './retention-preview';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
@@ -113,6 +116,8 @@ export type LocalCollection = {
   description: string | null;
   journeyIds: string;
   syncedToCloud: number;
+  deletedAt: string | null;
+  syncRevision: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -123,11 +128,48 @@ export type LocalMemory = {
   name: string;
   notes: string | null;
   artworkKey: string | null;
+  coverPhotoId: string | null;
   coverPhotoLocalPath: string | null;
   collectionIds: string;
   syncedToCloud: number;
+  deletedAt: string | null;
+  syncRevision: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type LocalPhoto = {
+  id: string;
+  userId: LocalUserId;
+  source: 'collection' | 'memory';
+  collectionId: string | null;
+  memoryId: string | null;
+  fileName: string;
+  contentType: 'image/jpeg' | 'image/png' | 'image/webp';
+  byteLength: number;
+  localUri: string;
+  syncedToCloud: number;
+  deletedAt: string | null;
+  syncRevision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalPrivatePreference = {
+  userId: LocalUserId;
+  key: string;
+  valueJson: string;
+  syncedToCloud: number;
+  deletedAt: string | null;
+  syncRevision: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type QuarantinedCloudDeletion = {
+  userId: LocalUserId;
+  recordName: string;
+  observedAt: string;
 };
 
 export type LocalAtlasSnapshot = {
@@ -296,6 +338,60 @@ const MIGRATIONS: Array<() => void> = [
       );
     `);
   },
+  // Migration 3 -- Phase 3.5 private content, recoverable deletion, and revision-safe sync
+  () => {
+    db.execSync(`
+      ALTER TABLE local_collections ADD COLUMN deleted_at TEXT;
+      ALTER TABLE local_collections ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE local_memories ADD COLUMN cover_photo_id TEXT;
+      ALTER TABLE local_memories ADD COLUMN deleted_at TEXT;
+      ALTER TABLE local_memories ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 1;
+
+      CREATE INDEX IF NOT EXISTS ix_lcol_user_cloud ON local_collections(user_id, synced_to_cloud, deleted_at);
+      CREATE INDEX IF NOT EXISTS ix_lmem_user_cloud ON local_memories(user_id, synced_to_cloud, deleted_at);
+
+      CREATE TABLE IF NOT EXISTS local_photos (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+        source TEXT NOT NULL CHECK(source IN ('collection','memory')),
+        collection_id TEXT REFERENCES local_collections(id) ON DELETE SET NULL,
+        memory_id TEXT REFERENCES local_memories(id) ON DELETE SET NULL,
+        file_name TEXT NOT NULL,
+        content_type TEXT NOT NULL CHECK(content_type IN ('image/jpeg','image/png','image/webp')),
+        byte_length INTEGER NOT NULL CHECK(byte_length >= 0),
+        local_uri TEXT NOT NULL,
+        synced_to_cloud INTEGER NOT NULL DEFAULT 0,
+        deleted_at TEXT,
+        sync_revision INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK((source='collection' AND collection_id IS NOT NULL AND memory_id IS NULL) OR
+              (source='memory' AND memory_id IS NOT NULL AND collection_id IS NULL))
+      );
+      CREATE INDEX IF NOT EXISTS ix_lphoto_user_owner ON local_photos(user_id, collection_id, memory_id, deleted_at);
+      CREATE INDEX IF NOT EXISTS ix_lphoto_user_cloud ON local_photos(user_id, synced_to_cloud, deleted_at);
+
+      CREATE TABLE IF NOT EXISTS local_private_preferences (
+        user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value_json TEXT NOT NULL,
+        synced_to_cloud INTEGER NOT NULL DEFAULT 0,
+        deleted_at TEXT,
+        sync_revision INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, key)
+      );
+      CREATE INDEX IF NOT EXISTS ix_lpref_user_cloud ON local_private_preferences(user_id, synced_to_cloud, deleted_at);
+
+      CREATE TABLE IF NOT EXISTS local_cloud_deletion_quarantine (
+        user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+        record_name TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, record_name)
+      );
+    `);
+  },
 ];
 
 // --- Initialisation ----------------------------------------------------------
@@ -321,7 +417,7 @@ function guard(value: number | null | undefined, min: number, max: number): numb
   return value != null && Number.isFinite(value) && value >= min && value <= max ? value : null;
 }
 
-type UserOwnedTable = 'local_journeys' | 'local_music_entries' | 'local_places' | 'local_collections' | 'local_memories';
+type UserOwnedTable = 'local_journeys' | 'local_music_entries' | 'local_places' | 'local_collections' | 'local_memories' | 'local_photos';
 
 function assertRowOwnership(table: UserOwnedTable, id: string, userId: LocalUserId): void {
   const existing = db.getFirstSync<{ user_id: string }>(`SELECT user_id FROM ${table} WHERE id=?;`, id);
@@ -380,6 +476,8 @@ export function linkLocalUserToAppleIdentity(userId: LocalUserId, input: { apple
       db.runSync('UPDATE local_music_entries SET synced_to_cloud=0 WHERE user_id=?;', userId);
       db.runSync('UPDATE local_collections SET synced_to_cloud=0 WHERE user_id=?;', userId);
       db.runSync('UPDATE local_memories SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_photos SET synced_to_cloud=0 WHERE user_id=?;', userId);
+      db.runSync('UPDATE local_private_preferences SET synced_to_cloud=0 WHERE user_id=?;', userId);
     }
   });
   return db.getFirstSync<LocalUser>(
@@ -559,6 +657,15 @@ export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMu
   );
 }
 
+export function refreshJourneySongCount(userId: LocalUserId, journeyId: string): number {
+  initializeLocalStore();
+  const total = Number(db.getFirstSync<{ total: number }>(
+    'SELECT COUNT(*) AS total FROM local_music_entries WHERE user_id=? AND journey_id=?;', userId, journeyId,
+  )?.total ?? 0);
+  db.runSync('UPDATE local_journeys SET song_count=?,synced_to_cloud=0,updated_at=? WHERE id=? AND user_id=?;', total, now(), journeyId, userId);
+  return total;
+}
+
 export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEntry[] {
   initializeLocalStore();
   return db.getAllSync<Record<string, unknown>>(
@@ -624,40 +731,156 @@ export function findCachedPlace(userId: LocalUserId, lat: number, lng: number, r
 
 // --- Collections & Memories --------------------------------------------------
 
-type CloudUpsertOptions = { syncedToCloud?: 0 | 1; createdAt?: string; updatedAt?: string };
+type CloudUpsertOptions = {
+  syncedToCloud?: 0 | 1;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+  syncRevision?: number;
+};
 
-export function upsertCollection(input: Omit<LocalCollection, 'syncedToCloud' | 'createdAt' | 'updatedAt'>, options: CloudUpsertOptions = {}): void {
+type LocalCollectionInput = Omit<LocalCollection, 'syncedToCloud' | 'deletedAt' | 'syncRevision' | 'createdAt' | 'updatedAt'>;
+type LocalMemoryInput = Omit<LocalMemory, 'syncedToCloud' | 'deletedAt' | 'syncRevision' | 'createdAt' | 'updatedAt'>;
+
+function nextSyncRevision(table: 'local_collections' | 'local_memories' | 'local_photos', id: string, options: CloudUpsertOptions): number {
+  if (options.syncRevision != null) return Math.max(1, Math.trunc(options.syncRevision));
+  if (options.syncedToCloud === 1) return 1;
+  const current = db.getFirstSync<{ sync_revision: number }>(`SELECT sync_revision FROM ${table} WHERE id=?;`, id);
+  return (current?.sync_revision ?? 0) + 1;
+}
+
+export function upsertCollection(input: LocalCollectionInput, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_collections', input.id, input.userId);
   const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
+  const revision = nextSyncRevision('local_collections', input.id, options);
   db.runSync(
-    'INSERT INTO local_collections(id,user_id,name,description,journey_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,journey_ids=excluded.journey_ids,synced_to_cloud=excluded.synced_to_cloud,updated_at=excluded.updated_at;',
-    input.id, input.userId, input.name, input.description ?? null, input.journeyIds, options.syncedToCloud ?? 0, createdAt, updatedAt,
+    'INSERT INTO local_collections(id,user_id,name,description,journey_ids,synced_to_cloud,deleted_at,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,description=excluded.description,journey_ids=excluded.journey_ids,synced_to_cloud=excluded.synced_to_cloud,deleted_at=excluded.deleted_at,sync_revision=excluded.sync_revision,updated_at=excluded.updated_at;',
+    input.id, input.userId, input.name, input.description ?? null, input.journeyIds, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, createdAt, updatedAt,
   );
 }
 
 export function listCollections(userId: LocalUserId): LocalCollection[] {
   initializeLocalStore();
   return db.getAllSync<LocalCollection>(
-    'SELECT id,user_id AS userId,name,description,journey_ids AS journeyIds,synced_to_cloud AS syncedToCloud,created_at AS createdAt,updated_at AS updatedAt FROM local_collections WHERE user_id=? ORDER BY updated_at DESC;', userId,
+    'SELECT id,user_id AS userId,name,description,journey_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_collections WHERE user_id=? AND deleted_at IS NULL ORDER BY updated_at DESC;', userId,
   );
 }
 
-export function upsertMemory(input: Omit<LocalMemory, 'syncedToCloud' | 'createdAt' | 'updatedAt'>, options: CloudUpsertOptions = {}): void {
+export function getCollectionIncludingDeleted(userId: LocalUserId, id: string): LocalCollection | null {
+  initializeLocalStore();
+  return db.getFirstSync<LocalCollection>('SELECT id,user_id AS userId,name,description,journey_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_collections WHERE user_id=? AND id=?;', userId, id) ?? null;
+}
+
+export function softDeleteCollection(userId: LocalUserId, id: string, deletedAt = now()): void {
+  initializeLocalStore();
+  assertRowOwnership('local_collections', id, userId);
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE local_collections SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND id=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, id);
+    const photoIds = db.getAllSync<{ id: string }>('SELECT id FROM local_photos WHERE user_id=? AND collection_id=? AND deleted_at IS NULL;', userId, id).map(item => item.id);
+    db.runSync('UPDATE local_photos SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND collection_id=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, id);
+    for (const photoId of photoIds) db.runSync('UPDATE local_memories SET cover_photo_id=NULL,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND cover_photo_id=?;', deletedAt, userId, photoId);
+    const memories = db.getAllSync<{ id: string; collection_ids: string }>('SELECT id,collection_ids FROM local_memories WHERE user_id=? AND deleted_at IS NULL;', userId);
+    for (const memory of memories) {
+      let ids: string[] = [];
+      try { ids = JSON.parse(memory.collection_ids) as string[]; } catch { continue; }
+      if (!ids.includes(id)) continue;
+      db.runSync('UPDATE local_memories SET collection_ids=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND id=?;', JSON.stringify(ids.filter(value => value !== id)), deletedAt, userId, memory.id);
+    }
+  });
+}
+
+export function upsertMemory(input: LocalMemoryInput, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_memories', input.id, input.userId);
   const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
+  const revision = nextSyncRevision('local_memories', input.id, options);
   db.runSync(
-    'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_local_path,collection_ids,synced_to_cloud,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_local_path=COALESCE(excluded.cover_photo_local_path,local_memories.cover_photo_local_path),collection_ids=excluded.collection_ids,synced_to_cloud=excluded.synced_to_cloud,updated_at=excluded.updated_at;',
-    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoLocalPath ?? null, input.collectionIds, options.syncedToCloud ?? 0, createdAt, updatedAt,
+    'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_id,cover_photo_local_path,collection_ids,synced_to_cloud,deleted_at,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_id=excluded.cover_photo_id,cover_photo_local_path=COALESCE(excluded.cover_photo_local_path,local_memories.cover_photo_local_path),collection_ids=excluded.collection_ids,synced_to_cloud=excluded.synced_to_cloud,deleted_at=excluded.deleted_at,sync_revision=excluded.sync_revision,updated_at=excluded.updated_at;',
+    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoId ?? null, input.coverPhotoLocalPath ?? null, input.collectionIds, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, createdAt, updatedAt,
   );
 }
 
 export function listMemories(userId: LocalUserId): LocalMemory[] {
   initializeLocalStore();
   return db.getAllSync<LocalMemory>(
-    'SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? ORDER BY updated_at DESC;', userId,
+    'SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND deleted_at IS NULL ORDER BY updated_at DESC;', userId,
   );
+}
+
+export function getMemoryIncludingDeleted(userId: LocalUserId, id: string): LocalMemory | null {
+  initializeLocalStore();
+  return db.getFirstSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND id=?;', userId, id) ?? null;
+}
+
+export function softDeleteMemory(userId: LocalUserId, id: string, deletedAt = now()): void {
+  initializeLocalStore();
+  assertRowOwnership('local_memories', id, userId);
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE local_memories SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND id=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, id);
+    db.runSync('UPDATE local_photos SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND memory_id=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, id);
+  });
+}
+
+// --- Private photos & preferences -------------------------------------------
+
+type LocalPhotoInput = Omit<LocalPhoto, 'syncedToCloud' | 'deletedAt' | 'syncRevision' | 'createdAt' | 'updatedAt'>;
+
+export function upsertPhoto(input: LocalPhotoInput, options: CloudUpsertOptions = {}): void {
+  initializeLocalStore();
+  assertRowOwnership('local_photos', input.id, input.userId);
+  const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
+  const revision = nextSyncRevision('local_photos', input.id, options);
+  db.runSync(`INSERT INTO local_photos(id,user_id,source,collection_id,memory_id,file_name,content_type,byte_length,local_uri,synced_to_cloud,deleted_at,sync_revision,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET source=excluded.source,collection_id=excluded.collection_id,memory_id=excluded.memory_id,file_name=excluded.file_name,content_type=excluded.content_type,byte_length=excluded.byte_length,local_uri=excluded.local_uri,synced_to_cloud=excluded.synced_to_cloud,deleted_at=excluded.deleted_at,sync_revision=excluded.sync_revision,updated_at=excluded.updated_at;`,
+  input.id, input.userId, input.source, input.collectionId, input.memoryId, input.fileName, input.contentType, input.byteLength, input.localUri, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, createdAt, updatedAt);
+}
+
+export function getPhotoIncludingDeleted(userId: LocalUserId, id: string): LocalPhoto | null {
+  initializeLocalStore();
+  return db.getFirstSync<LocalPhoto>('SELECT id,user_id AS userId,source,collection_id AS collectionId,memory_id AS memoryId,file_name AS fileName,content_type AS contentType,byte_length AS byteLength,local_uri AS localUri,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_photos WHERE user_id=? AND id=?;', userId, id) ?? null;
+}
+
+export function listPhotos(userId: LocalUserId): LocalPhoto[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalPhoto>('SELECT id,user_id AS userId,source,collection_id AS collectionId,memory_id AS memoryId,file_name AS fileName,content_type AS contentType,byte_length AS byteLength,local_uri AS localUri,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_photos WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at;', userId);
+}
+
+export function softDeletePhoto(userId: LocalUserId, id: string, deletedAt = now()): LocalPhoto | null {
+  initializeLocalStore();
+  assertRowOwnership('local_photos', id, userId);
+  db.runSync('UPDATE local_photos SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND id=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, id);
+  db.runSync('UPDATE local_memories SET cover_photo_id=NULL,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND cover_photo_id=?;', deletedAt, userId, id);
+  return getPhotoIncludingDeleted(userId, id);
+}
+
+export function upsertPrivatePreference(userId: LocalUserId, key: string, value: unknown, options: CloudUpsertOptions = {}): void {
+  initializeLocalStore();
+  if (!/^[a-z][a-z0-9_.-]{0,63}$/.test(key)) throw new Error('Private preference key is invalid.');
+  const valueJson = JSON.stringify(value);
+  if (typeof valueJson !== 'string' || valueJson.length > 65_536) throw new Error('Private preference value is invalid or too large.');
+  const t = now(), existing = db.getFirstSync<{ sync_revision: number }>('SELECT sync_revision FROM local_private_preferences WHERE user_id=? AND key=?;', userId, key);
+  const revision = options.syncRevision != null ? Math.max(1, Math.trunc(options.syncRevision)) : options.syncedToCloud === 1 ? 1 : (existing?.sync_revision ?? 0) + 1;
+  db.runSync(`INSERT INTO local_private_preferences(user_id,key,value_json,synced_to_cloud,deleted_at,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)
+    ON CONFLICT(user_id,key) DO UPDATE SET value_json=excluded.value_json,synced_to_cloud=excluded.synced_to_cloud,deleted_at=excluded.deleted_at,sync_revision=excluded.sync_revision,updated_at=excluded.updated_at;`,
+  userId, key, valueJson, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, options.createdAt ?? t, options.updatedAt ?? t);
+}
+
+export function getPrivatePreference<T>(userId: LocalUserId, key: string): T | null {
+  initializeLocalStore();
+  const row = db.getFirstSync<{ value_json: string }>('SELECT value_json FROM local_private_preferences WHERE user_id=? AND key=? AND deleted_at IS NULL;', userId, key);
+  if (!row) return null;
+  try { return JSON.parse(row.value_json) as T; } catch { return null; }
+}
+
+export function listPrivatePreferences(userId: LocalUserId, includeDeleted = false): LocalPrivatePreference[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalPrivatePreference>(`SELECT user_id AS userId,key,value_json AS valueJson,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_private_preferences WHERE user_id=?${includeDeleted ? '' : ' AND deleted_at IS NULL'} ORDER BY key;`, userId);
+}
+
+export function softDeletePrivatePreference(userId: LocalUserId, key: string, deletedAt = now()): void {
+  initializeLocalStore();
+  db.runSync('UPDATE local_private_preferences SET deleted_at=?,updated_at=?,synced_to_cloud=0,sync_revision=sync_revision+1 WHERE user_id=? AND key=? AND deleted_at IS NULL;', deletedAt, deletedAt, userId, key);
 }
 
 // --- Atlas snapshot ----------------------------------------------------------
@@ -721,6 +944,31 @@ export function memoriesPendingSync(userId: LocalUserId, limit = 50): string[] {
   return db.getAllSync<{ id: string }>('SELECT id FROM local_memories WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.id);
 }
 
+export function photosPendingSync(userId: LocalUserId, limit = 50): string[] {
+  initializeLocalStore();
+  return db.getAllSync<{ id: string }>('SELECT id FROM local_photos WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+}
+
+export function preferencesPendingSync(userId: LocalUserId, limit = 50): string[] {
+  initializeLocalStore();
+  return db.getAllSync<{ key: string }>('SELECT key FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0 ORDER BY updated_at DESC LIMIT ?;', userId, limit).map(r => r.key);
+}
+
+export function listCollectionsIncludingDeleted(userId: LocalUserId): LocalCollection[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalCollection>('SELECT id,user_id AS userId,name,description,journey_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_collections WHERE user_id=? ORDER BY updated_at DESC;', userId);
+}
+
+export function listMemoriesIncludingDeleted(userId: LocalUserId): LocalMemory[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? ORDER BY updated_at DESC;', userId);
+}
+
+export function listPhotosIncludingDeleted(userId: LocalUserId): LocalPhoto[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalPhoto>('SELECT id,user_id AS userId,source,collection_id AS collectionId,memory_id AS memoryId,file_name AS fileName,content_type AS contentType,byte_length AS byteLength,local_uri AS localUri,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_photos WHERE user_id=? ORDER BY updated_at DESC;', userId);
+}
+
 export function markJourneysSynced(userId: LocalUserId, ids: string[]): void {
   initializeLocalStore();
   if (!ids.length) return;
@@ -745,11 +993,69 @@ export function markMemoriesSynced(userId: LocalUserId, ids: string[]): void {
   db.runSync(`UPDATE local_memories SET synced_to_cloud=1 WHERE user_id=? AND id IN (${ids.map(() => '?').join(',')});`, userId, ...ids);
 }
 
+export type SyncRevisionAck = { id: string; syncRevision: number };
+
+function markRevisionsSynced(table: 'local_collections' | 'local_memories' | 'local_photos', userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    for (const item of acknowledgements) {
+      db.runSync(`UPDATE ${table} SET synced_to_cloud=1 WHERE user_id=? AND id=? AND sync_revision=?;`, userId, item.id, item.syncRevision);
+    }
+  });
+}
+
+export function markCollectionRevisionsSynced(userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {
+  markRevisionsSynced('local_collections', userId, acknowledgements);
+}
+
+export function markMemoryRevisionsSynced(userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {
+  markRevisionsSynced('local_memories', userId, acknowledgements);
+}
+
+export function markPhotoRevisionsSynced(userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {
+  markRevisionsSynced('local_photos', userId, acknowledgements);
+}
+
+export function markPreferenceRevisionsSynced(userId: LocalUserId, acknowledgements: Array<{ id: string; syncRevision: number }>): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    for (const item of acknowledgements) {
+      db.runSync('UPDATE local_private_preferences SET synced_to_cloud=1 WHERE user_id=? AND key=? AND sync_revision=?;', userId, item.id, item.syncRevision);
+    }
+  });
+}
+
+export function quarantineCloudDeletions(userId: LocalUserId, recordNames: string[], observedAt = now()): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    for (const recordName of [...new Set(recordNames)].filter(Boolean)) {
+      db.runSync(`INSERT INTO local_cloud_deletion_quarantine(user_id,record_name,observed_at) VALUES(?,?,?)
+        ON CONFLICT(user_id,record_name) DO UPDATE SET observed_at=excluded.observed_at;`, userId, recordName, observedAt);
+      const mappings: Array<[string, string, string]> = [
+        ['collection_', 'local_collections', 'id'], ['memory_', 'local_memories', 'id'], ['photo_', 'local_photos', 'id'],
+      ];
+      for (const [prefix, table, column] of mappings) if (recordName.startsWith(prefix)) {
+        db.runSync(`UPDATE ${table} SET synced_to_cloud=0 WHERE user_id=? AND ${column}=?;`, userId, recordName.slice(prefix.length));
+      }
+      if (recordName.startsWith('preference_')) {
+        const encoded = recordName.slice('preference_'.length);
+        try { db.runSync('UPDATE local_private_preferences SET synced_to_cloud=0 WHERE user_id=? AND key=?;', userId, decodeURIComponent(encoded)); } catch { /* invalid names stay quarantined */ }
+      }
+    }
+  });
+}
+
+export function listQuarantinedCloudDeletions(userId: LocalUserId): QuarantinedCloudDeletion[] {
+  initializeLocalStore();
+  return db.getAllSync<QuarantinedCloudDeletion>('SELECT user_id AS userId,record_name AS recordName,observed_at AS observedAt FROM local_cloud_deletion_quarantine WHERE user_id=? ORDER BY observed_at DESC;', userId);
+}
+
 // --- Diagnostics -------------------------------------------------------------
 
 export function localStoreDiagnostics(userId: LocalUserId): {
   schemaVersion: number; journeyCount: number; gpsPointCount: number; musicEntryCount: number;
-  placeCount: number; collectionCount: number; memoryCount: number; pendingSyncCount: number;
+  placeCount: number; collectionCount: number; memoryCount: number; photoCount: number; privatePreferenceCount: number;
+  tombstoneCount: number; quarantinedCloudDeletionCount: number; pendingSyncCount: number;
 } {
   initializeLocalStore();
   return {
@@ -758,12 +1064,87 @@ export function localStoreDiagnostics(userId: LocalUserId): {
     gpsPointCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_gps_points WHERE journey_id IN (SELECT id FROM local_journeys WHERE user_id=?);', userId)?.n ?? 0),
     musicEntryCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_music_entries WHERE user_id=?;', userId)?.n ?? 0),
     placeCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_places WHERE user_id=?;', userId)?.n ?? 0),
-    collectionCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_collections WHERE user_id=?;', userId)?.n ?? 0),
-    memoryCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_memories WHERE user_id=?;', userId)?.n ?? 0),
+    collectionCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_collections WHERE user_id=? AND deleted_at IS NULL;', userId)?.n ?? 0),
+    memoryCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_memories WHERE user_id=? AND deleted_at IS NULL;', userId)?.n ?? 0),
+    photoCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_photos WHERE user_id=? AND deleted_at IS NULL;', userId)?.n ?? 0),
+    privatePreferenceCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_private_preferences WHERE user_id=? AND deleted_at IS NULL;', userId)?.n ?? 0),
+    tombstoneCount: Number(db.getFirstSync<{ n: number }>(`SELECT
+      (SELECT COUNT(*) FROM local_collections WHERE user_id=? AND deleted_at IS NOT NULL) +
+      (SELECT COUNT(*) FROM local_memories WHERE user_id=? AND deleted_at IS NOT NULL) +
+      (SELECT COUNT(*) FROM local_photos WHERE user_id=? AND deleted_at IS NOT NULL) +
+      (SELECT COUNT(*) FROM local_private_preferences WHERE user_id=? AND deleted_at IS NOT NULL) AS n;`, userId, userId, userId, userId)?.n ?? 0),
+    quarantinedCloudDeletionCount: Number(db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM local_cloud_deletion_quarantine WHERE user_id=?;', userId)?.n ?? 0),
     pendingSyncCount: Number(db.getFirstSync<{ n: number }>(`SELECT
       (SELECT COUNT(*) FROM local_journeys WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_music_entries WHERE user_id=? AND synced_to_cloud=0) +
       (SELECT COUNT(*) FROM local_collections WHERE user_id=? AND synced_to_cloud=0) +
-      (SELECT COUNT(*) FROM local_memories WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId)?.n ?? 0),
+      (SELECT COUNT(*) FROM local_memories WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_photos WHERE user_id=? AND synced_to_cloud=0) +
+      (SELECT COUNT(*) FROM local_private_preferences WHERE user_id=? AND synced_to_cloud=0) AS n;`, userId, userId, userId, userId, userId, userId)?.n ?? 0),
   };
+}
+
+/**
+ * Builds an exact, read-only preview of the conservative legacy-import policy.
+ * This function only issues SELECT statements. It never changes or deletes data.
+ */
+export function previewLocalRetention(
+  userId: LocalUserId,
+  options: { now?: Date; retentionDays?: number } = {},
+): LocalRetentionPreview {
+  initializeLocalStore();
+  const nowDate = options.now ?? new Date();
+  const retentionDays = options.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const cutoffAt = new Date(nowDate.getTime() - retentionDays * 24 * 60 * 60 * 1_000).toISOString();
+  const journeys = db.getAllSync<RetentionJourneyCandidate>(`
+    SELECT
+      j.id AS id,
+      j.legacy_drive_id AS legacyDriveId,
+      j.provider AS provider,
+      j.started_at AS startedAt,
+      (SELECT COUNT(*) FROM local_gps_points p WHERE p.journey_id=j.id) AS routePointCount,
+      (SELECT COUNT(*) FROM local_music_entries m WHERE m.user_id=j.user_id AND m.journey_id=j.id) AS matchedSongCount
+    FROM local_journeys j
+    WHERE j.user_id=?;
+  `, userId).map(journey => ({
+    ...journey,
+    routePointCount: Number(journey.routePointCount ?? 0),
+    matchedSongCount: Number(journey.matchedSongCount ?? 0),
+  }));
+  const protectedJourneyIds = new Set<string>();
+  let collectionMetadataComplete = true;
+  const collections = db.getAllSync<{ journeyIds: string }>(
+    'SELECT journey_ids AS journeyIds FROM local_collections WHERE user_id=? AND deleted_at IS NULL;', userId,
+  );
+  for (const collection of collections) {
+    try {
+      const ids = JSON.parse(collection.journeyIds) as unknown;
+      if (Array.isArray(ids)) for (const id of ids) if (typeof id === 'string' && id) protectedJourneyIds.add(id);
+    } catch { collectionMetadataComplete = false; }
+  }
+  if (!collectionMetadataComplete) for (const journey of journeys) {
+    protectedJourneyIds.add(journey.id);
+    if (journey.legacyDriveId) protectedJourneyIds.add(journey.legacyDriveId);
+  }
+  const totalSongCount = Number(db.getFirstSync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM local_music_entries WHERE user_id=?;', userId,
+  )?.n ?? 0);
+  const oldUnmatchedSpotifySongCount = Number(db.getFirstSync<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM local_music_entries WHERE user_id=? AND journey_id IS NULL AND source='spotify' AND julianday(played_at)<julianday(?);",
+    userId, cutoffAt,
+  )?.n ?? 0);
+  const memoryCount = Number(db.getFirstSync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM local_memories WHERE user_id=? AND deleted_at IS NULL;', userId,
+  )?.n ?? 0);
+
+  return buildRetentionPreview({
+    journeys,
+    protectedJourneyIds,
+    totalSongCount,
+    oldUnmatchedSpotifySongCount,
+    memoryCount,
+    collectionCount: collections.length,
+    now: nowDate,
+    retentionDays,
+  });
 }

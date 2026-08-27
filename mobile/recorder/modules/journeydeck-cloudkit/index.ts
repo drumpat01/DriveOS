@@ -1,11 +1,15 @@
 import JourneyDeckCloudKitModule from './src/JourneyDeckCloudKitModule';
 
-export type { CloudKitAccountStatus, CloudKitPullResult, CloudKitPushResult, CloudTransportRecord } from './src/JourneyDeckCloudKit.types';
+export type { CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult, CloudTransportRecord } from './src/JourneyDeckCloudKit.types';
 
 export const isJourneyDeckCloudKitAvailable = JourneyDeckCloudKitModule !== null;
 
 export async function getCloudKitAccountStatus() {
   return JourneyDeckCloudKitModule?.getAccountStatusAsync() ?? 'could_not_determine' as const;
+}
+
+export async function getCloudKitCapabilities() {
+  return JourneyDeckCloudKitModule?.getCapabilitiesAsync ? JourneyDeckCloudKitModule.getCapabilitiesAsync() : { privateContentVersion: 1 };
 }
 
 export async function ensureCloudKitPrivateZone(profileScope: string) {
@@ -21,6 +25,10 @@ export async function pushCloudKitRecords(profileScope: string, records: Paramet
 export async function pullCloudKitChanges(profileScope: string) {
   if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.7 native build.');
   return JourneyDeckCloudKitModule.pullChangesAsync(profileScope);
+}
+
+export async function commitCloudKitChangeToken(profileScope: string) {
+  if (JourneyDeckCloudKitModule?.commitChangeTokenAsync) await JourneyDeckCloudKitModule.commitChangeTokenAsync(profileScope);
 }
 
 export async function resetCloudKitChangeToken(profileScope: string) {

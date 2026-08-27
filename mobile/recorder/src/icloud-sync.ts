@@ -2,6 +2,8 @@ import * as Crypto from 'expo-crypto';
 
 import {
   ensureCloudKitPrivateZone,
+  commitCloudKitChangeToken,
+  getCloudKitCapabilities,
   getCloudKitAccountStatus,
   isJourneyDeckCloudKitAvailable,
   pullCloudKitChanges,
@@ -12,6 +14,7 @@ import { getCurrentUser } from './auth';
 import type { LocalUser } from './local-store';
 import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
 import { rebuildAtlasSnapshot } from './local-atlas';
+import { beginNetworkActivity } from './network-activity';
 
 export type PrivateICloudSyncResult = {
   available: boolean;
@@ -20,41 +23,66 @@ export type PrivateICloudSyncResult = {
   uploaded: number;
   failedUploads: number;
   deletedRecordNames: string[];
+  privateContentVersion: number;
   state: SyncState;
 };
 
 let activeSync: { profileKey: string; promise: Promise<PrivateICloudSyncResult> } | null = null;
+const recentSyncs = new Map<string, { completedAt: number; result: PrivateICloudSyncResult }>();
+const AUTOMATIC_SYNC_COOLDOWN_MS = 15 * 60_000;
 
 export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
 }
 
-export async function syncCurrentUserWithPrivateICloud(): Promise<PrivateICloudSyncResult> {
+export async function syncCurrentUserWithPrivateICloud(options: { force?: boolean } = {}): Promise<PrivateICloudSyncResult> {
   const user = getCurrentUser();
   const profileKey = user.appleSubject ?? user.id;
   if (activeSync?.profileKey === profileKey) return activeSync.promise;
   if (activeSync) await activeSync.promise.catch(() => undefined);
-  const promise = performSync(user).finally(() => {
-    if (activeSync?.promise === promise) activeSync = null;
-  });
+  const recent = recentSyncs.get(profileKey);
+  if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return recent.result;
+  const promise = performSync(user)
+    .then(result => {
+      recentSyncs.set(profileKey, { completedAt: Date.now(), result });
+      return result;
+    })
+    .finally(() => {
+      if (activeSync?.promise === promise) activeSync = null;
+    });
   activeSync = { profileKey, promise };
   return promise;
 }
 
 async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
-  const engine = new CloudKitSyncEngine(user.id);
-  if (!isJourneyDeckCloudKitAvailable) return result(false, 'could_not_determine', 0, 0, 0, [], engine);
+  const capabilities = await getCloudKitCapabilities();
+  const engine = new CloudKitSyncEngine(user.id, { privateContentV2: capabilities.privateContentVersion >= 2 });
+  const activity = beginNetworkActivity({
+    category: 'private_icloud',
+    reason: 'private_sync',
+    operation: 'Private iCloud sync',
+    method: 'SYNC',
+  });
+  if (!isJourneyDeckCloudKitAvailable) {
+    activity.finish({ outcome: 'skipped' });
+    return result(false, 'could_not_determine', 0, 0, 0, [], engine, capabilities.privateContentVersion);
+  }
 
-  const accountStatus = await getCloudKitAccountStatus();
-  if (accountStatus !== 'available') return result(true, accountStatus, 0, 0, 0, [], engine);
-
-  engine.setSyncInProgress();
   try {
+    const accountStatus = await getCloudKitAccountStatus();
+    if (accountStatus !== 'available') {
+      activity.finish({ outcome: 'skipped' });
+      return result(true, accountStatus, 0, 0, 0, [], engine, capabilities.privateContentVersion);
+    }
+
+    engine.setSyncInProgress();
     const stableIdentity = user.appleSubject ? `apple:${user.appleSubject}` : `local:${user.id}`;
     const profileScope = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-profile:${stableIdentity}`)).slice(0, 48);
     await ensureCloudKitPrivateZone(profileScope);
     const pulled = await pullCloudKitChanges(profileScope);
+    engine.ingestRemoteDeletions(pulled.deletedRecordNames);
     let downloaded = engine.ingestRemoteRecords(pulled.records).updatedCount;
+    if (capabilities.privateContentVersion >= 2) await commitCloudKitChangeToken(profileScope);
     let uploaded = 0;
     let failedUploads = 0;
     for (let batch = 0; batch < 5; batch++) {
@@ -68,8 +96,10 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       if (pushed.failedRecordNames.length || !pushed.savedRecordNames.length) break;
     }
     if (downloaded) rebuildAtlasSnapshot(user.id);
-    return result(true, accountStatus, downloaded, uploaded, failedUploads, pulled.deletedRecordNames, engine);
+    activity.finish({ outcome: failedUploads ? 'failed' : 'succeeded' });
+    return result(true, accountStatus, downloaded, uploaded, failedUploads, pulled.deletedRecordNames, engine, capabilities.privateContentVersion);
   } catch (error) {
+    activity.finish({ outcome: 'failed' });
     engine.setSyncError(error);
     throw error;
   }
@@ -83,6 +113,7 @@ function result(
   failedUploads: number,
   deletedRecordNames: string[],
   engine: CloudKitSyncEngine,
+  privateContentVersion: number,
 ): PrivateICloudSyncResult {
-  return { available, accountStatus, downloaded, uploaded, failedUploads, deletedRecordNames, state: engine.getSyncState() };
+  return { available, accountStatus, downloaded, uploaded, failedUploads, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
 }
