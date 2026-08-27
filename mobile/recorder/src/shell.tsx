@@ -568,7 +568,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           initialPage={0}
           scrollEnabled={false}
           overdrag
-          offscreenPageLimit={bottomNavigationItems.length}
+          offscreenPageLimit={1}
           onPageSelected={event => {
             const selected = bottomNavigationItems[event.nativeEvent.position]?.id;
             if (!selected || selected !== requestedTabRef.current) return;
@@ -590,7 +590,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           </View>
           <View key="more" collapsable={false} style={styles.tabLayer}>
             <MoreScreen
-              requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
+              active={tab === 'more'} requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
               privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
               music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={refreshMusicDashboard} />}
               recorder={recorder}

@@ -5,6 +5,7 @@ import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObserva
 import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
+import { requestJourneyDeckJson } from './network-request';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -340,27 +341,7 @@ function localRecorderHealth(connected: boolean): LocalRecorderHealth {
 }
 
 async function request<T>(connection: Connection, path: string, init?: RequestInit, timeoutMs = 12_000): Promise<T> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(`${connection.serverUrl}${path}`, {
-      ...init,
-      signal: controller.signal,
-      headers: {
-        authorization: `Bearer ${connection.token}`,
-        'content-type': 'application/json',
-        ...init?.headers,
-      },
-    });
-    const payload = await response.json().catch(() => null) as { error?: string } | null;
-    if (!response.ok) throw new Error(payload?.error || `JourneyDeck returned ${response.status}.`);
-    return payload as T;
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('JourneyDeck took too long to respond.');
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+  return requestJourneyDeckJson<T>(connection, path, init, { timeoutMs, timeoutMessage: 'JourneyDeck took too long to respond.' });
 }
 
 async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {

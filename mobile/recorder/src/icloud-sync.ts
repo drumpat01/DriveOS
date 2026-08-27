@@ -12,6 +12,7 @@ import { getCurrentUser } from './auth';
 import type { LocalUser } from './local-store';
 import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
 import { rebuildAtlasSnapshot } from './local-atlas';
+import { beginNetworkActivity } from './network-activity';
 
 export type PrivateICloudSyncResult = {
   available: boolean;
@@ -43,13 +44,25 @@ export async function syncCurrentUserWithPrivateICloud(): Promise<PrivateICloudS
 
 async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
   const engine = new CloudKitSyncEngine(user.id);
-  if (!isJourneyDeckCloudKitAvailable) return result(false, 'could_not_determine', 0, 0, 0, [], engine);
+  const activity = beginNetworkActivity({
+    category: 'private_icloud',
+    reason: 'private_sync',
+    operation: 'Private iCloud sync',
+    method: 'SYNC',
+  });
+  if (!isJourneyDeckCloudKitAvailable) {
+    activity.finish({ outcome: 'skipped' });
+    return result(false, 'could_not_determine', 0, 0, 0, [], engine);
+  }
 
-  const accountStatus = await getCloudKitAccountStatus();
-  if (accountStatus !== 'available') return result(true, accountStatus, 0, 0, 0, [], engine);
-
-  engine.setSyncInProgress();
   try {
+    const accountStatus = await getCloudKitAccountStatus();
+    if (accountStatus !== 'available') {
+      activity.finish({ outcome: 'skipped' });
+      return result(true, accountStatus, 0, 0, 0, [], engine);
+    }
+
+    engine.setSyncInProgress();
     const stableIdentity = user.appleSubject ? `apple:${user.appleSubject}` : `local:${user.id}`;
     const profileScope = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-profile:${stableIdentity}`)).slice(0, 48);
     await ensureCloudKitPrivateZone(profileScope);
@@ -68,8 +81,10 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       if (pushed.failedRecordNames.length || !pushed.savedRecordNames.length) break;
     }
     if (downloaded) rebuildAtlasSnapshot(user.id);
+    activity.finish({ outcome: failedUploads ? 'failed' : 'succeeded' });
     return result(true, accountStatus, downloaded, uploaded, failedUploads, pulled.deletedRecordNames, engine);
   } catch (error) {
+    activity.finish({ outcome: 'failed' });
     engine.setSyncError(error);
     throw error;
   }

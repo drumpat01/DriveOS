@@ -15,6 +15,10 @@ import {
   type SearchRecord, type StatisticsData, type TimelineDay,
 } from './primary-sections-data';
 import { PrimaryMobilityMap } from './primary-mobility-map';
+import {
+  getNetworkActivitySnapshot, resetNetworkActivity, setJourneyDeckRequestsBlocked, subscribeNetworkActivity,
+  type NetworkActivityEvent,
+} from './network-activity';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
@@ -113,11 +117,11 @@ export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDat
   const data = state.data;
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Record<string, AtlasPattern['review']>>({});
-  const places = data?.vehicle.places ?? [];
-  const selectedPlace = places.find(place => place.id === selectedPlaceId) ?? places[0];
-  const routes = (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates }));
-  const mapPlaces = places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount }));
-  const patterns = (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed');
+  const places = useMemo(() => data?.vehicle.places ?? [], [data?.vehicle.places]);
+  const selectedPlace = useMemo(() => places.find(place => place.id === selectedPlaceId) ?? places[0], [places, selectedPlaceId]);
+  const routes = useMemo(() => (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates })), [data?.details]);
+  const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
+  const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
   return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
@@ -209,7 +213,8 @@ export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDa
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync }: {
+  active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
   privateCloud: { status: string; detail: string };
@@ -219,6 +224,8 @@ export function DataHealthScreen({ state, dashboard, privateCloud, appleIdentity
 }) {
   const provider = dashboard.providerPreferences;
   const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
+  const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
+  useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <View style={styles.healthHero}><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
@@ -227,9 +234,52 @@ export function DataHealthScreen({ state, dashboard, privateCloud, appleIdentity
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} />
+    <SectionTitle title="Network boundary" detail="This app session" />
+    <View style={styles.networkCard}>
+      <View style={styles.networkGrid}>
+        <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
+        <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
+        <NetworkMetric label="TRANSFERRED" value={formatBytes(network.uploadBytes + network.downloadBytes)} detail={`${formatBytes(network.uploadBytes)} up · ${formatBytes(network.downloadBytes)} down`} />
+        <NetworkMetric label="BLOCKED" value={`${network.blockedOperations}`} detail="local-only test" />
+      </View>
+      <View style={styles.networkReasonRow}>
+        <Text style={styles.networkReasonText}>Archive {network.byReason.archive_refresh ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Recorder {network.byReason.recorder_mirror ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Imports {network.byReason.external_import ?? 0}</Text>
+        <Text style={styles.networkReasonText}>Writes {(network.byReason.user_content ?? 0) + (network.byReason.preferences ?? 0)}</Text>
+      </View>
+      {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
+        : <Text style={styles.networkEmpty}>No observed JourneyDeck or private iCloud activity since these counters started.</Text>}
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+    </View>
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityState={{ checked: network.journeyDeckRequestsBlocked }}
+      onPress={() => setJourneyDeckRequestsBlocked(!network.journeyDeckRequestsBlocked)}
+      style={[styles.networkPolicyButton, network.journeyDeckRequestsBlocked && styles.networkPolicyButtonActive]}
+    >
+      <Text style={[styles.networkPolicyTitle, network.journeyDeckRequestsBlocked && styles.networkPolicyTitleActive]}>{network.journeyDeckRequestsBlocked ? 'Local-only test is ON' : 'Test without JourneyDeck server'}</Text>
+      <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
+    </Pressable>
+    <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
     <Text style={styles.privacyNote}>Safe retries never erase local data. Raw route coordinates, Home/Work locations, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(bytes < 10_240 ? 1 : 0)} KB`;
+  return `${(bytes / 1_048_576).toFixed(1)} MB`;
+}
+
+function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
+}
+
+function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
+  const outcome = event.outcome === 'succeeded' ? 'DONE' : event.outcome === 'active' ? 'ACTIVE' : event.outcome.toUpperCase();
+  return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{event.category === 'private_icloud' ? 'Apple private service' : event.reason.replaceAll('_', ' ')} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
 }
 
 function ProviderHealth({ provider }: { provider: ProviderPreferences | null }) {
@@ -242,10 +292,10 @@ function ProviderHealth({ provider }: { provider: ProviderPreferences | null }) 
 }
 
 export function MoreScreen({
-  requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
+  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
   music, recorder, settings,
 }: {
-  requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
+  active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
   privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
   music: ReactNode; recorder: ReactNode; settings: ReactNode;
 }) {
@@ -256,7 +306,7 @@ export function MoreScreen({
     const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
       : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
         : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={onRefresh} onCloudSync={onCloudSync} />
+          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} onRefresh={onRefresh} onCloudSync={onCloudSync} />
             : destination === 'music' ? music : destination === 'settings' ? settings : null;
     content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
   } else {
@@ -425,6 +475,29 @@ const styles = StyleSheet.create({
   providerStatusGood: { color: '#59d4b3' },
   safeActions: { marginTop: 6 },
   privacyNote: { color: '#6f6675', fontSize: 10, lineHeight: 16, marginTop: 18, textAlign: 'center' },
+  networkCard: { borderRadius: 22, backgroundColor: '#09060d', borderWidth: 1, borderColor: '#392343', padding: 13, marginBottom: 10 },
+  networkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  networkMetric: { width: '48.5%', minHeight: 88, borderRadius: 16, backgroundColor: '#120b18', borderWidth: 1, borderColor: '#2f1d39', padding: 11 },
+  networkMetricLabel: { color: '#9d78b3', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  networkMetricValue: { color: '#f8effc', fontSize: 22, fontWeight: '900', marginTop: 4 },
+  networkMetricDetail: { color: '#74687c', fontSize: 9, lineHeight: 13, marginTop: 2 },
+  networkReasonRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 },
+  networkReasonText: { color: '#a892b4', fontSize: 9, fontWeight: '700', backgroundColor: '#160d1c', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 5 },
+  networkEvents: { marginTop: 11, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#35203f' },
+  networkEventRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2b1a34' },
+  networkEventDetail: { color: '#756a7c', fontSize: 9, lineHeight: 13, textTransform: 'capitalize' },
+  networkEventOutcome: { color: '#c88f72', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 },
+  networkEventOutcomeGood: { color: '#58d5b6' },
+  networkEventOutcomeBlocked: { color: '#f6b85d' },
+  networkEmpty: { color: '#817387', fontSize: 10, lineHeight: 15, marginTop: 12 },
+  networkNote: { color: '#675d6d', fontSize: 9, lineHeight: 14, marginTop: 12 },
+  networkPolicyButton: { borderRadius: 19, borderWidth: 1, borderColor: '#68447a', backgroundColor: '#140b1a', padding: 15, marginTop: 2 },
+  networkPolicyButtonActive: { borderColor: '#b9763c', backgroundColor: '#211208' },
+  networkPolicyTitle: { color: '#dcb7ef', fontSize: 13, fontWeight: '900' },
+  networkPolicyTitleActive: { color: '#ffc27a' },
+  networkPolicyDetail: { color: '#8d7e94', fontSize: 10, lineHeight: 15, marginTop: 4 },
+  networkReset: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 9, marginTop: 4 },
+  networkResetText: { color: '#9876aa', fontSize: 10, fontWeight: '800' },
   moreSearch: { minHeight: 60, borderRadius: 20, backgroundColor: '#150a1c', borderWidth: 1, borderColor: '#613375', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 17, marginBottom: 13 },
   moreSearchText: { color: '#eee6f1', fontSize: 14, fontWeight: '800', flex: 1 },
   moreGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },

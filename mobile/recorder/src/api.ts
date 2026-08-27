@@ -1,4 +1,5 @@
 import type { Connection } from './credentials';
+import { requestJourneyDeckJson } from './network-request';
 import {
   getSession, markMusicObservationsUploaded, markPointsUploaded, markRemoteCreated,
   queuedMusicObservations, queuedPoints, sessionsWithQueuedMusic,
@@ -8,17 +9,10 @@ type RecorderSession = { id: string; driveId?: string | null };
 const musicFlushes = new Map<string, Promise<number>>();
 
 async function request<T>(connection: Pick<Connection, 'serverUrl' | 'token'>, path: string, init?: RequestInit): Promise<T> {
-  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const response = await fetch(`${connection.serverUrl}${path}`, { ...init, signal: controller.signal,
-      headers: { authorization: `Bearer ${connection.token}`, 'content-type': 'application/json', ...init?.headers } });
-    const payload = await response.json().catch(() => null) as { error?: string } | null;
-    if (!response.ok) throw new Error(payload?.error || `JourneyDeck returned ${response.status}.`);
-    return payload as T;
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('JourneyDeck did not respond. Your points remain safely queued.');
-    throw error;
-  } finally { clearTimeout(timeout); }
+  return requestJourneyDeckJson<T>(connection, path, init, {
+    timeoutMs: 15_000,
+    timeoutMessage: 'JourneyDeck did not respond. Your points remain safely queued.',
+  });
 }
 
 export async function pingRecorder(connection: Pick<Connection, 'serverUrl' | 'token'>) { return request<{ ready: boolean }>(connection, '/api/recorder/status'); }
