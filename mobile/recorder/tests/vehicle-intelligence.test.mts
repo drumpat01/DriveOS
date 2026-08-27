@@ -8,13 +8,15 @@ const appData = fs.readFileSync(path.join(root, 'src', 'app-data.ts'), 'utf8');
 const screen = fs.readFileSync(path.join(root, 'src', 'vehicle-intelligence-screen.tsx'), 'utf8');
 const shell = fs.readFileSync(path.join(root, 'src', 'shell.tsx'), 'utf8');
 const tessie = fs.readFileSync(path.join(root, 'src', 'tessie-direct.ts'), 'utf8');
+const profileSecrets = fs.readFileSync(path.join(root, 'src', 'profile-secure-store.ts'), 'utf8');
 
 test('Bundle B refreshes Tessie through the privacy edge and keeps the durable cache on device', () => {
   assert.match(appData, /vehicleIntelligenceCacheKey\(userId\)/);
   assert.match(appData, /refreshVehicleIntelligenceFromTessie/);
   assert.doesNotMatch(appData, /api\/recorder\/vehicle-intelligence/);
   assert.match(appData, /saveVehicleIntelligencePreferences/);
-  assert.match(tessie, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
+  assert.match(tessie, /loadProfileSecret\(TESSIE_TOKEN_KEY\)/);
+  assert.match(profileSecrets, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
   assert.match(tessie, /\/api\/vehicle\/tessie\/sync/);
   assert.doesNotMatch(tessie, /requestJourneyDeckJson|loadConnection/);
 });

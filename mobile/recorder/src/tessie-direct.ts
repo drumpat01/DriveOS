@@ -1,10 +1,9 @@
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
 
 import { requestPrivacyEdgeJson } from './network-request';
+import { deleteProfileSecret, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 
 const TESSIE_TOKEN_KEY = 'journeydeck.vehicle.tessie.token.v1';
-const secureOptions: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
 
 export type TessieVehicleSnapshot = {
   vehicleKey: string; name: string; status: string; batteryPercent: number | null; rangeMiles: number | null;
@@ -35,7 +34,7 @@ function validToken(value: string) { return /^\S{16,512}$/.test(value); }
 
 async function storedToken() {
   try {
-    const value = (await SecureStore.getItemAsync(TESSIE_TOKEN_KEY, secureOptions) ?? '').trim();
+    const value = (await loadProfileSecret(TESSIE_TOKEN_KEY) ?? '').trim();
     return validToken(value) ? value : null;
   } catch { return null; }
 }
@@ -51,12 +50,12 @@ export async function connectTessieDirect(accessToken: string) {
     reason: 'external_import', operation: 'Tessie connection check', timeoutMs: 15_000,
   });
   if (result.valid !== true) throw new Error('Tessie did not accept that access token.');
-  await SecureStore.setItemAsync(TESSIE_TOKEN_KEY, clean, secureOptions);
+  await saveProfileSecret(TESSIE_TOKEN_KEY, clean);
   return Math.max(0, Math.round(Number(result.vehicleCount) || 0));
 }
 
 export async function disconnectTessieDirect() {
-  await SecureStore.deleteItemAsync(TESSIE_TOKEN_KEY, secureOptions);
+  await deleteProfileSecret(TESSIE_TOKEN_KEY);
 }
 
 export async function syncTessieDirect(): Promise<TessieSnapshot> {

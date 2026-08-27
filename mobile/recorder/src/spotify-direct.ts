@@ -1,14 +1,13 @@
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
 import { AppState, Linking } from 'react-native';
 
 import { requestExternalProviderJson, requestPrivacyEdgeJson } from './network-request';
+import { deleteProfileSecret, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 import { getSession, recentCompletedSessionIds, saveImportedMusicForCompletedSession } from './storage';
 
 const TOKEN_KEY = 'journeydeck.music.spotify.owner-token.v1';
 const PENDING_KEY = 'journeydeck.music.spotify.owner-pkce.v1';
-const secureOptions: SecureStore.SecureStoreOptions = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
 
 type SpotifyToken = { accessToken: string; refreshToken: string; expiresAt: number };
 type SpotifyPending = { state: string; verifier: string; redirectUri: string; createdAt: number };
@@ -49,7 +48,7 @@ async function waitForResumedNetwork() {
 
 async function loadToken() {
   try {
-    const raw = await SecureStore.getItemAsync(TOKEN_KEY, secureOptions);
+    const raw = await loadProfileSecret(TOKEN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SpotifyToken;
     return parsed.accessToken && parsed.refreshToken && Number.isFinite(parsed.expiresAt) ? parsed : null;
@@ -61,7 +60,7 @@ async function saveToken(payload: SpotifyTokenResponse, priorRefreshToken = '') 
   const expiresIn = Number(payload.expires_in);
   if (!accessToken || !refreshToken || !Number.isFinite(expiresIn)) throw new Error('Spotify did not return a complete connection.');
   const token = { accessToken, refreshToken, expiresAt: Date.now() + Math.max(60, expiresIn) * 1_000 } satisfies SpotifyToken;
-  await SecureStore.setItemAsync(TOKEN_KEY, JSON.stringify(token), secureOptions);
+  await saveProfileSecret(TOKEN_KEY, JSON.stringify(token));
   return token;
 }
 
@@ -73,7 +72,7 @@ export async function beginSpotifyDirectConnection() {
   const config = await requestPrivacyEdgeJson<{ clientId: string; redirectUri: string }>(edge, '/api/auth/spotify/config', {}, { reason: 'external_import', operation: 'Spotify owner connection' });
   const state = Crypto.randomUUID().replaceAll('-', ''), verifier = `${Crypto.randomUUID()}${Crypto.randomUUID()}${Crypto.randomUUID()}`.replaceAll('-', '');
   const challenge = (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, verifier, { encoding: Crypto.CryptoEncoding.BASE64 })).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-  await SecureStore.setItemAsync(PENDING_KEY, JSON.stringify({ state, verifier, redirectUri: config.redirectUri, createdAt: Date.now() } satisfies SpotifyPending), secureOptions);
+  await saveProfileSecret(PENDING_KEY, JSON.stringify({ state, verifier, redirectUri: config.redirectUri, createdAt: Date.now() } satisfies SpotifyPending));
   const authorize = new URL('https://accounts.spotify.com/authorize');
   authorize.search = new URLSearchParams({ response_type: 'code', client_id: config.clientId, scope: 'user-read-recently-played', redirect_uri: config.redirectUri, state, code_challenge_method: 'S256', code_challenge: challenge }).toString();
   await Linking.openURL(authorize.toString());
@@ -81,16 +80,16 @@ export async function beginSpotifyDirectConnection() {
 
 export async function finishSpotifyDirectConnection(callbackUrl: string) {
   if (!callbackUrl.startsWith('journeydeck-recorder://spotify-callback')) return false;
-  const callback = new URL(callbackUrl), raw = await SecureStore.getItemAsync(PENDING_KEY, secureOptions);
+  const callback = new URL(callbackUrl), raw = await loadProfileSecret(PENDING_KEY);
   if (!raw) throw new Error('The Spotify connection request expired. Try again.');
   const pending = JSON.parse(raw) as SpotifyPending;
   if (Date.now() - pending.createdAt > 10 * 60_000 || callback.searchParams.get('state') !== pending.state) {
-    await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
+    await deleteProfileSecret(PENDING_KEY);
     throw new Error('Spotify returned an invalid connection state.');
   }
   const code = callback.searchParams.get('code');
   if (!code || callback.searchParams.get('error')) {
-    await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
+    await deleteProfileSecret(PENDING_KEY);
     throw new Error('Spotify access was not approved.');
   }
   const edge = edgeUrl();
@@ -98,7 +97,7 @@ export async function finishSpotifyDirectConnection(callbackUrl: string) {
   await waitForResumedNetwork();
   const payload = await requestPrivacyEdgeJson<SpotifyTokenResponse>(edge, '/api/auth/spotify/token', { grant_type: 'authorization_code', code, code_verifier: pending.verifier, redirect_uri: pending.redirectUri }, { reason: 'external_import', operation: 'Spotify owner connection', timeoutMs: 15_000 });
   await saveToken(payload);
-  await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions);
+  await deleteProfileSecret(PENDING_KEY);
   return true;
 }
 
@@ -125,7 +124,7 @@ export async function syncSpotifyDirectSession(sessionId: string) {
     catch (error) {
       if ((error as { status?: number }).status !== 401 || page > 0) throw error;
       token = { ...token, expiresAt: 0 };
-      await SecureStore.setItemAsync(TOKEN_KEY, JSON.stringify(token), secureOptions);
+      await saveProfileSecret(TOKEN_KEY, JSON.stringify(token));
       token = await usableToken();
       payload = await requestExternalProviderJson<SpotifyRecentResponse>(next, token.accessToken, { operation: 'Spotify owner history import' });
     }

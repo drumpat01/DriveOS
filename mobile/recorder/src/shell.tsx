@@ -44,7 +44,7 @@ import {
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
-import { getAppleIdentityStatus, getCurrentUser, signInWithApple, type AppleIdentityStatus } from './auth';
+import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { getSensitivePlaces, upsertPlace, type LocalUser } from './local-store';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { buildSongRouteMoments } from './route-moments';
@@ -198,6 +198,11 @@ function blankDashboard(): AppDashboard {
 }
 
 export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
+  const [profileRevision, setProfileRevision] = useState(0);
+  return <JourneyDeckShellContent key={profileRevision} recorder={recorder} onProfileChanged={() => setProfileRevision(revision => revision + 1)} />;
+}
+
+function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: ReactNode; onProfileChanged: () => void }) {
   const updateState = Updates.useUpdates();
   const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
@@ -364,6 +369,12 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
   }, []);
 
   const syncPrivateCloud = useCallback(async (announce = false) => {
+    if (isIsolationTestProfile()) {
+      const detail = 'Paused for the temporary clean-profile isolation test.';
+      setPrivateCloud({ status: 'idle', detail });
+      if (announce) Alert.alert('Private iCloud is paused', detail);
+      return;
+    }
     if (!isPrivateICloudNativeAvailable()) {
       setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.7.' });
       return;
@@ -388,6 +399,27 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
       if (announce) Alert.alert('Private iCloud will retry', detail);
     }
   }, [refreshDashboard, refreshJourneys, refreshMemories, refreshMusicDashboard]);
+
+  const createProfileIsolationTest = useCallback(() => {
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
+      return;
+    }
+    Alert.alert('Create a clean test profile?', 'Your current profile and all of its data will remain unchanged. JourneyDeck will reload into a separate empty local profile.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Create test profile', onPress: () => { createIsolationTestProfile(); onProfileChanged(); } },
+    ]);
+  }, [dashboard.data.recorder.state, onProfileChanged]);
+
+  const switchProfileForTest = useCallback((userId: string) => {
+    if (dashboard.data.recorder.state !== 'ready') {
+      Alert.alert('Finish the active journey first', 'Profile switching is disabled while the recorder is active.');
+      return;
+    }
+    const user = switchActiveUser(userId);
+    if (!user) { Alert.alert('Profile unavailable', 'JourneyDeck could not find that local profile. No data was changed.'); return; }
+    onProfileChanged();
+  }, [dashboard.data.recorder.state, onProfileChanged]);
 
   const connectAppleIdentity = useCallback(async () => {
     setSigningInWithApple(true);
@@ -673,7 +705,7 @@ export function JourneyDeckShell({ recorder }: { recorder: ReactNode }) {
           <View key="more" collapsable={false} style={styles.tabLayer}>
             <MoreScreen
               active={tab === 'more'} requested={moreDestination} onRequestedChange={setMoreDestination} state={primarySections} dashboard={dashboard.data}
-              privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
+              privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} onJourney={setSelectedJourneyId}
               music={<MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />}
               recorder={recorder}
               settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} privateCloud={privateCloud} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onTessieChanged={connected => setConnectionCapabilities(current => ({ ...current, tessieConfigured: connected }))} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}

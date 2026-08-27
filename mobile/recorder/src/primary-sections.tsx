@@ -21,8 +21,8 @@ import {
   getNetworkActivitySnapshot, resetNetworkActivity, setJourneyDeckRequestsBlocked, subscribeNetworkActivity,
   type NetworkActivityEvent,
 } from './network-activity';
-import { getCurrentUser } from './auth';
-import { previewLocalRetention } from './local-store';
+import { getCurrentUser, isIsolationTestProfile } from './auth';
+import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
@@ -218,15 +218,19 @@ export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDa
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, onRefresh, onCloudSync }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile }: {
   active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
   privateCloud: { status: string; detail: string };
   appleIdentityStatus: string;
   providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
+  currentUser: LocalUser;
+  profiles: LocalUser[];
   onRefresh: () => void;
   onCloudSync: () => void;
+  onCreateProfileTest: () => void;
+  onSwitchProfile: (userId: string) => void;
 }) {
   const updates = Updates.useUpdates();
   const running = updates.currentlyRunning;
@@ -245,6 +249,11 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const [retentionRefresh, setRetentionRefresh] = useState(0);
   const [retentionPreview, setRetentionPreview] = useState<LocalRetentionPreview | null>(null);
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const testProfile = isIsolationTestProfile(currentUser);
+  const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
+    && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
+    && profileDiagnostics.collectionCount === 0 && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
   useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
   useEffect(() => {
     if (!active) return;
@@ -310,6 +319,26 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
     </Pressable>
     <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
+    <SectionTitle title="Profile Test Lab" detail="Temporary · non-destructive" />
+    <View style={styles.profileLabCard}>
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.profileLabEyebrow}>{testProfile ? 'TEST PROFILE ACTIVE' : 'CURRENT PROFILE'}</Text><Text style={styles.profileLabTitle}>{currentUser.displayName || 'Unnamed local profile'}</Text></View>{testProfile && <Text style={[styles.profileLabResult, profileIsClean && styles.profileLabResultGood]}>{profileIsClean ? 'CLEAN' : 'HAS DATA'}</Text>}</View>
+      <Text style={styles.profileLabDetail}>{testProfile ? 'Private iCloud is paused for this synthetic profile so the empty-profile check cannot download existing records.' : 'Create a separate local profile to verify that journeys, recorder state, screen caches, and owner backup do not carry over.'}</Text>
+      <View style={styles.profileLabGrid}>
+        <ProfileLabMetric label="JOURNEYS" value={profileDiagnostics.journeyCount} />
+        <ProfileLabMetric label="GPS POINTS" value={profileDiagnostics.gpsPointCount} />
+        <ProfileLabMetric label="SONGS" value={profileDiagnostics.musicEntryCount} />
+        <ProfileLabMetric label="MEMORIES" value={profileDiagnostics.memoryCount} />
+        <ProfileLabMetric label="COLLECTIONS" value={profileDiagnostics.collectionCount} />
+        <ProfileLabMetric label="RECORDER QUEUE" value={dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic} />
+      </View>
+      {testProfile ? <>
+        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Memories, Atlas, Search, Recorder, and Settings before returning.</Text>
+        {profiles.filter(profile => !isIsolationTestProfile(profile)).map(profile => <Pressable key={profile.id} style={styles.profileLabPrimary} onPress={() => onSwitchProfile(profile.id)}><Text style={styles.profileLabPrimaryText}>Return to {profile.displayName || 'original profile'}</Text></Pressable>)}
+      </> : <>
+        <Pressable style={styles.profileLabPrimary} onPress={onCreateProfileTest}><Text style={styles.profileLabPrimaryText}>Create clean test profile</Text></Pressable>
+        <Text style={styles.profileLabNote}>This never deletes, merges, or edits your current data. The test profile remains separate until this temporary lab is removed.</Text>
+      </>}
+    </View>
     <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
     <View style={styles.retentionCard}>
       <View style={styles.retentionChoiceRow}>
@@ -359,6 +388,10 @@ function NetworkMetric({ label, value, detail }: { label: string; value: string;
   return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
 }
 
+function ProfileLabMetric({ label, value }: { label: string; value: number }) {
+  return <View style={styles.profileLabMetric}><Text style={styles.profileLabMetricLabel}>{label}</Text><Text style={styles.profileLabMetricValue}>{Math.max(0, value).toLocaleString()}</Text></View>;
+}
+
 function RetentionRow({ label, count }: { label: string; count: RetentionCount }) {
   return <View style={styles.retentionRow}><View style={styles.flex}><Text style={styles.retentionRowTitle}>{label}</Text><Text style={styles.retentionRowTotal}>{formatCount(count.total)} total</Text></View><View style={styles.retentionNumbers}><Text style={styles.retentionKept}>{formatCount(count.kept)}</Text><Text style={styles.retentionRemove}>{formatCount(count.removable)}</Text></View></View>;
 }
@@ -387,11 +420,12 @@ function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferen
 
 export function MoreScreen({
   active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
-  providerCapabilities, music, recorder, settings,
+  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, music, recorder, settings,
 }: {
   active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
   privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
   providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
+  currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
   music: ReactNode; recorder: ReactNode; settings: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -401,7 +435,7 @@ export function MoreScreen({
     const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
       : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
         : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} onRefresh={onRefresh} onCloudSync={onCloudSync} />
+          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} />
             : destination === 'music' ? music : destination === 'settings' ? settings : null;
     content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
   } else {
@@ -607,6 +641,19 @@ const styles = StyleSheet.create({
   networkPolicyDetail: { color: '#8d7e94', fontSize: 10, lineHeight: 15, marginTop: 4 },
   networkReset: { alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 9, marginTop: 4 },
   networkResetText: { color: '#9876aa', fontSize: 10, fontWeight: '800' },
+  profileLabCard: { borderRadius: 22, backgroundColor: '#0b0710', borderWidth: 1, borderColor: '#68468b', padding: 16, marginBottom: 13, gap: 12 },
+  profileLabEyebrow: { color: '#c48aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.4 },
+  profileLabTitle: { color: '#fff7ff', fontSize: 18, fontWeight: '900', marginTop: 4 },
+  profileLabDetail: { color: '#a99caf', fontSize: 12, lineHeight: 18 },
+  profileLabResult: { color: '#ffb266', backgroundColor: '#2b160b', borderWidth: 1, borderColor: '#73401e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6, fontSize: 9, fontWeight: '900' },
+  profileLabResultGood: { color: '#68e5be', backgroundColor: '#082019', borderColor: '#23664f' },
+  profileLabGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  profileLabMetric: { width: '31.5%', minHeight: 62, borderRadius: 14, backgroundColor: '#130b19', borderWidth: 1, borderColor: '#35213f', padding: 9 },
+  profileLabMetricLabel: { color: '#9f79b2', fontSize: 7, fontWeight: '900', letterSpacing: 0.9 },
+  profileLabMetricValue: { color: '#fff8ff', fontSize: 18, fontWeight: '900', marginTop: 5 },
+  profileLabPrimary: { minHeight: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8b48e8', paddingHorizontal: 14 },
+  profileLabPrimaryText: { color: '#fff', fontSize: 14, fontWeight: '900', textAlign: 'center' },
+  profileLabNote: { color: '#817386', fontSize: 10, lineHeight: 15 },
   retentionCard: { borderRadius: 22, backgroundColor: '#0b0710', borderWidth: 1, borderColor: '#4b2b59', padding: 14, marginBottom: 13 },
   retentionChoiceRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
   retentionChoice: { flex: 1, minHeight: 38, borderRadius: 13, borderWidth: 1, borderColor: '#35203e', backgroundColor: '#110a16', alignItems: 'center', justifyContent: 'center' },

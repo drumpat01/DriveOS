@@ -43,6 +43,7 @@ export type AuthState = {
 };
 
 export type AppleIdentityStatus = 'unavailable' | 'signed_out' | 'authorized' | 'revoked' | 'unknown';
+const ISOLATION_TEST_PROFILE_PREFIX = 'Isolation Test';
 
 let activeUser: LocalUser | null = null;
 
@@ -138,4 +139,17 @@ export function switchActiveUser(userId: LocalUserId): LocalUser | null {
     return found;
   }
   return null;
+}
+
+/** Creates a separate, non-destructive local profile for temporary release testing. */
+export function createIsolationTestProfile(): LocalUser {
+  const suffix = new Date().toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const user = ensureLocalUser({ displayName: `${ISOLATION_TEST_PROFILE_PREFIX} · ${suffix}` });
+  activeUser = user;
+  setActiveLocalUserId(user.id);
+  return user;
+}
+
+export function isIsolationTestProfile(user = getCurrentUser()): boolean {
+  return Boolean(user.displayName?.startsWith(ISOLATION_TEST_PROFILE_PREFIX));
 }
