@@ -1,5 +1,12 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## JourneyDeck 1.7 Git consolidation — August 26, 2026
+
+- Consolidated all intended Phase 1–7, Apple Sign-In, private CloudKit, exact-route mapping/replay, local-first archive, vehicle intelligence, and server-enrichment changes in feature commit `ec4edc6` (`feat(mobile): complete JourneyDeck 1.7 local-first experience`). No generated validation output or credentials were included.
+- Synchronized the branch with current `origin/main` in merge commit `46f050f`. The four Tessie-route conflicts were duplicate cherry-picks of the same earlier fix; resolution preserved the JourneyDeck 1.7 versions, which are strict supersets carrying timestamp, speed, heading, battery, and complete route-point data.
+- Pushed `agy/journeydeck-1.6` and opened PR [#132](https://github.com/drumpat01/DriveOS/pull/132) targeting `main`. Use the PR as the authoritative final merge/check status.
+- Post-merge-resolution verification passed: mobile TypeScript and 62/62 tests; server TypeScript, lint, and 31/31 tests. The immediately preceding complete validation also passed Expo Doctor 21/21, iOS export, Atlas benchmark, Playwright 9/9, PowerShell analysis, gitleaks, and Trivy with zero HIGH/CRITICAL findings. No Expo/EAS native build was started.
+
 ## Phase 6 — Home overview — August 26, 2026
 
 - Upgraded the cinematic native Home screen from the older dashboard-only payload to the completed per-user Phase 2 cache. Home now summarizes Journey, Memory, Collection, Place, Music, Atlas, Timeline, Statistics, vehicle, charging, recorder, and Data Health state without adding a network endpoint or background request.
