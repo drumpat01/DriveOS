@@ -1051,8 +1051,9 @@ function HomeScreen({ currentUser, state, primary, recordingMode, tessieConnecte
   const latestJourney = latestDetail ?? latestSummary;
   const heroImage = homeHeroImageFor(latestJourney?.startedAt);
   const latestSoundtrackTrack = latestDetail?.soundtrack[0] ?? latestJourney?.soundtrackPreview?.[0] ?? null;
-  const soundtrackTitle = latestSoundtrackTrack?.track ?? home?.topTrack?.track ?? 'Midnight City';
-  const soundtrackArtist = latestSoundtrackTrack?.artist ?? home?.topTrack?.artist ?? 'M83';
+  const soundtrackTitle = latestSoundtrackTrack?.track ?? home?.topTrack?.track ?? null;
+  const soundtrackArtist = latestSoundtrackTrack?.artist ?? home?.topTrack?.artist ?? null;
+  const hasRoadSoundtrack = Boolean(soundtrackTitle && soundtrackArtist);
   const storyItems = useMemo(() => {
     if (!primary.data) return [];
     return [...primary.data.memories.memories]
@@ -1190,7 +1191,7 @@ function HomeScreen({ currentUser, state, primary, recordingMode, tessieConnecte
             <View style={styles.cinematicSoundtrackHeaderRow}>
               <View style={styles.cinematicSoundtrackKickerWrap}>
                 <SymbolView name="waveform" tintColor="#ff6078" type="hierarchical" style={styles.cinematicWaveformKickerIcon} />
-                <Text style={styles.cinematicSoundtrackKickerText}>Now playing on your road</Text>
+                <Text style={styles.cinematicSoundtrackKickerText}>{hasRoadSoundtrack ? 'Now playing on your road' : 'Your road soundtrack'}</Text>
               </View>
               <View style={styles.cinematicStatusBadgePill}>
                 <View style={[styles.cinematicStatusDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
@@ -1207,18 +1208,20 @@ function HomeScreen({ currentUser, state, primary, recordingMode, tessieConnecte
                 {latestSoundtrackTrack ? (
                   <Artwork track={latestSoundtrackTrack} size={76} />
                 ) : (
-                  <ExpoImage source={require('../assets/home-soundtrack-album-v2.png')} cachePolicy="memory-disk" contentFit="cover" style={styles.cinematicAlbumCoverImage} />
+                  <LinearGradient colors={['rgba(255,96,120,0.28)', 'rgba(141,97,255,0.26)', 'rgba(12,8,18,0.95)']} style={styles.cinematicEmptyAlbumCover}>
+                    <SymbolView name="music.note" tintColor="#e5c8ff" type="hierarchical" style={styles.cinematicEmptyAlbumIcon} />
+                  </LinearGradient>
                 )}
               </View>
               <View style={styles.cinematicTrackInfoColumn}>
-                <Text style={styles.cinematicTrackTitleText} numberOfLines={1}>{soundtrackTitle}</Text>
-                <Text style={styles.cinematicTrackArtistText} numberOfLines={1}>{soundtrackArtist}</Text>
-                <SoundtrackWaveform />
+                <Text style={styles.cinematicTrackTitleText} numberOfLines={1}>{soundtrackTitle ?? 'Music will appear here'}</Text>
+                <Text style={styles.cinematicTrackArtistText} numberOfLines={1}>{soundtrackArtist ?? 'After your first drive'}</Text>
+                {hasRoadSoundtrack ? <SoundtrackWaveform /> : <Text style={styles.cinematicEmptySoundtrackHint}>Open music setup  ›</Text>}
               </View>
               <Pressable onPress={() => onMore('music')} style={styles.cinematicPlayButtonOuter}>
                 <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.cinematicPlayButtonRing}>
                   <View style={styles.cinematicPlayButtonDisc}>
-                    <SymbolView name="play.fill" tintColor="#ffffff" type="hierarchical" style={styles.cinematicPlaySymbol} />
+                    <SymbolView name={hasRoadSoundtrack ? 'play.fill' : 'arrow.right'} tintColor="#ffffff" type="hierarchical" style={styles.cinematicPlaySymbol} />
                   </View>
                 </LinearGradient>
               </Pressable>
@@ -3298,9 +3301,12 @@ const styles = StyleSheet.create({
   cinematicSoundtrackContentRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   cinematicAlbumCoverWrap: { width: 76, height: 76, borderRadius: 16, overflow: 'hidden', backgroundColor: '#180a22', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', shadowColor: '#db49ff', shadowOpacity: 0.45, shadowRadius: 10 },
   cinematicAlbumCoverImage: { width: '100%', height: '100%' },
+  cinematicEmptyAlbumCover: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
+  cinematicEmptyAlbumIcon: { width: 31, height: 31 },
   cinematicTrackInfoColumn: { flex: 1, gap: 2 },
   cinematicTrackTitleText: { color: '#fff9ff', fontSize: 17, fontWeight: '800' },
   cinematicTrackArtistText: { color: '#ad9fb3', fontSize: 13.5, fontWeight: '600' },
+  cinematicEmptySoundtrackHint: { color: '#c49ae3', fontSize: 10, fontWeight: '800', marginTop: 5 },
   cinematicWaveformContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   cinematicWaveformTime: { color: '#7a6c82', fontSize: 10.5, fontWeight: '700' },
   cinematicWaveformBars: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 26 },

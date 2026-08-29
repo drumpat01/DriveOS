@@ -132,6 +132,9 @@ test('runtime 1.8 Home uses the cinematic memory design and private editable pro
   assert.match(shell, /accessibilityLabel="See more memories"/);
   assert.match(shell, /All memories/);
   assert.match(shell, /Now playing on your road/);
+  assert.match(shell, /Music will appear here/);
+  assert.match(shell, /After your first drive/);
+  assert.doesNotMatch(shell, /'Midnight City'|'M83'/);
   assert.match(profileAppearance, /profile\.appearance/);
   assert.match(profileAppearance, /upsertPrivatePreference/);
   assert.match(profileAppearance, /MAX_AVATAR_DATA_URI_LENGTH/);
