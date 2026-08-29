@@ -17,6 +17,17 @@ test('production uses the production privacy edge and keeps internal testing dis
   assert.equal(eas.build.production.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING, '0');
 });
 
+test('production preserves the microphone purpose string required for Auto Recognition', () => {
+  const microphonePurpose = app.expo.ios.infoPlist.NSMicrophoneUsageDescription;
+  const imagePicker = app.expo.plugins.find((plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-image-picker');
+
+  assert.equal(typeof microphonePurpose, 'string');
+  assert.match(microphonePurpose, /identify music during journeys/i);
+  assert.match(microphonePurpose, /never recorded or saved/i);
+  assert.ok(Array.isArray(imagePicker));
+  assert.equal(imagePicker[1].microphonePermission, microphonePurpose);
+});
+
 test('public music choices cannot include preview-only Spotify integrations', () => {
   assert.match(preferences, /export function isMusicProviderAvailable/);
   assert.match(preferences, /provider === 'apple-music' \|\| provider === 'shazam' \|\| isInternalTestingBuild\(\)/);
