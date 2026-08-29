@@ -16,6 +16,7 @@ import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { BlurView } from 'expo-blur';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { MeshGradientView } from 'expo-mesh-gradient';
 import PagerView from 'react-native-pager-view';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +27,7 @@ import {
   type JourneyMemory, type JourneyPhoto, type JourneySummary, type MemoriesCatalog, type ProviderPreferences,
 } from './app-data';
 import {
-  isLastFmConnected, loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
+  isLastFmConnected, isMusicProviderAvailable, loadLastFmUsername, loadMusicPreferences, saveLastFmUsername, saveMusicPreferences, toApiMusicProvider,
   type MusicPreferences, type MusicProvider,
 } from './music-preferences';
 import {
@@ -54,8 +55,13 @@ import { VehicleIntelligenceScreen } from './vehicle-intelligence-screen';
 import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type JourneyLibrarySort } from './library-model';
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import { buildHomeSummary } from './home-summary';
+import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } from './profile-appearance';
+import { NeonWidgetOutline } from './neon-widget-outline';
+import { HeaderArtwork } from './header-artwork';
+import { isInternalTestingBuild } from './internal-testing';
 import { loadPrimarySectionsData } from './primary-sections-data';
 import { subscribeLocalArchiveChanges } from './local-archive-events';
+import { completeWelcomeIntro, hasCompletedWelcomeIntro } from './welcome-intro';
 import {
   AtlasScreen, LiveScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
@@ -65,11 +71,11 @@ type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: 
 type PrivateCloudUiState = { status: 'unavailable' | 'idle' | 'syncing' | 'synced' | 'needs_icloud' | 'error'; detail: string };
 
 const bottomNavigationItems: { id: Tab; label: string; symbol: SFSymbol; fallback: string }[] = [
-  { id: 'home', label: 'Home', symbol: 'house', fallback: '⌂' },
+  { id: 'home', label: 'Home', symbol: 'house.fill', fallback: '⌂' },
   { id: 'live', label: 'Live', symbol: 'antenna.radiowaves.left.and.right', fallback: '◉' },
-  { id: 'journeys', label: 'Memories', symbol: 'map', fallback: '≋' },
-  { id: 'atlas', label: 'Atlas', symbol: 'globe.americas', fallback: '◎' },
-  { id: 'more', label: 'More', symbol: 'square.grid.2x2', fallback: '▦' },
+  { id: 'journeys', label: 'Memories', symbol: 'rectangle.stack', fallback: '≋' },
+  { id: 'atlas', label: 'Atlas', symbol: 'map', fallback: '◎' },
+  { id: 'more', label: 'More', symbol: 'ellipsis', fallback: '•••' },
 ];
 
 async function choosePhoto() {
@@ -85,6 +91,22 @@ async function choosePhoto() {
   }
   if (!prepared.base64 || Math.ceil(prepared.base64.length * 0.75) > 1_572_864) throw new Error('That photo is still too large. Try a smaller image.');
   return { fileName: `journeydeck-${Date.now()}.jpg`, contentType: 'image/jpeg' as const, dataBase64: prepared.base64 };
+}
+
+async function chooseProfileAvatar() {
+  const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permission.granted) throw new Error('Allow JourneyDeck to access your selected photos in iPhone Settings.');
+  const result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ['images'], allowsMultipleSelection: false, allowsEditing: true, aspect: [1, 1], quality: 0.9,
+  });
+  if (result.canceled || !result.assets[0]) return null;
+  const prepared = await manipulateAsync(result.assets[0].uri, [{ resize: { width: 384, height: 384 } }], {
+    base64: true, compress: 0.68, format: SaveFormat.JPEG,
+  });
+  if (!prepared.base64) throw new Error('JourneyDeck could not prepare that profile image.');
+  const dataUri = `data:image/jpeg;base64,${prepared.base64}`;
+  if (dataUri.length > 420_000) throw new Error('That image is still too large. Try a different photo.');
+  return dataUri;
 }
 
 type ProviderOption = {
@@ -112,6 +134,13 @@ const providerBrandImages = {
 const tessieBrandImages = {
   white: require('../assets/tessie-logo-white.png'),
   black: require('../assets/tessie-logo-black.png'),
+} as const;
+
+const homeHeroImages = {
+  morning: require('../assets/home-cinematic-hero-morning-v2.png'),
+  afternoon: require('../assets/home-cinematic-hero-afternoon-v2.png'),
+  evening: require('../assets/home-cinematic-hero-evening-v2.png'),
+  night: require('../assets/home-cinematic-hero-night-v1.png'),
 } as const;
 
 type RecordingModeOption = {
@@ -177,7 +206,12 @@ const spotifyDirectOption: ProviderOption = {
   privacy: 'The privacy edge exchanges PKCE codes without storing tokens. Spotify history goes directly to this iPhone.',
 };
 
+const publicProviderOptions = providerOptions.filter(option => isMusicProviderAvailable(option.id));
 const allProviderOptions = [...providerOptions, spotifyDirectOption];
+
+function selectableProviderOptions(ownerSpotifyEnabled: boolean) {
+  return isInternalTestingBuild() && ownerSpotifyEnabled ? allProviderOptions : publicProviderOptions;
+}
 
 const defaultConnections: ProviderPreferences['connections'] = {
   appleMusic: 'not_connected', shazam: 'not_enabled', lastFm: 'not_connected', tessie: 'not_connected',
@@ -212,6 +246,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   const pagerRef = useRef<PagerView>(null);
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
+  const [welcomeIntroCompleted, setWelcomeIntroCompleted] = useState(() => hasCompletedWelcomeIntro());
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
   const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
@@ -263,16 +298,19 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
     let alive = true;
     void loadMusicPreferences().then(value => { if (alive) setPreferences(value); });
     setRecordingPreferences(loadRecordingModePreferences());
-    void loadLastFmUsername().then(async value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); setLastFmConnected(await isLastFmConnected(value)); } });
-    void Promise.all([loadConnection(), spotifyDirectStatus()]).then(([connection, status]) => {
-      if (!alive) return;
-      setOwnerSpotifyEligible(Boolean(connection));
-      setSpotifyOwnerState(status);
-    });
+    if (isInternalTestingBuild()) {
+      void loadLastFmUsername().then(async value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); setLastFmConnected(await isLastFmConnected(value)); } });
+      void Promise.all([loadConnection(), spotifyDirectStatus()]).then(([connection, status]) => {
+        if (!alive) return;
+        setOwnerSpotifyEligible(Boolean(connection));
+        setSpotifyOwnerState(status);
+      });
+    }
     return () => { alive = false; };
   }, []);
 
   useEffect(() => {
+    if (!isInternalTestingBuild()) return undefined;
     let finishingSpotify = false;
     const finish = (url: string) => {
       if (finishingSpotify || !url.startsWith('journeydeck-recorder://spotify-callback')) return;
@@ -280,7 +318,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
       void finishSpotifyDirectConnection(url).then(handled => {
         if (!handled) return;
         setSpotifyOwnerState('connected');
-        Alert.alert('Owner Spotify connected', 'Recent playback can now be matched directly on this iPhone. Public users will continue to use Last.fm.');
+        Alert.alert('Owner Spotify connected', 'Recent playback can now be matched directly on this iPhone.');
       }).catch(error => {
         setSpotifyOwnerState('not_connected');
         Alert.alert('Spotify did not connect', error instanceof Error ? error.message : 'Try again from Settings.');
@@ -554,6 +592,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   const refreshConnectionCapabilities = useCallback(async () => {
     try {
       setConnectionCapabilities(await appDataClient.connectionCapabilities());
+      if (!isInternalTestingBuild()) return;
       const username = await loadLastFmUsername();
       setLastFmConnected(await isLastFmConnected(username));
     }
@@ -567,6 +606,10 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   }, [refreshConnectionCapabilities, refreshMusicCapabilities, tab]);
 
   const chooseProvider = useCallback(async (provider: MusicProvider) => {
+    if (!isMusicProviderAvailable(provider)) {
+      Alert.alert('That music method is not available', 'Choose Apple Music or Auto Recognition in this public release.');
+      return;
+    }
     const next = { provider, onboardingCompleted: true };
     await saveMusicPreferences(next);
     setPreferences(next);
@@ -643,6 +686,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   }, [musicCapabilities, refreshMusicCapabilities, saveConnectionState]);
 
   const saveLastFm = useCallback(async () => {
+    if (!isInternalTestingBuild()) return;
     setSavingLastFm(true);
     try {
       await saveLastFmUsername(lastFmDraft);
@@ -660,6 +704,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   }, [lastFmDraft]);
 
   const syncLastFmNow = useCallback(async () => {
+    if (!isInternalTestingBuild()) return;
     setSyncingLastFm(true);
     try {
       const result = await syncRecentLastFmNow();
@@ -678,6 +723,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   }, [saveConnectionState]);
 
   const connectSpotifyOwner = useCallback(async () => {
+    if (!isInternalTestingBuild()) return;
     setSpotifyOwnerState('connecting');
     try { await beginSpotifyDirectConnection(); }
     catch (error) {
@@ -687,6 +733,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
   }, []);
 
   const syncSpotifyOwner = useCallback(async () => {
+    if (!isInternalTestingBuild()) return;
     setSpotifyOwnerState('syncing');
     try {
       const result = await syncRecentSpotifyDirectNow();
@@ -698,7 +745,8 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
     }
   }, []);
 
-  const openTab = (next: Tab) => {
+  const openTab = (next: Tab, resetMore = next === 'more') => {
+    if (next === 'more' && resetMore) setMoreDestination('menu');
     if (next === tabRef.current) return;
     setSelectedJourneyId(null);
     requestedTabRef.current = next;
@@ -710,24 +758,38 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
 
   const openMore = (destination: MoreDestination) => {
     setMoreDestination(destination);
-    openTab('more');
+    openTab('more', false);
   };
 
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
   const activeRecordingPreferences = recordingPreferences?.onboardingCompleted && !editingRecordingMode ? recordingPreferences : null;
   const appReady = Boolean(activePreferences && activeRecordingPreferences);
+  const shouldShowWelcomeIntro = Boolean(
+    !welcomeIntroCompleted
+    && preferences
+    && recordingPreferences
+    && !(preferences.onboardingCompleted && recordingPreferences.onboardingCompleted)
+    && !editingRecordingMode
+    && !editingProvider,
+  );
+
+  const beginOnboarding = () => {
+    completeWelcomeIntro();
+    setWelcomeIntroCompleted(true);
+  };
 
   return (
     <View style={styles.app}>
       <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
-        {recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
+        {shouldShowWelcomeIntro && <WelcomeIntro onContinue={beginOnboarding} />}
+        {!shouldShowWelcomeIntro && recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
           initial={recordingPreferences.mode ?? 'automatic'}
           onContinue={chooseRecordingMode}
           onCancel={recordingPreferences.onboardingCompleted ? () => setEditingRecordingMode(false) : undefined}
         />}
-        {activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
+        {!shouldShowWelcomeIntro && activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
           ownerSpotifyEnabled={ownerSpotifyEligible}
           onContinue={async provider => {
@@ -753,7 +815,7 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
           }}
         >
           <View key="home" collapsable={false} style={styles.tabLayer}>
-            <HomeScreen state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} tessieConnected={connectionCapabilities.tessieConfigured} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
+            <HomeScreen currentUser={currentUser} state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} tessieConnected={connectionCapabilities.tessieConfigured} onRecord={() => openMore('record')} onJourneys={() => openTab('journeys')} onLive={() => openTab('live')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('settings')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
           </View>
           <View key="live" collapsable={false} style={styles.tabLayer}>
             <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => void refreshPrimarySections(true)} onRecord={() => openMore('record')} onJourney={setSelectedJourneyId} />
@@ -775,6 +837,9 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
           </View>
         </PagerView>}
       </View>
+      {appReady && <View pointerEvents="none" style={styles.bottomContentFade}>
+        <LinearGradient colors={['rgba(3, 1, 5, 0)', 'rgba(3, 1, 5, 0.58)', 'rgba(3, 1, 5, 0.96)']} locations={[0, 0.48, 1]} style={StyleSheet.absoluteFill} />
+      </View>}
       {appReady && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} /></SafeAreaView>}
       <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => {
         if (!selectedJourneyId) return;
@@ -790,6 +855,46 @@ function JourneyDeckShellContent({ recorder, onProfileChanged }: { recorder: Rea
 
 function AppLoading() {
   return <SafeAreaView style={styles.loadingScreen}><ExpoStatusBar style="light" /><ActivityIndicator color="#a88aff" size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
+}
+
+function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
+  const routeReveal = useSharedValue(0);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    routeReveal.value = reduceMotion ? 1 : withDelay(140, withTiming(1, { duration: 1550, easing: Easing.out(Easing.cubic) }));
+  }, [reduceMotion, routeReveal]);
+
+  const routeRevealStyle = useAnimatedStyle(() => ({
+    opacity: routeReveal.value,
+    transform: [{ scale: 0.9 + routeReveal.value * 0.1 }],
+  }));
+
+  return (
+    <SafeAreaView style={styles.welcomeIntroSafe}>
+      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <View style={styles.welcomeIntroContent}>
+        <View style={styles.welcomeIntroBrand}><JourneyDeckLogo size={42} /><JourneyDeckWordmark variant="intro" /></View>
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={styles.welcomeIntroScene}>
+          <Reanimated.View style={[styles.welcomeIntroHero, routeRevealStyle]}>
+            <Image source={require('../assets/welcome-journey-hero-v1.png')} resizeMode="cover" style={StyleSheet.absoluteFill} />
+          </Reanimated.View>
+          <LinearGradient pointerEvents="none" colors={['rgba(5, 5, 13, 0.14)', 'rgba(7, 4, 15, 0.02)', 'rgba(4, 4, 11, 0.5)']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+          <View style={styles.welcomeIntroSignal}><View style={styles.welcomeIntroSignalDot} /><Text style={styles.welcomeIntroSignalText}>PRIVATE BY DESIGN</Text></View>
+        </View>
+        <Text style={styles.welcomeIntroTitle}>The road{`\n`}remembers.</Text>
+        <Text style={styles.welcomeIntroBody}>Record the drives that matter. Your journey archive stays on this iPhone and in your private iCloud.</Text>
+        <View style={styles.welcomeIntroPrivacy}><Text style={styles.welcomeIntroPrivacyIcon}>⌁</Text><Text style={styles.welcomeIntroPrivacyText}>No ads. No tracking. You control your data.</Text></View>
+        <View style={styles.welcomeIntroAction}><PrimaryAction label="Set up JourneyDeck" onPress={onContinue} /><Text style={styles.welcomeIntroFootnote}>Choose recording and music preferences next. You can change them anytime.</Text></View>
+      </View>
+    </SafeAreaView>
+  );
 }
 
 function RecordingModePicker({ initial, onContinue, onCancel }: { initial: RecordingMode; onContinue: (mode: RecordingMode) => Promise<void>; onCancel?: () => void }) {
@@ -857,7 +962,7 @@ function RecordingModeCard({ option, width }: { option: RecordingModeOption; wid
 
 function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: { initial: MusicProvider; ownerSpotifyEnabled: boolean; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
   const { width } = useWindowDimensions();
-  const availableProviders = ownerSpotifyEnabled ? allProviderOptions : providerOptions;
+  const availableProviders = selectableProviderOptions(ownerSpotifyEnabled);
   const cardWidth = Math.max(280, width - 44);
   const initialIndex = Math.max(0, availableProviders.findIndex(option => option.id === initial));
   const [index, setIndex] = useState(initialIndex);
@@ -930,7 +1035,336 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ state, primary, recordingMode, tessieConnected, onRecord, onJourneys, onLive, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; tessieConnected: boolean; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+function HomeScreen({ currentUser, state, primary, recordingMode, tessieConnected, onRecord, onJourneys, onAtlas, onMore, onConnections, onJourney, onRefresh }: { currentUser: LocalUser; state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; tessieConnected: boolean; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+  const insets = useSafeAreaInsets();
+  const { data } = state;
+  const automaticMode = recordingMode === 'automatic';
+  const home = useMemo(() => primary.data ? buildHomeSummary(primary.data) : null, [primary.data]);
+  const [appearance, setAppearance] = useState<ProfileAppearance>(() => loadProfileAppearance(currentUser));
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [profileDraft, setProfileDraft] = useState(appearance);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  // The hero must describe the newest local journey, not a different older drive
+  // selected only because it has a fuller route payload.
+  const latestSummary = primary.data?.journeys[0] ?? data.latestJourney ?? null;
+  const latestDetail = latestSummary ? primary.data?.details.find(detail => detail.id === latestSummary.id) ?? null : null;
+  const latestJourney = latestDetail ?? latestSummary;
+  const heroImage = homeHeroImageFor(latestJourney?.startedAt);
+  const latestSoundtrackTrack = latestDetail?.soundtrack[0] ?? latestJourney?.soundtrackPreview?.[0] ?? null;
+  const soundtrackTitle = latestSoundtrackTrack?.track ?? home?.topTrack?.track ?? 'Midnight City';
+  const soundtrackArtist = latestSoundtrackTrack?.artist ?? home?.topTrack?.artist ?? 'M83';
+  const storyItems = useMemo(() => {
+    if (!primary.data) return [];
+    return [...primary.data.memories.memories]
+      .sort((left, right) => Date.parse(right.updatedAtUtc) - Date.parse(left.updatedAtUtc))
+      .slice(0, 5)
+      .map(memory => ({
+        id: memory.id,
+        title: memory.name,
+        meta: `${memory.collectionIds.length} ${memory.collectionIds.length === 1 ? 'collection' : 'collections'}`,
+        photo: memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? memory.photos[0] ?? null,
+      }));
+  }, [primary.data]);
+  const profileInitials = profileInitialsFor(appearance.displayName);
+  const draftInitials = profileInitialsFor(profileDraft.displayName);
+  const heroTitle = latestJourney ? homeHeroTitle(latestJourney) : 'Your road, remembered';
+  const routeTitle = latestJourney ? homeRouteContext(latestJourney) : 'Your next drive will appear here';
+  const heroStats = latestJourney
+    ? `${formatMiles(latestJourney.miles)} · ${formatDuration(latestJourney.durationMinutes)} · ${latestJourney.songCount} ${latestJourney.songCount === 1 ? 'song' : 'songs'}`
+    : 'Captured privately on your iPhone';
+
+  const editProfile = () => { setProfileDraft(appearance); setProfileEditorOpen(true); void Haptics.selectionAsync(); };
+  const pickAvatar = async () => {
+    setAvatarBusy(true);
+    try {
+      const avatarDataUri = await chooseProfileAvatar();
+      if (avatarDataUri) setProfileDraft(current => ({ ...current, avatarDataUri }));
+    } catch (error) { Alert.alert('Profile image was not changed', error instanceof Error ? error.message : 'Try another image.'); }
+    finally { setAvatarBusy(false); }
+  };
+  const saveProfile = () => {
+    const saved = saveProfileAppearance(currentUser, profileDraft);
+    setAppearance(saved); setProfileEditorOpen(false);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  return <View style={styles.safe}>
+    <ScrollView contentContainerStyle={[styles.cinematicHomePage, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+      <HomeMeshAtmosphere />
+      <View style={styles.cinematicHomeShell}>
+        {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
+        <Reanimated.View entering={FadeInDown.duration(430)} style={styles.cinematicHomeHeader}>
+          <View style={styles.flex}>
+            <JourneyDeckWordmark variant="home" />
+            <Text style={styles.cinematicHeadline}>The road{`\n`}remembers.</Text>
+          </View>
+          <View style={styles.cinematicAvatarAnchor}>
+            <View pointerEvents="none" style={styles.cinematicAvatarGlow} />
+            <Pressable accessibilityRole="button" accessibilityLabel="Edit profile" onPress={editProfile} style={({ pressed }) => [styles.cinematicAvatarButton, pressed && styles.pressed]}>
+              <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} start={{ x: 0.1, y: 0.08 }} end={{ x: 0.92, y: 0.94 }} style={styles.cinematicAvatarRing}>
+                <View style={styles.cinematicAvatarInner}>
+                  {appearance.avatarDataUri ? (
+                    <ExpoImage source={appearance.avatarDataUri} cachePolicy="memory" contentFit="cover" transition={180} style={StyleSheet.absoluteFill} />
+                  ) : (
+                    <Text style={styles.cinematicAvatarInitials}>{profileInitials}</Text>
+                  )}
+                </View>
+              </LinearGradient>
+              <View style={styles.cinematicAvatarEdit}>
+                <SymbolView name="pencil" tintColor="#fff4fb" type="hierarchical" style={styles.cinematicAvatarEditSymbol} />
+              </View>
+            </Pressable>
+          </View>
+        </Reanimated.View>
+
+        {/* Hero Card */}
+        <Reanimated.View entering={FadeInDown.delay(70).duration(480)}>
+          <View style={styles.cinematicHeroAura}>
+            <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.cinematicHero, pressed && styles.cinematicPressed]}>
+              <ExpoImage source={heroImage} cachePolicy="memory-disk" contentFit="cover" transition={220} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={['rgba(8,3,14,0.34)', 'rgba(8,3,14,0.12)', 'rgba(5,2,10,0.85)', 'rgba(4,1,8,0.97)']} locations={[0, 0.28, 0.72, 1]} style={StyleSheet.absoluteFill} />
+              <LiquidGlassEdges radius={29} />
+              {/* Top Bar of Hero */}
+              <View style={styles.cinematicHeroHeader}>
+                <View style={styles.cinematicHeroHeaderCopy}>
+                  <Text style={styles.cinematicHeroEyebrow}>LATEST ROAD MEMORY</Text>
+                  <Text style={styles.cinematicHeroTitle} numberOfLines={1}>{heroTitle}</Text>
+                  <Text style={styles.cinematicHeroRoute} numberOfLines={1}>{routeTitle}</Text>
+                  <Text style={styles.cinematicHeroMeta}>{heroStats}</Text>
+                </View>
+                <Pressable onPress={() => latestJourney && onJourney(latestJourney.id)} style={styles.cinematicRelive}>
+                  <SymbolView name="play.fill" tintColor="#fff" type="hierarchical" style={styles.cinematicReliveSymbol} />
+                  <Text style={styles.cinematicReliveText}>Relive</Text>
+                </Pressable>
+              </View>
+
+              {/* Keep the Home hero editorial; the recorded route belongs in the drive detail. */}
+              <View style={styles.cinematicHeroBottomActions}>
+                <Pressable onPress={() => latestJourney ? onJourney(latestJourney.id) : onJourneys()} style={styles.cinematicHeroRouteButton}>
+                  <SymbolView name="arrow.right" tintColor="#fff" type="hierarchical" style={styles.cinematicHeroPillIcon} />
+                  <Text style={styles.cinematicHeroPillText}>Open drive</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </View>
+        </Reanimated.View>
+
+        {/* Newest Memories */}
+        <Reanimated.View entering={FadeInDown.delay(120).duration(480)} style={styles.cinematicSection}>
+          <View style={styles.cinematicSectionHeader}>
+            <Text style={styles.cinematicSectionTitle}>Memories</Text>
+            <Pressable onPress={onJourneys}>
+              <Text style={styles.cinematicSectionAction}>View all  ›</Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cinematicStoryRail}>
+            {storyItems.map(item => (
+              <Pressable key={item.id} onPress={onJourneys} style={({ pressed }) => [styles.cinematicStoryCard, pressed && styles.cinematicPressed]}>
+                {item.photo ? (
+                  <JourneyPhotoImage photo={item.photo} style={StyleSheet.absoluteFill} />
+                ) : (
+                  <MemoryArtwork artworkKey="road-trips" />
+                )}
+                <LinearGradient colors={['rgba(5,2,9,0)', 'rgba(5,2,9,0.38)', 'rgba(5,2,9,0.96)']} locations={[0.3, 0.65, 1]} style={StyleSheet.absoluteFill} />
+                <LiquidGlassEdges radius={22} />
+                <View style={styles.cinematicStoryCopy}>
+                  <Text style={styles.cinematicStoryTitle} numberOfLines={1}>{item.title}</Text>
+                  <Text style={styles.cinematicStoryMeta}>{item.meta}</Text>
+                </View>
+              </Pressable>
+            ))}
+            <Pressable accessibilityRole="button" accessibilityLabel="See more memories" onPress={onJourneys} style={({ pressed }) => [styles.cinematicStoryMoreCard, pressed && styles.cinematicPressed]}>
+              <LinearGradient colors={['rgba(115,67,159,0.42)', 'rgba(20,9,31,0.92)']} style={StyleSheet.absoluteFill} />
+              <SymbolView name="rectangle.stack.fill" tintColor="#dcb9ff" type="hierarchical" style={styles.cinematicStoryMoreIcon} />
+              <Text style={styles.cinematicStoryMoreTitle}>See more</Text>
+              <Text style={styles.cinematicStoryMoreMeta}>All memories  ›</Text>
+              <LiquidGlassEdges radius={22} />
+            </Pressable>
+          </ScrollView>
+        </Reanimated.View>
+
+        {/* Soundtrack Card ("Now playing on your road") */}
+        <Reanimated.View entering={FadeInDown.delay(180).duration(480)}>
+          <CinematicGlass style={styles.cinematicSoundtrackGlassCard}>
+            {/* Card Header Row */}
+            <View style={styles.cinematicSoundtrackHeaderRow}>
+              <View style={styles.cinematicSoundtrackKickerWrap}>
+                <SymbolView name="waveform" tintColor="#ff6078" type="hierarchical" style={styles.cinematicWaveformKickerIcon} />
+                <Text style={styles.cinematicSoundtrackKickerText}>Now playing on your road</Text>
+              </View>
+              <View style={styles.cinematicStatusBadgePill}>
+                <View style={[styles.cinematicStatusDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
+                <Text style={styles.cinematicStatusBadgeText}>
+                  {data.recorder.state === 'recording' ? 'Recording' : automaticMode ? 'Watching' : 'Ready'} · On device
+                </Text>
+                <SymbolView name="checkmark.shield.fill" tintColor="#4be8c4" type="hierarchical" style={styles.cinematicShieldIcon} />
+              </View>
+            </View>
+
+            {/* Card Content Row */}
+            <View style={styles.cinematicSoundtrackContentRow}>
+              <View style={styles.cinematicAlbumCoverWrap}>
+                {latestSoundtrackTrack ? (
+                  <Artwork track={latestSoundtrackTrack} size={76} />
+                ) : (
+                  <ExpoImage source={require('../assets/home-soundtrack-album-v2.png')} cachePolicy="memory-disk" contentFit="cover" style={styles.cinematicAlbumCoverImage} />
+                )}
+              </View>
+              <View style={styles.cinematicTrackInfoColumn}>
+                <Text style={styles.cinematicTrackTitleText} numberOfLines={1}>{soundtrackTitle}</Text>
+                <Text style={styles.cinematicTrackArtistText} numberOfLines={1}>{soundtrackArtist}</Text>
+                <SoundtrackWaveform />
+              </View>
+              <Pressable onPress={() => onMore('music')} style={styles.cinematicPlayButtonOuter}>
+                <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.cinematicPlayButtonRing}>
+                  <View style={styles.cinematicPlayButtonDisc}>
+                    <SymbolView name="play.fill" tintColor="#ffffff" type="hierarchical" style={styles.cinematicPlaySymbol} />
+                  </View>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </CinematicGlass>
+        </Reanimated.View>
+
+        {state.status === 'loading' && <LoadingLine label="Refreshing your dashboard…" />}
+      </View>
+    </ScrollView>
+
+    {/* Profile Edit Modal */}
+    <Modal visible={profileEditorOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setProfileEditorOpen(false)}>
+      <View style={styles.profileEditorRoot}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setProfileEditorOpen(false)}>
+          <BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} />
+        </Pressable>
+        <CinematicGlass style={styles.profileEditorCard}>
+          <Text style={styles.profileEditorEyebrow}>HOME PROFILE</Text>
+          <Text style={styles.profileEditorTitle}>Make it yours</Text>
+          <Text style={styles.profileEditorBody}>Your profile image and greeting stay in your private JourneyDeck profile.</Text>
+          <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()} style={styles.profileEditorAvatarButton}>
+            <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}>
+              <View style={styles.profileEditorAvatarInner}>
+                {profileDraft.avatarDataUri ? (
+                  <ExpoImage source={profileDraft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} />
+                ) : (
+                  <Text style={styles.profileEditorAvatarInitials}>{draftInitials}</Text>
+                )}
+              </View>
+            </LinearGradient>
+            <View style={styles.profileEditorPhotoBadge}>
+              {avatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}
+            </View>
+          </Pressable>
+          <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()}>
+            <Text style={styles.profileEditorPhotoAction}>{profileDraft.avatarDataUri ? 'Choose a different photo' : 'Choose profile photo'}</Text>
+          </Pressable>
+          {profileDraft.avatarDataUri && (
+            <Pressable onPress={() => setProfileDraft(current => ({ ...current, avatarDataUri: null }))}>
+              <Text style={styles.profileEditorRemovePhoto}>Use initials instead</Text>
+            </Pressable>
+          )}
+          <Text style={styles.profileEditorLabel}>GREETING NAME</Text>
+          <TextInput value={profileDraft.displayName} onChangeText={displayName => setProfileDraft(current => ({ ...current, displayName }))} maxLength={48} placeholder="Primary Driver" placeholderTextColor="#71677a" selectionColor="#ff795b" style={styles.profileEditorInput} />
+          <View style={styles.profileEditorActions}>
+            <Pressable onPress={() => setProfileEditorOpen(false)} style={styles.profileEditorCancel}>
+              <Text style={styles.profileEditorCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={saveProfile} style={styles.profileEditorSave}>
+              <LinearGradient colors={['#ff795b', '#ff597f']} style={StyleSheet.absoluteFill} />
+              <Text style={styles.profileEditorSaveText}>Save profile</Text>
+            </Pressable>
+          </View>
+        </CinematicGlass>
+      </View>
+    </Modal>
+  </View>;
+}
+
+function profileInitialsFor(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]?.toLocaleUpperCase()).join('') || 'JD';
+}
+
+function homeHeroTitle(journey: JourneySummary) {
+  const started = new Date(journey.startedAt);
+  if (Number.isNaN(started.getTime())) return 'A drive worth remembering';
+  const weekday = started.toLocaleDateString(undefined, { weekday: 'long' });
+  const hour = started.getHours();
+  const moment = hour < 5 ? 'late night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 21 ? 'evening' : 'night';
+  return `${weekday} ${moment} drive`;
+}
+
+function homeHeroImageFor(startedAt: string | undefined) {
+  const started = startedAt ? new Date(startedAt) : null;
+  const hour = started && !Number.isNaN(started.getTime()) ? started.getHours() : 22;
+  if (hour >= 5 && hour < 12) return homeHeroImages.morning;
+  if (hour >= 12 && hour < 17) return homeHeroImages.afternoon;
+  if (hour >= 17 && hour < 21) return homeHeroImages.evening;
+  return homeHeroImages.night;
+}
+
+function homeRouteContext(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation'>) {
+  const start = journey.startingLocation?.split(',')[0]?.trim();
+  const end = journey.endingLocation?.split(',')[0]?.trim();
+  if (start && end) return `${start} → ${end}`;
+  if (end) return `Arrived near ${end}`;
+  if (start) return `Set out from ${start}`;
+  return 'Location details are still syncing';
+}
+
+function HomeMeshAtmosphere() {
+  return <View pointerEvents="none" style={styles.cinematicMeshRoot}>
+    <MeshGradientView columns={3} rows={3} points={[[0, 0], [0.54, 0], [1, 0], [0, 0.5], [0.48, 0.44], [1, 0.53], [0, 1], [0.5, 1], [1, 1]]} colors={['#050208', '#13071b', '#09030b', '#120610', '#08030c', '#1b0a29', '#050208', '#0b040f', '#050208']} smoothsColors style={StyleSheet.absoluteFill} />
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id="homeCoralHaze" cx="82%" cy="16%" rx="42%" ry="30%"><Stop offset="0" stopColor="#ff506f" stopOpacity="0.25" /><Stop offset="0.42" stopColor="#aa274e" stopOpacity="0.1" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeVioletHaze" cx="18%" cy="40%" rx="50%" ry="34%"><Stop offset="0" stopColor="#9b4cff" stopOpacity="0.15" /><Stop offset="0.5" stopColor="#50207d" stopOpacity="0.06" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeLowHaze" cx="70%" cy="72%" rx="55%" ry="24%"><Stop offset="0" stopColor="#ff4f72" stopOpacity="0.1" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="100%" height="100%" fill="url(#homeCoralHaze)" /><Rect width="100%" height="100%" fill="url(#homeVioletHaze)" /><Rect width="100%" height="100%" fill="url(#homeLowHaze)" /></Svg>
+    <LinearGradient colors={['rgba(5,2,8,0.02)', 'rgba(5,2,8,0.22)', '#050208']} locations={[0, 0.72, 1]} style={StyleSheet.absoluteFill} />
+  </View>;
+}
+
+function CinematicGlass({ children, style }: { children: ReactNode; style?: any }) {
+  const nativeGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
+  return <View style={[styles.cinematicGlass, style]}><View pointerEvents="none" style={styles.cinematicGlassAura} /><View pointerEvents="none" style={styles.cinematicGlassMaterial}>{nativeGlass ? <GlassView glassEffectStyle="clear" tintColor="rgba(10,4,16,0.04)" colorScheme="dark" style={StyleSheet.absoluteFill} /> : <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />}<View style={styles.cinematicGlassDarkener} /><LinearGradient colors={['rgba(255,255,255,0.14)', 'rgba(111,68,130,0.055)', 'rgba(255,72,95,0.045)', 'rgba(3,1,6,0.28)']} locations={[0, 0.22, 0.72, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /></View><LiquidGlassEdges radius={25} />{children}</View>;
+}
+
+function LiquidGlassEdges({ radius }: { radius: number }) {
+  return <View pointerEvents="none" style={[styles.liquidGlassEdges, { borderRadius: radius }]}>
+    <NeonWidgetOutline radius={radius} />
+    <View style={[styles.liquidGlassOuterBevel, { borderRadius: radius }]} />
+    <LinearGradient colors={['rgba(204,139,242,0.11)', 'rgba(164,85,197,0.035)', 'rgba(255,255,255,0)']} locations={[0, 0.45, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassTopEdge, { borderTopLeftRadius: radius, borderTopRightRadius: radius }]} />
+    <LinearGradient colors={['rgba(186,117,222,0.075)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassLeftEdge, { borderTopLeftRadius: radius, borderBottomLeftRadius: radius }]} />
+    <LinearGradient colors={['rgba(41,13,62,0.16)', 'rgba(152,82,182,0.045)']} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={[styles.liquidGlassRightEdge, { borderTopRightRadius: radius, borderBottomRightRadius: radius }]} />
+    <LinearGradient colors={['rgba(33,10,48,0.18)', 'rgba(170,99,207,0.05)']} start={{ x: 0, y: 1 }} end={{ x: 0, y: 0 }} style={[styles.liquidGlassBottomEdge, { borderBottomLeftRadius: radius, borderBottomRightRadius: radius }]} />
+    <View style={[styles.liquidGlassInsetBevel, { borderRadius: Math.max(radius - 4, 0) }]} />
+  </View>;
+}
+
+function SoundtrackWaveform() {
+  const bars = [10, 16, 26, 12, 30, 22, 38, 16, 28, 42, 22, 34, 15, 26, 36, 18, 30, 12, 24, 34, 16, 26, 10, 20];
+  return (
+    <View style={styles.cinematicWaveformContainer}>
+      <Text style={styles.cinematicWaveformTime}>1:48</Text>
+      <View style={styles.cinematicWaveformBars}>
+        {bars.map((height, index) => {
+          const ratio = index / (bars.length - 1);
+          const color = ratio < 0.32 ? '#ff5277' : ratio < 0.68 ? '#df43e8' : '#6366f1';
+          return (
+            <View
+              key={index}
+              style={[
+                styles.cinematicWaveBar,
+                { height: Math.round(height * 0.68), backgroundColor: color },
+              ]}
+            />
+          );
+        })}
+      </View>
+      <Text style={styles.cinematicWaveformTime}>4:03</Text>
+    </View>
+  );
+}
+
+function CinematicHomeAction({ symbol, label, onPress }: { symbol: SFSymbol; label: string; onPress: () => void }) {
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.cinematicWeekAction, pressed && styles.cinematicPressed]}><View style={styles.cinematicWeekActionIcon}><SymbolView name={symbol} tintColor="#d7b8ff" type="hierarchical" style={styles.cinematicWeekActionSymbol} /></View><Text style={styles.cinematicWeekActionLabel}>{label}</Text></Pressable>;
+}
+
+function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRecord, onJourneys, onLive, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; tessieConnected: boolean; onRecord: () => void; onJourneys: () => void; onLive: () => void; onAtlas: () => void; onMore: (destination: MoreDestination) => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
   const insets = useSafeAreaInsets();
   const { data } = state;
   const week = data.summary.last7Days;
@@ -944,7 +1378,7 @@ function HomeScreen({ state, primary, recordingMode, tessieConnected, onRecord, 
   const todayBars = hourlyDrivingActivity(todayJourneys);
   const connections = data.providerPreferences?.connections ?? defaultConnections;
   const selectedProvider = providerOptions.find(option => toApiMusicProvider(option.id) === data.providerPreferences?.musicProvider);
-  const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || connections.lastFm === 'connected';
+  const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || (isInternalTestingBuild() && connections.lastFm === 'connected');
   const recorderHealthy = data.recorder.connected && data.recorder.queuedPoints + data.recorder.queuedMusic === 0;
   const automaticMode = recordingMode === 'automatic';
   const home = useMemo(() => primary.data ? buildHomeSummary(primary.data) : null, [primary.data]);
@@ -1405,8 +1839,8 @@ function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
       <View style={styles.memoryPageHeader}><PageHeader variant="memories" eyebrow="YOUR STORY ON THE ROAD" title="Memories" body="Memories hold Collections. Collections hold the journeys that made them." /></View>
       {(catalog.status === 'error' || journeys.status === 'error') && <InlineNotice message={catalog.message ?? journeys.message ?? 'Memories could not refresh.'} onRetry={onRefresh} />}
 
-      <View style={styles.libraryTabs}>{(['library', 'memories', 'collections'] as const).map(item => <Pressable key={item} onPress={() => { setSection(item); setQuery(''); }} style={[styles.libraryTab, section === item && styles.libraryTabActive]}><Text style={[styles.libraryTabText, section === item && styles.libraryTabTextActive]}>{item === 'library' ? 'Journeys' : item[0].toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
-      <TextInput value={query} onChangeText={setQuery} placeholder={`Search ${section}`} placeholderTextColor="#716879" style={styles.librarySearch} />
+      <View style={styles.libraryTabs}><NeonWidgetOutline radius={16} />{(['library', 'memories', 'collections'] as const).map(item => <Pressable key={item} onPress={() => { setSection(item); setQuery(''); }} style={[styles.libraryTab, section === item && styles.libraryTabActive]}>{section === item && <View pointerEvents="none" style={styles.libraryTabSelectionGlow} />}<Text style={[styles.libraryTabText, section === item && styles.libraryTabTextActive]}>{item === 'library' ? 'Journeys' : item[0].toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
+      <View style={styles.librarySearchFrame}><NeonWidgetOutline radius={15} /><TextInput value={query} onChangeText={setQuery} placeholder={`Search ${section}`} placeholderTextColor="#716879" style={styles.librarySearch} /></View>
 
       {section === 'memories' && <>
       <View style={styles.memorySectionHeader}><Text style={styles.memoryLevel}>MEMORIES</Text><Pressable onPress={() => editMemory(null)}><Text style={styles.memoryHeaderAction}>+ New memory</Text></Pressable></View>
@@ -1424,7 +1858,7 @@ function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
           const translateY = scrollX.interpolate({ inputRange, outputRange: [12, 0, 12], extrapolate: 'clamp' });
           const collectionIds = new Set(memory.collectionIds), journeyIds = new Set(catalog.data.collections.filter(collection => collectionIds.has(collection.id)).flatMap(collection => collection.driveIds));
           return <Animated.View key={memory.id} style={{ width: cardWidth, transform: [{ scale }, { translateY }] }}>
-            <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); setMemoryOverview(memory); }} style={styles.memoryHeroCard}>
+            <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); setMemoryOverview(memory); }} style={styles.memoryHeroCard}><NeonWidgetOutline radius={26} />
               <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.coverPhotoId ? memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null : null} />
               <View style={styles.memoryHeroShade} />
               <Text style={styles.memoryHeroKicker}>MEMORY {String(index + 1).padStart(2, '0')}</Text>
@@ -1433,7 +1867,7 @@ function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
             </Pressable>
           </Animated.View>;
         })}
-        {!catalog.data.memories.length && <Pressable onPress={() => editMemory(null)} style={[styles.memoryHeroCard, styles.memoryEmptyHero, { width: cardWidth }]}><MemoryArtwork artworkKey="road-trips" /><View style={styles.memoryHeroShade} /><Text style={styles.memoryHeroKicker}>YOUR FIRST MEMORY</Text><Text style={styles.memoryHeroTitle}>Build a chapter</Text><Text style={styles.memoryHeroMeta}>Choose two Collections to begin</Text></Pressable>}
+        {!catalog.data.memories.length && <Pressable onPress={() => editMemory(null)} style={[styles.memoryHeroCard, styles.memoryEmptyHero, { width: cardWidth }]}><NeonWidgetOutline radius={26} /><MemoryArtwork artworkKey="road-trips" /><View style={styles.memoryHeroShade} /><Text style={styles.memoryHeroKicker}>YOUR FIRST MEMORY</Text><Text style={styles.memoryHeroTitle}>Build a chapter</Text><Text style={styles.memoryHeroMeta}>Choose two Collections to begin</Text></Pressable>}
       </Animated.ScrollView>
       <View style={styles.memoryDots}>{visibleMemories.map((memory, index) => <View key={memory.id} style={[styles.memoryDot, index === selectedIndex && styles.memoryDotActive]} />)}</View>
 
@@ -1448,11 +1882,11 @@ function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
       </>}
 
       {section === 'library' && <>
-      <View style={styles.libraryFilterRow}>{([['all', 'All'], ['music', 'With music'], ['long', '10+ miles'], ['efficient', 'Easy pace']] as const).map(([id, label]) => <Pressable key={id} onPress={() => setLibraryFilter(id)} style={[styles.libraryChip, libraryFilter === id && styles.libraryChipActive]}><Text style={[styles.libraryChipText, libraryFilter === id && styles.libraryChipTextActive]}>{label}</Text></Pressable>)}</View>
-      <View style={styles.libraryFilterRow}>{([['newest', 'Newest'], ['oldest', 'Oldest'], ['distance', 'Distance'], ['duration', 'Drive time']] as const).map(([id, label]) => <Pressable key={id} onPress={() => setLibrarySort(id)} style={[styles.librarySortChip, librarySort === id && styles.librarySortChipActive]}><Text style={styles.librarySortText}>{label}</Text></Pressable>)}</View>
-      {recurringRoutes.length > 0 && <><View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>FAVORITE ROUTES</Text><Text style={styles.memorySectionTitle}>Roads you return to</Text></View></View>{recurringRoutes.map(route => <View key={route.key} style={styles.favoriteRoute}><View style={styles.flex}><Text style={styles.favoriteRouteTitle}>{route.label}</Text><Text style={styles.favoriteRouteMeta}>{route.count} drives  •  {formatMiles(route.averageMiles)} average  •  {Math.round(route.averageMinutes)} min</Text></View><Text style={styles.favoriteRouteCount}>{route.count}×</Text></View>)}</>}
+      <View style={styles.libraryFilterRow}>{([['all', 'All'], ['music', 'With music'], ['long', '10+ miles'], ['efficient', 'Easy pace']] as const).map(([id, label]) => <LibraryChoiceChip key={id} label={label} selected={libraryFilter === id} onPress={() => setLibraryFilter(id)} />)}</View>
+      <View style={styles.libraryFilterRow}>{([['newest', 'Newest'], ['oldest', 'Oldest'], ['distance', 'Distance'], ['duration', 'Drive time']] as const).map(([id, label]) => <LibraryChoiceChip key={id} label={label} selected={librarySort === id} compact onPress={() => setLibrarySort(id)} />)}</View>
+      {recurringRoutes.length > 0 && <><View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>FAVORITE ROUTES</Text><Text style={styles.memorySectionTitle}>Roads you return to</Text></View></View>{recurringRoutes.map(route => <View key={route.key} style={styles.favoriteRoute}><NeonWidgetOutline radius={17} /><View style={styles.flex}><Text style={styles.favoriteRouteTitle}>{route.label}</Text><Text style={styles.favoriteRouteMeta}>{route.count} drives  •  {formatMiles(route.averageMiles)} average  •  {Math.round(route.averageMinutes)} min</Text></View><Text style={styles.favoriteRouteCount}>{route.count}×</Text></View>)}</>}
       <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEY LIBRARY</Text><Text style={styles.memorySectionTitle}>{visibleJourneys.length} archived drives</Text></View></View>
-      <View style={styles.memoryJourneyList}>{visibleJourneys.map(journey => <View key={journey.id} style={styles.libraryJourneyWrap}><JourneyCard journey={journey} compact onPress={() => onJourney(journey.id)} /><Pressable onPress={() => setAssignJourneyId(journey.id)} style={styles.libraryAddButton}><Text style={styles.libraryAddText}>+ Collection</Text></Pressable></View>)}</View>
+      <View style={styles.memoryJourneyList}>{visibleJourneys.map(journey => <View key={journey.id} style={styles.libraryJourneyWrap}><JourneyCard journey={journey} compact onPress={() => onJourney(journey.id)} /><Pressable onPress={() => setAssignJourneyId(journey.id)} style={styles.libraryAddButton}><NeonWidgetOutline radius={11} /><Text style={styles.libraryAddText}>+ Collection</Text></Pressable></View>)}</View>
       {!journeys.data.length && journeys.status !== 'loading' && <EmptyCard title="No journeys yet" body="Finish a recording and it will appear here, ready to organize." />}
       </>}
       {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
@@ -1518,6 +1952,15 @@ function MemoriesScreen({ catalog, journeys, details, onJourney, onRefresh }: {
     </OverlayModal>
     <ShareCardModal payload={shareCard} onClose={() => setShareCard(null)} />
   </View>;
+}
+
+function LibraryChoiceChip({ label, selected, compact = false, onPress }: { label: string; selected: boolean; compact?: boolean; onPress: () => void }) {
+  const radius = compact ? 12 : 16;
+  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[compact ? styles.librarySortChip : styles.libraryChip, selected && styles.libraryChoiceActive]}>
+    {selected && <View pointerEvents="none" style={[styles.libraryChoiceGlow, { borderRadius: radius }]} />}
+    <View pointerEvents="none" style={[styles.libraryChoiceRim, { borderRadius: radius }, selected && styles.libraryChoiceRimActive]} />
+    <Text style={[compact ? styles.librarySortText : styles.libraryChipText, selected && styles.libraryChipTextActive]}>{label}</Text>
+  </Pressable>;
 }
 
 function MemoryDetailModal({
@@ -1740,7 +2183,7 @@ function CollectionCard({ collection, index, onOpen }: { collection: JourneyColl
   const colors = ['#ff795b', '#9b7cff', '#43e6ae'];
   const color = colors[index % colors.length];
   return (
-    <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}>
+    <Pressable onPress={onOpen} style={[styles.memoryCollectionCard, styles.staticWidgetGlow]}><NeonWidgetOutline radius={20} />
       {collection.photos[0] ? (
         <JourneyPhotoImage photo={collection.photos[0]} style={styles.collectionArtwork} />
       ) : (
@@ -1933,7 +2376,7 @@ function ConnectionsScreen({
   const [tessieDraft, setTessieDraft] = useState('');
   const [savingTessie, setSavingTessie] = useState(false);
   const [syncingTessie, setSyncingTessie] = useState(false);
-  const selected = allProviderOptions.find(option => option.id === provider) ?? providerOptions[0]!;
+  const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
   const selectedRecordingMode = recordingModeOptions.find(option => option.id === recordingMode)!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
@@ -1995,6 +2438,7 @@ function ConnectionsScreen({
           <Text style={styles.privateCloudTitle}>PRIVATE ICLOUD SYNC</Text>
           <Text style={styles.privateCloudBody}>{privateCloud.detail} Journey summaries, exact GPS route points, music, collections, memories, photos, and preferences use your private iCloud database. Home/Work labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
           <Pressable onPress={() => Alert.alert('Apple identity and iCloud', 'Sign in with Apple links this local JourneyDeck profile. Private iCloud sync separately uses the iCloud account signed into this iPhone. JourneyDeck’s server does not receive these CloudKit records.', [{ text: 'Done' }])}><Text style={styles.privateCloudLearn}>How privacy works</Text></Pressable>
+          <Pressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></Pressable>
         </View>
         {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
         {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
@@ -2002,17 +2446,6 @@ function ConnectionsScreen({
         <View style={styles.accountActions}>
           {Boolean(currentUser.appleSubject) && <Pressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></Pressable>}
           <Pressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></Pressable>
-        </View>
-
-        <SectionHeading title="Membership" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#ff69b4' }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: '#ff4594' }]}><Text style={styles.connectionIconText}>★</Text></View>
-          <View style={styles.flex}>
-            <Text style={styles.connectionKicker}>PRO MEMBERSHIP · $4.99 / MONTH</Text>
-            <Text style={styles.connectionName}>JourneyDeck Pro</Text>
-            <Text style={styles.connectionDetail}>Unlimited trips · Private iCloud backup · Music analytics</Text>
-          </View>
-          <Pressable onPress={() => Alert.alert('JourneyDeck Pro', 'Your device is currently running with full local-first access unlocked during preview.', [{ text: 'Great' }])} style={[styles.changeButton, { borderColor: '#ff4594' }]}><Text style={[styles.changeButtonText, { color: '#ff4594' }]}>Unlocked</Text></Pressable>
         </View>
 
         <SectionHeading title="Privacy geofences" />
@@ -2042,18 +2475,20 @@ function ConnectionsScreen({
         <SectionHeading title="Music connections" />
         <ConnectionTile name="Apple Music" detail="Native history and artwork" symbol="♪" brand="apple-music" color="#fa5c74" status={nativeAppleStatus(capabilities, connections.appleMusic)} action={capabilities?.appleMusicAuthorizationStatus === 'authorized' ? 'Manage' : 'Connect'} onPress={onConnectAppleMusic} />
         <ConnectionTile name="Auto Recognition" detail="Music recognition powered by ShazamKit" symbol="S" brand="shazam" color="#2688ff" status={nativeShazamStatus(capabilities, connections.shazam)} action={capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled' : 'Enable'} onPress={onEnableRecognition} />
-        <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
-        {editingLastFm && <View style={styles.setupCard}>
-          <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
-          <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
-          <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor="#6f6877" style={styles.setupInput} />
-          <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
-          <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
-          {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
-          {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
-          <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
-        </View>}
-        {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color="#1ed760" status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
+        {isInternalTestingBuild() && <>
+          <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
+          {editingLastFm && <View style={styles.setupCard}>
+            <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
+            <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
+            <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor="#6f6877" style={styles.setupInput} />
+            <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
+            <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
+            {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
+            {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
+            <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
+          </View>}
+          {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color="#1ed760" status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
+        </>}
 
         <SectionHeading title="Vehicle" />
         <ConnectionTile name="Tessie" detail="Battery, energy, charging, and route efficiency" symbol="T" mark={<TessieMark size={46} />} color="#65c9ff" status={connectionCapabilities.tessieConfigured ? 'Connected through Tessie · token in this iPhone Keychain' : 'Not connected'} action={connectionCapabilities.tessieConfigured ? (syncingTessie ? 'Syncing…' : 'Sync now') : 'Connect'} onPress={connectionCapabilities.tessieConfigured ? () => { if (!syncingTessie) void syncTessie(); } : () => setEditingTessie(true)} />
@@ -2203,7 +2638,8 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
   >
     <View pointerEvents="none" style={styles.navGlassSheen} />
     {indicatorWidth > 0 && <Animated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorX }] }]}>
-      <View style={styles.navGlidingFill}><View style={styles.navGlidingVioletWash} /></View>
+      <View style={styles.navSelectionGlow} />
+      <View style={styles.navGlidingFill} />
     </Animated.View>}
     {navigationItems}
   </View>;
@@ -2217,23 +2653,38 @@ function BottomNavigation({ active, onSelect }: { active: Tab; onSelect: (tab: T
           : <View pointerEvents="none" style={[styles.navMaterial, styles.bottomNavFallback]} />}
         <View pointerEvents="none" style={styles.navSurfaceTint} />
         <View pointerEvents="none" style={styles.navSurfaceWarmWash} />
+        <LiquidGlassEdges radius={24} />
         {navigationTrack}
       </View>
     </View>
   );
 }
 
+function JourneyDeckLogo({ size }: { size: number }) {
+  return <Image source={require('../assets/icon.png')} resizeMode="contain" style={{ width: size, height: size, borderRadius: Math.round(size * 0.24) }} />;
+}
+
+function JourneyDeckWordmark({ variant }: { variant: 'brand' | 'intro' | 'home' }) {
+  const style = variant === 'brand'
+    ? styles.brandWordmark
+    : variant === 'intro'
+      ? styles.welcomeIntroWordmark
+      : styles.cinematicWordmark;
+  return <Text accessibilityRole="header" style={style}><Text style={styles.wordmarkJourney}>Journey</Text><Text style={styles.wordmarkDeck}>Deck</Text></Text>;
+}
+
 function BrandHeader({ compact = false }: { compact?: boolean }) {
-  return <View style={[styles.brandRow, compact && styles.brandCompact]}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.brandEyebrow}>JOURNEYDECK</Text><Text style={styles.brandTitle}>Your drive, remembered.</Text></View></View>;
+  return <View style={[styles.brandRow, compact && styles.brandCompact]}><JourneyDeckLogo size={48} /><View><JourneyDeckWordmark variant="brand" /><Text style={styles.brandTitle}>Your drive, remembered.</Text></View></View>;
 }
 
 function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: string; title: string; body: string; variant?: 'standard' | 'memories' | 'settings' }) {
   if (variant === 'memories') {
-    return <View style={styles.memoryHeroCardHeader}>
+    return <View style={styles.memoryHeroCardHeader}><NeonWidgetOutline radius={24} />
       <Image source={require('../assets/memories-header-hero.png')} style={styles.memoryHeroHeaderImage} resizeMode="cover" />
     </View>;
   }
-  return <View style={[styles.pageHeader, variant === 'settings' && pageSceneStyles.settingsHeader]}>
+  if (variant === 'settings') return <View style={styles.pageArtHeader}><HeaderArtwork source={require('../assets/settings-header-hero-v2.jpg')} /></View>;
+  return <View style={styles.pageHeader}>
     <PageHeaderScene variant={variant} />
     <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
     <Text style={[styles.pageTitle, variant !== 'standard' && pageSceneStyles.sceneTitle]}>{title}</Text>
@@ -2441,7 +2892,7 @@ function Metric({ value, label }: { value: string; label: string }) {
 function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySummary; onPress: () => void; compact?: boolean }) {
   const track = journey.soundtrackPreview?.[0];
   if (compact) return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
       <View style={styles.journeyCompactTop}>
         <View style={styles.flex}>
           <Text style={styles.journeyDateCompact}>{formatFullDate(journey.startedAt)}</Text>
@@ -2458,7 +2909,7 @@ function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySu
     </Pressable>
   );
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
       <View style={styles.journeyTop}><View><Text style={styles.journeyDate}>{formatFullDate(journey.startedAt)}</Text><Text style={styles.journeyRoute} numberOfLines={2}>{locationPair(journey)}</Text></View><Text style={styles.journeyChevron}>›</Text></View>
       <View style={styles.journeyStats}><Text style={styles.journeyStat}>{formatMiles(journey.miles)}</Text><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{formatDuration(journey.durationMinutes)}</Text>{journey.vehicleName && <><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{journey.vehicleName}</Text></>}</View>
       <View style={styles.journeySoundtrack}>{track ? <Artwork track={track} size={42} /> : <View style={styles.miniArtwork}><Text style={styles.miniArtworkText}>♪</Text></View>}<View style={styles.flex}><Text style={styles.journeySong} numberOfLines={1}>{track?.track ?? (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text><Text style={styles.journeyArtist} numberOfLines={1}>{track?.artist ?? 'Music can be added after the journey'}</Text></View>{journey.songCount > 0 && <Text style={styles.songCount}>{journey.songCount}</Text>}</View>
@@ -2475,11 +2926,11 @@ function TrackRow({ track, index, selected = false, onPress }: { track: { artwor
 }
 
 function EmptyCard({ title, body }: { title: string; body: string }) {
-  return <View style={styles.emptyCard}><View style={styles.emptyCircle}><Text style={styles.emptyCircleText}>J</Text></View><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyBody}>{body}</Text></View>;
+  return <View style={styles.emptyCard}><NeonWidgetOutline radius={20} /><View style={styles.emptyCircle}><Text style={styles.emptyCircleText}>J</Text></View><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyBody}>{body}</Text></View>;
 }
 
 function InlineNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <View style={styles.inlineNotice}><View style={styles.noticeDot} /><Text style={styles.inlineNoticeText}>{message}</Text><Pressable onPress={onRetry}><Text style={styles.retryText}>Retry</Text></Pressable></View>;
+  return <View style={styles.inlineNotice}><NeonWidgetOutline radius={15} /><View style={styles.noticeDot} /><Text style={styles.inlineNoticeText}>{message}</Text><Pressable onPress={onRetry}><Text style={styles.retryText}>Retry</Text></Pressable></View>;
 }
 
 function LoadingLine({ label }: { label: string }) { return <View style={styles.loadingLine}><ActivityIndicator color="#9b7cff" /><Text style={styles.loadingLineText}>{label}</Text></View>; }
@@ -2658,7 +3109,7 @@ const styles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, backgroundColor: '#08070d' }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
-  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 },
+  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, pageArtHeader: { width: '100%', marginBottom: 14, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
   webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#56357a', backgroundColor: '#05040e', shadowColor: '#9d58ff', shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 9 }, overflow: 'hidden' },
   webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
@@ -2704,7 +3155,7 @@ const styles = StyleSheet.create({
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
   memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
   memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, logo: { width: 46, height: 46, borderRadius: 15, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.28, shadowRadius: 14 }, logoText: { color: '#fff', fontSize: 24, fontWeight: '900' }, brandEyebrow: { color: '#91899f', fontSize: 10, fontWeight: '900', letterSpacing: 2 }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, brandWordmark: { color: '#f8f4ff', fontSize: 16, fontWeight: '900', letterSpacing: -0.25 }, wordmarkJourney: { color: '#f7f2fc' }, wordmarkDeck: { color: '#ff7b5c' }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
   pageHeader: { minHeight: 143, gap: 5, marginBottom: 4, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#40274f', backgroundColor: '#100a19', paddingHorizontal: 18, paddingVertical: 18, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, pageHeaderGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -76, top: -100, backgroundColor: '#6b2557', opacity: 0.48 }, pageHeaderRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#402350', overflow: 'hidden' }, pageHeaderRailCore: { width: '55%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 6 }, pageEyebrow: { color: '#c1a2ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 4 }, pageTitle: { color: '#f8f5ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#ada3b4', fontSize: 13, lineHeight: 20, maxWidth: 330 },
   openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 },
   roadSoundwave: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 3, left: 18, top: 18, height: 20 },
@@ -2734,9 +3185,11 @@ const styles = StyleSheet.create({
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#713e58', borderRadius: 18, padding: 15, shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5d466b', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15, shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 9 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#7f4151', backgroundColor: '#281318', shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 10 }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29', shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 8 }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47', shadowColor: '#ff4f65', shadowOpacity: 0.42, shadowRadius: 11 }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
+  // Keep the content readable until it reaches the dock; the dock itself remains crisp above this veil.
+  bottomContentFade: { position: 'absolute', right: 0, bottom: 0, left: 0, height: 132, zIndex: 30 },
   navSafe: { position: 'absolute', right: 0, bottom: 0, left: 0, zIndex: 40, backgroundColor: 'transparent', paddingHorizontal: 12, paddingTop: 6 },
-  navDockFrame: { marginBottom: 10, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(206,82,255,0.42)', shadowColor: '#000', shadowOpacity: 0.52, shadowRadius: 21, shadowOffset: { width: 0, height: 11 } },
-  navDockAura: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(206,82,255,0.28)', shadowColor: '#b837ff', shadowOpacity: 0.17, shadowRadius: 18, shadowOffset: { width: 0, height: 0 } },
+  navDockFrame: { marginBottom: 10, borderRadius: 25, shadowColor: '#000', shadowOpacity: 0.48, shadowRadius: 21, shadowOffset: { width: 0, height: 11 } },
+  navDockAura: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 25, shadowColor: '#b837ff', shadowOpacity: 0.1, shadowRadius: 18, shadowOffset: { width: 0, height: 0 } },
   bottomNav: { minHeight: 76, borderRadius: 24, overflow: 'hidden' },
   navMaterial: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 24 },
   bottomNavFallback: { backgroundColor: 'rgba(22,10,31,0.94)' },
@@ -2744,9 +3197,9 @@ const styles = StyleSheet.create({
   navSurfaceWarmWash: { position: 'absolute', top: 0, right: 0, bottom: 0, width: '42%', backgroundColor: 'rgba(96,27,42,0.08)' },
   navTrack: { flex: 1, minHeight: 76, flexDirection: 'row', gap: 4, padding: 6 },
   navGlassSheen: { position: 'absolute', zIndex: 3, top: 1, right: 16, left: 16, height: StyleSheet.hairlineWidth, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.16)' },
-  navGlidingIndicator: { position: 'absolute', zIndex: 0, top: 6, bottom: 6, left: 0, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,113,56,0.78)', shadowColor: '#ff5b2d', shadowOpacity: 0.72, shadowRadius: 11, shadowOffset: { width: 0, height: 0 } },
-  navGlidingFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', borderRadius: 17, backgroundColor: 'rgba(255,112,55,0.17)' },
-  navGlidingVioletWash: { position: 'absolute', top: 0, right: 0, bottom: 0, width: '54%', backgroundColor: 'rgba(122,38,137,0.16)' },
+  navGlidingIndicator: { position: 'absolute', zIndex: 0, top: 6, bottom: 6, left: 0, borderRadius: 18, shadowColor: '#ff713e', shadowOpacity: 0.36, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  navSelectionGlow: { position: 'absolute', top: -3, right: -3, bottom: -3, left: -3, borderRadius: 21, backgroundColor: 'rgba(255,100,56,0.10)' },
+  navGlidingFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', borderRadius: 17, backgroundColor: 'rgba(106, 42, 29, 0.48)' },
   navItem: { position: 'relative', zIndex: 1, flex: 1, minHeight: 64, alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 6, borderRadius: 18 },
   navItemPressed: { transform: [{ scale: 0.98 }], backgroundColor: 'rgba(255,255,255,0.04)' },
   navSymbolFrame: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
@@ -2754,10 +3207,139 @@ const styles = StyleSheet.create({
   navSymbol: { width: 25, height: 25 },
   navSymbolFallback: { color: '#a78db8', fontSize: 21, lineHeight: 24, fontWeight: '800' },
   navLabel: { color: '#a78db8', fontSize: 10, fontWeight: '800', letterSpacing: 0.05 },
-  navActive: { color: '#ff8b4f', textShadowColor: 'rgba(255,95,47,0.95)', textShadowRadius: 7 },
-  navActiveLine: { position: 'absolute', right: '24%', bottom: 3, left: '24%', height: 3, borderRadius: 2, backgroundColor: '#ff7138', shadowColor: '#ff5f2f', shadowOpacity: 1, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  navActive: { color: '#ff9a5d', textShadowColor: 'rgba(255,95,47,0.72)', textShadowRadius: 6 },
+  navActiveLine: { position: 'absolute', right: '29%', bottom: 3, left: '29%', height: 2, borderRadius: 2, backgroundColor: '#ff8b50', shadowColor: '#ff6e3e', shadowOpacity: 0.82, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  welcomeIntroSafe: { flex: 1, backgroundColor: '#07060d' },
+  welcomeIntroContent: { flex: 1, paddingHorizontal: 27, paddingTop: 19, paddingBottom: 24 },
+  welcomeIntroBrand: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 42 }, welcomeIntroWordmark: { color: '#f8f4ff', fontSize: 18, fontWeight: '900', letterSpacing: -0.28 },
+  welcomeIntroScene: { height: 286, marginTop: 24, borderRadius: 31, overflow: 'hidden', borderWidth: 1, borderColor: '#5c4b7d', justifyContent: 'flex-end', backgroundColor: '#060713' },
+  welcomeIntroHero: { ...StyleSheet.absoluteFill },
+  welcomeIntroSignal: { position: 'absolute', top: 16, left: 16, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: 'rgba(7, 6, 15, 0.72)', borderWidth: 1, borderColor: 'rgba(137, 116, 183, 0.52)' },
+  welcomeIntroSignalDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6ee4c0', shadowColor: '#6ee4c0', shadowOpacity: 0.92, shadowRadius: 7 },
+  welcomeIntroSignalText: { color: '#d7c7f5', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  welcomeIntroTitle: { color: '#fbf8ff', fontFamily: 'Georgia', fontSize: 47, lineHeight: 49, letterSpacing: -1.4, marginTop: 27 },
+  welcomeIntroBody: { color: '#b3aaba', fontSize: 15, lineHeight: 23, marginTop: 14, maxWidth: 350 },
+  welcomeIntroPrivacy: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 18, paddingHorizontal: 13, paddingVertical: 11, borderRadius: 16, backgroundColor: 'rgba(82, 54, 112, 0.24)', borderWidth: 1, borderColor: 'rgba(171, 119, 255, 0.32)' },
+  welcomeIntroPrivacyIcon: { color: '#bd8cff', fontSize: 19, lineHeight: 19 },
+  welcomeIntroPrivacyText: { color: '#d6cbdf', fontSize: 12, fontWeight: '700', flex: 1 },
+  welcomeIntroAction: { marginTop: 'auto', paddingTop: 18 },
+  welcomeIntroFootnote: { color: '#777080', fontSize: 11, lineHeight: 16, marginTop: 13, textAlign: 'center', paddingHorizontal: 14 },
   onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, spotifyMarkFrame: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
-  libraryTabs: { flexDirection: 'row', gap: 7, padding: 5, borderRadius: 16, backgroundColor: '#100a18', borderWidth: 1, borderColor: '#342043', marginBottom: 12 }, libraryTab: { flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, libraryTabActive: { backgroundColor: '#2b1636', borderWidth: 1, borderColor: '#9858ba' }, libraryTabText: { color: '#86788f', fontSize: 11, fontWeight: '900' }, libraryTabTextActive: { color: '#f3dfff' },
-  librarySearch: { height: 48, borderRadius: 15, borderWidth: 1, borderColor: '#3d2850', backgroundColor: '#0e0915', color: '#f6eff9', paddingHorizontal: 15, fontSize: 14, marginBottom: 12 }, libraryFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 9 }, libraryChip: { paddingHorizontal: 11, paddingVertical: 8, borderRadius: 16, borderWidth: 1, borderColor: '#392848', backgroundColor: '#100b17' }, libraryChipActive: { borderColor: '#ff765a', backgroundColor: '#2a151d' }, libraryChipText: { color: '#93879c', fontSize: 10, fontWeight: '800' }, libraryChipTextActive: { color: '#ffab91' }, librarySortChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 }, librarySortChipActive: { backgroundColor: '#28183a' }, librarySortText: { color: '#b69bc8', fontSize: 9, fontWeight: '900' },
+  libraryTabs: { flexDirection: 'row', gap: 7, padding: 5, borderRadius: 16, backgroundColor: '#100a18', borderWidth: 1, borderColor: '#342043', marginBottom: 12 }, libraryTab: { position: 'relative', flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, libraryTabActive: { backgroundColor: 'rgba(108, 47, 29, 0.48)', shadowColor: '#ff713e', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }, libraryTabSelectionGlow: { position: 'absolute', top: -2, right: -2, bottom: -2, left: -2, borderRadius: 14, backgroundColor: 'rgba(255,100,56,0.08)' }, libraryTabText: { zIndex: 1, color: '#86788f', fontSize: 11, fontWeight: '800' }, libraryTabTextActive: { color: '#ffc09c' },
+  librarySearchFrame: { height: 48, borderRadius: 15, borderWidth: 1, borderColor: '#3d2850', backgroundColor: '#0e0915', marginBottom: 12, position: 'relative', overflow: 'hidden' }, librarySearch: { flex: 1, color: '#f6eff9', paddingHorizontal: 15, fontSize: 14 }, libraryFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 9 }, libraryChip: { position: 'relative', minHeight: 34, justifyContent: 'center', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 16, backgroundColor: '#100b17' }, librarySortChip: { position: 'relative', minHeight: 28, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#100b17' }, libraryChoiceActive: { backgroundColor: 'rgba(108, 47, 29, 0.48)', shadowColor: '#ff713e', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }, libraryChoiceGlow: { position: 'absolute', top: -3, right: -3, bottom: -3, left: -3, backgroundColor: 'rgba(255,100,56,0.08)' }, libraryChoiceRim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(159, 126, 180, 0.4)' }, libraryChoiceRimActive: { borderColor: 'rgba(255, 130, 78, 0.42)' }, libraryChipText: { zIndex: 1, color: '#aa9caf', fontSize: 10, fontWeight: '800' }, libraryChipTextActive: { color: '#ffc09c' }, librarySortText: { zIndex: 1, color: '#b9a7c4', fontSize: 9, fontWeight: '800' },
   favoriteRoute: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 17, borderWidth: 1, borderColor: '#4b315f', backgroundColor: '#130c1d', marginBottom: 9 }, favoriteRouteTitle: { color: '#f4edf7', fontSize: 13, fontWeight: '900' }, favoriteRouteMeta: { color: '#8f8398', fontSize: 10, marginTop: 5 }, favoriteRouteCount: { color: '#ff8d70', fontSize: 17, fontWeight: '900' }, libraryJourneyWrap: { position: 'relative' }, libraryAddButton: { position: 'absolute', right: 12, bottom: 11, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 11, backgroundColor: '#281636', borderWidth: 1, borderColor: '#65427a' }, libraryAddText: { color: '#d2adf3', fontSize: 9, fontWeight: '900' },
+
+  cinematicHomePage: { position: 'relative', minHeight: '100%', backgroundColor: '#030105', paddingHorizontal: 18 },
+  cinematicMeshRoot: { position: 'absolute', top: 0, right: -28, left: -28, height: 1120 },
+  cinematicHomeShell: { gap: 20 },
+  cinematicHomeHeader: { minHeight: 130, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 3, marginTop: 4 },
+  cinematicWordmark: { color: '#f8f4ff', fontSize: 16, fontWeight: '900', letterSpacing: -0.25, marginTop: 4 },
+  cinematicHeadline: { color: '#fffaff', fontFamily: 'Georgia', fontSize: 42, lineHeight: 46, fontWeight: '400', letterSpacing: -1.2, marginTop: 10, textShadowColor: 'rgba(242,182,255,0.22)', textShadowRadius: 18 },
+  cinematicGreeting: { color: '#b9a9c2', fontSize: 14, fontWeight: '600', marginTop: 9 },
+  cinematicAvatarAnchor: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', alignSelf: 'flex-start', marginTop: 26, marginRight: -3 },
+  cinematicAvatarGlow: { position: 'absolute', width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(216, 72, 177, 0.055)', shadowColor: '#e851b4', shadowOpacity: 0.72, shadowRadius: 20, shadowOffset: { width: 0, height: 3 } },
+  cinematicAvatarButton: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', shadowColor: '#f35aa7', shadowOpacity: 0.62, shadowRadius: 15, shadowOffset: { width: 0, height: 5 } },
+  cinematicAvatarRing: { width: 64, height: 64, borderRadius: 32, padding: 2.5 },
+  cinematicAvatarInner: { flex: 1, borderRadius: 30, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#170b22', borderWidth: 2, borderColor: '#09040d' },
+  cinematicAvatarInitials: { color: '#fff6ff', fontSize: 20, fontWeight: '900', letterSpacing: 0.8 },
+  cinematicAvatarEdit: { position: 'absolute', right: -1, bottom: -1, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#21112d', borderWidth: 1, borderColor: '#d76df0', shadowColor: '#c44cff', shadowOpacity: 0.8, shadowRadius: 7 },
+  cinematicAvatarEditSymbol: { width: 11, height: 11 },
+  cinematicHeroAura: { borderRadius: 29, shadowColor: '#ff6a78', shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: -4, height: 7 }, backgroundColor: 'rgba(255,93,113,0.04)' },
+  cinematicHero: { height: 375, overflow: 'hidden', borderRadius: 29, backgroundColor: '#0b050f' },
+  cinematicPressed: { opacity: 0.88, transform: [{ scale: 0.992 }] },
+  cinematicHeroHeader: { position: 'absolute', top: 18, right: 18, left: 18, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', zIndex: 3 },
+  cinematicHeroHeaderCopy: { flex: 1, paddingRight: 12 },
+  cinematicHeroEyebrow: { color: '#ff967f', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, textShadowColor: '#1a0712', textShadowRadius: 8, marginBottom: 2 },
+  cinematicHeroTitle: { color: '#fffaff', fontSize: 21, lineHeight: 25, fontWeight: '800', letterSpacing: -0.5, textShadowColor: '#100512', textShadowRadius: 10 },
+  cinematicHeroRoute: { color: '#c7b6ce', fontSize: 14, fontWeight: '600', marginTop: 4, textShadowColor: '#0a030d', textShadowRadius: 8 },
+  cinematicHeroMeta: { color: '#9d8e9f', fontSize: 12.5, fontWeight: '600', marginTop: 4 },
+  cinematicRelive: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 16, borderRadius: 19, backgroundColor: 'rgba(72,36,92,0.48)', borderWidth: 1, borderColor: 'rgba(235,191,255,0.3)', shadowColor: '#9b51e0', shadowOpacity: 0.4, shadowRadius: 10 },
+  cinematicReliveSymbol: { width: 14, height: 14 },
+  cinematicReliveText: { color: '#fff8ff', fontSize: 13.5, fontWeight: '800' },
+  cinematicHeroRouteMap: { position: 'absolute', left: 8, bottom: 62, width: '95%', height: 148, opacity: 0.98 },
+  cinematicHeroBottomActions: { position: 'absolute', right: 18, bottom: 18, left: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 3 },
+  cinematicHeroRouteButton: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 14, borderRadius: 19, backgroundColor: 'rgba(15,7,22,0.68)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  cinematicHeroPillIcon: { width: 15, height: 15 },
+  cinematicHeroPillText: { color: '#fff9ff', fontSize: 13, fontWeight: '700' },
+  cinematicHeroMoreButton: { width: 44, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,7,22,0.68)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)' },
+  cinematicGlass: { position: 'relative', borderRadius: 25, backgroundColor: 'transparent', shadowColor: '#d958ff', shadowOpacity: 0.2, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
+  cinematicGlassAura: { position: 'absolute', top: 2, right: 2, bottom: 2, left: 2, borderRadius: 24, backgroundColor: 'rgba(129,56,155,0.04)', shadowColor: '#ff647c', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: -4, height: 6 } },
+  cinematicGlassMaterial: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden', borderRadius: 25, borderWidth: 1, borderColor: 'rgba(168,101,201,0.13)', backgroundColor: 'rgba(7,3,11,0.62)' },
+  cinematicGlassDarkener: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(4,1,8,0.48)' },
+  liquidGlassEdges: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, overflow: 'hidden' },
+  liquidGlassOuterBevel: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: 1, borderTopColor: 'rgba(200,128,234,0.18)', borderLeftColor: 'rgba(181,103,217,0.13)', borderRightColor: 'rgba(78,37,103,0.26)', borderBottomColor: 'rgba(48,21,67,0.34)' },
+  liquidGlassTopEdge: { position: 'absolute', top: 2, right: 3, left: 3, height: 9 },
+  liquidGlassLeftEdge: { position: 'absolute', top: 3, bottom: 3, left: 2, width: 7 },
+  liquidGlassRightEdge: { position: 'absolute', top: 3, right: 2, bottom: 3, width: 7 },
+  liquidGlassBottomEdge: { position: 'absolute', right: 3, bottom: 2, left: 3, height: 8 },
+  liquidGlassInsetBevel: { position: 'absolute', top: 4, right: 4, bottom: 4, left: 4, borderWidth: 1, borderTopColor: 'rgba(192,119,223,0.06)', borderLeftColor: 'rgba(175,102,206,0.05)', borderRightColor: 'rgba(42,17,60,0.16)', borderBottomColor: 'rgba(28,11,41,0.22)' },
+  cinematicSection: { gap: 11 },
+  cinematicSectionHeader: { minHeight: 29, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 3 },
+  cinematicSectionTitle: { color: '#fff9ff', fontSize: 20, fontWeight: '800', letterSpacing: -0.35 },
+  cinematicSectionAction: { color: '#c793ff', fontSize: 13, fontWeight: '800' },
+  cinematicStoryRail: { gap: 12, paddingHorizontal: 2, paddingBottom: 4 },
+  cinematicStoryCard: { width: 128, height: 185, overflow: 'hidden', borderRadius: 22, backgroundColor: '#0b050f', shadowColor: '#d356ff', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 7 } },
+  cinematicStoryMoreCard: { width: 128, height: 185, overflow: 'hidden', borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#120a1b', shadowColor: '#d356ff', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 7 } },
+  cinematicStoryCopy: { position: 'absolute', right: 12, bottom: 13, left: 12 },
+  cinematicStoryTitle: { color: '#fffaff', fontSize: 15, lineHeight: 18, fontWeight: '800' },
+  cinematicStoryMeta: { color: '#b2a2b7', fontSize: 11, lineHeight: 14, fontWeight: '600', marginTop: 3 },
+  cinematicStoryMoreIcon: { width: 30, height: 30, marginBottom: 12 },
+  cinematicStoryMoreTitle: { color: '#fffaff', fontSize: 16, fontWeight: '800' },
+  cinematicStoryMoreMeta: { color: '#c6a7db', fontSize: 11, fontWeight: '700', marginTop: 5 },
+  cinematicSoundtrackGlassCard: { borderRadius: 26, padding: 16, gap: 14 },
+  cinematicSoundtrackHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cinematicSoundtrackKickerWrap: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  cinematicWaveformKickerIcon: { width: 16, height: 16 },
+  cinematicSoundtrackKickerText: { color: '#f5ecf8', fontSize: 13, fontWeight: '700' },
+  cinematicStatusBadgePill: { minHeight: 26, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: 13, backgroundColor: 'rgba(8,26,20,0.65)', borderWidth: 1, borderColor: 'rgba(75,232,196,0.3)' },
+  cinematicStatusDot: { width: 7, height: 7, borderRadius: 4, shadowColor: '#4be8c4', shadowOpacity: 1, shadowRadius: 7 },
+  cinematicStatusBadgeText: { color: '#e8fdf7', fontSize: 11, fontWeight: '700' },
+  cinematicShieldIcon: { width: 12, height: 12 },
+  cinematicSoundtrackContentRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cinematicAlbumCoverWrap: { width: 76, height: 76, borderRadius: 16, overflow: 'hidden', backgroundColor: '#180a22', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', shadowColor: '#db49ff', shadowOpacity: 0.45, shadowRadius: 10 },
+  cinematicAlbumCoverImage: { width: '100%', height: '100%' },
+  cinematicTrackInfoColumn: { flex: 1, gap: 2 },
+  cinematicTrackTitleText: { color: '#fff9ff', fontSize: 17, fontWeight: '800' },
+  cinematicTrackArtistText: { color: '#ad9fb3', fontSize: 13.5, fontWeight: '600' },
+  cinematicWaveformContainer: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  cinematicWaveformTime: { color: '#7a6c82', fontSize: 10.5, fontWeight: '700' },
+  cinematicWaveformBars: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 26 },
+  cinematicWaveBar: { width: 2.2, borderRadius: 1.5 },
+  cinematicPlayButtonOuter: { width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', shadowColor: '#ff5493', shadowOpacity: 0.65, shadowRadius: 12 },
+  cinematicPlayButtonRing: { width: 54, height: 54, borderRadius: 27, padding: 2.2 },
+  cinematicPlayButtonDisc: { flex: 1, borderRadius: 25, alignItems: 'center', justifyContent: 'center', backgroundColor: '#13061c' },
+  cinematicPlaySymbol: { width: 20, height: 20, marginLeft: 2 },
+  cinematicWeekCard: { borderRadius: 25, padding: 19 },
+  cinematicWeekEyebrow: { color: '#cc9eff', fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  cinematicWeekDistance: { color: '#fffaff', fontSize: 34, lineHeight: 40, fontWeight: '900', letterSpacing: -1, marginTop: 7 },
+  cinematicWeekMeta: { color: '#aa9caf', fontSize: 14, marginTop: 4 },
+  cinematicWeekActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 7, marginTop: 19, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(213,175,229,0.2)' },
+  cinematicWeekAction: { flex: 1, alignItems: 'center', gap: 7, paddingVertical: 5 },
+  cinematicWeekActionIcon: { width: 39, height: 39, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(132,71,174,0.16)', borderWidth: 1, borderColor: 'rgba(202,141,245,0.3)' },
+  cinematicWeekActionSymbol: { width: 20, height: 20 },
+  cinematicWeekActionLabel: { color: '#b9a9c1', fontSize: 11, fontWeight: '700' },
+  cinematicPrivacyRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 8 },
+  cinematicPrivacyDot: { width: 7, height: 7, borderRadius: 4, shadowColor: '#4be8c4', shadowOpacity: 0.9, shadowRadius: 6 },
+  cinematicPrivacyText: { flexShrink: 1, color: '#817684', fontSize: 11, fontWeight: '600', textAlign: 'center' },
+  cinematicPrivacyChevron: { width: 11, height: 15 },
+  profileEditorRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, backgroundColor: 'rgba(3,1,6,0.52)' },
+  profileEditorCard: { width: '100%', maxWidth: 430, borderRadius: 30, alignItems: 'center', padding: 22 },
+  profileEditorEyebrow: { alignSelf: 'flex-start', color: '#ce9fff', fontSize: 11, fontWeight: '900', letterSpacing: 1.6 },
+  profileEditorTitle: { alignSelf: 'flex-start', color: '#fffaff', fontSize: 27, fontWeight: '900', letterSpacing: -0.7, marginTop: 7 },
+  profileEditorBody: { alignSelf: 'flex-start', color: '#ac9eb1', fontSize: 14, lineHeight: 20, marginTop: 7 },
+  profileEditorAvatarButton: { width: 108, height: 108, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
+  profileEditorAvatarRing: { width: 102, height: 102, borderRadius: 51, padding: 3 },
+  profileEditorAvatarInner: { flex: 1, borderRadius: 48, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#15091f', borderWidth: 2, borderColor: '#09040d' },
+  profileEditorAvatarInitials: { color: '#fff7ff', fontSize: 31, fontWeight: '900' },
+  profileEditorPhotoBadge: { position: 'absolute', right: 0, bottom: 0, width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff6f62', borderWidth: 2, borderColor: '#180a20', shadowColor: '#ff5e67', shadowOpacity: 0.8, shadowRadius: 8 },
+  profileEditorCamera: { width: 17, height: 17 },
+  profileEditorPhotoAction: { color: '#d6aaff', fontSize: 13, fontWeight: '800', marginTop: 9 },
+  profileEditorRemovePhoto: { color: '#978a9c', fontSize: 12, fontWeight: '700', marginTop: 8 },
+  profileEditorLabel: { alignSelf: 'flex-start', color: '#a68caf', fontSize: 10, fontWeight: '900', letterSpacing: 1.3, marginTop: 22, marginBottom: 7 },
+  profileEditorInput: { alignSelf: 'stretch', height: 52, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(203,139,241,0.36)', backgroundColor: 'rgba(7,3,11,0.62)', color: '#fffaff', paddingHorizontal: 15, fontSize: 17, fontWeight: '700' },
+  profileEditorActions: { alignSelf: 'stretch', flexDirection: 'row', gap: 10, marginTop: 19 },
+  profileEditorCancel: { flex: 1, minHeight: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(196,159,213,0.24)', backgroundColor: 'rgba(28,16,35,0.55)' },
+  profileEditorCancelText: { color: '#c2b4c8', fontSize: 14, fontWeight: '800' },
+  profileEditorSave: { flex: 1.35, minHeight: 50, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', borderRadius: 16, shadowColor: '#ff5f6d', shadowOpacity: 0.58, shadowRadius: 11 },
+  profileEditorSaveText: { color: '#170708', fontSize: 14, fontWeight: '900' },
 });

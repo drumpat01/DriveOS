@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { loadLastFmUsername, loadMusicPreferences, markLastFmConnected } from './music-preferences';
+import { isMusicProviderAvailable, loadLastFmUsername, loadMusicPreferences, markLastFmConnected } from './music-preferences';
 import {
   getSession, markLastFmSyncResult, pendingLastFmSyncs, queueLastFmSync, queueRecentCompletedLastFmSyncs, saveImportedMusicForCompletedSession,
 } from './storage';
@@ -23,6 +23,7 @@ function privacyEdgeUrl() {
 export function isLastFmEdgeConfigured() { return Boolean(privacyEdgeUrl()); }
 
 async function runPendingLastFmSync(force: boolean): Promise<LastFmSyncSummary> {
+  if (!isMusicProviderAvailable('lastfm')) return { attempted: 0, succeeded: 0, matchedTracks: 0 };
   const username = await loadLastFmUsername();
   if (!username) return { attempted: 0, succeeded: 0, matchedTracks: 0 };
   const rows = pendingLastFmSyncs({ force, limit: 5 });
@@ -58,17 +59,18 @@ export function syncPendingLastFmBestEffort() {
 
 export async function queueLastFmForCompletedSession(sessionId: string) {
   const [preferences, username] = await Promise.all([loadMusicPreferences(), loadLastFmUsername()]);
-  if (preferences.provider === 'spotify-direct' && preferences.onboardingCompleted) {
+  if (preferences.provider === 'spotify-direct' && preferences.onboardingCompleted && isMusicProviderAvailable('spotify-direct')) {
     void import('./spotify-direct').then(module => module.syncSpotifyDirectSessionBestEffort(sessionId)).catch(() => undefined);
     return true;
   }
-  if (preferences.provider !== 'lastfm' || !preferences.onboardingCompleted || !username) return false;
+  if (preferences.provider !== 'lastfm' || !preferences.onboardingCompleted || !username || !isMusicProviderAvailable('lastfm')) return false;
   if (!queueLastFmSync(sessionId, username)) return false;
   void syncPendingLastFmBestEffort();
   return true;
 }
 
 export async function syncRecentLastFmNow() {
+  if (!isMusicProviderAvailable('lastfm')) throw new Error('Spotify history is available only in JourneyDeck internal preview builds.');
   const username = await loadLastFmUsername();
   if (!username) throw new Error('Add your Last.fm username first.');
   if (automaticSyncInFlight) await automaticSyncInFlight;

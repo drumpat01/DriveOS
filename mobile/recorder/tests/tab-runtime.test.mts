@@ -11,7 +11,10 @@ const primarySections = await readFile(new URL('primary-sections.tsx', sourceRoo
 const primaryData = await readFile(new URL('primary-sections-data.ts', sourceRoot), 'utf8');
 const primaryMap = await readFile(new URL('primary-mobility-map.tsx', sourceRoot), 'utf8');
 const homeSummary = await readFile(new URL('home-summary.ts', sourceRoot), 'utf8');
+const profileAppearance = await readFile(new URL('profile-appearance.ts', sourceRoot), 'utf8');
+const neonWidget = await readFile(new URL('neon-widget-outline.tsx', sourceRoot), 'utf8');
 const storage = await readFile(new URL('storage.ts', sourceRoot), 'utf8');
+const welcomeIntro = await readFile(new URL('welcome-intro.ts', sourceRoot), 'utf8');
 const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
 
 test('tabs use one native pager with a bounded offscreen memory budget', () => {
@@ -75,6 +78,66 @@ test('Phase 6 Home summarizes every completed local-first section and routes int
   assert.doesNotMatch(homeSummary, /fetch\(|request\(|loadConnection/);
 });
 
+test('a new profile receives a skippable, motion-aware welcome before functional setup', () => {
+  assert.match(shell, /shouldShowWelcomeIntro/);
+  assert.match(shell, /!\(preferences\.onboardingCompleted && recordingPreferences\.onboardingCompleted\)/);
+  assert.match(shell, /<WelcomeIntro onContinue=\{beginOnboarding\} \/>/);
+  assert.match(shell, /JourneyDeckLogo size=\{42\}/);
+  assert.match(shell, /<Text style=\{styles\.wordmarkJourney\}>Journey<\/Text><Text style=\{styles\.wordmarkDeck\}>Deck<\/Text>/);
+  assert.match(shell, /The road\{`\\n`\}remembers\./);
+  assert.match(shell, /Set up JourneyDeck/);
+  assert.match(shell, /AccessibilityInfo\.isReduceMotionEnabled\(\)/);
+  assert.match(shell, /reduceMotionChanged/);
+  assert.match(shell, /No ads\. No tracking\. You control your data\./);
+  assert.match(welcomeIntro, /onboarding\.welcome-intro/);
+  assert.match(welcomeIntro, /upsertPrivatePreference/);
+});
+
+test('runtime 1.8 Home uses the cinematic memory design and private editable profile appearance', () => {
+  assert.match(shell, /<HomeScreen currentUser=\{currentUser\}/);
+  assert.match(shell, /function HomeMeshAtmosphere/);
+  assert.match(shell, /<MeshGradientView columns=\{3\} rows=\{3\}/);
+  assert.match(shell, /function CinematicGlass/);
+  assert.match(shell, /function LiquidGlassEdges/);
+  assert.match(shell, /<NeonWidgetOutline radius=\{radius\} \/>/);
+  assert.match(neonWidget, /function NeonWidgetOutline/);
+  assert.match(neonWidget, /<RoundedRect x=\{3\} y=\{3\}/);
+  assert.match(neonWidget, /'#ff795b', '#ff4d87', '#a66cff', '#5aa7ff'/);
+  assert.match(shell, /<LiquidGlassEdges radius=\{29\} \/>/);
+  assert.match(shell, /<LiquidGlassEdges radius=\{22\} \/>/);
+  assert.match(shell, /<LiquidGlassEdges radius=\{24\} \/>/);
+  assert.match(shell, /isLiquidGlassAvailable\(\) && isGlassEffectAPIAvailable\(\)/);
+  assert.match(shell, /glassEffectStyle="clear"/);
+  assert.match(shell, /home-cinematic-hero-night-v1\.png/);
+  assert.match(shell, /home-cinematic-hero-morning-v2\.png/);
+  assert.match(shell, /home-cinematic-hero-afternoon-v2\.png/);
+  assert.match(shell, /home-cinematic-hero-evening-v2\.png/);
+  assert.match(shell, /function homeHeroImageFor/);
+  assert.match(shell, /function homeHeroTitle/);
+  assert.match(shell, /function homeRouteContext/);
+  assert.match(shell, /Keep the Home hero editorial; the recorded route belongs in the drive detail\./);
+  assert.match(shell, /Open drive/);
+  assert.doesNotMatch(shell, /function HomeHeroRoute/);
+  assert.doesNotMatch(shell, /Friday night in Fort Worth/);
+  assert.match(shell, /LATEST ROAD MEMORY/);
+  assert.match(shell, /The road\{`\\n`\}remembers\./);
+  assert.match(shell, /accessibilityLabel="Edit profile"/);
+  assert.match(shell, /<View pointerEvents="none" style=\{styles\.cinematicAvatarGlow\} \/>/);
+  assert.match(shell, /cinematicAvatarGlow: \{[\s\S]*?borderRadius: 27/);
+  assert.match(neonWidget, /@shopify\/react-native-skia/);
+  assert.match(neonWidget, /<BlurMask blur=\{isHero \? 8 : isSelected \? 7 : 4\} style="normal" \/>/);
+  assert.match(shell, /chooseProfileAvatar/);
+  assert.match(shell, /<Text style=\{styles\.cinematicSectionTitle\}>Memories<\/Text>/);
+  assert.match(shell, /\.slice\(0, 5\)/);
+  assert.match(shell, /accessibilityLabel="See more memories"/);
+  assert.match(shell, /All memories/);
+  assert.match(shell, /Now playing on your road/);
+  assert.match(profileAppearance, /profile\.appearance/);
+  assert.match(profileAppearance, /upsertPrivatePreference/);
+  assert.match(profileAppearance, /MAX_AVATAR_DATA_URI_LENGTH/);
+  assert.doesNotMatch(profileAppearance, /fetch\(|request\(/);
+});
+
 test('Music background loading cannot activate the native refresh inset', () => {
   assert.match(musicScreen, /refreshing=\{manualRefreshing\}/);
   assert.match(musicScreen, /contentInsetAdjustmentBehavior="never"/);
@@ -82,7 +145,7 @@ test('Music background loading cannot activate the native refresh inset', () => 
   assert.doesNotMatch(musicScreen, /refreshing=\{state\.status/);
 });
 
-test('Memories, Music, and Settings each have a distinct cinematic header scene', () => {
+test('every major destination has a distinct cinematic header scene', () => {
   assert.match(shell, /<PageHeader variant="memories"/);
   assert.match(shell, /memories-header-hero\.png/);
   assert.match(shell, /<PageHeader variant="settings"/);
@@ -92,6 +155,8 @@ test('Memories, Music, and Settings each have a distinct cinematic header scene'
   assert.match(musicScreen, /function MusicHeaderScene/);
   assert.match(musicScreen, /musicSceneGlow|soundwaveGrad/);
   assert.match(musicScreen, /musicHeaderStyles\.spectrum/);
+  assert.match(primarySections, /live-header-hero-v2\.png/);
+  assert.match(primarySections, /atlas-header-hero-v2\.png/);
 });
 
 test('music chooser and Settings use approved service marks with honest provider wording', () => {
@@ -123,11 +188,13 @@ test('native dashboards use static cinematic lighting and Music has intentional 
   assert.match(musicScreen, /function VinylHeroRecord/);
   assert.match(musicScreen, /Animated\.loop[\s\S]*?duration: 22000/);
   assert.match(musicScreen, /vinylCenterLabel: \{ width: 60, height: 60/);
-  assert.match(musicScreen, /metric: \{[\s\S]*?shadowColor: '#9b61ff'/);
+  assert.match(musicScreen, /return <QuietInset radius=\{19\} accent=\{accent\} style=\{styles\.metric\}>/);
+  assert.match(neonWidget, /function QuietInset/);
   assert.match(shell, /staticWidgetGlow/);
   assert.match(shell, /webDashboardShell: \{[\s\S]*?shadowColor: '#9d58ff'/);
   assert.match(app, /statusCard: \{[\s\S]*?shadowColor: '#9b61ff'/);
-  assert.match(app, /metrics: \{[\s\S]*?shadowColor: '#9b61ff'/);
+  assert.match(app, /<QuietInset radius=\{16\} accent=\{index === 0 \? '#ff795b'/);
+  assert.match(app, /metrics: \{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 \}/);
   assert.match(shell, /function AtmosphericBackdrop/);
   assert.match(shell, /<AtmosphericBackdrop variant="home"/);
   assert.match(shell, /<AtmosphericBackdrop variant="memories"/);

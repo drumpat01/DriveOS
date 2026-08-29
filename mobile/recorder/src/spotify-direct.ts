@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import { AppState, Linking } from 'react-native';
+import { isInternalTestingBuild } from './internal-testing';
 
 import { requestExternalProviderJson, requestPrivacyEdgeJson } from './network-request';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
@@ -20,6 +21,10 @@ type SpotifyRecentResponse = {
 function edgeUrl() {
   const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
   return typeof edge?.url === 'string' && /^https:\/\//.test(edge.url) ? edge.url.replace(/\/$/, '') : null;
+}
+
+function requireInternalPreview() {
+  if (!isInternalTestingBuild()) throw new Error('Direct Spotify is available only in JourneyDeck internal preview builds.');
 }
 
 function text(value: unknown, maximum = 200) { return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, maximum) : ''; }
@@ -64,13 +69,17 @@ async function saveToken(payload: SpotifyTokenResponse, priorRefreshToken = '') 
   return token;
 }
 
-export async function spotifyDirectStatus() { return (await loadToken()) ? 'connected' as const : 'not_connected' as const; }
+export async function spotifyDirectStatus() {
+  if (!isInternalTestingBuild()) return 'not_connected' as const;
+  return (await loadToken()) ? 'connected' as const : 'not_connected' as const;
+}
 
 export async function deleteCurrentProfileSpotifySecrets(): Promise<void> {
   await Promise.all([deleteProfileSecretAndOwnedLegacy(TOKEN_KEY), deleteProfileSecretAndOwnedLegacy(PENDING_KEY)]);
 }
 
 export async function beginSpotifyDirectConnection() {
+  requireInternalPreview();
   const edge = edgeUrl();
   if (!edge) throw new Error('JourneyDeck privacy edge is not configured.');
   const config = await requestPrivacyEdgeJson<{ clientId: string; redirectUri: string }>(edge, '/api/auth/spotify/config', {}, { reason: 'external_import', operation: 'Spotify owner connection' });
@@ -83,6 +92,7 @@ export async function beginSpotifyDirectConnection() {
 }
 
 export async function finishSpotifyDirectConnection(callbackUrl: string) {
+  requireInternalPreview();
   if (!callbackUrl.startsWith('journeydeck-recorder://spotify-callback')) return false;
   const callback = new URL(callbackUrl), raw = await loadProfileSecret(PENDING_KEY);
   if (!raw) throw new Error('The Spotify connection request expired. Try again.');
@@ -116,6 +126,7 @@ async function usableToken() {
 }
 
 export async function syncSpotifyDirectSession(sessionId: string) {
+  requireInternalPreview();
   const session = getSession(sessionId);
   if (!session?.ended_at || session.status !== 'completed') throw new Error('That journey has not finished.');
   let token = await usableToken();

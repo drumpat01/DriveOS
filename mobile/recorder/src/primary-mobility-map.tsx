@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
+import { NeonWidgetOutline } from './neon-widget-outline';
 
 type RouteLine = { id: string; coordinates: [number, number][] };
 type MapPlace = { id: string; name: string; coordinate: [number, number]; count?: number };
@@ -13,6 +14,9 @@ export function PrimaryMobilityMap({
   currentCoordinate,
   currentHeading = 0,
   height = 300,
+  cameraPitch = 0,
+  cameraPadding = 42,
+  minimumBoundsSpan = 0.01,
   emptyMessage = 'A map will appear after JourneyDeck has recorded location data.',
 }: {
   routes: RouteLine[];
@@ -20,12 +24,15 @@ export function PrimaryMobilityMap({
   currentCoordinate?: [number, number] | null;
   currentHeading?: number | null;
   height?: number;
+  cameraPitch?: number;
+  cameraPadding?: number;
+  minimumBoundsSpan?: number;
   emptyMessage?: string;
 }) {
   const camera = useRef<CameraRef>(null), map = useRef<MapRef>(null);
   const [mapStyle, setMapStyle] = useState<JourneyDeckMapStyle | null>(null);
   const [failed, setFailed] = useState(false), [ready, setReady] = useState(false);
-  const geometry = useMemo(() => buildGeometry(routes, places, currentCoordinate), [currentCoordinate, places, routes]);
+  const geometry = useMemo(() => buildGeometry(routes, places, currentCoordinate, minimumBoundsSpan), [currentCoordinate, minimumBoundsSpan, places, routes]);
 
   useEffect(() => {
     let mounted = true;
@@ -35,8 +42,8 @@ export function PrimaryMobilityMap({
 
   const fit = useCallback(() => {
     if (!geometry.bounds) return;
-    camera.current?.fitBounds(geometry.bounds, { padding: { top: 44, right: 38, bottom: 44, left: 38 }, duration: 450 });
-  }, [geometry.bounds]);
+    camera.current?.fitBounds(geometry.bounds, { padding: { top: cameraPadding, right: cameraPadding, bottom: cameraPadding, left: cameraPadding }, duration: 450 });
+  }, [cameraPadding, geometry.bounds]);
 
   const zoomBy = useCallback(async (delta: number) => {
     try {
@@ -45,10 +52,10 @@ export function PrimaryMobilityMap({
     } catch { /* The view may be closing. */ }
   }, []);
 
-  if (!geometry.bounds) return <View style={[styles.empty, { height }]}><Text style={styles.emptyTitle}>MAP WAITING FOR DATA</Text><Text style={styles.emptyBody}>{emptyMessage}</Text></View>;
-  if (failed) return <View style={[styles.empty, { height }]}><Text style={styles.emptyTitle}>MAP TEMPORARILY UNAVAILABLE</Text><Text style={styles.emptyBody}>Your route data is still safe on this iPhone.</Text></View>;
+  if (!geometry.bounds) return <View style={[styles.empty, { height }]}><NeonWidgetOutline radius={25} /><Text style={styles.emptyTitle}>MAP WAITING FOR DATA</Text><Text style={styles.emptyBody}>{emptyMessage}</Text></View>;
+  if (failed) return <View style={[styles.empty, { height }]}><NeonWidgetOutline radius={25} /><Text style={styles.emptyTitle}>MAP TEMPORARILY UNAVAILABLE</Text><Text style={styles.emptyBody}>Your route data is still safe on this iPhone.</Text></View>;
 
-  return <View style={[styles.frame, { height }]}>
+  return <View style={[styles.frame, { height }]}><NeonWidgetOutline radius={25} tone="hero" />
     <Map
       ref={map}
       mapStyle={(mapStyle ?? OPEN_FREE_MAP_DARK_STYLE) as never}
@@ -62,7 +69,7 @@ export function PrimaryMobilityMap({
       onDidFinishLoadingMap={() => setReady(true)}
       onDidFailLoadingMap={() => setFailed(true)}
     >
-      <Camera ref={camera} initialViewState={{ bounds: geometry.bounds, padding: { top: 42, right: 36, bottom: 42, left: 36 } }} />
+      <Camera ref={camera} initialViewState={{ bounds: geometry.bounds, pitch: cameraPitch, padding: { top: cameraPadding, right: cameraPadding, bottom: cameraPadding, left: cameraPadding } }} />
       {geometry.lines.features.length > 0 && <GeoJSONSource id="primary-mobility-routes" data={geometry.lines}>
         <Layer id="primary-route-glow" type="line" paint={{ 'line-color': '#a43fff', 'line-width': 14, 'line-opacity': 0.4, 'line-blur': 8 }} />
         <Layer id="primary-route-shadow" type="line" paint={{ 'line-color': '#5d236f', 'line-width': 8, 'line-opacity': 0.8 }} />
@@ -95,7 +102,7 @@ function validCoordinate(value: [number, number]) {
   return Number.isFinite(value[0]) && Number.isFinite(value[1]) && value[0] >= -180 && value[0] <= 180 && value[1] >= -90 && value[1] <= 90;
 }
 
-function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinate?: [number, number] | null) {
+function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinate?: [number, number] | null, minimumBoundsSpan = 0.01) {
   const features: Feature<LineString>[] = [], pointFeatures: Feature<Point, { count: number }>[] = [], all: [number, number][] = [];
   for (const route of routes) {
     const coordinates = route.coordinates.filter(validCoordinate);
@@ -116,8 +123,8 @@ function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinat
   for (const [longitude, latitude] of all.slice(1)) {
     west = Math.min(west, longitude); east = Math.max(east, longitude); south = Math.min(south, latitude); north = Math.max(north, latitude);
   }
-  if (west === east) { west -= 0.01; east += 0.01; }
-  if (south === north) { south -= 0.01; north += 0.01; }
+  if (west === east) { west -= minimumBoundsSpan; east += minimumBoundsSpan; }
+  if (south === north) { south -= minimumBoundsSpan; north += minimumBoundsSpan; }
   return { lines: collection, points, bounds: [west, south, east, north] as [number, number, number, number] };
 }
 

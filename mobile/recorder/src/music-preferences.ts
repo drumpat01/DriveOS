@@ -1,4 +1,5 @@
 import { getCurrentUser } from './auth';
+import { isInternalTestingBuild } from './internal-testing';
 import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 
@@ -19,28 +20,42 @@ function isMusicProvider(value: unknown): value is MusicProvider {
   return value === 'apple-music' || value === 'shazam' || value === 'lastfm' || value === 'spotify-direct';
 }
 
+/**
+ * Last.fm and direct Spotify are owner-preview integrations. Keep their
+ * persisted data intact for an internal build, but never make either path
+ * selectable or runnable by a public build until the commercial permissions
+ * and review scope are complete.
+ */
+export function isMusicProviderAvailable(provider: MusicProvider): boolean {
+  return provider === 'apple-music' || provider === 'shazam' || isInternalTestingBuild();
+}
+
+function availableProvider(value: unknown): MusicProvider | null {
+  return isMusicProvider(value) && isMusicProviderAvailable(value) ? value : null;
+}
+
+function normalizePreferences(preferences: { provider?: unknown; onboardingCompleted?: unknown }): MusicPreferences {
+  const provider = availableProvider(preferences.provider);
+  return { provider, onboardingCompleted: provider !== null && preferences.onboardingCompleted === true };
+}
+
 export async function loadMusicPreferences(): Promise<MusicPreferences> {
   try {
     const local = getPrivatePreference<Partial<MusicPreferences>>(getCurrentUser().id, 'music.capture');
-    if (local) return {
-      provider: isMusicProvider(local.provider) ? local.provider : null,
-      onboardingCompleted: local.onboardingCompleted === true && isMusicProvider(local.provider),
-    };
+    if (local) return normalizePreferences(local);
     const raw = await loadProfileSecret(MUSIC_PREFERENCES_KEY);
     if (!raw) return emptyPreferences;
     const parsed = JSON.parse(raw) as { provider?: unknown; onboardingCompleted?: unknown };
-    return {
-      provider: isMusicProvider(parsed.provider) ? parsed.provider : null,
-      onboardingCompleted: parsed.onboardingCompleted === true && isMusicProvider(parsed.provider),
-    };
+    return normalizePreferences(parsed);
   } catch {
     return emptyPreferences;
   }
 }
 
 export async function saveMusicPreferences(preferences: MusicPreferences) {
-  await saveProfileSecret(MUSIC_PREFERENCES_KEY, JSON.stringify(preferences));
-  upsertPrivatePreference(getCurrentUser().id, 'music.capture', preferences);
+  const normalized = normalizePreferences(preferences);
+  await saveProfileSecret(MUSIC_PREFERENCES_KEY, JSON.stringify(normalized));
+  upsertPrivatePreference(getCurrentUser().id, 'music.capture', normalized);
 }
 
 export async function loadLastFmUsername() {
@@ -80,9 +95,10 @@ export async function deleteCurrentProfileMusicSecrets(): Promise<void> {
 }
 
 export function toApiMusicProvider(provider: MusicProvider): ApiMusicProvider | null {
-  return provider === 'spotify-direct' ? null : provider === 'apple-music' ? 'apple_music' : provider;
+  if (!isMusicProviderAvailable(provider) || provider === 'spotify-direct') return null;
+  return provider === 'apple-music' ? 'apple_music' : provider;
 }
 
 export function fromApiMusicProvider(provider: ApiMusicProvider | null | undefined): MusicProvider | null {
-  return provider === 'apple_music' ? 'apple-music' : isMusicProvider(provider) ? provider : null;
+  return availableProvider(provider === 'apple_music' ? 'apple-music' : provider);
 }

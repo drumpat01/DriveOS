@@ -39,10 +39,13 @@ async function startDetectedJourney(location: LocationObject) {
   }
 }
 
-async function finishDetectedJourney(sessionId: string, location: LocationObject) {
-  recordLocations([location]);
-  await stopLocationTracking().catch(() => {});
+async function finishDetectedJourney(sessionId: string, location: LocationObject, locationAlreadyRecorded = false) {
+  // Mark the session as non-recording before awaiting a native stop call. This
+  // makes a concurrently delivered location batch harmless instead of allowing
+  // two task invocations to finish the same journey.
   setLocalStatus(sessionId, 'finishing');
+  if (!locationAlreadyRecorded) recordLocations([location]);
+  await stopLocationTracking().catch(() => {});
   const connection = await loadConnection();
   completeSessionLocally(sessionId, Boolean(connection));
   resetAutomaticDriveState();
@@ -58,7 +61,7 @@ async function finishDetectedJourney(sessionId: string, location: LocationObject
   saveAutomaticDriveEvent('finished', sessionId);
 }
 
-export async function processAutomaticDriveLocations(locations: LocationObject[]) {
+export async function processAutomaticDriveLocations(locations: LocationObject[], locationAlreadyRecorded = false) {
   const preferences = loadRecordingModePreferences();
   if (!preferences.onboardingCompleted || preferences.mode !== 'automatic' || !locations.length) return;
 
@@ -94,7 +97,7 @@ export async function processAutomaticDriveLocations(locations: LocationObject[]
       continue;
     }
     if (result.action === 'finish' && automaticSessionActive && current) {
-      await finishDetectedJourney(current.id, location);
+      await finishDetectedJourney(current.id, location, locationAlreadyRecorded);
       return;
     }
   }

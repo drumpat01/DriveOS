@@ -5,6 +5,8 @@ import test from 'node:test';
 const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
 const api = await readFile(new URL('../src/api.ts', import.meta.url), 'utf8');
 const automaticDrive = await readFile(new URL('../src/automatic-drive-task.ts', import.meta.url), 'utf8');
+const locationTask = await readFile(new URL('../src/location-task.ts', import.meta.url), 'utf8');
+const tracking = await readFile(new URL('../src/tracking.ts', import.meta.url), 'utf8');
 const appData = await readFile(new URL('../src/app-data.ts', import.meta.url), 'utf8');
 const primaryData = await readFile(new URL('../src/primary-sections-data.ts', import.meta.url), 'utf8');
 const storage = await readFile(new URL('../src/storage.ts', import.meta.url), 'utf8');
@@ -69,6 +71,14 @@ test('clean profiles can record manually and automatically without JourneyDeck c
   assert.doesNotMatch(automaticStart, /loadConnection/);
 });
 
+test('automatic journeys use both detector and active route updates to recognize parking', () => {
+  assert.match(locationTask, /try \{ await processAutomaticDriveLocations\(data\.locations, true\); \} catch/);
+  assert.match(automaticDrive, /processAutomaticDriveLocations\(locations: LocationObject\[\], locationAlreadyRecorded = false\)/);
+  assert.match(automaticDrive, /setLocalStatus\(sessionId, 'finishing'\)/);
+  assert.match(tracking, /deferredUpdatesTimeout: 30_000/);
+  assert.match(app, /reconcileAutomaticParking/);
+});
+
 test('recorder sessions and screen caches are isolated by active profile', () => {
   assert.match(storage, /owner_user_id TEXT/);
   assert.match(storage, /WHERE owner_user_id=\? AND status!='completed'/);
@@ -92,7 +102,7 @@ test('automatic iCloud checks are coalesced while explicit sync can force a pass
   assert.match(app, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/);
 });
 
-test('public Spotify history is imported through the stateless privacy edge and saved on device', () => {
+test('internal Last.fm history is imported through the stateless privacy edge and saved on device', () => {
   assert.match(lastFm, /\/api\/music\/lastfm\/recent/);
   assert.match(lastFm, /saveImportedMusicForCompletedSession/);
   assert.doesNotMatch(lastFm, /appDataClient|\/api\/recorder\/sessions/);

@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { HeaderArtwork } from './header-artwork';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,8 @@ import { getCurrentUser, isIsolationTestProfile } from './auth';
 import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
+import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
+import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
@@ -33,8 +36,8 @@ const accentForKind: Record<SearchRecord['kind'], string> = {
   journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', collection: '#f0b75f', memory: '#8ba6ff',
 };
 
-function ScreenScaffold({ eyebrow, title, subtitle, refreshing, onRefresh, children }: {
-  eyebrow: string; title: string; subtitle: string; refreshing: boolean; onRefresh: () => void; children: ReactNode;
+function ScreenScaffold({ eyebrow, title, subtitle, headerImage, refreshing, onRefresh, children }: {
+  eyebrow: string; title: string; subtitle: string; headerImage?: number; refreshing: boolean; onRefresh: () => void; children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   return <View style={styles.screen}>
@@ -47,17 +50,15 @@ function ScreenScaffold({ eyebrow, title, subtitle, refreshing, onRefresh, child
       automaticallyAdjustContentInsets={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b889ff" />}
     >
-      <Text style={styles.eyebrow}>{eyebrow}</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      {headerImage ? <View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View> : <><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></>}
       {children}
     </ScrollView>
   </View>;
 }
 
 function DataNotice({ state }: { state: PrimaryDataState }) {
-  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><ActivityIndicator color="#b989ff" /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
-  if (state.status === 'error') return <View style={styles.warningCard}><Text style={styles.warningTitle}>USING SAVED DATA</Text><Text style={styles.noticeText}>{state.message || 'Some sources could not refresh. Existing local data remains available.'}</Text></View>;
+  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><NeonWidgetOutline radius={18} /><ActivityIndicator color="#b989ff" /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
+  if (state.status === 'error') return <View style={styles.warningCard}><NeonWidgetOutline radius={18} /><Text style={styles.warningTitle}>USING SAVED DATA</Text><Text style={styles.noticeText}>{state.message || 'Some sources could not refresh. Existing local data remains available.'}</Text></View>;
   return null;
 }
 
@@ -65,6 +66,10 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   state: PrimaryDataState; active: boolean; onRefresh: () => void; onRecord: () => void; onJourney: (id: string) => void;
 }) {
   const [snapshot, setSnapshot] = useState<LiveRecorderSnapshot>(() => state.data?.live ?? getLiveRecorderSnapshot());
+  const [tessieVehicle, setTessieVehicle] = useState<TessieVehicleSnapshot | null>(null);
+  const [tessieState, setTessieState] = useState<'idle' | 'loading' | 'unavailable' | 'error'>('idle');
+  const data = state.data;
+  const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   useEffect(() => { if (state.data) setSnapshot(state.data.live); }, [state.data]);
   useEffect(() => {
     if (!active) return;
@@ -73,35 +78,65 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
     const timer = setInterval(refresh, 4_000);
     return () => clearInterval(timer);
   }, [active]);
-  const data = state.data;
+  useEffect(() => {
+    let cancelled = false;
+    if (!active) return;
+    const loadTessie = async () => {
+      const connection = await tessieDirectStatus().catch(() => 'not_connected' as const);
+      if (connection !== 'connected') {
+        if (!cancelled) { setTessieVehicle(null); setTessieState('unavailable'); }
+        return;
+      }
+      if (!cancelled) setTessieState('loading');
+      try {
+        const result = await syncTessieDirect();
+        if (cancelled) return;
+        setTessieVehicle(result.vehicles.find(vehicle => vehicle.name === vehicleName) ?? result.vehicles[0] ?? null);
+        setTessieState(result.vehicles.length ? 'idle' : 'unavailable');
+      } catch {
+        if (!cancelled) { setTessieVehicle(null); setTessieState('error'); }
+      }
+    };
+    void loadTessie();
+    return () => { cancelled = true; };
+  }, [active, vehicleName]);
   const lastPoint = snapshot.lastPoint;
   const speed = Math.max(0, (lastPoint?.speedMps ?? 0) * 2.23694);
   const driving = Boolean(snapshot.session && snapshot.session.status === 'recording' && speed >= 3);
-  const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   const latestDetail = data?.details.find(detail => detail.id === data.dashboard.latestJourney?.id) ?? data?.details[0];
   const parkedRoute = latestDetail?.route?.coordinates ?? [];
   const visibleRoute = snapshot.route.length > 1 ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number]) : parkedRoute;
   const visibleCoordinate = lastPoint ? [lastPoint.longitude, lastPoint.latitude] as [number, number] : parkedRoute.at(-1) ?? null;
-  const battery = latestDetail?.endingBatteryPercent;
+  const battery = tessieVehicle?.batteryPercent ?? latestDetail?.endingBatteryPercent;
+  const range = tessieVehicle?.rangeMiles ?? null;
+  const vehicleNote = tessieVehicle
+    ? `Tessie ${tessieVehicle.status || 'vehicle'} · updated ${relativeTime(tessieVehicle.updatedAt ?? undefined)}`
+    : tessieState === 'loading' ? 'Refreshing Tessie live vehicle data…'
+      : tessieState === 'unavailable' ? 'Connect Tessie in Settings to show live battery and range.'
+        : tessieState === 'error' ? 'Tessie could not refresh right now. Your local recorder is still available.'
+          : battery === null || battery === undefined ? 'Live battery and range will appear when the vehicle provider supplies them.' : 'Battery is the latest archived reading. Live range needs a current vehicle-provider reading.';
   const elapsedMinutes = snapshot.session ? Math.max(0, (Date.now() - Date.parse(snapshot.session.startedAt)) / 60_000) : 0;
   const miles = routeMiles(snapshot.route.map(point => [point.longitude, point.latitude]));
   const liveTrack = snapshot.music.at(-1) ?? data?.music.recentSelections[0];
-  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="Live" subtitle="Your vehicle, recorder, route, and soundtrack—read from this iPhone first." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="Live" subtitle="Your vehicle, recorder, route, and soundtrack—read from this iPhone first." headerImage={require('../assets/live-header-hero-v2.png')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
-    <View style={styles.liveHero}>
+    <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
       <View style={styles.rowBetween}><View><Text style={styles.cardEyebrow}>{driving ? 'DRIVING' : snapshot.session ? 'PARKED / PAUSED' : 'PARKED'}</Text><Text style={styles.heroTitle}>{vehicleName}</Text></View><View style={[styles.liveDot, driving && styles.liveDotActive]} /></View>
       <View style={styles.metricRow}>
         <Metric value={`${Math.round(speed)}`} unit="mph" label="SPEED" />
-        <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label="LAST BATTERY" />
-        <Metric value="—" label="LIVE RANGE" />
+        <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label={tessieVehicle ? 'LIVE BATTERY' : 'LAST BATTERY'} />
+        <Metric value={range === null || range === undefined ? '—' : `${Math.round(range)}`} unit={range === null || range === undefined ? undefined : 'mi'} label="LIVE RANGE" />
       </View>
-      <Text style={styles.honestNote}>{battery === null || battery === undefined ? 'Live battery and range will appear when the vehicle provider supplies them.' : 'Battery is the latest archived reading. Live range needs a current vehicle-provider reading.'}</Text>
+      <Text style={styles.honestNote}>{vehicleNote}</Text>
     </View>
     <PrimaryMobilityMap
       routes={visibleRoute.length > 1 ? [{ id: snapshot.session?.id ?? latestDetail?.id ?? 'last-known', coordinates: visibleRoute }] : []}
       currentCoordinate={visibleCoordinate}
       currentHeading={lastPoint?.headingDegrees}
       height={310}
+      cameraPitch={45}
+      cameraPadding={58}
+      minimumBoundsSpan={0.055}
       emptyMessage="Start recording to see your route and current location here."
     />
     <SectionTitle title="Current journey" detail={snapshot.session ? 'Recording on this iPhone' : 'No active journey'} />
@@ -110,7 +145,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
       <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
     </View>
     <SectionTitle title="Live soundtrack" detail={snapshot.music.length ? `${snapshot.music.length} captured` : 'Latest known music'} />
-    {liveTrack ? <Pressable style={styles.trackCard} onPress={() => data?.dashboard.latestJourney && onJourney(data.dashboard.latestJourney.id)}>
+    {liveTrack ? <Pressable style={styles.trackCard} onPress={() => data?.dashboard.latestJourney && onJourney(data.dashboard.latestJourney.id)}><NeonWidgetOutline radius={18} />
       {liveTrack.artworkUrl ? <Image source={{ uri: liveTrack.artworkUrl }} style={styles.artwork} /> : <View style={[styles.artwork, styles.artworkBlank]}><Text style={styles.artworkNote}>♪</Text></View>}
       <View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{liveTrack.track}</Text><Text style={styles.itemDetail} numberOfLines={1}>{liveTrack.artist}</Text></View>
       <Text style={styles.chevron}>›</Text>
@@ -129,38 +164,46 @@ export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDat
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." headerImage={require('../assets/atlas-header-hero-v2.png')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
     <PrimaryMobilityMap routes={routes} places={mapPlaces} height={355} emptyMessage="Recorded route geometry will build your long-term Atlas." />
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
     <SectionTitle title="Frequent places" detail={`${places.length} discovered`} />
     {places.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalCards}>
-      {places.slice(0, 12).map(place => <Pressable key={place.id} onPress={() => setSelectedPlaceId(place.id)} style={[styles.placeChip, selectedPlace?.id === place.id && styles.placeChipActive]}>
+      {places.slice(0, 12).map(place => <Pressable key={place.id} onPress={() => setSelectedPlaceId(place.id)} style={[styles.placeChip, selectedPlace?.id === place.id && styles.placeChipActive]}>{selectedPlace?.id === place.id && <NeonWidgetOutline radius={19} tone="selected" />}
         <Text style={styles.placeCategory}>{place.category.toUpperCase()}</Text><Text style={styles.placeName} numberOfLines={1}>{place.name}</Text><Text style={styles.placeVisits}>{place.visitCount} visits</Text>
       </Pressable>)}
     </ScrollView> : <EmptyCard text="Places are discovered from journey starts and destinations." />}
     {selectedPlace && <PlaceDetails place={selectedPlace} onJourney={onJourney} />}
     <SectionTitle title="Recurring patterns" detail="Confirm what feels meaningful" />
-    {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}>
-      <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{pattern.startLabel} → {pattern.endLabel}</Text>
+    {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}><NeonWidgetOutline radius={18} /><View style={styles.patternContent}>
+      <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{formatAtlasPatternRoute(pattern.startLabel, pattern.endLabel)}</Text>
       <Text style={styles.itemDetail}>{pattern.miles.toFixed(1)} mi total{pattern.averageWhPerMile > 0 ? ` · ${Math.round(pattern.averageWhPerMile)} Wh/mi average` : ' · energy appears when vehicle telemetry is available'}</Text>
       <View style={styles.inlineButtons}>
-        <Pressable onPress={() => reviewPattern(pattern.id, 'confirmed')} style={[styles.smallButton, (reviews[pattern.id] ?? pattern.review) === 'confirmed' && styles.smallButtonActive]}><Text style={styles.smallButtonText}>✓ Confirm</Text></Pressable>
-        <Pressable onPress={() => reviewPattern(pattern.id, 'dismissed')} style={styles.smallButton}><Text style={styles.smallButtonText}>Dismiss</Text></Pressable>
+        <PatternAction symbol="✓" label="Confirm" active={(reviews[pattern.id] ?? pattern.review) === 'confirmed'} onPress={() => reviewPattern(pattern.id, 'confirmed')} />
+        <PatternAction symbol="×" label="Dismiss" onPress={() => reviewPattern(pattern.id, 'dismissed')} />
       </View>
-    </View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
+    </View></View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
     <SectionTitle title="Representative routes" detail={`${routes.length} routes cached`} />
     {(data?.details ?? []).slice(0, 8).map(journey => <JourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)}
   </ScreenScaffold>;
 }
 
 function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJourney: (id: string) => void }) {
-  return <View style={styles.card}>
+  return <View style={styles.card}><NeonWidgetOutline radius={22} />
     <Text style={styles.cardEyebrow}>PLACE DETAILS · {place.category.toUpperCase()}</Text><Text style={styles.heroTitle}>{place.name}</Text>
     <Text style={styles.itemDetail}>{place.arrivals} arrivals · {place.departures} departures · last seen {new Date(place.lastSeenAt).toLocaleDateString()}</Text>
     {place.soundtrack[0] && <Text style={styles.placeSoundtrack}>♪ {place.soundtrack[0].track} · {place.soundtrack[0].artist}</Text>}
-    {place.relatedJourneys.slice(0, 3).map(journey => <Pressable key={journey.id} onPress={() => onJourney(journey.id)} style={styles.compactRow}><Text style={styles.compactTitle} numberOfLines={1}>{journey.startingLocation} → {journey.endingLocation}</Text><Text style={styles.compactValue}>{journey.miles.toFixed(1)} mi ›</Text></Pressable>)}
+    <View style={styles.placeRouteThread}><LinearGradient pointerEvents="none" colors={['#ff7d62', '#b35cff', '#9d6cff'] as const} style={styles.routeThreadRail} />
+      {place.relatedJourneys.slice(0, 3).map((journey, index) => <Pressable key={journey.id} onPress={() => onJourney(journey.id)} style={[styles.compactRow, index === 0 && styles.compactRowFirst]}>
+        <View style={[styles.routeThreadNode, index === 0 && styles.routeThreadNodeStart]} /><Text style={styles.compactTitle} numberOfLines={1}>{journey.startingLocation} → {journey.endingLocation}</Text><Text style={styles.compactValue}>{journey.miles.toFixed(1)} mi</Text>
+      </Pressable>)}
+    </View>
   </View>;
+}
+
+function PatternAction({ symbol, label, active = false, onPress }: { symbol: string; label: string; active?: boolean; onPress: () => void }) {
+  return <Pressable accessibilityLabel={label} onPress={onPress} style={styles.patternAction}><View style={[styles.patternActionIcon, active && styles.patternActionIconActive]}><Text style={[styles.patternActionSymbol, active && styles.patternActionSymbolActive]}>{symbol}</Text></View><Text style={[styles.patternActionText, active && styles.patternActionTextActive]}>{label}</Text></Pressable>;
 }
 
 export function TimelineScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
@@ -168,7 +211,7 @@ export function TimelineScreen({ state, onRefresh, onJourney }: { state: Primary
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => { if (!selectedKey && days[0]) setSelectedKey(days[0].key); }, [days, selectedKey]);
   const selected = days.find(day => day.key === selectedKey) ?? days[0];
-  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/timeline-header-hero-v2.jpg')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
     {days.length ? <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRail}>{days.slice(0, 30).map(day => <Pressable key={day.key} onPress={() => setSelectedKey(day.key)} style={[styles.dayChip, selected?.key === day.key && styles.dayChipActive]}><Text style={styles.dayNumber}>{new Date(`${day.key}T12:00:00`).getDate()}</Text><Text style={styles.dayLabel}>{new Date(`${day.key}T12:00:00`).toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text></Pressable>)}</ScrollView>
@@ -185,10 +228,10 @@ export function TimelineScreen({ state, onRefresh, onJourney }: { state: Primary
 
 export function StatisticsScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
   const statistics = state.data?.statistics;
-  return <ScreenScaffold eyebrow="30-DAY PERFORMANCE" title="Statistics" subtitle="Driving, energy, music, streaks, comparisons, and a monthly archive computed on-device." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="30-DAY PERFORMANCE" title="Statistics" subtitle="Driving, energy, music, streaks, comparisons, and a monthly archive computed on-device." headerImage={require('../assets/statistics-header-hero-v2.jpg')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
     {statistics ? <>
-      <View style={styles.scoreCard}><View style={styles.scoreRing}><Text style={styles.scoreValue}>{statistics.score ?? '—'}</Text><Text style={styles.scoreUnit}>/ 100</Text></View><View style={styles.flex}><Text style={styles.cardEyebrow}>DRIVING SCORE</Text><Text style={styles.itemTitle}>{statistics.score === null ? 'More telemetry needed' : statistics.score >= 80 ? 'Excellent rhythm' : statistics.score >= 65 ? 'Good momentum' : 'Room to improve'}</Text><Text style={styles.itemDetail}>{statistics.scoreDetail}</Text></View></View>
+      <View style={styles.scoreCard}><NeonWidgetOutline radius={22} tone="hero" /><View style={styles.scoreRing}><Text style={styles.scoreValue}>{statistics.score ?? '—'}</Text><Text style={styles.scoreUnit}>/ 100</Text></View><View style={styles.flex}><Text style={styles.cardEyebrow}>DRIVING SCORE</Text><Text style={styles.itemTitle}>{statistics.score === null ? 'More telemetry needed' : statistics.score >= 80 ? 'Excellent rhythm' : statistics.score >= 65 ? 'Good momentum' : 'Room to improve'}</Text><Text style={styles.itemDetail}>{statistics.scoreDetail}</Text></View></View>
       <View style={styles.statGrid}>
         <StatCard label="MILES" metric={statistics.current.miles} format={value => value.toFixed(1)} />
         <StatCard label="ENERGY" metric={statistics.current.energyKwh} format={value => `${value.toFixed(1)} kWh`} />
@@ -272,7 +315,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <SectionTitle title="Version & update" detail="What is running now" />
-    <View style={styles.releaseCard}>
+    <View style={styles.releaseCard}><NeonWidgetOutline radius={24} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
       <View style={styles.releaseGrid}>
         <ReleaseMetric label="APP" value={nativeVersion} detail={`native build ${nativeBuild}`} />
@@ -283,7 +326,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
-    <View style={styles.healthHero}><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
+    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
@@ -291,7 +334,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} capabilities={providerCapabilities} />
     <SectionTitle title="Network boundary" detail="This app session" />
-    <View style={styles.networkCard}>
+    <View style={styles.networkCard}><NeonWidgetOutline radius={22} />
       <View style={styles.networkGrid}>
         <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
         <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
@@ -322,7 +365,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
     {isInternalTestingBuild() && <>
       <SectionTitle title="Profile Test Lab" detail="Internal · non-destructive" />
-      <View style={styles.profileLabCard}>
+      <View style={styles.profileLabCard}><NeonWidgetOutline radius={22} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.profileLabEyebrow}>{testProfile ? 'TEST PROFILE ACTIVE' : 'CURRENT PROFILE'}</Text><Text style={styles.profileLabTitle}>{currentUser.displayName || 'Unnamed local profile'}</Text></View>{testProfile && <Text style={[styles.profileLabResult, profileIsClean && styles.profileLabResultGood]}>{profileIsClean ? 'CLEAN' : 'HAS DATA'}</Text>}</View>
       <Text style={styles.profileLabDetail}>{testProfile ? 'Private iCloud is paused for this synthetic profile so the empty-profile check cannot download existing records.' : 'Create a separate local profile to verify that journeys, recorder state, screen caches, and owner backup do not carry over.'}</Text>
       <View style={styles.profileLabGrid}>
@@ -343,7 +386,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       </View>
     </>}
     <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
-    <View style={styles.retentionCard}>
+    <View style={styles.retentionCard}><NeonWidgetOutline radius={22} />
       <View style={styles.retentionChoiceRow}>
         {([30, 7] as const).map(days => <Pressable
           key={days}
@@ -431,7 +474,6 @@ export function MoreScreen({
   currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
   music: ReactNode; recorder: ReactNode; settings: ReactNode;
 }) {
-  const insets = useSafeAreaInsets();
   const destination = requested;
   let content: ReactNode;
   if (destination !== 'menu') {
@@ -440,10 +482,10 @@ export function MoreScreen({
         : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
           : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} />
             : destination === 'music' ? music : destination === 'settings' ? settings : null;
-    content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
+    content = child;
   } else {
     content = <ScreenScaffold eyebrow="THE REST OF YOUR DECK" title="More" subtitle="Search, analysis, recording, music, data confidence, and app controls." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
-      <Pressable onPress={() => onRequestedChange('search')} style={styles.moreSearch}><SymbolView name="magnifyingglass" tintColor="#f4eafa" size={22} /><Text style={styles.moreSearchText}>Search all JourneyDeck</Text><Text style={styles.chevron}>›</Text></Pressable>
+      <Pressable onPress={() => onRequestedChange('search')} style={styles.moreSearch}><NeonWidgetOutline radius={20} /><SymbolView name="magnifyingglass" tintColor="#f4eafa" size={22} /><Text style={styles.moreSearchText}>Search all JourneyDeck</Text><Text style={styles.chevron}>›</Text></Pressable>
       <View style={styles.moreGrid}>
         <MoreTile symbol="clock" fallback="◷" title="Timeline" detail="Daily chronology" color="#ff6854" onPress={() => onRequestedChange('timeline')} />
         <MoreTile symbol="chart.xyaxis.line" fallback="↗" title="Statistics" detail="Trends + score" color="#ad76ff" onPress={() => onRequestedChange('statistics')} />
@@ -452,53 +494,70 @@ export function MoreScreen({
         <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color="#58d5b6" onPress={() => onRequestedChange('health')} />
         <MoreTile symbol="gearshape" fallback="⚙" title="Settings" detail="Accounts + app" color="#8ca4ff" onPress={() => onRequestedChange('settings')} />
       </View>
-      <View style={styles.localFirstCard}><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Maps, search, timeline grouping, statistics, pattern decisions, and active-drive status are rendered from local or cached data.</Text></View>
+      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Maps, search, timeline grouping, statistics, pattern decisions, and active-drive status are rendered from local or cached data.</Text></View>
     </ScreenScaffold>;
   }
   return <View style={styles.screen}>{content}<View pointerEvents={destination === 'record' ? 'auto' : 'none'} style={destination === 'record' ? styles.persistentRecorderVisible : styles.persistentRecorderHidden}>{recorder}</View></View>;
 }
 
 function MoreTile({ symbol, fallback, title, detail, color, onPress }: { symbol: SFSymbol; fallback: string; title: string; detail: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.moreTile}><View style={[styles.moreIcon, { backgroundColor: `${color}20`, borderColor: `${color}66` }]}><SymbolView name={symbol} tintColor={color} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
+  return <Pressable onPress={onPress} style={styles.moreTile}><NeonWidgetOutline radius={23} /><View style={[styles.moreIcon, { backgroundColor: `${color}20`, borderColor: `${color}66` }]}><SymbolView name={symbol} tintColor={color} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
 }
 
 function HealthRow({ title, status, detail, healthy }: { title: string; status: string; detail: string; healthy: boolean }) {
-  return <View style={styles.healthRow}><View style={[styles.healthDot, healthy && styles.healthDotGood]} /><View style={styles.flex}><View style={styles.rowBetween}><Text style={styles.itemTitle}>{title}</Text><Text style={[styles.healthStatus, healthy && styles.healthStatusGood]}>{status.toUpperCase()}</Text></View><Text style={styles.itemDetail}>{detail}</Text></View></View>;
+  return <View style={styles.healthRow}><NeonWidgetOutline radius={19} /><View style={[styles.healthDot, healthy && styles.healthDotGood]} /><View style={styles.flex}><View style={styles.rowBetween}><Text style={styles.itemTitle}>{title}</Text><Text style={[styles.healthStatus, healthy && styles.healthStatusGood]}>{status.toUpperCase()}</Text></View><Text style={styles.itemDetail}>{detail}</Text></View></View>;
 }
 
 function MilesChart({ statistics }: { statistics: StatisticsData }) {
   const width = 330, height = 126, max = Math.max(1, ...statistics.dailyMiles.map(day => day.miles));
   const points = statistics.dailyMiles.map((day, index) => [10 + index * ((width - 20) / 29), height - 15 - (day.miles / max) * (height - 35)] as const);
   const line = points.map(([x, y], index) => `${index ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  return <View style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor="#9e54ff" /><Stop offset="1" stopColor="#ff6b4f" /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill="#8e46de" opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></View>;
+  return <NeonWidget radius={20} style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor="#9e54ff" /><Stop offset="1" stopColor="#ff6b4f" /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill="#8e46de" opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></NeonWidget>;
 }
 
 function StatCard({ label, metric: value, format }: { label: string; metric: StatisticsData['current']['miles']; format: (value: number) => string }) {
   const change = value.changePercent;
-  return <View style={styles.statCard}><Text style={styles.cardEyebrow}>{label}</Text><Text style={styles.statValue}>{format(value.value)}</Text><Text style={[styles.change, change !== null && change < 0 && styles.changeDown]}>{change === null ? 'NEW' : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <Text style={styles.changePeriod}>vs prior 30d</Text></Text></View>;
+  return <QuietInset radius={17} accent="#a66cff" style={styles.statCard}><Text style={styles.cardEyebrow}>{label}</Text><Text style={styles.statValue}>{format(value.value)}</Text><Text style={[styles.change, change !== null && change < 0 && styles.changeDown]}>{change === null ? 'NEW' : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <Text style={styles.changePeriod}>vs prior 30d</Text></Text></QuietInset>;
 }
 
 function JourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.journeyRow}><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable>;
+  return <Pressable onPress={onPress} style={styles.journeyRow}><NeonWidgetOutline radius={18} /><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable>;
 }
 
 function Metric({ value, unit, label }: { value: string; unit?: string; label: string }) {
-  return <View style={styles.metric}><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
+  return <View style={styles.metric}><LinearGradient pointerEvents="none" colors={['#ff7a61', '#bc66ff', '#5ca7ff'] as const} style={styles.metricAccent} /><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
 function SectionTitle({ title, detail }: { title: string; detail: string }) { return <View style={styles.sectionTitle}><Text style={styles.sectionHeading}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
-function EmptyCard({ text }: { text: string }) { return <View style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></View>; }
+function EmptyCard({ text }: { text: string }) { return <NeonWidget radius={18} style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></NeonWidget>; }
 function timelineGlyph(kind: string) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'charging' ? 'ϟ' : '◉'; }
 function timelineColor(kind: string) { return kind === 'journey' ? '#ff6a54' : kind === 'song' ? '#a85cff' : kind === 'charging' ? '#5bd6b9' : '#678cff'; }
 function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : kind === 'collection' ? '▦' : '✦'; }
 function formatClock(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'; }
 function relativeTime(value?: string) { if (!value) return 'from saved data'; const minutes = Math.max(0, Math.round((Date.now() - Date.parse(value)) / 60_000)); return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`; }
 function routeMiles(coordinates: [number, number][]) { let meters = 0; for (let index = 1; index < coordinates.length; index += 1) { const [aLng, aLat] = coordinates[index - 1], [bLng, bLat] = coordinates[index], rad = Math.PI / 180; const dLat = (bLat - aLat) * rad, dLng = (bLng - aLng) * rad; const chord = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2; meters += 12_742_000 * Math.asin(Math.sqrt(chord)); } return meters / 1609.344; }
+const atlasStateNames = new Set([
+  'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado', 'connecticut', 'delaware', 'florida', 'georgia', 'hawaii', 'idaho', 'illinois', 'indiana', 'iowa', 'kansas', 'kentucky', 'louisiana', 'maine', 'maryland', 'massachusetts', 'michigan', 'minnesota', 'mississippi', 'missouri', 'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey', 'new mexico', 'new york', 'north carolina', 'north dakota', 'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode island', 'south carolina', 'south dakota', 'tennessee', 'texas', 'utah', 'vermont', 'virginia', 'washington', 'west virginia', 'wisconsin', 'wyoming', 'district of columbia',
+]);
+function compactAtlasPlaceLabel(value: string) { return value.replace(/,\s*(?:United States(?: of America)?|USA|US)\.?\s*$/i, '').replace(/\s+\d{5}(?:-\d{4})?(?=,|$)/g, '').replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim(); }
+function atlasPlaceParts(value: string) {
+  const parts = compactAtlasPlaceLabel(value).split(',').map(part => part.trim()).filter(Boolean);
+  const last = parts[parts.length - 1] ?? '';
+  return atlasStateNames.has(last.toLowerCase())
+    ? { place: parts.slice(0, -1).join(', '), state: last }
+    : { place: parts.join(', '), state: null };
+}
+function formatAtlasPatternRoute(start: string, end: string) {
+  const origin = atlasPlaceParts(start), destination = atlasPlaceParts(end);
+  if (origin.state && destination.state && origin.state.toLowerCase() === destination.state.toLowerCase()) return `${origin.place} → ${destination.place}`;
+  const format = ({ place, state }: { place: string; state: string | null }) => state ? `${place}, ${state}` : place;
+  return `${format(origin)} → ${format(destination)}`;
+}
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
-  topBloom: { position: 'absolute', top: -110, alignSelf: 'center', width: 420, height: 300, borderRadius: 210, backgroundColor: '#55106b', opacity: 0.25, transform: [{ scaleX: 1.5 }] },
-  content: { paddingHorizontal: 18, paddingBottom: 150 },
+  topBloom: { position: 'absolute', top: -110, alignSelf: 'center', width: 420, height: 300, borderRadius: 210, backgroundColor: '#55106b', opacity: 0.16, transform: [{ scaleX: 1.5 }] },
+  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { width: '100%', marginBottom: 22, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },
@@ -506,17 +565,18 @@ const styles = StyleSheet.create({
   warningCard: { borderRadius: 19, backgroundColor: '#21120d', borderWidth: 1, borderColor: '#6f432e', padding: 16, marginBottom: 15 },
   warningTitle: { color: '#ff9b67', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginBottom: 6 },
   noticeText: { color: '#9a8fa3', fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  liveHero: { borderRadius: 27, padding: 20, marginBottom: 13, backgroundColor: '#100816', borderWidth: 1, borderColor: '#4d295e', shadowColor: '#a73dff', shadowOpacity: 0.25, shadowRadius: 20 },
+  liveHero: { borderRadius: 27, padding: 20, marginBottom: 13, backgroundColor: '#100816', shadowColor: '#a73dff', shadowOpacity: 0.16, shadowRadius: 18 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   cardEyebrow: { color: '#c493f6', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginBottom: 7 },
   heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', letterSpacing: -0.5 },
   liveDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#4b4350', borderWidth: 3, borderColor: '#211825' },
   liveDotActive: { backgroundColor: '#5be0ba', borderColor: '#244c42', shadowColor: '#5be0ba', shadowOpacity: 1, shadowRadius: 10 },
-  metricRow: { flexDirection: 'row', marginTop: 19 },
-  metric: { flex: 1, alignItems: 'center', paddingHorizontal: 3 },
-  metricValue: { color: '#fff', fontSize: 21, fontWeight: '900', letterSpacing: -0.4 },
+  metricRow: { flexDirection: 'row', gap: 8, marginTop: 19 },
+  metric: { flex: 1, minHeight: 70, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingTop: 13, paddingBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#3a3043', backgroundColor: 'rgba(255,255,255,0.025)' },
+  metricAccent: { position: 'absolute', top: 0, left: 16, right: 16, height: 1.5, borderRadius: 2, opacity: 0.8 },
+  metricValue: { color: '#fff', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.4, textAlign: 'center', fontVariant: ['tabular-nums'] },
   metricUnit: { color: '#b5a6bc', fontSize: 10, fontWeight: '800' },
-  metricLabel: { color: '#817489', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginTop: 5, textAlign: 'center' },
+  metricLabel: { color: '#a295aa', fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.75, marginTop: 4, textAlign: 'center' },
   honestNote: { color: '#746b7b', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 16 },
   sectionTitle: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginTop: 28, marginBottom: 12 },
   sectionHeading: { color: '#f8f4fa', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
@@ -540,27 +600,37 @@ const styles = StyleSheet.create({
   mapLegend: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginTop: 9 },
   legendLine: { color: '#ff755f', fontSize: 9, fontWeight: '700' },
   legendPlace: { color: '#ad6df4', fontSize: 9, fontWeight: '700' },
-  horizontalCards: { gap: 10, paddingRight: 18 },
-  placeChip: { width: 145, minHeight: 101, borderRadius: 19, padding: 14, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#35203e' },
-  placeChipActive: { borderColor: '#aa63ed', backgroundColor: '#1a0b22' },
-  placeCategory: { color: '#b879ee', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  horizontalCards: { gap: 10, paddingRight: 20 },
+  placeChip: { width: 145, minHeight: 101, borderRadius: 19, padding: 14, overflow: 'hidden', backgroundColor: '#0c0710', borderWidth: StyleSheet.hairlineWidth, borderColor: '#382340' },
+  placeChipActive: { backgroundColor: 'rgba(104, 41, 27, 0.62)', borderWidth: 0, shadowColor: '#ff713e', shadowOpacity: 0.38, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  placeCategory: { color: '#b79aca', fontSize: 9, fontWeight: '800', letterSpacing: 1.05 },
   placeName: { color: '#fff', fontSize: 15, fontWeight: '900', marginTop: 9 },
   placeVisits: { color: '#7d7185', fontSize: 10, marginTop: 5 },
   placeSoundtrack: { color: '#d49af3', fontSize: 11, marginTop: 13 },
-  compactRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1c34', marginTop: 10, paddingTop: 10, gap: 8 },
-  compactTitle: { color: '#d9d0dc', fontSize: 11, fontWeight: '700', flex: 1 },
-  compactValue: { color: '#9f80ad', fontSize: 10, fontWeight: '800' },
+  placeRouteThread: { position: 'relative', marginTop: 14, paddingLeft: 19 },
+  routeThreadRail: { position: 'absolute', left: 5, top: 13, bottom: 13, width: 2, borderRadius: 2, opacity: 0.9 },
+  routeThreadNode: { position: 'absolute', left: -18, top: 17, width: 11, height: 11, borderRadius: 6, backgroundColor: '#ab67f5', borderWidth: 1, borderColor: '#d5a6ff', shadowColor: '#a95cff', shadowOpacity: 0.85, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  routeThreadNodeStart: { backgroundColor: '#ff8066', borderColor: '#ffb09a', shadowColor: '#ff735a' },
+  compactRow: { minHeight: 51, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(179, 135, 205, 0.2)', gap: 8 },
+  compactRowFirst: { borderTopWidth: 0 },
+  compactTitle: { color: '#d9d0dc', fontSize: 11, fontWeight: '700', flex: 1, paddingRight: 6 },
+  compactValue: { color: '#b99ad0', fontSize: 10, fontWeight: '800', minWidth: 38, textAlign: 'right' },
   patternCard: { borderRadius: 20, backgroundColor: '#100817', borderWidth: 1, borderColor: '#452353', padding: 17, marginBottom: 10 },
-  inlineButtons: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  smallButton: { borderRadius: 13, borderWidth: 1, borderColor: '#563064', paddingHorizontal: 14, paddingVertical: 9 },
-  smallButtonActive: { backgroundColor: '#203b31', borderColor: '#54bca0' },
-  smallButtonText: { color: '#d8c8de', fontSize: 10, fontWeight: '800' },
+  patternContent: { zIndex: 1 },
+  inlineButtons: { flexDirection: 'row', gap: 23, marginTop: 15, alignItems: 'center' },
+  patternAction: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32 },
+  patternActionIcon: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#393044', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 8, 16, 0.72)' },
+  patternActionIconActive: { borderColor: '#2e735f', backgroundColor: 'rgba(13, 43, 35, 0.8)' },
+  patternActionSymbol: { color: '#a79ba9', fontSize: 16, lineHeight: 18, fontWeight: '700' },
+  patternActionSymbolActive: { color: '#77d8bd' },
+  patternActionText: { color: '#928598', fontSize: 11, fontWeight: '800' },
+  patternActionTextActive: { color: '#b6d7cc' },
   journeyRow: { minHeight: 72, borderRadius: 18, backgroundColor: '#0b070e', borderWidth: 1, borderColor: '#302038', padding: 12, marginBottom: 9, flexDirection: 'row', alignItems: 'center', gap: 11 },
   routeGlyph: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#25122d', color: '#d474ff', textAlign: 'center', textAlignVertical: 'center', fontSize: 25 },
   emptyCard: { borderRadius: 19, borderWidth: 1, borderColor: '#302037', backgroundColor: '#0a060d', padding: 22, marginBottom: 10 },
   dayRail: { gap: 8, paddingRight: 18, marginBottom: 17 },
   dayChip: { width: 58, height: 69, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#34203c' },
-  dayChipActive: { backgroundColor: '#36184a', borderColor: '#b165ec' },
+  dayChipActive: { backgroundColor: '#2a1517', borderColor: '#ff824e', shadowColor: '#ff713e', shadowOpacity: 0.58, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   dayNumber: { color: '#fff', fontSize: 20, fontWeight: '900' },
   dayLabel: { color: '#9e8aa8', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
   selectedDay: { color: '#eee6f1', fontSize: 16, fontWeight: '800', marginBottom: 11 },
@@ -569,12 +639,12 @@ const styles = StyleSheet.create({
   timelineIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   timelineIconText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   timelineTime: { color: '#b17fce', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginBottom: 5 },
-  scoreCard: { borderRadius: 25, padding: 17, backgroundColor: '#12081a', borderWidth: 1, borderColor: '#542763', flexDirection: 'row', alignItems: 'center', gap: 16 },
+  scoreCard: { borderRadius: 25, padding: 17, backgroundColor: '#12081a', flexDirection: 'row', alignItems: 'center', gap: 16 },
   scoreRing: { width: 94, height: 94, borderRadius: 47, borderWidth: 7, borderColor: '#a95feb', backgroundColor: '#0a050e', alignItems: 'center', justifyContent: 'center' },
   scoreValue: { color: '#fff', fontSize: 31, fontWeight: '900', letterSpacing: -1 },
   scoreUnit: { color: '#8d7d95', fontSize: 8, fontWeight: '800' },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-  statCard: { width: '48.5%', minHeight: 112, borderRadius: 20, backgroundColor: '#0d0711', borderWidth: 1, borderColor: '#34203d', padding: 15 },
+  statCard: { width: '48.5%', minHeight: 112, borderRadius: 20, padding: 15 },
   statValue: { color: '#fff', fontSize: 23, fontWeight: '900', marginTop: 3 },
   change: { color: '#56d1ad', fontSize: 10, fontWeight: '900', marginTop: 9 },
   changeDown: { color: '#ff806c' },
@@ -690,8 +760,6 @@ const styles = StyleSheet.create({
   moreTileTitle: { color: '#fff', fontSize: 16, fontWeight: '900', marginTop: 13 },
   moreTileDetail: { color: '#776d7e', fontSize: 10, marginTop: 4 },
   localFirstCard: { borderRadius: 21, backgroundColor: '#10170f', borderWidth: 1, borderColor: '#344e31', padding: 18, marginTop: 13 },
-  moreBack: { position: 'absolute', left: 14, zIndex: 500, minHeight: 39, minWidth: 75, paddingHorizontal: 12, borderRadius: 18, backgroundColor: 'rgba(12,5,17,0.94)', borderWidth: 1, borderColor: '#663774', alignItems: 'center', justifyContent: 'center' },
-  moreBackText: { color: '#e4c9ed', fontSize: 12, fontWeight: '900' },
   persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 },
   persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 },
 });

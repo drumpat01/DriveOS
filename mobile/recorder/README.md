@@ -2,16 +2,20 @@
 
 JourneyDeck Recorder is the private iPhone companion for recording journeys without Tessie or a Tesla. It captures GPS points in an on-device SQLite queue, continues while the phone is locked, and uploads retry-safe batches to JourneyDeck. The recorder key is stored in iOS Keychain and is never bundled with the app.
 
-## Current scope
+## Public-release scope
 
-- one owner and one iPhone;
+- iPhone-only, local-first journey recording;
 - iOS background GPS recording;
 - Start, Pause, Resume, Finish, and manual retry;
-- offline-first local storage with automatic foreground sync;
-- server-created JourneyDeck drives and route replay;
-- no Spotify capture, App Store onboarding, Android build, or multi-user account system.
+- offline-first local storage with optional private iCloud continuity;
+- Apple Music history or ShazamKit Auto Recognition for optional soundtracks;
+- no paid tier or subscription claim;
+- no public Spotify, Last.fm, or direct Spotify import until the separate commercial permissions and review scope are complete;
+- no Android build.
 
 Force-quitting the app stops iOS background location. Locking the phone or opening another app does not.
+
+`EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=1` is reserved for development and preview builds. It exposes the owner-only Spotify and Last.fm experiments. Production explicitly sets it to `0`; do not change that setting for an App Store build.
 
 ## Local verification
 
@@ -50,7 +54,9 @@ npx eas-cli build --platform ios --profile development
 npx expo start --dev-client --tunnel
 ```
 
-After the development build proves background recording on a real drive, create a production build and submit it to the private TestFlight track:
+Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
+
+Then create a production build and submit it through the App Store workflow:
 
 ```powershell
 npx eas-cli build --platform ios --profile production

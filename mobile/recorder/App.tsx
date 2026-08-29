@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import './src/location-task';
+import { NeonWidget, QuietInset } from './src/neon-widget-outline';
+import { HeaderArtwork } from './src/header-artwork';
 import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
 import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, syncPendingCompletedRecordingsBestEffort } from './src/api';
 import {
@@ -24,6 +26,7 @@ import { appDataClient } from './src/app-data';
 import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
 import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
+import { processAutomaticDriveLocations } from './src/automatic-drive-task';
 import { syncCurrentUserWithPrivateICloud } from './src/icloud-sync';
 import { areJourneyDeckRequestsBlocked, subscribeJourneyDeckRequestPolicy } from './src/network-activity';
 import {
@@ -178,6 +181,13 @@ function RecorderScreen() {
     return tracked;
   }, [connection, runExclusive]);
 
+  const reconcileAutomaticParking = useCallback(async () => {
+    const preferences = loadRecordingModePreferences();
+    if (!preferences.onboardingCompleted || preferences.mode !== 'automatic') return;
+    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    await processAutomaticDriveLocations([location]);
+  }, []);
+
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
 
   useEffect(() => {
@@ -210,6 +220,7 @@ function RecorderScreen() {
 
   useEffect(() => {
     void refresh().catch(() => {});
+    void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
     void sampleAppleMusicForActiveSession({ force: true });
     if (connection) {
       if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
@@ -224,7 +235,7 @@ function RecorderScreen() {
     }, 1000);
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active' || busyRef.current) return;
-      void refresh().catch(() => {});
+      void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
       void sampleAppleMusicForActiveSession({ force: true });
       if (connection) {
         if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
@@ -232,7 +243,7 @@ function RecorderScreen() {
       void syncPendingLastFmBestEffort();
     });
     return () => { clearInterval(timer); subscription.remove(); };
-  }, [connection, refresh]);
+  }, [connection, reconcileAutomaticParking, refresh]);
 
   useEffect(() => {
     if (!connection) return;
@@ -394,23 +405,23 @@ function RecorderScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <RecorderAtmosphere />
-          <View style={styles.brandRow}><View style={styles.logo}><Text style={styles.logoText}>J</Text></View><View><Text style={styles.eyebrow}>JOURNEYDECK</Text><Text style={styles.title}>Recorder</Text></View></View>
+          <View style={styles.recorderArtHeader}><HeaderArtwork source={require('./assets/recorder-header-hero-v2.jpg')} /></View>
 
           {!deviceId ? (
-            <View style={styles.card}><ActivityIndicator color="#9b7cff" /><Text style={styles.body}>Preparing the private on-device recorder…</Text></View>
+            <NeonWidget radius={22} style={styles.card}><ActivityIndicator color="#9b7cff" /><Text style={styles.body}>Preparing the private on-device recorder…</Text></NeonWidget>
           ) : !permissionsReady ? (
-            <View style={styles.card}>
+            <NeonWidget radius={22} style={styles.card}>
               <Text style={styles.cardTitle}>Allow background location</Text>
               <Text style={styles.body}>JourneyDeck needs “Always Allow” so it can keep recording while your phone is locked or another app is open.</Text>
               <Check ready={foregroundPermission} label="Location while using the app" />
               <Check ready={backgroundPermission} label="Location in the background" />
               <Check ready={taskAvailable} label="Native recorder build" />
               <PrimaryButton label="Enable location" onPress={enablePermissions} disabled={busy} />
-            </View>
+            </NeonWidget>
           ) : (
             <>
-              <View style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></View>
-              <View style={styles.metrics}>{metrics.map(([label, value]) => <View style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text></View>)}</View>
+              <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
+              <View style={styles.metrics}>{metrics.map(([label, value], index) => <QuietInset radius={16} accent={index === 0 ? '#ff795b' : index === 1 ? '#ff4d87' : index === 2 ? '#a66cff' : '#5aa7ff'} style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue} numberOfLines={1}>{value}</Text></QuietInset>)}</View>
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
@@ -419,7 +430,7 @@ function RecorderScreen() {
             </>
           )}
           {!connection && deviceId ? (
-            <View style={styles.card}>
+            <NeonWidget radius={22} style={styles.card}>
               <Text style={styles.cardTitle}>Optional owner backup</Text>
               <Text style={styles.body}>Recording works entirely on this iPhone. Existing JourneyDeck owners can connect a legacy server only to migrate or back up old data.</Text>
               <Text style={styles.label}>JOURNEYDECK ADDRESS</Text>
@@ -427,9 +438,9 @@ function RecorderScreen() {
               <Text style={styles.label}>RECORDER KEY</Text>
               <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor="#655f74" style={styles.input} />
               <SecondaryButton label="Connect owner backup" onPress={connect} disabled={busy} />
-            </View>
+            </NeonWidget>
           ) : null}
-          {connection ? <View style={styles.card}><Text style={styles.cardTitle}>Owner legacy tools</Text><Text style={styles.body}>Normal JourneyDeck use stays on this iPhone. Import is an explicit one-time owner action.</Text><SecondaryButton label="Import legacy archive" onPress={importLegacyArchive} disabled={busy} /></View> : null}
+          {connection ? <NeonWidget radius={22} style={styles.card}><Text style={styles.cardTitle}>Owner legacy tools</Text><Text style={styles.body}>Normal JourneyDeck use stays on this iPhone. Import is an explicit one-time owner action.</Text><SecondaryButton label="Import legacy archive" onPress={importLegacyArchive} disabled={busy} /></NeonWidget> : null}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
@@ -462,13 +473,13 @@ function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
 
 const styles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
-  flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 22, paddingTop: 34, paddingBottom: 48, gap: 18 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },
+  flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
+  recorderArtHeader: { width: '100%', marginBottom: 18, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },
   eyebrow: { color: '#8d869c', fontSize: 11, fontWeight: '800', letterSpacing: 2.2 }, title: { color: '#f8f5ff', fontSize: 28, fontWeight: '800', letterSpacing: -0.7 },
-  card: { backgroundColor: '#14111d', borderWidth: 1, borderColor: '#64427f', borderRadius: 24, padding: 20, gap: 13, shadowColor: '#9b61ff', shadowOpacity: 0.28, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, cardTitle: { color: '#fff', fontSize: 22, fontWeight: '800' }, body: { color: '#aca5b9', fontSize: 15, lineHeight: 22, marginBottom: 5 }, label: { color: '#888096', fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginTop: 5 }, input: { backgroundColor: '#0c0a11', borderWidth: 1, borderColor: '#59406c', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, color: '#fff', fontSize: 15, shadowColor: '#9b61ff', shadowOpacity: 0.18, shadowRadius: 9 },
+  card: { backgroundColor: '#14111d', borderWidth: 1, borderColor: '#64427f', borderRadius: 24, padding: 20, gap: 13, shadowColor: '#9b61ff', shadowOpacity: 0.14, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardTitle: { color: '#fff', fontSize: 21, fontWeight: '800' }, body: { color: '#aca5b9', fontSize: 15, lineHeight: 22, marginBottom: 5 }, label: { color: '#9b90a5', fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginTop: 5 }, input: { backgroundColor: '#0c0a11', borderWidth: 1, borderColor: '#59406c', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, color: '#fff', fontSize: 15, shadowColor: '#9b61ff', shadowOpacity: 0.1, shadowRadius: 9 },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, check: { color: '#43e6ae', fontSize: 21, fontWeight: '800', width: 24 }, checkText: { color: '#d4cede', fontSize: 15 },
-  statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#674788', borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20, shadowColor: '#9b61ff', shadowOpacity: 0.34, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12, shadowOpacity: 0.9, shadowRadius: 9 }, statusText: { fontSize: 27, fontWeight: '800', textShadowColor: '#9b61ff55', textShadowRadius: 8 }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6 },
-  metrics: { flexDirection: 'row', backgroundColor: '#121019', borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#4c365f', shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, metric: { flex: 1, alignItems: 'center', paddingVertical: 18, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#44334f' }, metricLabel: { color: '#84788f', fontSize: 9, fontWeight: '800', letterSpacing: 1.2 }, metricValue: { color: '#f4f0fb', fontSize: 18, fontVariant: ['tabular-nums'], fontWeight: '700', marginTop: 7, textShadowColor: '#a36bff55', textShadowRadius: 6 },
+  statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#674788', borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20, shadowColor: '#9b61ff', shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12, shadowOpacity: 0.9, shadowRadius: 9 }, statusText: { fontSize: 27, fontWeight: '800', textShadowColor: '#9b61ff55', textShadowRadius: 8 }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6, textAlign: 'center' },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 76, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 13 }, metricLabel: { color: '#9a8ea2', fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textAlign: 'center' }, metricValue: { color: '#f4f0fb', fontSize: 19, fontVariant: ['tabular-nums'], fontWeight: '800', marginTop: 6, textAlign: 'center' },
   primaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#ff6b4d', shadowOpacity: 0.48, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, primaryButtonText: { color: '#160a06', fontSize: 16, fontWeight: '800' }, secondaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#1c1726', borderWidth: 1, borderColor: '#654d7e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, secondaryButtonText: { color: '#e8e1f1', fontSize: 16, fontWeight: '700' }, buttonMuted: { opacity: 0.55 }, actionRow: { flexDirection: 'row', gap: 12 },
   progressRow: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 28 }, progressText: { color: '#b9afc7', fontSize: 14 },
   syncCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#4f3d63', borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14, shadowColor: '#65c9ff', shadowOpacity: 0.22, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, syncDot: { width: 10, height: 10, borderRadius: 5, shadowOpacity: 0.8, shadowRadius: 7 }, syncCopy: { flex: 1 }, syncTitle: { fontSize: 14, fontWeight: '800' }, syncDetail: { color: '#938b9f', fontSize: 12, lineHeight: 17, marginTop: 3 },
