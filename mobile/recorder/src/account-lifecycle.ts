@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 
 import { finalizeActiveProfileDeletion, getCurrentUser, signOutToFreshLocalProfile } from './auth';
 import { resetAutomaticDriveState } from './automatic-drive-state';
@@ -45,7 +46,8 @@ export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
   for (const uri of [...new Set(localPhotoUris)]) {
     // Do not orphan private photos after claiming account deletion succeeded.
     // A failed file removal leaves the local profile intact so it can retry.
-    await FileSystem.deleteAsync(uri, { idempotent: true });
+    const file = new File(uri);
+    if (file.exists) file.delete();
   }
   await Promise.all([
     deleteCurrentProfileConnection(),

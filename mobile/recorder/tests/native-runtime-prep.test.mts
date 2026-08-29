@@ -26,6 +26,8 @@ test('sign-out preserves the old profile while account deletion removes cloud fi
   assert.doesNotMatch(auth.slice(auth.indexOf('export function signOutToFreshLocalProfile'), auth.indexOf('export function finalizeActiveProfileDeletion')), /deleteLocalUserData/);
   assert.ok(lifecycle.indexOf('await deletePrivateCloudDataForUser(user)') < lifecycle.indexOf('finalizeActiveProfileDeletion(user.id)'));
   assert.ok(lifecycle.indexOf('await deletePrivateRouteStagingAssets(user.id)') < lifecycle.indexOf('finalizeActiveProfileDeletion(user.id)'));
+  assert.match(lifecycle, /const file = new File\(uri\);[\s\S]*if \(file\.exists\) file\.delete\(\);/);
+  assert.doesNotMatch(lifecycle, /FileSystem\.deleteAsync\(uri/);
   assert.match(cloud, /deleteCloudKitPrivateZone/);
   assert.match(nativeCloud, /deletePrivateZoneAsync/);
   assert.match(shell, /Final confirmation[\s\S]*Delete forever/);
