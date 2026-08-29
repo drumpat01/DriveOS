@@ -31,6 +31,22 @@ test("static web assets added after startup are served from the fixed web root",
   }
 });
 
+test("privacy and support pages are publicly accessible without an authenticated JourneyDeck session", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "" });
+  try {
+    const privacy = await runtime.app.inject({ method: "GET", url: "/privacy" });
+    const support = await runtime.app.inject({ method: "GET", url: "/support" });
+    assert.equal(privacy.statusCode, 200, privacy.body);
+    assert.match(String(privacy.headers["content-type"]), /text\/html/);
+    assert.match(privacy.body, /JourneyDeck Privacy Policy/i);
+    assert.match(privacy.body, /journeydeckme@gmail\.com/i);
+    assert.equal(support.statusCode, 200, support.body);
+    assert.match(String(support.headers["content-type"]), /text\/html/);
+    assert.match(support.body, /JourneyDeck Support/i);
+    assert.match(support.body, /mailto:journeydeckme@gmail\.com/i);
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
 test("Atlas API enforces auth, origin, roles, and durable serialized writes", async () => {
   const fixture = fixtureDatabase();
   const options = { databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", publicOrigin: "http://127.0.0.1" };
