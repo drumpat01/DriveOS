@@ -40,10 +40,12 @@ test("privacy and support pages are publicly accessible without an authenticated
     assert.match(String(privacy.headers["content-type"]), /text\/html/);
     assert.match(privacy.body, /JourneyDeck Privacy Policy/i);
     assert.match(privacy.body, /journeydeckapp@gmail\.com/i);
+    assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
     assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
+    assert.match(support.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
@@ -57,10 +59,13 @@ test("hosted root is public while login and the private app keep separate routes
     assert.match(landing.body, /The roads become the stories/i);
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
+    assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
 
     const login = await runtime.app.inject({ method: "GET", url: "/login" });
     assert.equal(login.statusCode, 200, login.body);
     assert.match(login.body, /JourneyDeck Sign In/i);
+    assert.match(login.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
+    assert.ok(fs.readFileSync(path.join(root, "web", "assets", "favicon.png")).equals(fs.readFileSync(path.join(root, "web", "assets", "journeydeck-cinematic-192.png"))));
 
     const privateApp = await runtime.app.inject({ method: "GET", url: "/app" });
     assert.equal(privateApp.statusCode, 302, privateApp.body);
