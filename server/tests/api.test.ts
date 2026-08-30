@@ -39,11 +39,11 @@ test("privacy and support pages are publicly accessible without an authenticated
     assert.equal(privacy.statusCode, 200, privacy.body);
     assert.match(String(privacy.headers["content-type"]), /text\/html/);
     assert.match(privacy.body, /JourneyDeck Privacy Policy/i);
-    assert.match(privacy.body, /journeydeckme@gmail\.com/i);
+    assert.match(privacy.body, /journeydeckapp@gmail\.com/i);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
-    assert.match(support.body, /mailto:journeydeckme@gmail\.com/i);
+    assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
