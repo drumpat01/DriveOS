@@ -47,6 +47,52 @@ test("privacy and support pages are publicly accessible without an authenticated
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
+test("hosted root is public while login and the private app keep separate routes", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "web" });
+  try {
+    const landing = await runtime.app.inject({ method: "GET", url: "/" });
+    assert.equal(landing.statusCode, 200, landing.body);
+    assert.match(String(landing.headers["content-type"]), /text\/html/);
+    assert.match(landing.body, /Every road has a soundtrack/i);
+    assert.match(landing.body, /The roads become the stories/i);
+    assert.match(landing.body, /href="\/login"/i);
+    assert.match(landing.body, /journeydeck-social-preview\.png/i);
+
+    const login = await runtime.app.inject({ method: "GET", url: "/login" });
+    assert.equal(login.statusCode, 200, login.body);
+    assert.match(login.body, /JourneyDeck Sign In/i);
+
+    const privateApp = await runtime.app.inject({ method: "GET", url: "/app" });
+    assert.equal(privateApp.statusCode, 302, privateApp.body);
+    assert.equal(privateApp.headers.location, "/login");
+
+    const authenticatedApp = await runtime.app.inject({ method: "GET", url: "/app", headers: auth });
+    assert.equal(authenticatedApp.statusCode, 200, authenticatedApp.body);
+    assert.match(String(authenticatedApp.headers["content-type"]), /text\/html/);
+    assert.match(authenticatedApp.body, /JourneyDeck/i);
+
+    const loginScript = fs.readFileSync(path.join(root, "web", "login.js"), "utf8");
+    assert.match(loginScript, /window\.location\.replace\("\/app"\)/);
+    assert.doesNotMatch(loginScript, /window\.location\.replace\("\/"\)/);
+    const wifeScript = fs.readFileSync(path.join(root, "web", "wife.js"), "utf8");
+    assert.match(wifeScript, /location\.replace\("\/app"\)/);
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, "web", "manifest.webmanifest"), "utf8"));
+    assert.equal(manifest.start_url, "/app#dashboard");
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
+test("desktop root continues to serve only the authenticated private app", async () => {
+  const fixture = fixtureDatabase(), runtime = await createApp({ databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", mode: "desktop" });
+  try {
+    const anonymous = await runtime.app.inject({ method: "GET", url: "/" });
+    assert.equal(anonymous.statusCode, 302, anonymous.body);
+    assert.equal(anonymous.headers.location, "/login");
+    const authenticated = await runtime.app.inject({ method: "GET", url: "/", headers: auth });
+    assert.equal(authenticated.statusCode, 200, authenticated.body);
+    assert.match(authenticated.body, /JourneyDeck/i);
+  } finally { await runtime.app.close(); fixture.cleanup(); }
+});
+
 test("Atlas API enforces auth, origin, roles, and durable serialized writes", async () => {
   const fixture = fixtureDatabase();
   const options = { databasePath: fixture.filename, root, allowTestAuth: true, legacyUpstream: "", publicOrigin: "http://127.0.0.1" };

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#05030a">
+  <meta name="description" content="JourneyDeck turns your drives into private, mapped music memories.">
+  <link rel="canonical" href="https://journeydeck.me/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://journeydeck.me/">
+  <meta property="og:title" content="JourneyDeck — Every road has a soundtrack">
+  <meta property="og:description" content="JourneyDeck turns your drives into private, mapped music memories.">
+  <meta property="og:image" content="https://journeydeck.me/assets/journeydeck-social-preview.png">
+  <meta property="og:image:width" content="1731">
+  <meta property="og:image:height" content="909">
+  <meta property="og:image:alt" content="Every road has a soundtrack — Routes. Music. Memories.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="JourneyDeck — Every road has a soundtrack">
+  <meta name="twitter:description" content="JourneyDeck turns your drives into private, mapped music memories.">
+  <meta name="twitter:image" content="https://journeydeck.me/assets/journeydeck-social-preview.png">
+  <link rel="icon" href="/assets/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/journeydeck-cinematic-180.png">
+  <link rel="stylesheet" href="/landing.css">
+  <title>JourneyDeck — Every road has a soundtrack</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="JourneyDeck home">
+      <img src="/assets/journeydeck-pulse-bare.svg" alt="">
+      <span>JourneyDeck</span>
+    </a>
+    <nav aria-label="Main navigation">
+      <a href="#stories">Discover</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/support">Support</a>
+      <a class="nav-sign-in" href="/login">Sign in</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">ROUTES · MUSIC · MEMORIES</p>
+        <h1 id="hero-title">Every <span>road</span> has a <span>soundtrack.</span></h1>
+        <p class="hero-lede">JourneyDeck turns your drives into private, mapped music memories.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#testflight">Join the TestFlight</a>
+          <a class="button button-quiet" href="#how-it-works">See how it works <span aria-hidden="true">→</span></a>
+        </div>
+      </div>
+
+      <div class="route-stage" aria-label="A Friday night drive from Ann Arbor to Detroit with songs pinned along the route">
+        <div class="journey-summary">
+          <strong>Friday night drive</strong>
+          <span>42.6 mi</span><span>58 min</span><span>12 songs</span>
+        </div>
+        <svg class="map-lines" viewBox="0 0 1400 540" role="img" aria-label="Dark map with an orange route between Ann Arbor and Detroit">
+          <defs>
+            <pattern id="minorRoads" width="92" height="70" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
+              <path d="M0 12H92M18 0V70M66 0V70" fill="none" stroke="#4a1e62" stroke-width="1.5" opacity=".62"/>
+            </pattern>
+            <filter id="routeGlow" x="-30%" y="-100%" width="160%" height="300%">
+              <feGaussianBlur stdDeviation="8" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <linearGradient id="routeColor" x1="0" x2="1">
+              <stop offset="0" stop-color="#ff9a3d"/><stop offset=".55" stop-color="#ff654f"/><stop offset="1" stop-color="#ff8550"/>
+            </linearGradient>
+          </defs>
+          <rect width="1400" height="540" fill="url(#minorRoads)"/>
+          <g fill="none" stroke="#57256e" stroke-width="3" opacity=".72">
+            <path d="M-60 420C210 352 290 440 495 348S815 262 1010 188s252-50 450-118"/>
+            <path d="M-40 120C210 170 272 90 490 156s318 106 486 18 254-90 474-30"/>
+            <path d="M136 560C218 394 170 290 278 196S485 90 560-30"/>
+            <path d="M980 580C910 430 1022 336 1080 244S1162 86 1192-30"/>
+          </g>
+          <path class="route-glow" d="M82 430C218 372 288 414 376 362S562 292 654 314s166-56 254-84 168-8 242-62 116-50 170-80"/>
+          <path class="route-core" d="M82 430C218 372 288 414 376 362S562 292 654 314s166-56 254-84 168-8 242-62 116-50 170-80"/>
+          <g class="route-endpoints">
+            <circle cx="82" cy="430" r="12"/><circle cx="1320" cy="88" r="12"/>
+          </g>
+        </svg>
+        <span class="map-city city-start">Ann Arbor</span>
+        <span class="map-city city-end">Detroit</span>
+        <div class="song-pin pin-one"><span class="cover cover-one"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-two"><span class="cover cover-two"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-three"><span class="cover cover-three"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-four"><span class="cover cover-four"></span><span class="pin-dot"></span></div>
+        <div class="now-playing"><span class="cover cover-four"></span><span><small>NOW PLAYING</small><strong>The Long Way Home</strong><em>Northbound</em></span><b aria-hidden="true">▥</b></div>
+      </div>
+    </section>
+
+    <section class="stories section-shell" id="stories" aria-labelledby="stories-title">
+      <div class="stories-copy">
+        <p class="section-kicker">JOURNEYS BECOME KEEPSAKES</p>
+        <h2 id="stories-title">The roads become the stories.</h2>
+        <p>Turn meaningful journeys into memories, then gather them into collections you’ll return to for years.</p>
+      </div>
+      <div class="story-journey" aria-label="A journey becoming a memory and then a collection">
+        <div class="story-line" aria-hidden="true"></div>
+        <article class="story-card journey-card">
+          <div class="story-art story-map-art" aria-hidden="true">
+            <svg viewBox="0 0 280 170">
+              <path d="M-20 148C26 112 58 134 92 100s58-10 82-38 54-26 126-64" fill="none" stroke="#ff684f" stroke-width="7" stroke-linecap="round"/>
+              <circle cx="11" cy="131" r="7"/><circle cx="270" cy="9" r="7"/>
+            </svg>
+          </div>
+          <p>JOURNEY</p><h3>Sunday drive</h3>
+          <small>A road you traveled.</small>
+        </article>
+        <article class="story-card memory-card">
+          <div class="story-art memory-art" aria-hidden="true"><span class="memory-album cover cover-two"></span></div>
+          <p>MEMORY</p><h3>Dad's favorite song</h3>
+          <small>A moment worth keeping.</small>
+        </article>
+        <article class="story-card collection-card">
+          <div class="collection-stack" aria-hidden="true"><span></span><span></span><span></span></div>
+          <p>COLLECTION</p><h3>Summers together</h3>
+          <small>A story you return to.</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="how-it-works section-shell" id="how-it-works" aria-labelledby="works-title">
+      <div class="section-heading">
+        <p class="section-kicker">QUIETLY WORKING IN THE BACKGROUND</p>
+        <h2 id="works-title">How JourneyDeck works</h2>
+      </div>
+      <div class="steps">
+        <article class="step-card">
+          <span class="step-number">01</span>
+          <div class="step-icon route-icon" aria-hidden="true"><svg viewBox="0 0 80 80"><path d="M12 62c13-25 26 8 39-20S66 17 69 12"/><circle cx="12" cy="62" r="5"/><circle cx="69" cy="12" r="5"/></svg></div>
+          <h3>Drive</h3><p>Your route begins automatically, capturing the roads that made the journey yours.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">02</span>
+          <div class="step-icon waveform-icon" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <h3>Listen</h3><p>Connect Apple Music and the songs you played become part of the journey.</p>
+        </article>
+        <article class="step-card">
+          <span class="step-number">03</span>
+          <div class="step-icon deck-icon" aria-hidden="true"><span></span><span></span><span></span></div>
+          <h3>Remember</h3><p>Return to the road, the music, and the feeling—long after the drive is over.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="sound-story" aria-labelledby="sound-story-title">
+      <div class="sound-story-image" aria-hidden="true"></div>
+      <div class="sound-story-copy">
+        <p class="section-kicker">A SOUNDTRACK WITH A SENSE OF PLACE</p>
+        <h2 id="sound-story-title">Your <span>music.</span><br>Your <span>map.</span><br>Your <span>story.</span></h2>
+        <p>Every drive adds another chapter—told through the turns you took and the songs that stayed with you.</p>
+      </div>
+    </section>
+
+    <section class="privacy-section section-shell" aria-labelledby="privacy-title">
+      <div class="privacy-symbol" aria-hidden="true">
+        <svg viewBox="0 0 160 180"><path d="M80 8 142 34v48c0 45-26 74-62 90C44 156 18 127 18 82V34Z"/><rect x="54" y="78" width="52" height="46" rx="8"/><path d="M65 78V65a15 15 0 0 1 30 0v13M80 94v13"/></svg>
+      </div>
+      <div class="privacy-copy">
+        <p class="section-kicker">PRIVATE BY DESIGN</p>
+        <h2 id="privacy-title">Your journey archive belongs to you.</h2>
+        <p>JourneyDeck is built to remember your life—not build an advertising profile.</p>
+        <ul>
+          <li><span aria-hidden="true">⊘</span><strong>No ads</strong></li>
+          <li><span aria-hidden="true">◉</span><strong>No tracking</strong></li>
+          <li><span aria-hidden="true">⌁</span><strong>You control your data</strong></li>
+        </ul>
+        <a class="text-link" href="/privacy">Read our privacy promise <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    <section class="apple-music-section section-shell" aria-labelledby="music-title">
+      <div class="music-copy">
+        <p class="section-kicker">YOUR MUSIC, ALREADY THERE</p>
+        <h2 id="music-title">Built for the music already in your life.</h2>
+        <p>Connect Apple Music to build your road soundtrack after each drive—without leaving the microphone listening.</p>
+        <div class="music-badge"><span aria-hidden="true">♪</span> Apple Music</div>
+      </div>
+      <div class="music-route" aria-label="Album artwork connected to points on a glowing route">
+        <div class="album-cluster" aria-hidden="true"><span class="cover cover-one"></span><span class="cover cover-two"></span><span class="cover cover-three"></span><span class="cover cover-four"></span></div>
+        <svg viewBox="0 0 720 260" aria-hidden="true"><path d="M30 140C166 56 246 222 358 126S560 72 704 36"/><circle cx="356" cy="127" r="7"/><circle cx="582" cy="68" r="7"/></svg>
+      </div>
+    </section>
+
+    <section class="final-cta" id="testflight" aria-labelledby="cta-title">
+      <div class="final-cta-copy">
+        <p class="section-kicker">THE ROAD IS WAITING</p>
+        <h2 id="cta-title">Your next <span>memory</span> is already on the <span>road.</span></h2>
+        <a class="button button-primary" href="mailto:journeydeckme@gmail.com?subject=JourneyDeck%20TestFlight%20invite">Join the TestFlight</a>
+        <p>Available for iPhone.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a class="brand" href="/" aria-label="JourneyDeck home"><img src="/assets/journeydeck-pulse-bare.svg" alt=""><span>JourneyDeck</span></a>
+    <p>Every road has a soundtrack.</p>
+    <nav aria-label="Footer navigation"><a href="/privacy">Privacy</a><a href="/support">Support</a><a href="/login">Sign in</a></nav>
+  </footer>
+</body>
+</html>

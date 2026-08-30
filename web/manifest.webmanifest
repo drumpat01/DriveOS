@@ -3,7 +3,7 @@
   "short_name": "JourneyDeck",
   "description": "Every drive, every song, one living journey.",
   "id": "/",
-  "start_url": "/#dashboard",
+  "start_url": "/app#dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
