@@ -1,0 +1,251 @@
+:root {
+  color-scheme: dark;
+  --ink: #05030a;
+  --surface: #0c0714;
+  --surface-strong: #120a1e;
+  --text: #faf7fc;
+  --muted: #bbb3c2;
+  --purple: #4a1e62;
+  --violet: #8e4bbd;
+  --coral: #ff654f;
+  --orange: #ff9a3d;
+  --line: rgba(187, 103, 255, .34);
+  --content: 1440px;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--ink); }
+body { margin: 0; min-width: 320px; overflow-x: hidden; color: var(--text); background: var(--ink); }
+a { color: inherit; text-decoration: none; }
+.skip-link { position: fixed; z-index: 20; left: 18px; top: -60px; padding: 12px 16px; border-radius: 12px; color: #09040d; background: var(--orange); transition: top .2s; }
+.skip-link:focus { top: 18px; }
+
+.site-header {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(calc(100% - 48px), var(--content));
+  min-height: 88px;
+  margin: 0 auto;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+
+.brand { display: inline-flex; align-items: center; gap: 12px; font-family: Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; font-size: 1.7rem; letter-spacing: -.02em; background: linear-gradient(100deg, var(--orange), var(--coral) 62%, #ff416f); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.brand img { width: 46px; height: 46px; filter: drop-shadow(0 0 15px rgba(255, 101, 79, .24)); }
+.site-header nav { display: flex; align-items: center; gap: clamp(22px, 4vw, 52px); color: #e5dee8; font-size: .95rem; }
+.site-header nav a { transition: color .18s, border-color .18s, background .18s; }
+.site-header nav a:hover, .site-header nav a:focus-visible { color: #fff; }
+.nav-sign-in { padding: 11px 24px; border: 1px solid rgba(255, 101, 79, .8); border-radius: 12px; }
+.nav-sign-in:hover, .nav-sign-in:focus-visible { background: rgba(255, 101, 79, .1); }
+
+.hero {
+  position: relative;
+  min-height: calc(100vh - 88px);
+  padding: clamp(66px, 8vw, 118px) 24px 72px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(87, 31, 118, .19), transparent 36%),
+    linear-gradient(180deg, #05030a 0%, #07040d 62%, #090511 100%);
+}
+.hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .19; background-image: linear-gradient(rgba(128,61,160,.13) 1px, transparent 1px), linear-gradient(90deg, rgba(128,61,160,.13) 1px, transparent 1px); background-size: 76px 76px; mask-image: linear-gradient(to bottom, transparent, #000 48%, transparent); }
+.hero-copy { position: relative; z-index: 2; width: min(100%, 980px); margin: 0 auto 48px; text-align: center; }
+.eyebrow { margin: 0 0 18px; color: #ff8a60; font-size: .76rem; font-weight: 800; letter-spacing: .28em; }
+.hero h1 { max-width: 1050px; margin: 0 auto; font-size: clamp(3.25rem, 7.1vw, 7.25rem); line-height: .96; letter-spacing: -.065em; text-wrap: balance; }
+.hero h1 span { background: linear-gradient(100deg, var(--orange), var(--coral) 64%, #ff4565); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.hero-lede { margin: 26px auto 0; color: #d1cad5; font-size: clamp(1.05rem, 2vw, 1.34rem); line-height: 1.55; }
+.hero-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; margin-top: 34px; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 54px; padding: 0 26px; border-radius: 13px; font-weight: 750; transition: transform .18s, filter .18s, background .18s; }
+.button:hover, .button:focus-visible { transform: translateY(-2px); }
+.button-primary { color: #fff; background: linear-gradient(105deg, var(--orange), var(--coral) 55%, #ff405f); box-shadow: 0 14px 38px rgba(255, 74, 75, .22), inset 0 1px rgba(255,255,255,.35); }
+.button-primary:hover, .button-primary:focus-visible { filter: brightness(1.08); }
+.button-quiet { color: #ff8a5a; }
+.button-quiet:hover, .button-quiet:focus-visible { background: rgba(255, 101, 79, .08); }
+
+.route-stage {
+  position: relative;
+  z-index: 1;
+  width: min(100%, var(--content));
+  aspect-ratio: 2.58 / 1;
+  min-height: 430px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 30px;
+  background: linear-gradient(#090511, #07040d) padding-box, linear-gradient(110deg, var(--orange), var(--violet) 45%, var(--coral)) border-box;
+  box-shadow: 0 38px 100px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.08);
+}
+.route-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 58% 53%, transparent 0 40%, rgba(3,1,7,.28) 78%, rgba(3,1,7,.7) 100%); }
+.map-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.route-glow { fill: none; stroke: var(--coral); stroke-width: 20; opacity: .42; filter: url(#routeGlow); }
+.route-core { fill: none; stroke: url(#routeColor); stroke-width: 7; stroke-linecap: round; filter: url(#routeGlow); }
+.route-endpoints circle { fill: var(--orange); stroke: #fff4d8; stroke-width: 5; filter: url(#routeGlow); }
+.journey-summary { position: absolute; z-index: 4; top: 28px; left: 28px; display: grid; grid-template-columns: repeat(3, auto); gap: 8px 24px; padding: 19px 22px; border: 1px solid rgba(188,112,255,.42); border-radius: 18px; background: rgba(10,6,18,.83); box-shadow: 0 14px 36px rgba(0,0,0,.34); backdrop-filter: blur(12px); }
+.journey-summary strong { grid-column: 1 / -1; font-size: 1.12rem; }
+.journey-summary span { color: #d3cad7; font-size: .84rem; }
+.map-city { position: absolute; z-index: 3; color: #f6eff8; font-weight: 700; text-shadow: 0 2px 9px #000; }
+.city-start { left: 4.5%; bottom: 9%; }
+.city-end { right: 3.5%; top: 10%; }
+.song-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 70px; padding-bottom: 21px; transform: translate(-50%, -100%); }
+.song-pin::after { content: ""; position: absolute; bottom: 13px; width: 2px; height: 15px; background: linear-gradient(#c871ff, var(--coral)); }
+.song-pin .cover { width: 58px; height: 58px; border: 2px solid rgba(222,154,255,.78); border-radius: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 18px rgba(185,88,255,.2); }
+.pin-dot { position: absolute; bottom: 3px; width: 13px; height: 13px; border: 3px solid #fff2e8; border-radius: 50%; background: var(--coral); box-shadow: 0 0 18px var(--coral); }
+.pin-one { left: 25%; top: 70%; }
+.pin-two { left: 42%; top: 61%; }
+.pin-three { left: 61%; top: 54%; }
+.pin-four { left: 77%; top: 40%; }
+.cover { display: block; flex: 0 0 auto; border-radius: 9px; background-color: #1b1027; }
+.cover-one { background: linear-gradient(145deg, #262034, #e5534b 66%, #ffb247); }
+.cover-two { background: radial-gradient(circle at 50% 25%, #f3d4bd 0 12%, transparent 13%), linear-gradient(140deg, #efe5dc 0 38%, #582647 39% 100%); }
+.cover-three { background: linear-gradient(160deg, #294f61, #17142b 56%, #e18656); }
+.cover-four { background: linear-gradient(145deg, #09162a, #295884 48%, #fb5b55); }
+.now-playing { position: absolute; z-index: 5; right: 15%; bottom: 9%; display: flex; align-items: center; gap: 13px; min-width: 250px; padding: 12px 15px; border: 1px solid rgba(255,115,75,.45); border-radius: 17px; background: rgba(12,7,20,.9); box-shadow: 0 18px 45px rgba(0,0,0,.5); backdrop-filter: blur(12px); }
+.now-playing .cover { width: 48px; height: 48px; }
+.now-playing span:nth-child(2) { display: grid; flex: 1; }
+.now-playing small { color: #ff9359; font-size: .58rem; font-weight: 800; letter-spacing: .12em; }
+.now-playing strong { margin-top: 2px; font-size: .9rem; }
+.now-playing em { color: #9e94a5; font-size: .72rem; font-style: normal; }
+.now-playing b { color: var(--orange); font-size: 1.4rem; }
+
+.section-shell { width: min(calc(100% - 48px), var(--content)); margin: 0 auto; }
+.section-kicker { margin: 0 0 16px; color: #ff8d5d; font-size: .7rem; font-weight: 850; letter-spacing: .24em; }
+.section-heading { max-width: 760px; margin: 0 auto 46px; text-align: center; }
+.section-heading h2, .stories h2, .privacy-copy h2, .music-copy h2, .final-cta h2 { margin: 0; font-size: clamp(2.45rem, 5vw, 5.2rem); line-height: 1; letter-spacing: -.055em; text-wrap: balance; }
+
+.stories { display: grid; grid-template-columns: minmax(260px, .72fr) minmax(650px, 1.75fr); align-items: center; gap: clamp(48px, 7vw, 108px); padding-block: clamp(96px, 11vw, 170px); }
+.stories-copy > p:last-child { max-width: 430px; margin: 28px 0 0; color: var(--muted); font-size: 1.08rem; line-height: 1.7; }
+.story-journey { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 2.5vw, 38px); align-items: end; padding: 36px 0 54px; }
+.story-line { position: absolute; z-index: 0; left: -5%; right: -5%; bottom: 78px; height: 4px; border-radius: 99px; background: linear-gradient(90deg, transparent, var(--orange) 14%, var(--coral) 48%, #c14ff2 74%, transparent); box-shadow: 0 0 22px rgba(255, 101, 79, .74); }
+.story-card { position: relative; z-index: 1; min-width: 0; padding: 12px 12px 20px; border: 1px solid rgba(197,113,255,.45); border-radius: 22px; background: linear-gradient(145deg, rgba(24,12,35,.94), rgba(9,5,15,.96)); box-shadow: 0 24px 55px rgba(0,0,0,.42); }
+.story-card::after { content: ""; position: absolute; left: 50%; bottom: -31px; width: 17px; height: 17px; transform: translateX(-50%); border: 4px solid #fff3e9; border-radius: 50%; background: var(--coral); box-shadow: 0 0 18px var(--coral); }
+.story-card > p { margin: 16px 8px 3px; color: #ff8b5b; font-size: .65rem; font-weight: 850; letter-spacing: .16em; }
+.story-card h3 { min-height: 2.5em; margin: 0 8px; font-size: clamp(1.05rem, 1.5vw, 1.35rem); line-height: 1.25; }
+.story-card small { position: absolute; left: 50%; bottom: -68px; width: 170%; transform: translateX(-50%); color: #c8c0cc; text-align: center; }
+.story-art { height: 155px; overflow: hidden; border-radius: 14px; }
+.story-map-art { position: relative; background-color: #10091b; background-image: linear-gradient(rgba(116,46,145,.24) 1px, transparent 1px), linear-gradient(90deg, rgba(116,46,145,.24) 1px, transparent 1px); background-size: 32px 32px; }
+.story-map-art svg { width: 100%; height: 100%; filter: drop-shadow(0 0 10px rgba(255,101,79,.7)); }
+.story-map-art circle { fill: var(--coral); stroke: #ffe5d7; stroke-width: 4; }
+.memory-art { position: relative; background: linear-gradient(180deg, rgba(8,4,13,.08), rgba(8,4,13,.46)), url('/assets/music-tour-road-v2.png') center 62% / cover; }
+.memory-album { position: absolute; left: 12px; bottom: 12px; width: 48px; height: 48px; border: 2px solid rgba(255,255,255,.64); box-shadow: 0 9px 18px rgba(0,0,0,.45); }
+.collection-card { transform: rotate(1.5deg); }
+.collection-stack { position: relative; height: 155px; }
+.collection-stack span { position: absolute; inset: 4px 8px 4px 12px; border: 1px solid rgba(255,161,107,.56); border-radius: 14px; background: linear-gradient(180deg, rgba(8,4,13,.12), rgba(8,4,13,.44)), url('/assets/music-tour-road-v2.png') center / cover; box-shadow: 0 12px 28px rgba(0,0,0,.38); }
+.collection-stack span:nth-child(1) { transform: rotate(-10deg) translateX(-12px); background-image: linear-gradient(180deg, rgba(8,4,13,.12), rgba(8,4,13,.44)), url('/assets/music-life-road-waveform-hero-v1.png'); }
+.collection-stack span:nth-child(2) { transform: rotate(7deg) translateX(12px); background-position: 70% center; }
+.collection-stack span:nth-child(3) { background-position: 42% center; }
+
+.how-it-works { padding-block: clamp(90px, 10vw, 150px); border-top: 1px solid rgba(190,102,255,.15); }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+.step-card { position: relative; min-height: 440px; padding: 34px; overflow: hidden; border: 1px solid transparent; border-radius: 26px; background: linear-gradient(145deg, rgba(18,10,28,.96), rgba(7,4,12,.97)) padding-box, linear-gradient(140deg, rgba(255,145,70,.72), rgba(151,75,203,.42), rgba(255,99,80,.45)) border-box; box-shadow: 0 30px 70px rgba(0,0,0,.32); }
+.step-number { color: #ff8959; font-size: .7rem; font-weight: 850; letter-spacing: .18em; }
+.step-icon { display: grid; place-items: center; height: 205px; margin: 12px 0 8px; }
+.step-icon svg { width: 150px; height: 150px; overflow: visible; filter: drop-shadow(0 0 18px rgba(255,101,79,.38)); }
+.route-icon path { fill: none; stroke: var(--coral); stroke-width: 5; stroke-linecap: round; }
+.route-icon circle { fill: var(--orange); stroke: #fff0df; stroke-width: 2; }
+.waveform-icon { grid-auto-flow: column; align-items: center; justify-content: center; gap: 8px; }
+.waveform-icon i { display: block; width: 7px; height: 46px; border-radius: 99px; background: linear-gradient(var(--orange), var(--coral), #ad4eee); box-shadow: 0 0 16px rgba(255,88,78,.35); }
+.waveform-icon i:nth-child(2), .waveform-icon i:nth-child(6) { height: 76px; }.waveform-icon i:nth-child(3), .waveform-icon i:nth-child(5) { height: 112px; }.waveform-icon i:nth-child(4) { height: 146px; }
+.deck-icon { position: relative; }
+.deck-icon span { position: absolute; width: 112px; height: 142px; border: 3px solid var(--coral); border-radius: 19px; box-shadow: 0 0 22px rgba(255,101,79,.28); }
+.deck-icon span:nth-child(1) { transform: translate(-20px,-12px); opacity: .35; }.deck-icon span:nth-child(2) { transform: translate(-10px,-6px); opacity: .6; }.deck-icon span:nth-child(3) { background: radial-gradient(circle at 50% 48%, rgba(255,101,79,.28), transparent 23%); }
+.step-card h3 { margin: 0; font-size: 1.75rem; }
+.step-card p { max-width: 340px; margin: 12px 0 0; color: var(--muted); line-height: 1.65; }
+
+.sound-story { position: relative; min-height: 710px; display: flex; align-items: center; overflow: hidden; border-block: 1px solid rgba(204,106,255,.16); background: #05030a; }
+.sound-story-image { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(5,3,10,.98) 0%, rgba(5,3,10,.82) 30%, rgba(5,3,10,.12) 68%), url('/assets/music-life-road-waveform-hero-v1.png') center / cover; }
+.sound-story-copy { position: relative; z-index: 1; width: min(calc(100% - 48px), var(--content)); margin: 0 auto; }
+.sound-story-copy h2 { margin: 0; font-size: clamp(3.3rem, 7vw, 7.5rem); line-height: .86; letter-spacing: -.065em; }
+.sound-story-copy h2 span { background: linear-gradient(100deg, var(--orange), var(--coral), #c957d9); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.sound-story-copy > p:last-child { max-width: 410px; margin-top: 30px; color: #cec4d2; font-size: 1.08rem; line-height: 1.7; }
+
+.privacy-section { display: grid; grid-template-columns: .8fr 1.2fr; align-items: center; gap: clamp(60px, 9vw, 150px); padding-block: clamp(100px, 12vw, 180px); }
+.privacy-symbol { display: grid; place-items: center; min-height: 390px; border: 1px solid rgba(195,105,255,.23); border-radius: 50%; background: radial-gradient(circle, rgba(105,39,141,.3), transparent 62%); }
+.privacy-symbol svg { width: min(62%, 270px); fill: rgba(30,13,43,.84); filter: drop-shadow(0 0 28px rgba(255,101,79,.34)); }
+.privacy-symbol svg > path:first-child { fill: rgba(20,9,30,.88); stroke: var(--coral); stroke-width: 5; }
+.privacy-symbol rect, .privacy-symbol path:last-child { fill: none; stroke: #ff8856; stroke-width: 5; stroke-linecap: round; }
+.privacy-copy > p:nth-of-type(2) { max-width: 650px; margin: 24px 0 0; color: var(--muted); font-size: 1.1rem; line-height: 1.65; }
+.privacy-copy ul { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 36px 0 28px; padding: 0; list-style: none; }
+.privacy-copy li { display: grid; place-items: center; min-height: 112px; padding: 16px; border: 1px solid rgba(205,122,255,.22); border-radius: 18px; color: #e8e1eb; text-align: center; background: rgba(17,9,26,.55); }
+.privacy-copy li span { color: var(--orange); font-size: 1.65rem; }
+.privacy-copy li strong { margin-top: 8px; font-size: .86rem; }
+.text-link { display: inline-flex; gap: 8px; color: #ff8d5b; font-weight: 750; }
+
+.apple-music-section { display: grid; grid-template-columns: .9fr 1.1fr; align-items: center; gap: clamp(45px, 7vw, 110px); padding-block: clamp(90px, 11vw, 160px); border-top: 1px solid rgba(196,109,255,.17); }
+.music-copy > p:nth-of-type(2) { max-width: 530px; margin: 26px 0; color: var(--muted); font-size: 1.08rem; line-height: 1.65; }
+.music-badge { display: inline-flex; align-items: center; gap: 10px; color: #ff6b68; font-size: 1.25rem; font-weight: 800; }
+.music-badge span { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; color: #fff; background: linear-gradient(145deg, #ff8960, #ff315f); }
+.music-route { position: relative; min-height: 390px; overflow: hidden; border-radius: 30px; background-color: #0b0613; background-image: linear-gradient(rgba(113,49,138,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(113,49,138,.18) 1px, transparent 1px); background-size: 54px 54px; }
+.music-route svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.music-route path { fill: none; stroke: var(--coral); stroke-width: 7; stroke-linecap: round; filter: drop-shadow(0 0 12px rgba(255,101,79,.8)); }
+.music-route circle { fill: var(--orange); stroke: #fff2e8; stroke-width: 3; }
+.album-cluster { position: absolute; z-index: 2; top: 50%; left: 22%; width: 160px; height: 180px; transform: translate(-50%,-50%); }
+.album-cluster .cover { position: absolute; width: 86px; height: 86px; border: 2px solid rgba(255,255,255,.45); box-shadow: 0 14px 28px rgba(0,0,0,.5); }
+.album-cluster .cover:nth-child(1) { left: 0; top: 30px; transform: rotate(-11deg); }.album-cluster .cover:nth-child(2) { left: 42px; top: 0; transform: rotate(4deg); }.album-cluster .cover:nth-child(3) { left: 70px; top: 70px; transform: rotate(10deg); }.album-cluster .cover:nth-child(4) { left: 20px; top: 84px; transform: rotate(-3deg); }
+
+.final-cta { position: relative; display: grid; place-items: center; min-height: 700px; overflow: hidden; text-align: center; background: linear-gradient(180deg, rgba(5,3,10,.25), rgba(5,3,10,.48)), url('/assets/music-tour-road-v2.png') center 55% / cover; }
+.final-cta::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, #05030a 0%, transparent 26%, transparent 65%, #05030a 100%); }
+.final-cta-copy { position: relative; z-index: 1; width: min(calc(100% - 40px), 920px); }
+.final-cta h2 span { color: #ff7655; }
+.final-cta .button { margin-top: 35px; }
+.final-cta-copy > p:last-child { margin: 15px 0 0; color: #c2bac7; }
+
+footer { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 28px; width: min(calc(100% - 48px), var(--content)); min-height: 126px; margin: 0 auto; border-top: 1px solid rgba(255,255,255,.08); }
+footer .brand { justify-self: start; font-size: 1.35rem; } footer .brand img { width: 38px; height: 38px; }
+footer p { margin: 0; color: #827a88; font-size: .82rem; }
+footer nav { justify-self: end; display: flex; gap: 30px; color: #bcb4c2; font-size: .84rem; }
+footer nav a:hover, footer nav a:focus-visible { color: #fff; }
+
+@media (max-width: 820px) {
+  .site-header { width: min(calc(100% - 28px), var(--content)); min-height: 72px; }
+  .brand { font-size: 1.35rem; }
+  .brand img { width: 38px; height: 38px; }
+  .site-header nav > a:not(.nav-sign-in) { display: none; }
+  .nav-sign-in { padding: 9px 17px; }
+  .hero { min-height: auto; padding: 58px 14px 52px; }
+  .hero-copy { margin-bottom: 38px; }
+  .hero h1 { font-size: clamp(3.15rem, 15vw, 5.4rem); }
+  .hero-lede { max-width: 28rem; }
+  .route-stage { aspect-ratio: .92 / 1; min-height: 530px; border-radius: 22px; }
+  .map-lines { width: 150%; max-width: none; left: -36%; }
+  .journey-summary { top: 18px; left: 18px; right: 18px; gap: 7px 16px; }
+  .city-start { left: 6%; bottom: 7%; }
+  .city-end { right: 5%; top: 28%; }
+  .pin-one { left: 16%; top: 72%; }
+  .pin-two { left: 40%; top: 60%; }
+  .pin-three { left: 64%; top: 50%; }
+  .pin-four { left: 83%; top: 40%; }
+  .now-playing { right: 16px; bottom: 16px; min-width: 230px; }
+  .section-shell { width: min(calc(100% - 28px), var(--content)); }
+  .stories { grid-template-columns: 1fr; padding-block: 86px 110px; }
+  .stories-copy { max-width: 600px; }
+  .story-journey { gap: 12px; }
+  .story-card { padding-inline: 7px; }
+  .story-art, .collection-stack { height: 120px; }
+  .story-card h3 { font-size: .9rem; }
+  .story-card small { width: 130%; font-size: .66rem; }
+  .steps { grid-template-columns: 1fr; }
+  .step-card { min-height: auto; padding: 28px; }
+  .step-icon { height: 170px; }
+  .sound-story { min-height: 720px; align-items: flex-start; padding-top: 90px; }
+  .sound-story-image { background: linear-gradient(180deg, rgba(5,3,10,.96) 0%, rgba(5,3,10,.48) 44%, rgba(5,3,10,.3)), url('/assets/music-life-road-waveform-hero-v1.png') 67% center / cover; }
+  .sound-story-copy { width: min(calc(100% - 28px), var(--content)); }
+  .privacy-section, .apple-music-section { grid-template-columns: 1fr; }
+  .privacy-symbol { min-height: 300px; border-radius: 36px; }
+  .privacy-copy ul { grid-template-columns: 1fr; }
+  .music-route { min-height: 340px; }
+  .final-cta { min-height: 620px; background-position: 68% center; }
+  footer { grid-template-columns: 1fr; justify-items: center; padding-block: 34px; text-align: center; }
+  footer .brand, footer nav { justify-self: center; }
+}
+
+@media (max-width: 540px) {
+  .story-journey { grid-template-columns: 1fr; gap: 78px; padding-inline: 20px; }
+  .story-line { left: 50%; right: auto; top: 32px; bottom: 32px; width: 4px; height: auto; transform: translateX(-50%); }
+  .story-card { width: min(100%, 320px); margin-inline: auto; }
+  .story-card::after { left: -22px; bottom: 50%; transform: translateY(50%); }
+  .story-card small { position: static; display: block; width: auto; margin: 13px 8px 0; transform: none; text-align: left; }
+}
+
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }

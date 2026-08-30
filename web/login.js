@@ -84,7 +84,7 @@
       const response = await fetch("/api/auth/passkey/verify", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ challengeId: options.challengeId, credentialId: encode(credential.rawId), clientDataJSON: encode(credential.response.clientDataJSON), authenticatorData: encode(credential.response.authenticatorData), signature: encode(credential.response.signature) }) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Passkey sign-in failed.");
-      window.location.replace("/");
+      window.location.replace("/app");
     } catch (error) {
       if (error?.name !== "NotAllowedError") message.textContent = error.message || "Passkey sign-in failed.";
     } finally {
@@ -113,7 +113,7 @@
         return;
       }
       form.password.value = "";
-      window.location.replace(data.role === "wife" ? "/wife" : "/");
+      window.location.replace(data.role === "wife" ? "/wife" : "/app");
     } catch {
       message.textContent = "JourneyDeck could not be reached. Please try again.";
     } finally {

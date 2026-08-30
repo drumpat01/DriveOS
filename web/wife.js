@@ -153,7 +153,7 @@
   $("wifeDetailBack").addEventListener("click", () => activate(detailReturnView));
   $("themeToggle").addEventListener("click", () => { const dark = document.documentElement.dataset.theme !== "dark"; document.documentElement.dataset.theme = dark ? "dark" : "light"; localStorage.setItem("journeydeck-wife-theme", document.documentElement.dataset.theme); });
   document.documentElement.dataset.theme = localStorage.getItem("journeydeck-wife-theme") || "light";
-  $("openFull").addEventListener("click", async () => { try { $("openFull").disabled = true; await request("/api/wife/mode", { method: "POST", body: JSON.stringify({ mode: "full" }) }); location.replace("/"); } catch { $("openFull").disabled = false; } });
+  $("openFull").addEventListener("click", async () => { try { $("openFull").disabled = true; await request("/api/wife/mode", { method: "POST", body: JSON.stringify({ mode: "full" }) }); location.replace("/app"); } catch { $("openFull").disabled = false; } });
   $("wifeSignOut").addEventListener("click", async () => { try { $("wifeSignOut").disabled = true; await request("/api/auth/logout", { method: "POST", body: "{}" }); try { localStorage.removeItem("journeydeck-saved-place-labels-v1"); } catch {} location.replace("/login"); } catch { $("wifeSignOut").disabled = false; } });
   void (async () => {
     let failures = 0;
