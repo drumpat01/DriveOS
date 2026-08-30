@@ -55,7 +55,8 @@
           <strong>Friday night drive</strong>
           <span>42.6 mi</span><span>58 min</span><span>12 songs</span>
         </div>
-        <svg class="map-lines" viewBox="0 0 1400 540" role="img" aria-label="Dark map with an orange route between Ann Arbor and Detroit">
+        <div class="map-visual">
+        <svg class="map-lines" viewBox="0 0 1400 540" preserveAspectRatio="none" role="img" aria-label="Dark map with an orange route between Ann Arbor and Detroit">
           <defs>
             <pattern id="minorRoads" width="92" height="70" patternUnits="userSpaceOnUse" patternTransform="rotate(-12)">
               <path d="M0 12H92M18 0V70M66 0V70" fill="none" stroke="#4a1e62" stroke-width="1.5" opacity=".62"/>
@@ -81,12 +82,13 @@
             <circle cx="82" cy="430" r="12"/><circle cx="1320" cy="88" r="12"/>
           </g>
         </svg>
+        <div class="song-pin pin-one" aria-hidden="true"><span class="cover cover-one"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-two" aria-hidden="true"><span class="cover cover-two"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-three" aria-hidden="true"><span class="cover cover-three"></span><span class="pin-dot"></span></div>
+        <div class="song-pin pin-four" aria-hidden="true"><span class="cover cover-four"></span><span class="pin-dot"></span></div>
+        </div>
         <span class="map-city city-start">Ann Arbor</span>
         <span class="map-city city-end">Detroit</span>
-        <div class="song-pin pin-one"><span class="cover cover-one"></span><span class="pin-dot"></span></div>
-        <div class="song-pin pin-two"><span class="cover cover-two"></span><span class="pin-dot"></span></div>
-        <div class="song-pin pin-three"><span class="cover cover-three"></span><span class="pin-dot"></span></div>
-        <div class="song-pin pin-four"><span class="cover cover-four"></span><span class="pin-dot"></span></div>
         <div class="now-playing"><span class="cover cover-four"></span><span><small>NOW PLAYING</small><strong>The Long Way Home</strong><em>Northbound</em></span><b aria-hidden="true">▥</b></div>
       </div>
     </section>
@@ -181,7 +183,7 @@
       </div>
       <div class="music-route" aria-label="Album artwork connected to points on a glowing route">
         <div class="album-cluster" aria-hidden="true"><span class="cover cover-one"></span><span class="cover cover-two"></span><span class="cover cover-three"></span><span class="cover cover-four"></span></div>
-        <svg viewBox="0 0 720 260" aria-hidden="true"><path d="M30 140C166 56 246 222 358 126S560 72 704 36"/><circle cx="356" cy="127" r="7"/><circle cx="582" cy="68" r="7"/></svg>
+        <svg viewBox="0 0 720 260" aria-hidden="true"><path d="M30 140C166 56 246 222 358 126S560 72 704 36"/><circle cx="356" cy="128" r="7"/><circle cx="582" cy="54" r="7"/></svg>
       </div>
     </section>
 
