@@ -78,6 +78,7 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 38px 100px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.08);
 }
 .route-stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 58% 53%, transparent 0 40%, rgba(3,1,7,.28) 78%, rgba(3,1,7,.7) 100%); }
+.map-visual { position: absolute; inset: 0; }
 .map-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
 .route-glow { fill: none; stroke: var(--coral); stroke-width: 20; opacity: .42; filter: url(#routeGlow); }
 .route-core { fill: none; stroke: url(#routeColor); stroke-width: 7; stroke-linecap: round; filter: url(#routeGlow); }
@@ -88,19 +89,19 @@ a { color: inherit; text-decoration: none; }
 .map-city { position: absolute; z-index: 3; color: #f6eff8; font-weight: 700; text-shadow: 0 2px 9px #000; }
 .city-start { left: 4.5%; bottom: 9%; }
 .city-end { right: 3.5%; top: 10%; }
-.song-pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 70px; padding-bottom: 21px; transform: translate(-50%, -100%); }
-.song-pin::after { content: ""; position: absolute; bottom: 13px; width: 2px; height: 15px; background: linear-gradient(#c871ff, var(--coral)); }
-.song-pin .cover { width: 58px; height: 58px; border: 2px solid rgba(222,154,255,.78); border-radius: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 18px rgba(185,88,255,.2); }
-.pin-dot { position: absolute; bottom: 3px; width: 13px; height: 13px; border: 3px solid #fff2e8; border-radius: 50%; background: var(--coral); box-shadow: 0 0 18px var(--coral); }
-.pin-one { left: 25%; top: 70%; }
-.pin-two { left: 42%; top: 61%; }
-.pin-three { left: 61%; top: 54%; }
-.pin-four { left: 77%; top: 40%; }
-.cover { display: block; flex: 0 0 auto; border-radius: 9px; background-color: #1b1027; }
-.cover-one { background: linear-gradient(145deg, #262034, #e5534b 66%, #ffb247); }
-.cover-two { background: radial-gradient(circle at 50% 25%, #f3d4bd 0 12%, transparent 13%), linear-gradient(140deg, #efe5dc 0 38%, #582647 39% 100%); }
-.cover-three { background: linear-gradient(160deg, #294f61, #17142b 56%, #e18656); }
-.cover-four { background: linear-gradient(145deg, #09162a, #295884 48%, #fb5b55); }
+.song-pin { position: absolute; z-index: 4; width: 70px; height: 84px; transform: translate(-50%, -100%); }
+.song-pin::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 2px; height: 27px; transform: translateX(-50%); background: linear-gradient(#c871ff, var(--coral)); }
+.song-pin .cover { position: absolute; top: 0; left: 6px; width: 58px; height: 58px; border: 2px solid rgba(222,154,255,.78); border-radius: 13px; box-shadow: 0 10px 28px rgba(0,0,0,.5), 0 0 18px rgba(185,88,255,.2); }
+.pin-dot { position: absolute; z-index: 1; left: 50%; bottom: 0; width: 13px; height: 13px; transform: translate(-50%, 50%); border: 3px solid #fff2e8; border-radius: 50%; background: var(--coral); box-shadow: 0 0 18px var(--coral); }
+.pin-one { left: 26.86%; top: 67.04%; }
+.pin-two { left: 46.71%; top: 58.15%; }
+.pin-three { left: 64.86%; top: 42.59%; }
+.pin-four { left: 82.14%; top: 31.11%; }
+.cover { display: block; flex: 0 0 auto; border-radius: 9px; background-color: #1b1027; background-image: url('/assets/fictional-album-covers-v1.webp'); background-repeat: no-repeat; background-size: 200% 200%; }
+.cover-one { background-position: 0 0; }
+.cover-two { background-position: 100% 0; }
+.cover-three { background-position: 0 100%; }
+.cover-four { background-position: 100% 100%; }
 .now-playing { position: absolute; z-index: 5; right: 15%; bottom: 9%; display: flex; align-items: center; gap: 13px; min-width: 250px; padding: 12px 15px; border: 1px solid rgba(255,115,75,.45); border-radius: 17px; background: rgba(12,7,20,.9); box-shadow: 0 18px 45px rgba(0,0,0,.5); backdrop-filter: blur(12px); }
 .now-playing .cover { width: 48px; height: 48px; }
 .now-playing span:nth-child(2) { display: grid; flex: 1; }
@@ -208,14 +209,10 @@ footer nav a:hover, footer nav a:focus-visible { color: #fff; }
   .hero h1 { font-size: clamp(3.15rem, 15vw, 5.4rem); }
   .hero-lede { max-width: 28rem; }
   .route-stage { aspect-ratio: .92 / 1; min-height: 530px; border-radius: 22px; }
-  .map-lines { width: 150%; max-width: none; left: -36%; }
+  .map-visual { inset: 0 auto 0 -36%; width: 150%; }
   .journey-summary { top: 18px; left: 18px; right: 18px; gap: 7px 16px; }
-  .city-start { left: 6%; bottom: 7%; }
-  .city-end { right: 5%; top: 28%; }
-  .pin-one { left: 16%; top: 72%; }
-  .pin-two { left: 40%; top: 60%; }
-  .pin-three { left: 64%; top: 50%; }
-  .pin-four { left: 83%; top: 40%; }
+  .city-start { left: 6%; top: 74%; bottom: auto; }
+  .city-end { right: 5%; top: 41%; }
   .now-playing { right: 16px; bottom: 16px; min-width: 230px; }
   .section-shell { width: min(calc(100% - 28px), var(--content)); }
   .stories { grid-template-columns: 1fr; padding-block: 86px 110px; }
