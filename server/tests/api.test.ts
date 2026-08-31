@@ -60,6 +60,10 @@ test("hosted root is public while login and the private app keep separate routes
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
+    assert.equal(landing.body.match(/https:\/\/x\.com\/JourneyDeck/g)?.length, 2);
+    assert.match(landing.body, /Follow @JourneyDeck on X/i);
+    assert.match(landing.body, /The road is already moving\./i);
+    assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
 
     const login = await runtime.app.inject({ method: "GET", url: "/login" });
     assert.equal(login.statusCode, 200, login.body);
