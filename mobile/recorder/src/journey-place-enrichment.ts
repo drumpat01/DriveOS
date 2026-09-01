@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import { AppState } from 'react-native';
+import { lookupNearbyMapKitPointsOfInterest } from '../modules/journeydeck-recorder';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import {
   findCachedPlace,
@@ -24,6 +25,8 @@ type JourneyWithRoute = {
 const CACHE_DAYS = 30;
 const MAX_LOOKUPS_PER_PASS = 4;
 const FAILURE_RETRY_MS = 60 * 60 * 1_000;
+const MAPKIT_POI_SEARCH_RADIUS_METERS = 250;
+const MAPKIT_POI_MAX_MATCH_DISTANCE_METERS = 160;
 const recentFailures = new Map<string, number>();
 const pendingByUser = new Map<string, Promise<number>>();
 
@@ -67,8 +70,14 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
   for (const coordinate of candidates) {
     const key = candidateKey(coordinate);
     try {
-      const [address] = await Location.reverseGeocodeAsync(coordinate);
-      const label = address ? bestPlaceLabelFromAddress(address) : null;
+      const nearby = await lookupNearbyMapKitPointsOfInterest(
+        coordinate.latitude,
+        coordinate.longitude,
+        MAPKIT_POI_SEARCH_RADIUS_METERS,
+      );
+      const pointOfInterest = nearby.find(candidate => candidate.distanceMeters <= MAPKIT_POI_MAX_MATCH_DISTANCE_METERS);
+      const [address] = pointOfInterest ? [] : await Location.reverseGeocodeAsync(coordinate);
+      const label = pointOfInterest?.name ?? (address ? bestPlaceLabelFromAddress(address) : null);
       if (!label) {
         recentFailures.set(key, Date.now());
         continue;
@@ -76,7 +85,7 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
       upsertPlace({
         // local_places ids are database-wide, so the profile must be part of a
         // deterministic geocoder cache id even when two drivers share a stop.
-        id: `geocoded-${userId}-${key}`,
+        id: `${pointOfInterest ? 'mapkit-poi' : 'geocoded'}-${userId}-${key}`,
         userId,
         kind: 'geocoded',
         label,

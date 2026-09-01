@@ -14,3 +14,40 @@ export type NativeRecorderStatus = {
   lastEventAt: string | null;
   lastErrorCode: string | null;
 };
+
+export type NativeRecorderInboxPoint = {
+  sequence: number;
+  recordedAt: string;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  altitudeMeters: number | null;
+  headingDegrees: number | null;
+  speedMps: number | null;
+};
+
+export type NativeRecorderInboxSession = {
+  id: string;
+  ownerUserId: string;
+  deviceId: string;
+  status: 'recording' | 'paused' | 'finishing' | 'completed';
+  startedAt: string;
+  endedAt: string | null;
+  nextSequence: number;
+  createdAt: string;
+  updatedAt: string;
+  points: NativeRecorderInboxPoint[];
+};
+
+export type NativeRecorderInboxExport = {
+  sessions: NativeRecorderInboxSession[];
+  errorCode: string | null;
+};
+
+export type NativeMapKitPointOfInterest = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  distanceMeters: number;
+  category: string | null;
+};

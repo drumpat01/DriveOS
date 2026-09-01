@@ -61,7 +61,8 @@ import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } 
 import { NeonWidgetOutline } from './neon-widget-outline';
 import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { isInternalTestingBuild } from './internal-testing';
-import { prepareShareCardCoords } from './privacy-masker';
+import { maskCoordinate, prepareShareCardCoords } from './privacy-masker';
+import { trimPrivateShareRoute } from './share-route-privacy';
 import { buildAccessibleMusicDashboard, loadPrimarySectionsData } from './primary-sections-data';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { subscribeLocalArchiveChanges } from './local-archive-events';
@@ -2431,20 +2432,37 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
   };
   inferEndpoint(journey.startingLocation, start, 'start');
   inferEndpoint(journey.endingLocation, end, 'end');
+  const sensitivePlaces = [...getSensitivePlaces(userId), ...inferredPrivatePlaces];
+  const rawSongPoints = buildSongRouteMoments(journey.soundtrack, routeCoordinates, journey.startedAt, journey.endedAt)
+    .map(moment => ({ index: moment.index, coordinate: moment.coordinate }));
+  const trimmed = trimPrivateShareRoute({
+    route: routeCoordinates,
+    songPoints: rawSongPoints,
+    startLabel: journey.startingLocation,
+    endLabel: journey.endingLocation,
+  });
   const prepared = prepareShareCardCoords({
     startLabel: journey.startingLocation,
     endLabel: journey.endingLocation,
     startCoord: start ? { lng: start[0], lat: start[1] } : null,
     endCoord: end ? { lng: end[0], lat: end[1] } : null,
-    route: routeCoordinates,
-    sensitivePlaces: [...getSensitivePlaces(userId), ...inferredPrivatePlaces],
+    route: trimmed.route,
+    sensitivePlaces,
   });
+  const songPoints = trimmed.songPoints
+    .map(point => {
+      const masked = maskCoordinate({ lng: point.coordinate[0], lat: point.coordinate[1] }, sensitivePlaces);
+      return { index: point.index, coordinate: [masked.lng, masked.lat] as [number, number] };
+    });
   return {
-    startLocation: prepared.startLabel,
-    endLocation: prepared.endLabel,
+    startLocation: trimmed.trimmedStart ? null : prepared.startLabel,
+    endLocation: trimmed.trimmedEnd ? null : prepared.endLabel,
     routeCoordinates: prepared.route?.coordinates ?? [],
-    routeProtected: prepared.privacySummary !== 'Full route shown',
-    routePrivacySummary: prepared.privacySummary,
+    routeProtected: trimmed.trimmedStart || trimmed.trimmedEnd || prepared.privacySummary !== 'Full route shown',
+    routePrivacySummary: trimmed.trimmedStart || trimmed.trimmedEnd ? 'Private Home or Work route trimmed' : prepared.privacySummary,
+    routeTrimmedStart: trimmed.trimmedStart,
+    routeTrimmedEnd: trimmed.trimmedEnd,
+    songPoints,
   };
 }
 
@@ -3432,7 +3450,7 @@ const styles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
-  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, cinematicPageTitle: { color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 1, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 }, pageArtHeader: { alignSelf: 'stretch', marginBottom: 14 },
+  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, cinematicPageTitle: { position: 'relative', zIndex: 10, elevation: 10, color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 1, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
   webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#56357a', backgroundColor: '#05040e', shadowColor: '#9d58ff', shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 9 }, overflow: 'hidden' },
   webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },

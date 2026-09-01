@@ -13,6 +13,7 @@ import { deleteCurrentProfileTessieSecrets } from './tessie-direct';
 import { stopAutomaticDetection, stopLocationTracking } from './tracking';
 import { deletePrivateRouteStagingAssets } from './cloudkit-sync';
 import { configureNativeAutomaticRecorder } from '../modules/journeydeck-recorder';
+import { syncNativeRecorderInbox } from './native-recorder-inbox';
 
 async function stopProfileBackgroundWork(): Promise<void> {
   // Keep Core Location task transitions serialized. Concurrent stop calls can
@@ -24,6 +25,7 @@ async function stopProfileBackgroundWork(): Promise<void> {
 }
 
 export async function prepareForProfileSwitch(): Promise<void> {
+  await syncNativeRecorderInbox();
   if (activeSession()) throw new Error('Finish or discard the active journey before switching profiles.');
   await stopProfileBackgroundWork();
 }
@@ -35,6 +37,7 @@ export async function signOutOfJourneyDeck(): Promise<LocalUser> {
 
 export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
   const user = getCurrentUser();
+  await syncNativeRecorderInbox();
   if (activeSession()) throw new Error('Finish or discard the active journey before deleting this account.');
   const localPhotoUris = listPhotosIncludingDeleted(user.id)
     .map(photo => photo.localUri)

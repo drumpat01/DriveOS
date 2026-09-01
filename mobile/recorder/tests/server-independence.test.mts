@@ -79,7 +79,7 @@ test('clean profiles can record manually and automatically without JourneyDeck c
   assert.match(app, /beginLocalSession\(deviceId\)/);
   assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
   assert.match(nativeRecorder, /private func startSession\(identity:/);
-  assert.match(nativeRecorder, /INSERT INTO recording_sessions\(id,owner_user_id,device_id,status/);
+  assert.match(nativeRecorder, /INSERT INTO native_recording_sessions\(id,owner_user_id,device_id,status/);
   assert.doesNotMatch(nativeRecorder, /loadConnection|JourneyDeck credentials/);
 });
 
@@ -90,7 +90,7 @@ test('automatic journeys are detected, recorded, and parked entirely by the nati
   assert.match(nativeRecorder, /private func recordAndEvaluate\(_ locations: \[CLLocation\], session: ActiveSession\)/);
   assert.match(nativeRecorder, /stoppedSince[\s\S]*driveStopDuration/);
   assert.match(nativeRecorder, /try finishSession\(session, endedAt:/);
-  assert.match(nativeRecorder, /INSERT OR IGNORE INTO recording_points/);
+  assert.match(nativeRecorder, /INSERT OR IGNORE INTO native_recording_points/);
   assert.match(app, /configureNativeAutomaticRecorder\(/);
   assert.doesNotMatch(app, /reconcileAutomaticParking\(/);
 });

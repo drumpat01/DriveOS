@@ -4,7 +4,7 @@ import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Canvas, ColorMatrix, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Polyline, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, G, LinearGradient as SvgLinearGradient, Path, Polyline, Stop, Text as SvgText } from 'react-native-svg';
 
 import { appDataClient, type JourneyPhoto } from './app-data';
 
@@ -57,6 +57,9 @@ export type ShareCardPayload = {
     routeCoordinates: [number, number][];
     routeProtected: boolean;
     routePrivacySummary: string;
+    routeTrimmedStart: boolean;
+    routeTrimmedEnd: boolean;
+    songPoints: { index: number; coordinate: [number, number] }[];
     featured: { track: string; artist: string; artworkUrl: string | null } | null;
     topArtist: string | null;
   };
@@ -65,7 +68,7 @@ export type ShareCardPayload = {
 type JourneyShareTheme = 'cinematic' | 'electric' | 'sunset';
 type JourneyShareMapStyle = 'street' | 'dim' | 'route';
 type JourneyShareArtwork = 'album' | 'backdrop' | 'none';
-type JourneyShareStat = 'distance' | 'duration' | 'efficiency' | 'songs' | 'artist';
+type JourneyShareStat = 'distance' | 'duration' | 'songs' | 'artist';
 
 const journeyThemes: Record<JourneyShareTheme, { accent: string; accent2: string; background: string; panel: string; text: string }> = {
   cinematic: { accent: '#ff725a', accent2: '#ad82ff', background: '#0c0712', panel: '#170d21', text: '#fff8fd' },
@@ -82,7 +85,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
   const [journeyTheme, setJourneyTheme] = useState<JourneyShareTheme>('cinematic');
   const [journeyMapStyle, setJourneyMapStyle] = useState<JourneyShareMapStyle>('street');
   const [journeyArtwork, setJourneyArtwork] = useState<JourneyShareArtwork>('album');
-  const [journeyStats, setJourneyStats] = useState<JourneyShareStat[]>(['distance', 'duration', 'efficiency', 'songs', 'artist']);
+  const [journeyStats, setJourneyStats] = useState<JourneyShareStat[]>(['distance', 'duration', 'songs', 'artist']);
 
   useEffect(() => {
     let active = true;
@@ -96,7 +99,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
     setJourneyTheme('cinematic');
     setJourneyMapStyle('street');
     setJourneyArtwork('album');
-    setJourneyStats(['distance', 'duration', 'efficiency', 'songs', 'artist']);
+    setJourneyStats(['distance', 'duration', 'songs', 'artist']);
     setJourneyArtworkLoading(Boolean(payload?.journey?.featured?.artworkUrl));
   }, [payload?.journey?.startedAt]);
 
@@ -139,7 +142,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
               </View>
             </View>}
           {payload?.journey && <JourneyShareControls theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />}
-          <View style={styles.privacyNote}><Text style={styles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={styles.privacyNoteText}>{payload?.journey ? 'Home and Work routes are replaced with a city-level cinematic route. Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.'}</Text></View>
+          <View style={styles.privacyNote}><Text style={styles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={styles.privacyNoteText}>{payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.'}</Text></View>
         </ScrollView>
         <Pressable accessibilityRole="button" onPress={() => void share()} disabled={sharing || photoLoading || journeyArtworkLoading} style={[styles.shareButton, (sharing || photoLoading || journeyArtworkLoading) && styles.disabled]}>{sharing || photoLoading || journeyArtworkLoading ? <ActivityIndicator color="#1a0907" /> : <Text style={styles.shareText}>Share image</Text>}</Pressable>
       </View>
@@ -164,13 +167,13 @@ const JourneySharePreview = forwardRef<View, {
     <Text style={[styles.journeyShareEyebrow, { color: palette.accent }]}>{formatJourneyShareDate(journey.startedAt).toUpperCase()}</Text>
     <Text style={[styles.journeyShareTitle, { color: palette.text }]}>{journeyShareTitle(journey.startedAt).toUpperCase()}</Text>
     <View style={styles.journeyShareStats}>{shownStats.map(stat => <View key={stat.label} style={[styles.journeyShareStat, { borderColor: `${palette.accent}55`, backgroundColor: palette.panel }]}><Text style={[styles.journeyShareStatLabel, { color: palette.accent }]}>{stat.label}</Text><Text style={[styles.journeyShareStatValue, { color: palette.text }]} numberOfLines={1}>{stat.value}</Text></View>)}</View>
-    <ShareRouteSnapshot route={safeRoute.points} mapStyle={mapStyle} />
+    <ShareRouteSnapshot route={safeRoute.points} songPoints={journey.songPoints} mapStyle={mapStyle} trimmedStart={safeRoute.trimmedStart} trimmedEnd={safeRoute.trimmedEnd} />
     <View style={styles.journeyShareRouteLabels}><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.startLabel}</Text><Text style={[styles.journeyShareRouteArrow, { color: palette.accent }]}>→</Text><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.endLabel}</Text></View>
     <View style={[styles.journeyShareMusic, { borderColor: `${palette.accent2}66`, backgroundColor: palette.panel }]}>
       {featured?.artworkUrl && artwork === 'album' ? <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareAlbum} /> : <View style={[styles.journeyShareAlbumFallback, { backgroundColor: `${palette.accent2}44` }]}><Text style={[styles.journeyShareAlbumNote, { color: palette.accent2 }]}>♪</Text></View>}
       <View style={styles.journeyShareMusicCopy}><Text style={[styles.journeyShareMusicLabel, { color: palette.accent }]}>JOURNEY SOUNDTRACK</Text><Text style={[styles.journeyShareTrack, { color: palette.text }]} numberOfLines={1}>{featured?.track ?? 'The road, remembered'}</Text><Text style={[styles.journeyShareArtist, { color: palette.accent2 }]} numberOfLines={1}>{featured?.artist ?? (journey.topArtist || 'JourneyDeck')}</Text></View>
     </View>
-    <Text style={styles.journeySharePrivacy}>{safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
+    <Text style={styles.journeySharePrivacy}>{safeRoute.trimmedStart || safeRoute.trimmedEnd ? 'REAL ROUTE · HOME / WORK SEGMENT TRIMMED · © OPENSTREETMAP' : safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
   </View>;
 });
 
@@ -194,7 +197,7 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
     <ShareChoiceRow label="MAP" value={mapStyle} choices={[['street', 'Street'], ['dim', 'Dimmed'], ['route', 'Route only']]} onSelect={value => onMapStyle(value as JourneyShareMapStyle)} />
     <ShareChoiceRow label="ARTWORK" value={artwork} choices={[['album', 'Featured album'], ['backdrop', 'Album backdrop'], ['none', 'No artwork']]} onSelect={value => onArtwork(value as JourneyShareArtwork)} />
     <Text style={[styles.controlsKicker, styles.controlsStatsKicker]}>SHOW ON CARD</Text>
-    <View style={styles.statToggleGrid}>{([['distance', 'Distance'], ['duration', 'Duration'], ['efficiency', 'Efficiency'], ['songs', 'Song count'], ['artist', 'Top artist']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[styles.statToggle, stats.includes(value) && styles.statToggleOn]}><Text style={styles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={styles.statToggleText}>{label}</Text></Pressable>)}</View>
+    <View style={styles.statToggleGrid}>{([['distance', 'Distance'], ['duration', 'Duration'], ['songs', 'Song count'], ['artist', 'Top artist']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[styles.statToggle, stats.includes(value) && styles.statToggleOn]}><Text style={styles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={styles.statToggleText}>{label}</Text></Pressable>)}</View>
   </View>;
 }
 
@@ -202,7 +205,7 @@ function ShareChoiceRow({ label, value, choices, onSelect }: { label: string; va
   return <View style={styles.choiceRow}><Text style={styles.choiceLabel}>{label}</Text><View style={styles.choiceChips}>{choices.map(([choice, title]) => <Pressable key={choice} onPress={() => onSelect(choice)} style={[styles.choiceChip, value === choice && styles.choiceChipActive]}><Text style={[styles.choiceChipText, value === choice && styles.choiceChipTextActive]}>{title}</Text></Pressable>)}</View></View>;
 }
 
-function JourneyDeckMapTile({ uri, column, row, columns, rows }: { uri: string; column: number; row: number; columns: number; rows: number }) {
+function JourneyDeckMapTile({ uri, left, top, width, height }: { uri: string; left: number; top: number; width: number; height: number }) {
   const image = useImage(uri);
   const [size, setSize] = useState({ width: 0, height: 0 });
   return <View
@@ -211,7 +214,7 @@ function JourneyDeckMapTile({ uri, column, row, columns, rows }: { uri: string; 
       const { width, height } = event.nativeEvent.layout;
       setSize(current => current.width === width && current.height === height ? current : { width, height });
     }}
-    style={[styles.shareRouteTile, { left: `${column * (100 / columns)}%`, top: `${row * (100 / rows)}%`, width: `${100 / columns}%`, height: `${100 / rows}%` }]}
+    style={[styles.shareRouteTile, { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }]}
   >
     {image && size.width > 0 && size.height > 0 && <Canvas style={StyleSheet.absoluteFill}>
       <SkiaImage image={image} x={0} y={0} width={size.width} height={size.height} fit="fill">
@@ -221,40 +224,90 @@ function JourneyDeckMapTile({ uri, column, row, columns, rows }: { uri: string; 
   </View>;
 }
 
-function ShareRouteSnapshot({ route, mapStyle }: { route: [number, number][]; mapStyle: JourneyShareMapStyle }) {
+function ShareRouteSnapshot({ route, songPoints, mapStyle, trimmedStart, trimmedEnd }: { route: [number, number][]; songPoints: { index: number; coordinate: [number, number] }[]; mapStyle: JourneyShareMapStyle; trimmedStart: boolean; trimmedEnd: boolean }) {
   const valid = route.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
-  if (valid.length < 2) return <View style={[styles.shareRouteSnapshot, styles.shareRouteFallback]}><Text style={styles.shareRouteFallbackText}>ROUTE PREVIEW UNAVAILABLE</Text></View>;
-  const tileSize = 256, tileColumns = 7, tileRows = 3, snapshotWidth = tileSize * tileColumns, snapshotHeight = tileSize * tileRows;
+  if (valid.length < 2) return <View style={[styles.shareRouteSnapshot, styles.shareRouteFallback]}><Text style={styles.shareRouteFallbackText}>{trimmedStart || trimmedEnd ? 'PRIVATE HOME OR WORK ROUTE HIDDEN' : 'ROUTE PREVIEW UNAVAILABLE'}</Text></View>;
+  const tileSize = 256, snapshotWidth = tileSize * 7, snapshotHeight = tileSize * 3;
+  const SHARE_ROUTE_WIDTH_FILL = 0.84, SHARE_ROUTE_HEIGHT_FILL = 0.76;
   const mercatorPoint = ([longitude, latitude]: [number, number], zoom: number) => {
     const scale = tileSize * (2 ** zoom), clippedLatitude = Math.max(-85.05112878, Math.min(85.05112878, latitude));
     return { x: ((longitude + 180) / 360) * scale, y: (1 - Math.asinh(Math.tan(clippedLatitude * Math.PI / 180)) / Math.PI) * scale / 2 };
   };
-  let zoom = 3;
-  for (let candidateZoom = 16; candidateZoom >= 3; candidateZoom -= 1) {
-    const candidate = valid.map(point => mercatorPoint(point, candidateZoom)), xs = candidate.map(point => point.x), ys = candidate.map(point => point.y);
-    if (Math.max(...xs) - Math.min(...xs) < snapshotWidth * 0.72 && Math.max(...ys) - Math.min(...ys) < snapshotHeight * 0.58) { zoom = candidateZoom; break; }
+  const basePoints = valid.map(point => mercatorPoint(point, 0));
+  const baseWidth = Math.max(1e-9, Math.max(...basePoints.map(point => point.x)) - Math.min(...basePoints.map(point => point.x)));
+  const baseHeight = Math.max(1e-9, Math.max(...basePoints.map(point => point.y)) - Math.min(...basePoints.map(point => point.y)));
+  const fractionalZoom = Math.max(3, Math.min(18, Math.log2(Math.min(
+    snapshotWidth * SHARE_ROUTE_WIDTH_FILL / baseWidth,
+    snapshotHeight * SHARE_ROUTE_HEIGHT_FILL / baseHeight,
+  ))));
+  const tileZoom = Math.floor(fractionalZoom), tileRenderScale = 2 ** (fractionalZoom - tileZoom), tileCount = 2 ** tileZoom;
+  const points = valid.map(point => mercatorPoint(point, tileZoom));
+  const centerX = (Math.min(...points.map(point => point.x)) + Math.max(...points.map(point => point.x))) / 2;
+  const centerY = (Math.min(...points.map(point => point.y)) + Math.max(...points.map(point => point.y))) / 2;
+  const viewWidth = snapshotWidth / tileRenderScale, viewHeight = snapshotHeight / tileRenderScale;
+  const viewLeft = centerX - viewWidth / 2, viewTop = centerY - viewHeight / 2;
+  const firstTileX = Math.floor(viewLeft / tileSize), lastTileX = Math.floor((viewLeft + viewWidth) / tileSize);
+  const firstTileY = Math.floor(viewTop / tileSize), lastTileY = Math.floor((viewTop + viewHeight) / tileSize);
+  const tiles = [] as { key: string; uri: string; left: number; top: number; width: number; height: number }[];
+  for (let sourceY = firstTileY; sourceY <= lastTileY; sourceY += 1) {
+    if (sourceY < 0 || sourceY >= tileCount) continue;
+    for (let sourceX = firstTileX; sourceX <= lastTileX; sourceX += 1) {
+      const wrappedX = ((sourceX % tileCount) + tileCount) % tileCount;
+      tiles.push({
+        key: `${tileZoom}-${sourceX}-${sourceY}`,
+        uri: `https://tile.openstreetmap.org/${tileZoom}/${wrappedX}/${sourceY}.png`,
+        left: ((sourceX * tileSize - viewLeft) * tileRenderScale / snapshotWidth) * 100,
+        top: ((sourceY * tileSize - viewTop) * tileRenderScale / snapshotHeight) * 100,
+        width: (tileSize * tileRenderScale / snapshotWidth) * 100,
+        height: (tileSize * tileRenderScale / snapshotHeight) * 100,
+      });
+    }
   }
-  const points = valid.map(point => mercatorPoint(point, zoom)), centerX = (Math.min(...points.map(point => point.x)) + Math.max(...points.map(point => point.x))) / 2, centerY = (Math.min(...points.map(point => point.y)) + Math.max(...points.map(point => point.y))) / 2;
-  const tileOriginX = Math.floor(centerX / tileSize) - Math.floor(tileColumns / 2), tileOriginY = Math.floor(centerY / tileSize) - Math.floor(tileRows / 2), tileCount = 2 ** zoom;
-  const tiles = Array.from({ length: tileColumns * tileRows }, (_, index) => { const column = index % tileColumns, row = Math.floor(index / tileColumns), x = ((tileOriginX + column) % tileCount + tileCount) % tileCount, y = tileOriginY + row; return { key: `${zoom}-${x}-${y}`, uri: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`, column, row, valid: y >= 0 && y < tileCount }; }).filter(tile => tile.valid);
-  const polyline = points.map(point => `${point.x - tileOriginX * tileSize},${point.y - tileOriginY * tileSize}`).join(' '), first = points[0], last = points.at(-1)!;
+  const screenPoints = points.map(point => ({ x: (point.x - viewLeft) * tileRenderScale, y: (point.y - viewTop) * tileRenderScale }));
+  const first = screenPoints[0]!, last = screenPoints.at(-1)!;
+  const fadePointCount = Math.min(Math.max(2, Math.ceil(screenPoints.length * 0.12)), Math.max(2, Math.floor(screenPoints.length / 3)));
+  const coreStart = trimmedStart ? Math.min(screenPoints.length - 1, fadePointCount - 1) : 0;
+  const coreEnd = trimmedEnd ? Math.max(0, screenPoints.length - fadePointCount) : screenPoints.length - 1;
+  const asPolyline = (values: { x: number; y: number }[]) => values.map(point => `${point.x},${point.y}`).join(' ');
+  const corePolyline = asPolyline(screenPoints.slice(coreStart, coreEnd + 1));
+  const startFadePoints = trimmedStart ? screenPoints.slice(0, coreStart + 1) : [];
+  const endFadePoints = trimmedEnd ? screenPoints.slice(coreEnd) : [];
+  const startFadePolyline = asPolyline(startFadePoints), endFadePolyline = asPolyline(endFadePoints);
+  const markers = songPoints
+    .filter(point => Number.isFinite(point.coordinate[0]) && Number.isFinite(point.coordinate[1]))
+    .map(point => ({ ...point, projected: mercatorPoint(point.coordinate, tileZoom) }));
   return <View style={styles.shareRouteSnapshot}>
-    {mapStyle !== 'route' && tiles.map(tile => <JourneyDeckMapTile key={tile.key} uri={tile.uri} column={tile.column} row={tile.row} columns={tileColumns} rows={tileRows} />)}
+    {mapStyle !== 'route' && tiles.map(tile => <JourneyDeckMapTile key={tile.key} uri={tile.uri} left={tile.left} top={tile.top} width={tile.width} height={tile.height} />)}
     <View style={[styles.shareRouteTint, { backgroundColor: mapStyle === 'dim' ? 'rgba(5,2,10,0.32)' : mapStyle === 'route' ? shareMapPalette.background : 'rgba(5,2,10,0.02)' }]} />
-    <Svg width="100%" height="100%" viewBox={`0 0 ${snapshotWidth} ${snapshotHeight}`}><Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={shareMapPalette.routeWarm} /><Stop offset="0.55" stopColor={shareMapPalette.route} /><Stop offset="1" stopColor="#ff4f38" /></SvgLinearGradient></Defs><Polyline points={polyline} fill="none" stroke={shareMapPalette.route} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" opacity="0.22" /><Polyline points={polyline} fill="none" stroke="#09020a" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" /><Polyline points={polyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /><Circle cx={first.x - tileOriginX * tileSize} cy={first.y - tileOriginY * tileSize} r="9" fill={shareMapPalette.routeWarm} stroke="#fff3eb" strokeWidth="2" /><Circle cx={last.x - tileOriginX * tileSize} cy={last.y - tileOriginY * tileSize} r="9" fill={shareMapPalette.route} stroke="#fff3eb" strokeWidth="2" /></Svg>
+    <Svg width="100%" height="100%" viewBox={`0 0 ${snapshotWidth} ${snapshotHeight}`}>
+      <Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={shareMapPalette.routeWarm} /><Stop offset="0.55" stopColor={shareMapPalette.route} /><Stop offset="1" stopColor="#ff4f38" /></SvgLinearGradient>{trimmedStart && <SvgLinearGradient id="shareStartPrivacyFade" gradientUnits="userSpaceOnUse" x1={first.x} y1={first.y} x2={startFadePoints.at(-1)!.x} y2={startFadePoints.at(-1)!.y}><Stop offset="0" stopColor={shareMapPalette.routeWarm} stopOpacity="0" /><Stop offset="1" stopColor={shareMapPalette.routeWarm} stopOpacity="1" /></SvgLinearGradient>}{trimmedEnd && <SvgLinearGradient id="shareEndPrivacyFade" gradientUnits="userSpaceOnUse" x1={endFadePoints[0]!.x} y1={endFadePoints[0]!.y} x2={last.x} y2={last.y}><Stop offset="0" stopColor={shareMapPalette.route} stopOpacity="1" /><Stop offset="1" stopColor={shareMapPalette.route} stopOpacity="0" /></SvgLinearGradient>}</Defs>
+      {corePolyline && <><Polyline points={corePolyline} fill="none" stroke={shareMapPalette.route} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" opacity="0.22" /><Polyline points={corePolyline} fill="none" stroke="#09020a" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" /><Polyline points={corePolyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
+      {trimmedStart && <><Polyline points={startFadePolyline} fill="none" stroke="url(#shareStartPrivacyFade)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" opacity="0.2" /><Polyline points={startFadePolyline} fill="none" stroke="url(#shareStartPrivacyFade)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
+      {trimmedEnd && <><Polyline points={endFadePolyline} fill="none" stroke="url(#shareEndPrivacyFade)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" opacity="0.2" /><Polyline points={endFadePolyline} fill="none" stroke="url(#shareEndPrivacyFade)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
+      {!trimmedStart && <Circle cx={first.x} cy={first.y} r="9" fill={shareMapPalette.routeWarm} stroke="#fff3eb" strokeWidth="2" />}
+      {!trimmedEnd && <Circle cx={last.x} cy={last.y} r="9" fill={shareMapPalette.route} stroke="#fff3eb" strokeWidth="2" />}
+      {trimmedStart && <PrivateRouteCutMarker point={first} neighbor={screenPoints[1]!} />}
+      {trimmedEnd && <PrivateRouteCutMarker point={last} neighbor={screenPoints.at(-2)!} />}
+      {markers.map(marker => { const cx = (marker.projected.x - viewLeft) * tileRenderScale, cy = (marker.projected.y - viewTop) * tileRenderScale; return <G key={`share-song-${marker.index}`}><Circle cx={cx} cy={cy} r="18" fill="#8f45e8" stroke="#f5eaff" strokeWidth="3" /><SvgText x={cx} y={cy + 6} fill="#ffffff" fontSize="17" fontWeight="900" textAnchor="middle">{marker.index}</SvgText></G>; })}
+    </Svg>
   </View>;
+}
+
+function PrivateRouteCutMarker({ point, neighbor }: { point: { x: number; y: number }; neighbor: { x: number; y: number } }) {
+  const dx = point.x - neighbor.x, dy = point.y - neighbor.y, length = Math.max(1, Math.hypot(dx, dy));
+  const marker = { x: point.x + dx / length * 38, y: point.y + dy / length * 38 };
+  return <G><Circle cx={marker.x} cy={marker.y + 1} r="28" fill="#36defa" opacity="0.2" /><Path d={`M ${marker.x} ${marker.y - 19} L ${marker.x + 16} ${marker.y - 12} L ${marker.x + 14} ${marker.y + 9} Q ${marker.x} ${marker.y + 25} ${marker.x - 14} ${marker.y + 9} L ${marker.x - 16} ${marker.y - 12} Z`} fill="#07303a" stroke="#36defa" strokeWidth="4" /><Circle cx={marker.x} cy={marker.y - 3} r="4.5" fill="none" stroke="#d9fbff" strokeWidth="2.5" /><Path d={`M ${marker.x} ${marker.y + 1.5} L ${marker.x} ${marker.y + 9}`} stroke="#d9fbff" strokeWidth="2.5" strokeLinecap="round" /></G>;
 }
 
 function privacySafeJourneyRoute(journey: NonNullable<ShareCardPayload['journey']>) {
   const safeLabel = (value: string | null) => {
-    if (/^(home|work)$/i.test(value?.trim() ?? '')) return value!.trim();
     const parts = (value ?? '').split(',').map(part => part.trim()).filter(Boolean);
     if (parts.length >= 3) return `${parts[1]}, ${stateAbbreviation(parts[2])}`;
     if (parts.length === 2) return `${parts[0]}, ${stateAbbreviation(parts[1])}`;
     return 'Drive location';
   };
   const valid = journey.routeCoordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
-  return { points: sampleRoute(valid, 96), startLabel: safeLabel(journey.startLocation), endLabel: safeLabel(journey.endLocation), protected: journey.routeProtected, privacySummary: journey.routePrivacySummary };
+  return { points: sampleRoute(valid, 96), startLabel: journey.routeTrimmedStart ? '' : safeLabel(journey.startLocation), endLabel: journey.routeTrimmedEnd ? '' : safeLabel(journey.endLocation), protected: journey.routeProtected, privacySummary: journey.routePrivacySummary, trimmedStart: journey.routeTrimmedStart, trimmedEnd: journey.routeTrimmedEnd };
 }
 
 function sampleRoute(points: [number, number][], limit: number): [number, number][] {
@@ -268,8 +321,7 @@ function stateAbbreviation(value: string) { const normalized = value.replace(/\d
 function formatJourneyShareDate(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? 'A JOURNEY REMEMBERED' : date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }); }
 function journeyShareTitle(value: string) { const date = new Date(value), hour = date.getHours(), moment = hour < 5 ? 'Late Night' : hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : hour < 21 ? 'Evening' : 'Night'; return `${Number.isNaN(date.getTime()) ? 'Open Road' : date.toLocaleDateString(undefined, { weekday: 'long' })} ${moment} Drive`; }
 function selectedJourneyStats(journey: NonNullable<ShareCardPayload['journey']>, selected: JourneyShareStat[]) {
-  const efficiency = journey.energyUsedKwh != null && journey.miles > 0 ? `${Math.round((journey.energyUsedKwh * 1000) / journey.miles)} Wh/mi` : '—';
-  const values: Record<JourneyShareStat, { label: string; value: string }> = { distance: { label: 'DISTANCE', value: `${journey.miles < 10 ? journey.miles.toFixed(1) : Math.round(journey.miles)} mi` }, duration: { label: 'DURATION', value: `${Math.max(0, Math.round(journey.durationMinutes))} min` }, efficiency: { label: 'EFFICIENCY', value: efficiency }, songs: { label: 'SOUNDTRACK', value: `${journey.songCount} songs` }, artist: { label: 'TOP ARTIST', value: journey.topArtist || '—' } };
+  const values: Record<JourneyShareStat, { label: string; value: string }> = { distance: { label: 'DISTANCE', value: `${journey.miles < 10 ? journey.miles.toFixed(1) : Math.round(journey.miles)} mi` }, duration: { label: 'DURATION', value: `${Math.max(0, Math.round(journey.durationMinutes))} min` }, songs: { label: 'SOUNDTRACK', value: `${journey.songCount} songs` }, artist: { label: 'TOP ARTIST', value: journey.topArtist || '—' } };
   return selected.map(item => values[item]).slice(0, 5);
 }
 

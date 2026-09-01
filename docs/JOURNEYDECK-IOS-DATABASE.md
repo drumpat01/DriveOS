@@ -1,14 +1,16 @@
 # JourneyDeck iOS unified data system
 
-JourneyDeck iOS is local-first. Phase 2 gives the running app one private
-SQLite database, one connection owner, and one canonical graph for journeys,
-places, songs, albums, and artwork.
+JourneyDeck iOS is local-first. The Expo runtime has one canonical private
+SQLite database and one connection owner for journeys, places, songs, albums,
+and artwork. Build 12 gives the background Swift recorder a separate, narrow
+SQLite inbox so two different SQLite libraries never share a WAL file.
 
 ## Active file boundary
 
 | File | Runtime role | Cloud behavior |
 | --- | --- | --- |
-| `journeydeck-local.db` | The only active database. It contains profiles, active recorder staging, completion jobs, completed journeys, exact routes, canonical places, normalized music/artwork, memories, collections, photos, private preferences, and derived statistics. | Selected user-owned records can mirror to the signed-in user's private CloudKit database. Exact routes are checksummed private assets. |
+| `journeydeck-local.db` | The canonical application database. Expo SQLite is its sole connection owner. It contains profiles, imported recorder staging, completion jobs, completed journeys, exact routes, canonical places, normalized music/artwork, memories, collections, photos, private preferences, and derived statistics. | Selected user-owned records can mirror to the signed-in user's private CloudKit database. Exact routes are checksummed private assets. |
+| `journeydeck-native-inbox.db` | Build 12's native-only recorder inbox. Apple system SQLite is its sole connection owner. It contains only native recording sessions and GPS points awaiting typed import into the canonical database. | Never syncs directly. A completed session is deleted only after the canonical database proves every numbered route point was committed and durable completion jobs were queued. |
 | `journeydeck-recorder.db` | Pre-Phase-2 migration source only. It is opened once for validation/import when it already exists. It is never used for normal runtime reads/writes and is retained untouched as a rollback source. | None after Phase 2. |
 
 `src/database-owner.ts` is the only module that opens SQLite files. Both archive
@@ -16,12 +18,12 @@ and recorder APIs receive the same `journeydeck-local.db` handle. The legacy
 recorder opener is deliberately separate and is reachable only by the one-time
 migration.
 
-Build 11's Swift recorder is the only additional connection owner. It opens the
-same verified database path with `SQLITE_OPEN_FULLMUTEX`, enables foreign keys,
-uses the same five-second busy timeout, and refuses to write unless the `JDL1`
-application id and schema version 6 are present. Its writes are short
-`BEGIN IMMEDIATE` transactions, so they coordinate with the Expo SQLite WAL
-connection instead of creating a second source of truth.
+Build 12's Swift recorder opens only `journeydeck-native-inbox.db` with Apple
+system SQLite, `SQLITE_OPEN_FULLMUTEX`, foreign keys, full synchronous commits,
+and rollback-journal mode. Expo never opens that file, and Swift never opens
+`journeydeck-local.db`. A typed native bridge exports incremental value-object
+snapshots; Expo imports them transactionally through the canonical connection.
+The inbox is a durable handoff queue, not a second domain archive.
 
 The active database uses WAL mode, foreign-key enforcement, a five-second busy
 timeout, bounded WAL growth, `secure_delete=FAST`, and `synchronous=NORMAL`.
@@ -83,7 +85,7 @@ local_preferences (device-level active-profile selection)
   work. Replaying a job upserts deterministic journey, point, and playback ids,
   so termination never creates duplicates.
 
-### Build 11 native automatic recorder
+### Build 12 native automatic recorder
 
 - The Swift engine monitors significant location changes while idle and enables
   high-accuracy automotive updates only while confirming motion or recording.
@@ -91,16 +93,21 @@ local_preferences (device-level active-profile selection)
   continuously parked minutes complete the journey; ordinary traffic stops do
   not.
 - Detection state and the native session id survive UI termination. Coordinates
-  are written only to protected SQLite, never to preferences.
-- Completion marks the session finished and enqueues archive materialization,
-  Apple Music history/artwork, private CloudKit sync, and optional remote
-  completion in one transaction. React Native processes those durable jobs when
-  it next runs.
+  are written only to the protected native inbox, never to preferences or the
+  Expo database from Swift.
+- Expo imports only new point sequences. A completed session stays behind a
+  finishing fence until the canonical database contains the complete contiguous
+  route. Only then are archive materialization, Apple Music history/artwork,
+  private CloudKit sync, and optional remote completion queued and the native
+  session acknowledged for deletion.
 - The Build 10 Expo automatic task is unregistered during upgrade and retained
   only as a harmless legacy task definition so an already-installed background
   registration cannot execute old detector logic.
 - Native sessions use a distinct `native_recording_` prefix. The engine never
   adopts a Build 10, manual, or otherwise foreign active session.
+- Arrival enrichment first asks native MapKit for nearby points of interest,
+  then falls back to Apple's reverse geocoder. Saved user names remain
+  authoritative and canonical place ids propagate a rename to matching journeys.
 
 ## Phase 2 migration and preservation
 
@@ -166,9 +173,9 @@ Database triggers and Data Health checks cover:
 - missing canonical song links, cross-profile graph edges, `quick_check`, and
   `foreign_key_check` results.
 
-Data Health presents this as one unified database plus recorder/job health from
-tables in that database. It does not upload row values, coordinates, paths, or
-identifiers.
+Data Health presents the canonical unified database plus recorder/job health.
+The native inbox is a bounded delivery queue and does not upload row values,
+coordinates, paths, or identifiers.
 
 ## Security and privacy notes
 

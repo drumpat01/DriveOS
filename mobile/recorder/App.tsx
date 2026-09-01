@@ -39,6 +39,7 @@ import {
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { stopAutomaticDetection } from './src/tracking';
+import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -114,6 +115,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       try { taskRunning = await isLocationTrackingActive(); } catch { taskRunning = false; }
     }
     const nativeRecorder = await getNativeAutomaticRecorderStatus().catch(() => null);
+    await syncNativeRecorderInbox().catch(() => undefined);
     const automaticTaskRunning = Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking);
     const current = activeSession();
     const currentIsNative = isNativeAutomaticSession(current?.id);
@@ -153,7 +155,10 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
     if (action === 'stop-and-finish' && current) {
-      if (currentIsNative) await finishNativeAutomaticJourney();
+      if (currentIsNative) {
+        await finishNativeAutomaticJourney();
+        await syncNativeRecorderInbox();
+      }
       else completeSessionLocally(current.id, Boolean(connection));
       enrichCompletedJourney(connection, current.id);
       setSyncStage('saved');
@@ -166,7 +171,9 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     setTaskAvailable(available);
     setTrackingActive(currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning);
     setAutomaticDetectionActive(automaticTaskRunning);
-    const automaticEvent = loadAutomaticDriveEvent();
+    const automaticEvent = nativeRecorder?.lastEvent && nativeRecorder.lastEventAt
+      ? { kind: nativeRecorder.lastEvent, occurredAt: nativeRecorder.lastEventAt }
+      : loadAutomaticDriveEvent();
     if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
       && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
       announcedAutomaticEvent.current = automaticEvent.occurredAt;
@@ -198,6 +205,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       // Build 11 native engine. This is idempotent on fresh installations.
       await stopAutomaticDetection().catch(() => undefined);
       const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
+      await syncNativeRecorderInbox();
       if (!shouldRun && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
       return status;
     };
@@ -357,6 +365,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
         if (isNativeAutomaticSession(currentSummary.id)) {
           const status = await finishNativeAutomaticJourney();
           if (status.sessionId === currentSummary.id && status.recording) throw new Error('The native journey is still recording.');
+          await syncNativeRecorderInbox();
         } else {
           await captureCurrentPoint();
           await stopLocationTracking();

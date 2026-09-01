@@ -9,6 +9,7 @@ const musicScreen = await readFile(new URL('music-screen.tsx', sourceRoot), 'utf
 const musicCapture = await readFile(new URL('music-capture.ts', sourceRoot), 'utf8');
 const appleArtworkLookup = await readFile(new URL('apple-artwork-lookup.ts', sourceRoot), 'utf8');
 const shareCard = await readFile(new URL('share-card-modal.tsx', sourceRoot), 'utf8');
+const shareRoutePrivacy = await readFile(new URL('share-route-privacy.ts', sourceRoot), 'utf8');
 const interactiveRouteMap = await readFile(new URL('interactive-route-map.tsx', sourceRoot), 'utf8');
 const primarySections = await readFile(new URL('primary-sections.tsx', sourceRoot), 'utf8');
 const primaryData = await readFile(new URL('primary-sections-data.ts', sourceRoot), 'utf8');
@@ -121,6 +122,11 @@ test('Live remains useful while the version-1 Tessie integration is hidden', () 
   assert.match(primarySections, /ELAPSED/);
   assert.match(primarySections, /TESSIE_INTEGRATION_ENABLED && tessieConnected &&/);
   assert.match(primarySections, /Optional Tessie enhancement/);
+  assert.match(primarySections, /\{\(snapshot\.session \|\| !automaticMode\) && <View style=\{styles\.liveHero\}>/);
+  assert.match(primarySections, /songMoments=\{visibleSongMoments\}/);
+  assert.match(primaryMap, /validSongMoments\.map\(moment => <Marker/);
+  assert.match(primaryMap, /selectedSong && <View style=\{styles\.songPopup\}>/);
+  assert.match(primaryMap, /selectedSong\.artworkUrl/);
   assert.doesNotMatch(primarySections, /Connect Tessie in Settings to show live battery and range/);
 });
 
@@ -309,8 +315,10 @@ test('every destination artwork header shares one frameless, feathered frame', (
   assert.match(musicScreen, /HeaderArtwork source=\{require\('\.\.\/assets\/soundtracks-header-cinematic-v2\.png'\)\}/);
   assert.doesNotMatch(musicScreen, /heroVinylMotionFrame|soundtracksSpinningVinyl|Animated\.loop/);
   assert.match(shell, /HeaderArtwork[\s\S]*?memories-header-cinematic-v1\.png/);
-  assert.match(primarySections, /artHeader: \{ alignSelf: 'stretch', marginBottom: 22/);
-  assert.match(shell, /pageArtHeader: \{ alignSelf: 'stretch', marginBottom: 14/);
+  assert.match(primarySections, /artHeader: \{ position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22/);
+  assert.match(shell, /pageArtHeader: \{ position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14/);
+  assert.match(primarySections, /statsPageTitle: \{ position: 'relative', zIndex: 10, elevation: 10/);
+  assert.match(shell, /cinematicPageTitle: \{ position: 'relative', zIndex: 10, elevation: 10/);
   assert.doesNotMatch(primarySections, /artHeader: \{[^}]*marginHorizontal: -4/);
   assert.doesNotMatch(shell, /pageArtHeader: \{[^}]*marginHorizontal: -4/);
   assert.match(app, /recorderArtHeader: \{ alignSelf: 'stretch', marginHorizontal: -4/);
@@ -538,12 +546,20 @@ test('Settings exposes real Apple identity and private iCloud sync without confu
 test('Journey sharing has web-parity controls and never exports raw Home or Work geometry', () => {
   assert.match(shell, /function privacySafeRealShareRoute/);
   assert.match(shell, /prepareShareCardCoords/);
-  assert.match(shell, /sensitivePlaces: \[\.\.\.getSensitivePlaces\(userId\), \.\.\.inferredPrivatePlaces\]/);
+  assert.match(shell, /const sensitivePlaces = \[\.\.\.getSensitivePlaces\(userId\), \.\.\.inferredPrivatePlaces\]/);
+  assert.match(shell, /buildSongRouteMoments\(journey\.soundtrack, routeCoordinates/);
+  assert.match(shell, /maskCoordinate\(\{ lng: point\.coordinate\[0\], lat: point\.coordinate\[1\] \}, sensitivePlaces\)/);
   assert.match(shell, /const shareRoute = privacySafeRealShareRoute\(journey\)/);
+  assert.match(shell, /trimPrivateShareRoute/);
+  assert.match(shareRoutePrivacy, /PRIVATE_SHARE_ROUTE_DISTANCE_METERS = 1_609\.344/);
+  assert.match(shareRoutePrivacy, /Randomized endpoints are intentionally avoided/);
+  assert.match(shareRoutePrivacy, /distanceMeters\(endpoint, firstSong\.point\.coordinate\)/);
+  assert.match(shareRoutePrivacy, /distanceMeters\(endpoint, lastSong\.point\.coordinate\)/);
   assert.match(shareCard, /function JourneyShareControls/);
   assert.match(shareCard, /BUILD YOUR CARD/);
   assert.match(shareCard, /Featured album/);
   assert.match(shareCard, /SHOW ON CARD/);
+  assert.doesNotMatch(shareCard, /Efficiency|EFFICIENCY|'efficiency'/);
   assert.match(shareCard, /function ShareRouteSnapshot/);
   assert.match(shareCard, /function JourneyDeckMapTile/);
   assert.match(shareCard, /ColorMatrix matrix=\{shareMapColorMatrix\}/);
@@ -552,7 +568,18 @@ test('Journey sharing has web-parity controls and never exports raw Home or Work
   assert.match(shareCard, /route: '#ff684f'/);
   assert.match(shareCard, /colorizedInvertedLuminanceRow/);
   assert.match(shareCard, /rgba\(5,2,10,0\.02\)/);
-  assert.match(shareCard, /tileColumns = 7, tileRows = 3/);
+  assert.match(shareCard, /SHARE_ROUTE_WIDTH_FILL = 0\.84, SHARE_ROUTE_HEIGHT_FILL = 0\.76/);
+  assert.match(shareCard, /const fractionalZoom = Math\.max\(3, Math\.min\(18/);
+  assert.match(shareCard, /tileRenderScale = 2 \*\* \(fractionalZoom - tileZoom\)/);
+  assert.match(shareCard, /songPoints=\{journey\.songPoints\}/);
+  assert.match(shareCard, /share-song-\$\{marker\.index\}/);
+  assert.match(shareCard, /shareStartPrivacyFade/);
+  assert.match(shareCard, /shareEndPrivacyFade/);
+  assert.doesNotMatch(shareCard, /PRIVATE AREA HIDDEN|Private area hidden/);
+  assert.match(shareCard, /fill="#36defa" opacity="0\.2"/);
+  assert.match(shareCard, /fill="#07303a" stroke="#36defa"/);
+  assert.match(shareCard, /stroke="#d9fbff"/);
+  assert.match(shareCard, /HOME \/ WORK SEGMENT TRIMMED/);
   assert.match(shareCard, /https:\/\/tile\.openstreetmap\.org/);
   assert.match(shareCard, /function privacySafeJourneyRoute/);
   assert.doesNotMatch(shareCard, /privateCityRoute/);

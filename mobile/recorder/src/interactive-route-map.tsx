@@ -233,14 +233,13 @@ export function InteractiveRouteMap({
       {!mapReady && !mapFailed && <View pointerEvents="none" style={styles.loading}><ActivityIndicator color="#a98cff" /><Text style={styles.loadingText}>Styling your route…</Text></View>}
       {(popupSong || terminalSelection) && <View style={styles.popup}>
         {popupSong ? <>
-          <Text style={styles.popupKicker}>SONG {popupSong.index} · {formatClock(popupSong.playedAt)}</Text>
-          <Text style={styles.popupTitle} numberOfLines={1}>{popupSong.track}</Text>
-          <Text style={styles.popupDetail} numberOfLines={1}>{popupSong.artist}</Text>
-        </> : <>
+          {popupSong.artworkUrl ? <Image source={popupSong.artworkUrl} style={styles.popupArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.popupArtwork, styles.popupArtworkFallback]}><Text style={styles.popupArtworkNote}>♪</Text></View>}
+          <View style={styles.popupCopy}><Text style={styles.popupKicker}>SONG {popupSong.index} · {formatClock(popupSong.playedAt)}</Text><Text style={styles.popupTitle} numberOfLines={1}>{popupSong.track}</Text><Text style={styles.popupDetail} numberOfLines={1}>{popupSong.artist}</Text></View>
+        </> : <View style={styles.popupCopy}>
           <Text style={styles.popupKicker}>{terminalSelection === 'start' ? 'JOURNEY START' : 'JOURNEY END'}</Text>
           <Text style={styles.popupTitle} numberOfLines={2}>{terminalSelection === 'start' ? (startLabel ?? 'Starting point') : (endLabel ?? 'Destination')}</Text>
           <Text style={styles.popupDetail}>{formatClock(terminalSelection === 'start' ? startedAt : endedAt)}</Text>
-        </>}
+        </View>}
       </View>}
     </View>
 
@@ -343,7 +342,11 @@ const styles = StyleSheet.create({
   mapControlArrow: { color: '#e9d9ef', fontSize: 20, fontWeight: '900' },
   loading: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#050208ee' },
   loadingText: { color: '#c2b2c8', fontSize: 11, fontWeight: '800' },
-  popup: { position: 'absolute', left: 12, right: 68, bottom: 14, minHeight: 72, borderRadius: 15, borderWidth: 1, borderColor: '#71437a', backgroundColor: '#09050ff2', paddingHorizontal: 13, paddingVertical: 11 },
+  popup: { position: 'absolute', left: 12, right: 68, bottom: 14, minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: 1, borderColor: '#71437a', backgroundColor: '#09050ff2', paddingHorizontal: 10, paddingVertical: 8 },
+  popupArtwork: { width: 48, height: 48, borderRadius: 9 },
+  popupArtworkFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2a1238' },
+  popupArtworkNote: { color: '#d6b7ff', fontSize: 19, fontWeight: '900' },
+  popupCopy: { flex: 1, minWidth: 0 },
   popupKicker: { color: '#ff8d72', fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   popupTitle: { color: '#fff7ff', fontSize: 15, fontWeight: '900', marginTop: 4 },
   popupDetail: { color: '#aa9caf', fontSize: 11, fontWeight: '700', marginTop: 3 },

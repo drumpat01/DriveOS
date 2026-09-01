@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
 import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
@@ -7,10 +8,12 @@ import { NeonWidgetOutline } from './neon-widget-outline';
 
 type RouteLine = { id: string; coordinates: [number, number][] };
 type MapPlace = { id: string; name: string; coordinate: [number, number]; count?: number };
+type MapSongMoment = { index: number; coordinate: [number, number]; track: string; artist: string; artworkUrl: string | null };
 
 export function PrimaryMobilityMap({
   routes,
   places = [],
+  songMoments = [],
   currentCoordinate,
   currentHeading = 0,
   height = 300,
@@ -21,6 +24,7 @@ export function PrimaryMobilityMap({
 }: {
   routes: RouteLine[];
   places?: MapPlace[];
+  songMoments?: MapSongMoment[];
   currentCoordinate?: [number, number] | null;
   currentHeading?: number | null;
   height?: number;
@@ -32,7 +36,10 @@ export function PrimaryMobilityMap({
   const camera = useRef<CameraRef>(null), map = useRef<MapRef>(null);
   const [mapStyle, setMapStyle] = useState<JourneyDeckMapStyle | null>(null);
   const [failed, setFailed] = useState(false), [ready, setReady] = useState(false);
-  const geometry = useMemo(() => buildGeometry(routes, places, currentCoordinate, minimumBoundsSpan), [currentCoordinate, minimumBoundsSpan, places, routes]);
+  const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
+  const validSongMoments = useMemo(() => songMoments.filter(moment => validCoordinate(moment.coordinate)), [songMoments]);
+  const selectedSong = validSongMoments.find(moment => moment.index === selectedSongIndex) ?? null;
+  const geometry = useMemo(() => buildGeometry(routes, places, validSongMoments.map(moment => moment.coordinate), currentCoordinate, minimumBoundsSpan), [currentCoordinate, minimumBoundsSpan, places, routes, validSongMoments]);
 
   useEffect(() => {
     let mounted = true;
@@ -66,6 +73,7 @@ export function PrimaryMobilityMap({
       scaleBar={false}
       touchRotate={false}
       touchPitch={false}
+      onPress={() => setSelectedSongIndex(null)}
       onDidFinishLoadingMap={() => setReady(true)}
       onDidFailLoadingMap={() => setFailed(true)}
     >
@@ -85,6 +93,13 @@ export function PrimaryMobilityMap({
       {currentCoordinate && <Marker id="live-position" lngLat={currentCoordinate} anchor="center">
         <View style={[styles.currentMarker, { transform: [{ rotate: `${currentHeading ?? 0}deg` }] }]}><Text style={styles.currentArrow}>▲</Text></View>
       </Marker>}
+      {validSongMoments.map(moment => <Marker
+        id={`live-song-${moment.index}`}
+        key={`${moment.index}-${moment.coordinate.join(',')}`}
+        lngLat={moment.coordinate}
+        anchor="center"
+        onPress={event => { event.stopPropagation(); setSelectedSongIndex(moment.index); }}
+      ><View style={[styles.songMarkerGlow, selectedSongIndex === moment.index && styles.songMarkerGlowSelected]}><View style={[styles.songMarker, selectedSongIndex === moment.index && styles.songMarkerSelected]}><Text style={styles.songMarkerText}>{moment.index}</Text></View></View></Marker>)}
     </Map>
     <View pointerEvents="none" style={styles.tint} />
     <View pointerEvents="none" style={styles.badge}><Text style={styles.badgeText}>JOURNEYDECK MAP</Text></View>
@@ -93,6 +108,10 @@ export function PrimaryMobilityMap({
       <Pressable accessibilityLabel="Zoom out" style={styles.control} onPress={() => void zoomBy(-1)}><Text style={styles.controlText}>−</Text></Pressable>
       <Pressable accessibilityLabel="Show all routes" style={styles.control} onPress={fit}><Text style={styles.controlTarget}>⌖</Text></Pressable>
     </View>
+    {selectedSong && <View style={styles.songPopup}>
+      {selectedSong.artworkUrl ? <Image source={selectedSong.artworkUrl} style={styles.songArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.songArtwork, styles.songArtworkFallback]}><Text style={styles.songArtworkNote}>♪</Text></View>}
+      <View style={styles.songCopy}><Text style={styles.songTrack} numberOfLines={1}>{selectedSong.track}</Text><Text style={styles.songArtist} numberOfLines={1}>{selectedSong.artist}</Text></View>
+    </View>}
     {!ready && <View style={styles.loading}><ActivityIndicator color="#b993ff" /><Text style={styles.loadingText}>Opening your map…</Text></View>}
     <Text style={styles.attribution}>OpenFreeMap · © OpenStreetMap</Text>
   </View>;
@@ -102,7 +121,7 @@ function validCoordinate(value: [number, number]) {
   return Number.isFinite(value[0]) && Number.isFinite(value[1]) && value[0] >= -180 && value[0] <= 180 && value[1] >= -90 && value[1] <= 90;
 }
 
-function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinate?: [number, number] | null, minimumBoundsSpan = 0.01) {
+function buildGeometry(routes: RouteLine[], places: MapPlace[], songCoordinates: [number, number][], currentCoordinate?: [number, number] | null, minimumBoundsSpan = 0.01) {
   const features: Feature<LineString>[] = [], pointFeatures: Feature<Point, { count: number }>[] = [], all: [number, number][] = [];
   for (const route of routes) {
     const coordinates = route.coordinates.filter(validCoordinate);
@@ -115,6 +134,7 @@ function buildGeometry(routes: RouteLine[], places: MapPlace[], currentCoordinat
     all.push(place.coordinate);
     pointFeatures.push({ type: 'Feature', id: place.id, properties: { count: place.count ?? 1 }, geometry: { type: 'Point', coordinates: place.coordinate } });
   }
+  all.push(...songCoordinates.filter(validCoordinate));
   if (currentCoordinate && validCoordinate(currentCoordinate)) all.push(currentCoordinate);
   const collection: FeatureCollection<LineString> = { type: 'FeatureCollection', features };
   const points: FeatureCollection<Point, { count: number }> = { type: 'FeatureCollection', features: pointFeatures };
@@ -145,4 +165,16 @@ const styles = StyleSheet.create({
   attribution: { position: 'absolute', left: 12, bottom: 8, color: '#7b6b84', fontSize: 8 },
   currentMarker: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff4d57', borderWidth: 3, borderColor: '#ffd6d7', shadowColor: '#ff334f', shadowOpacity: 0.9, shadowRadius: 12 },
   currentArrow: { color: '#fff', fontSize: 17, fontWeight: '900' },
+  songMarkerGlow: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#7c38d955', alignItems: 'center', justifyContent: 'center' },
+  songMarkerGlowSelected: { backgroundColor: '#ff604f66' },
+  songMarker: { minWidth: 25, height: 25, borderRadius: 13, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center', backgroundColor: '#9a55ef', borderWidth: 2, borderColor: '#d6b7ff' },
+  songMarkerSelected: { backgroundColor: '#ff765c', borderColor: '#fff4ef' },
+  songMarkerText: { color: '#100518', fontSize: 10, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  songPopup: { position: 'absolute', left: 13, right: 68, bottom: 23, minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: 1, borderColor: '#71437a', backgroundColor: '#09050ff2', padding: 8 },
+  songArtwork: { width: 40, height: 40, borderRadius: 8 },
+  songArtworkFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2a1238' },
+  songArtworkNote: { color: '#d6b7ff', fontSize: 18, fontWeight: '900' },
+  songCopy: { flex: 1, minWidth: 0 },
+  songTrack: { color: '#fff7ff', fontSize: 13, fontWeight: '900' },
+  songArtist: { color: '#aa9caf', fontSize: 10, fontWeight: '700', marginTop: 3 },
 });

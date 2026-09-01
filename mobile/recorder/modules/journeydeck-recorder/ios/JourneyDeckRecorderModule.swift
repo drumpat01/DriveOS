@@ -1,9 +1,10 @@
 import CoreLocation
 import ExpoModulesCore
+import MapKit
 import SQLite3
 
-private let masterDatabaseApplicationID: Int32 = 0x4a444c31
-private let minimumUnifiedSchemaVersion: Int32 = 6
+private let nativeInboxApplicationID: Int32 = 0x4a444e31
+private let nativeInboxSchemaVersion: Int32 = 1
 private let driveStartSpeedMetersPerSecond = 6.7
 private let driveStartSampleCount = 3
 private let driveStartMinimumSpan: TimeInterval = 20
@@ -12,7 +13,6 @@ private let driveStopSpeedMetersPerSecond = 2.2
 private let driveStopDuration: TimeInterval = 5 * 60
 private let maximumDetectionAccuracy = 100.0
 private let nativeSessionPrefix = "native_recording_"
-private let automaticEventCacheKey = "automatic-drive-detection-event-v1"
 
 private enum RecorderDefaults {
   static let enabled = "journeydeck.native-recorder.enabled-v1"
@@ -70,18 +70,66 @@ private final class NativeRecorderDatabase {
   init() throws {
     let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("SQLite", isDirectory: true)
-    let url = directory.appendingPathComponent("journeydeck-local.db")
-    guard FileManager.default.fileExists(atPath: url.path) else { throw NativeRecorderError.databaseUnavailable }
-    let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let url = directory.appendingPathComponent("journeydeck-native-inbox.db")
+    let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
     guard sqlite3_open_v2(url.path, &handle, flags, nil) == SQLITE_OK else {
       close()
       throw NativeRecorderError.databaseUnavailable
     }
     sqlite3_busy_timeout(handle, 5_000)
+    guard let journalRow = try firstRow("PRAGMA journal_mode=DELETE;"),
+          let journalMode = journalRow.first ?? nil,
+          journalMode.lowercased() == "delete" else {
+      throw NativeRecorderError.databaseUnavailable
+    }
+    try execute("PRAGMA synchronous=FULL;")
     try execute("PRAGMA foreign_keys=ON;")
     let applicationID = try scalarInt("PRAGMA application_id;")
-    guard applicationID == masterDatabaseApplicationID else { throw NativeRecorderError.databaseIdentity }
-    guard try scalarInt("PRAGMA user_version;") >= minimumUnifiedSchemaVersion else { throw NativeRecorderError.databaseSchema }
+    guard applicationID == 0 || applicationID == nativeInboxApplicationID else { throw NativeRecorderError.databaseIdentity }
+    let schemaVersion = try scalarInt("PRAGMA user_version;")
+    guard schemaVersion <= nativeInboxSchemaVersion else { throw NativeRecorderError.databaseSchema }
+    if schemaVersion == 0 {
+      try transaction {
+        try execute("""
+          CREATE TABLE IF NOT EXISTS native_recording_sessions(
+            id TEXT PRIMARY KEY NOT NULL,
+            owner_user_id TEXT NOT NULL,
+            device_id TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('recording','paused','finishing','completed')),
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            next_sequence INTEGER NOT NULL DEFAULT 0 CHECK(next_sequence>=0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            CHECK(ended_at IS NULL OR ended_at>=started_at),
+            CHECK(status<>'completed' OR ended_at IS NOT NULL)
+          );
+        """)
+        try execute("CREATE INDEX IF NOT EXISTS ix_native_sessions_owner ON native_recording_sessions(owner_user_id,status,created_at);")
+        try execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_native_sessions_active_owner ON native_recording_sessions(owner_user_id) WHERE status<>'completed';")
+        try execute("""
+          CREATE TABLE IF NOT EXISTS native_recording_points(
+            session_id TEXT NOT NULL REFERENCES native_recording_sessions(id) ON DELETE CASCADE,
+            sequence INTEGER NOT NULL CHECK(sequence>=0),
+            recorded_at TEXT NOT NULL,
+            latitude REAL NOT NULL CHECK(latitude>=-90 AND latitude<=90),
+            longitude REAL NOT NULL CHECK(longitude>=-180 AND longitude<=180),
+            accuracy_meters REAL CHECK(accuracy_meters IS NULL OR (accuracy_meters>=0 AND accuracy_meters<=10000)),
+            altitude_meters REAL CHECK(altitude_meters IS NULL OR (altitude_meters>=-1000 AND altitude_meters<=100000)),
+            heading_degrees REAL CHECK(heading_degrees IS NULL OR (heading_degrees>=0 AND heading_degrees<=360)),
+            speed_mps REAL CHECK(speed_mps IS NULL OR (speed_mps>=0 AND speed_mps<=150)),
+            PRIMARY KEY(session_id,sequence)
+          );
+        """)
+        try execute("PRAGMA application_id=1245990449;")
+        try execute("PRAGMA user_version=1;")
+      }
+    }
+    try? FileManager.default.setAttributes(
+      [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+      ofItemAtPath: url.path
+    )
   }
 
   deinit { close() }
@@ -117,6 +165,28 @@ private final class NativeRecorderDatabase {
       guard sqlite3_column_type(statement, index) != SQLITE_NULL,
             let bytes = sqlite3_column_text(statement, index) else { return nil }
       return String(cString: bytes)
+    }
+  }
+
+  func rows(_ sql: String, bindings: [Any?] = []) throws -> [[Any]] {
+    let statement = try prepare(sql)
+    defer { sqlite3_finalize(statement) }
+    try bind(bindings, to: statement)
+    var output: [[Any]] = []
+    while true {
+      let result = sqlite3_step(statement)
+      if result == SQLITE_DONE { return output }
+      guard result == SQLITE_ROW else { throw sqliteError() }
+      output.append((0..<sqlite3_column_count(statement)).map { index in
+        switch sqlite3_column_type(statement, index) {
+        case SQLITE_INTEGER: return Int(sqlite3_column_int64(statement, index))
+        case SQLITE_FLOAT: return sqlite3_column_double(statement, index)
+        case SQLITE_TEXT:
+          guard let bytes = sqlite3_column_text(statement, index) else { return NSNull() }
+          return String(cString: bytes)
+        default: return NSNull()
+        }
+      })
     }
   }
 
@@ -292,6 +362,120 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     return await status()
   }
 
+  func exportInbox(afterSequences: [String: Int]) async -> [String: Any] {
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        do {
+          guard let identity = self.configuredIdentity() else {
+            continuation.resume(returning: ["sessions": [], "errorCode": NSNull()])
+            return
+          }
+          let database = try NativeRecorderDatabase()
+          let rows = try database.rows(
+            """
+            SELECT id,owner_user_id,device_id,status,started_at,ended_at,next_sequence,created_at,updated_at
+            FROM native_recording_sessions WHERE owner_user_id=?
+            ORDER BY CASE WHEN status='completed' THEN 1 ELSE 0 END,created_at LIMIT 20;
+            """,
+            bindings: [identity.owner]
+          )
+          let sessions: [[String: Any]] = try rows.compactMap { row in
+            guard row.count == 9,
+                  let id = row[0] as? String,
+                  let owner = row[1] as? String,
+                  let device = row[2] as? String,
+                  let status = row[3] as? String,
+                  let startedAt = row[4] as? String,
+                  let nextSequence = row[6] as? Int,
+                  let createdAt = row[7] as? String,
+                  let updatedAt = row[8] as? String else { return nil }
+            let pointRows = try database.rows(
+              """
+              SELECT sequence,recorded_at,latitude,longitude,accuracy_meters,altitude_meters,heading_degrees,speed_mps
+              FROM native_recording_points WHERE session_id=? AND sequence>=? ORDER BY sequence LIMIT 100000;
+              """,
+              bindings: [id, max(0, afterSequences[id] ?? 0)]
+            )
+            let points: [[String: Any]] = pointRows.compactMap { point in
+              guard point.count == 8,
+                    let sequence = point[0] as? Int,
+                    let recordedAt = point[1] as? String,
+                    let latitude = point[2] as? Double,
+                    let longitude = point[3] as? Double else { return nil }
+              return [
+                "sequence": sequence, "recordedAt": recordedAt,
+                "latitude": latitude, "longitude": longitude,
+                "accuracyMeters": point[4], "altitudeMeters": point[5],
+                "headingDegrees": point[6], "speedMps": point[7]
+              ]
+            }
+            return [
+              "id": id, "ownerUserId": owner, "deviceId": device, "status": status,
+              "startedAt": startedAt, "endedAt": row[5], "nextSequence": nextSequence,
+              "createdAt": createdAt, "updatedAt": updatedAt, "points": points
+            ]
+          }
+          continuation.resume(returning: ["sessions": sessions, "errorCode": NSNull()])
+        } catch {
+          continuation.resume(returning: ["sessions": [], "errorCode": self.safeCode(error)])
+        }
+      }
+    }
+  }
+
+  func acknowledgeCompletedSessions(_ sessionIDs: [String]) async -> [String: Any] {
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        do {
+          let database = try NativeRecorderDatabase()
+          let allowed = Array(Set(sessionIDs.filter { $0.hasPrefix(nativeSessionPrefix) })).prefix(20)
+          try database.transaction {
+            for id in allowed {
+              try database.execute(
+                "DELETE FROM native_recording_sessions WHERE id=? AND status='completed';",
+                bindings: [id]
+              )
+            }
+          }
+          continuation.resume(returning: ["acknowledged": allowed.count, "errorCode": NSNull()])
+        } catch {
+          continuation.resume(returning: ["acknowledged": 0, "errorCode": self.safeCode(error)])
+        }
+      }
+    }
+  }
+
+  func nearbyPointsOfInterest(latitude: Double, longitude: Double, radiusMeters: Double) async -> [[String: Any]] {
+    guard latitude.isFinite, longitude.isFinite,
+          latitude >= -90, latitude <= 90, longitude >= -180, longitude <= 180 else { return [] }
+    let center = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    let radius = max(50, min(500, radiusMeters))
+    let request = MKLocalPointsOfInterestRequest(center: center, radius: radius)
+    request.pointOfInterestFilter = .includingAll
+    do {
+      let response = try await MKLocalSearch(request: request).start()
+      let origin = CLLocation(latitude: latitude, longitude: longitude)
+      return response.mapItems.compactMap { item -> [String: Any]? in
+        guard let name = item.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { return nil }
+        let coordinate = item.placemark.coordinate
+        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+        let distance = origin.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+        guard distance <= radius else { return nil }
+        return [
+          "name": name,
+          "latitude": coordinate.latitude,
+          "longitude": coordinate.longitude,
+          "distanceMeters": distance,
+          "category": item.pointOfInterestCategory.map { $0.rawValue as Any } ?? NSNull()
+        ]
+      }
+      .sorted { ($0["distanceMeters"] as? Double ?? .greatestFiniteMagnitude) < ($1["distanceMeters"] as? Double ?? .greatestFiniteMagnitude) }
+      .prefix(8).map { $0 }
+    } catch {
+      return []
+    }
+  }
+
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
     if defaults.bool(forKey: RecorderDefaults.enabled) { startSignificantMonitoringIfAuthorized() }
     if manager.authorizationStatus != .authorizedAlways {
@@ -424,14 +608,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let startedAt = locations.first?.timestamp ?? Date()
     let now = Date()
     try database.transaction {
-      guard try database.scalarInt("SELECT COUNT(*) FROM local_users WHERE id=?;", bindings: [identity.owner]) == 1 else {
-        throw NativeRecorderError.notConfigured
-      }
-      guard try database.scalarInt("SELECT COUNT(*) FROM recording_sessions WHERE owner_user_id=? AND status<>'completed';", bindings: [identity.owner]) == 0 else {
+      guard try database.scalarInt("SELECT COUNT(*) FROM native_recording_sessions WHERE owner_user_id=? AND status<>'completed';", bindings: [identity.owner]) == 0 else {
         throw NativeRecorderError.sqlite("active_session_exists")
       }
       try database.execute(
-        "INSERT INTO recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);",
+        "INSERT INTO native_recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);",
         bindings: [id, identity.owner, identity.device, iso(startedAt), iso(now), iso(now)]
       )
       try insertLocations(locations, sessionID: id, database: database)
@@ -442,17 +623,17 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   private func insertLocations(_ locations: [CLLocation], sessionID: String, database supplied: NativeRecorderDatabase? = nil) throws {
     let database = try supplied ?? NativeRecorderDatabase()
     let work = {
-      var sequence = Int(try database.scalarInt("SELECT next_sequence FROM recording_sessions WHERE id=?;", bindings: [sessionID]))
+      var sequence = Int(try database.scalarInt("SELECT next_sequence FROM native_recording_sessions WHERE id=?;", bindings: [sessionID]))
       for location in locations where self.validCoordinate(location) && sequence <= 10_000_000 {
         try database.execute(
-          "INSERT OR IGNORE INTO recording_points(session_id,sequence,recorded_at,latitude,longitude,accuracy_meters,altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,?,?,?,?);",
+          "INSERT OR IGNORE INTO native_recording_points(session_id,sequence,recorded_at,latitude,longitude,accuracy_meters,altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,?,?,?,?);",
           bindings: [sessionID, sequence, self.iso(location.timestamp), location.coordinate.latitude, location.coordinate.longitude,
                      self.bounded(location.horizontalAccuracy, 0, 10_000), self.bounded(location.altitude, -1_000, 100_000),
                      self.bounded(location.course, 0, 360), self.bounded(location.speed, 0, 150)]
         )
         sequence += 1
       }
-      try database.execute("UPDATE recording_sessions SET next_sequence=?,updated_at=? WHERE id=?;", bindings: [sequence, self.iso(Date()), sessionID])
+      try database.execute("UPDATE native_recording_sessions SET next_sequence=?,updated_at=? WHERE id=?;", bindings: [sequence, self.iso(Date()), sessionID])
     }
     if supplied == nil { try database.transaction(work) } else { try work() }
   }
@@ -460,7 +641,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   private func markFinishing(sessionID: String, endedAt: Date) throws {
     let database = try NativeRecorderDatabase()
     try database.execute(
-      "UPDATE recording_sessions SET status='finishing',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status='recording';",
+      "UPDATE native_recording_sessions SET status='finishing',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status='recording';",
       bindings: [iso(endedAt), iso(Date()), sessionID]
     )
   }
@@ -471,23 +652,9 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let ended = iso(max(endedAt, session.startedAt))
     try database.transaction {
       try database.execute(
-        "UPDATE recording_sessions SET status='completed',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status<>'completed';",
+        "UPDATE native_recording_sessions SET status='completed',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status<>'completed';",
         bindings: [ended, now, session.id]
       )
-      for kind in ["archive_mirror", "apple_music_history", "private_cloud_sync", "remote_completion"] {
-        try database.execute(
-          """
-          INSERT INTO recording_jobs(id,owner_user_id,session_id,kind,status,attempt_count,next_attempt_at,lease_expires_at,last_error_code,created_at,updated_at,completed_at)
-          SELECT ? || ':' || ?,owner_user_id,?,?, 'pending',0,?,NULL,NULL,?,?,NULL FROM recording_sessions WHERE id=?
-          ON CONFLICT(owner_user_id,session_id,kind) DO UPDATE SET
-            status=CASE WHEN recording_jobs.status='completed' THEN 'completed' ELSE 'pending' END,
-            next_attempt_at=CASE WHEN recording_jobs.status='completed' THEN recording_jobs.next_attempt_at ELSE excluded.next_attempt_at END,
-            lease_expires_at=NULL,last_error_code=CASE WHEN recording_jobs.status='completed' THEN recording_jobs.last_error_code ELSE NULL END,
-            updated_at=excluded.updated_at;
-          """,
-          bindings: [session.id, kind, session.id, kind, now, now, now, session.id]
-        )
-      }
     }
   }
 
@@ -498,7 +665,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
           guard let identity = self.configuredIdentity(), let session = try self.activeSession(ownerUserID: identity.owner),
                 session.id.hasPrefix(nativeSessionPrefix) else { continuation.resume(); return }
           let database = try NativeRecorderDatabase()
-          try database.execute("UPDATE recording_sessions SET status=?,updated_at=? WHERE id=? AND status IN ('recording','paused');",
+          try database.execute("UPDATE native_recording_sessions SET status=?,updated_at=? WHERE id=? AND status IN ('recording','paused');",
                                bindings: [targetStatus, self.iso(Date()), session.id])
           self.state.automaticSessionID = session.id
           self.persistState()
@@ -540,7 +707,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   private func activeSession(ownerUserID: String) throws -> ActiveSession? {
     let database = try NativeRecorderDatabase()
     guard let row = try database.firstRow(
-      "SELECT id,status,started_at FROM recording_sessions WHERE owner_user_id=? AND status<>'completed' ORDER BY created_at DESC LIMIT 1;",
+      "SELECT id,status,started_at FROM native_recording_sessions WHERE owner_user_id=? AND status<>'completed' ORDER BY created_at DESC LIMIT 1;",
       bindings: [ownerUserID]
     ), row.count == 3, let id = row[0], let status = row[1], let started = row[2], let startedAt = parseISO(started) else { return nil }
     return ActiveSession(id: id, status: status, startedAt: startedAt)
@@ -550,19 +717,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let occurredAt = iso(Date())
     defaults.set(kind, forKey: RecorderDefaults.lastEvent)
     defaults.set(occurredAt, forKey: RecorderDefaults.lastEventAt)
-    guard let identity = configuredIdentity() else { return }
-    do {
-      let database = try NativeRecorderDatabase()
-      var payload: [String: Any] = ["kind": kind, "occurredAt": occurredAt]
-      if let sessionID { payload["sessionId"] = sessionID }
-      let data = try JSONSerialization.data(withJSONObject: payload)
-      let json = String(data: data, encoding: .utf8) ?? "{}"
-      try database.execute(
-        "INSERT INTO recording_app_cache(key,value_json,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;",
-        bindings: [automaticEventCacheKey, json, occurredAt]
-      )
-      _ = identity
-    } catch { setLastError(safeCode(error)) }
+    _ = sessionID
   }
 
   private func startSignificantMonitoringIfAuthorized() {
@@ -720,6 +875,18 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("finishActiveJourneyAsync") { () async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.finish()
+    }
+
+    AsyncFunction("exportInboxAsync") { (afterSequences: [String: Int]) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.exportInbox(afterSequences: afterSequences)
+    }
+
+    AsyncFunction("acknowledgeCompletedSessionsAsync") { (sessionIDs: [String]) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.acknowledgeCompletedSessions(sessionIDs)
+    }
+
+    AsyncFunction("nearbyPointsOfInterestAsync") { (latitude: Double, longitude: Double, radiusMeters: Double) async -> [[String: Any]] in
+      await JourneyDeckNativeRecorder.shared.nearbyPointsOfInterest(latitude: latitude, longitude: longitude, radiusMeters: radiusMeters)
     }
   }
 }

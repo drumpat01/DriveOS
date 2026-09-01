@@ -57,7 +57,7 @@ test('future design capabilities do not add unrelated privacy permissions', () =
   ]);
 });
 
-test('Build 11 retains the fail-closed StoreKit membership verifier', () => {
+test('Build 12 retains the fail-closed StoreKit membership verifier', () => {
   assert.deepEqual(membershipConfig.apple?.modules, ['JourneyDeckMembershipModule']);
   assert.match(membershipModule, /Transaction\.currentEntitlements/);
   assert.match(membershipModule, /case \.verified\(let transaction\)/);

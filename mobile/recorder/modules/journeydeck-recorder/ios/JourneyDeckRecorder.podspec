@@ -11,7 +11,7 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
 
   s.dependency 'ExpoModulesCore'
-  s.frameworks = 'CoreLocation', 'UIKit'
+  s.frameworks = 'CoreLocation', 'MapKit', 'UIKit'
   s.libraries = 'sqlite3'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"

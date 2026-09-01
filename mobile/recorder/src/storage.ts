@@ -15,6 +15,8 @@ import { notifyLocalArchiveChanged } from './local-archive-events';
 import { SQLITE_CONNECTION_HARDENING_SQL } from './database-hardening';
 import { getRecorderDatabase } from './database-owner';
 import { migrateLegacyRecorderIntoUnifiedDatabase } from './unified-data-migration';
+import { nativeRouteImportIsComplete } from './native-recorder-inbox-model';
+import type { NativeRecorderInboxExport, NativeRecorderInboxSession } from '../modules/journeydeck-recorder';
 
 const db = getRecorderDatabase();
 let initialized = false;
@@ -45,6 +47,24 @@ export type CompletionJob = {
 export type { MusicObservation } from './music-observations';
 
 const completionJobId = (sessionId: string, kind: CompletionJobKind) => `${sessionId}:${kind}`;
+const NATIVE_INBOX_CUTOVER_KEY = 'build12-native-inbox-cutover-v1';
+
+function retireBuild11SharedDatabaseSessions(): void {
+  const migrated = db.getFirstSync<{ status: string }>('SELECT status FROM local_migration_state WHERE key=?;', NATIVE_INBOX_CUTOVER_KEY);
+  if (migrated?.status === 'completed') return;
+  const now = new Date().toISOString();
+  db.withTransactionSync(() => {
+    // Build 11's Swift engine could leave an unfinished native mirror in the
+    // Expo-owned WAL. Build 12 never lets Swift touch this file again, so only
+    // that incomplete compatibility row is retired during the one-time cutover.
+    db.runSync("DELETE FROM recording_sessions WHERE id LIKE 'native_recording_%' AND status<>'completed';");
+    db.runSync(`INSERT INTO local_migration_state(
+        key,status,source_application_id,source_schema_version,source_counts_json,migrated_at
+      ) VALUES(?,'completed',NULL,NULL,'{}',?)
+      ON CONFLICT(key) DO UPDATE SET status='completed',migrated_at=excluded.migrated_at;`,
+    NATIVE_INBOX_CUTOVER_KEY, now);
+  });
+}
 
 export function initializeDatabase() {
   if (initialized) return;
@@ -54,6 +74,7 @@ export function initializeDatabase() {
   initializeLocalStore();
   db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
   migrateLegacyRecorderIntoUnifiedDatabase();
+  retireBuild11SharedDatabaseSessions();
   db.runSync('UPDATE recording_sessions SET remote_completed=1 WHERE drive_id IS NOT NULL AND remote_completed=0;');
   // Any completed legacy row receives idempotent jobs so an interrupted older
   // build is repaired by the normal completion runner.
@@ -96,6 +117,94 @@ export function initializeDatabase() {
     throw new Error('JourneyDeck recorder queue failed SQLite quick_check.');
   }
   initialized = true;
+}
+
+function validNativeInboxSession(session: NativeRecorderInboxSession, ownerUserId: string): boolean {
+  return session.id.startsWith('native_recording_') && session.ownerUserId === ownerUserId
+    && session.deviceId.trim().length > 0
+    && ['recording', 'paused', 'finishing', 'completed'].includes(session.status)
+    && Number.isFinite(Date.parse(session.startedAt))
+    && (session.endedAt === null || (Number.isFinite(Date.parse(session.endedAt)) && Date.parse(session.endedAt) >= Date.parse(session.startedAt)))
+    && Number.isInteger(session.nextSequence) && session.nextSequence >= 0
+    && Number.isFinite(Date.parse(session.createdAt)) && Number.isFinite(Date.parse(session.updatedAt));
+}
+
+/**
+ * Copies the Swift-owned recorder inbox into the Expo-owned archive. Swift
+ * never opens journeydeck-local.db and Expo never opens the inbox database;
+ * this typed bridge is the only boundary between the two SQLite libraries.
+ */
+export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): string[] {
+  initializeDatabase();
+  const ownerUserId = getCurrentUser().id;
+  const sessions = Array.isArray(snapshot.sessions)
+    ? snapshot.sessions.filter(session => validNativeInboxSession(session, ownerUserId)).slice(0, 20)
+    : [];
+  if (!sessions.length) return [];
+  const completed: string[] = [];
+  db.withTransactionSync(() => {
+    for (const session of sessions) {
+      // A completed native route may be exported in more than one batch. Keep
+      // its master row behind the finishing fence until every numbered point
+      // is present; only then may completion jobs run or Swift delete it.
+      const importedStatus = session.status === 'completed' ? 'finishing' : session.status;
+      db.runSync(`INSERT INTO recording_sessions(
+          id,owner_user_id,device_id,status,started_at,ended_at,next_sequence,
+          remote_created,remote_completed,drive_id,created_at,updated_at
+        ) VALUES(?,?,?,?,?,?,?,0,0,NULL,?,?)
+        ON CONFLICT(id) DO UPDATE SET
+          status=CASE WHEN recording_sessions.status='completed' THEN 'completed' ELSE excluded.status END,
+          ended_at=COALESCE(recording_sessions.ended_at,excluded.ended_at),
+          next_sequence=MAX(recording_sessions.next_sequence,excluded.next_sequence),
+          updated_at=MAX(recording_sessions.updated_at,excluded.updated_at);`,
+      session.id, session.ownerUserId, session.deviceId, importedStatus, session.startedAt,
+      session.endedAt, session.nextSequence, session.createdAt, session.updatedAt);
+      for (const point of session.points.slice(0, 100_000)) {
+        if (!Number.isInteger(point.sequence) || point.sequence < 0
+          || !Number.isFinite(Date.parse(point.recordedAt))
+          || !Number.isFinite(point.latitude) || point.latitude < -90 || point.latitude > 90
+          || !Number.isFinite(point.longitude) || point.longitude < -180 || point.longitude > 180) continue;
+        db.runSync(`INSERT OR IGNORE INTO recording_points(
+            session_id,sequence,recorded_at,latitude,longitude,accuracy_meters,
+            altitude_meters,heading_degrees,speed_mps,uploaded
+          ) VALUES(?,?,?,?,?,?,?,?,?,0);`,
+        session.id, point.sequence, point.recordedAt, point.latitude, point.longitude,
+        valid(point.accuracyMeters, 0, 10_000), valid(point.altitudeMeters, -1_000, 100_000),
+        valid(point.headingDegrees, 0, 360), valid(point.speedMps, 0, 150));
+      }
+      const importedRoute = db.getFirstSync<{ pointCount: number; nextPointSequence: number }>(`
+        SELECT COUNT(*) AS pointCount,COALESCE(MAX(sequence)+1,0) AS nextPointSequence
+        FROM recording_points WHERE session_id=?;
+      `, session.id);
+      const routeIsComplete = nativeRouteImportIsComplete(
+        session.nextSequence,
+        Number(importedRoute?.pointCount ?? 0),
+        Number(importedRoute?.nextPointSequence ?? 0),
+      );
+      if (session.status === 'completed' && session.endedAt && routeIsComplete) {
+        const now = new Date().toISOString();
+        db.runSync(`UPDATE recording_sessions
+          SET status='completed',ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
+          WHERE id=?;`, session.endedAt, session.nextSequence, session.updatedAt, session.id);
+        for (const kind of ['archive_mirror', 'apple_music_history', 'private_cloud_sync', 'remote_completion'] as CompletionJobKind[]) {
+          enqueueCompletionJobInTransaction(session.id, ownerUserId, kind, now);
+        }
+        completed.push(session.id);
+      }
+    }
+  });
+  if (completed.length > 0) notifyLocalArchiveChanged();
+  return completed;
+}
+
+export function nativeRecorderInboxCursors(): Record<string, number> {
+  initializeDatabase();
+  return Object.fromEntries(db.getAllSync<{ id: string; nextSequence: number }>(`
+    SELECT s.id,COALESCE(MAX(p.sequence)+1,0) AS nextSequence
+    FROM recording_sessions s LEFT JOIN recording_points p ON p.session_id=s.id
+    WHERE s.owner_user_id=? AND s.id LIKE 'native_recording_%'
+    GROUP BY s.id;
+  `, getCurrentUser().id).map(row => [row.id, Math.max(0, Number(row.nextSequence) || 0)]));
 }
 
 export function activeSession() { initializeDatabase(); return db.getFirstSync<SessionRow>("SELECT * FROM recording_sessions WHERE owner_user_id=? AND status!='completed' ORDER BY created_at DESC LIMIT 1;", getCurrentUser().id); }

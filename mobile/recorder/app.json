@@ -84,8 +84,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Native Runtime 1.9 — native continuity",
-        "sequence": "N1.9-RC1"
+        "label": "Native Runtime 1.9 — Build 12 reliability",
+        "sequence": "N1.9-B12"
       },
       "edge": {
         "url": "https://journeydeck-edge.patrickbstewart.workers.dev"

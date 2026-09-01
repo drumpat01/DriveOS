@@ -1,6 +1,10 @@
 import JourneyDeckRecorderModule from './src/JourneyDeckRecorderModule';
+import type { NativeRecorderInboxExport } from './src/JourneyDeckRecorder.types';
 
-export type { NativeRecorderAuthorization, NativeRecorderStatus } from './src/JourneyDeckRecorder.types';
+export type {
+  NativeMapKitPointOfInterest, NativeRecorderAuthorization, NativeRecorderInboxExport,
+  NativeRecorderInboxPoint, NativeRecorderInboxSession, NativeRecorderStatus,
+} from './src/JourneyDeckRecorder.types';
 
 const unavailableStatus = {
   nativeModuleAvailable: false,
@@ -41,6 +45,21 @@ export async function resumeNativeAutomaticJourney() {
 export async function finishNativeAutomaticJourney() {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
   return JourneyDeckRecorderModule.finishActiveJourneyAsync();
+}
+
+export async function exportNativeRecorderInbox(afterSequences: Record<string, number>): Promise<NativeRecorderInboxExport> {
+  if (!JourneyDeckRecorderModule) return { sessions: [], errorCode: 'native_module_unavailable' };
+  return JourneyDeckRecorderModule.exportInboxAsync(afterSequences);
+}
+
+export async function acknowledgeNativeRecorderSessions(sessionIds: string[]) {
+  if (!JourneyDeckRecorderModule) return { acknowledged: 0, errorCode: 'native_module_unavailable' } as const;
+  return JourneyDeckRecorderModule.acknowledgeCompletedSessionsAsync(sessionIds);
+}
+
+export async function lookupNearbyMapKitPointsOfInterest(latitude: number, longitude: number, radiusMeters = 250) {
+  if (!JourneyDeckRecorderModule) return [];
+  return JourneyDeckRecorderModule.nearbyPointsOfInterestAsync(latitude, longitude, radiusMeters);
 }
 
 export function isNativeAutomaticSession(sessionId: string | null | undefined) {

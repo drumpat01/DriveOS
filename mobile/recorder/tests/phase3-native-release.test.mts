@@ -13,13 +13,15 @@ import { legacyRecorderImportSql } from '../src/legacy-recorder-import.ts';
 
 const source = (relative: string) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
 
-test('Build 11 owns automatic recording in Swift and retires the Build 10 JavaScript detector', () => {
+test('Build 12 isolates Swift recording from the Expo SQLite WAL and retires the Build 10 JavaScript detector', () => {
   const config = JSON.parse(source('app.json'));
   const moduleConfig = JSON.parse(source('modules/journeydeck-recorder/expo-module.config.json'));
   const swift = source('modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift');
   const subscriber = source('modules/journeydeck-recorder/ios/JourneyDeckRecorderAppDelegateSubscriber.swift');
   const app = source('App.tsx');
   const manualTask = source('src/location-task.ts');
+  const storage = source('src/storage.ts');
+  const inbox = source('src/native-recorder-inbox.ts');
 
   assert.equal(config.expo.version, '1.9.0');
   assert.deepEqual(config.expo.runtimeVersion, { policy: 'appVersion' });
@@ -30,14 +32,48 @@ test('Build 11 owns automatic recording in Swift and retires the Build 10 JavaSc
   assert.match(swift, /startMonitoringSignificantLocationChanges/);
   assert.match(swift, /startUpdatingLocation/);
   assert.match(swift, /allowsBackgroundLocationUpdates = true/);
-  assert.match(swift, /journeydeck-local\.db/);
+  assert.match(swift, /journeydeck-native-inbox\.db/);
+  assert.doesNotMatch(swift, /journeydeck-local\.db/);
+  assert.match(swift, /PRAGMA journal_mode=DELETE/);
+  assert.match(swift, /native_recording_sessions/);
+  assert.match(swift, /native_recording_points/);
+  assert.match(swift, /exportInboxAsync/);
+  assert.match(swift, /acknowledgeCompletedSessionsAsync/);
+  assert.doesNotMatch(swift, /INSERT INTO recording_jobs/);
   assert.match(swift, /BEGIN IMMEDIATE/);
   assert.match(swift, /native_recording_/);
-  assert.match(swift, /archive_mirror.*apple_music_history.*private_cloud_sync.*remote_completion/s);
+  assert.match(swift, /sequence>=\?/);
+  assert.match(swift, /FileProtectionType\.completeUntilFirstUserAuthentication/);
+  assert.match(storage, /archive_mirror.*apple_music_history.*private_cloud_sync.*remote_completion/s);
   const configureBridge = swift.slice(swift.indexOf('AsyncFunction("configureAsync")'), swift.indexOf('AsyncFunction("getStatusAsync")'));
   assert.doesNotMatch(configureBridge, /runOnQueue/, 'Expo async bridge functions cannot use the synchronous queue modifier');
   assert.match(app, /stopAutomaticDetection[\s\S]*configureNativeAutomaticRecorder/);
+  assert.match(app, /syncNativeRecorderInbox/);
+  assert.match(storage, /importNativeRecorderInbox/);
+  assert.match(storage, /nativeRecorderInboxCursors/);
+  assert.match(storage, /nativeRouteImportIsComplete/);
+  assert.match(storage, /status='completed'[\s\S]*enqueueCompletionJobInTransaction[\s\S]*completed\.push/);
+  assert.match(storage, /Build 12 never lets Swift touch this file again/);
+  assert.match(inbox, /exportNativeRecorderInbox[\s\S]*importNativeRecorderInbox[\s\S]*acknowledgeNativeRecorderSessions/);
   assert.doesNotMatch(manualTask, /processAutomaticDriveLocations/);
+});
+
+test('Build 12 enriches unnamed journey endpoints with native MapKit POI and geocoder fallback', () => {
+  const swift = source('modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift');
+  const podspec = source('modules/journeydeck-recorder/ios/JourneyDeckRecorder.podspec');
+  const module = source('modules/journeydeck-recorder/index.ts');
+  const enrichment = source('src/journey-place-enrichment.ts');
+
+  assert.match(swift, /import MapKit/);
+  assert.match(swift, /MKLocalPointsOfInterestRequest/);
+  assert.match(swift, /pointOfInterestFilter = \.includingAll/);
+  assert.match(swift, /nearbyPointsOfInterestAsync/);
+  assert.match(podspec, /'MapKit'/);
+  assert.match(module, /lookupNearbyMapKitPointsOfInterest/);
+  assert.match(enrichment, /MAPKIT_POI_SEARCH_RADIUS_METERS = 250/);
+  assert.match(enrichment, /MAPKIT_POI_MAX_MATCH_DISTANCE_METERS = 160/);
+  assert.match(enrichment, /pointOfInterest\?\.name \?\? \(address \? bestPlaceLabelFromAddress/);
+  assert.match(enrichment, /findNamedPlace[\s\S]*findCachedPlace/);
 });
 
 test('CloudKit transport stages tokens, preserves assets atomically, and reports bounded retry metadata', () => {

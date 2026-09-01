@@ -31,6 +31,7 @@ import { loadRecordingModePreferences } from './recording-mode';
 import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
+import { buildSongRouteMoments } from './route-moments';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'health' | 'settings';
@@ -125,6 +126,13 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   const parkedRoute = latestDetail?.route?.coordinates ?? [];
   const visibleRoute = snapshot.route.length > 1 ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number]) : parkedRoute;
   const visibleCoordinate = lastPoint ? [lastPoint.longitude, lastPoint.latitude] as [number, number] : parkedRoute.at(-1) ?? null;
+  const visibleSoundtrack = snapshot.session ? snapshot.music : latestDetail?.soundtrack ?? [];
+  const visibleSongMoments = buildSongRouteMoments(
+    visibleSoundtrack,
+    visibleRoute,
+    snapshot.session?.startedAt ?? latestDetail?.startedAt ?? new Date().toISOString(),
+    snapshot.session?.endedAt ?? latestDetail?.endedAt ?? new Date().toISOString(),
+  );
   const battery = tessieVehicle?.batteryPercent ?? latestDetail?.endingBatteryPercent;
   const range = tessieVehicle?.rangeMiles ?? null;
   const vehicleNote = tessieVehicle
@@ -144,7 +152,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
       : 'Start a journey to capture its route and time. Apple Music adds the automatic soundtrack.';
   return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle="Automatic routes and Apple Music soundtracks, captured privately from this iPhone." headerImage={require('../assets/live-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="live" refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
-    <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
+    {(snapshot.session || !automaticMode) && <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>{liveKicker}</Text><Text style={styles.heroTitle}>{liveTitle}</Text></View><View style={[styles.liveDot, snapshot.session && styles.liveDotActive]} /></View>
       <Text style={styles.liveStateCopy}>{liveCopy}</Text>
       {snapshot.session && <View style={styles.metricRow}>
@@ -153,7 +161,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
         <Metric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" />
       </View>}
       <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
-    </View>
+    </View>}
     <PrimaryMobilityMap
       routes={visibleRoute.length > 1 ? [{ id: snapshot.session?.id ?? latestDetail?.id ?? 'last-known', coordinates: visibleRoute }] : []}
       currentCoordinate={visibleCoordinate}
@@ -163,6 +171,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
       cameraPadding={58}
       minimumBoundsSpan={0.055}
       emptyMessage={automaticMode ? 'Your route will appear when JourneyDeck detects your next drive.' : 'Start recording to see your route and current location here.'}
+      songMoments={visibleSongMoments}
     />
     {TESSIE_INTEGRATION_ENABLED && tessieConnected && <>
       <SectionTitle title="Connected vehicle" detail="Optional Tessie enhancement" />
@@ -702,13 +711,13 @@ function formatAtlasPatternRoute(start: string, end: string) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
   headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
-  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { alignSelf: 'stretch', marginBottom: 22 },
+  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22 },
   utilityBack: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
   utilityBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },
-  statsPageTitle: { width: '100%', alignSelf: 'center', color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 17, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
+  statsPageTitle: { position: 'relative', zIndex: 10, elevation: 10, width: '100%', alignSelf: 'center', color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 17, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
   loadingCard: { minHeight: 100, borderRadius: 22, backgroundColor: '#0d0712', borderWidth: 1, borderColor: '#34203d', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20, marginBottom: 16 },
   warningCard: { borderRadius: 19, backgroundColor: '#21120d', borderWidth: 1, borderColor: '#6f432e', padding: 16, marginBottom: 15 },
   warningTitle: { color: '#ff9b67', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginBottom: 6 },
