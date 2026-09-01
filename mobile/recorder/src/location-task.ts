@@ -1,9 +1,10 @@
 import * as TaskManager from 'expo-task-manager';
 import type { LocationObject } from 'expo-location';
 import { processAutomaticDriveLocations } from './automatic-drive-task';
-import { sampleAppleMusicForActiveSession, sampleShazamForActiveSession } from './music-capture';
+import { sampleAppleMusicForActiveSession, sampleTessieMediaForActiveSession } from './music-capture';
 import { recordLocations } from './storage';
 import { LOCATION_TASK_NAME } from './tracking';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 TaskManager.defineTask<{ locations: LocationObject[] }>(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
@@ -17,7 +18,9 @@ TaskManager.defineTask<{ locations: LocationObject[] }>(LOCATION_TASK_NAME, asyn
       // The route has already been saved. Detection must never make the core
       // recorder task fail or discard a captured point.
     }
-    await sampleAppleMusicForActiveSession();
-    await sampleShazamForActiveSession();
+    await Promise.allSettled([
+      sampleAppleMusicForActiveSession(),
+      ...(TESSIE_INTEGRATION_ENABLED ? [sampleTessieMediaForActiveSession()] : []),
+    ]);
   }
 });

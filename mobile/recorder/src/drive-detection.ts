@@ -102,7 +102,11 @@ export function evaluateDriveDetection(
     // Core Location commonly reports -1 (unknown) for speed after a vehicle
     // parks. An accurate stationary position is still evidence that the phone
     // is stopped, and prevents the parked timer from stalling indefinitely.
-    const effectiveSpeed = speed ?? (positionedState !== current ? 0 : null);
+    // Once recording is active, displacement between accurate fixes is a more
+    // reliable parking signal than Core Location's speed field. iOS can repeat
+    // the last positive speed briefly after a vehicle stops. Starting still
+    // uses the conservative maximum above, so GPS drift cannot start a drive.
+    const effectiveSpeed = positionSpeed ?? nativeSpeed ?? (positionedState !== current ? 0 : null);
     if (effectiveSpeed == null) return { state, action: 'none' };
     if (effectiveSpeed > DRIVE_STOP_SPEED_MPS) return { state: { ...state, stoppedSince: null }, action: 'none' };
     const stoppedSince = state.stoppedSince ?? timestamp;

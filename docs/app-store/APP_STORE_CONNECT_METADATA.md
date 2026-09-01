@@ -32,7 +32,8 @@ What you can do:
 - Add optional soundtracks with Apple Music history or ShazamKit recognition. JourneyDeck never saves microphone audio.
 - Protect sensitive places with Home and Work safe zones before creating a share card.
 - Keep private continuity through optional iCloud sync.
-- Add optional vehicle context with Tessie, using a token stored only in your iPhone Keychain.
+
+JourneyDeck’s free experience keeps the latest 45 days available. An optional auto-renewable membership unlocks Atlas and complete history. Expiration never deletes locally stored journeys; older history is hidden until membership is active again.
 
 JourneyDeck is not a navigation app. Do not interact with it while driving; set up recording before you begin a journey.
 
@@ -55,15 +56,16 @@ Use a consistent, public-build data set without a real home, work address, vehic
 1. **Home** — “The road remembers.” Show the latest road memory and the local-first theme.
 2. **Live** — Show a parked vehicle card and tilted local map; avoid implying live vehicle data is required.
 3. **Memories** — Show Journey Library filters, favorite routes, and private personal history.
-4. **Atlas** — Show frequent places and recurring patterns with generic labels.
-5. **Recorder** — Show Manual Recording ready to start and explain background route capture in the accompanying caption.
-6. **Settings** — Show privacy-safe controls, optional iCloud, and no subscriptions or Spotify paths.
+4. **Statistics** — Show the live 45-day story and its recent timeline.
+5. **Atlas** — Show the subscriber-only frequent-place and recurring-pattern experience with generic labels.
+6. **Recorder** — Show Manual Recording ready to start and explain background route capture in the accompanying caption.
+7. **Settings** — Show privacy-safe controls, optional iCloud, and membership status without Spotify or Tessie paths.
 
 Capture every screenshot from a production-configured build with internal testing disabled. Use only App Store Connect’s currently accepted iPhone display sizes; do not reuse development-client screenshots or red error screens.
 
 ## Do not claim
 
-- A paid tier, subscription price, free trial, or purchase entitlement.
+- A subscription price or free trial that is not exactly configured and approved in App Store Connect.
 - Spotify, Last.fm, direct Spotify, or any other unapproved public music import.
 - Navigation, emergency response, crash detection, or driving-safety guarantees.
 - That iCloud, Apple Music, ShazamKit, Tessie, or an owner legacy backup is required for the core app.

@@ -124,4 +124,10 @@ assert.match(src, /\.sort\(\(a, b\) => b\.count - a\.count\)/, 'mood sorted by c
 
 assert.match(src, /Math\.max\(1, Math\.min\(50,/, 'top artists limit is clamped 1-50');
 
-console.log('✅  local-atlas: all 12 checks passed.');
+// ============================================================
+// 13. Expo SQLite connection safety
+// ============================================================
+
+assert.doesNotMatch(src, /PRAGMA\s+query_only/i, 'does not make Expo shared SQLite handles read-only');
+
+console.log('✅  local-atlas: all 13 checks passed.');

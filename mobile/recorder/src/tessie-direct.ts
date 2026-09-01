@@ -2,6 +2,7 @@ import Constants from 'expo-constants';
 
 import { requestPrivacyEdgeJson } from './network-request';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 const TESSIE_TOKEN_KEY = 'journeydeck.vehicle.tessie.token.v1';
 
@@ -24,6 +25,20 @@ export type TessieSnapshot = {
   charges: TessieChargeSnapshot[];
   drives: TessieDriveSnapshot[];
 };
+export type TessieMediaSample = {
+  available: boolean;
+  sampledAt: string;
+  reason?: 'no_active_vehicle' | 'no_track_metadata';
+  isPlaying?: boolean;
+  track?: string;
+  artist?: string;
+  album?: string | null;
+  source?: string | null;
+  station?: string | null;
+  playbackStatus?: string | null;
+  durationMs?: number | null;
+  elapsedMs?: number | null;
+};
 
 function edgeUrl() {
   const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
@@ -39,9 +54,13 @@ async function storedToken() {
   } catch { return null; }
 }
 
-export async function tessieDirectStatus() { return (await storedToken()) ? 'connected' as const : 'not_connected' as const; }
+export async function tessieDirectStatus() {
+  if (!TESSIE_INTEGRATION_ENABLED) return 'not_connected' as const;
+  return (await storedToken()) ? 'connected' as const : 'not_connected' as const;
+}
 
 export async function connectTessieDirect(accessToken: string) {
+  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
   const clean = accessToken.trim();
   if (!validToken(clean)) throw new Error('Enter the Tessie access token from Tessie developer settings.');
   const edge = edgeUrl();
@@ -63,6 +82,7 @@ export async function deleteCurrentProfileTessieSecrets(): Promise<void> {
 }
 
 export async function syncTessieDirect(): Promise<TessieSnapshot> {
+  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
   const accessToken = await storedToken();
   if (!accessToken) throw new Error('Connect Tessie in Settings first.');
   const edge = edgeUrl();
@@ -75,4 +95,19 @@ export async function syncTessieDirect(): Promise<TessieSnapshot> {
     throw new Error('Tessie returned an incomplete vehicle snapshot.');
   }
   return snapshot;
+}
+
+export async function sampleTessieMedia(): Promise<TessieMediaSample | null> {
+  if (!TESSIE_INTEGRATION_ENABLED) return null;
+  const accessToken = await storedToken();
+  if (!accessToken) return null;
+  const edge = edgeUrl();
+  if (!edge) return null;
+  const sample = await requestPrivacyEdgeJson<TessieMediaSample>(edge, '/api/vehicle/tessie/media', { accessToken }, {
+    reason: 'external_import', operation: 'Tessie now playing check', timeoutMs: 20_000,
+  });
+  if (!sample || typeof sample.available !== 'boolean' || typeof sample.sampledAt !== 'string') {
+    throw new Error('Tessie returned an incomplete media sample.');
+  }
+  return sample;
 }

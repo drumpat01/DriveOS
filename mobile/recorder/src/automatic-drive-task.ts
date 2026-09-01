@@ -1,24 +1,24 @@
 import type { LocationObject } from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 
-import { flushAllQueuedMusicBestEffort, syncPendingCompletedRecordingsBestEffort } from './api';
 import {
   loadAutomaticDriveState, resetAutomaticDriveState, saveAutomaticDriveEvent, saveAutomaticDriveState,
 } from './automatic-drive-state';
 import { loadConnection, loadOrCreateDeviceId } from './credentials';
 import { emptyDriveDetectionState, evaluateDriveDetection } from './drive-detection';
-import { syncCurrentUserWithPrivateICloud } from './icloud-sync';
 import { queueLastFmForCompletedSession } from './lastfm-sync';
 import {
-  captureAppleMusicHistoryForSession, sampleAppleMusicForActiveSession, sampleShazamForActiveSession,
+  sampleAppleMusicForActiveSession, sampleTessieMediaForActiveSession,
 } from './music-capture';
 import { loadRecordingModePreferences } from './recording-mode';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import {
-  activeSession, beginLocalSession, completeSessionLocally, recordLocations, refreshCompletedSessionLocalMirror, setLocalStatus,
+  abandonLocalSession, activeSession, beginLocalSession, completeSessionLocally, recordFinishingLocation, recordLocations, setLocalStatus,
 } from './storage';
 import {
   AUTOMATIC_DETECTION_TASK_NAME, startLocationTracking, stopLocationTracking,
 } from './tracking';
+import { processPendingCompletionJobs } from './completion-jobs';
 
 async function startDetectedJourney(location: LocationObject) {
   if (activeSession()) return null;
@@ -27,12 +27,14 @@ async function startDetectedJourney(location: LocationObject) {
   try {
     if (!(await startLocationTracking())) throw new Error('iOS did not confirm route tracking.');
     recordLocations([{ ...location, timestamp: Math.max(location.timestamp, Date.now()) }]);
-    await sampleAppleMusicForActiveSession({ force: true });
-    await sampleShazamForActiveSession({ force: true });
+    await Promise.allSettled([
+      sampleAppleMusicForActiveSession({ force: true }),
+      ...(TESSIE_INTEGRATION_ENABLED ? [sampleTessieMediaForActiveSession({ force: true })] : []),
+    ]);
     saveAutomaticDriveEvent('started', session.id);
     return session.id;
   } catch {
-    completeSessionLocally(session.id, false);
+    abandonLocalSession(session.id);
     resetAutomaticDriveState();
     saveAutomaticDriveEvent('start_failed', session.id);
     return null;
@@ -44,20 +46,15 @@ async function finishDetectedJourney(sessionId: string, location: LocationObject
   // makes a concurrently delivered location batch harmless instead of allowing
   // two task invocations to finish the same journey.
   setLocalStatus(sessionId, 'finishing');
-  if (!locationAlreadyRecorded) recordLocations([location]);
+  if (!locationAlreadyRecorded) recordFinishingLocation(sessionId, location);
   await stopLocationTracking().catch(() => {});
   const connection = await loadConnection();
   completeSessionLocally(sessionId, Boolean(connection));
   resetAutomaticDriveState();
-  void captureAppleMusicHistoryForSession(sessionId)
-    .catch(() => undefined)
-    .finally(() => {
-      refreshCompletedSessionLocalMirror(sessionId);
-      if (connection) void flushAllQueuedMusicBestEffort(connection);
-      void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
-    });
+  // The bounded worker persists every unfinished step before this background
+  // callback returns, so iOS termination can delay enrichment but cannot lose it.
+  await processPendingCompletionJobs({ connection, sessionId, limit: 8 }).catch(() => undefined);
   void queueLastFmForCompletedSession(sessionId);
-  if (connection) void syncPendingCompletedRecordingsBestEffort(connection);
   saveAutomaticDriveEvent('finished', sessionId);
 }
 

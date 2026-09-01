@@ -25,6 +25,8 @@ export type AppleCurrentTrackSample = {
   artist?: string;
   album?: string;
   durationSeconds?: number;
+  artworkUrl?: string;
+  appleMusicUrl?: string;
 };
 
 export type AppleRecentSongSample = {
@@ -36,6 +38,18 @@ export type AppleRecentSongSample = {
   lastPlayedAt?: string;
   artworkUrl?: string;
   appleMusicUrl?: string;
+};
+
+export type TessieMediaSample = {
+  available: boolean;
+  sampledAt: string;
+  isPlaying?: boolean;
+  track?: string;
+  artist?: string;
+  album?: string | null;
+  source?: string | null;
+  durationMs?: number | null;
+  elapsedMs?: number | null;
 };
 
 export type ShazamMatch =
@@ -151,8 +165,8 @@ export function appleCurrentTrackObservation(sample: AppleCurrentTrackSample, se
     artist,
     album: cleanText(sample.album) || null,
     durationMs: boundedDurationMilliseconds(sample.durationSeconds),
-    artworkUrl: null,
-    externalUrl: null,
+    artworkUrl: cleanHttpsUrl(sample.artworkUrl),
+    externalUrl: cleanHttpsUrl(sample.appleMusicUrl),
     confidence: null,
   });
 }
@@ -172,6 +186,34 @@ export function appleRecentSongObservation(sample: AppleRecentSongSample, sessio
     durationMs: boundedDurationMilliseconds(sample.durationSeconds),
     artworkUrl: cleanHttpsUrl(sample.artworkUrl),
     externalUrl: cleanHttpsUrl(sample.appleMusicUrl),
+    confidence: null,
+  });
+}
+
+export function tessieMediaObservation(sample: TessieMediaSample, sessionStartedAt: string): MusicObservation | null {
+  if (!sample.available || sample.isPlaying === false) return null;
+  const track = cleanText(sample.track);
+  const artist = cleanText(sample.artist);
+  const sampledAtMs = finiteTimestamp(sample.sampledAt);
+  const sessionStartMs = finiteTimestamp(sessionStartedAt);
+  if (!track || !artist || sampledAtMs === null || sessionStartMs === null) return null;
+  const elapsedMs = typeof sample.elapsedMs === 'number' && Number.isFinite(sample.elapsedMs) && sample.elapsedMs >= 0 && sample.elapsedMs <= 6 * 60 * 60_000
+    ? sample.elapsedMs
+    : 0;
+  const playedAtMs = Math.max(sessionStartMs, sampledAtMs - elapsedMs);
+  const durationMs = typeof sample.durationMs === 'number' && Number.isFinite(sample.durationMs) && sample.durationMs >= 0
+    ? Math.min(3_600_000, Math.round(sample.durationMs))
+    : null;
+  return normalizeMusicObservation({
+    observationId: observationId('apple_music', `${track}\0${artist}\0${cleanText(sample.album)}`, playedAtMs),
+    source: 'apple_music',
+    playedAt: new Date(playedAtMs).toISOString(),
+    track,
+    artist,
+    album: cleanText(sample.album) || null,
+    durationMs,
+    artworkUrl: null,
+    externalUrl: null,
     confidence: null,
   });
 }

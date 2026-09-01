@@ -40,7 +40,7 @@
       },
       "infoPlist": {
         "NSAppleMusicUsageDescription": "JourneyDeck reads your Apple Music activity to build the soundtrack for journeys you record.",
-        "NSMicrophoneUsageDescription": "JourneyDeck briefly uses the microphone to identify music during journeys when Auto Recognition is enabled. Audio is never recorded or saved."
+        "NSMicrophoneUsageDescription": "When you tap Identify Song, JourneyDeck briefly uses the microphone to recognize that song. Audio is never recorded or saved."
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -72,7 +72,7 @@
         {
           "photosPermission": "JourneyDeck accesses photos you choose so you can add them to Collections and Memories.",
           "cameraPermission": false,
-          "microphonePermission": "JourneyDeck briefly uses the microphone to identify music during journeys when Auto Recognition is enabled. Audio is never recorded or saved."
+          "microphonePermission": "When you tap Identify Song, JourneyDeck briefly uses the microphone to recognize that song. Audio is never recorded or saved."
         }
       ],
       "expo-sqlite",

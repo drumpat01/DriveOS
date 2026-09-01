@@ -14,6 +14,8 @@ import { fileURLToPath } from 'node:url';
 const __dir = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dir, '../src/local-store.ts'), 'utf8');
 const recorderStorageSrc = readFileSync(resolve(__dir, '../src/storage.ts'), 'utf8');
+const placeMatchingSrc = readFileSync(resolve(__dir, '../src/place-matching.ts'), 'utf8');
+const hardeningSrc = readFileSync(resolve(__dir, '../src/database-hardening.ts'), 'utf8');
 
 // ============================================================
 // 1. Type exports
@@ -34,7 +36,7 @@ assert.match(src, /export type LocalAtlasSnapshot\s*=/, 'exports LocalAtlasSnaps
 // ============================================================
 
 assert.match(src, /PRAGMA journal_mode = WAL/, 'enables WAL mode');
-assert.match(src, /PRAGMA foreign_keys = ON/, 'enables foreign keys');
+assert.match(hardeningSrc, /PRAGMA foreign_keys = ON/, 'enables foreign keys on every writable connection');
 assert.match(src, /PRAGMA user_version/, 'uses additive migration via user_version');
 assert.match(src, /MIGRATIONS/, 'migration array exists');
 assert.match(src, /withTransactionSync/, 'migrations run inside transactions');
@@ -144,6 +146,11 @@ assert.match(src, /nextCursor/, 'pagination returns nextCursor');
 // ============================================================
 
 assert.match(src, /45_000/, 'music dedup uses 45-second window');
+assert.match(src, /artwork_url=COALESCE\(excluded\.artwork_url,local_music_entries\.artwork_url\)/, 'music upserts preserve richer album artwork');
+assert.match(recorderStorageSrc, /artwork_url=COALESCE\(\?,artwork_url\)/, 'recorder duplicates are enriched when MusicKit returns artwork');
+assert.match(src, /export function enrichMusicEntriesWithArtwork/, 'recent Apple Music catalog results can repair stored artwork without playback timestamps');
+assert.match(src, /LOWER\(TRIM\(track\)\)=LOWER\(\?\).*LOWER\(TRIM\(artist\)\)=LOWER\(\?\)/s, 'artwork repair matches the stored title and artist locally');
+assert.match(src, /artwork_url IS NULL OR \?=1/, 'an OTA can deliberately replace every matching stored cover');
 
 // ============================================================
 // 14. GeoJSON route output
@@ -156,8 +163,9 @@ assert.match(src, /\[p\.longitude, p\.latitude\]/, 'GeoJSON uses [lng, lat] orde
 // 15. Haversine distance check in findCachedPlace
 // ============================================================
 
-assert.match(src, /6_371_000/, 'haversine uses Earth radius in meters');
-assert.match(src, /Math\.asin/, 'haversine uses asin');
+assert.match(placeMatchingSrc, /6_371_000/, 'haversine uses Earth radius in meters');
+assert.match(placeMatchingSrc, /Math\.asin/, 'haversine uses asin');
+assert.match(src, /export function findNamedPlace/, 'named places support nearby journey endpoint propagation');
 
 // ============================================================
 // 16. Multi-user writes and sync acknowledgements enforce ownership

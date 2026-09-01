@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dir, '../src/app-data.ts'), 'utf8');
+const placeMatchingSrc = readFileSync(resolve(__dir, '../src/place-matching.ts'), 'utf8');
 
 // ============================================================
 // 1. localAtlasClient is exported
@@ -85,6 +86,12 @@ assert.match(src, /function localJourneyToSummary/, 'localJourneyToSummary mappe
 assert.match(src, /soundtrackPreview: \[\]/, 'soundtrackPreview defaults to empty array (no server needed)');
 assert.match(src, /startingLocation: j\.startPlaceId/, 'maps startPlaceId → startingLocation');
 assert.match(src, /endingLocation: j\.endPlaceId/, 'maps endPlaceId → endingLocation');
+assert.match(src, /coordinatePlaceAliasIdentity/, 'creates a stable local identity for GPS-only endpoints');
+assert.match(placeMatchingSrc, /latitude\.toFixed\(3\).*longitude\.toFixed\(3\)/, 'coarsens the exact endpoint identity');
+assert.match(src, /findNamedPlace/, 'resolves user-named places by nearby GPS distance');
+assert.match(src, /startingLocationKey,\s*endingLocationKey,/, 'includes stable endpoint keys in local journey summaries');
+assert.match(src, /startingLocationKey: startKey/, 'rehydrates the same start key when local aliases are applied');
+assert.match(src, /endingLocationKey: endKey/, 'rehydrates the same destination key when local aliases are applied');
 
 // ============================================================
 // 7. MusicDashboard offline fields

@@ -269,7 +269,7 @@ export function InteractiveRouteMap({
 
     {replaySnapshot && <View style={styles.replayPanel}>
       <View style={styles.replayNowPlaying}>
-        {replaySong?.artworkUrl ? <Image source={replaySong.artworkUrl} style={styles.replayArtwork} contentFit="cover" /> : <View style={styles.replayArtworkFallback}><Text style={styles.replayArtworkNote}>♪</Text></View>}
+        {replaySong?.artworkUrl ? <Image source={replaySong.artworkUrl} style={styles.replayArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={styles.replayArtworkFallback}><Text style={styles.replayArtworkNote}>♪</Text></View>}
         <View style={styles.flex}><Text style={styles.panelKicker}>JOURNEY REPLAY · {formatClock(new Date(replayTimestamp).toISOString())}</Text><Text style={styles.replayTrack} numberOfLines={1}>{replaySong?.track ?? 'Between soundtrack moments'}</Text><Text style={styles.replayArtist} numberOfLines={1}>{replaySong?.artist ?? 'Follow the recorded route'}</Text></View>
       </View>
       <View style={styles.telemetryRow}>

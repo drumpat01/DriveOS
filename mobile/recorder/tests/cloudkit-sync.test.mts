@@ -17,6 +17,7 @@ const nativeModule = readFileSync(resolve(__dir, '../modules/journeydeck-cloudki
 const productionSchema = readFileSync(resolve(__dir, '../cloudkit/journeydeck-development.ckdb'), 'utf8');
 const podspec = readFileSync(resolve(__dir, '../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKit.podspec'), 'utf8');
 const app = readFileSync(resolve(__dir, '../App.tsx'), 'utf8');
+const completionJobs = readFileSync(resolve(__dir, '../src/completion-jobs.ts'), 'utf8');
 
 // ============================================================
 // 1. Exports
@@ -96,6 +97,8 @@ assert.match(productionSchema, /RECORD TYPE RouteArchive[\s\S]*asset ASSET[\s\S]
 assert.match(src, /Crypto\.digestStringAsync[\s\S]*RouteArchive/, 'route assets are checksummed before upload');
 assert.match(nativeModule, /getCapabilitiesAsync[\s\S]*privateContentVersion/, 'new native builds advertise private-content asset support');
 assert.match(podspec, /frameworks.*CloudKit/, 'links the native CloudKit framework');
-assert.match(app, /enrichCompletedJourney[\s\S]*syncCurrentUserWithPrivateICloud/, 'queues private iCloud sync after a completed journey and its local music enrichment');
+assert.match(app, /enrichCompletedJourney[\s\S]*processPendingCompletionJobs/, 'starts the durable completion worker after a journey finishes');
+assert.match(completionJobs, /apple_music_history[\s\S]*private_cloud_sync/, 'orders local music enrichment before private iCloud sync');
+assert.match(completionJobs, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/, 'the durable completion worker performs private iCloud sync');
 
 console.log('✅  cloudkit-sync: all checks passed.');

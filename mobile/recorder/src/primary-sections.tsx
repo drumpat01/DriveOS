@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { HeaderArtwork } from './header-artwork';
+import { HeaderArtwork, HeaderEdgeBleed, HeaderEdgeFeather, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,10 +12,10 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 
 import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
-import { getLiveRecorderSnapshot, type LiveRecorderSnapshot } from './storage';
+import { getLiveRecorderSnapshot, recorderDatabaseIntegrityReport, type LiveRecorderSnapshot } from './storage';
 import {
   saveAtlasPatternReview, searchPrimarySections, type AtlasPattern, type PrimarySectionsData,
-  type SearchRecord, type StatisticsData, type TimelineDay,
+  type SearchRecord, type StatisticsData, type TimelineDay, type TimelineItem,
 } from './primary-sections-data';
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import {
@@ -23,26 +23,37 @@ import {
   type NetworkActivityEvent,
 } from './network-activity';
 import { getCurrentUser, isIsolationTestProfile } from './auth';
-import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
+import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
+import { loadRecordingModePreferences } from './recording-mode';
 import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
-export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
+export type MoreDestination = 'menu' | 'health' | 'settings';
 
 const accentForKind: Record<SearchRecord['kind'], string> = {
   journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', collection: '#f0b75f', memory: '#8ba6ff',
 };
 
-function ScreenScaffold({ eyebrow, title, subtitle, headerImage, refreshing, onRefresh, children }: {
-  eyebrow: string; title: string; subtitle: string; headerImage?: number; refreshing: boolean; onRefresh: () => void; children: ReactNode;
+function ScreenScaffold({ eyebrow, title, subtitle, headerImage, refreshing, onRefresh, leadingAction, headerPresentation = 'default', pageTone = 'default', headerTone = 'default', children }: {
+  eyebrow: string; title: string; subtitle: string; headerImage?: number; refreshing: boolean; onRefresh: () => void; leadingAction?: { label: string; onPress: () => void };
+  headerPresentation?: 'default' | 'centered'; pageTone?: 'default' | 'black'; headerTone?: 'default' | 'live' | 'atlas' | 'statistics'; children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const headerSpill = headerTone === 'live'
+    ? ['rgba(13,43,72,0.34)', 'rgba(77,17,55,0.18)', 'rgba(3,1,5,0)'] as const
+    : headerTone === 'atlas'
+      ? ['rgba(62,14,65,0.3)', 'rgba(18,32,65,0.17)', 'rgba(3,1,5,0)'] as const
+      : headerTone === 'statistics'
+        ? ['rgba(55,13,57,0.27)', 'rgba(11,27,54,0.18)', 'rgba(3,1,5,0)'] as const
+        : ['rgba(79,14,91,0.22)', 'rgba(28,8,35,0.12)', 'rgba(3,1,5,0)'] as const;
   return <View style={styles.screen}>
-    <LinearGradient colors={['#19051f', '#07020a', '#020104']} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
-    <View style={styles.topBloom} />
+    <LinearGradient colors={pageTone === 'black' ? ['#060309', '#030106', '#020104'] : ['#19051f', '#07020a', '#020104']} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={headerSpill} locations={[0, 0.54, 1]} style={styles.headerSpill} />
     <ScrollView
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 17 }]}
       showsVerticalScrollIndicator={false}
@@ -50,7 +61,12 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, refreshing, onR
       automaticallyAdjustContentInsets={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b889ff" />}
     >
-      {headerImage ? <View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View> : <><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></>}
+      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
+      {headerImage
+        ? <>{headerPresentation === 'centered' && <Text style={styles.statsPageTitle}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
+        : headerPresentation === 'centered'
+          ? <Text style={styles.statsPageTitle}>{title}</Text>
+          : <><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></>}
       {children}
     </ScrollView>
   </View>;
@@ -67,8 +83,10 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
 }) {
   const [snapshot, setSnapshot] = useState<LiveRecorderSnapshot>(() => state.data?.live ?? getLiveRecorderSnapshot());
   const [tessieVehicle, setTessieVehicle] = useState<TessieVehicleSnapshot | null>(null);
+  const [tessieConnected, setTessieConnected] = useState(false);
   const [tessieState, setTessieState] = useState<'idle' | 'loading' | 'unavailable' | 'error'>('idle');
   const data = state.data;
+  const automaticMode = loadRecordingModePreferences().mode === 'automatic';
   const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   useEffect(() => { if (state.data) setSnapshot(state.data.live); }, [state.data]);
   useEffect(() => {
@@ -80,14 +98,14 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   }, [active]);
   useEffect(() => {
     let cancelled = false;
-    if (!active) return;
+    if (!active || !TESSIE_INTEGRATION_ENABLED) return;
     const loadTessie = async () => {
       const connection = await tessieDirectStatus().catch(() => 'not_connected' as const);
       if (connection !== 'connected') {
-        if (!cancelled) { setTessieVehicle(null); setTessieState('unavailable'); }
+        if (!cancelled) { setTessieVehicle(null); setTessieConnected(false); setTessieState('unavailable'); }
         return;
       }
-      if (!cancelled) setTessieState('loading');
+      if (!cancelled) { setTessieConnected(true); setTessieState('loading'); }
       try {
         const result = await syncTessieDirect();
         if (cancelled) return;
@@ -112,22 +130,29 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   const vehicleNote = tessieVehicle
     ? `Tessie ${tessieVehicle.status || 'vehicle'} · updated ${relativeTime(tessieVehicle.updatedAt ?? undefined)}`
     : tessieState === 'loading' ? 'Refreshing Tessie live vehicle data…'
-      : tessieState === 'unavailable' ? 'Connect Tessie in Settings to show live battery and range.'
-        : tessieState === 'error' ? 'Tessie could not refresh right now. Your local recorder is still available.'
-          : battery === null || battery === undefined ? 'Live battery and range will appear when the vehicle provider supplies them.' : 'Battery is the latest archived reading. Live range needs a current vehicle-provider reading.';
+      : tessieState === 'error' ? 'Tessie could not refresh right now. Your iPhone recorder is unaffected.'
+        : 'Tessie is connected. Vehicle data will appear after the next successful refresh.';
   const elapsedMinutes = snapshot.session ? Math.max(0, (Date.now() - Date.parse(snapshot.session.startedAt)) / 60_000) : 0;
   const miles = routeMiles(snapshot.route.map(point => [point.longitude, point.latitude]));
   const liveTrack = snapshot.music.at(-1) ?? data?.music.recentSelections[0];
-  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="Live" subtitle="Your vehicle, recorder, route, and soundtrack—read from this iPhone first." headerImage={require('../assets/live-header-hero-v2.png')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const liveKicker = driving ? 'DRIVING · IPHONE RECORDER' : snapshot.session ? `${snapshot.session.status.toUpperCase()} · IPHONE RECORDER` : automaticMode ? 'WATCHING · ON THIS IPHONE' : 'READY · ON THIS IPHONE';
+  const liveTitle = driving ? 'Your journey is live' : snapshot.session ? 'Journey in progress' : automaticMode ? 'Ready for your next drive' : 'Your next journey starts here';
+  const liveCopy = snapshot.session
+    ? 'Your route and time are being captured privately. Apple Music is automatic; for any other source, open the recorder and tap Identify Song for each track.'
+    : automaticMode
+      ? 'JourneyDeck is ready to recognize driving. Apple Music builds soundtracks automatically after each journey.'
+      : 'Start a journey to capture its route and time. Apple Music adds the automatic soundtrack.';
+  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle="Automatic routes and Apple Music soundtracks, captured privately from this iPhone." headerImage={require('../assets/live-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="live" refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
     <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
-      <View style={styles.rowBetween}><View><Text style={styles.cardEyebrow}>{driving ? 'DRIVING' : snapshot.session ? 'PARKED / PAUSED' : 'PARKED'}</Text><Text style={styles.heroTitle}>{vehicleName}</Text></View><View style={[styles.liveDot, driving && styles.liveDotActive]} /></View>
-      <View style={styles.metricRow}>
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>{liveKicker}</Text><Text style={styles.heroTitle}>{liveTitle}</Text></View><View style={[styles.liveDot, snapshot.session && styles.liveDotActive]} /></View>
+      <Text style={styles.liveStateCopy}>{liveCopy}</Text>
+      {snapshot.session && <View style={styles.metricRow}>
         <Metric value={`${Math.round(speed)}`} unit="mph" label="SPEED" />
-        <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label={tessieVehicle ? 'LIVE BATTERY' : 'LAST BATTERY'} />
-        <Metric value={range === null || range === undefined ? '—' : `${Math.round(range)}`} unit={range === null || range === undefined ? undefined : 'mi'} label="LIVE RANGE" />
-      </View>
-      <Text style={styles.honestNote}>{vehicleNote}</Text>
+        <Metric value={miles.toFixed(1)} unit="mi" label="DISTANCE" />
+        <Metric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" />
+      </View>}
+      <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
     </View>
     <PrimaryMobilityMap
       routes={visibleRoute.length > 1 ? [{ id: snapshot.session?.id ?? latestDetail?.id ?? 'last-known', coordinates: visibleRoute }] : []}
@@ -137,20 +162,26 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
       cameraPitch={45}
       cameraPadding={58}
       minimumBoundsSpan={0.055}
-      emptyMessage="Start recording to see your route and current location here."
+      emptyMessage={automaticMode ? 'Your route will appear when JourneyDeck detects your next drive.' : 'Start recording to see your route and current location here.'}
     />
-    <SectionTitle title="Current journey" detail={snapshot.session ? 'Recording on this iPhone' : 'No active journey'} />
-    <View style={styles.card}>
-      <View style={styles.metricRow}><Metric value={miles.toFixed(1)} unit="mi" label="DISTANCE" /><Metric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" /><Metric value={`${snapshot.session?.pointCount ?? 0}`} label="GPS POINTS" /></View>
-      <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
-    </View>
-    <SectionTitle title="Live soundtrack" detail={snapshot.music.length ? `${snapshot.music.length} captured` : 'Latest known music'} />
+    {TESSIE_INTEGRATION_ENABLED && tessieConnected && <>
+      <SectionTitle title="Connected vehicle" detail="Optional Tessie enhancement" />
+      <View style={styles.tessieCard}><NeonWidgetOutline radius={20} />
+        <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>TESSIE VEHICLE</Text><Text style={styles.itemTitle}>{tessieVehicle?.name || vehicleName}</Text></View><Text style={styles.tessieStatus}>{tessieVehicle?.chargingState || tessieVehicle?.status || 'CONNECTED'}</Text></View>
+        <View style={styles.metricRow}>
+          <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label="BATTERY" />
+          <Metric value={range === null || range === undefined ? '—' : `${Math.round(range)}`} unit={range === null || range === undefined ? undefined : 'mi'} label="RANGE" />
+        </View>
+        <Text style={styles.honestNote}>{vehicleNote}</Text>
+      </View>
+    </>}
+    <SectionTitle title="Live soundtrack" detail={snapshot.music.length ? `${snapshot.music.length} captured` : 'Apple Music automatic · Shazam manual'} />
     {liveTrack ? <Pressable style={styles.trackCard} onPress={() => data?.dashboard.latestJourney && onJourney(data.dashboard.latestJourney.id)}><NeonWidgetOutline radius={18} />
-      {liveTrack.artworkUrl ? <Image source={{ uri: liveTrack.artworkUrl }} style={styles.artwork} /> : <View style={[styles.artwork, styles.artworkBlank]}><Text style={styles.artworkNote}>♪</Text></View>}
+      {liveTrack.artworkUrl ? <Image source={{ uri: liveTrack.artworkUrl }} style={styles.artwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.artwork, styles.artworkBlank]}><Text style={styles.artworkNote}>♪</Text></View>}
       <View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{liveTrack.track}</Text><Text style={styles.itemDetail} numberOfLines={1}>{liveTrack.artist}</Text></View>
       <Text style={styles.chevron}>›</Text>
-    </Pressable> : <EmptyCard text="Music captured during a journey will appear here." />}
-    <View style={styles.healthStrip}><Text style={styles.healthStripTitle}>{snapshot.session ? snapshot.session.status.toUpperCase() : 'READY'}</Text><Text style={styles.healthStripText}>{snapshot.session?.queuedCount ?? data?.dashboard.recorder.queuedPoints ?? 0} GPS · {snapshot.session?.musicQueuedCount ?? data?.dashboard.recorder.queuedMusic ?? 0} music queued safely</Text></View>
+    </Pressable> : <EmptyCard text="Apple Music appears automatically. For radio, Spotify, CDs, or another phone, open the recorder and tap Identify Song for each track." />}
+    <View style={styles.healthStrip}><Text style={styles.healthStripTitle}>{snapshot.session ? snapshot.session.status.toUpperCase() : automaticMode ? 'WATCHING' : 'READY'}</Text><Text style={styles.healthStripText}>{snapshot.session ? `${snapshot.session.pointCount} GPS captured · ${snapshot.session.queuedCount} waiting safely` : automaticMode ? 'Automatic recording mode is selected.' : 'The on-device recorder is ready.'}</Text></View>
   </ScreenScaffold>;
 }
 
@@ -164,7 +195,7 @@ export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDat
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." headerImage={require('../assets/atlas-header-hero-v2.png')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="ATLAS" subtitle="Places, representative routes, and recurring patterns from your private journey archive." headerImage={require('../assets/atlas-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="atlas" refreshing={state.status === 'loading'} onRefresh={onRefresh}>
     <DataNotice state={state} />
     <PrimaryMobilityMap routes={routes} places={mapPlaces} height={355} emptyMessage="Recorded route geometry will build your long-term Atlas." />
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
@@ -206,12 +237,12 @@ function PatternAction({ symbol, label, active = false, onPress }: { symbol: str
   return <Pressable accessibilityLabel={label} onPress={onPress} style={styles.patternAction}><View style={[styles.patternActionIcon, active && styles.patternActionIconActive]}><Text style={[styles.patternActionSymbol, active && styles.patternActionSymbolActive]}>{symbol}</Text></View><Text style={[styles.patternActionText, active && styles.patternActionTextActive]}>{label}</Text></Pressable>;
 }
 
-export function TimelineScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const days = state.data?.timeline ?? [];
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => { if (!selectedKey && days[0]) setSelectedKey(days[0].key); }, [days, selectedKey]);
   const selected = days.find(day => day.key === selectedKey) ?? days[0];
-  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/timeline-header-hero-v2.jpg')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/timeline-header-hero-v2.jpg')} refreshing={state.status === 'loading'} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {days.length ? <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRail}>{days.slice(0, 30).map(day => <Pressable key={day.key} onPress={() => setSelectedKey(day.key)} style={[styles.dayChip, selected?.key === day.key && styles.dayChipActive]}><Text style={styles.dayNumber}>{new Date(`${day.key}T12:00:00`).getDate()}</Text><Text style={styles.dayLabel}>{new Date(`${day.key}T12:00:00`).toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text></Pressable>)}</ScrollView>
@@ -226,43 +257,131 @@ export function TimelineScreen({ state, onRefresh, onJourney }: { state: Primary
   </ScreenScaffold>;
 }
 
-export function StatisticsScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, historyDays = 45 }: {
+  state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; historyDays?: number | null;
+}) {
   const statistics = state.data?.statistics;
-  return <ScreenScaffold eyebrow="30-DAY PERFORMANCE" title="Statistics" subtitle="Driving, energy, music, streaks, comparisons, and a monthly archive computed on-device." headerImage={require('../assets/statistics-header-hero-v2.jpg')} refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const [visibleTimelineCount, setVisibleTimelineCount] = useState(10);
+  const timelineItems = useMemo(() => {
+    const cutoff = historyDays === null ? Number.NEGATIVE_INFINITY : Date.now() - historyDays * 86_400_000;
+    return (state.data?.timeline ?? [])
+      .flatMap(day => day.items)
+      .filter(item => timelineEpoch(item.occurredAt) >= cutoff)
+      .sort((a, b) => timelineEpoch(b.occurredAt) - timelineEpoch(a.occurredAt));
+  }, [historyDays, state.data?.timeline]);
+  useEffect(() => setVisibleTimelineCount(10), [historyDays, state.data?.loadedAt]);
+  const visibleTimeline = timelineItems.slice(0, visibleTimelineCount);
+  const hasMoreTimeline = visibleTimelineCount < timelineItems.length;
+  const longestRoute = statistics?.story.longestDrive
+    ? timelineItems.find(item => item.kind === 'journey' && item.journeyId === statistics.story.longestDrive?.journeyId)?.route
+    : undefined;
+  const earliestVisibleEpoch = timelineItems.length ? Math.min(...timelineItems.map(item => timelineEpoch(item.occurredAt)).filter(Boolean)) : Date.now();
+  const historyDay = statistics ? Math.min(statistics.windowDays, Math.max(1, Math.floor((Date.now() - earliestVisibleEpoch) / 86_400_000) + 1)) : 1;
+  return <ScreenScaffold eyebrow="" title="STATISTICS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="statistics" refreshing={state.status === 'loading'} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {statistics ? <>
-      <View style={styles.scoreCard}><NeonWidgetOutline radius={22} tone="hero" /><View style={styles.scoreRing}><Text style={styles.scoreValue}>{statistics.score ?? '—'}</Text><Text style={styles.scoreUnit}>/ 100</Text></View><View style={styles.flex}><Text style={styles.cardEyebrow}>DRIVING SCORE</Text><Text style={styles.itemTitle}>{statistics.score === null ? 'More telemetry needed' : statistics.score >= 80 ? 'Excellent rhythm' : statistics.score >= 65 ? 'Good momentum' : 'Room to improve'}</Text><Text style={styles.itemDetail}>{statistics.scoreDetail}</Text></View></View>
-      <View style={styles.statGrid}>
-        <StatCard label="MILES" metric={statistics.current.miles} format={value => value.toFixed(1)} />
-        <StatCard label="ENERGY" metric={statistics.current.energyKwh} format={value => `${value.toFixed(1)} kWh`} />
-        <StatCard label="JOURNEYS" metric={statistics.current.journeys} format={value => `${Math.round(value)}`} />
-        <StatCard label="SONGS" metric={statistics.current.songs} format={value => `${Math.round(value)}`} />
+      <View style={styles.storyStatsHero}>
+        <HeaderEdgeBleed />
+        <Image source={require('../assets/statistics-story-hero-v1.png')} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <LinearGradient colors={['rgba(4,3,10,0.97)', 'rgba(8,4,15,0.74)', 'rgba(7,2,13,0.05)']} locations={[0, 0.55, 1]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+        <HeaderEdgeFeather />
+        <View style={styles.storyStatsHeroCopy}>
+          <Text style={styles.storyStatsKicker}>THE ROAD YOU’VE LIVED</Text>
+          <Text style={styles.storyStatsHeadline}>{statistics.current.miles.value.toFixed(1)} miles. {Math.round(statistics.current.songs.value)} songs.{`\n`}A month worth{`\n`}<Text style={styles.storyStatsHeroAccent}>remembering.</Text></Text>
+        </View>
       </View>
-      <SectionTitle title="Miles trend" detail="Last 30 days" /><MilesChart statistics={statistics} />
-      <View style={styles.card}><View style={styles.rowBetween}><View><Text style={styles.cardEyebrow}>CURRENT STREAK</Text><Text style={styles.streakValue}>{statistics.streakDays} days</Text></View><Text style={styles.streakFlame}>♨</Text></View></View>
-      <SectionTitle title="Highlights" detail="Your archive at a glance" />
-      {statistics.highlights.length ? statistics.highlights.map(highlight => <Pressable key={highlight.label} disabled={!highlight.journeyId} onPress={() => highlight.journeyId && onJourney(highlight.journeyId)} style={styles.highlightRow}><View><Text style={styles.cardEyebrow}>{highlight.label.toUpperCase()}</Text><Text style={styles.itemTitle}>{highlight.value}</Text></View>{highlight.journeyId && <Text style={styles.chevron}>›</Text>}</Pressable>) : <EmptyCard text="Highlights need a few completed journeys." />}
-      <SectionTitle title="Monthly archive" detail="All available history" />
-      {statistics.monthlyArchive.map(month => <View key={month.key} style={styles.monthRow}><View><Text style={styles.itemTitle}>{month.label}</Text><Text style={styles.itemDetail}>{month.journeys} journeys · {month.songs} songs · {month.energyKwh.toFixed(1)} kWh</Text></View><Text style={styles.monthMiles}>{month.miles.toFixed(1)} mi</Text></View>)}
+
+      <View style={styles.storyStatsCards}>
+        <Pressable disabled={!statistics.story.longestDrive} onPress={() => statistics.story.longestDrive && onJourney(statistics.story.longestDrive.journeyId)} style={styles.storyStatsFeatureCard}>
+          <View style={styles.storyStatsInsightIcon}><TimelineRouteThumbnail coordinates={longestRoute ?? []} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Longest drive</Text><Text style={styles.storyStatsFeatureValue}>{statistics.story.longestDrive ? `${statistics.story.longestDrive.miles.toFixed(1)} mi` : '—'}</Text></View>
+        </Pressable>
+        <View style={styles.storyStatsFeatureCard}>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconPurple]}><SymbolView name="music.note" tintColor="#c17aff" size={25} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Most-played</Text><Text style={styles.storyStatsFeatureValue} numberOfLines={2}>{statistics.story.topArtist?.artist ?? '—'}</Text></View>
+        </View>
+        <View style={styles.storyStatsFeatureCard}>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconSun]}><SymbolView name="sun.horizon.fill" tintColor="#ff8065" size={25} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Favorite time</Text><Text style={[styles.storyStatsFeatureValue, styles.storyStatsFeatureValueCompact]} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.78}>{statistics.story.favoriteTime?.label ?? 'Still forming'}</Text></View>
+        </View>
+      </View>
+
+      <View style={styles.storyStatsRhythmCard}>
+        <Text style={styles.storyStatsRhythmLabel}>{historyDays === null ? 'COMPLETE HISTORY' : `FREE HISTORY  ·  ${statistics.windowDays} DAYS`}</Text>
+        <View style={styles.storyStatsHistoryRow}>
+          <View style={styles.storyStatsRhythmBars}>{statistics.dailyMiles.map(day => <View key={day.date} style={[styles.storyStatsRhythmBar, (day.miles > 0 || day.songs > 0) && styles.storyStatsRhythmBarActive]} />)}</View>
+          <Text style={styles.storyStatsHistoryDay}>{historyDays === null ? `${timelineItems.length} MOMENTS` : `DAY ${historyDay} OF ${statistics.windowDays}`}</Text>
+        </View>
+        {historyDays !== null && onUpgrade && <Pressable accessibilityRole="button" accessibilityLabel="Unlock Atlas and complete history" onPress={onUpgrade} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>UNLOCK ATLAS + COMPLETE HISTORY</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
+      </View>
+
+      <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
+      {visibleTimeline.length ? <View style={styles.storyTimelineList}>{visibleTimeline.map((item, index) => <StoryTimelineRow key={item.id} item={item} onJourney={onJourney} first={index === 0} last={index === visibleTimeline.length - 1} />)}</View> : <EmptyCard text="Journeys and songs will collect here as your story unfolds." />}
+      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={['#ff6b57', '#f14f50']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={styles.storyTimelineMoreText}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
     </> : <EmptyCard text="Statistics will be calculated locally from your journey archive." />}
   </ScreenScaffold>;
 }
 
-export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+function StoryTimelineRow({ item, onJourney, first, last }: { item: TimelineItem; onJourney: (id: string) => void; first: boolean; last: boolean }) {
+  const song = item.kind === 'song';
+  return <View style={styles.storyTimelineShell}>
+    <View style={styles.storyTimelineRail}>
+      {!first && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorTop]} />}
+      {!last && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorBottom]} />}
+      <View style={[styles.storyTimelineRailIcon, song && styles.storyTimelineRailIconSong]}><SymbolView name={song ? 'music.note' : item.kind === 'journey' ? 'mappin' : item.kind === 'charging' ? 'bolt.fill' : 'car.fill'} tintColor={song ? '#c17aff' : '#ff8069'} size={17} /></View>
+    </View>
+    <Pressable disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.storyTimelineCard}>
+      {song && item.artworkUrl
+        ? <Image source={{ uri: item.artworkUrl }} style={styles.storyTimelineArtwork} contentFit="cover" cachePolicy="memory-disk" />
+        : item.kind === 'journey'
+          ? <View style={styles.storyTimelineRoute}><TimelineRouteThumbnail coordinates={item.route ?? []} /></View>
+          : <View style={[styles.storyTimelineArtwork, styles.artworkBlank]}><Text style={styles.artworkNote}>{timelineGlyph(item.kind)}</Text></View>}
+      <View style={styles.storyTimelineCopy}><Text style={[styles.storyTimelineKind, song && styles.storyTimelineKindSong]}>{song ? 'Song' : item.kind === 'journey' ? 'Drive' : item.kind === 'charging' ? 'Charging' : 'Vehicle'}</Text><Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{item.detail}</Text></View>
+      <Text style={styles.storyTimelineClock}>{formatClock(item.occurredAt)}</Text>
+    </Pressable>
+  </View>;
+}
+
+function TimelineRouteThumbnail({ coordinates }: { coordinates: [number, number][] }) {
+  const path = compactRoutePath(coordinates);
+  return <Svg width="100%" height="100%" viewBox="0 0 92 58">
+    <Defs><SvgGradient id="timelineRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff8b54" /><Stop offset="0.55" stopColor="#ff5f70" /><Stop offset="1" stopColor="#a66dff" /></SvgGradient></Defs>
+    {path ? <><Path d={path} fill="none" stroke="#ff5f63" strokeWidth={7} opacity={0.16} strokeLinecap="round" strokeLinejoin="round" /><Path d={path} fill="none" stroke="url(#timelineRoute)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></> : <Path d="M 18 45 C 29 38, 36 42, 44 31 S 65 21, 75 11" fill="none" stroke="#5b345f" strokeWidth={3} strokeLinecap="round" />}
+  </Svg>;
+}
+
+function compactRoutePath(coordinates: [number, number][]) {
+  const points = coordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
+  if (points.length < 2) return '';
+  const longitudes = points.map(point => point[0]), latitudes = points.map(point => point[1]);
+  const minLongitude = Math.min(...longitudes), maxLongitude = Math.max(...longitudes), minLatitude = Math.min(...latitudes), maxLatitude = Math.max(...latitudes);
+  const rangeLongitude = Math.max(maxLongitude - minLongitude, 0.000001), rangeLatitude = Math.max(maxLatitude - minLatitude, 0.000001);
+  const scale = Math.min(80 / rangeLongitude, 46 / rangeLatitude);
+  const usedWidth = rangeLongitude * scale, usedHeight = rangeLatitude * scale;
+  const offsetX = (92 - usedWidth) / 2, offsetY = (58 - usedHeight) / 2;
+  return points.map(([longitude, latitude], index) => `${index ? 'L' : 'M'} ${(offsetX + (longitude - minLongitude) * scale).toFixed(1)} ${(offsetY + (maxLatitude - latitude) * scale).toFixed(1)}`).join(' ');
+}
+
+function timelineEpoch(value: string) {
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) ? epoch : 0;
+}
+
+export function SearchScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const [query, setQuery] = useState('');
   const results = useMemo(() => searchPrimarySections(state.data?.search ?? [], query), [query, state.data?.search]);
-  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search journeys, songs, artists, places, Collections, and Memories from one private index." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search journeys, songs, artists, places, Collections, and Memories from one private index." refreshing={state.status === 'loading'} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor="#9b8ba4" size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor="#756d7c" autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
     <Text style={styles.resultCount}>{query.trim() ? `${results.length} RESULTS` : 'RECENT + FREQUENT'}</Text>
     {results.length ? results.map(record => <Pressable key={record.id} disabled={!record.journeyId} onPress={() => record.journeyId && onJourney(record.journeyId)} style={styles.searchResult}>
-      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} /> : <View style={[styles.searchKind, { backgroundColor: accentForKind[record.kind] }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
+      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.searchKind, { backgroundColor: accentForKind[record.kind] }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
       <View style={styles.flex}><Text style={styles.searchType}>{record.kind.toUpperCase()}</Text><Text style={styles.itemTitle} numberOfLines={1}>{record.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{record.subtitle}</Text></View>{record.journeyId && <Text style={styles.chevron}>›</Text>}
     </Pressable>) : <EmptyCard text="No JourneyDeck items match that search yet." />}
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile, onBack }: {
   active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
@@ -275,6 +394,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   onCloudSync: () => void;
   onCreateProfileTest: () => void;
   onSwitchProfile: (userId: string) => void;
+  onBack?: () => void;
 }) {
   const updates = Updates.useUpdates();
   const running = updates.currentlyRunning;
@@ -287,13 +407,17 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const channel = running.channel ?? Updates.channel;
   const releaseLabel = configuredRelease?.label ?? 'JourneyDeck release';
   const provider = dashboard.providerPreferences;
-  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
   const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
   const [retentionDays, setRetentionDays] = useState<7 | 30>(30);
   const [retentionRefresh, setRetentionRefresh] = useState(0);
   const [retentionPreview, setRetentionPreview] = useState<LocalRetentionPreview | null>(null);
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [artworkRefreshState, setArtworkRefreshState] = useState<'idle' | 'running' | 'complete' | 'warning' | 'error'>('idle');
+  const [artworkRefreshDetail, setArtworkRefreshDetail] = useState('Re-check Apple Music and retry missing exact-match cover artwork on this iPhone.');
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
+  const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
+  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic + recorderIntegrity.pendingCompletionJobCount;
   const testProfile = isIsolationTestProfile(currentUser);
   const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
     && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
@@ -313,7 +437,25 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     });
     return () => task.cancel();
   }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
-  return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const forceArtworkRefresh = async () => {
+    if (artworkRefreshState === 'running') return;
+    setArtworkRefreshState('running');
+    setArtworkRefreshDetail('Checking Apple Music history and retrying missing covers…');
+    try {
+      const report = await forceRefreshAllAppleMusicArtworkForDiagnostics();
+      const result = report.missingBefore === 0
+        ? `No covers were missing. ${report.enriched} stored artwork ${report.enriched === 1 ? 'record was' : 'records were'} refreshed.`
+        : `${report.enriched} artwork ${report.enriched === 1 ? 'record was' : 'records were'} updated. ${report.missingAfter} of ${report.missingBefore} missing ${report.missingBefore === 1 ? 'cover remains' : 'covers remain'}.`;
+      const catalogRetry = report.failed ? ` ${report.failed} catalog ${report.failed === 1 ? 'request needs' : 'requests need'} another retry.` : '';
+      setArtworkRefreshDetail(`${result}${catalogRetry}${report.historyWarning ? ` ${report.historyWarning}` : ''}`);
+      setArtworkRefreshState(report.historyWarning || report.failed ? 'warning' : 'complete');
+      onRefresh();
+    } catch (error) {
+      setArtworkRefreshDetail(error instanceof Error ? error.message : 'Apple Music artwork could not refresh yet.');
+      setArtworkRefreshState('error');
+    }
+  };
+  return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <SectionTitle title="Version & update" detail="What is running now" />
     <View style={styles.releaseCard}><NeonWidgetOutline radius={24} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
@@ -326,13 +468,20 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
-    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
+    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local tasks are waiting to finish or sync. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'Both on-device databases passed structural and profile-isolation checks.' : 'One on-device database needs an integrity review.'}</Text></View>
+    <HealthRow title="Journey archive database" status={masterIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${masterIntegrity.foreignKeyViolationCount + masterIntegrity.ownershipViolationCount + masterIntegrity.invalidValueCount} integrity issues`} healthy={masterIntegrity.ok} />
+    <HealthRow title="Recorder queue database" status={recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${recorderIntegrity.schemaVersion} · ${recorderIntegrity.foreignKeyViolationCount + recorderIntegrity.duplicateActiveOwnerCount + recorderIntegrity.invalidValueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={recorderIntegrity.ok} />
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} capabilities={providerCapabilities} />
+    <SectionTitle title="Apple Music artwork" detail="Manual diagnostic" />
+    <View style={styles.artworkRefreshCard}><NeonWidgetOutline radius={20} />
+      <View style={styles.flex}><Text style={styles.cardEyebrow}>FORCE ARTWORK REFRESH</Text><Text style={styles.artworkRefreshTitle}>Retry missing album covers</Text><Text style={[styles.artworkRefreshDetail, artworkRefreshState === 'warning' && styles.artworkRefreshWarning, artworkRefreshState === 'error' && styles.artworkRefreshError]}>{artworkRefreshDetail}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Force Apple Music artwork refresh" disabled={artworkRefreshState === 'running'} onPress={() => void forceArtworkRefresh()} style={[styles.artworkRefreshButton, artworkRefreshState === 'running' && styles.artworkRefreshButtonDisabled]}><Text style={styles.artworkRefreshButtonText}>{artworkRefreshState === 'running' ? 'Refreshing…' : 'Refresh artwork now'}</Text></Pressable>
+    </View>
     <SectionTitle title="Network boundary" detail="This app session" />
     <View style={styles.networkCard}><NeonWidgetOutline radius={22} />
       <View style={styles.networkGrid}>
@@ -351,7 +500,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       </View>
       {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
         : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
-      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify and Tessie tokens stay in this iPhone Keychain; Tessie uses the stateless edge only during a bounded refresh, which strips VINs and precise coordinates. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify tokens stay in this iPhone Keychain. When MusicKit omits a cover, JourneyDeck can send only its song title and artist directly to Apple's public catalog and cache an exact-match artwork URL on this iPhone. Native map tiles, normal MusicKit artwork, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
     </View>
     <Pressable
       accessibilityRole="switch"
@@ -377,7 +526,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         <ProfileLabMetric label="RECORDER QUEUE" value={dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic} />
       </View>
       {testProfile ? <>
-        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Memories, Atlas, Search, Recorder, and Settings before returning.</Text>
+        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Live, Memories, Atlas, Search, and Settings before returning.</Text>
         {profiles.filter(profile => !isIsolationTestProfile(profile)).map(profile => <Pressable key={profile.id} style={styles.profileLabPrimary} onPress={() => onSwitchProfile(profile.id)}><Text style={styles.profileLabPrimaryText}>Return to {profile.displayName || 'original profile'}</Text></Pressable>)}
       </> : <>
         <Pressable style={styles.profileLabPrimary} onPress={onCreateProfileTest}><Text style={styles.profileLabPrimaryText}>Create clean test profile</Text></Pressable>
@@ -458,46 +607,41 @@ function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
 
 function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferences | null; capabilities: { lastFmConfigured: boolean; tessieConfigured: boolean } }) {
   const rows = [
-    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Auto Recognition', provider?.connections.shazam ?? 'not_enabled'],
-    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'], ['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected'],
+    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Manual Song Recognition', provider?.connections.shazam ?? 'not_enabled'],
+    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'],
+    ...(TESSIE_INTEGRATION_ENABLED ? [['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected']] : []),
   ];
   return <View style={styles.card}>{rows.map(([name, status]) => <View key={name} style={styles.providerRow}><Text style={styles.compactTitle}>{name}</Text><Text style={[styles.providerStatus, /connected|enabled/.test(status) && styles.providerStatusGood]}>{status.replaceAll('_', ' ')}</Text></View>)}</View>;
 }
 
 export function MoreScreen({
-  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
-  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, music, recorder, settings,
+  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync,
+  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, settings, onClose,
 }: {
   active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
-  privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
+  privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void;
   providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
   currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
-  music: ReactNode; recorder: ReactNode; settings: ReactNode;
+  settings: ReactNode; onClose: () => void;
 }) {
   const destination = requested;
+  const backToTools = () => onRequestedChange('menu');
   let content: ReactNode;
   if (destination !== 'menu') {
-    const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-      : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-        : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} />
-            : destination === 'music' ? music : destination === 'settings' ? settings : null;
+    const child = destination === 'health'
+      ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} onBack={backToTools} />
+      : settings;
     content = child;
   } else {
-    content = <ScreenScaffold eyebrow="THE REST OF YOUR DECK" title="More" subtitle="Search, analysis, recording, music, data confidence, and app controls." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
-      <Pressable onPress={() => onRequestedChange('search')} style={styles.moreSearch}><NeonWidgetOutline radius={20} /><SymbolView name="magnifyingglass" tintColor="#f4eafa" size={22} /><Text style={styles.moreSearchText}>Search all JourneyDeck</Text><Text style={styles.chevron}>›</Text></Pressable>
+    content = <ScreenScaffold eyebrow="JOURNEYDECK UTILITIES" title="Tools" subtitle="Data confidence and app controls." refreshing={state.status === 'loading'} onRefresh={onRefresh} leadingAction={{ label: 'Close', onPress: onClose }}>
       <View style={styles.moreGrid}>
-        <MoreTile symbol="clock" fallback="◷" title="Timeline" detail="Daily chronology" color="#ff6854" onPress={() => onRequestedChange('timeline')} />
-        <MoreTile symbol="chart.xyaxis.line" fallback="↗" title="Statistics" detail="Trends + score" color="#ad76ff" onPress={() => onRequestedChange('statistics')} />
-        <MoreTile symbol="music.note" fallback="♪" title="Music" detail="Road soundtrack" color="#ff5b96" onPress={() => onRequestedChange('music')} />
-        <MoreTile symbol="record.circle" fallback="●" title="Record" detail="Start or finish" color="#ff765c" onPress={() => onRequestedChange('record')} />
         <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color="#58d5b6" onPress={() => onRequestedChange('health')} />
         <MoreTile symbol="gearshape" fallback="⚙" title="Settings" detail="Accounts + app" color="#8ca4ff" onPress={() => onRequestedChange('settings')} />
       </View>
-      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Maps, search, timeline grouping, statistics, pattern decisions, and active-drive status are rendered from local or cached data.</Text></View>
+      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Data Health explains what is saved and safe to retry. Settings contains account, recording, and provider controls.</Text></View>
     </ScreenScaffold>;
   }
-  return <View style={styles.screen}>{content}<View pointerEvents={destination === 'record' ? 'auto' : 'none'} style={destination === 'record' ? styles.persistentRecorderVisible : styles.persistentRecorderHidden}>{recorder}</View></View>;
+  return <View style={styles.screen}>{content}</View>;
 }
 
 function MoreTile({ symbol, fallback, title, detail, color, onPress }: { symbol: SFSymbol; fallback: string; title: string; detail: string; color: string; onPress: () => void }) {
@@ -556,11 +700,14 @@ function formatAtlasPatternRoute(start: string, end: string) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
-  topBloom: { position: 'absolute', top: -110, alignSelf: 'center', width: 420, height: 300, borderRadius: 210, backgroundColor: '#55106b', opacity: 0.16, transform: [{ scaleX: 1.5 }] },
-  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { width: '100%', marginBottom: 22, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' },
+  headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
+  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { alignSelf: 'stretch', marginBottom: 22 },
+  utilityBack: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
+  utilityBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },
+  statsPageTitle: { width: '100%', alignSelf: 'center', color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 17, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
   loadingCard: { minHeight: 100, borderRadius: 22, backgroundColor: '#0d0712', borderWidth: 1, borderColor: '#34203d', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20, marginBottom: 16 },
   warningCard: { borderRadius: 19, backgroundColor: '#21120d', borderWidth: 1, borderColor: '#6f432e', padding: 16, marginBottom: 15 },
   warningTitle: { color: '#ff9b67', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginBottom: 6 },
@@ -577,11 +724,14 @@ const styles = StyleSheet.create({
   metricValue: { color: '#fff', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.4, textAlign: 'center', fontVariant: ['tabular-nums'] },
   metricUnit: { color: '#b5a6bc', fontSize: 10, fontWeight: '800' },
   metricLabel: { color: '#a295aa', fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.75, marginTop: 4, textAlign: 'center' },
+  liveStateCopy: { color: '#a89dad', fontSize: 13, lineHeight: 19, marginTop: 12 },
   honestNote: { color: '#746b7b', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 16 },
   sectionTitle: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginTop: 28, marginBottom: 12 },
   sectionHeading: { color: '#f8f4fa', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
   sectionDetail: { color: '#806f88', fontSize: 10, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
   card: { borderRadius: 22, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#35203e', padding: 17, marginBottom: 12 },
+  tessieCard: { borderRadius: 22, backgroundColor: '#071119', padding: 17, marginBottom: 12 },
+  tessieStatus: { color: '#69d8f5', fontSize: 9, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase', textAlign: 'right', maxWidth: 120 },
   primaryButton: { minHeight: 48, borderRadius: 16, backgroundColor: '#8c48e8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 17 },
   primaryButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#6d3e82', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 10 },
@@ -639,6 +789,50 @@ const styles = StyleSheet.create({
   timelineIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   timelineIconText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   timelineTime: { color: '#b17fce', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginBottom: 5 },
+  storyStatsHero: { width: '100%', alignSelf: 'center', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO, overflow: 'visible', justifyContent: 'center', marginBottom: 9 },
+  storyStatsHeroCopy: { width: '72%', paddingHorizontal: 17, paddingVertical: 14 },
+  storyStatsKicker: { color: '#ff8069', fontSize: 8, fontWeight: '900', letterSpacing: 1.7, marginBottom: 8 },
+  storyStatsHeadline: { color: '#fff8ff', fontFamily: 'Georgia', fontSize: 22, lineHeight: 25, fontWeight: '700', letterSpacing: -0.75 },
+  storyStatsHeroAccent: { color: '#ff7b6c' },
+  storyStatsCards: { flexDirection: 'row', gap: 7, marginBottom: 9 },
+  storyStatsFeatureCard: { flex: 1, minWidth: 0, minHeight: 87, borderRadius: 17, backgroundColor: '#0e0915', borderWidth: 1, borderColor: '#35233e', paddingHorizontal: 8, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 7, overflow: 'hidden' },
+  storyStatsInsightIcon: { width: 36, height: 36, flexShrink: 0, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1b1021', borderWidth: 1, borderColor: '#ff6e62', padding: 2 },
+  storyStatsInsightIconPurple: { borderColor: '#9659d4', backgroundColor: '#20102b' },
+  storyStatsInsightIconSun: { borderColor: '#ff7c69', backgroundColor: '#231016' },
+  storyStatsInsightLabel: { color: '#a89baa', fontSize: 8, lineHeight: 11, fontWeight: '700' },
+  storyStatsFeatureValue: { color: '#fff8ff', fontSize: 13, lineHeight: 16, fontWeight: '900', letterSpacing: -0.3, marginTop: 3 },
+  storyStatsFeatureValueCompact: { fontSize: 11, lineHeight: 13, letterSpacing: -0.2 },
+  storyStatsRhythmCard: { minHeight: 58, borderRadius: 17, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#382140', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 22 },
+  storyStatsHistoryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  storyStatsUnlock: { minHeight: 39, borderRadius: 12, borderWidth: 1, borderColor: '#7a4053', backgroundColor: '#271018', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 10 },
+  storyStatsUnlockText: { color: '#ff9b7d', fontSize: 8, fontWeight: '900', letterSpacing: 1.25 },
+  storyStatsUnlockArrow: { color: '#ff9b7d', fontSize: 20, lineHeight: 21 },
+  storyStatsRhythmBars: { flex: 1, height: 15, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  storyStatsRhythmBar: { flex: 1, height: 10, minWidth: 1.4, borderRadius: 3, backgroundColor: '#28212f' },
+  storyStatsRhythmBarActive: { backgroundColor: '#ff6e61', shadowColor: '#ff675a', shadowOpacity: 0.75, shadowRadius: 3, shadowOffset: { width: 0, height: 0 } },
+  storyStatsRhythmLabel: { color: '#9d8fa3', fontSize: 8, fontWeight: '800', letterSpacing: 1.25 },
+  storyStatsHistoryDay: { color: '#97889e', fontSize: 8, fontWeight: '800', letterSpacing: 0.5, flexShrink: 0 },
+  storyTimelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 9, paddingHorizontal: 3 },
+  storyTimelineHeaderTitle: { color: '#fff', fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: 2.2 },
+  storyTimelineHeaderCount: { color: '#81728a', fontSize: 9, fontWeight: '800', letterSpacing: 1.1 },
+  storyTimelineList: { backgroundColor: 'transparent' },
+  storyTimelineShell: { minHeight: 78, flexDirection: 'row' },
+  storyTimelineRail: { width: 36, alignItems: 'center', justifyContent: 'center' },
+  storyTimelineConnector: { position: 'absolute', left: 17, width: 2, backgroundColor: '#43344e' },
+  storyTimelineConnectorTop: { top: 0, bottom: '50%' },
+  storyTimelineConnectorBottom: { top: '50%', bottom: 0 },
+  storyTimelineRailIcon: { zIndex: 1, width: 27, height: 27, borderRadius: 14, backgroundColor: '#321824', borderWidth: 1, borderColor: '#6c3447', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff625d', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  storyTimelineRailIconSong: { backgroundColor: '#24132f', borderColor: '#583174', shadowColor: '#a95cff' },
+  storyTimelineCard: { flex: 1, minHeight: 70, borderRadius: 14, backgroundColor: '#0d0912', borderWidth: StyleSheet.hairlineWidth, borderColor: '#2d2334', padding: 7, marginVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' },
+  storyTimelineArtwork: { width: 70, height: 54, borderRadius: 9, backgroundColor: '#25122d' },
+  storyTimelineRoute: { width: 70, height: 54, borderRadius: 9, backgroundColor: '#170c1d', borderWidth: 1, borderColor: '#42294a', overflow: 'hidden', padding: 2 },
+  storyTimelineCopy: { flex: 1, minWidth: 0 },
+  storyTimelineKind: { color: '#ff7b69', fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  storyTimelineKindSong: { color: '#c27aff' },
+  storyTimelineClock: { color: '#8c7e93', fontSize: 10, flexShrink: 0, paddingHorizontal: 3 },
+  storyTimelineMore: { minHeight: 50, borderRadius: 15, overflow: 'hidden', marginTop: 11, marginLeft: 36, marginBottom: 7 },
+  storyTimelineMoreFill: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 15 },
+  storyTimelineMoreText: { color: '#fff', fontSize: 13, fontWeight: '900', letterSpacing: 0.4 },
   scoreCard: { borderRadius: 25, padding: 17, backgroundColor: '#12081a', flexDirection: 'row', alignItems: 'center', gap: 16 },
   scoreRing: { width: 94, height: 94, borderRadius: 47, borderWidth: 7, borderColor: '#a95feb', backgroundColor: '#0a050e', alignItems: 'center', justifyContent: 'center' },
   scoreValue: { color: '#fff', fontSize: 31, fontWeight: '900', letterSpacing: -1 },
@@ -691,6 +885,14 @@ const styles = StyleSheet.create({
   providerStatusGood: { color: '#59d4b3' },
   safeActions: { marginTop: 6 },
   privacyNote: { color: '#6f6675', fontSize: 10, lineHeight: 16, marginTop: 18, textAlign: 'center' },
+  artworkRefreshCard: { borderRadius: 20, backgroundColor: '#100917', borderWidth: 1, borderColor: '#684075', padding: 15, gap: 13 },
+  artworkRefreshTitle: { color: '#fff5ff', fontSize: 16, fontWeight: '900', marginTop: 5 },
+  artworkRefreshDetail: { color: '#a89bae', fontSize: 11, lineHeight: 17, marginTop: 5 },
+  artworkRefreshWarning: { color: '#f0bd7d' },
+  artworkRefreshError: { color: '#ffab91' },
+  artworkRefreshButton: { minHeight: 45, borderRadius: 14, backgroundColor: '#8c48e8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },
+  artworkRefreshButtonDisabled: { opacity: 0.55 },
+  artworkRefreshButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   networkCard: { borderRadius: 22, backgroundColor: '#09060d', borderWidth: 1, borderColor: '#392343', padding: 13, marginBottom: 10 },
   networkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   networkMetric: { width: '48.5%', minHeight: 88, borderRadius: 16, backgroundColor: '#120b18', borderWidth: 1, borderColor: '#2f1d39', padding: 11 },
@@ -760,6 +962,4 @@ const styles = StyleSheet.create({
   moreTileTitle: { color: '#fff', fontSize: 16, fontWeight: '900', marginTop: 13 },
   moreTileDetail: { color: '#776d7e', fontSize: 10, marginTop: 4 },
   localFirstCard: { borderRadius: 21, backgroundColor: '#10170f', borderWidth: 1, borderColor: '#344e31', padding: 18, marginTop: 13 },
-  persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 },
-  persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 },
 });

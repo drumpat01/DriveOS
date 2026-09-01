@@ -5,7 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handlePlacesLookup } from '../../../cloudflare/workers/places-lookup.ts';
 import { handleLastFmHistory } from '../../../cloudflare/workers/lastfm-history.ts';
-import { handleTessieSync } from '../../../cloudflare/workers/oauth-tessie.ts';
+import { handleTessieMedia, handleTessieSync } from '../../../cloudflare/workers/oauth-tessie.ts';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const root = resolve(directory, '../../../cloudflare');
@@ -42,6 +42,9 @@ assert.match(tessieSource, /readBoundedJson/, 'Tessie bodies are size bounded');
 assert.match(tessieSource, /vehicleCount/, 'Tessie returns only the minimum verification result');
 assert.match(tessieSource, /TESSIE_RATE_LIMITER/, 'Tessie reads have a provider-specific edge limit');
 assert.match(tessieSource, /\/charges\?|\/drives\?/, 'Tessie history is fetched through bounded read-only endpoints');
+assert.match(tessieSource, /endpoints=vehicle_state/, 'Tessie live reads request the vehicle-state block containing media metadata');
+assert.match(tessieSource, /\$\{encodedVin\}\/state/, 'Tessie media has a bounded native-state fallback');
+assert.match(indexSource, /\/api\/vehicle\/tessie\/media/, 'Tessie media has an explicit edge route');
 assert.doesNotMatch(tessieSource, /command\//, 'Tessie edge exposes no vehicle commands');
 
 assert.equal(config.compatibility_date, '2026-08-27');
@@ -135,6 +138,75 @@ try {
   assert.equal(payload.drives.length, 1);
   const serialized = JSON.stringify(payload);
   assert.doesNotMatch(serialized, /5YJ3E1EA7KF123456|latitude|longitude/, 'VINs and precise coordinates never leave the edge');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+let tessieMediaCalls = 0;
+globalThis.fetch = async (input, init) => {
+  tessieMediaCalls += 1;
+  assert.match(String((init?.headers as Record<string, string> | undefined)?.authorization), /^Bearer test-tessie-token/);
+  const url = new URL(String(input));
+  if (url.pathname === '/vehicles') {
+    return new Response(JSON.stringify({ results: [{ vin: '5YJ3E1EA7KF123456', last_state: { drive_state: { shift_state: 'D' } } }] }));
+  }
+  if (url.pathname.endsWith('/vehicle_data')) {
+    assert.equal(url.searchParams.get('endpoints'), 'vehicle_state');
+    return new Response(JSON.stringify({ response: {
+      vehicle_state: { media_info: {
+        now_playing_title: 'Midnight City', now_playing_artist: 'M83', now_playing_album: 'Hurry Up, We’re Dreaming',
+        now_playing_source: 'AppleMusic', now_playing_duration: 243000, now_playing_elapsed: 48000,
+        media_playback_status: 'MEDIA_STATUS_PLAYING',
+      } },
+      drive_state: { latitude: 32.7555, longitude: -97.3308 },
+    } }));
+  }
+  throw new Error(`Unexpected Tessie media path ${url.pathname}`);
+};
+try {
+  const response = await handleTessieMedia(new Request('https://edge.example/api/vehicle/tessie/media', { method: 'POST', body: JSON.stringify({ accessToken: 'test-tessie-token-123456' }) }), {
+    TESSIE_RATE_LIMITER: { limit: async () => ({ success: true }) }, UPSTREAM_TIMEOUT_MS: '10000',
+  } as unknown as Env);
+  assert.equal(response.status, 200);
+  const payload = await response.json() as Record<string, unknown>;
+  assert.equal(tessieMediaCalls, 2);
+  assert.equal(payload.track, 'Midnight City');
+  assert.equal(payload.artist, 'M83');
+  assert.equal(payload.isPlaying, true);
+  assert.equal(payload.elapsedMs, 48000);
+  assert.doesNotMatch(JSON.stringify(payload), /5YJ3E1EA7KF123456|latitude|longitude/, 'VINs and unrelated vehicle data never leave the edge');
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
+let tessieStateFallbackCalls = 0;
+globalThis.fetch = async input => {
+  tessieStateFallbackCalls += 1;
+  const url = new URL(String(input));
+  if (url.pathname === '/vehicles') {
+    return new Response(JSON.stringify({ results: [{ vin: '5YJ3E1EA7KF123456', last_state: { state: 'online' } }] }));
+  }
+  if (url.pathname.endsWith('/vehicle_data')) {
+    return new Response(JSON.stringify({ response: { vehicle_state: { media_state: { remote_control_enabled: true } } } }));
+  }
+  if (url.pathname.endsWith('/state')) {
+    return new Response(JSON.stringify({ vehicle_state: { media_info: {
+      now_playing_title: 'Electric Feel', now_playing_artist: 'MGMT', now_playing_source: 'AppleMusic',
+      media_playback_status: 'Playing', now_playing_duration: 229000, now_playing_elapsed: 31000,
+    } } }));
+  }
+  throw new Error(`Unexpected Tessie fallback path ${url.pathname}`);
+};
+try {
+  const response = await handleTessieMedia(new Request('https://edge.example/api/vehicle/tessie/media', { method: 'POST', body: JSON.stringify({ accessToken: 'test-tessie-token-123456' }) }), {
+    TESSIE_RATE_LIMITER: { limit: async () => ({ success: true }) }, UPSTREAM_TIMEOUT_MS: '10000',
+  } as unknown as Env);
+  assert.equal(response.status, 200);
+  const payload = await response.json() as Record<string, unknown>;
+  assert.equal(tessieStateFallbackCalls, 3);
+  assert.equal(payload.track, 'Electric Feel');
+  assert.equal(payload.artist, 'MGMT');
+  assert.doesNotMatch(JSON.stringify(payload), /5YJ3E1EA7KF123456|latitude|longitude/);
 } finally {
   globalThis.fetch = originalFetch;
 }

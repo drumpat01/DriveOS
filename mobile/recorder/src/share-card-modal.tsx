@@ -2,11 +2,41 @@ import { forwardRef, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { captureRef } from 'react-native-view-shot';
-import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Canvas, ColorMatrix, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Polyline, Stop } from 'react-native-svg';
 
 import { appDataClient, type JourneyPhoto } from './app-data';
+
+const journeyDeckLogo = require('../assets/icon.png');
+
+// Keep exported share maps aligned with journey-map-theme.ts: near-black land,
+// deep-violet roads, and the coral-orange JourneyDeck route treatment.
+const shareMapPalette = {
+  background: '#05020a',
+  road: '#8a4c9a',
+  route: '#ff684f',
+  routeWarm: '#ff9a62',
+};
+
+const mapBackgroundRgb = [0x05 / 255, 0x02 / 255, 0x0a / 255] as const;
+const roadRgb = [0x8a / 255, 0x4c / 255, 0x9a / 255] as const;
+const colorizedInvertedLuminanceRow = (background: number, detail: number) => {
+  const range = detail - background;
+  return [
+    -0.2126 * range,
+    -0.7152 * range,
+    -0.0722 * range,
+    0,
+    detail,
+  ];
+};
+const shareMapColorMatrix = [
+  ...colorizedInvertedLuminanceRow(mapBackgroundRgb[0], roadRgb[0]),
+  ...colorizedInvertedLuminanceRow(mapBackgroundRgb[1], roadRgb[1]),
+  ...colorizedInvertedLuminanceRow(mapBackgroundRgb[2], roadRgb[2]),
+  0, 0, 0, 1, 0,
+];
 
 export type ShareCardPayload = {
   kind: 'memory' | 'collection' | 'journey';
@@ -25,6 +55,8 @@ export type ShareCardPayload = {
     startLocation: string | null;
     endLocation: string | null;
     routeCoordinates: [number, number][];
+    routeProtected: boolean;
+    routePrivacySummary: string;
     featured: { track: string; artist: string; artworkUrl: string | null } | null;
     topArtist: string | null;
   };
@@ -97,7 +129,7 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
             : payload && <View ref={cardRef} collapsable={false} style={styles.card}>
               {photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : <View style={[StyleSheet.absoluteFill, { backgroundColor: '#120b21' }]}><View style={[styles.orb, { backgroundColor: accent }]} /><View style={[styles.route, { backgroundColor: accent }]} /><View style={[styles.route, styles.routeTwo]} /></View>}
               <View style={styles.shade} />
-              <View style={styles.cardTop}><View style={[styles.mark, { backgroundColor: accent }]}><Text style={styles.markText}>J</Text></View><Text style={styles.wordmark}>JOURNEYDECK</Text></View>
+              <View style={styles.cardTop}><JourneyDeckShareMark /></View>
               <View style={styles.cardCopy}>
                 <Text style={[styles.cardEyebrow, { color: accent }]}>{payload.eyebrow}</Text>
                 <Text style={styles.cardTitle}>{payload.title}</Text>
@@ -128,19 +160,29 @@ const JourneySharePreview = forwardRef<View, {
   return <View ref={ref} collapsable={false} style={[styles.card, styles.journeyShareCard, { backgroundColor: palette.background }]}>
     {featured?.artworkUrl && artwork === 'backdrop' && <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareBackdrop} />}
     <LinearGradient colors={theme === 'electric' ? ['rgba(5,18,27,0.28)', '#061017ef'] as const : theme === 'sunset' ? ['rgba(55,13,39,0.2)', '#1d0b1ce8'] as const : ['rgba(11,5,18,0.12)', '#09050fe8'] as const} style={StyleSheet.absoluteFill} />
-    <View style={styles.journeyShareTop}><View style={[styles.mark, { backgroundColor: palette.accent }]}><Text style={styles.markText}>J</Text></View><Text style={styles.wordmark}>JOURNEYDECK / JOURNEY MEMORY</Text></View>
+    <View style={styles.journeyShareTop}><JourneyDeckShareMark context="JOURNEY MEMORY" /></View>
     <Text style={[styles.journeyShareEyebrow, { color: palette.accent }]}>{formatJourneyShareDate(journey.startedAt).toUpperCase()}</Text>
     <Text style={[styles.journeyShareTitle, { color: palette.text }]}>{journeyShareTitle(journey.startedAt).toUpperCase()}</Text>
     <View style={styles.journeyShareStats}>{shownStats.map(stat => <View key={stat.label} style={[styles.journeyShareStat, { borderColor: `${palette.accent}55`, backgroundColor: palette.panel }]}><Text style={[styles.journeyShareStatLabel, { color: palette.accent }]}>{stat.label}</Text><Text style={[styles.journeyShareStatValue, { color: palette.text }]} numberOfLines={1}>{stat.value}</Text></View>)}</View>
-    <ShareRouteSnapshot route={safeRoute.points} mapStyle={mapStyle} palette={palette} />
+    <ShareRouteSnapshot route={safeRoute.points} mapStyle={mapStyle} />
     <View style={styles.journeyShareRouteLabels}><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.startLabel}</Text><Text style={[styles.journeyShareRouteArrow, { color: palette.accent }]}>→</Text><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.endLabel}</Text></View>
     <View style={[styles.journeyShareMusic, { borderColor: `${palette.accent2}66`, backgroundColor: palette.panel }]}>
       {featured?.artworkUrl && artwork === 'album' ? <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareAlbum} /> : <View style={[styles.journeyShareAlbumFallback, { backgroundColor: `${palette.accent2}44` }]}><Text style={[styles.journeyShareAlbumNote, { color: palette.accent2 }]}>♪</Text></View>}
       <View style={styles.journeyShareMusicCopy}><Text style={[styles.journeyShareMusicLabel, { color: palette.accent }]}>JOURNEY SOUNDTRACK</Text><Text style={[styles.journeyShareTrack, { color: palette.text }]} numberOfLines={1}>{featured?.track ?? 'The road, remembered'}</Text><Text style={[styles.journeyShareArtist, { color: palette.accent2 }]} numberOfLines={1}>{featured?.artist ?? (journey.topArtist || 'JourneyDeck')}</Text></View>
     </View>
-    <Text style={styles.journeySharePrivacy}>{safeRoute.protected ? 'HOME / WORK ROUTE PROTECTED · CITY-LEVEL PREVIEW · © OPENSTREETMAP' : 'STREET ADDRESSES HIDDEN · YOUR DRIVE, REMEMBERED · © OPENSTREETMAP'}</Text>
+    <Text style={styles.journeySharePrivacy}>{safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
   </View>;
 });
+
+function JourneyDeckShareMark({ context }: { context?: string }) {
+  return <View style={styles.shareBrand}>
+    <Image source={journeyDeckLogo} resizeMode="contain" style={styles.shareBrandLogo} />
+    <View style={styles.shareBrandCopy}>
+      <Text style={styles.shareBrandName}>JOURNEYDECK</Text>
+      {context && <Text style={styles.shareBrandContext}>{context}</Text>}
+    </View>
+  </View>;
+}
 
 function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapStyle, onArtwork, onToggleStat }: {
   theme: JourneyShareTheme; mapStyle: JourneyShareMapStyle; artwork: JourneyShareArtwork; stats: JourneyShareStat[];
@@ -160,10 +202,29 @@ function ShareChoiceRow({ label, value, choices, onSelect }: { label: string; va
   return <View style={styles.choiceRow}><Text style={styles.choiceLabel}>{label}</Text><View style={styles.choiceChips}>{choices.map(([choice, title]) => <Pressable key={choice} onPress={() => onSelect(choice)} style={[styles.choiceChip, value === choice && styles.choiceChipActive]}><Text style={[styles.choiceChipText, value === choice && styles.choiceChipTextActive]}>{title}</Text></Pressable>)}</View></View>;
 }
 
-function ShareRouteSnapshot({ route, mapStyle, palette }: { route: [number, number][]; mapStyle: JourneyShareMapStyle; palette: { accent: string; accent2: string; background: string; panel: string; text: string } }) {
+function JourneyDeckMapTile({ uri, column, row, columns, rows }: { uri: string; column: number; row: number; columns: number; rows: number }) {
+  const image = useImage(uri);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  return <View
+    pointerEvents="none"
+    onLayout={event => {
+      const { width, height } = event.nativeEvent.layout;
+      setSize(current => current.width === width && current.height === height ? current : { width, height });
+    }}
+    style={[styles.shareRouteTile, { left: `${column * (100 / columns)}%`, top: `${row * (100 / rows)}%`, width: `${100 / columns}%`, height: `${100 / rows}%` }]}
+  >
+    {image && size.width > 0 && size.height > 0 && <Canvas style={StyleSheet.absoluteFill}>
+      <SkiaImage image={image} x={0} y={0} width={size.width} height={size.height} fit="fill">
+        <ColorMatrix matrix={shareMapColorMatrix} />
+      </SkiaImage>
+    </Canvas>}
+  </View>;
+}
+
+function ShareRouteSnapshot({ route, mapStyle }: { route: [number, number][]; mapStyle: JourneyShareMapStyle }) {
   const valid = route.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
   if (valid.length < 2) return <View style={[styles.shareRouteSnapshot, styles.shareRouteFallback]}><Text style={styles.shareRouteFallbackText}>ROUTE PREVIEW UNAVAILABLE</Text></View>;
-  const tileSize = 256, snapshotSize = tileSize * 3;
+  const tileSize = 256, tileColumns = 7, tileRows = 3, snapshotWidth = tileSize * tileColumns, snapshotHeight = tileSize * tileRows;
   const mercatorPoint = ([longitude, latitude]: [number, number], zoom: number) => {
     const scale = tileSize * (2 ** zoom), clippedLatitude = Math.max(-85.05112878, Math.min(85.05112878, latitude));
     return { x: ((longitude + 180) / 360) * scale, y: (1 - Math.asinh(Math.tan(clippedLatitude * Math.PI / 180)) / Math.PI) * scale / 2 };
@@ -171,37 +232,29 @@ function ShareRouteSnapshot({ route, mapStyle, palette }: { route: [number, numb
   let zoom = 3;
   for (let candidateZoom = 16; candidateZoom >= 3; candidateZoom -= 1) {
     const candidate = valid.map(point => mercatorPoint(point, candidateZoom)), xs = candidate.map(point => point.x), ys = candidate.map(point => point.y);
-    if (Math.max(...xs) - Math.min(...xs) < snapshotSize * 0.65 && Math.max(...ys) - Math.min(...ys) < snapshotSize * 0.55) { zoom = candidateZoom; break; }
+    if (Math.max(...xs) - Math.min(...xs) < snapshotWidth * 0.72 && Math.max(...ys) - Math.min(...ys) < snapshotHeight * 0.58) { zoom = candidateZoom; break; }
   }
   const points = valid.map(point => mercatorPoint(point, zoom)), centerX = (Math.min(...points.map(point => point.x)) + Math.max(...points.map(point => point.x))) / 2, centerY = (Math.min(...points.map(point => point.y)) + Math.max(...points.map(point => point.y))) / 2;
-  const tileOriginX = Math.floor(centerX / tileSize) - 1, tileOriginY = Math.floor(centerY / tileSize) - 1, tileCount = 2 ** zoom;
-  const tiles = Array.from({ length: 9 }, (_, index) => { const column = index % 3, row = Math.floor(index / 3), x = ((tileOriginX + column) % tileCount + tileCount) % tileCount, y = tileOriginY + row; return { key: `${zoom}-${x}-${y}`, uri: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`, column, row, valid: y >= 0 && y < tileCount }; }).filter(tile => tile.valid);
+  const tileOriginX = Math.floor(centerX / tileSize) - Math.floor(tileColumns / 2), tileOriginY = Math.floor(centerY / tileSize) - Math.floor(tileRows / 2), tileCount = 2 ** zoom;
+  const tiles = Array.from({ length: tileColumns * tileRows }, (_, index) => { const column = index % tileColumns, row = Math.floor(index / tileColumns), x = ((tileOriginX + column) % tileCount + tileCount) % tileCount, y = tileOriginY + row; return { key: `${zoom}-${x}-${y}`, uri: `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`, column, row, valid: y >= 0 && y < tileCount }; }).filter(tile => tile.valid);
   const polyline = points.map(point => `${point.x - tileOriginX * tileSize},${point.y - tileOriginY * tileSize}`).join(' '), first = points[0], last = points.at(-1)!;
   return <View style={styles.shareRouteSnapshot}>
-    {mapStyle !== 'route' && tiles.map(tile => <ExpoImage key={tile.key} source={tile.uri} cachePolicy="memory-disk" contentFit="cover" transition={0} style={[styles.shareRouteTile, { left: `${tile.column * 33.333}%`, top: `${tile.row * 33.333}%` }]} />)}
-    <View style={[styles.shareRouteTint, { backgroundColor: mapStyle === 'dim' ? 'rgba(5,9,17,0.68)' : mapStyle === 'route' ? palette.background : 'rgba(13,7,22,0.44)' }]} />
-    <Svg width="100%" height="100%" viewBox={`0 0 ${snapshotSize} ${snapshotSize}`}><Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={palette.accent2} /><Stop offset="0.55" stopColor={palette.accent} /><Stop offset="1" stopColor="#ffd08a" /></SvgLinearGradient></Defs><Polyline points={polyline} fill="none" stroke="#08040d" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" opacity="0.72" /><Polyline points={polyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" /><Circle cx={first.x - tileOriginX * tileSize} cy={first.y - tileOriginY * tileSize} r="8" fill={palette.accent2} stroke="#fff" strokeWidth="2" /><Circle cx={last.x - tileOriginX * tileSize} cy={last.y - tileOriginY * tileSize} r="8" fill={palette.accent} stroke="#fff" strokeWidth="2" /></Svg>
+    {mapStyle !== 'route' && tiles.map(tile => <JourneyDeckMapTile key={tile.key} uri={tile.uri} column={tile.column} row={tile.row} columns={tileColumns} rows={tileRows} />)}
+    <View style={[styles.shareRouteTint, { backgroundColor: mapStyle === 'dim' ? 'rgba(5,2,10,0.32)' : mapStyle === 'route' ? shareMapPalette.background : 'rgba(5,2,10,0.02)' }]} />
+    <Svg width="100%" height="100%" viewBox={`0 0 ${snapshotWidth} ${snapshotHeight}`}><Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={shareMapPalette.routeWarm} /><Stop offset="0.55" stopColor={shareMapPalette.route} /><Stop offset="1" stopColor="#ff4f38" /></SvgLinearGradient></Defs><Polyline points={polyline} fill="none" stroke={shareMapPalette.route} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" opacity="0.22" /><Polyline points={polyline} fill="none" stroke="#09020a" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" /><Polyline points={polyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /><Circle cx={first.x - tileOriginX * tileSize} cy={first.y - tileOriginY * tileSize} r="9" fill={shareMapPalette.routeWarm} stroke="#fff3eb" strokeWidth="2" /><Circle cx={last.x - tileOriginX * tileSize} cy={last.y - tileOriginY * tileSize} r="9" fill={shareMapPalette.route} stroke="#fff3eb" strokeWidth="2" /></Svg>
   </View>;
 }
 
 function privacySafeJourneyRoute(journey: NonNullable<ShareCardPayload['journey']>) {
-  const privateEndpoint = (value: string | null) => /^(home|work)$/i.test(value?.trim() ?? '');
-  const protectedRoute = privateEndpoint(journey.startLocation) || privateEndpoint(journey.endLocation);
   const safeLabel = (value: string | null) => {
-    if (privateEndpoint(value)) return 'Saginaw, TX';
+    if (/^(home|work)$/i.test(value?.trim() ?? '')) return value!.trim();
     const parts = (value ?? '').split(',').map(part => part.trim()).filter(Boolean);
     if (parts.length >= 3) return `${parts[1]}, ${stateAbbreviation(parts[2])}`;
     if (parts.length === 2) return `${parts[0]}, ${stateAbbreviation(parts[1])}`;
     return 'Drive location';
   };
   const valid = journey.routeCoordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
-  const points = protectedRoute ? privateCityRoute() : sampleRoute(valid, 96);
-  return { points, startLabel: safeLabel(journey.startLocation), endLabel: safeLabel(journey.endLocation), protected: protectedRoute };
-}
-
-function privateCityRoute(): [number, number][] {
-  const centerLongitude = -97.3639, centerLatitude = 32.8601;
-  return Array.from({ length: 13 }, (_, index) => { const progress = index / 12, arc = Math.sin(progress * Math.PI); return [centerLongitude - 0.038 + progress * 0.076, centerLatitude - 0.018 + arc * 0.038] as [number, number]; });
+  return { points: sampleRoute(valid, 96), startLabel: safeLabel(journey.startLocation), endLabel: safeLabel(journey.endLocation), protected: journey.routeProtected, privacySummary: journey.routePrivacySummary };
 }
 
 function sampleRoute(points: [number, number][], limit: number): [number, number][] {
@@ -232,11 +285,11 @@ const styles = StyleSheet.create({
   orb: { position: 'absolute', width: 280, height: 280, borderRadius: 140, opacity: 0.2, right: -90, top: -55 },
   route: { position: 'absolute', width: 410, height: 5, borderRadius: 3, left: -70, top: 170, opacity: 0.75, transform: [{ rotate: '-20deg' }] }, routeTwo: { top: 225, left: 65, opacity: 0.32, transform: [{ rotate: '25deg' }] },
   shade: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#08040aa8' },
-  cardTop: { position: 'absolute', left: 23, right: 23, top: 23, flexDirection: 'row', alignItems: 'center', gap: 10 }, mark: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' }, markText: { color: '#fff', fontSize: 20, fontWeight: '900' }, wordmark: { color: '#f8f4fa', fontSize: 10, fontWeight: '900', letterSpacing: 2.1 },
+  cardTop: { position: 'absolute', left: 23, right: 23, top: 23, flexDirection: 'row', alignItems: 'center' }, shareBrand: { flexDirection: 'row', alignItems: 'center', gap: 9 }, shareBrandLogo: { width: 34, height: 34, borderRadius: 11 }, shareBrandCopy: { justifyContent: 'center', gap: 2 }, shareBrandName: { color: '#f8f4fa', fontSize: 10, fontWeight: '900', letterSpacing: 2.1 }, shareBrandContext: { color: '#ff896d', fontSize: 6.2, fontWeight: '900', letterSpacing: 1.35 },
   cardCopy: { position: 'absolute', left: 23, right: 23, bottom: 22 }, cardEyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 1.6 }, cardTitle: { color: '#fff', fontSize: 33, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 8 }, cardSubtitle: { color: '#d2c8d8', fontSize: 13, lineHeight: 19, marginTop: 9 },
   metrics: { flexDirection: 'row', marginTop: 18, overflow: 'hidden', borderRadius: 15, borderWidth: 1, borderColor: '#ffffff1f', backgroundColor: '#08050bcc' }, metric: { flex: 1, minHeight: 64, alignItems: 'center', justifyContent: 'center', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#ffffff20' }, metricValue: { color: '#fff', fontSize: 17, fontWeight: '900' }, metricLabel: { color: '#9e91a7', fontSize: 7, fontWeight: '900', letterSpacing: 1.1, marginTop: 5 },
   privacyLine: { marginTop: 13 }, privacyText: { color: '#958a9e', fontSize: 6.5, fontWeight: '800', letterSpacing: 0.7 },
   privacyNote: { width: '100%', padding: 14, borderRadius: 16, borderWidth: 1, borderColor: '#285b4e', backgroundColor: '#0c201b' }, privacyNoteTitle: { color: '#5ce0b6', fontSize: 12, fontWeight: '900' }, privacyNoteText: { color: '#9db6ad', fontSize: 10, lineHeight: 15, marginTop: 4 },
   shareButton: { minHeight: 56, margin: 14, marginTop: 0, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff795b' }, shareText: { color: '#1a0907', fontSize: 15, fontWeight: '900' }, disabled: { opacity: 0.55 },
-  journeyShareCard: { height: 465, paddingHorizontal: 17, paddingTop: 15, borderColor: '#ffffff2a' }, journeyShareBackdrop: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, opacity: 0.35, transform: [{ scale: 1.14 }] }, journeyShareTop: { flexDirection: 'row', alignItems: 'center', gap: 8 }, journeyShareEyebrow: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1, marginTop: 13 }, journeyShareTitle: { fontSize: 24, lineHeight: 25, fontWeight: '900', letterSpacing: -0.8, marginTop: 4 }, journeyShareStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 11 }, journeyShareStat: { minWidth: '30%', flexGrow: 1, minHeight: 42, borderWidth: 1, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 6, justifyContent: 'center' }, journeyShareStatLabel: { fontSize: 6.5, fontWeight: '900', letterSpacing: 0.7 }, journeyShareStatValue: { fontSize: 11, fontWeight: '900', marginTop: 3 }, shareRouteSnapshot: { height: 126, overflow: 'hidden', borderRadius: 15, marginTop: 10, backgroundColor: '#110b1d' }, shareRouteFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#5d456e' }, shareRouteFallbackText: { color: '#b69ad3', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, shareRouteTile: { position: 'absolute', width: '33.334%', height: '33.334%', opacity: 0.76 }, shareRouteTint: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, journeyShareRouteLabels: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7, marginTop: 7 }, journeyShareRouteLabel: { flex: 1, color: '#d8cadf', fontSize: 8, fontWeight: '800', textAlign: 'center' }, journeyShareRouteArrow: { fontSize: 14, fontWeight: '900' }, journeyShareMusic: { minHeight: 59, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: 1, padding: 8, marginTop: 9 }, journeyShareAlbum: { width: 42, height: 42, borderRadius: 9 }, journeyShareAlbumFallback: { width: 42, height: 42, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, journeyShareAlbumNote: { fontSize: 19, fontWeight: '900' }, journeyShareMusicLabel: { fontSize: 6.5, fontWeight: '900', letterSpacing: 1 }, journeyShareTrack: { fontSize: 11, fontWeight: '900', marginTop: 3 }, journeyShareArtist: { fontSize: 8.5, fontWeight: '800', marginTop: 2 }, journeySharePrivacy: { color: '#a294aa', fontSize: 6.3, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', marginTop: 8 }, journeyShareControls: { width: '100%', gap: 11, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#49345d', backgroundColor: '#120d1a' }, controlsKicker: { color: '#ff886a', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, controlsStatsKicker: { marginTop: 2 }, choiceRow: { gap: 6 }, choiceLabel: { color: '#a99baa', fontSize: 8, fontWeight: '900', letterSpacing: 0.9 }, choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, choiceChip: { minHeight: 29, borderRadius: 9, borderWidth: 1, borderColor: '#42304f', backgroundColor: '#191020', justifyContent: 'center', paddingHorizontal: 9 }, choiceChipActive: { borderColor: '#ff8566', backgroundColor: '#3a1923' }, choiceChipText: { color: '#b0a2b6', fontSize: 9, fontWeight: '800' }, choiceChipTextActive: { color: '#ffe0d4' }, statToggleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, statToggle: { width: '48.8%', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: '#3d3048', backgroundColor: '#17111e', paddingHorizontal: 8 }, statToggleOn: { borderColor: '#9d6dff', backgroundColor: '#25163a' }, statToggleMark: { width: 16, color: '#c8adff', fontSize: 13, fontWeight: '900', textAlign: 'center' }, statToggleText: { color: '#ded3e5', fontSize: 9, fontWeight: '800' },
+  journeyShareCard: { height: 465, paddingHorizontal: 17, paddingTop: 15, borderColor: '#ffffff2a' }, journeyShareBackdrop: { position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, opacity: 0.35, transform: [{ scale: 1.14 }] }, journeyShareTop: { flexDirection: 'row', alignItems: 'center' }, journeyShareEyebrow: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1, marginTop: 13 }, journeyShareTitle: { fontSize: 24, lineHeight: 25, fontWeight: '900', letterSpacing: -0.8, marginTop: 4 }, journeyShareStats: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 11 }, journeyShareStat: { minWidth: '30%', flexGrow: 1, minHeight: 42, borderWidth: 1, borderRadius: 9, paddingHorizontal: 7, paddingVertical: 6, justifyContent: 'center' }, journeyShareStatLabel: { fontSize: 6.5, fontWeight: '900', letterSpacing: 0.7 }, journeyShareStatValue: { fontSize: 11, fontWeight: '900', marginTop: 3 }, shareRouteSnapshot: { height: 126, overflow: 'hidden', borderRadius: 15, marginTop: 10, backgroundColor: '#05020a', borderWidth: StyleSheet.hairlineWidth, borderColor: '#673675' }, shareRouteFallback: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#765389' }, shareRouteFallbackText: { color: '#c4a8dc', fontSize: 8, fontWeight: '900', letterSpacing: 1 }, shareRouteTile: { position: 'absolute', overflow: 'hidden', backgroundColor: '#05020a' }, shareRouteTint: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }, journeyShareRouteLabels: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 7, marginTop: 7 }, journeyShareRouteLabel: { flex: 1, color: '#d8cadf', fontSize: 8, fontWeight: '800', textAlign: 'center' }, journeyShareRouteArrow: { fontSize: 14, fontWeight: '900' }, journeyShareMusic: { minHeight: 59, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: 1, padding: 8, marginTop: 9 }, journeyShareAlbum: { width: 42, height: 42, borderRadius: 9 }, journeyShareAlbumFallback: { width: 42, height: 42, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, journeyShareAlbumNote: { fontSize: 19, fontWeight: '900' }, journeyShareMusicLabel: { fontSize: 6.5, fontWeight: '900', letterSpacing: 1 }, journeyShareTrack: { fontSize: 11, fontWeight: '900', marginTop: 3 }, journeyShareArtist: { fontSize: 8.5, fontWeight: '800', marginTop: 2 }, journeySharePrivacy: { color: '#a294aa', fontSize: 6.3, fontWeight: '900', letterSpacing: 0.5, textAlign: 'center', marginTop: 8 }, journeyShareControls: { width: '100%', gap: 11, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: '#49345d', backgroundColor: '#120d1a' }, controlsKicker: { color: '#ff886a', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, controlsStatsKicker: { marginTop: 2 }, choiceRow: { gap: 6 }, choiceLabel: { color: '#a99baa', fontSize: 8, fontWeight: '900', letterSpacing: 0.9 }, choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, choiceChip: { minHeight: 29, borderRadius: 9, borderWidth: 1, borderColor: '#42304f', backgroundColor: '#191020', justifyContent: 'center', paddingHorizontal: 9 }, choiceChipActive: { borderColor: '#ff8566', backgroundColor: '#3a1923' }, choiceChipText: { color: '#b0a2b6', fontSize: 9, fontWeight: '800' }, choiceChipTextActive: { color: '#ffe0d4' }, statToggleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, statToggle: { width: '48.8%', minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 10, borderWidth: 1, borderColor: '#3d3048', backgroundColor: '#17111e', paddingHorizontal: 8 }, statToggleOn: { borderColor: '#9d6dff', backgroundColor: '#25163a' }, statToggleMark: { width: 16, color: '#c8adff', fontSize: 13, fontWeight: '900', textAlign: 'center' }, statToggleText: { color: '#ded3e5', fontSize: 9, fontWeight: '800' },
 });

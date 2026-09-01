@@ -10,19 +10,24 @@ const tracking = await readFile(new URL('../src/tracking.ts', import.meta.url), 
 const appData = await readFile(new URL('../src/app-data.ts', import.meta.url), 'utf8');
 const primaryData = await readFile(new URL('../src/primary-sections-data.ts', import.meta.url), 'utf8');
 const storage = await readFile(new URL('../src/storage.ts', import.meta.url), 'utf8');
+const completionJobs = await readFile(new URL('../src/completion-jobs.ts', import.meta.url), 'utf8');
+const databaseHardening = await readFile(new URL('../src/database-hardening.ts', import.meta.url), 'utf8');
 const iCloud = await readFile(new URL('../src/icloud-sync.ts', import.meta.url), 'utf8');
 const shell = await readFile(new URL('../src/shell.tsx', import.meta.url), 'utf8');
 const localArchiveEvents = await readFile(new URL('../src/local-archive-events.ts', import.meta.url), 'utf8');
 const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
 const tessie = await readFile(new URL('../src/tessie-direct.ts', import.meta.url), 'utf8');
+const musicCapture = await readFile(new URL('../src/music-capture.ts', import.meta.url), 'utf8');
+const primarySections = await readFile(new URL('../src/primary-sections.tsx', import.meta.url), 'utf8');
+const releaseFeatures = await readFile(new URL('../src/release-features.ts', import.meta.url), 'utf8');
 const credentials = await readFile(new URL('../src/credentials.ts', import.meta.url), 'utf8');
 const profileSecrets = await readFile(new URL('../src/profile-secure-store.ts', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
   assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id, Boolean(connection))') >= 0);
-  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id, Boolean(connection))') < finish.indexOf('syncPendingCompletedRecordingsBestEffort(connection)'));
+  assert.ok(finish.indexOf('completeSessionLocally(currentSummary.id, Boolean(connection))') < finish.indexOf('enrichCompletedJourney(connection, currentSummary.id)'));
   assert.match(finish, /setSyncStage\('saved'\)/);
   assert.doesNotMatch(finish, /await completeRecording|await flushRecording/);
 });
@@ -46,6 +51,10 @@ test('completed sessions remain queued locally and remote retries stop after one
   assert.match(storage, /status='completed' AND s\.remote_completed=0/);
   assert.match(api, /for \(const sessionId of sessionsPendingRemoteCompletion\(limit\)\)/);
   assert.match(api, /catch \{[\s\S]{0,240}break;/);
+  assert.match(databaseHardening, /CREATE TABLE IF NOT EXISTS recording_jobs/);
+  assert.match(storage, /claimNextCompletionJob/);
+  assert.match(completionJobs, /markCompletionJobForRetry/);
+  assert.match(completionJobs, /break;/);
 });
 
 test('normal archive navigation stays local even when the user refreshes', () => {
@@ -54,7 +63,9 @@ test('normal archive navigation stays local even when the user refreshes', () =>
   assert.match(appData, /async memories\(_refreshRemote = false\)/);
   assert.match(appData, /async musicDashboard\(refreshRemote = false, details: JourneyDetail\[\] = \[\]\)/);
   assert.match(primaryData, /appDataClient\.dashboard\(forceRefresh\)/);
-  assert.match(primaryData, /loadJourneyArchive\(8, forceRefresh\)/);
+  assert.match(primaryData, /loadJourneyArchive\(membership, forceRefresh\)/);
+  assert.match(primaryData, /const seenCursors = new Set<string>\(\)/);
+  assert.match(primaryData, /if \(seenCursors\.has\(result\.nextCursor\)\) break/);
   const normalDashboard = appData.slice(appData.indexOf('async dashboard('), appData.indexOf('async localDashboard('));
   const normalJourneys = appData.slice(appData.indexOf('async journeys('), appData.indexOf('async journey('));
   const normalMemories = appData.slice(appData.indexOf('async memories('), appData.indexOf('async musicDashboard('));
@@ -75,8 +86,22 @@ test('automatic journeys use both detector and active route updates to recognize
   assert.match(locationTask, /try \{ await processAutomaticDriveLocations\(data\.locations, true\); \} catch/);
   assert.match(automaticDrive, /processAutomaticDriveLocations\(locations: LocationObject\[\], locationAlreadyRecorded = false\)/);
   assert.match(automaticDrive, /setLocalStatus\(sessionId, 'finishing'\)/);
+  assert.match(automaticDrive, /setLocalStatus\(sessionId, 'finishing'\);[\s\S]{0,120}recordFinishingLocation\(sessionId, location\)/);
+  assert.match(storage, /session\.status !== 'finishing'[\s\S]{0,100}insertLocationsForSession\(session, \[location\]\)/);
   assert.match(tracking, /deferredUpdatesTimeout: 30_000/);
-  assert.match(app, /reconcileAutomaticParking/);
+  const automaticStart = tracking.slice(tracking.indexOf('export async function startAutomaticDetection'), tracking.indexOf('export async function stopAutomaticDetection'));
+  assert.doesNotMatch(automaticStart, /deferredUpdatesDistance|deferredUpdatesInterval|deferredUpdatesTimeout/);
+  assert.match(app, /const parkingCheckPending = useRef<Promise<void> \| null>\(null\)/);
+  assert.match(app, /ticks % 15 === 0[\s\S]{0,180}reconcileAutomaticParking\(\)/);
+  assert.match(app, /detector\.automaticSessionId !== current\.id/);
+});
+
+test('background GPS stays functional without opting into the persistent blue iOS indicator', () => {
+  assert.equal((tracking.match(/showsBackgroundLocationIndicator: false/g) ?? []).length, 2);
+  assert.doesNotMatch(tracking, /showsBackgroundLocationIndicator: true/);
+  const automaticStart = tracking.slice(tracking.indexOf('export async function startAutomaticDetection'), tracking.indexOf('export async function stopAutomaticDetection'));
+  assert.doesNotMatch(automaticStart, /if \(await isAutomaticDetectionActive\(\)\) return true/);
+  assert.match(automaticStart, /Location\.startLocationUpdatesAsync\(AUTOMATIC_DETECTION_TASK_NAME/);
 });
 
 test('recorder sessions and screen caches are isolated by active profile', () => {
@@ -99,7 +124,7 @@ test('preferences and place names are private profile data, not normal server wr
 test('automatic iCloud checks are coalesced while explicit sync can force a pass', () => {
   assert.match(iCloud, /AUTOMATIC_SYNC_COOLDOWN_MS = 15 \* 60_000/);
   assert.match(iCloud, /!options\.force && recent/);
-  assert.match(app, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/);
+  assert.match(completionJobs, /syncCurrentUserWithPrivateICloud\(\{ force: true \}\)/);
 });
 
 test('internal Last.fm history is imported through the stateless privacy edge and saved on device', () => {
@@ -124,4 +149,16 @@ test('Tessie vehicle history is imported through the stateless edge and cached o
   assert.match(primaryData, /appDataClient\.vehicleIntelligence\(false\)/);
   assert.doesNotMatch(tessie, /requestJourneyDeckJson|loadConnection/);
   assert.doesNotMatch(appData, /api\/recorder\/vehicle-intelligence/);
+});
+
+test('version 1 retains Tessie code but disables every runtime and background entry point', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+  assert.match(tessie, /if \(!TESSIE_INTEGRATION_ENABLED\) return 'not_connected'/);
+  assert.match(tessie, /sampleTessieMedia[\s\S]*?if \(!TESSIE_INTEGRATION_ENABLED\) return null/);
+  assert.match(musicCapture, /sampleTessieMediaForActiveSession[\s\S]*?if \(!TESSIE_INTEGRATION_ENABLED\) return \{ status: 'unavailable' \}/);
+  assert.match(automaticDrive, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
+  assert.match(locationTask, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
+  assert.match(appData, /if \(!TESSIE_INTEGRATION_ENABLED\) return localVehicleIntelligence\(userId\)/);
+  assert.match(primarySections, /if \(!active \|\| !TESSIE_INTEGRATION_ENABLED\) return/);
+  assert.match(shell, /\{TESSIE_INTEGRATION_ENABLED && <>[\s\S]*?<SectionHeading title="Vehicle" \/>/);
 });

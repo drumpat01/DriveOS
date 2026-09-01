@@ -155,3 +155,26 @@ export async function requestExternalProviderJson<T>(
     clearTimeout(timeout);
   }
 }
+
+export async function requestAppleCatalogJson<T>(url: string, options: EdgeRequestOptions = {}): Promise<T> {
+  if (!/^https:\/\/itunes\.apple\.com\/search\?/.test(url)) throw new Error('Unapproved Apple catalog URL.');
+  const activity = beginNetworkActivity({
+    category: 'privacy_edge', reason: 'external_import', operation: options.operation ?? 'Apple artwork lookup', method: 'GET', uploadBytes: 0,
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+    const downloadBytes = reportedDownloadBytes(response);
+    const payload = await response.json().catch(() => null) as T | null;
+    activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
+    if (!response.ok || !payload) throw new Error(`Apple catalog returned ${response.status}.`);
+    return payload;
+  } catch (error) {
+    activity.finish({ outcome: 'failed' });
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(options.timeoutMessage || 'Apple artwork lookup took too long.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

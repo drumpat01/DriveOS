@@ -10,13 +10,14 @@
  * and return fully-typed value objects -- making them straightforward to unit test.
  */
 
-import * as SQLite from 'expo-sqlite';
 import type { LocalUserId, LocalAtlasSnapshot } from './local-store';
-import { writeAtlasSnapshot } from './local-store';
+import { initializeLocalStore, writeAtlasSnapshot } from './local-store';
+import { getMasterDatabase } from './database-owner';
 
 // --- Internal helpers --------------------------------------------------------
 
-const db = SQLite.openDatabaseSync('journeydeck-local.db');
+initializeLocalStore();
+const db = getMasterDatabase();
 
 function q7DaysCutoff(): string {
   const d = new Date();

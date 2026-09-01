@@ -108,6 +108,16 @@ test('all JavaScript JourneyDeck traffic crosses one auditable request boundary'
   assert.deepEqual(rawFetchFiles, ['network-request.ts']);
 });
 
+test('Apple artwork fallback is allowlisted to the public iTunes search endpoint', async () => {
+  const requestSource = await readFile(new URL('../src/network-request.ts', import.meta.url), 'utf8');
+  const lookupSource = await readFile(new URL('../src/apple-artwork-lookup.ts', import.meta.url), 'utf8');
+  assert.match(requestSource, /requestAppleCatalogJson/);
+  assert.match(requestSource, /https:\\\/\\\/itunes\\\.apple\\\.com\\\/search/);
+  assert.match(lookupSource, /MAX_LOOKUPS_PER_REFRESH = 15/);
+  assert.match(lookupSource, /exactITunesArtworkMatch/);
+  assert.doesNotMatch(lookupSource, /\bfetch\s*\(/);
+});
+
 test('network measurement avoids response-body rescans and hidden Data Health redraws', async () => {
   const requestSource = await readFile(new URL('../src/network-request.ts', import.meta.url), 'utf8');
   const primarySections = await readFile(new URL('../src/primary-sections.tsx', import.meta.url), 'utf8');
@@ -115,7 +125,7 @@ test('network measurement avoids response-body rescans and hidden Data Health re
   assert.doesNotMatch(requestSource, /response\.text\(\)|JSON\.parse\(body\)/);
   assert.match(requestSource, /headers\.get\('content-length'\)/);
   assert.match(primarySections, /active \? subscribeNetworkActivity\(setNetwork\) : undefined/);
-  assert.match(shell, /active=\{tab === 'more'\}/);
+  assert.match(shell, /utilityVisible && <View[\s\S]*?<MoreScreen\s+active requested=/);
 });
 
 test('normal navigation surfaces remain free of direct network access and expose local-only diagnostics', async () => {

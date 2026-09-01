@@ -1,9 +1,11 @@
 import type { PrimarySectionsData } from './primary-sections-data';
+import type { SoundtrackTrack } from './app-data';
 
 export type HomeSummary = {
   archive: { journeys: number; collections: number; memories: number; places: number };
   memorySpotlight: { id: string; name: string; collections: number; journeys: number; photos: number } | null;
   topTrack: { track: string; artist: string; artworkUrl: string | null; plays: number } | null;
+  latestTrack: SoundtrackTrack | null;
   favoriteRoute: { label: string; count: number; averageMiles: number } | null;
   topPlace: { id: string; name: string; visits: number } | null;
   charging: { sessions: number; energyKwh: number; cost: number };
@@ -13,6 +15,28 @@ export type HomeSummary = {
 
 function normalized(value: string | null | undefined) {
   return (value ?? '').trim().toLocaleLowerCase().replace(/\s+/g, ' ');
+}
+
+function safeEpoch(value: string | null | undefined) {
+  const epoch = Date.parse(value ?? '');
+  return Number.isFinite(epoch) ? epoch : 0;
+}
+
+function latestTrackFrom(data: PrimarySectionsData): SoundtrackTrack | null {
+  const candidates: SoundtrackTrack[] = [
+    ...(data.live?.music ?? []),
+    ...(data.music?.recentSelections ?? []),
+  ];
+  const latest = [...candidates].sort((left, right) => safeEpoch(right.playedAt) - safeEpoch(left.playedAt))[0] ?? null;
+  if (!latest) return null;
+
+  // Artwork may arrive shortly after the playback observation. Only borrow a
+  // cached cover from an exact title + artist match so the card can never pair
+  // the latest song with another track's artwork.
+  const matchingArtwork = candidates.find(candidate => candidate.artworkUrl
+    && normalized(candidate.track) === normalized(latest.track)
+    && normalized(candidate.artist) === normalized(latest.artist));
+  return { ...latest, artworkUrl: latest.artworkUrl ?? matchingArtwork?.artworkUrl ?? null };
 }
 
 function topTrackFrom(data: PrimarySectionsData) {
@@ -68,6 +92,7 @@ export function buildHomeSummary(data: PrimarySectionsData): HomeSummary {
       photos: latestMemory.photos.length,
     } : null,
     topTrack,
+    latestTrack: latestTrackFrom(data),
     favoriteRoute: route ? { label: route.label, count: route.count, averageMiles: route.averageMiles } : null,
     topPlace: topPlace ? { id: topPlace.id, name: topPlace.name, visits: topPlace.visitCount } : null,
     charging: {

@@ -1,6 +1,6 @@
 # JourneyDeck Recorder
 
-JourneyDeck Recorder is the private iPhone companion for recording journeys without Tessie or a Tesla. It captures GPS points in an on-device SQLite queue, continues while the phone is locked, and uploads retry-safe batches to JourneyDeck. The recorder key is stored in iOS Keychain and is never bundled with the app.
+JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. It captures GPS points in an on-device SQLite queue, continues while the phone is locked, and commits every journey to the on-device archive before optional provider enrichment, private iCloud sync, or legacy backup. Completion work is stored in a leased retry queue so closing the app can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
 
 ## Public-release scope
 
@@ -8,8 +8,8 @@ JourneyDeck Recorder is the private iPhone companion for recording journeys with
 - iOS background GPS recording;
 - Start, Pause, Resume, Finish, and manual retry;
 - offline-first local storage with optional private iCloud continuity;
-- Apple Music history or ShazamKit Auto Recognition for optional soundtracks;
-- no paid tier or subscription claim;
+- Apple Music history for automatic soundtracks, plus user-initiated ShazamKit recognition for individual songs;
+- a StoreKit-verified membership that unlocks Atlas and history older than 45 days;
 - no public Spotify, Last.fm, or direct Spotify import until the separate commercial permissions and review scope are complete;
 - no Android build.
 
@@ -55,6 +55,8 @@ npx expo start --dev-client --tunnel
 ```
 
 Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
+
+For Build 10, also complete the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production.
 
 Then create a production build and submit it through the App Store workflow:
 

@@ -9,6 +9,15 @@ import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
 import { requestJourneyDeckJson } from './network-request';
 import { syncTessieDirect, tessieDirectStatus, type TessieSnapshot } from './tessie-direct';
+import { refreshAllAppleMusicArtwork } from './music-capture';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import {
+  coordinateFromPlaceAliasIdentity,
+  coordinatePlaceAliasIdentity,
+  GEOCODED_PLACE_MATCH_RADIUS_METERS,
+  SAVED_PLACE_MATCH_RADIUS_METERS,
+} from './place-matching';
+import { notifyLocalArchiveChanged } from './local-archive-events';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -116,13 +125,71 @@ function localPlaceAliasKey(location: string) {
   return `place.alias.${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+function savedPlaceAliasId(userId: string, location: string) {
+  return `saved-${localPlaceAliasKey(`${userId}\0${location}`).slice('place.alias.'.length)}`;
+}
+
+function primeCoordinatePlaceAlias(userId: string, location: string, label: string | null | undefined, coordinate?: { latitude: number; longitude: number } | null) {
+  const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
+  if (!resolved || !label?.trim()) return;
+  upsertPlace({
+    id: savedPlaceAliasId(userId, location), userId, kind: 'custom', label: label.trim(), lat: resolved.latitude, lng: resolved.longitude,
+    radiusMeters: SAVED_PLACE_MATCH_RADIUS_METERS, foursquareId: null, osmId: null, cachedUntil: null,
+  });
+}
+
+function primeSavedPlaceAliases(journeys: JourneySummary[]) {
+  const userId = getCurrentUser().id;
+  for (const journey of journeys) {
+    const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation || `journey:${journey.id}:start`;
+    const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation || `journey:${journey.id}:end`;
+    primeCoordinatePlaceAlias(userId, startKey, getPrivatePreference<string>(userId, localPlaceAliasKey(startKey)));
+    primeCoordinatePlaceAlias(userId, endKey, getPrivatePreference<string>(userId, localPlaceAliasKey(endKey)));
+  }
+}
+
+function applyLocalPlaceAliasesToJourneys<T extends JourneySummary>(journeys: T[]) {
+  primeSavedPlaceAliases(journeys);
+  return journeys.map(applyLocalPlaceAliases);
+}
+
+function routeEndpointCoordinate(journey: JourneySummary, endpoint: 'start' | 'end') {
+  const route = 'route' in journey ? (journey as JourneyDetail).route : null;
+  const pair = endpoint === 'start' ? route?.coordinates[0] : route?.coordinates[route.coordinates.length - 1];
+  return pair && Number.isFinite(pair[0]) && Number.isFinite(pair[1])
+    ? { latitude: pair[1], longitude: pair[0] }
+    : null;
+}
+
 function applyLocalPlaceAliases<T extends JourneySummary>(journey: T): T {
   const userId = getCurrentUser().id;
-  const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation;
-  const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation;
-  const start = startKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(startKey)) : null;
-  const end = endKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(endKey)) : null;
-  return { ...journey, startingLocation: start || journey.startingLocation, endingLocation: end || journey.endingLocation };
+  const rawStartingLocation = journey.rawStartingLocation || journey.startingLocation || 'Recorded start';
+  const rawEndingLocation = journey.rawEndingLocation || journey.endingLocation || 'Recorded destination';
+  const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation || `journey:${journey.id}:start`;
+  const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation || `journey:${journey.id}:end`;
+  const exactStart = getPrivatePreference<string>(userId, localPlaceAliasKey(startKey));
+  const exactEnd = getPrivatePreference<string>(userId, localPlaceAliasKey(endKey));
+  const startCoordinate = coordinateFromPlaceAliasIdentity(startKey) ?? routeEndpointCoordinate(journey, 'start');
+  const endCoordinate = coordinateFromPlaceAliasIdentity(endKey) ?? routeEndpointCoordinate(journey, 'end');
+  primeCoordinatePlaceAlias(userId, startKey, exactStart, startCoordinate);
+  primeCoordinatePlaceAlias(userId, endKey, exactEnd, endCoordinate);
+  const start = exactStart || (startCoordinate
+    ? findNamedPlace(userId, startCoordinate.latitude, startCoordinate.longitude)?.label
+      ?? findCachedPlace(userId, startCoordinate.latitude, startCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
+    : null);
+  const end = exactEnd || (endCoordinate
+    ? findNamedPlace(userId, endCoordinate.latitude, endCoordinate.longitude)?.label
+      ?? findCachedPlace(userId, endCoordinate.latitude, endCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
+    : null);
+  return {
+    ...journey,
+    rawStartingLocation,
+    rawEndingLocation,
+    startingLocationKey: startKey,
+    endingLocationKey: endKey,
+    startingLocation: start || journey.startingLocation,
+    endingLocation: end || journey.endingLocation,
+  };
 }
 
 function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail | null): JourneyDetail {
@@ -137,6 +204,12 @@ function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail
   const remotePointCount = remote.route?.coordinates.length ?? 0;
   return {
     ...remote,
+    startingLocation: remote.startingLocation ?? local.startingLocation,
+    endingLocation: remote.endingLocation ?? local.endingLocation,
+    rawStartingLocation: remote.rawStartingLocation ?? remote.startingLocation ?? local.rawStartingLocation,
+    rawEndingLocation: remote.rawEndingLocation ?? remote.endingLocation ?? local.rawEndingLocation,
+    startingLocationKey: local.startingLocationKey ?? remote.startingLocationKey,
+    endingLocationKey: local.endingLocationKey ?? remote.endingLocationKey,
     soundtrack,
     songCount: Math.max(remote.songCount, soundtrack.length),
     route: localPointCount >= remotePointCount ? local.route : remote.route,
@@ -164,6 +237,10 @@ function mergeLocalJourneyPage(
       ...journey,
       startingLocation: journey.startingLocation ?? remote.startingLocation,
       endingLocation: journey.endingLocation ?? remote.endingLocation,
+      rawStartingLocation: remote.rawStartingLocation ?? remote.startingLocation ?? journey.rawStartingLocation,
+      rawEndingLocation: remote.rawEndingLocation ?? remote.endingLocation ?? journey.rawEndingLocation,
+      startingLocationKey: journey.startingLocationKey ?? remote.startingLocationKey,
+      endingLocationKey: journey.endingLocationKey ?? remote.endingLocationKey,
       soundtrackPreview: journey.soundtrackPreview.length ? journey.soundtrackPreview : remote.soundtrackPreview,
     };
   });
@@ -555,20 +632,28 @@ export const appDataClient = {
   async dashboard(_refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
     return { ...dashboard, latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
-      recentJourneys: dashboard.recentJourneys.map(applyLocalPlaceAliases), weeklyJourneys: dashboard.weeklyJourneys.map(applyLocalPlaceAliases) };
+      recentJourneys: applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys), weeklyJourneys: applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys) };
   },
 
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    return localDashboardWithCachedContext(Boolean(connection));
+    const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
+    return {
+      ...dashboard,
+      latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
+      recentJourneys: applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys),
+      weeklyJourneys: applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys),
+    };
   },
 
   async journeys(limit = 25, cursor?: string, _refreshRemote = false): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
     const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
     const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
     const page = local.items.length || cached ? mergeLocalJourneyPage(local, cached, limit) : local;
-    return { ...page, items: page.items.map(applyLocalPlaceAliases) };
+    return { ...page, items: applyLocalPlaceAliasesToJourneys(page.items) };
   },
 
   async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {
@@ -589,6 +674,7 @@ export const appDataClient = {
 
   async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
+    if (!TESSIE_INTEGRATION_ENABLED) return localVehicleIntelligence(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
     if (!refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
     try {
@@ -602,6 +688,7 @@ export const appDataClient = {
   },
 
   async syncVehicleIntelligence(): Promise<VehicleIntelligenceData> {
+    if (!TESSIE_INTEGRATION_ENABLED) return localVehicleIntelligence(getCurrentUser().id);
     return refreshVehicleIntelligenceFromTessie(getCurrentUser().id);
   },
 
@@ -614,9 +701,18 @@ export const appDataClient = {
     return local;
   },
 
-  async savePlaceAlias(location: string, label: string): Promise<{ location: string; label: string; removed: boolean }> {
+  async savePlaceAlias(location: string, label: string, coordinate?: { latitude: number; longitude: number } | null): Promise<{ location: string; label: string; removed: boolean }> {
     const normalized = label.trim();
-    upsertPrivatePreference(getCurrentUser().id, localPlaceAliasKey(location), normalized);
+    const userId = getCurrentUser().id;
+    upsertPrivatePreference(userId, localPlaceAliasKey(location), normalized);
+    if (normalized) primeCoordinatePlaceAlias(userId, location, normalized, coordinate);
+    else {
+      deletePlace(userId, savedPlaceAliasId(userId, location));
+      const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
+      const nearby = resolved ? findNamedPlace(userId, resolved.latitude, resolved.longitude) : null;
+      if (nearby?.kind === 'custom') deletePlace(userId, nearby.id);
+    }
+    notifyLocalArchiveChanged();
     return { location, label: normalized, removed: !normalized };
   },
 
@@ -628,6 +724,7 @@ export const appDataClient = {
 
   async musicDashboard(refreshRemote = false, details: JourneyDetail[] = []): Promise<MusicDashboardData> {
     const userId = getCurrentUser().id;
+    if (refreshRemote) await refreshAllAppleMusicArtwork();
     const local = localAtlasClient.musicDashboard(userId);
     const cities = await loadMusicCitySummary(userId, refreshRemote, details);
     const data = { ...local, cities };
@@ -738,7 +835,7 @@ export const appDataClient = {
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
     const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
     const lastFmConfigured = typeof edge?.url === 'string' && /^https:\/\//.test(edge.url);
-    return { lastFmConfigured, tessieConfigured: await tessieDirectStatus() === 'connected' };
+    return { lastFmConfigured, tessieConfigured: TESSIE_INTEGRATION_ENABLED && await tessieDirectStatus() === 'connected' };
   },
 };
 
@@ -781,6 +878,10 @@ import {
   softDeleteCollection,
   softDeleteMemory,
   softDeletePhoto,
+  upsertPlace,
+  findCachedPlace,
+  findNamedPlace,
+  deletePlace,
   getPrivatePreference,
   upsertPrivatePreference,
   readAtlasSnapshot,
@@ -803,6 +904,8 @@ import { loadMusicCitySummary } from './music-city-summary';
 const ATLAS_STALE_MS = 5 * 60_000;
 
 function localJourneyToSummary(j: import('./local-store').LocalJourney): JourneySummary {
+  const startingLocationKey = j.startPlaceId ?? coordinatePlaceAliasIdentity(j.startLat, j.startLng) ?? `journey:${j.id}:start`;
+  const endingLocationKey = j.endPlaceId ?? coordinatePlaceAliasIdentity(j.endLat, j.endLng) ?? `journey:${j.id}:end`;
   return {
     id: j.id,
     legacyDriveId: j.legacyDriveId,
@@ -814,6 +917,10 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
     miles: j.miles,
     startingLocation: j.startPlaceId ?? null,
     endingLocation: j.endPlaceId ?? null,
+    rawStartingLocation: j.startPlaceId ?? 'Recorded start',
+    rawEndingLocation: j.endPlaceId ?? 'Recorded destination',
+    startingLocationKey,
+    endingLocationKey,
     averageSpeedMph: j.averageSpeedMph,
     maxSpeedMph: j.maxSpeedMph,
     songCount: j.songCount,

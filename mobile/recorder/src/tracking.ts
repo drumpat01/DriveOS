@@ -13,7 +13,7 @@ export async function startLocationTracking() {
     accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 15, timeInterval: 10_000,
     deferredUpdatesDistance: 50, deferredUpdatesInterval: 30_000, deferredUpdatesTimeout: 30_000,
     activityType: Location.ActivityType.AutomotiveNavigation, pausesUpdatesAutomatically: false,
-    showsBackgroundLocationIndicator: true,
+    showsBackgroundLocationIndicator: false,
   });
   return isLocationTrackingActive();
 }
@@ -27,17 +27,19 @@ export async function isAutomaticDetectionActive() {
 }
 
 export async function startAutomaticDetection() {
-  if (await isAutomaticDetectionActive()) return true;
+  // Re-register even when the detector is already active. Expo updates the
+  // native task options in place, which lets an OTA remove the old persistent
+  // blue background-location indicator without disabling automatic detection.
   await Location.startLocationUpdatesAsync(AUTOMATIC_DETECTION_TASK_NAME, {
     accuracy: Location.Accuracy.High,
     distanceInterval: 0,
     timeInterval: 15_000,
-    deferredUpdatesDistance: 0,
-    deferredUpdatesInterval: 30_000,
-    deferredUpdatesTimeout: 30_000,
+    // Parking needs timely samples. Do not defer this low-volume detector
+    // stream into batches: iOS can otherwise hold the final stationary fixes
+    // until after JourneyDeck's five-minute finish threshold.
     activityType: Location.ActivityType.AutomotiveNavigation,
     pausesUpdatesAutomatically: false,
-    showsBackgroundLocationIndicator: true,
+    showsBackgroundLocationIndicator: false,
   });
   return isAutomaticDetectionActive();
 }

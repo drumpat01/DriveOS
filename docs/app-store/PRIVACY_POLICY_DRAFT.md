@@ -30,7 +30,7 @@ JourneyDeck can store the profile name you choose, place labels, memories, colle
 
 ### Optional music features
 
-You can choose Apple Music history or ShazamKit Auto Recognition to add a soundtrack to a journey. Apple Music may provide track, artist, album, playback time, artwork, and related metadata. Auto Recognition briefly uses the microphone to identify music; JourneyDeck does not record, retain, or upload microphone audio. You can decline or revoke either permission and still use JourneyDeck’s core recorder.
+You can use Apple Music history for automatic soundtracks or manually tap Identify Song to use ShazamKit for an individual track. Apple Music may provide track, artist, album, playback time, artwork, and related metadata. ShazamKit uses the microphone only after you tap Identify Song, listens briefly for that one match, and then turns the microphone off. JourneyDeck does not record, retain, or upload microphone audio. You can decline or revoke either permission and still use JourneyDeck’s core recorder.
 
 ### Optional Sign in with Apple and private iCloud continuity
 

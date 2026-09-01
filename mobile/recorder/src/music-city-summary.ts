@@ -77,6 +77,26 @@ function musicLocations(userId: LocalUserId, details: MusicCityJourneyDetail[]):
 
 function delay(milliseconds: number) { return new Promise(resolve => setTimeout(resolve, milliseconds)); }
 
+export async function loadCityLabelForCoordinate(userId: LocalUserId, coordinate: [number, number] | null | undefined): Promise<string | null> {
+  const grid = coordinate ? cityGridCoordinate(coordinate) : null;
+  if (!grid) return null;
+  const stored = readAppCache<CityLabelCache>(cacheKey(userId)) ?? { labels: {}, summary: [], builtAt: null };
+  const cached = stored.labels[grid.key];
+  const now = Date.now();
+  if (cached && Date.parse(cached.expiresAt) > now) return cached.label;
+  const edgeUrl = configuredEdgeUrl();
+  if (!edgeUrl) return cached?.label ?? null;
+  try {
+    const result = await requestPrivacyEdgeJson<EdgeCityResponse>(edgeUrl, '/api/places/reverse', { lat: grid.latitude, lng: grid.longitude });
+    if (!result.label) return cached?.label ?? null;
+    stored.labels[grid.key] = { label: result.label, expiresAt: new Date(now + CACHE_DAYS * 86_400_000).toISOString() };
+    writeAppCache(cacheKey(userId), stored);
+    return result.label;
+  } catch {
+    return cached?.label ?? null;
+  }
+}
+
 export async function loadMusicCitySummary(userId: LocalUserId, refresh = false, details: MusicCityJourneyDetail[] = []): Promise<{ label: string; songs: number }[]> {
   const stored = readAppCache<CityLabelCache>(cacheKey(userId)) ?? { labels: {}, summary: [], builtAt: null };
   if (!refresh) return stored.summary;

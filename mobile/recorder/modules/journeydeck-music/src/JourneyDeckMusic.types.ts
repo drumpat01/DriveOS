@@ -53,6 +53,8 @@ export type CurrentAppleMusicTrack = {
   durationSeconds?: number;
   playbackTimeSeconds?: number;
   lastPlayedAt?: string;
+  artworkUrl?: string;
+  appleMusicUrl?: string;
 };
 
 export type ShazamRecognitionResult =

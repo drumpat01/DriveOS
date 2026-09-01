@@ -90,3 +90,13 @@ test('position movement prevents an unknown speed from looking parked', () => {
   assert.equal(result.action, 'none');
   assert.equal(result.state.stoppedSince, null);
 });
+
+test('stationary coordinates override a stale positive iOS speed while parking', () => {
+  let result = evaluateDriveDetection(emptyDriveDetectionState(), positionedSample(1_000, 8, 32.7555, -97.3308), true);
+  result = evaluateDriveDetection(result.state, positionedSample(61_000, 8, 32.7555, -97.3308), true);
+  assert.equal(result.action, 'none');
+  assert.equal(result.state.stoppedSince, 61_000);
+  result = evaluateDriveDetection(result.state,
+    positionedSample(61_000 + DRIVE_STOP_DURATION_MS, 8, 32.7555, -97.3308), true);
+  assert.equal(result.action, 'finish');
+});

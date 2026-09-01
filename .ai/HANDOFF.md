@@ -1,5 +1,393 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Production OTA: Phase 1 journey-completion reliability — September 1, 2026
+
+- Published and verified the completed Phase 1 database/recovery implementation to the iOS `production` branch for runtime `1.8.0`.
+- Current production update group: `0ddc8464-4209-4197-a77e-f781bee1ed41`; iOS update: `01a05cd3-2eb6-7f42-a967-e1298424e4d9`; message: `Harden journey completion recovery`.
+- EAS reported a platform availability warning during export, but the bundle and asset map uploaded, publishing returned success, and a separate `eas update:list` check confirmed this group as the production head.
+- No native build, TestFlight upload, App Store Connect mutation, commit, git push, or data reset was performed. The update should download on app launch and apply after a full close/reopen; on-device automatic-drive completion remains the next validation step.
+
+## Phase 1 backend reliability foundation — September 1, 2026
+
+- Began and completed the repository implementation portion of the approved Phase 1 reliability milestone. The user explicitly said current tester data is disposable; no database or source data was actually deleted because an additive schema change remained safer and simpler.
+- Added `mobile/recorder/src/database-owner.ts` as the sole Expo SQLite open point. The master archive, Atlas analytics, and recorder now share one intentional JavaScript handle per database file, preventing connection-wide PRAGMAs from leaking across separately opened wrappers.
+- Advanced `journeydeck-recorder.db` to schema version 2 with durable `recording_jobs`. Local completion now uses one recorder transaction to mark the session completed and enqueue deterministic archive-mirror, Apple Music/artwork, private-iCloud, and optional legacy-remote jobs. Jobs are profile-owned, dependency ordered, bounded by leases, recovered after expired leases, and retried with exponential backoff and privacy-safe error codes.
+- Added `completion-jobs.ts` and wired it into manual completion, automatic completion, app launch/foreground, a 30-second foreground retry cadence, and network-policy recovery. The archive mirror is still attempted immediately for responsive UI, but a failure no longer reopens the drive or loses the handoff intent.
+- Corrected the completion artwork path to use the actual archived journey id (`local_<session-id>`). Exact-match fallback and Expo disk prefetch had previously queried the raw recorder session id, which could make the completion cache path silently find no master music rows.
+- Corrected automatic completion's terminal GPS write. The task previously changed the session to `finishing` and then called the normal `recordLocations`, which rejects non-recording sessions; a dedicated finishing-point write now preserves the terminal fix while fencing concurrent route batches.
+- Failed automatic start attempts now abandon their invalid recorder session instead of creating an empty completed journey. Data Health includes pending completion-job counts and recorder integrity checks include malformed jobs and expired leases.
+- Updated `docs/JOURNEYDECK-IOS-DATABASE.md`, the mobile README, executable schema tests, completion tests, CloudKit tests, and server-independence tests for the new model.
+- Verification passed: `npm run typecheck`; focused database hardening, journey completion, recovery, drive detection, local-store, and server-independence tests; full mobile suite **154/154**; production iOS Expo export (**1,774 modules, 24 assets**); and `git diff --check` with only the repository's existing LF-to-CRLF notices.
+- Phase 1 is now published through the production OTA documented above and still needs an on-device drive/relaunch validation. No native build, TestFlight upload, App Store Connect change, commit, push, or destructive data reset was performed. The broader working tree remains heavily dirty with prior approved Build 10 work; preserve it.
+
+## Production OTA: restore SQLite writes after hardening — September 1, 2026
+
+- The first database-hardening OTA exposed `SQLiteErrorException: attempt to write a readonly database` on the Live screen. Root cause: `src/local-atlas.ts` set `PRAGMA query_only=ON` on its analytics handle, but Expo SQLite can reuse the same native connection for multiple JavaScript handles to the same database file, so the connection-wide flag also blocked normal master-archive writes. Existing user data was not deleted.
+- Removed the connection-wide flag. The Atlas code remains read-only by construction through `SELECT` queries, while normal archive and snapshot writes remain enabled. Added a regression assertion forbidding `PRAGMA query_only` in the Expo SQLite analytics path and corrected the database architecture documentation.
+- Verification passed: TypeScript plus 6 focused database/Atlas/recovery test groups. Published and verified the corrected iOS production OTA for runtime `1.8.0`: update group `2133124b-338f-48f0-87f5-15db7fd01916`, iOS update `01a05cb1-b310-750b-8b7a-0749f29d6dac`, message `Restore SQLite writes after database hardening`. It is the current production head for TestFlight Build 10 after download and restart.
+- No native build, TestFlight upload, App Store Connect mutation, commit, git push, or website deployment was performed.
+
+## iOS SQLite review and additive hardening — August 31, 2026
+
+- Audited JourneyDeck's complete on-device persistence system. iOS uses two SQLite files: `journeydeck-local.db` is the durable multi-profile master archive and `journeydeck-recorder.db` is the active recorder/retry/cache queue. Documented the table map, ownership boundaries, CloudKit behavior, cross-database completion handoff, deletion behavior, privacy model, and remaining compatibility tradeoffs in `docs/JOURNEYDECK-IOS-DATABASE.md`.
+- Added additive-only master schema migration 5 and formal recorder schema migration 1 in `mobile/recorder/src/database-hardening.ts`. Both files now use distinct SQLite `application_id` values, future-version/downgrade guards, WAL + foreign keys, a five-second busy timeout, bounded WAL growth, `secure_delete=FAST`, and startup `quick_check`. No table, column, route, journey, song, place, photo, memory, Collection, or preference row is dropped or rewritten by the hardening migrations.
+- Added SQLite triggers and indexes that enforce profile ownership and data shape for journey/place links, music/journey links, Collection/Memory JSON membership, photo ownership, exact coordinates, sync flags/revisions, timestamps, one active recorder session per profile, valid cache/private-preference JSON, and queue ranges. Hardened old-queue recovery by filtering corrupt legacy point/music rows before the idempotent completed-session mirror. Corrected recorder inserted-row counts and the polar-longitude place-cache bound.
+- Added read-only integrity reports for both databases and surfaced them in Data Health. The device now reports schema version, SQLite `quick_check`, foreign-key violations, cross-profile links, invalid values, and duplicate active recorder sessions without uploading row contents or identifiers. The analytics connection is initialized after the master migration; its code path stays read-only without using connection-wide `PRAGMA query_only`, because Expo may share native handles for the same SQLite file.
+- Added executable Node SQLite migration tests in `mobile/recorder/tests/database-hardening.test.mts`; they run the production hardening SQL and prove that invalid GPS, malformed JSON, cross-profile links, bad cache data, and duplicate active recordings are rejected while valid transitions work.
+- Verification passed: TypeScript, 152/152 mobile tests, Expo Doctor 21/21, production iOS Expo export (1,772 modules, 24 assets), and `git diff --check`. Public-release preflight reached only the expected environment gates for unset Privacy Policy and Support URL variables. `npm audit --omit=dev` reports a moderate transitive `uuid` advisory through Expo/Xcode build tooling; the offered automatic fix is a breaking Expo package downgrade and was not applied.
+- Published the original iOS production OTA for runtime `1.8.0`: update group `8fb23615-e0bf-4915-a5ac-6c73d953d951`, iOS update `01a05c5e-b358-71d9-8172-edcff05a484a`, message `Harden on-device databases`. It was superseded by the September 1 SQLite-write correction above.
+
+## Production OTA: reliable automatic parking and clean navigation — August 31, 2026
+
+- Fixed automatic journeys that could remain technically open after parking. The detector stream no longer defers its low-volume stationary fixes; the active app now coalesces a fresh parking check every 15 seconds while an automatically started session is recording; and accurate stationary displacement overrides the stale positive speed Core Location can briefly retain after a stop. The five-continuous-parked-minutes safety threshold remains unchanged, and movement still resets it.
+- Corrected the exposed first-run branch marker from `04A / 04` / `04B / 04` to the user-facing `04 / 04`. Removed the bottom-nav pressed-state background fill that could remain as translucent squares after switching tabs, while preserving the single animated orange selection indicator.
+- Build 10 has `isIosBackgroundLocationEnabled: true` and the screenshot showed Location set to Always. Low Power Mode automatically disables Background App Refresh and can reduce background execution, but the newly added foreground watchdog does not depend on a later stationary background callback while the app is open.
+- Verification passed: TypeScript, drive detection 12/12, server-independence 15/15, tab runtime 28/28, full mobile suite 146/146, iOS Expo export (1,770 modules and 24 assets), and whitespace validation (existing LF-to-CRLF notices only).
+- Published and verified the iOS production OTA for runtime `1.8.0`: update group `214464bf-7764-491f-be35-221f5b99aa95`, iOS update `01a05ad7-6fee-7899-86a0-a450d964c744`, message `Fix automatic parking and navigation feedback`. It applies to TestFlight Build 10 after download and restart.
+- No new native build, TestFlight upload, App Store Connect mutation, commit, git push, or website deployment was performed.
+
+## Production OTA: responsive first-run screens — August 31, 2026
+
+- Corrected the Build 10 first-run screens 2–4 after the approved `480 × 1040` mockup PNGs had incorrectly been installed as the live UI with `resizeMode="cover"`. That caused pixelated type, horizontal cropping, Dynamic Island overlap, and unreachable bottom actions on real iPhones.
+- Rebuilt the GPS choice, Apple Music connection, and automatic/manual instruction screens as sharp native React Native layouts over the same high-resolution cinematic road background. The approved copy, coral-pink gradient, visual hierarchy, and conditional 4A/4B sequence remain; layouts now use iOS safe-area insets, bounded content width, scrollable bodies, and fixed reachable primary actions. The approved 2.5-second opening animation itself was not altered.
+- Added focused regression coverage forbidding the old fixed-design raster scaling and requiring safe-area handling, scrolling, and native actions. Verification passed: TypeScript, focused first-run/tab tests 28/28, full mobile suite 145/145, iOS Expo export (1,770 modules and 24 assets), and whitespace validation (existing LF-to-CRLF notices only).
+- Published the iOS production OTA for runtime `1.8.0`: update group `cea543f2-6851-4325-b353-4f3f978f3c55`, iOS update `01a05a0d-7e5b-7a3d-a596-93ba743c7e3f`, message `Fix responsive first-run onboarding screens`. It applies to TestFlight Build 10 after the update downloads and the app restarts.
+- No new native build, TestFlight upload, App Store Connect mutation, commit, git push, or website deployment was performed.
+
+## Production OTA: first-run welcome advances once — August 31, 2026
+
+- Fixed the Build 10 first-run welcome screen getting trapped in the looping 2.5-second WebP. The timer effect depended on the parent-created `onComplete` callback, so unrelated parent renders repeatedly canceled and restarted it. The component now keeps the latest callback in a ref while the one-shot timer depends only on the loaded asset.
+- The approved animation and all follow-up artwork remain byte-for-byte unchanged. Added regression assertions requiring the callback ref and forbidding the unstable `[loaded, onComplete]` timer dependency.
+- Verification passed: targeted first-run/tab runtime tests 28/28, TypeScript, full mobile suite 145/145, iOS Expo export (1,774 modules and 28 assets), and whitespace validation (existing LF-to-CRLF notices only).
+- Published and verified the iOS production OTA for runtime `1.8.0`: update group `adcd124e-f463-4b62-bb2c-c9587fe27149`, iOS update `01a059ff-b38b-7977-8725-486df8cf68f6`, message `Fix first-run welcome timer`. It is the current `production` branch head and applies to TestFlight Build 10 after the update downloads and the app restarts.
+- No new native build, TestFlight upload, App Store Connect mutation, commit, git push, or website deployment was performed.
+
+## TestFlight Build 10 uploaded — August 31, 2026
+
+- Created the native iOS production build for JourneyDeck `1.8.0` with build number `10`, including the approved first-run onboarding and the StoreKit 2 membership module/paywall. Successful EAS build ID: `1a7ee233-0d9a-43b0-80d2-d364dee66d60`; artifact: `https://expo.dev/artifacts/eas/KOttyYlwT1JENjw0CTxEWY4fusmnG0oCq1tG6FRx0wY.ipa`.
+- Submitted that exact binary to App Store Connect with the stored API key. EAS submission ID: `408363e3-5fe2-4afd-b5d8-9434c2a10f0f`. Apple accepted the upload and is processing it for TestFlight at `https://appstoreconnect.apple.com/apps/6806502526/testflight/ios`.
+- The first Build 10 attempt (`4a6a7fca-990f-4550-a8c8-5c507e69c6c6`) failed during Xcode compilation because Swift resolved `Transaction` ambiguously. Qualified all membership-module references as `StoreKit.Transaction`, reran TypeScript and native-capability tests successfully, reset the EAS remote counter from 10 to 9, and rebuilt so the successful retry remained Build 10.
+- Preflight/verification passed: TypeScript, full mobile suite 145/145, Expo Doctor 21/21, native membership-module autolinking, production credentials/provisioning, and whitespace validation (only existing LF-to-CRLF notices). No App Store Connect action was required during build or upload, and no OTA, commit, git push, or website deployment was performed.
+- Next: wait for Apple's TestFlight processing email, install Build 10, exercise purchase/restore and both free/paid navigation/history states, then capture the in-app paywall screenshot for the monthly and annual subscription review metadata. Do not click **Add for Review** until the intended App Store submission package is ready.
+
+## Authoritative App Store v1 core scope — August 31, 2026
+
+The user defined the following as the authoritative scope for the first App Store submission. Use this list when reconciling implementation, testing, metadata, screenshots, App Review notes, and the release schedule:
+
+1. Follow the user with GPS and plot the recorded route.
+2. Connect to the user's Apple Music account. Place songs heard during a drive onto the route at the time they occurred. Download album artwork immediately or shortly after the route finishes.
+3. Create Memories and Collections, with photos and notes.
+4. Let the user name places, persist those names on-device, and automatically apply saved names to later journeys.
+5. Show a pleasant, concise introduction walkthrough on first launch. It must explain GPS permission, Apple Music connection, how JourneyDeck works, and the benefits/tradeoffs of manual versus automatic recording without becoming complex or wordy.
+6. Free users retain the core recording, Apple Music, Memories, Soundtracks, and Statistics experience, limited to the most recent 45 days of history.
+7. Paid subscribers unlock Atlas and their complete locally stored history across the app.
+8. Hide or remove all Last.fm, Spotify, and Tessie mentions, integrations, and corresponding widgets from the App Store submission.
+9. The Settings gear must open Settings directly, with no Tools screen or other intermediate destination.
+
+This scope supersedes older handoff or App Store documentation that says the public build has no paid tier, exposes Tessie, substitutes Statistics for another function based on membership, or routes Settings through Tools. The user requested scope capture only; do not infer authorization to implement, build, upload, submit, commit, push, or change App Store Connect from this note.
+
+## StoreKit subscriptions and membership gates prepared for Build 10 — August 31, 2026
+
+- Added a local Expo/Swift StoreKit 2 module for the exact products `com.journeydeck.recorder.pro.monthly` and `com.journeydeck.recorder.pro.annual`. Access is fail-closed and derives only from verified current transactions; purchasing uses StoreKit's localized product display price, transaction updates refresh access, and `AppStore.sync()` is used only for the user-triggered Restore Purchases action.
+- Added the JourneyDeck membership paywall, purchase/restore UI, Settings membership card, and Apple subscription-management link. Free users see Statistics in the fifth dock position and a rolling 45-day archive across Home, Journeys, Memories/Collections, Statistics/timeline, and Soundtracks. Paid users see Atlas in the fifth position and can paginate through the complete locally stored archive. Expiry hides older data without deleting it.
+- Added the App Store Connect checklist in `mobile/recorder/SUBSCRIPTION_SETUP.md` and updated release/review metadata. Apple-side work remains: create one subscription group, create the two exact product IDs, set prices/localizations/review metadata, ensure Agreements/Tax/Banking is active, and attach the subscriptions to the Build 10 submission.
+- Verification passed: TypeScript, 145/145 mobile tests, native-module autolinking discovery, iOS Expo export (1,774 modules and 28 assets), and whitespace validation. Swift could not be compiled on Windows; Build 10 must be a new native EAS/TestFlight build to validate the StoreKit module and cannot be delivered as an OTA. No OTA, native build, upload, App Store Connect mutation, commit, or push was performed.
+
+## Production OTA: Soundtracks corners and Memories control alignment — August 30, 2026
+
+- Reduced the Soundtracks header's outer clipping radius from 24 to 10 points so the source artwork's integrated neon corner frame remains visible instead of being masked a second time.
+- Aligned the Memories Journeys/Memories/Collections selector, search field, and Journey filter/sort rows to the same 20-point horizontal content column used by Collection and Journey cards.
+- Added focused regression coverage for both layout fixes. Verification passed: mobile TypeScript, focused tab-runtime tests 24/24, full mobile tests 131/131, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `337d1c49-0908-4e56-ae75-2441349b1d43`, iOS update `01a055a6-e73c-715e-a714-3d5fee11539f`, message `JourneyDeck 1.8: fix header corners and Memories alignment`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: selected Memories Keepsake Constellation header — August 30, 2026
+
+- Replaced `mobile/recorder/assets/memories-header-hero.png` with the user-selected option 2, `Keepsake Constellation`. The installed PNG is exactly `1672 × 941`, matching the shared app-header frame and showing a coral route connecting three original keepsake scenes over a deep-purple map.
+- Preserved all three concepts under `docs/design/memories-header-options/`. Verification passed: mobile TypeScript, focused tab-runtime tests 23/23, and iOS Expo export (1,759 modules).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `0933a58b-9429-4e42-a5ff-3192ee0984f1`, iOS update `01a0559e-885f-7c64-85f1-3e60bdc959c1`, message `JourneyDeck 1.8: new Memories keepsake header`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Memories header artwork options — August 30, 2026
+
+- Generated three project-ready Memories header concepts in the standardized `1672 × 941` app-header dimensions: `The Road Remembers`, `Keepsake Constellation`, and `Rearview of a Life`.
+- Saved the PNGs under `docs/design/memories-header-options/` as `option-1-the-road-remembers.png`, `option-2-keepsake-constellation.png`, and `option-3-rearview-of-a-life.png`. Each uses the established near-black/deep-purple JourneyDeck palette, coral route light, cyan/magenta accents, integrated neon frame, and exact `MEMORIES` label.
+- These are selection options only. The existing `mobile/recorder/assets/memories-header-hero.png` was not replaced, and no app code, OTA, native build, TestFlight upload, commit, push, or website deployment was performed.
+
+## Production OTA: unified artwork headers and centered Soundtracks vinyl — August 30, 2026
+
+- Standardized every destination artwork header on one shared `1672 / 941` display frame. Live, Memories, Soundtracks, Atlas, Recorder, Settings, Timeline, and Statistics now render at the same on-screen width and height; wrappers that live inside 20 px page padding expand to the same 16 px header inset used by Memories and Soundtracks.
+- Soundtracks now preserves its full source artwork with `contentFit="contain"`. The rotating vinyl overlay was re-centered from measured artwork coordinates by moving it to `left: 37.4%` and `top: -5.9%` while retaining its existing 59% width and 0.52 vertical perspective scale.
+- Added regression coverage for the shared frame, consistent wrapper geometry, full Soundtracks artwork, and measured vinyl alignment. Verification passed: mobile TypeScript, focused tab-runtime tests 23/23, full mobile tests 130/130, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `ba5ff972-7536-4187-aecf-00441035e7de`, iOS update `01a05582-7344-74f0-9de9-be98a06ace66`, message `JourneyDeck 1.8: unify artwork headers`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: show the full Soundtracks header — August 30, 2026
+
+- Corrected the Soundtracks hero container to use the source artwork's true `1679 × 939` aspect ratio instead of the wider `1270 / 674` ratio that made `resizeMode="cover"` crop the neon frame along the top and bottom. Re-centered the animated vinyl overlay for the restored full-frame layout.
+- Added focused regression coverage locking the hero to the source aspect ratio. Verification passed: mobile TypeScript, focused tab-runtime tests 22/22, full mobile tests 129/129, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `ccad48b4-ea12-441e-bb99-76a8560a4de0`, iOS update `01a05572-00ae-7867-aec7-1e2cc6bd1ed6`, message `JourneyDeck 1.8: show full Soundtracks header`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: draft-first Memory and Collection editors — August 30, 2026
+
+- Collection creation no longer requires an existing saved ID before journeys can be selected. After entering a Collection title, tapping a journey adds/removes it in the local draft; the whole title/description/membership draft persists together only when `SAVE` is pressed.
+- Memory creation now follows the same interaction while preserving the Journey → Collection → Memory hierarchy: after entering a Memory title, Collections can be selected before the first save. Both editors remain open after persistence, show a green `SAVED` action, and return to `SAVE` whenever a persisted field or membership changes. Existing editors open in the `SAVED` state.
+- Added normalized saved-state signatures so semantically unchanged membership sets do not appear dirty, retained the saved-ID requirement only for photo upload/removal operations, and added focused regression coverage for both draft flows.
+- Verification passed: mobile TypeScript, focused tab-runtime tests 22/22, full mobile tests 129/129, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `963dfa10-0889-4e67-89ce-460e1d344a33`, iOS update `01a05569-65d2-71bf-b0b5-bbd254ef7745`, message `JourneyDeck 1.8: draft-first Memory and Collection editing`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: one Soundtracks hero with an animated vinyl — August 30, 2026
+
+- Removed the redundant `YOUR LIFE HAS A SOUNDTRACK` spinning-record promo card from the Soundtracks dashboard. The approved `SOUNDTRACKS` map/vinyl header remains, the Apple Music guidance follows it, and the four real archive metrics now appear immediately afterward.
+- Preserved motion by placing a restrained rotating sheen/groove layer directly over the vinyl in the surviving header image. The title, map, route pins, and tonearm remain static. Removed the obsolete standalone vinyl component and its styling, and added focused regression coverage requiring the metrics-first layout and absence of the duplicate promo.
+- Verification passed: mobile TypeScript, focused tab-runtime tests 21/21, full mobile tests 128/128, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `32fe3867-2d4b-4d14-a36c-efbfb6df360c`, iOS update `01a0554b-f2bf-71b8-a57f-b5571da77abe`, message `JourneyDeck 1.8: simplify Soundtracks hero`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Website X follow controls published — August 30, 2026
+
+- Added the selected X placements to the public homepage: an outlined `@JourneyDeck` pill between Support and Sign in, plus a branded `The road is already moving.` panel immediately after Drive/Listen/Remember. Both controls point exactly to `https://x.com/JourneyDeck`, open safely in a new tab, and use the corrected handle rather than `JourneyDeckApp`.
+- The nav pill collapses to an accessible X-only icon on small phones; the full-width panel stacks its copy and button responsively. Added hosted-root regression coverage requiring exactly two corrected X links, the new panel copy, and absence of the incorrect handle.
+- Verification passed before publication: server TypeScript, ESLint, all 34 server tests, whitespace validation, visual inspection at 1440×950 and 390×844, and automated href/target/rel checks at 1440/1050/820/540/390 widths. Published scoped commit `f909d3a` (`feat(web): add JourneyDeck X follow links`) through GitHub PR [#140](https://github.com/drumpat01/DriveOS/pull/140), merge commit `56e7cee0d79bc5d4c2dd6ce46bc0af27a7306675`, and Render deploy `dep-daac9qmk1f9s73d1f8f0` (`live`).
+- Production checks returned HTTP 200 for `/` and `/readyz`, found exactly two `https://x.com/JourneyDeck` links and the new follow section, found no `JourneyDeckApp` handle, and found no Render error logs after deployment. No mobile code, Expo OTA, native build, TestFlight, App Store Connect, or Render environment change was performed.
+
+## X follow-link website mockups — August 30, 2026
+
+- Created three high-fidelity JourneyDeck homepage mockups for promoting the new X Premium account `@JourneyDeckApp`: (1) a persistent outlined handle pill in the desktop navigation, (2) a secondary `Follow the journey on X` link below the hero actions, and (3) a dedicated `The road is already moving.` community panel immediately after the Drive/Listen/Remember section.
+- Saved the built-in image-generation outputs under `docs/design/twitter-follow-mockups/` as `option-1-navigation.png`, `option-2-hero.png`, and `option-3-community-section.png`. The current live homepage screenshots were used as edit targets so the mockups preserve the established site design.
+- These are comparison mockups only. No website source, mobile code, OTA, deployment, commit, or push was performed.
+
+## JourneyDeck X/Twitter header artwork — August 30, 2026
+
+- Generated a new JourneyDeck social header using the production app icon as the brand reference: near-black/deep-purple map grid, coral route, music-location pins, `JOURNEYDECK`, and the exact tagline `EVERY ROAD HAS A SOUNDTRACK.`
+- Exported the ready-to-upload PNG at X/Twitter's native `1500 × 500` dimensions to `docs/design/journeydeck-twitter-header-1500x500.png` and visually verified the final raster. This was created with the built-in image-generation workflow, then proportionally downsampled from its exact 3:1 generated source.
+- No mobile code, OTA, native build, TestFlight upload, website deployment, commit, or push was performed.
+
+## Production OTA: align Soundtracks album captions — August 30, 2026
+
+- Corrected the `Today's soundtrack` album-card layout after artwork backfill exposed cramped captions. Every card now reserves a fixed 46 px caption area beneath its square cover, uses consistent title/artist line heights and left alignment, and includes enough bottom space to keep the artist label clear of the neon card border.
+- Added structural regression coverage for the caption wrapper and fixed card/caption dimensions. Verification passed: mobile TypeScript, focused tab-runtime tests 21/21, full mobile tests 128/128, whitespace validation (existing CRLF notices only), and the EAS iOS export (1,759 modules).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `9546291c-314a-4e79-8dc3-c9b8910738af`, iOS update `01a054f9-6473-78d0-a016-f1fd4c221d07`, message `JourneyDeck 1.8: align soundtrack captions`. EAS channel verification confirms it is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: restore Apple Music album artwork — August 30, 2026
+
+- Fixed the shared artwork pipeline behind the Home now-playing card, Live soundtrack, Soundtracks album strip/history, and top-artist list. Lightweight live/Tessie samples no longer cause richer MusicKit history rows to be rejected as duplicates; the existing playback row is enriched with album, duration, artwork, and Apple Music URL while preserving one play.
+- Added a bounded recent-history refresh when Soundtracks opens or is pulled to refresh, allowing recent artwork-less plays already stored on the phone to be backfilled. After MusicKit still omitted covers, added a direct Apple-only fallback against `https://itunes.apple.com/search`: at most 15 missing unique title+artist pairs per refresh, exact normalized title-and-artist matching only, HTTPS artwork/link requirements, 24-hour no-match retry cache, and local SQLite enrichment. Existing `expo-image` memory/disk caching then retains rendered covers. The forced per-profile launch refresh now runs this fallback automatically; future pull-to-refreshes also resolve newly missing covers. The request boundary allowlists only Apple's search endpoint, records aggregate status/bytes without retaining queries, and Data Health explains the direct Apple lookup.
+- Verified the live Apple endpoint against Patrick's actual missing `Tied Up` / `Khalid & LAUV` entry; it returned the exact track, single artwork, and Apple Music URL. Verification passed: mobile TypeScript, focused artwork/network/local-store/tab-runtime tests, full mobile tests 128/128, iOS Expo export (1,759 modules), and whitespace validation (existing CRLF notices only).
+- Published the final iOS-only production OTA for runtime `1.8.0`: update group `20764917-4e77-487d-b60f-e4c540a13843`, iOS update `01a054e2-d482-7409-b59b-040ee69c0b6f`, message `JourneyDeck 1.8: Apple catalog artwork fallback`. It supersedes the earlier artwork groups; EAS channel verification confirms the Apple-catalog fallback is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Production OTA: keyboard-safe Memory and Collection editors — August 30, 2026
+
+- Fixed the Create/Edit Memory and Collection overlays so the iOS keyboard no longer blocks the editor. Overlay sheets now resize above the keyboard, remain scrollable, support interactive drag-to-dismiss, and show a clearly labeled `Done` action beside the close button while the keyboard is visible. Closing the modal also dismisses the keyboard.
+- Added a focused structural regression test. Verification passed: mobile TypeScript, focused tab-runtime tests 21/21, full mobile tests 124/124, iOS Expo export (1,757 modules), and whitespace validation (existing CRLF notices only).
+- Published an iOS-only production OTA for runtime `1.8.0`: update group `f79d4523-1e10-4a06-9882-9542b6a73d68`, iOS update `01a054b3-bfdb-7522-b36e-1cc8ad69bd7b`, message `JourneyDeck 1.8: keep Memory editor above keyboard`. EAS channel verification confirms this is the current `production` head.
+- No native build, TestFlight upload, build-number change, commit, push, App Store Connect mutation, or website deployment was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted with the prior authorized mobile work.
+
+## Website favicon corrected to the JourneyDeck app icon — August 30, 2026
+
+- Replaced the obsolete teal route-box website favicon with the exact current JourneyDeck neon app icon and added a cache-busted favicon declaration to the public homepage, `/login`, `/support`, and `/privacy`. Added regression checks that require those pages to reference the corrected asset and require the favicon bytes to match `journeydeck-cinematic-192.png`.
+- Verification passed: server typecheck, ESLint, all 34 server tests, and whitespace validation. Published commit `6df939a` (`fix(web): use JourneyDeck app icon as favicon`) through GitHub PR [#139](https://github.com/drumpat01/DriveOS/pull/139), merge commit `0ad03a951db1f9b494cba42e7961896d19193070`, and Render deploy `dep-daaa2ueq1p3s7393umeg` (`live`). Production checks returned HTTP 200 with the corrected favicon link on all four pages; the live favicon SHA-256 exactly matches the app-icon asset. No iOS/mobile, Expo OTA, TestFlight, App Store Connect, or Render environment change was performed.
+
+## Website support-email correction — August 30, 2026
+
+- Corrected the public JourneyDeck website contact address from `journeydeckme@gmail.com` to `journeydeckapp@gmail.com` on the homepage TestFlight CTA, Support page, and Privacy page. Updated the associated server regression assertions; no mobile/iOS, Expo OTA, TestFlight, Apple Connect, or Render environment configuration was changed.
+- Verification passed: server typecheck, ESLint, all 34 server tests, and whitespace validation. Published commit `cf875f7` (`fix(web): correct JourneyDeck support email`) through GitHub PR [#138](https://github.com/drumpat01/DriveOS/pull/138), merge commit `75e0cf3007b8595748b635e01ce6fbbb846a63ca`, and Render deploy `dep-daa9qv3ncjis739tgr3g` (`live`). Production checks returned HTTP 200 for `/`, `/support`, and `/privacy`; each contains `journeydeckapp@gmail.com` and none contains the old address.
+
+## Landing-page Remember artwork centering — August 30, 2026
+
+- Corrected the desktop optical imbalance in the `How JourneyDeck works` Remember card by explicitly centering all three stacked outlines and distributing the rear/front offsets equally around the card midpoint. The surrounding card grid, text, mobile app, and product behavior were unchanged.
+- Verified a measured `0 px` stack-to-card center delta at both 1920 px desktop and 390 px mobile widths, visually inspected the desktop section, and passed server typecheck, ESLint, all 34 server tests, and whitespace validation.
+- Published the one-file website CSS patch in commit `832d633` (`fix(web): center Remember artwork`), GitHub PR [#137](https://github.com/drumpat01/DriveOS/pull/137), merge commit `027f0226f137844ceeb37f5fce232334ed317a7d`, and Render deploy `dep-daa9ks3ncjis739tccd0` (`live`). Live-domain Playwright verification returned HTTP 200 and measured the Remember stack and card at the same `1448 px` center coordinate. No iOS, Expo OTA, TestFlight, native build, App Store, or Render environment change was performed.
+
+## Landing-page route and album-art polish — August 30, 2026
+
+- In the clean release worktree `C:\Users\patri\.codex\tmp\journeydeck-public-homepage-release` on local branch `codex/landing-graphic-polish`, moved the hero route and its four song pins into one shared responsive coordinate layer. All dots now land exactly on the orange route at desktop and 390 px phone widths; the Apple Music curve's second marker was also corrected to its true path coordinate. Mobile Ann Arbor/Detroit labels were moved clear of the covers and now-playing card.
+- Generated one original 2×2 fictional album-cover sprite with four distinct designs (desert road, rain-lit city, plum moon landscape, cosmic waveform), compressed it from the 3.47 MB source PNG to a 260 KB WebP, and integrated it as `web/assets/fictional-album-covers-v1.webp`. The exact built-in image-generation prompt requested four fictional text-free JourneyDeck-neon covers with no real artists, logos, or copyrighted artwork.
+- Visual checks passed for the full page plus isolated hero and Apple Music graphics at 1440×900 and 390×844. Server typecheck, ESLint, full server tests 34/34, focused API tests 12/12, asset HTTP delivery, and `git diff --check` passed. Published the three scoped website files in commit `c30222a` (`fix(web): align route pins and refresh album art`), GitHub PR [#136](https://github.com/drumpat01/DriveOS/pull/136), merge commit `f4e408caa673806dbe8ab03427ed604218f14d7e`, and Render deploy `dep-daa9a76q1p3s73939l40` (`live`). Production verification confirmed the shared map layer, corrected music marker, WebP CSS reference, 200 `image/webp` asset, and anonymous `/app` redirect. No OTA, iOS/mobile source, native build, TestFlight upload, App Store mutation, or Render environment change was performed.
+
+## Public JourneyDeck homepage and `/login` split — August 30, 2026
+
+- Added a responsive public marketing homepage at the hosted `/` route using the approved Living Map direction: dark purple cartography, coral route and song pins, Journey → Memory → Collection storytelling, Drive/Listen/Remember explanation, privacy positioning, Apple Music launch copy, and TestFlight email CTA. No app screenshots or private journey data appear on the page.
+- Added `web/landing.html`, `web/landing.css`, and `web/assets/journeydeck-social-preview.png` with complete Open Graph/X metadata. The social card uses only branded conceptual map/route artwork.
+- Hosted mode now serves the public homepage at `/`; the private owner dashboard is available at authenticated `/app`; `/login` remains the public sign-in route. Password/passkey success, PWA start URL, offline retry, Wife-to-Full mode, and loading-preview return links now target `/app`. Desktop mode preserves its authenticated `/` dashboard behavior.
+- Added server regression coverage for public hosted root, public login, authenticated `/app`, private desktop root, redirect targets, PWA start URL, and social metadata. Verification passed: server typecheck, ESLint, full server tests 34/34, focused API tests 12/12, local HTTP checks for `/`, `/login`, `/app`, CSS, and social artwork, plus `git diff --check` (only existing line-ending notices).
+- Published from a clean `origin/main` worktree so the unrelated dirty mobile/Tessie changes were not included. Scoped release commit: `7c3da30` (`feat(web): publish JourneyDeck homepage`); GitHub PR: [#135](https://github.com/drumpat01/DriveOS/pull/135); merge commit: `e138976a0a8143eb0c32a96c05080adeee45c23a`; Render deploy: `dep-daa8pu3l550s73ahn8tg` (`live`).
+- Production verification passed at `https://journeydeck.me/`: homepage headline and `The roads become the stories` section are live, `/login` returns the sign-in page, anonymous `/app` redirects to `/login`, the Open Graph PNG returns `image/png`, and `/privacy` plus `/support` remain available. No mobile OTA, native build, TestFlight upload, App Store mutation, or Render environment-variable change was performed.
+
+## Share-card map and JourneyDeck watermark refresh — August 29, 2026
+
+- Replaced the temporary `J` badge on journey, collection, and memory share cards with the bundled production JourneyDeck neon logo and a proper `JOURNEYDECK` watermark; journey cards add a smaller `JOURNEY MEMORY` context label.
+- Reworked journey share-card maps to match the current JourneyDeck map schema: near-black `#010104` base, deep-purple `#3a1737` roads, and an orange `#ff684f` recorded-route core with a restrained glow. Standard OSM raster tiles are transformed on-device with the already-installed Skia color-matrix pipeline; attribution remains in the card.
+- Corrected the static map viewport from a stretched square 3×3 tile grid to an aspect-matched 7×3 viewport, keeping real projected route turns aligned with the basemap. Removed the generic private-city arc. Share cards now use the journey's real recorded GPS path after `prepareShareCardCoords` masks configured privacy geofences; label-only Home/Work endpoints receive a defensive 300 m on-device geofence before rendering.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 19/19; full mobile tests passed 117/117; iOS Expo export completed with 1,756 modules and the production logo asset; whitespace validation found no errors, only existing CRLF conversion warnings. Files changed for this milestone: `mobile/recorder/src/share-card-modal.tsx`, `mobile/recorder/src/shell.tsx`, and `mobile/recorder/tests/tab-runtime.test.mts`.
+- Published the verified working tree as an iOS-only production OTA for runtime `1.8.0`. Update group: `a9fe0c28-959b-459a-b803-7abbfdeab67e`; iOS update: `01a0509b-e2a8-7a67-b7af-6b02d58c379f`; message: `JourneyDeck 1.8: real-route branded share cards`. EAS channel verification confirms it is the current `production` head. No commit, push, native build, TestFlight upload, build 10, or App Store mutation was performed; EAS records base commit `ff75d37` with a dirty-tree marker.
+
+## Production OTA: Apple Music automatic / Shazam manual — August 29, 2026
+
+- Published the verified Apple Music-first/manual-Shazam working tree as an iOS-only production OTA for runtime `1.8.0`, used by TestFlight build 9. Update group: `4fb2a475-9358-4064-8034-0c54da0d6221`; iOS update: `01a0506d-7486-7e18-a485-b59b00ac9721`; message: `JourneyDeck 1.8: Apple Music automatic, Shazam manual`.
+- EAS channel verification confirms this update is the current head of `production`. No native build, TestFlight upload, build 10, commit, or push was created. EAS records base commit `ff75d37` with a dirty-working-tree marker; package the intended mobile changes into a reproducible release commit before the next native build.
+- The OTA changes Shazam's actual behavior and all JavaScript UI/copy immediately. The TestFlight binary's embedded microphone permission sentence cannot change through OTA; the corrected user-initiated wording in `app.json` will take effect in the next native build.
+
+## Apple Music-first launch / manual Shazam capture — August 29, 2026
+
+- Reworked the public mobile product around Apple Music as JourneyDeck's recommended and only automatic streaming source at launch. Onboarding, Settings, Live, Soundtracks, journey empty states, and release documentation now say that Apple Music builds soundtracks automatically while ShazamKit is **Manual Song Recognition**.
+- Removed every automatic Shazam invocation from automatic-drive startup, background location batches, recorder start/resume, and interrupted-session recovery. Deleted the automatic one-minute Shazam sampler. GPS recording and Apple Music sampling remain unchanged.
+- Added an active-journey **Identify Song** control to the recorder. Each tap explicitly requests/uses microphone permission, listens for about ten seconds, stores only the match and timestamp, turns the microphone off, and reports matched/duplicate/no-match status. Manual recognition can be used as an ad-hoc supplement even when Apple Music is the selected source. The UI includes a stopped/passenger safety note.
+- Updated the microphone purpose string for the next native build and added release-integrity coverage proving background tasks cannot start Shazam. The currently installed TestFlight build retains its bundled older purpose-string wording until a future native build; the JavaScript behavior was subsequently published in the production OTA recorded above.
+- Updated the public privacy-policy source/live-page working copy and App Review notes to describe user-initiated per-song recognition. The already deployed website is unchanged until a separately authorized web deployment.
+- Verification before publication: `npm run typecheck` passed; focused tab-runtime suite passed 19/19; full mobile suite passed 117/117; `npx expo export --platform ios` completed (1,755 modules); `git diff --check` found no whitespace errors, only existing CRLF conversion warnings. Active branch remains `codex/native-runtime-prep`; working tree remains intentionally dirty with prior user-owned mobile, server, design, and legal-page work. No commit, push, TestFlight build, or App Store mutation was performed.
+
+## TestFlight finding: background Auto Recognition can miss an entire auto-started journey — August 29, 2026
+
+- Patrick reported that automatic driving detection and Auto Recognition worked on an outbound errand, while the return journey auto-started successfully but captured zero music despite loud playback.
+- Read-only diagnosis found the route and Shazam pipelines are independent. Each background location callback attempts to create a fresh 10-second `AVAudioEngine`/Shazam session; `music-capture.ts` catches every native failure and returns only `unavailable`, with no persisted diagnostic or user-facing warning. The app declares iOS background location but not background audio. Apple documents that continued background recording needs the audio background mode, and a fully backgrounded app cannot reliably initiate a new recording session. This explains why GPS can succeed while a later drive captures no music.
+- No code was changed. Confirm whether Patrick selected Auto Recognition or Apple Music. A useful OTA-only follow-up can persist/display per-journey recognition health and force a Shazam retry whenever the app becomes active, but it cannot make microphone recognition reliable for a journey that begins and remains fully backgrounded. A true background-recognition redesign affects native audio lifecycle/capabilities and requires a new build plus App Review/privacy scrutiny. Apple Music playback should prefer its authorized recent-history path rather than microphone recognition.
+- Product exploration: a Live Activity is a promising user-consent surface but does not itself bypass the initial background limitations. ActivityKit normally permits local activity creation only in the foreground; background starts require a user-invoked `LiveActivityIntent` or APNs push-to-start. Recommended local-first flow is: GPS detects driving -> immediate local notification -> user taps -> JourneyDeck foregrounds, starts Shazam and a journey Live Activity -> Live Activity shows recognition/route status and stops at parking. A direct `AudioRecordingIntent` button without foregrounding merits a native device spike but should not be promised until proven. This requires a widget extension/ActivityKit/App Intents and therefore a new native build, not OTA.
+- Patrick rejected any design that keeps the microphone active for the duration of a drive. Preserve that product/privacy decision. The acceptable Shazam model is a short, explicitly triggered capture: GPS detects driving -> local notification says `Journey detected — tap to capture what's playing` -> tap deep-links into Live, foregrounds JourneyDeck, runs an 8–10 second Shazam sample, stores only the match, and immediately releases the microphone. Once the app backgrounds and releases audio, it cannot promise automatic minute-by-minute Shazam sampling; additional captures require another explicit tap. Apple Music remains the hands-free complete-history path.
+- A viable foreground-only refinement is `Drive Listening Mode`: while JourneyDeck remains visibly active and a journey is recording, run one 8–10 second Shazam sample at entry and approximately once per minute, fully stop/release the microphone between samples, deduplicate matches, and cancel immediately when AppState leaves `active`. Route recording continues in the background, but Shazam pauses if the screen locks or the user switches apps and resumes when JourneyDeck becomes active again. The existing native Shazam module can support the core timer/status behavior through JavaScript/OTA; keeping the display awake should be evaluated separately and must remain an explicit user choice.
+- Android feasibility: modern Android also blocks a dormant/background app from creating a new microphone foreground service solely because an activity-recognition/location event fired. Android can get closer with a one-time foreground opt-in: while JourneyDeck is visible, the user starts an `Automatic Soundtrack` foreground service declared for location+microphone; it retains while-in-use capability and a persistent system notification, keeps the microphone off while idle, and takes short samples after drive detection. This can be hands-free for later drives while the service survives, but OEM/OS termination requires re-arming and Play policy/permission review applies. A notification interaction is the more reliable way to start/restart it. JourneyDeck is presently iOS-only, so this would be a separate native Android product effort.
+- Last.fm is the strongest microphone-free automatic path for Spotify users. Spotify can scrobble listening from mobile, desktop, web, and Spotify Connect devices to the user's Last.fm profile; after a journey, JourneyDeck can query `user.getRecentTracks` for the journey's bounded UTC time window and attach the timestamped tracks locally. The internal implementation already queues/retries this exact flow through the privacy edge, sends only username plus start/end time (never route geometry), and is release-gated by `isInternalTestingBuild()`. Apple Music users should keep the direct MusicKit history path because Last.fm's official iOS Apple Music workflow is manual scan/submit. Last.fm API terms restrict default API use to non-commercial purposes and require contacting `partners@last.fm` before commercial use; do not enable this in public/TestFlight production without written permission. Short/skipped tracks may be absent because Last.fm scrobbles only after half the track or four minutes, whichever comes first.
+
+## Production OTA: Vinyl Route Soundtracks header — August 29, 2026
+
+- Patrick selected Soundtracks mockup 2 (`Vinyl Route`). Replaced the tracked app asset `mobile/recorder/assets/music-header-hero.png` with the selected neon vinyl/map artwork labeled exactly `SOUNDTRACKS`.
+- Published an iOS-only production OTA for runtime `1.8.0` to the `production` channel used by TestFlight build 9. Update group: `2c631c52-00a6-46f0-8809-607a88f37f2a`; iOS update: `01a04f53-e96c-75cb-bfcc-ef5eeca9a72c`; message: `JourneyDeck 1.8: install Vinyl Route Soundtracks header`.
+- TypeScript and the focused tab-runtime suite (19/19) passed. EAS channel verification confirmed this exact update is production head. No native build, TestFlight upload, or build 10 was created. The asset/source changes remain uncommitted and EAS records base commit `ff75d37` with a dirty-tree marker.
+
+## Soundtracks header mockups — August 29, 2026
+
+- Generated three 16:9 JourneyDeck-style neon header concepts labeled exactly `SOUNDTRACKS`, using the current Music, Atlas, and Live artwork as visual references.
+- Saved the selectable previews as `docs/design/soundtracks-header-option-1.png`, `soundtracks-header-option-2.png`, and `soundtracks-header-option-3.png`. Patrick selected option 2; the other two remain design alternatives only.
+
+## Production TestFlight OTA: Soundtracks promoted to the dock — August 29, 2026
+
+- Published an iOS-only production OTA for runtime `1.8.0` to the `production` channel used by TestFlight build 9. Update group: `af0feec4-b446-4fc6-9720-b57d6f1ad0bd`; iOS update: `01a04ee1-2c1f-714e-af30-eadcda996b36`; message: `JourneyDeck 1.8: promote Soundtracks to primary navigation`.
+- The five primary dock destinations are now exactly `Home`, `Live`, `Memories`, `Soundtracks`, and `Atlas`; Soundtracks renders the existing full music dashboard directly and refreshes when selected. Home’s soundtrack card routes to the new primary tab. Live uses the clearer filled-location symbol.
+- Removed More from the pager/dock. Its non-primary destinations are preserved in a separate `Tools` overlay opened by the new gear beside the Home profile photo or existing Home analysis shortcuts. Tools contains Search, Timeline, Statistics, Data Health, and Settings, with explicit Close/Back-to-Tools controls. Selecting any dock item dismisses Tools.
+- Recorder ownership remains under Live. Settings continues to contain recording-mode preferences only. Verification passed before publication: TypeScript, focused tab-runtime tests (19/19), full mobile tests (116/116), and whitespace validation. EAS confirmed this update is the production channel head at runtime `1.8.0`; no native build, TestFlight upload, or build 10 was created.
+- Current OTA source changes remain uncommitted in `mobile/recorder/App.tsx`, `mobile/recorder/src/shell.tsx`, `mobile/recorder/src/primary-sections.tsx`, `mobile/recorder/tests/tab-runtime.test.mts`, and `mobile/recorder/tests/network-boundary.test.mts`. EAS records base commit `ff75d37` with a dirty-tree marker. Package these files explicitly in the next authorized release commit.
+
+## Production TestFlight OTA: Live owns the recorder — August 29, 2026
+
+- Published an iOS-only production OTA for runtime `1.8.0` to the `production` channel used by TestFlight build 9. Update group: `bf07f84e-1118-42f7-aa68-24ac5bd118f4`; iOS update: `01a04ec9-1189-7a19-ad4a-8db3980bbac1`; message: `JourneyDeck 1.8: make Live the single recorder home`.
+- Live is now the single recorder destination. Its Start/Open action and Home’s recorder shortcut open the persistent recorder controls within the Live tab. The recorder includes an explicit `Back to Live` control, and tapping the selected Live dock item also returns to the Live overview.
+- Removed the duplicate Record tile, route, and hidden recorder overlay from More. Settings retains only the appropriate Automatic/Manual recording preference. Updated onboarding and internal test-lab language to direct users to Live rather than a separate Recorder destination.
+- Verification passed before publication: TypeScript, focused tab-runtime tests (18/18), full mobile tests (115/115), and whitespace validation. EAS confirmed this update is the production channel head at runtime `1.8.0`; no native build, TestFlight upload, or build 10 was created.
+- Current OTA source changes remain uncommitted in `mobile/recorder/App.tsx`, `mobile/recorder/src/shell.tsx`, `mobile/recorder/src/primary-sections.tsx`, and `mobile/recorder/tests/tab-runtime.test.mts`. EAS records base commit `ff75d37` with a dirty-tree marker. Package these files explicitly in the next authorized release commit.
+
+## Production TestFlight OTA: iPhone-first Live tab — August 29, 2026
+
+- Published an iOS-only production OTA for runtime `1.8.0` to the `production` channel used by TestFlight build 9. Update group: `ba242c32-9708-4c5d-81a7-476be58c9e9e`; iOS update: `01a04ebe-5f9f-7453-8764-4bcd9060278e`; message: `JourneyDeck 1.8: make Live iPhone-first and Tessie optional`.
+- Live now leads with the on-device recorder: an automatic/manual ready state when idle and live speed, distance, elapsed time, route, recorder action, soundtrack, and queue confidence during a journey. It no longer displays empty battery/range placeholders or Tessie connection instructions to users who have not connected Tessie.
+- Connected Tessie users receive a separate optional vehicle panel with vehicle status, battery, and range. Tessie refresh failures explicitly leave the iPhone recorder unaffected. The OTA also includes base commit `ff75d37`'s honest first-launch music empty state.
+- Verification passed before publication: TypeScript, focused tab-runtime tests (17/17), full mobile tests (114/114), and whitespace validation. EAS confirmed the production channel points to this update at runtime `1.8.0`; no native build, TestFlight upload, or build 10 was created.
+- The two Live implementation/test files remain uncommitted in the working tree because this OTA request did not authorize a Git commit. EAS therefore records base commit `ff75d37` with a dirty-tree marker. Before the next binary/release package, commit `mobile/recorder/src/primary-sections.tsx` and `mobile/recorder/tests/tab-runtime.test.mts` explicitly so the OTA source is reproducible.
+
+## TestFlight build 6 processing fix — August 29, 2026
+
+- Apple received version 1.8.0 build 6 but rejected it during processing with ITMS-90683 because `expo-image-picker` set `microphonePermission: false`, removing the otherwise-declared `NSMicrophoneUsageDescription` from the generated native plist.
+- Corrected both the explicit iOS plist value and plugin permission value to the same truthful Auto Recognition explanation, added a regression assertion, and committed only those two mobile files as `0a507e4` (`fix(mobile): preserve microphone privacy purpose`).
+- Verified the generated Expo introspection contains the purpose string; `npm run typecheck`, 113/113 mobile tests, Expo Doctor 21/21, and the iOS export passed.
+- External setup is complete for the next internal TestFlight build: Expo is connected to App Store Connect, the App Store Connect API key is stored in EAS, MusicKit and ShazamKit App Services are enabled, and the production CloudKit schema matches the seven checked-in JourneyDeck record types. Build 7 still needs to be created and submitted.
+
+## Internal TestFlight readiness audit — August 28, 2026
+
+- The current mobile working tree is technically ready to produce a first signed **internal TestFlight** build: `npm run typecheck`, the full mobile suite (112/112), `npx expo-doctor` (21/21), `npx expo export --platform ios`, the live privacy/support preflight, and `git diff --check` all passed.
+- Production configuration is coherent for a build: bundle ID `com.journeydeck.recorder`, runtime/app version `1.8.0`, production EAS channel/environment, automatic remote build-number increments, internal-testing UI disabled, Apple Sign In, background location, and private CloudKit entitlements are declared. EAS authentication is active and has owner access to the JourneyDeck account.
+- This is **not yet the final subscription-enabled candidate**. The production UI intentionally contains no StoreKit subscription/paywall or 45-day/Atlas entitlement implementation. A first TestFlight build can validate the signed production runtime, recording, permissions, onboarding, maps, and CloudKit before that feature lands.
+- Remaining TestFlight acceptance work is intentionally performed on the signed build: physically verify the latest automatic-finish fix, background/lock-screen and offline completion, first-run permission denial/recovery, production CloudKit sync/deletion (ideally on two devices), and install/update behavior. App Store submission still also needs the App Review phone, final privacy-label answers, production screenshots/metadata, and the subscription implementation/configuration if Pro is part of version 1.0.
+- Packaged the intended mobile release candidate as commit `b7d4671` (`feat(mobile): prepare internal TestFlight candidate`) on `codex/native-runtime-prep`. The 41-file commit includes only active mobile implementation/assets/tests, the public release preflight, and App Store preparation documents; it excludes server/web changes, design mockups, obsolete image variants, and this handoff file. Post-commit verification passed: typecheck, 112/112 tests, Expo Doctor 21/21, iOS export, public legal-page preflight, staged whitespace validation, and the repository secret scan. No push, EAS build/upload, or App Store Connect mutation was performed.
+
+## Preview OTA published — August 28, 2026
+
+- Published the current iOS JavaScript/assets working tree to Expo's private `preview` channel so normal UI review no longer requires Metro or the Tailscale bridge. This is an OTA update only: it does not create a TestFlight build, submit anything to App Store Connect, change the native runtime, or affect the public production channel.
+- Update group: `3a78d418-e883-4153-ae61-44ed38b365ee`; iOS update: `01a04b46-7954-715d-a7b3-ecbdaa2790be`; runtime: `1.8.0`; message: `JourneyDeck 1.8 preview: cinematic UI refinements and welcome experience`.
+- Verification immediately before publish passed: `npm run typecheck` and full `npm test` (111/111). `git diff --check` contains only pre-existing Windows line-ending notices. Working tree remains uncommitted and contains many user-owned changes; no commit or push occurred.
+- Device path: open the JourneyDeck development build, dismiss any stale Metro-server error, then use the bottom `Updates` tab to download/launch this preview revision. Future UI/JavaScript preview publishes should use this channel; only native dependency/configuration changes require a new development or TestFlight build.
+
+## Welcome-flow correction OTA published — August 28, 2026
+
+- Corrected the welcome eligibility rule: an unacknowledged welcome now appears before any *unfinished* setup, including a profile that has retained a driving mode but has not yet chosen its music capability. It stays out of Settings edit flows and still cannot recur after `Set up JourneyDeck` marks the private preference complete.
+- Published the follow-up private preview update: group `66637f88-e867-4b56-9fe8-163e48830639`, iOS update `01a04b4d-63dc-72d3-8ab9-25561280a60e`, runtime `1.8.0`, message `JourneyDeck 1.8 preview: show welcome before unfinished setup`.
+- Verification passed: `npm run typecheck` and `npm run test:tab-runtime` (16/16). No commit, push, native build, TestFlight submission, or production publication occurred.
+
+## Preview Profile Test Lab flag restored — August 28, 2026
+
+- Root cause of the missing Profile Test Lab: EAS Update uses the selected EAS environment, not the `build.preview.env` block in `eas.json`; the `preview` environment had no `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING` variable. Consequently the OTA bundle correctly treated itself as public and hid the internal surface.
+- Created the project-scoped, plaintext `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=1` EAS variable for **preview only**. The production environment remains without it, so public builds and updates retain the compile-time gate.
+- Published update group `ea6af2b0-2842-4f74-94ec-f1f480c07662`, iOS update `01a04b57-e80b-7759-b767-b5e3fe8f0f8d`, runtime `1.8.0`, message `JourneyDeck 1.8 preview: restore Profile Test Lab`. Expo confirmed the preview variable was loaded during export.
+
+## Shared JourneyDeck onboarding branding — August 28, 2026
+
+- Replaced the generic orange `J` onboarding tile with the real `assets/icon.png` JourneyDeck app logo. Both the onboarding provider header and the animated welcome use it now.
+- Replaced spaced/all-caps pseudo-wordmarks in the same onboarding surfaces and Home header with the shared `JourneyDeck` lockup: `Journey` uses the high-contrast brand white and `Deck` uses the warm coral from the actual app mark. The supporting line remains `Your drive, remembered.`
+- Verification passed: `npm run typecheck` and `npm run test:tab-runtime` (16/16). Published private preview update group `6c5281d5-f3be-45f9-934f-eed684b4a7e1`, iOS update `01a04b71-7b61-7a59-9256-aae9ac308298`, message `JourneyDeck 1.8 preview: unify authentic onboarding branding`. No native build, TestFlight submission, or production publication occurred.
+
+## Cinematic welcome journey hero — August 28, 2026
+
+- Replaced the welcome screen's flat hand-built SVG route with a dedicated `mobile/recorder/assets/welcome-journey-hero-v1.png` artwork: a dark aerial night landscape, subtle topographic texture, distant lights, and a coral-to-violet-to-cyan illuminated journey road with waypoint beacons. The route/image entrance continues to respect Reduce Motion.
+- Created with the built-in image-generation workflow, then copied into the project and referenced directly from the welcome scene. It contains no text, logos, UI controls, or watermark; JourneyDeck branding and the private-by-design badge remain native overlays.
+- Verification passed: `npm run typecheck` and `npm run test:tab-runtime` (16/16). Published private preview update group `5368bf83-1f52-4b60-8456-b98c39571890`, iOS update `01a04b84-6cef-7dfb-83ff-9630018d5f94`, message `JourneyDeck 1.8 preview: cinematic welcome journey hero`. No native build, TestFlight submission, or production publication occurred.
+
+## Automatic journey completion reliability — August 28, 2026
+
+- Root cause: after an automatic start, only the separate automatic-detection Location task evaluated the five-minute parked clock. The active high-fidelity route task saved GPS points but did not participate in end detection. iOS can suspend a stationary background update stream, so a journey could remain `recording` indefinitely even though its route task remained the best available source.
+- The route task now also sends its saved location batches to `processAutomaticDriveLocations`, without double-writing the final point. Finish marks the session as `finishing` before awaiting native task shutdown, so a concurrent location delivery cannot complete it twice. Both location registrations now set the 30-second deferred update timeout, and foreground/resume runs one fresh balanced-accuracy location reconciliation for an already-parked automatic session.
+- The automatic detector remains additive: any detector failure is contained so the core route-recording task continues to retain points. Manual sessions remain manual; only a session known to have begun automatically can auto-finish.
+- Verified with `npm run typecheck`, `npm run test:drive-detection` (11/11), and `npm run test:server-independence` (13/13). Published private preview update group `d5f4eee2-de92-4547-81de-93270ab5014e`, iOS update `01a04b8e-8854-7d8e-9595-c5bff83bd489`, message `JourneyDeck 1.8 preview: reliable automatic journey finish`. No native build, TestFlight submission, or production publication occurred. Physical drive/park acceptance is the next required test.
+
+## First-launch welcome scene — August 28, 2026
+
+- Added a new, one-time per-profile welcome scene before the existing recording-mode and music-provider setup. It introduces the JourneyDeck promise with a neon animated route, `The road remembers.` messaging, clear private-iCloud reassurance, and a single `Set up JourneyDeck` action.
+- The route animation respects the iPhone Reduce Motion setting. Existing configured users do not see the scene; a newly created profile sees it once before the established functional onboarding flow. Its completion state is kept as a private preference so a normal private-iCloud restore does not repeat the welcome.
+- Added the focused runtime regression assertion in `mobile/recorder/tests/tab-runtime.test.mts` and new `mobile/recorder/src/welcome-intro.ts` persistence helper.
+- Verification passed: `npm run typecheck`, full `npm test` (111/111), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, TestFlight build, or deployment was performed. Physical iPhone visual review remains the next check before publishing this as an OTA update.
+
+## iOS navigation fade and Atlas label cleanup — August 28, 2026
+
+- Removed the duplicate static border from Atlas frequent-place selector chips; each chip now relies on its single shared neon gradient outline.
+- Recurring-pattern routes now remove country and ZIP code, and omit the state when both endpoints are in the same state. Cross-state routes retain the state on each endpoint, so a state transition remains visible.
+- Added one app-shell content fade behind the floating navigation dock. Content dims while passing beneath/behind the dock on every primary tab, while the dock itself remains above the fade and unchanged.
+- Verification passed: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, build, or deployment was performed.
+
+## Live map camera framing — August 28, 2026
+
+- The Live tab's shared mobility map now opens with a 45° camera pitch and a minimum single-location camera span of roughly seven miles, for a deliberately farther tilted road-view perspective. Atlas, timeline, and collection maps retain their existing overhead framing.
+- Verification passed: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, build, or deployment was performed.
+
+## Memories library chip states — August 28, 2026
+
+- Replaced the main neon widget outline on the Journey Library filter and sort chips with a single muted satin rim. The selected choice now uses a warm orange rim, fill, and soft glow rather than a double outline.
+- The same orange active-state treatment now marks the selected Memories workspace section, Timeline day, Atlas place, and gliding bottom-navigation tab, replacing competing purple-only selection styles.
+- Verification passed: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, build, or deployment was performed.
+
+## More secondary navigation — August 28, 2026
+
+- Removed the More sub-screen return affordance entirely after physical review showed it overlapping native headers.
+- Every tap of the persistent More dock tab now returns directly to the More root, including when entering More from another tab. Internal shortcuts still open a specific More sub-screen directly.
+- Verification passed: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, build, or deployment was performed.
+
+## Visual hierarchy pass — August 28, 2026
+
+- Added standard and hero outline tones. Routine cards, rows, tiles, metrics, and controls now receive a quieter satin-neon perimeter, reducing visual noise. Maps, the Live vehicle card, and the driving score retain the full cinematic glow.
+- Kept the orange halo as the shared selection language already applied to navigation and choice controls; this separates selection from general card decoration.
+- Verification passed: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only existing Windows line-ending notices). No Metro/Tailscale change, commit, push, OTA, build, or deployment was performed.
+
+## iOS Home Dashboard Cinematic Reskin — implemented and locally verified — August 27, 2026
+
+- Reskinned the iOS application dashboard (`HomeScreen` in `mobile/recorder/src/shell.tsx`) to match the cinematic dark editorial mockup and unlocked Expo SDK capabilities.
+- Integrated high-fidelity visual elements:
+  - Header: Spaced `J O U R N E Y D E C K` wordmark with Georgia serif `The road\nremembers.` headline and glowing multi-color gradient profile avatar with live initials/photo support and modal editor.
+  - Hero Card (`Friday night in Fort Worth` / `Home → Downtown` / `12.4 mi · 28 min · 7 songs`): Frosted `▶ Relive` pill button, multi-layer glowing route curve with numbered waypoint markers (`1`, `2`, `3` with radial glow halos and crisp badges), and bottom frosted action pills (`[ ⌸ ] View route` and `[ ··· ]`).
+  - Stories Rail: Three story cards (`Night Drives · 28 memories`, `Coffee Runs · 16 memories`, `Summer Roads · 34 memories`) with photo covers, dark bottom vignette, and glass borders.
+  - "Now playing on your road" Soundtrack Card: Header with waveform icon and `🟢 Watching · On device 🛡️` status pill; body with album artwork, track title (`Midnight City`), artist (`M83`), multi-colored audio equalizer waveform with timestamps (`1:48` and `4:03`), and circular play button with glowing gradient ring.
+  - Floating Bottom Navigation Dock: Dark glass pill with active coral indicator and SF Symbols (`house.fill`, `antenna.radiowaves.left.and.right`, `rectangle.stack`, `map`, `ellipsis`).
+- Verified: `npm run typecheck` passed (0 errors), full test suite `npm test` passed 104/104 tests, and `git diff --check` passed cleanly.
+
 ## Native runtime 1.8 preparation — implemented, locally verified, not built — August 27, 2026
 
 - Active branch is `codex/native-runtime-prep`, based on clean `main` at `38c4ac4`. The working tree contains this uncommitted milestone; nothing was staged, committed, pushed, published as an OTA, deployed, or sent to EAS. App/runtime version is now `1.8.0`, release identity `N1.8-RC1 — Native Runtime 1.8 — private continuity`.
@@ -949,3 +1337,499 @@
 - Published the fully consolidated iOS JavaScript/assets bundle from source commit `021a16b` to the `preview` branch for runtime `1.6.0`; no native build was used.
 - Update group `c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`, iOS update `01a03fd7-c8fe-72aa-a79c-734c4c81b728`, message `Improve automatic drive detection for unknown GPS speed`.
 - Dashboard: `https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/c3ac8acd-4d78-41d5-9260-2f5bb3697bd3`. EAS verified this group is the current head of the `preview` branch.
+
+### Native runtime 1.8 build (2026-08-27)
+
+- Runtime 1.8 native preparation is committed and pushed on `codex/native-runtime-prep` as `75b3ea2` (`feat(mobile): prepare native runtime 1.8`). The source worktree was clean before the build.
+- The additive CloudKit development schema was imported and deployed to Production for `iCloud.com.journeydeck.recorder`; it adds the `RouteArchive` transport needed for exact private GPS-route backup.
+- EAS iOS development build `52293c70-e47a-4a66-bfca-105324a267c5` finished successfully for app/runtime `1.8.0`, build number `3`, preview channel, physical registered iPhone, and exact commit `75b3ea2`: `https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/52293c70-e47a-4a66-bfca-105324a267c5`.
+- Verification already passed before building: mobile typecheck, full mobile tests 103/103, Expo Doctor 21/21, iOS JS export, and `git diff --check`. EAS then passed the native Swift/Xcode compile and signing gate.
+- Next: install the 1.8 development build on the registered iPhone, connect it to Metro, and run acceptance checks for private CloudKit route/photo/preference/tombstone sync, permission recovery, background recording, sign-out/profile switching, and disposable-account deletion. Do not test deletion with the primary account.
+- Tailscale Serve remains active at `https://superredux.tail1babbd.ts.net:8081`, and a hidden Metro dev-client process was started from `mobile/recorder` with LAN/IPv4 binding. Both `http://127.0.0.1:8081/status` and the private Tailscale `/status` endpoint returned HTTP 200. Metro logs are under `C:\Users\patri\AppData\Local\Temp\journeydeck-metro-18`.
+
+### Runtime 1.8 Home visual concepts (2026-08-27)
+
+- Generated five high-fidelity Home-screen directions under `docs/design/home-mockups/`: Aurora Road, Liquid Glass Dashboard, Cinematic Memory, Living Atlas, and Road Radio Editorial.
+- The shared visual direction uses the existing JourneyDeck coral/violet identity with consistent iOS typography, mesh-gradient haze, liquid-glass depth, SF Symbols, rich imagery, and Skia-style route/data artwork. No application code was changed for this design exercise.
+- Recommended implementation starting point: Aurora Road's hierarchy with Liquid Glass Dashboard's component system; reuse the strongest memory, atlas, and soundtrack modules from concepts 3–5 in their corresponding sections.
+
+### Runtime 1.8 cinematic Home trial (2026-08-27)
+
+- Rebuilt only the mobile Home dashboard around concept 3 (`Cinematic Memory`); the other tabs are unchanged. The new hierarchy is a profile-led editorial header, photographic latest-memory hero, real recorded route/song overlay, recorder status glass card, story rail, road soundtrack card, compact weekly summary, and four existing section links.
+- Added one native MeshGradient atmosphere, bounded native Liquid Glass surfaces with BlurView fallback, staggered Reanimated entrances, Expo Image transitions, hierarchical SF Symbols, and direct SVG route rendering. The Home hero does not mount a map or request map tiles.
+- Added an editable Home profile photo and greeting. The resized image and name are stored as the active user's versioned private preference and therefore follow the existing private CloudKit preference transport; no JourneyDeck server is involved.
+- Verification passed: mobile TypeScript, focused Home/tab runtime 15/15, complete mobile suite 104/104, iOS Expo export (1,465 modules, 4.2 MB Hermes bundle), and `git diff --check` aside from Windows line-ending notices. Metro remains reachable locally on port 8081. No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 cinematic Home visual correction (2026-08-27)
+
+- Compared the first implementation against three real-device screenshots and the selected concept. The device build was too uniformly purple, its glass was milky and flat, its outlines were simple strokes, the hero used an unrelated portrait, and its typography/placeholder cards did not match the editorial concept.
+- Reworked Home to a near-black optical canvas with localized coral/violet smoke fields, clear native glass over a dark optical material, separate aura/specular/inner-rim layers, warm hero edge light, Georgia editorial display type, a tighter story rail, and a simplified hierarchy without the extra recorder card between the hero and Stories.
+- Generated and bundled four project-specific photographic assets: a rainy downtown highway hero plus Night Drives, Coffee Runs, and Summer Roads story art. The hero now always uses the road image and overlays the user's real route/song data; the selected journey prefers a meaningful nonzero route instead of a malformed zero-mile latest item.
+- Verification passed after the correction: mobile TypeScript, focused Home/tab runtime 15/15, complete mobile suite 104/104, iOS Expo export (1,468 modules, 4.3 MB Hermes bundle with all four new assets), and `git diff --check` aside from Windows line-ending notices. No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home hero context correction (2026-08-28)
+
+- Removed the decorative numbered route, its fallback/Dallas-area geometry, the redundant ellipsis action, and the oversized purple circle/bloom from the Home hero. The route remains available in the journey detail, where it has useful map context.
+- Home now selects the newest locally stored journey rather than substituting an older drive merely because it has a complete route. The title is time-aware (`Tuesday evening drive`), while the secondary line uses only the stored start/end labels; all invented Fort Worth, Downtown, distance, duration, and song-count fallbacks are gone. Empty/syncing states use explicit neutral copy.
+- Updated the focused Home runtime characterization test. Verification: `npm run typecheck`, `npm run test:tab-runtime` (15/15), and `git diff --check` (only pre-existing Windows line-ending warnings). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home time-of-day hero scenes (2026-08-28)
+
+- Added generated morning, afternoon, and evening cinematic freeway images alongside the existing night hero. Home selects a scene from the newest drive's local start time: 05:00–11:59 morning, 12:00–16:59 afternoon, 17:00–20:59 evening, otherwise night; missing or invalid timestamps deliberately use night.
+- Images are saved at `mobile/recorder/assets/home-cinematic-hero-{morning,afternoon,evening}-v1.png`; `home-cinematic-hero-v2.png` remains the night scene. Generated via the built-in image-generation workflow and visually inspected before use.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home clear-sky pass (2026-08-28)
+
+- Replaced every time-of-day hero scene after visual review: morning now uses open blue sky with small peach clouds, afternoon is clear and sunlit, evening has a restrained blue-hour/coral sky, and night is clear indigo with a subtle star field. The skyline/freeway visual language and upper-left copy-safe area remain.
+- The app now consumes `home-cinematic-hero-morning-v2.png`, `-afternoon-v2.png`, `-evening-v2.png`, and `-night-v1.png`. Prior v1 day assets and the former night asset remain unreferenced; no existing generated asset was overwritten.
+- Generated via the built-in image-generation workflow and visually inspected. Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home Memories rail (2026-08-28)
+
+- Replaced the generic `Your stories` rail with `Memories`. It now draws only genuine Memory records from the same private catalog used by the Memories page, sorted newest-updated first, capped at five. Placeholder story/collection cards and invented counts are removed.
+- Added a final `See more` card after the actual memories; its accessible action opens the existing Memories tab. Individual Home memory cards also open that tab. Each card shows its genuine cover (or the shared Memory artwork fallback) and actual collection count.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home liquid-glass edge pass (2026-08-28)
+
+- Added reusable `LiquidGlassEdges` optical treatment: top specular sweep, left/right refraction, bottom reflection, and a translucent continuous outline. It now wraps the Home hero, every memory card including `See more`, all `CinematicGlass` surfaces (soundtrack/profile sheet), and the floating navigation dock.
+- Removed the former single warm hero edge and flat card rims so the glass reads consistently around every edge without a decorative circle or one-sided stroke.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home 3D glass-pane correction (2026-08-28)
+
+- Reworked `LiquidGlassEdges` after feedback that the first pass read as a flat highlight. Each Home widget edge now uses a physically thicker rounded pane treatment: three-point outer bevel with separately lit top/left and shaded right/bottom, deep specular edge ramps, plus a five-point inset rim. This replaces the visual impression of a simple outline with a raised rounded glass surface.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home glass-stripe correction (2026-08-28)
+
+- Removed the visually intrusive white edge stripes from every liquid-glass pane. The outer/inset borders and top/side ramps now use restrained transparent violet/coral tones; bevel widths and highlights were reduced so the pane depth remains without a bright outlined frame. The glass material's original pale border was changed to a muted violet as well.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home profile-avatar alignment and Skia glow (2026-08-28)
+
+- Aligned the Home profile photo through a dedicated 76-point header anchor so its 68-point touch target and 64-point visual ring line up cleanly with the wordmark rather than drifting via an internal margin. The edit badge remains attached to the avatar.
+- Used the installed `@shopify/react-native-skia` runtime for two blurred coral/violet circles directly behind the ring, giving the profile edge a soft, contained glow. This is an implementation use of Skia; no separately named `skira` skill is available in the workspace.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home profile-avatar header centering (2026-08-28)
+
+- Moved the avatar anchor down 26 points, vertically centering the photo against the full Home header copy block rather than its upper wordmark edge. The Skia glow and edit badge move with it.
+- Verification: `npm run typecheck` passed. No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home shared Skia widget outlines (2026-08-28)
+
+- Added `SkiaWidgetOutline` inside the shared liquid-glass edge layer. It measures each rounded widget and draws a blurred coral perimeter plus crisp violet rounded-rectangle stroke using the same Skia color family as the profile avatar. Consequently the hero, Memory cards, See more card, soundtrack/profile panes, and floating dock share the avatar's glowing-outline language without white stripes.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Home neon-gradient outline correction (2026-08-28)
+
+- Replaced the uniform Skia widget outline with the profile-photo ring's intended neon language: a thin coral → hot pink → violet → blue → coral rounded-rectangle perimeter plus a blurred duplicate beneath it for the halo. All Home widgets using the shared edge layer now receive this color-changing outline.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 shared cross-page neon widgets (2026-08-28)
+
+- Extracted the Home Skia neon perimeter into `src/neon-widget-outline.tsx`, with both an overlay primitive and a rounded widget wrapper. It preserves the shared coral → pink → violet → blue gradient plus halo.
+- Applied it to the Recorder cards/status/metrics, Music metrics/panels/albums, primary Statistics widgets/empty states and the main Live/Atlas score/pattern/track cards, plus vehicle intelligence metrics, charging, place, and empty cards. Home continues using the same shared primitive, so the neon outline now has one source of truth across these mobile page widgets.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 missed-widget and Tessie Live correction (2026-08-28)
+
+- Applied the shared coral → pink → violet → blue Skia perimeter to the previously missed More search/tile/local-first widgets, Data Health release/health/network/profile/retention/row widgets, and all Atlas/Live map states and frames.
+- Live now checks the profile-scoped Tessie connection when its tab becomes active and requests the existing Tessie snapshot. Returned live battery and range replace archived placeholders, and the centered status line now explains whether Tessie is refreshing, unavailable, or temporarily failing rather than silently showing dashes.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15); `git diff --check` has no whitespace errors (only existing CRLF conversion warnings). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Memories neon-widget completion (2026-08-28)
+
+- Added the shared neon perimeter to the Memories hero/header, tab control, search field, filters/sorts, favorite route widgets, Journey Library rows, collection cards, empty/error states, and quick Collection action.
+- Corrected the shared outline stacking so it is always painted above card artwork and text, without capturing touch input. This fixes image-led widgets such as the Memories header and carousel that previously hid their outline beneath the artwork.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Runtime 1.8 Atlas neon-widget completion (2026-08-28)
+
+- Added the shared neon perimeter to Atlas frequent-place selectors, the selected place-detail widget and its route actions, recurring-pattern action buttons, and representative-route rows. The map/pattern card perimeter from the preceding pass remains in place.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Metro through Tailscale recovery (2026-08-28)
+
+- Diagnosed the lost development connection as Metro being stopped while Tailscale Serve still held the tailnet-facing `:8081` port. Restarting Metro on the same port initially collided with that listener.
+- Metro is now running in `--dev-client --host lan` mode on local port `8081`, and Tailscale Serve proxies the tailnet-only endpoint `https://superredux.tail1babbd.ts.net:8082/` to `http://127.0.0.1:8081`. Both the local Metro status endpoint and the Tailscale HTTPS endpoint returned HTTP 200 at recovery time.
+- No source code, dependencies, commits, OTA, or native build changes were made for this recovery. The development client must use the new `:8082` endpoint rather than the former tailnet `:8081` URL.
+
+### Metro through Tailscale compatibility restoration (2026-08-28)
+
+- The installed iOS development client was still configured for the original `https://superredux.tail1babbd.ts.net:8081/` bundle endpoint. Reconfigured Metro to run locally on `127.0.0.1:8082` and moved the tailnet-only Tailscale proxy back to external `:8081` → local `:8082`.
+- Verified the exact iOS `index.ts.bundle` request shown in the red error screen returns HTTP 200 (10.6 MB) through the original external `:8081` URL. The iPhone can recover by tapping Reload JS; no reconfiguration of its dev-server URL is needed.
+
+### Metro black-screen follow-up (2026-08-28)
+
+- After the client briefly loaded then showed a black screen, rechecked the full path: Metro remains running on local `:8082`; the tailnet `:8081` proxy serves the exact iOS bundle URL with HTTP 200; the iPhone responded to a direct Tailscale ping; and `npx expo export --platform ios` completed successfully (1,728 modules).
+- The original connection outage was Metro being stopped. The later black screen is a separate on-device runtime symptom; the compiler/export cannot expose a native/runtime exception without an iPhone error report or device logs. No source changes were made during this diagnosis.
+
+### Metro dual-endpoint Tailscale recovery (2026-08-28)
+
+- The subsequent iPhone error showed this development client is saved to the `:8082` URL, whereas an earlier client used `:8081`. Metro now runs locally on port `8083`; both tailnet-only HTTPS endpoints, `:8081` and `:8082`, proxy to that local Metro listener.
+- Verified both HTTPS status endpoints return HTTP 200, and the exact iOS bundle request at the screenshot’s `:8082` URL returns HTTP 200 (10.6 MB). No source, dependency, commit, OTA, or native build changes were made.
+
+### Metro stable advertised-origin correction (2026-08-28)
+
+- The iPhone then showed Metro had advertised its internal port (`:8083`) after a proxied load, causing a port-chasing failure. Restarted Metro locally on `:8084` with Expo’s `EXPO_PACKAGER_PROXY_URL` pinned to `https://superredux.tail1babbd.ts.net:8081` so future client URLs use the stable tailnet origin.
+- Added temporary tailnet-only compatibility proxies on external `:8081`, `:8082`, and `:8083`, all targeting local Metro `:8084`. The exact iOS bundle request returns HTTP 200 (10.6 MB) through each port; a client currently saved to `:8083` can now recover and should subsequently be directed to `:8081`.
+
+### Metro/Tailscale clean reconfiguration (2026-08-28)
+
+- Removed the temporary Tailscale Serve proxies on `:8082` and `:8083` and stopped the prior Metro instance. There is now exactly one Metro bridge: local Metro on `127.0.0.1:8085`, proxied through the tailnet-only canonical endpoint `https://superredux.tail1babbd.ts.net:8081/`.
+- Restarted Expo with `EXPO_PACKAGER_PROXY_URL` correctly set before process launch. The generated iOS bundle’s `sourceMappingURL` now explicitly uses the canonical external `:8081` address, confirming Metro will no longer advertise its private local port to the dev client. The canonical bundle endpoint returned HTTP 200.
+- The iPhone dev client has a stale `:8084` URL stored. In the development launcher, use **Enter URL manually** once with `https://superredux.tail1babbd.ts.net:8081`; it should persist that canonical URL afterward. No source, dependency, commit, OTA, or native build changes were made.
+
+### Atlas route-thread inner controls (2026-08-28)
+
+- Implemented the selected Atlas mockup direction in `src/primary-sections.tsx`: Place Details related routes now use an unboxed vertical coral → violet route thread with glowing nodes and understated separators, rather than nested neon rectangles.
+- Replaced Recurring patterns’ outlined Confirm/Dismiss mini-cards with compact icon-led glass controls. The confirmed state uses a restrained teal indicator; dismiss stays neutral. Main outer card neon perimeters are unchanged.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Metric inset-frame and compact Atlas labels (2026-08-28)
+
+- Replaced the small Live/current-journey neon-outline metric boxes with quiet inset frames: muted structural rim, contained coral → violet → blue top accent, centered tabular values, and separate label padding. This eliminates the perimeter stroke crossing the small-card text.
+- Ensured recurring-pattern copy renders above its outer neon perimeter. Pattern route labels now remove the trailing country and ZIP/postal code before rendering, leaving the useful street/city/state context without the long address overflow.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15). No commit, push, OTA, or native build was performed.
+
+### Header artwork replacement (2026-08-28)
+
+- Added the supplied Recorder, Timeline, Statistics, and Settings header artwork to `mobile/recorder/assets/` and wired each corresponding page to display its artwork in place of the former generated title header. The frame is clipped and slightly enlarged at render time so the neon border fills the header cleanly.
+- Verification: `npm run typecheck` passed after the implementation. No commit, push, OTA, or native build was performed.
+
+### Metro/Tailscale IPv4 listener recovery (2026-08-28)
+
+- Metro had stopped again. Restarted it as a detached process on local `127.0.0.1:8085`, with `NODE_OPTIONS=--dns-result-order=ipv4first` so Expo's localhost mode does not bind only to IPv6. The persistent canonical tailnet bridge remains exactly `https://superredux.tail1babbd.ts.net:8081/` -> `http://127.0.0.1:8085`.
+- Verified both the local and external HTTPS `/status` endpoints return Metro's `packager-status:running`. Metro no longer depends on the Codex desktop session, but this PC must remain awake, online, and signed into Tailscale.
+
+### Header artwork uncropping (2026-08-28)
+
+- Removed the 1.08 image scale from the Recorder, Timeline, Statistics, and Settings artwork headers. Their containers now use the source 1376:768 aspect ratio, preserving the complete top and bottom of each neon border.
+- Verification: `npm run typecheck` passed. No commit, push, OTA, or native build was performed.
+
+### Header artwork edge blending (2026-08-28)
+
+- Added a shared `HeaderArtwork` renderer for the Recorder, Timeline, Statistics, and Settings artwork. It feathers each image's black canvas into the surrounding page color on all four sides, preserving the full neon frame while removing the visible black rectangle.
+- Verification: `npm run typecheck` passed. No commit, push, OTA, or native build was performed.
+
+### Header artwork canvas removal (2026-08-28)
+
+- Replaced the attempted in-app edge feather with four cropped `*-header-hero-v2.jpg` assets. Each crop is calculated around its neon border with a four-pixel glow safety margin, removing the black canvas rather than disguising it.
+- `HeaderArtwork` now uses each cropped asset's actual aspect ratio, so the individual crop dimensions render without stretching or additional clipping. Verified the Settings crop visually and ran `npm run typecheck` successfully. No commit, push, OTA, or native build was performed.
+
+### Circular profile glow cleanup (2026-08-28)
+
+- The square behind the Home profile photo was a rectangular Skia glow/shadow canvas, not the already-circle-clipped photo. Replaced it with a circular React Native glow and gave the pressable shadow a matching circular radius, preserving the neon ring while removing the square backdrop.
+- Verification: `npm run typecheck` passed. No commit, push, OTA, or native build was performed.
+
+### App-wide visual hierarchy polish (2026-08-28)
+
+- Reworked the shared widget language into three purposeful layers: restrained gradient rims for ordinary cards, brighter neon only for major hero panels, and a dedicated warm-orange selected state. `NeonWidget` no longer stacks a native border beneath its shared Skia perimeter, eliminating the double-outline effect.
+- Added a reusable quiet inset surface for dense metrics and small controls. Recorder now presents its operational figures in a legible 2-by-2 grid; Music and vehicle metrics use the same low-noise treatment. Atlas frequent-place selection uses the orange selected perimeter without competing purple rings.
+- Softened liquid-glass bevels, background blooms, panel shadows, and dock selection treatment. Memories tabs/filters now communicate selection with a restrained orange fill and glow instead of a second hard border. The global content veil now starts closer to the dock, so scrolling content stays clear until it genuinely passes behind navigation.
+- Updated the runtime regression checks for the intentional circular avatar glow and the shared quiet inset implementation.
+- Verification: `npm run typecheck` and `npm run test:tab-runtime` (15/15) passed; `git diff --check` found no whitespace errors (only existing CRLF conversion warnings). No commit, push, OTA, or native build was performed.
+
+### Live and Atlas header artwork selection (2026-08-28)
+
+- Generated two header directions each for Live and Atlas, then installed the user-selected Live telemetry image and Atlas globe/navigation image as `assets/live-header-hero-v2.png` and `assets/atlas-header-hero-v2.png`.
+- Cropped each selected high-resolution source tightly around its full neon frame with a small glow safety margin. The resulting assets have no surrounding black canvas and preserve the complete border.
+- Wired both destination scaffolds to use the new artwork, replacing their former text-only page headers. The header regression test now covers the two asset references.
+- Verification: visually inspected both cropped PNGs; `npm run typecheck` and `npm run test:tab-runtime` (15/15) passed. No commit, push, OTA, or native build was performed.
+
+### Public-release honesty phase (2026-08-28)
+
+- Removed the preview-only `JourneyDeck Pro · $4.99 / month` membership card. The public product now makes no subscription or paid-tier claim.
+- Public builds now expose Apple Music and ShazamKit Auto Recognition only. Last.fm and direct Spotify are gated to `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=1` at the preferences, queue/sync, OAuth, and Settings UI boundaries; production keeps that flag at `0`. Existing local preview credentials are preserved for an internal build but cannot activate these paths in a public build.
+- Changed `mobile/recorder/app.json` from the preview privacy-edge origin to the documented production origin, `https://journeydeck-edge.patrickbstewart.workers.dev`.
+- Added `mobile/recorder/APP_STORE_RELEASE.md` and updated its README with the actual public scope and the remaining external gates: hosted privacy/support URLs, production CloudKit deployment and device deletion/sync validation, public integration permissions, App Store privacy labels, review notes, metadata, and TestFlight verification.
+- Added `tests/public-release-integrity.test.mts`; updated the Last.fm test wording to reflect its internal-only status. Updated Expo patch versions to `expo ~57.0.18`, `expo-font ~57.0.2`, and `expo-updates ~57.0.19` to clear Expo Doctor.
+- Verification after the changes: `npm run typecheck` passed; `npm test` passed 108/108; `npx expo-doctor` passed 21/21; `npx expo export --platform ios` completed (1,735 modules); `git diff --check` passed apart from existing CRLF conversion notices. No commit, push, OTA, EAS build, App Store submission, or production deployment was performed.
+- `npm audit --omit=dev --json` currently reports 13 moderate advisories, largely through Expo config/CLI tooling; its offered "fix" is an incompatible downgrade to Expo 46 / MapLibre 11.3.2. Do not run `npm audit fix --force`; triage with a compatible Expo SDK update before the final submission release.
+
+### App Store preflight artifacts (2026-08-28)
+
+- Audited the public website endpoints from the release checklist. `https://journeydeck.me/privacy` and `https://journeydeck.me/support` currently return HTTP 302 to the private `/login` page, so neither URL is usable for App Review yet. No website or production deployment was changed.
+- Added local App Store materials under `docs/app-store/`: App Store Connect metadata and screenshot plan, ready-to-paste review notes, a privacy-label worksheet, and a publication-ready privacy-policy draft with explicit legal-owner/contact placeholders. These drafts deliberately do not invent a support email or legal entity.
+- Added `scripts/public-release-preflight.mjs` and the `npm run preflight:public-release` command. It verifies production configuration and requires public HTTPS privacy/support pages that return a 2xx HTML response, do not redirect to login, contain meaningful content, and expose a support contact method. The release-integrity test statically covers this gate.
+- Verification: `npm run typecheck` passed; `npm test` passed 109/109; `npx expo-doctor` passed 21/21. Running the new preflight against the current production URLs correctly fails only for the two HTTP 302 login redirects. No commit, push, OTA, EAS build, website publish, CloudKit deployment, or App Store submission was performed.
+- Next external-release gate: obtain the legal owner name and a monitored privacy/support contact, then create public `/privacy` and `/support` pages (and an in-app Privacy Policy link), deploy them with explicit authorization, rerun the preflight, complete App Store Connect privacy answers from the worksheet, and validate a production CloudKit/TestFlight build on physical devices.
+
+### App Store public legal-page implementation (2026-08-28)
+
+- Received the public legal owner name, Patrick Benjamin Stewart, and support/privacy contact, `Journeydeckme@gmail.com`. Used them only in the public legal/support materials and App Store drafts; no secret or private journey data was added.
+- Added `web/privacy.html`, `web/support.html`, and `web/public-page.css`. The pages provide a static, accessible Privacy Policy and support email link without a backend form, trackers, or private data. Updated `server/src/app.ts` so `/privacy`, `/privacy.html`, `/support`, and `/support.html` bypass authentication and are served as static public pages.
+- Added a public Privacy Policy link to the native Settings privacy/iCloud card. Updated the App Store metadata, review-note, and privacy-policy source drafts with the supplied name and email; App Review phone remains explicitly required before submission rather than guessed.
+- Added server coverage proving the legal pages return public HTML without a JourneyDeck session and mobile coverage proving Settings retains the public policy link.
+- Verification: `npm run test:server` passed 32/32; `npm run check:server` passed; `npm run typecheck` passed; mobile `npm test` passed 110/110; `npx expo export --platform ios` passed (1,735 modules). The production `npm run preflight:public-release` correctly still fails because the live site has not been deployed and returns HTTP 302 login redirects for both URLs.
+- Next step: review the public legal language and App Review phone number; then, with explicit deployment authorization, deploy the website/server changes, verify the live URLs return public 2xx HTML, rerun `npm run preflight:public-release`, and continue CloudKit/TestFlight/App Store Connect completion. No commit, push, production deployment, OTA, EAS build, or App Store submission was performed.
+
+### Public legal-page production deployment (2026-08-29)
+
+- With explicit user authorization, created and merged PR [#134](https://github.com/drumpat01/DriveOS/pull/134), producing `main` commit `dffe2c7a157ca843879674c9515961a7518f52bc` (`Publish JourneyDeck legal and support pages`). The deployment contained only `server/src/app.ts`, its route regression test, and the three public web assets; no ongoing mobile redesign files were included.
+- GitHub’s full JourneyDeck CI passed. Local release preflight, server typecheck, and server tests also passed before push.
+- The first Render deployment of that commit failed because an existing Tessie database-read rollout guard rejected a stale `tessie/drives` cursor; logs showed a compatibility-process crash loop and the site returned 502. Applied the documented reversible production rollback, `JOURNEYDECK_TESSIE_DB_READ_ENABLED=false`, preserving provider-backed Tessie history. Render deployment `dep-da92lq49v7es73d1q5n0` is now `live` on the same commit. The repository `render.yaml` still declares the prior `true` rollout value; reconcile it with a fresh parity/readiness review before a later infrastructure/Blueprint sync.
+- Verified `https://journeydeck.me/privacy` and `https://journeydeck.me/support` return public HTTP 200 HTML with the expected policy/support text and support email. `mobile/recorder`'s `npm run preflight:public-release` now passes against the live URLs.
+- No TestFlight build, OTA update, CloudKit production migration, or App Store submission was performed. The in-app Privacy Policy link remains in the uncommitted mobile App Store-prep work and must be included in the eventual production/TestFlight build. Remaining App Store work: privacy-label answers, App Review phone number, production CloudKit/device verification, TestFlight build, and App Review submission.
+
+### TestFlight build 8 upload (2026-08-29)
+
+- Apple rejected build 6 during processing with `ITMS-90683` because `expo-image-picker` removed `NSMicrophoneUsageDescription` when configured with `microphonePermission: false`. Commit `0a507e4` (`fix(mobile): preserve microphone privacy purpose`) gives the plugin and explicit Info.plist key the same accurate Auto Recognition purpose string and adds a regression check. Typecheck, 113/113 tests, Expo Doctor 21/21, iOS config introspection, and iOS export passed.
+- EAS build 7 (`7f79f6d6-5168-41f3-826e-37f80575d7bc`) failed before compilation with Expo error `CREDENTIALS_TEMPORARY_NETWORK_ERROR`; it produced no artifact. A fresh build 8 (`749e9852-89c5-4323-ac12-5facb3e56476`) from exact commit `0a507e4` completed successfully.
+- Added the non-secret App Store Connect app ID `6806502526` to `mobile/recorder/eas.json` under `submit.production.ios.ascAppId`; this configuration change is currently uncommitted. EAS submission `172e2133-5d04-4eb4-a1c9-571f58f24543` successfully uploaded JourneyDeck 1.8.0 (8) to App Store Connect using API key ID `3S6UPKF5SP`. Apple is processing the binary; next step is to open the TestFlight iOS page after processing, attach build 8 to the internal group, answer any export-compliance prompt, and install through TestFlight.
+
+### TestFlight account-deletion fix / build 9 (2026-08-29)
+
+- Build 8 installed successfully through TestFlight, preserved the existing local profile, reported version 1.8 (8), and showed the signed-in driver/iCloud state as synced. Attempting the in-app full account deletion then failed on a private photo with Expo `FileNotWritableException`; the SDK 57 legacy delete implementation checked a path ending in `photo.jpg/..` and stopped before Keychain/local cleanup. The app correctly retained the local profile instead of falsely reporting success. The private CloudKit zone deletion runs before photo cleanup and is idempotent, so retrying is safe.
+- Replaced only the legacy per-photo delete call with Expo's current `File` API (`exists` then `delete`) while retaining fail-closed behavior for real removal failures. Added a regression assertion and committed the exact release patch plus the App Store submission ID configuration as `0c40416` (`fix(mobile): complete private account deletion`). Verification: typecheck passed, targeted lifecycle tests passed 4/4, full mobile tests passed 113/113, and `git diff --check` reported only existing line-ending warnings.
+- Clean detached worktree `C:\Users\patri\.codex\tmp\journeydeck-testflight-0c40416` reproduced commit `0c40416`. EAS build 9 ID `db03df08-d8be-4e41-8690-990424720a7c` finished successfully. EAS submission `839e5d6e-9323-450e-86c2-c0011b74ff8e` uploaded JourneyDeck 1.8.0 (9) successfully to App Store Connect. Next: wait for Apple processing, install/update build 9 in TestFlight, retry **Delete JourneyDeck account**, and only after successful completion delete/reinstall the app to validate a clean new-user experience.
+
+### Honest empty soundtrack state (2026-08-29)
+
+- Clean reinstall testing exposed that Home's empty music widget rendered hard-coded demo content (`Midnight City`, `M83`, mock album artwork, waveform, and play icon) before any journey or detected music existed. Replaced it with an explicit clean state: `Music will appear here`, `After your first drive`, a neutral music-note treatment, setup hint, and navigation arrow. Genuine soundtrack data retains the existing artwork/waveform/play presentation.
+- Committed as `ff75d37` (`fix(mobile): show an honest empty soundtrack`). Verification: `npm run typecheck` passed, `npm run test:tab-runtime` passed 16/16, and diff check reported only existing line-ending warnings. This correction is **not** in TestFlight build 9; include it in the next bundled TestFlight build (or explicitly authorized OTA) before final first-launch validation.
+
+### App icon portal JPEG (2026-08-29)
+
+- Exported the existing production `mobile/recorder/assets/icon.png` non-destructively as `docs/app-store/assets/JourneyDeck-App-Icon-Master-1024.jpg`. The source artwork was preserved exactly; the JPEG is a 1024×1024, 24-bit RGB, maximum-quality portal/marketing master with an opaque dark background. The source PNG is 512×512. No AI regeneration or logo redesign was used, and no build, submission, or OTA was triggered.
+- Also created `docs/app-store/assets/JourneyDeck-App-Icon-Master-Transparent-1024.png`: a tightly framed 1024×1024 ARGB PNG. The dark canvas outside the neon squircle is transparent, the colored outer glow uses partial alpha, and the black icon interior remains opaque. This is a deterministic mask/crop of the production artwork, not a generated or redesigned logo.
+
+### Journey-detail map and saved-place correction (2026-08-29)
+
+- Removed the duplicate light route map from the journey-detail summary hero. The summary now uses a compact dark gradient treatment, while the existing dark interactive `ROUTE + SONG LOCATIONS` map remains the single journey map.
+- Fixed saved start/destination names for GPS-only local journeys. Local endpoints now receive stable, coarse coordinate identities (with journey-specific fallbacks), the identity and raw label survive local/cached merges, and aliases are reapplied to details, history, and dashboard fallbacks after reopening. Saving a name also refreshes the complete primary-section model so Memories, Home, Timeline, Search, and Atlas do not retain stale labels.
+- Brightened the exported share-card basemap while preserving the JourneyDeck palette: near-black land, substantially clearer violet street/label detail, a lighter Street overlay, and the existing coral-orange real route.
+- Verification before publication: `npm run typecheck` passed; focused journey/location/share tests passed 34/34; full mobile tests passed 118/118; `npx expo export --platform ios` completed successfully (1,756 modules). The temporary export folder was removed.
+- With explicit user authorization, published the verified dirty working tree as an iOS-only production OTA for runtime `1.8.0`. Update group: `bba2ff27-b229-4498-a34d-efd001d5ba03`; iOS update: `01a050bb-6375-71d7-836a-3f8e134cce94`; message: `JourneyDeck 1.8: one journey map and persistent place names`. EAS channel verification confirms this is the current `production` head.
+- No commit, push, native EAS build, TestFlight upload, build 10, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source fixes remain uncommitted and must be included in the next reproducible release commit.
+
+### Dynamic journey identity and hero redesign (2026-08-30)
+
+- Removed the repetitive `Journey overview / Journey / Recorded journey` hierarchy. The detail modal now reads `Road memory / Drive details`, while its summary card receives a distinct drive title.
+- Added deterministic title priority: saved endpoints (`Home → Work`) first, then a privacy-safe city title (`Saginaw drive`) using the existing coarse two-decimal reverse-geocode cache, then an offline time-aware fallback (`Saturday evening drive`). The same fallback replaces `Recorded journey` in journey lists.
+- Replaced the summary card's flat gradient blobs with a map-free neon road-light SVG treatment. The interactive dark route map remains the only map in the detail.
+- Added focused title tests and expanded the journey-detail structural regression test. Verification: `npm run typecheck`, `npm run test:tab-runtime` (20/20), `npm run test:network-boundary` (8/8), and full `npm test` (121/121) passed. `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- With explicit user authorization, published the verified dirty working tree as an iOS-only production OTA for runtime `1.8.0`. Update group: `d86a21e3-a97a-49b4-8e52-ab696e490d2b`; iOS update: `01a052b2-dd11-7db2-996d-e9b45af974f8`; message: `JourneyDeck 1.8: dynamic journey titles and neon drive header`.
+- No commit, push, native build, TestFlight upload, build-number change, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source changes remain uncommitted.
+
+### Tesla built-in media capture through Tessie (2026-08-30)
+
+- Added a stateless `POST /api/vehicle/tessie/media` privacy-edge route. It uses the existing profile-scoped Tessie token, requests Tesla Fleet API `media_info`, and returns only bounded title, artist, album, source, station, playback status, duration, elapsed time, and sample time. VINs, coordinates, and unrelated vehicle state are stripped and never returned or logged.
+- During an active journey with Apple Music selected, the location task now samples Tessie at most once every 30 seconds. Playback position is used to estimate the song start time, and the resulting local `apple_music` observation attaches to the nearest recorded route point. Tessie/network failure remains additive and cannot fail route recording or automatic finishing.
+- Settings now includes **Test Tesla now playing** under the connected Tessie tile so a tester can play music through the Tesla's built-in player and verify the live metadata without starting a drive. This is the required physical-car validation step; mocked edge and timestamp tests pass, but a real Tesla response has not yet been observed by the development environment.
+- Cloudflare production Worker version `244ff66f-91ee-4822-a79e-3170b09a0143` is deployed and healthy at `journeydeck-edge.patrickbstewart.workers.dev`. The missing-token media request fails closed with HTTP 400. Wrangler 4.127.0 types were regenerated and checked; Worker TypeScript and dry-run deployment checks passed.
+- Verification: mobile typecheck passed; full mobile suite passed 123/123; focused music and edge privacy tests passed; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published an iOS-only production OTA for runtime `1.8.0`. Update group: `d4dd588e-3698-4035-ae7e-8903c77037b9`; iOS update: `01a053eb-8215-7bf7-912d-ee3d8080e639`; message: `Capture Tesla built-in media through Tessie`.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted. Next: fully close/reopen JourneyDeck twice to load the OTA, play a track in the Tesla's built-in Apple Music player, run **Settings → Tessie → Test Tesla now playing**, then complete a short drive and confirm its song and route pin.
+
+### Tessie media response-path correction (2026-08-30)
+
+- Physical-car testing returned `No Tesla media found` while the vehicle was awake, driving, and playing media. Root cause: Tesla nests the media block at `response.vehicle_state.media_info`; the initial edge parser checked only `response.media_info`.
+- Updated the privacy-edge parser to accept the live nested shape plus bounded compatibility envelopes, and changed the regression fixture to match Tesla's actual response nesting while retaining the VIN/location non-disclosure assertion.
+- Verification: `npm run test:cloudflare-workers`, mobile typecheck, Worker TypeScript, production health, and `git diff --check` all passed (only existing CRLF notices).
+- Deployed corrected production Worker version `beb75ddd-735b-434b-ba86-4a47885577e1`. No OTA was necessary because the installed runtime already calls the same edge route; no mobile bundle changed after OTA group `d4dd588e-3698-4035-ae7e-8903c77037b9`.
+- Next: with Tesla built-in media playing, retry **Settings → Tessie → Test Tesla now playing**. If it still reports no media, capture the displayed result and investigate whether this vehicle/firmware exposes media only through Tessie Fleet Telemetry rather than `vehicle_data`.
+
+### Tessie vehicle-state selector and fallback OTA (2026-08-30)
+
+- A second physical-car test still returned no media. Found the remaining REST flaw: `media_info` is nested within the top-level `vehicle_state` endpoint, so the Fleet API selector must be `endpoints=vehicle_state`; requesting `endpoints=media_info` produced a valid but empty response and never triggered the previous error-only fallback.
+- Corrected the Fleet selector and added a second bounded read through Tessie's native `/{vin}/state` endpoint when Fleet vehicle state has no title/artist. Both response paths strip VIN, coordinates, and unrelated vehicle state before returning.
+- The Settings test alert now distinguishes `no_active_vehicle` from `no_track_metadata`, making any further physical-car failure actionable rather than generic.
+- Verification: mobile typecheck passed; full mobile suite passed 123/123; Worker TypeScript and production deployment dry run passed; production health is green; `git diff --check` found only existing CRLF notices.
+- Deployed production Worker version `91196bdb-32b7-491c-a34d-30bdbb9d8086`.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `daa43d40-62db-466b-98e9-06ff589b4923`, iOS update `01a05415-4585-77a8-b6af-380b7cdf671f`, message `Fix Tesla built-in media state lookup`.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. Next: fully close/reopen JourneyDeck twice, then safely parked with Tesla built-in media playing, retry **Settings → Tessie → Test Tesla now playing** and report either the found track or the new specific alert title.
+
+### Home latest-heard soundtrack correction (2026-08-30)
+
+- Fixed the Home soundtrack card so it selects the newest timestamped song across the active recorder session and the local music archive. It no longer falls back to the first song in the latest journey or the all-time top track.
+- The card now labels completed playback honestly as **Last heard on your road**. Title, artist, and artwork all come from the same selected song; a cached cover is reused only when normalized title and artist both match exactly.
+- New or metadata-enriched recorder music observations now invalidate the visible local archive immediately. Artwork rendering uses Expo Image's memory-and-disk cache, so a newly resolved cover can replace the note placeholder without an app restart.
+- Verification: `npm run typecheck` passed; focused Home and runtime tests passed; full mobile suite passed 131/131; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` reported no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `8cb64898-6fea-44c6-967c-44b622f842c9`, iOS update `01a055b0-fbda-704d-8b05-00c1ab669511`, message `JourneyDeck 1.8: keep Home on the latest heard song and artwork`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Persistent iOS location-indicator correction (2026-08-30)
+
+- Diagnosed the always-visible blue Dynamic Island location arrow as an explicit app opt-in: both JourneyDeck background tasks set Expo Location's `showsBackgroundLocationIndicator: true`, even though the iOS/Expo default is false.
+- Changed both automatic drive detection and active route recording to `showsBackgroundLocationIndicator: false`. Location permission, automatic drive detection, background execution, and exact route recording remain enabled. iOS can still show its ordinary small location arrow while GPS is actually accessed.
+- Automatic detection now re-registers its native task options even when already running, allowing the OTA to replace the prior indicator presentation without disabling detection or waiting for a new native build.
+- Verification: focused server-independence tests passed 14/14; TypeScript passed; full mobile suite passed 132/132; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `18412540-bfda-45a9-a009-7b4f08291446`, iOS update `01a055ba-cebe-723e-a208-bf87c405d533`, message `JourneyDeck 1.8: remove the persistent blue location indicator`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Tilted vinyl animation and album-caption correction (2026-08-30)
+
+- Replaced the Soundtracks header's two rotating translucent triangular sheen wedges with one complete animated vinyl surface. The rendered disc now rotates as a unit—outer edge, grooves, asymmetric colored reflections, center label, and spindle—inside a circular clip whose parent is tilted with 3D perspective (`rotateX`). This keeps every moving detail on the platter throughout the rotation.
+- Moved Today’s Soundtrack album captions five pixels farther inward (`paddingLeft: 7`) so titles and artists no longer collide with the card's left neon outline.
+- Verification: `npm run typecheck` passed; `npm run test:tab-runtime` passed 24/24; full mobile suite passed 131/131; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `356e4a79-36d4-45e4-b680-fb782687ca6d`, iOS update `01a055b6-0927-7c52-8999-0d95879dcf5d`, message `JourneyDeck 1.8: rebuild the tilted vinyl animation and caption spacing`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Complete utility-header artwork correction (2026-08-30)
+
+- Diagnosed Statistics, Timeline, and Settings side cropping as two combined layout issues: the source JPEGs are wider than the shared 1672:941 frame while `HeaderArtwork` used `contentFit="cover"`, and the utility header wrappers added a negative four-pixel horizontal bleed beyond the cards below.
+- Changed the shared utility artwork renderer to `contentFit="contain"`, preserving every source-image edge within the common header size. Removed the negative horizontal bleed from primary utility and Settings header wrappers so their sides align with the standard 20-pixel content inset and surrounding cards.
+- Verification: `npm run typecheck` passed; `npm run test:tab-runtime` passed 24/24; full mobile suite passed 132/132; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `aeef86ae-9e90-405b-84f5-e8b9ceaacbbd`, iOS update `01a055ca-5864-7b96-bcb3-3f8efa652f15`, message `JourneyDeck 1.8: show complete utility header artwork`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Memory cover-photo overlay correction (2026-08-31)
+
+- Removed the generic `MEMORY 01` sequence label from populated Memory cards. Empty-state guidance remains unchanged.
+- Replaced the tall grey lower overlay with a compact 92-pixel bottom gradient so substantially more of each cover photo remains visible. Tightened the title/metadata spacing to two pixels and retained subtle text shadows for legibility.
+- Added a focused structural regression test. Verification: `npm run test:tab-runtime` passed 25/25; `npm run typecheck` passed; full `npm test` passed 133/133; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `964c50e0-698d-45e7-87b0-4df4c9d46722`, iOS update `01a0579e-c668-7a2b-b8f4-e0e2e694a268`, message `JourneyDeck 1.8: reveal more of Memory cover photos`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Memory collection-route alignment correction (2026-08-31)
+
+- Rebuilt the decorative route beside a Memory's Collection chapters around one shared 16-pixel centerline. The route now has only a subtle organic bend and begins at the Collection list rather than bleeding upward across the `COLLECTIONS` heading.
+- Replaced the disconnected circular chapter dots with coral map-pin SVG markers. Each pin tip is mathematically aligned to the route centerline, including as Collection card heights vary.
+- Updated the focused structural regression coverage. Verification: `npm run test:tab-runtime` passed 25/25; `npm run typecheck` passed; full `npm test` passed 133/133; `npx expo export --platform ios` completed successfully (1,759 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `c49a8b7c-4749-48ba-82e6-2b48bd64d56b`, iOS update `01a057b4-9887-71bc-a107-97b718db7475`, message `JourneyDeck 1.8: align Memory route pins and timeline`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Version-1 Tessie shutdown (2026-08-31)
+
+- Added one version-1 release gate, `TESSIE_INTEGRATION_ENABLED = false`, while preserving the Tessie implementation, edge routes, profile-scoped token, and cleanup code for a future release.
+- Removed Tessie from both background-location promise batches used by automatic journey startup and active route recording. The dormant Tessie sampling function also fails closed before session, preference, Keychain, or network work.
+- Tessie now reports unavailable through the app data boundary; cached Tessie vehicle data is excluded in favor of local journey-derived data. Hidden surfaces include the Settings Tessie connection flow, Tesla media test, Drive Intelligence entry point, Live connected-vehicle card, legacy Home health row, and Data Health provider row/copy. Existing stored credentials were not erased.
+- Verification: `npm run typecheck` passed; `npm run test:drive-detection` passed 11/11; `npm run test:server-independence` passed 15/15; `npm run test:tab-runtime` passed 25/25; full `npm test` passed 134/134; `npx expo export --platform ios` completed successfully (1,760 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `ccbe5626-57ef-4812-997b-a771e6d36841`, iOS update `01a057fc-637a-7494-b680-c3b383ec965c`, message `JourneyDeck 1.8: disable Tessie for version 1`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted and must be included in the next reproducible release commit.
+
+### Data Health Apple Music artwork refresh diagnostic (2026-08-31)
+
+- Added **Refresh artwork now** to **Tools → Data Health → Apple Music artwork**. The control displays running, completed, and error states and reports how many local covers were updated, how many remain missing, and how many lookups failed.
+- The diagnostic fetches fresh authorized Apple Music history, applies catalog artwork only to existing local songs with an exact normalized title-and-artist match, and then forces the bounded online artwork lookup for remaining gaps. It does not create listening plays or change journey history.
+- Added an explicit forced-retry path that bypasses the normal 24-hour per-track artwork cooldown only for this user-triggered diagnostic. Routine background lookup behavior and its retry protection remain unchanged.
+- Verification: `npm run typecheck` passed; `npm run test:tab-runtime` passed 26/26; `npm run test:network-boundary` passed 9/9; `npm run test:local-store` passed all 17 checks; full `npm test` passed 135/135; `npx expo export --platform ios` completed successfully (1,760 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `02a86b1c-4064-4fb6-b839-37cea563ea3d`, iOS update `01a0580f-4f77-7b02-aaf1-1f4aa65a0f92`, message `JourneyDeck 1.8: add Data Health artwork refresh test`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted and must be included in the next reproducible release commit.
+
+### Non-blocking MusicKit artwork warning (2026-08-31)
+
+- Physical testing showed album covers appearing even though Data Health displayed `Apple Music history could not refresh artwork yet`. The first implementation discarded MusicKit's original error and aborted before the independent iTunes catalog fallback, making the message both non-diagnostic and too severe.
+- Split the native recent-history request from local enrichment. A MusicKit failure is now categorized as authorization, network/service, Media & Purchases account, or temporary/unknown; it is retained as an amber warning, and the forced online catalog lookup always continues.
+- Data Health now reports recovered-cover counts, remaining missing covers, catalog retry counts, and any MusicKit warning together. Local database failures still escape as real errors rather than being mislabeled as an Apple history problem.
+- The exact cause of the already-observed failure cannot be recovered because the prior code discarded the native exception. Since Data Health showed Apple Music connected, the authorization guard had passed and the failure was within `MusicRecentlyPlayedRequest.response()`, most plausibly a transient Apple service/network response or current Media & Purchases library availability issue. Future attempts will show the categorized reason.
+- Verification: `npm run typecheck` passed; `npm run test:tab-runtime` passed 26/26; `npm run test:network-boundary` passed 9/9; `npm run test:local-store` passed all 17 checks; full `npm test` passed 135/135; `npx expo export --platform ios` completed successfully (1,760 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published iOS-only production OTA for runtime `1.8.0`: update group `6c4a4241-942f-452f-98b4-78b2f7154515`, iOS update `01a0581c-2c1b-7cc8-9403-fc0022981ab1`, message `JourneyDeck 1.8: continue artwork refresh after MusicKit warning`. Production-channel verification confirms this is the current head.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted and must be included in the next reproducible release commit.
+
+### Membership-aware Statistics tab and 45-day story timeline (2026-08-31)
+
+- Added a single membership-entitlement boundary. Free users now receive **Statistics** as the fifth primary tab; verified paid access is designed to replace it with the existing **Atlas** tab. Because StoreKit receipt verification is not implemented yet, version 1 deliberately fails closed to the free tier instead of trusting an editable local flag.
+- Rebuilt Statistics as the selected story-led design. Its hero displays live rolling 45-day mileage and song totals, followed by longest-drive, top-artist, favorite-driving-time, and 45-day rhythm cards calculated from the local archive.
+- Merged recent Timeline content into Statistics. It begins with 10 events and appends 10 per tap until the free 45-day cutoff; the paid entitlement branch permits all available history. Song events use their matching cached artwork and journey events render their actual recorded route geometry as scaled, map-free thumbnails.
+- Expanded journey-detail loading to cover the member's visible timeline window so route lines and soundtrack artwork are available to the merged view.
+- Verification: `npm run typecheck` passed; focused tab and membership tests passed; full `npm test` passed 139/139; `npx expo export --platform ios` completed successfully (1,760 modules); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified an iOS-only production OTA for runtime `1.8.0`: update group `9e7a17ce-72d1-4167-989f-ca3753056700`, iOS update `01a0584b-ef48-7544-a65d-9cd0af0d8798`, message `Free Statistics tab with 45-day story timeline`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted. Next subscription step: replace `currentMembershipEntitlements()` with verified StoreKit state before enabling paid Atlas access.
+
+### Statistics option-3 visual fidelity correction (2026-08-31)
+
+- Located and preserved the selected option-3 mockup at `docs/design/statistics-tab-option-3-reference.png`. The prior OTA had reproduced the data model but omitted the mockup's artwork and hierarchy.
+- Generated a text-free cinematic coastal-night-road hero from the selected reference using the built-in image-generation tool and saved it as `mobile/recorder/assets/statistics-story-hero-v1.png`. The prompt required a dark Pacific coastline, coral long-exposure highway, left-side text-safe space, and no text/UI/logos.
+- Rebuilt Statistics to match option 3: centered title on black, live mileage/song copy over the coastal artwork, one row of three compact insight cards, the thin 45-day history strip, a connected timeline rail, album artwork for songs, real scaled route geometry for journeys, and the filled coral **SHOW 10 MORE** control. Only archive-derived values and event content vary from the mockup.
+- Added focused structural coverage for the option-3 composition. Verification: `npm run typecheck` passed; `npm run test:tab-runtime` passed 28/28; full `npm test` passed 140/140; `npx expo export --platform ios` completed successfully (1,761 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.8.0`: update group `498a0f84-0940-4ff5-922c-56feb0b55694`, iOS update `01a0586f-4904-7c91-bbdf-f91d3e20b887`, message `Match Statistics tab to selected cinematic mockup`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Cinematic-realism tab header system (2026-08-31)
+
+- Standardized the main destination headers around one visual language: centered native tab titles above uniformly sized, text-free 16:9 artwork. Home remains the intentional exception. Live, Memories, Soundtracks, Atlas, and Settings now match the grounded cinematic realism introduced by Statistics rather than mixing illustrated and photorealistic treatments.
+- Generated and visually inspected five production assets with the built-in image-generation tool, using the Statistics coastal-road hero as the style reference: `live-header-cinematic-v1.png` (windshield road), `memories-header-cinematic-v1.png` (physical road-trip prints), `soundtracks-header-cinematic-v1.png` (real turntable), `atlas-header-cinematic-v1.png` (aerial connected highways), and `settings-header-cinematic-v1.png` (restrained dashboard controls). Prompts required no baked-in title, text, UI, logos, watermarks, or decorative borders.
+- Preserved the Soundtracks vinyl animation and moved its 3D motion frame to the center of the new photographed record. Fixed the deferred Statistics `Favorite time` clipping by allowing a compact fitted three-line value.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 28/28; full `npm test` passed 140/140; `npx expo export --platform ios` completed successfully (1,761 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.8.0`: update group `c8d1fcec-5d8b-417a-a273-275002053c0d`, iOS update `01a05894-b442-797e-b7a1-35eb85feeb48`, message `Unify tab headers with cinematic realism`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Frameless header blending and static Soundtracks artwork (2026-08-31)
+
+- Removed the Soundtracks vinyl animation completely, including its timing state, animated overlay, tilted motion frame, and generated SVG record. Soundtracks now uses one static photographic header.
+- Generated and visually inspected `mobile/recorder/assets/soundtracks-header-cinematic-v2.png` with the built-in image-generation tool. The final prompt used the Live, Memories, and Statistics artwork as style references and specified a realistic static turntable beside a coastal night road, edge-to-near-black vignetting, and no text, UI, animation cues, rounded mask, border, logo, or watermark.
+- Reworked the shared header renderer to use edge-to-page feathering instead of a visible framed rectangle. Removed the rounded/background wrappers from primary, Memories/Settings, and Soundtracks artwork containers.
+- Corrected Statistics to the shared centered 1672:941 header geometry, removed its explicit border, added edge feathering, and made the centered title width explicit. Added artwork-derived ambient washes for Live, Atlas, and Statistics; adjusted Settings ambient colors to the new photograph. Existing Home, Memories, and Soundtracks ambient treatments remain in place.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 28/28; full `npm test` passed 140/140; `npx expo export --platform ios` completed successfully (1,761 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.8.0`: update group `504fb425-4b9a-4007-964e-ae80f4b8299a`, iOS update `01a058a9-3d0d-76a5-8b72-f1978fda8d67`, message `Blend cinematic headers and remove Soundtracks motion`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Complete header-edge seam dissolve (2026-08-31)
+
+- Replaced the partial in-bounds header vignette with a two-stage seam treatment. Each shared image now reaches the exact `#05030b` page color before the bitmap boundary, and four 30-pixel exterior gradients carry that color outside the bitmap before dissolving into the destination's ambient wash.
+- Applied the same external bleed explicitly to the Statistics live-data hero, which does not use the shared `HeaderArtwork` wrapper. This preserves the artwork-matched color spill while preventing a rectangular hard line at any edge.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 28/28; full `npm test` passed 140/140; `npx expo export --platform ios` completed successfully (1,761 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.8.0`: update group `a7033805-ebe8-4450-85d0-c9e876b02567`, iOS update `01a058b1-5eaa-728e-b95b-8e1be16f40fe`, message `Dissolve header seams into ambient color`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Two-destination gear menu (2026-08-31)
+
+- Simplified the Home settings-gear overlay to exactly two choices: **Data Health** and **Settings**. Both continue to open their existing corresponding pages and return to the two-choice Tools menu.
+- Narrowed the live utility destination type to `menu | health | settings` and removed the old Search, standalone Timeline, and standalone Statistics branches and tiles from the overlay. The new membership-aware Statistics primary tab and its embedded 10-at-a-time timeline remain unchanged. Dormant standalone screen components and local data builders were preserved because the merged experience still shares their underlying timeline/statistics model.
+- Updated structural regression coverage to enforce that the gear menu cannot regain Search, Timeline, or Statistics entries. Verification: `npm run typecheck` passed; focused tab-runtime tests passed 28/28; full `npm test` passed 140/140; `npx expo export --platform ios` completed successfully (1,761 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.8.0`: update group `a0b2a68a-2b29-4a07-9949-555854138d02`, iOS update `01a058d9-3a7c-75a4-b6ab-71ac68d0b2d9`, message `Simplify Tools to Data Health and Settings`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### Build-10 artwork completion and saved-place propagation hardening (2026-08-31)
+
+- Audited every manual, recovered, and automatic journey-completion path. Completion now imports recent Apple Music history, runs the exact title-and-artist public Apple catalog fallback only for missing covers on that journey, and prefetches all resolved cover URLs into Expo Image's persistent disk cache before the automatic background task exits. Artwork URLs remain in the local SQLite record so an evicted OS cache can be repopulated later.
+- Added `memory-disk` caching consistently to the remaining native artwork renderers. Reduced the native MusicKit recent-history artwork request from 512×512 to 256×256 for Build 10; the iTunes fallback remains 100×100. The 256 px Swift change requires the new native TestFlight build, while the completion fallback and disk-prefetch logic are OTA-compatible.
+- Replaced fragile rounded-coordinate-only place propagation with a private on-device named-place record and a 125-meter haversine match. Saving an endpoint passes its exact recorded route coordinate, all journey lists resolve nearby named endpoints, and legacy exact aliases are promoted into nearby-place records during loading. Clearing a custom alias also removes its nearby record. Place IDs are profile-scoped.
+- Added functional GPS-drift and structural completion-path regression coverage. Verification: `npm run typecheck` passed; focused completion, tab-runtime, local-store, local-atlas-client, network-boundary, and server-independence tests passed; full `npm test` passed 142/142; `npx expo export --platform ios` completed successfully (1,762 modules, 22 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified the OTA-compatible portion to iOS production runtime `1.8.0`: update group `f9042d61-675f-4dd5-9f66-c1eba55d49a5`, iOS update `01a058f0-1346-7014-80a4-8ab1addf7e45`, message `Cache journey artwork and propagate saved places`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. Build 10 still needs to be created to embed the 256×256 MusicKit native change. EAS records base commit `ff75d37` with a dirty-working-tree marker; the source remains uncommitted.
+
+### First-launch animation concept gallery (2026-08-31)
+
+- Created three selectable, full-screen portrait first-launch motion prototypes under `docs/design/opening-animation-options/`: **The Road Awakens**, **Miles Become Memories**, and **Road Meets Soundtrack**.
+- Each animated WebP is rendered at 480×1040 with 50 source frames at 50 ms each, yielding an exact 2.5-second loop. Each uses the exact production app icon and the shared `Your drive, remembered.` lockup; the generated images contain no baked-in text or imitation logo.
+- Used the built-in image-generation tool for three cinematic photographic foundations, referencing the current JourneyDeck welcome and Statistics artwork. The final prompt set is recorded in `PROMPTS.md`. Motion, branding, timing, grain, vignette, route reveal, glass shimmer, and vinyl groove highlights are reproducibly generated by `build_previews.py` using the bundled Pillow runtime.
+- Added `index.html` as a responsive comparison gallery with replay and near-full-screen viewing. A local preview server is running at `http://127.0.0.1:8794/` in process `33892`; it can be stopped after selection.
+- These are design prototypes only. Nothing was wired into the mobile onboarding flow, and no OTA, native build, TestFlight upload, commit, push, website deployment, or App Store mutation was performed.
+- After the user selected Option 2, corrected its animated shimmer geometry from upright rectangles to four-point perspective frames aligned with the underlying sunset, city-light, and starry-night photo panes. Added `--option 1|2|3|all` to the preview builder so a single concept can be rerendered without recompressing all three. The Option 2 WebP and poster were regenerated in place; the photographic foundation and brand lockup were preserved.
+- The user formally approved corrected **Option 2 — Miles Become Memories**. Preserved the exact chosen animation and resting frame as `selected-option-2-final.webp` and `selected-option-2-final-poster.png`, with SHA-256 hashes and implementation invariants in `docs/design/opening-animation-options/SELECTED.md`. Treat that file as the authoritative first-launch animation choice. It remains a design artifact only and is not yet implemented or published.
+
+### GPS-method onboarding screen concepts (2026-08-31)
+
+- Created three full-screen portrait mockups for first-launch screen 2 under `docs/design/gps-method-screen-options/`: **Quiet Glass**, **Expanded Choices**, and **Two Roads**. All show Automatic selected so benefits and limitations can be compared directly.
+- Used the built-in image-generation tool for three text-free cinematic foundations, referencing the approved Option 2 opening poster and the current Live header photography. Exact sans-serif typography, truthful Automatic/Manual copy, privacy notes, vector selection marks, controls, and layout were added deterministically by `build_mockups.py`; prompt summaries are saved in `PROMPTS.md`.
+- The concepts are design artifacts only. No onboarding code, app asset, OTA, native build, TestFlight upload, commit, push, website deployment, or App Store mutation was performed. Await the user's visual selection before implementation.
+- Added `index.html` after the generated text-free foundations were mistaken for the finished mockups. The completed UI comparison gallery is served at `http://127.0.0.1:8795/` by local process `46152`, with tap-to-open full-screen previews of all three composed screens.
+- The user formally approved **Option 2 — Expanded Choices** and explicitly requested removal of Options 1 and 3. Deleted both rejected mockups and their unused generated foundations, reduced `build_mockups.py` to the selected render, and converted the gallery to one approved screen. Preserved the exact selected image as `selected-option-2-expanded-choices.png`; `SELECTED.md` records its SHA-256 hash, 250–300 ms in-place card expansion, Continue-only advancement, and the exact expanded Manual copy. The screen remains unimplemented and unpublished.
+
+### Apple Music onboarding screen concept (2026-08-31)
+
+- Created the single requested first-run screen 3 mockup under `docs/design/apple-music-onboarding-screen/`. It reuses the exact approved GPS-method road background and presents a restrained slide-in glass overlay with the existing official Apple Music icon, a native-style **Connect Apple Music** action, soundtrack benefits, and a short privacy statement.
+- The proposed primary action maps to `MusicAuthorization.request()`, which lets iOS present its standard MusicKit consent dialog. A subdued **Continue without Apple Music** action keeps the optional music provider from blocking journey recording.
+- Added `build_mockup.py` for deterministic Pillow rendering, `apple-music-connect-screen.png`, `index.html`, and `README.md`. This remains a design artifact only; no mobile implementation, OTA, native build, TestFlight upload, commit, push, website deployment, or App Store mutation was performed.
+- Revised the selected mockup after review: replaced the white authorization control with JourneyDeck's coral-to-pink gradient, extended the glass sheet so the complete button and glow remain inside its outline, and separated the explanatory permission note from the sheet edge.
+- The user approved the revised screen as perfect. `docs/design/apple-music-onboarding-screen/SELECTED.md` records the final PNG SHA-256 and implementation invariants. Treat the gradient-button version as the authoritative screen 3 design.
+
+### Adaptive final onboarding instruction screens (2026-08-31)
+
+- Created two full-screen final onboarding mockups under `docs/design/onboarding-instructions-screens/`, using the same approved cinematic road background and the established first-run visual system.
+- **4a Automatic** explains that the user takes their iPhone, starts driving, plays Apple Music through the iPhone or CarPlay, and lets JourneyDeck finish after parking. **4b Manual** shows a visual **Start Your Journey** control on Home and prominently reminds the user to open JourneyDeck and finish the journey after arriving.
+- Both variants end with the coral-to-pink **Let the Journey Begin** action, intended to complete onboarding and open Home. Added deterministic `build_mockups.py`, a two-screen preview gallery, and README. These remain design artifacts only; no mobile implementation, OTA, native build, TestFlight upload, commit, push, website deployment, or App Store mutation was performed.
+
+### Exact approved first-run onboarding implementation and OTA (2026-08-31)
+
+- Implemented the approved first-run sequence without redrawing the selected visuals. The exact approved animation WebP, reduced-motion poster, Automatic screen, Apple Music screen, and both final instruction screens were copied byte-for-byte into `mobile/recorder/assets/`. Screen 2's Manual companion state was rendered from the approved layout and exact copy in `docs/design/gps-method-screen-options/SELECTED.md`.
+- Added `first-run-onboarding-screen.tsx`, which renders the locked 480×1040 assets full-screen with cover-aware, accessibility-labeled transparent hit targets. The animation advances only after the asset loads and remains visible for exactly 2.5 seconds; Reduce Motion receives the approved poster. Automatic/Manual selection crossfades over 280 ms, only Continue advances, Apple Music uses the real MusicKit authorization path with an optional skip, and **Let the Journey Begin** opens Home.
+- Added profile-private persisted flow state in `first-run-onboarding.ts` for `welcome → recording → music → instructions → complete`. A resumed first-run returns to its last stage; 4a/4b follows the chosen mode. Existing profiles that already completed recording and music setup are not forced through onboarding again.
+- Added SHA-256 regression assertions for every locked asset in `tab-runtime.test.mts`; future byte changes now fail tests. Documented 4a/4b approval and updated the selected-design notes to record implementation.
+- Verification: `npm run typecheck` passed; focused tab-runtime, local-store, native-capabilities, and drive-detection tests passed; full `npm test` passed 142/142; final `npx expo export --platform ios` completed with all seven onboarding assets in the 1.8.0 bundle; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS production OTA runtime `1.8.0`: update group `fd1412c1-e380-43c1-8a86-d7714c52c7cc`, iOS update `01a0597f-0aff-7db5-a48b-9bdf1044f324`, message `Implement exact approved first-run onboarding`. The initial CLI invocation was rejected before upload because `--environment` was required; the successful invocation explicitly used the production environment.
+- No native build, TestFlight upload, build-number change, commit, push, website deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; all source remains uncommitted.
+## Automatic endpoint naming and saved-place propagation repair — August 31, 2026
+
+- Compared the native location pipeline with the older web behavior. The native regression had three causes: the saved-place radius was only 125 meters despite rounded endpoint identities and normal parking/GPS drift; detail records with journey-specific keys did not fall back to their recorded route endpoints; and iOS had only a city-summary lookup rather than an endpoint address/name cache.
+- Increased user-named place matching to a bounded 250-meter haversine radius and made every detailed journey resolve its first/last route coordinate when its place key is not coordinate-based. User-entered names are persisted as private local places, override automatic labels, and now emit the shared archive-change event so Home, Statistics, Memories, journey lists, and reopened details refresh together.
+- Added foreground-only endpoint enrichment through the iOS location geocoder. It resolves at most four uncached endpoints sequentially per pass, stores only the useful place/address label in the profile-private `local_places` table for 30 days, retries failures no more than hourly, and never performs geocoding while the app is backgrounded. Cached automatic labels use a narrower 150-meter radius; manual names always win.
+- Added behavioral tests for realistic property/parking drift, separation from a different neighborhood, and geocoder-label selection. Verification: `npm run typecheck` passed; focused place/journey/tab tests passed 33/33; full `npm test` passed 149/149; `npx expo export --platform ios` completed successfully (1,771 modules, 24 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified the iOS production OTA for runtime `1.8.0`: update group `8e464530-87c8-45c0-9bc9-423067a31edc`, iOS update `01a05af4-d8c8-7ae6-adcf-d99963f6bb81`, message `Restore automatic journey place naming`. It applies to TestFlight Build 10 after download and restart.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store Connect mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; all source remains uncommitted.

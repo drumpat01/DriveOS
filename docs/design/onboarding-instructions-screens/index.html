@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>JourneyDeck — final onboarding screens</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 42px 22px 64px;
+        background:
+          radial-gradient(circle at 50% 0%, rgba(82, 44, 125, .34), transparent 42%),
+          #040208;
+        color: #faf7fc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      header { max-width: 1060px; margin: 0 auto 30px; text-align: center; }
+      h1 { margin: 0 0 8px; font-size: clamp(24px, 4vw, 36px); }
+      header p { margin: 0; color: #b8aebe; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 480px));
+        justify-content: center;
+        gap: 34px;
+      }
+      figure { margin: 0; }
+      figcaption { margin: 0 0 12px; text-align: center; color: #d8cddd; font-weight: 700; }
+      img {
+        display: block;
+        width: min(480px, calc(100vw - 44px));
+        height: auto;
+        border-radius: 28px;
+        box-shadow: 0 28px 90px rgba(0, 0, 0, .64), 0 0 50px rgba(255, 80, 103, .1);
+      }
+      @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 480px); } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Final onboarding instructions</h1>
+      <p>The last screen adapts to the recording method selected earlier.</p>
+    </header>
+    <main class="grid">
+      <figure>
+        <figcaption>4a · Automatic recording</figcaption>
+        <a href="screen-4a-automatic.png"><img src="screen-4a-automatic.png" alt="Automatic recording onboarding instructions" /></a>
+      </figure>
+      <figure>
+        <figcaption>4b · Manual recording</figcaption>
+        <a href="screen-4b-manual.png"><img src="screen-4b-manual.png" alt="Manual recording onboarding instructions" /></a>
+      </figure>
+    </main>
+  </body>
+</html>

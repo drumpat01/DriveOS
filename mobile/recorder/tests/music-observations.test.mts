@@ -6,6 +6,7 @@ import {
   appleRecentSongObservation,
   normalizeMusicObservation,
   shazamMatchObservation,
+  tessieMediaObservation,
 } from '../src/music-observations.ts';
 import { musicTrackDestination } from '../src/music-destination.ts';
 
@@ -78,6 +79,48 @@ test('Apple Music does not queue paused, unavailable, or incomplete metadata', (
   assert.equal(appleCurrentTrackObservation({
     available: true, isPlaying: true, sampledAt: '2026-08-23T15:00:00.000Z', title: 'Song',
   }, '2026-08-23T14:59:00.000Z'), null);
+});
+
+test('Apple Music current playback keeps catalog artwork found by recent-history enrichment', () => {
+  const observation = appleCurrentTrackObservation({
+    available: true,
+    isPlaying: true,
+    sampledAt: '2026-08-23T15:10:00.000Z',
+    estimatedStartedAt: '2026-08-23T15:09:30.000Z',
+    appleMusicId: 'apple-1',
+    title: 'Long Song',
+    artist: 'Example Artist',
+    artworkUrl: 'https://example.com/long-song.jpg',
+    appleMusicUrl: 'https://music.apple.com/song/apple-1',
+  }, '2026-08-23T15:09:00.000Z');
+
+  assert.equal(observation?.artworkUrl, 'https://example.com/long-song.jpg');
+  assert.equal(observation?.externalUrl, 'https://music.apple.com/song/apple-1');
+});
+
+test('Tessie media places Tesla built-in playback at its estimated route time', () => {
+  const observation = tessieMediaObservation({
+    available: true,
+    isPlaying: true,
+    sampledAt: '2026-08-30T15:05:48.000Z',
+    track: 'Midnight City',
+    artist: 'M83',
+    album: 'Hurry Up, We’re Dreaming',
+    source: 'AppleMusic',
+    durationMs: 243_000,
+    elapsedMs: 48_000,
+  }, '2026-08-30T15:00:00.000Z');
+
+  assert.ok(observation);
+  assert.equal(observation.playedAt, '2026-08-30T15:05:00.000Z');
+  assert.equal(observation.source, 'apple_music');
+  assert.equal(observation.durationMs, 243_000);
+});
+
+test('Tessie media rejects paused, unavailable, and incomplete playback', () => {
+  assert.equal(tessieMediaObservation({ available: true, isPlaying: false, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
+  assert.equal(tessieMediaObservation({ available: false, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
+  assert.equal(tessieMediaObservation({ available: true, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song' }, '2026-08-30T15:00:00.000Z'), null);
 });
 
 test('Shazam matches keep only bounded metadata and HTTPS links', () => {

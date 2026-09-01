@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ActivityIndicator, Alert, Animated, Easing, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
@@ -12,6 +12,7 @@ import type { MusicProvider } from './music-preferences';
 import { musicTrackDestination } from './music-destination';
 import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
+import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 
 export type MusicDashboardState = {
   status: 'loading' | 'ready' | 'error';
@@ -28,10 +29,6 @@ function number(value: number, digits = 1) {
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
-function serviceName(provider: MusicProvider) {
-  return provider === 'apple-music' ? 'APPLE MUSIC ARCHIVE' : provider === 'lastfm' ? 'SPOTIFY VIA LAST.FM' : 'RECOGNITION ARCHIVE';
-}
-
 async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
   const destination = musicTrackDestination(track, provider);
   if (!destination) return;
@@ -41,7 +38,6 @@ async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
 
 export function MusicScreen({ state, provider, journeys, details, onJourney, onRefresh }: { state: MusicDashboardState; provider: MusicProvider; journeys: JourneySummary[]; details: JourneyDetail[]; onJourney: (id: string) => void; onRefresh: () => Promise<void> }) {
   const data = state.data;
-  const latest = data?.recentSelections[0] ?? null;
   const canOpenTracks = provider === 'apple-music' || provider === 'lastfm';
   const insets = useSafeAreaInsets();
   const [manualRefreshing, setManualRefreshing] = useState(false);
@@ -66,26 +62,17 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
       refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={colors.pink} />}
     >
       <MusicAtmosphere />
-      <View style={musicHeaderStyles.heroCardHeader}>
-        <Image source={require('../assets/music-header-hero.png')} style={musicHeaderStyles.heroHeaderImage} resizeMode="cover" />
+      <SoundtracksHeroHeader />
+
+      <View style={styles.sourceGuidance}>
+        <Text style={styles.sourceGuidanceKicker}>{provider === 'apple-music' ? 'AUTOMATIC · RECOMMENDED' : provider === 'shazam' ? 'MANUAL · ONE SONG AT A TIME' : 'INTERNAL MUSIC SOURCE'}</Text>
+        <Text style={styles.sourceGuidanceText}>{provider === 'apple-music' ? 'JourneyDeck checks your authorized Apple Music history during and after each journey. Some song locations may be estimated.' : provider === 'shazam' ? 'JourneyDeck does not listen automatically. During an active journey, open the recorder and tap Identify Song for every track you want to save.' : 'This music source is available only in internal testing.'}</Text>
       </View>
 
       {state.status === 'loading' && !data ? <View style={styles.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.loadingText}>Building your soundtrack…</Text></View> : null}
       {state.status === 'error' ? <View style={styles.notice}><Text style={styles.noticeTitle}>Music archive unavailable</Text><Text style={styles.noticeBody}>{state.message}</Text><Pressable onPress={() => void onRefresh()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
 
       {data ? <>
-        <Pressable disabled={!latest || !canOpenTracks} onPress={() => latest && void openTrack(latest, provider)} style={styles.hero}>
-          <MusicHeroHaze />
-          <VinylHeroRecord artworkUrl={latest?.artworkUrl} />
-          <View style={styles.heroCopy}>
-            <Text style={styles.heroEyebrow}>THE ROAD SOUNDS BETTER WITH MUSIC</Text>
-            <Text style={styles.heroTitle}>YOUR LIFE HAS A</Text>
-            <Text style={styles.heroAccent}>SOUNDTRACK</Text>
-            <Waveform />
-            <Text style={styles.heroService}>{serviceName(provider)}</Text>
-          </View>
-        </Pressable>
-
         <View style={styles.metricGrid}>
           <Metric symbol="♜" label="Miles with music" value={number(data.metrics.milesWithMusic)} detail="all time" accent={colors.coral} />
           <Metric symbol="Ω" label="Listening hours" value={number(data.metrics.listeningHours)} detail="from archived plays" accent={colors.pink} />
@@ -155,109 +142,23 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
           <View style={styles.weekTotal}><Text style={styles.weekTotalValue}>{number(data.week.total, 0)}</Text><Text style={styles.weekTotalLabel}>plays this week</Text><Text style={[styles.weekChange, (data.week.changePercent ?? 0) < 0 && styles.changeDown]}>{data.week.changePercent === null ? 'New' : `${data.week.changePercent >= 0 ? '+' : ''}${data.week.changePercent}%`}</Text></View>
         </View>
 
-        {!canOpenTracks ? <Text style={styles.linkFootnote}>Auto Recognition is not a playback service, so JourneyDeck leaves track taps inactive.</Text> : <Text style={styles.linkFootnote}>Tap any album to open it in {provider === 'lastfm' ? 'Spotify' : 'Apple Music'}.</Text>}
+        {!canOpenTracks ? <Text style={styles.linkFootnote}>Manual Song Recognition saves only the match and timestamp, so JourneyDeck leaves track taps inactive.</Text> : <Text style={styles.linkFootnote}>Tap any album to open it in {provider === 'lastfm' ? 'Spotify' : 'Apple Music'}.</Text>}
       </> : null}
     </ScrollView>
   );
 }
 
-function VinylHeroRecord({ artworkUrl }: { artworkUrl?: string | null }) {
-  const spinAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(spinAnim, {
-        toValue: 1,
-        duration: 22000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [spinAnim]);
-
-  const spin = spinAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <View style={styles.heroRecordOuterShell}>
-      <Animated.View style={[styles.heroRecordShell, { transform: [{ rotate: spin }] }]}>
-        <Svg width={148} height={148} viewBox="0 0 148 148" style={StyleSheet.absoluteFill}>
-          <Defs>
-            <SvgLinearGradient id="vinylSheenTop" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
-              <Stop offset="45%" stopColor="#c58bff" stopOpacity="0.06" />
-              <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-            </SvgLinearGradient>
-            <SvgLinearGradient id="vinylSheenBottom" x1="1" y1="1" x2="0" y2="0">
-              <Stop offset="0%" stopColor="#ffffff" stopOpacity="0.18" />
-              <Stop offset="45%" stopColor="#ff8bb9" stopOpacity="0.06" />
-              <Stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-            </SvgLinearGradient>
-            <SvgRadialGradient id="vinylBody" cx="50%" cy="50%" rx="50%" ry="50%">
-              <Stop offset="0%" stopColor="#1e102e" />
-              <Stop offset="40%" stopColor="#0a0612" />
-              <Stop offset="75%" stopColor="#160c23" />
-              <Stop offset="100%" stopColor="#040207" />
-            </SvgRadialGradient>
-          </Defs>
-          {/* Vinyl Disc Body */}
-          <Circle cx="74" cy="74" r="73" fill="url(#vinylBody)" stroke="#4d2869" strokeWidth="1.75" />
-
-          {/* Prominent Concentric Micro-Groove Tracks */}
-          <Circle cx="74" cy="74" r="70" fill="none" stroke="#2c1740" strokeWidth="1.2" />
-          <Circle cx="74" cy="74" r="67" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.8" />
-          <Circle cx="74" cy="74" r="64" fill="none" stroke="#221133" strokeWidth="1" />
-          <Circle cx="74" cy="74" r="61" fill="none" stroke="#63348e" strokeWidth="0.85" opacity="0.9" />
-          <Circle cx="74" cy="74" r="58" fill="none" stroke="#1f0f2d" strokeWidth="1" />
-          <Circle cx="74" cy="74" r="55" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.85" />
-          <Circle cx="74" cy="74" r="52" fill="none" stroke="#2c1740" strokeWidth="1.2" />
-          <Circle cx="74" cy="74" r="49" fill="none" stroke="#6a3899" strokeWidth="0.9" opacity="0.9" />
-          <Circle cx="74" cy="74" r="46" fill="none" stroke="#221133" strokeWidth="1" />
-          <Circle cx="74" cy="74" r="43" fill="none" stroke="#522a76" strokeWidth="0.8" opacity="0.8" />
-          <Circle cx="74" cy="74" r="40" fill="none" stroke="#2c1740" strokeWidth="1.1" />
-          <Circle cx="74" cy="74" r="37" fill="none" stroke="#63348e" strokeWidth="0.9" opacity="0.85" />
-          <Circle cx="74" cy="74" r="34" fill="none" stroke="#2a153c" strokeWidth="1.2" />
-
-          {/* Quad Specular Sheen Reflection Cones */}
-          <Path d="M 74 74 L 22 22 A 71 71 0 0 1 74 3 Z" fill="url(#vinylSheenTop)" />
-          <Path d="M 74 74 L 126 126 A 71 71 0 0 1 74 145 Z" fill="url(#vinylSheenBottom)" />
-          <Path d="M 74 74 L 126 22 A 71 71 0 0 1 145 74 Z" fill="url(#vinylSheenTop)" opacity="0.5" />
-          <Path d="M 74 74 L 22 126 A 71 71 0 0 1 3 74 Z" fill="url(#vinylSheenBottom)" opacity="0.5" />
-
-          {/* Run-Out Lead-in Spiral Groove */}
-          <Circle cx="74" cy="74" r="32" fill="none" stroke="#68358c" strokeWidth="1.2" strokeDasharray="6 3.5" opacity="0.85" />
-          <Circle cx="74" cy="74" r="30" fill="none" stroke="#33184a" strokeWidth="1" />
-        </Svg>
-
-        {/* Center Record Label with Spinning Artwork */}
-        <View style={styles.vinylCenterLabel}>
-          {artworkUrl ? (
-            <Image source={{ uri: artworkUrl }} style={styles.vinylArtwork} contentFit="cover" cachePolicy="memory-disk" transition={140} />
-          ) : (
-            <View style={styles.vinylArtworkFallback}>
-              <Text style={styles.vinylNote}>♪</Text>
-            </View>
-          )}
-          <View pointerEvents="none" style={styles.spindleHole}>
-            <View style={styles.spindleCore} />
-          </View>
-        </View>
-      </Animated.View>
-    </View>
-  );
-}
-
-function Waveform() {
-  const heights = [8, 18, 12, 26, 34, 19, 11, 27, 38, 22, 15, 31, 42, 25, 13, 28, 17, 35, 21, 9];
-  return <View style={styles.waveform}>{heights.map((height, index) => <View key={index} style={[styles.waveBar, { height }]} />)}</View>;
-}
-
 function Metric({ symbol, label, value, detail, accent }: { symbol: string; label: string; value: string; detail: string; accent: string }) {
   return <QuietInset radius={19} accent={accent} style={styles.metric}><View style={[styles.metricIcon, { borderColor: `${accent}55`, backgroundColor: `${accent}12`, shadowColor: accent }]}><Text style={[styles.metricSymbol, { color: accent }]}>{symbol}</Text></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+}
+
+function SoundtracksHeroHeader() {
+  return <>
+    <Text accessibilityRole="header" style={musicHeaderStyles.pageTitle}>SOUNDTRACKS</Text>
+    <View style={musicHeaderStyles.heroCardHeader}>
+      <HeaderArtwork source={require('../assets/soundtracks-header-cinematic-v2.png')} />
+    </View>
+  </>;
 }
 
 function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
@@ -272,7 +173,10 @@ function AlbumCard({ track, enabled, onPress }: { track: SoundtrackTrack; enable
   return <Pressable disabled={!enabled} onPress={onPress} style={({ pressed }) => [styles.albumCard, pressed && enabled && styles.albumPressed]}>
     <NeonWidgetOutline radius={18} />
     {track.artworkUrl ? <Image source={{ uri: track.artworkUrl }} style={styles.albumArtwork} contentFit="cover" cachePolicy="memory-disk" transition={120} /> : <View style={styles.albumFallback}><Text style={styles.albumNote}>♪</Text></View>}
-    <Text style={styles.albumTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.albumArtist} numberOfLines={1}>{track.artist}</Text>
+    <View style={styles.albumCaption}>
+      <Text style={styles.albumTitle} numberOfLines={1}>{track.track}</Text>
+      <Text style={styles.albumArtist} numberOfLines={1}>{track.artist}</Text>
+    </View>
   </Pressable>;
 }
 
@@ -297,10 +201,6 @@ function MusicAtmosphere() {
     <Defs><SvgRadialGradient id="musicTopBloom" cx="50%" cy="4%" rx="68%" ry="31%"><Stop offset="0" stopColor="#b72d92" stopOpacity="0.28" /><Stop offset="0.48" stopColor="#7d247a" stopOpacity="0.1" /><Stop offset="1" stopColor="#7d247a" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicSideBloom" cx="100%" cy="48%" rx="75%" ry="34%"><Stop offset="0" stopColor="#6250e8" stopOpacity="0.2" /><Stop offset="0.56" stopColor="#6b36be" stopOpacity="0.06" /><Stop offset="1" stopColor="#6b36be" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicLowBloom" cx="0%" cy="86%" rx="80%" ry="30%"><Stop offset="0" stopColor="#ff3f78" stopOpacity="0.13" /><Stop offset="1" stopColor="#ff3f78" stopOpacity="0" /></SvgRadialGradient></Defs>
     <Rect width="430" height="1450" fill="url(#musicTopBloom)" /><Rect width="430" height="1450" fill="url(#musicSideBloom)" /><Rect width="430" height="1450" fill="url(#musicLowBloom)" />
   </Svg>;
-}
-
-function MusicHeroHaze() {
-  return <Svg pointerEvents="none" viewBox="0 0 400 220" preserveAspectRatio="none" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id="heroArtBloom" cx="20%" cy="46%" rx="54%" ry="74%"><Stop offset="0" stopColor="#ef3d8f" stopOpacity="0.34" /><Stop offset="0.55" stopColor="#8a1d65" stopOpacity="0.11" /><Stop offset="1" stopColor="#8a1d65" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="heroCopyBloom" cx="93%" cy="70%" rx="67%" ry="75%"><Stop offset="0" stopColor="#633ad0" stopOpacity="0.28" /><Stop offset="0.58" stopColor="#47228f" stopOpacity="0.07" /><Stop offset="1" stopColor="#47228f" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="400" height="220" fill="url(#heroArtBloom)" /><Rect width="400" height="220" fill="url(#heroCopyBloom)" /></Svg>;
 }
 
 function MoodBar({ items }: { items: MusicDashboardData['mood'] }) {
@@ -409,8 +309,8 @@ function MusicHeaderScene() {
 }
 
 const musicHeaderStyles = StyleSheet.create({
-  heroCardHeader: { width: '100%', aspectRatio: 1270 / 674, borderRadius: 24, overflow: 'hidden', backgroundColor: '#0c0716', shadowColor: '#ff4594', shadowOpacity: 0.45, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
-  heroHeaderImage: { width: '100%', height: '100%' },
+  pageTitle: { color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 4, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
+  heroCardHeader: { width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO },
   header: { minHeight: 166, borderColor: '#652d70', backgroundColor: '#0d0818', shadowColor: '#ff4594', shadowOpacity: 0.3, shadowRadius: 24 },
   eyebrow: { color: '#ff9fc4', maxWidth: 208 },
   title: { maxWidth: 208, textShadowColor: '#ff4f9a', textShadowRadius: 13 },
@@ -432,20 +332,10 @@ const styles = StyleSheet.create({
   pageBody: { color: '#aca0b1', fontSize: 13, lineHeight: 20, marginTop: 3, maxWidth: 310 },
   loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { color: colors.muted, fontSize: 12 },
   notice: { borderWidth: 1, borderColor: '#744152', backgroundColor: '#1a0b15', borderRadius: 18, padding: 15, gap: 7, shadowColor: '#ff4d82', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, noticeTitle: { color: '#ff9a83', fontWeight: '900', fontSize: 14 }, noticeBody: { color: '#ad9da8', fontSize: 12, lineHeight: 18 }, retry: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#3b1930', paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#ff4d82', shadowOpacity: 0.35, shadowRadius: 10 }, retryText: { color: '#ff8bb6', fontWeight: '900', fontSize: 10 },
-  hero: { minHeight: 216, borderRadius: 27, borderWidth: 1, borderColor: '#5c2672', backgroundColor: '#090413', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12, shadowColor: '#9b36ff', shadowOpacity: 0.28, shadowRadius: 22 },
-  heroRecordOuterShell: { width: 148, height: 148, alignItems: 'center', justifyContent: 'center' },
-  heroRecordShell: { width: 148, height: 148, alignItems: 'center', justifyContent: 'center', shadowColor: '#9b36ff', shadowOpacity: 0.5, shadowRadius: 20 },
-  vinylCenterLabel: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1.5, borderColor: '#ff7e9e', shadowColor: '#ff4e9a', shadowOpacity: 0.65, shadowRadius: 9 },
-  vinylArtwork: { width: 60, height: 60, borderRadius: 30 },
-  vinylArtworkFallback: { width: 60, height: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2f132a' },
-  vinylNote: { color: '#ff709b', fontSize: 26, fontWeight: '900' },
-  spindleHole: { position: 'absolute', width: 13, height: 13, borderRadius: 6.5, backgroundColor: '#060309', borderWidth: 1.5, borderColor: '#7c5e93', alignItems: 'center', justifyContent: 'center' },
-  spindleCore: { width: 4.5, height: 4.5, borderRadius: 2.25, backgroundColor: '#020104' },
-  heroCopy: { flex: 1, alignItems: 'flex-start', paddingLeft: 2 }, heroEyebrow: { color: '#ff7559', fontSize: 6.5, fontWeight: '900', letterSpacing: 1.0, marginBottom: 7 }, heroTitle: { color: colors.text, fontSize: 17, lineHeight: 19, fontWeight: '900' }, heroAccent: { color: '#ff4e8b', fontSize: 23, lineHeight: 26, fontStyle: 'italic', fontWeight: '900', textShadowColor: '#ff2f79', textShadowRadius: 12 }, heroService: { color: '#81748b', fontSize: 6.5, letterSpacing: 1.0, fontWeight: '900', marginTop: 7 },
-  waveform: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 5 }, waveBar: { width: 2, borderRadius: 2, backgroundColor: colors.pink, shadowColor: colors.pink, shadowOpacity: 0.85, shadowRadius: 4 },
+  sourceGuidance: { borderRadius: 17, borderWidth: 1, borderColor: '#493359', backgroundColor: '#120d19', paddingHorizontal: 15, paddingVertical: 13, gap: 5 }, sourceGuidanceKicker: { color: '#ff8f78', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, sourceGuidanceText: { color: '#a79dad', fontSize: 11, lineHeight: 17 },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, metricIcon: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 10 }, metricSymbol: { fontSize: 18, fontWeight: '800' }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 10, lineHeight: 13, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 9, lineHeight: 12, marginTop: 2 },
   panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 9, fontWeight: '800', letterSpacing: 0.65 },
-  albumStrip: { gap: 11, paddingRight: 4 }, albumCard: { width: 112, shadowColor: '#ff4d91', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }, albumPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] }, albumArtwork: { width: 112, height: 112, borderRadius: 13, borderWidth: 1, borderColor: '#75416c' }, albumFallback: { width: 112, height: 112, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#27142c', borderWidth: 1, borderColor: '#75416c' }, albumNote: { color: colors.pink, fontSize: 35, fontWeight: '900' }, albumTitle: { color: colors.text, fontSize: 11, fontWeight: '900', marginTop: 8 }, albumArtist: { color: '#8d8295', fontSize: 9, marginTop: 2 }, empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
+  albumStrip: { gap: 11, paddingRight: 4, paddingBottom: 2 }, albumCard: { width: 112, height: 158, shadowColor: '#ff4d91', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }, albumPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] }, albumArtwork: { width: 112, height: 112, borderRadius: 13, borderWidth: 1, borderColor: '#75416c' }, albumFallback: { width: 112, height: 112, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#27142c', borderWidth: 1, borderColor: '#75416c' }, albumNote: { color: colors.pink, fontSize: 35, fontWeight: '900' }, albumCaption: { height: 46, justifyContent: 'center', paddingLeft: 7, paddingRight: 2, paddingTop: 2, paddingBottom: 3 }, albumTitle: { width: '100%', color: colors.text, fontSize: 11, lineHeight: 14, fontWeight: '900', textAlign: 'left' }, albumArtist: { width: '100%', color: '#8d8295', fontSize: 9, lineHeight: 12, marginTop: 1, textAlign: 'left' }, empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },
   insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 175, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 7, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
   moodBlock: { flex: 1, justifyContent: 'space-between', paddingTop: 8 }, moodBar: { height: 17, borderRadius: 9, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 10, fontWeight: '900' }, moodLabel: { color: '#817589', fontSize: 7, marginTop: 3 }, moodFootnote: { color: '#ff765a', fontSize: 6.5, marginTop: 15 },

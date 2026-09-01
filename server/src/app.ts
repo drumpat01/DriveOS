@@ -17,7 +17,7 @@ import { loadTessieRouteCoordinates } from "./tessie-route.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/manifest.webmanifest", "/favicon.ico"]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/support", "/support.html", "/manifest.webmanifest", "/favicon.ico"]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
@@ -63,6 +63,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   app.addHook("onSend", async (_req, reply, payload) => { for (const [name, value] of Object.entries(securityHeaders)) reply.header(name, value); return payload; });
   app.addHook("onRequest", async (req, reply) => {
     const requestPath = req.url.split("?")[0];
+    if (requestPath === "/" && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
     if (requestPath === scheduledSyncPath) {
       if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
@@ -197,7 +198,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   // has no route for. The wildcard handler resolves each request against the
   // same fixed root, so atomic web asset updates become visible immediately.
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
-  app.get("/", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "landing.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
   app.addHook("onClose", async () => { await store.close(); database.close(); });
   return { app, database, store, recorder, recorderMobile, config: cfg };

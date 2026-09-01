@@ -13,40 +13,37 @@ import './src/location-task';
 import { NeonWidget, QuietInset } from './src/neon-widget-outline';
 import { HeaderArtwork } from './src/header-artwork';
 import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
-import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder, syncPendingCompletedRecordingsBestEffort } from './src/api';
+import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder } from './src/api';
 import {
   activeSession, beginLocalSession, completeSessionLocally, getSessionSummary, initializeDatabase,
-  recordLocations, refreshCompletedSessionLocalMirror, setLocalStatus, type LocalSessionStatus, type SessionSummary,
+  recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
 } from './src/storage';
 import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
 import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
 import { JourneyDeckShell } from './src/shell';
 import { appDataClient } from './src/app-data';
-import { captureAppleMusicHistoryForSession, recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
+import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
+import { authorizeShazamMicrophone } from './modules/journeydeck-music';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
-import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
+import { loadAutomaticDriveEvent, loadAutomaticDriveState, resetAutomaticDriveState } from './src/automatic-drive-state';
 import { processAutomaticDriveLocations } from './src/automatic-drive-task';
-import { syncCurrentUserWithPrivateICloud } from './src/icloud-sync';
-import { areJourneyDeckRequestsBlocked, subscribeJourneyDeckRequestPolicy } from './src/network-activity';
+import { subscribeJourneyDeckRequestPolicy } from './src/network-activity';
 import {
   loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
 } from './src/recording-mode';
 import {
   isAutomaticDetectionActive, startAutomaticDetection, stopAutomaticDetection,
 } from './src/tracking';
+import { processPendingCompletionJobs } from './src/completion-jobs';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
 
-function enrichCompletedJourney(connection: Connection, sessionId: string) {
-  void captureAppleMusicHistoryForSession(sessionId)
-    .catch(() => undefined)
-    .finally(() => {
-      refreshCompletedSessionLocalMirror(sessionId);
-      void flushAllQueuedMusicBestEffort(connection);
-      void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
-    });
+function enrichCompletedJourney(connection: Connection | null, sessionId: string) {
+  void processPendingCompletionJobs({ connection, sessionId }).then(() => {
+    if (connection) void flushAllQueuedMusicBestEffort(connection);
+  }).catch(() => {});
   void queueLastFmForCompletedSession(sessionId);
 }
 
@@ -72,7 +69,7 @@ function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
   return status === 'recording' ? (nativeTracking ? 'Recording' : 'Recovering recording') : status === 'paused' ? 'Paused' : status === 'finishing' ? 'Waiting to finish' : 'Ready';
 }
 
-function RecorderScreen() {
+function RecorderScreen({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -89,6 +86,7 @@ function RecorderScreen() {
   const refreshPending = useRef<Promise<void> | null>(null);
   const busyRef = useRef(false);
   const announcedAutomaticEvent = useRef('');
+  const parkingCheckPending = useRef<Promise<void> | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('Working…');
   const [syncStage, setSyncStage] = useState<SyncStage>('idle');
@@ -128,7 +126,6 @@ function RecorderScreen() {
         if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
         await captureCurrentPoint(true);
         void sampleAppleMusicForActiveSession({ force: true });
-        void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
         taskRunning = true;
         setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
       } catch {
@@ -147,10 +144,7 @@ function RecorderScreen() {
     }
     if (action === 'stop-and-finish' && current) {
       completeSessionLocally(current.id, Boolean(connection));
-      if (connection) {
-        enrichCompletedJourney(connection, current.id);
-        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
-      }
+      enrichCompletedJourney(connection, current.id);
       setSyncStage('saved');
       setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
     }
@@ -181,11 +175,19 @@ function RecorderScreen() {
     return tracked;
   }, [connection, runExclusive]);
 
-  const reconcileAutomaticParking = useCallback(async () => {
+  const reconcileAutomaticParking = useCallback(() => {
+    if (parkingCheckPending.current) return parkingCheckPending.current;
     const preferences = loadRecordingModePreferences();
-    if (!preferences.onboardingCompleted || preferences.mode !== 'automatic') return;
-    const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    await processAutomaticDriveLocations([location]);
+    const current = activeSession();
+    const detector = loadAutomaticDriveState();
+    if (!preferences.onboardingCompleted || preferences.mode !== 'automatic'
+      || current?.status !== 'recording' || detector.automaticSessionId !== current.id) return Promise.resolve();
+    const pending = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
+      .then(location => processAutomaticDriveLocations([location]))
+      .catch(() => undefined)
+      .finally(() => { if (parkingCheckPending.current === pending) parkingCheckPending.current = null; });
+    parkingCheckPending.current = pending;
+    return pending;
   }, []);
 
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
@@ -220,26 +222,26 @@ function RecorderScreen() {
 
   useEffect(() => {
     void refresh().catch(() => {});
+    void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
     void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
     void sampleAppleMusicForActiveSession({ force: true });
-    if (connection) {
-      if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
-    }
     void syncPendingLastFmBestEffort();
     let ticks = 0;
     const timer = setInterval(() => {
       setClock(value => value + 1);
       ticks += 1;
       if (ticks % 5 === 0 && !busyRef.current) void refresh().catch(() => {});
+      if (ticks % 15 === 0 && !busyRef.current) {
+        void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
+      }
+      if (ticks % 30 === 0) void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       if (ticks % 60 === 0) void syncPendingLastFmBestEffort();
     }, 1000);
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active' || busyRef.current) return;
       void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
       void sampleAppleMusicForActiveSession({ force: true });
-      if (connection) {
-        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
-      }
+      void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       void syncPendingLastFmBestEffort();
     });
     return () => { clearInterval(timer); subscription.remove(); };
@@ -248,7 +250,9 @@ function RecorderScreen() {
   useEffect(() => {
     if (!connection) return;
     return subscribeJourneyDeckRequestPolicy(blocked => {
-      if (!blocked) void syncPendingCompletedRecordingsBestEffort(connection);
+      if (!blocked) {
+        void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
+      }
     });
   }, [connection]);
 
@@ -306,7 +310,6 @@ function RecorderScreen() {
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
     void sampleAppleMusicForActiveSession({ force: true });
-    void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
     setNotice('Recording started and is being saved on this iPhone.');
   }, 'Starting background recording…');
 
@@ -322,9 +325,27 @@ function RecorderScreen() {
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
     void sampleAppleMusicForActiveSession({ force: true });
-    void recognizeAndQueueActiveSessionMusic(10_000).catch(() => {});
     setNotice('Recording resumed on this iPhone.');
   }, 'Resuming recording…');
+
+  const identifySong = () => withBusy(async () => {
+    const permission = await authorizeShazamMicrophone();
+    if (permission !== 'authorized') throw new Error('Allow microphone access to identify a song. JourneyDeck never records or saves the audio.');
+    const result = await recognizeAndQueueActiveSessionMusic(10_000, { allowAdHoc: true });
+    if (result.status === 'queued' && result.observation) {
+      setNotice(`Saved “${result.observation.track}” by ${result.observation.artist} at this point in your journey.`);
+      return;
+    }
+    if (result.status === 'duplicate' && result.observation) {
+      setNotice(`“${result.observation.track}” is already saved for this journey.`);
+      return;
+    }
+    if (result.status === 'no_match') {
+      setNotice('No song matched this time. Tap Identify Song again while the music is playing clearly.');
+      return;
+    }
+    setNotice('JourneyDeck is already listening. Wait a moment, then try again.');
+  }, 'Listening for this song…');
 
   const finishSession = useCallback(async (currentSummary: SessionSummary) => {
     busyRef.current = true; setBusy(true); setSyncStage('saving'); setNotice('');
@@ -336,16 +357,10 @@ function RecorderScreen() {
         setLocalStatus(currentSummary.id, 'finishing');
         setTrackingActive(false);
         completeSessionLocally(currentSummary.id, Boolean(connection));
-        if (connection) enrichCompletedJourney(connection, currentSummary.id);
-        else {
-          void captureAppleMusicHistoryForSession(currentSummary.id).finally(() => refreshCompletedSessionLocalMirror(currentSummary.id));
-          void queueLastFmForCompletedSession(currentSummary.id);
-          void syncCurrentUserWithPrivateICloud({ force: true }).catch(() => {});
-        }
+        enrichCompletedJourney(connection, currentSummary.id);
         setSummary(null);
         setSyncStage('saved');
         setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
-        if (connection && !areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
       });
     } catch (error) {
       const message = messageOf(error);
@@ -373,7 +388,6 @@ function RecorderScreen() {
     try {
       if (summary.status === 'finishing') {
         completeSessionLocally(summary.id); enrichCompletedJourney(connection, summary.id); setSummary(null); setSyncStage('saved'); setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
-        if (!areJourneyDeckRequestsBlocked()) void syncPendingCompletedRecordingsBestEffort(connection);
         return;
       }
       await flushRecording(connection, summary.id); setSyncStage('synced'); setNotice('GPS points are synced. Music details continue syncing independently.');
@@ -405,6 +419,7 @@ function RecorderScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <RecorderAtmosphere />
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to Live" onPress={onClose} style={styles.liveBackButton}><Text style={styles.liveBackText}>‹  Live</Text></Pressable>
           <View style={styles.recorderArtHeader}><HeaderArtwork source={require('./assets/recorder-header-hero-v2.jpg')} /></View>
 
           {!deviceId ? (
@@ -425,6 +440,13 @@ function RecorderScreen() {
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
+              {summary?.status === 'recording' && <NeonWidget radius={22} style={styles.manualRecognitionCard}>
+                <Text style={styles.manualRecognitionKicker}>MANUAL SONG RECOGNITION</Text>
+                <Text style={styles.manualRecognitionTitle}>Save what is playing now</Text>
+                <Text style={styles.manualRecognitionBody}>Tap once for each song you want on this journey. JourneyDeck listens for about 10 seconds, saves the match and timestamp, then turns the microphone off.</Text>
+                <View style={styles.manualRecognitionAction}><SecondaryButton label="Identify Song" onPress={identifySong} disabled={busy} /></View>
+                <Text style={styles.manualRecognitionSafety}>Only tap while safely stopped, or ask a passenger.</Text>
+              </NeonWidget>}
               {connection && ((summary?.queuedCount ?? 0) > 0 || (summary?.musicQueuedCount ?? 0) > 0) && <SecondaryButton label={summary?.status === 'finishing' ? 'Finish & sync again' : 'Back up saved data'} onPress={syncNow} disabled={busy} />}
               {!connection && summary?.status === 'finishing' && <PrimaryButton label="Finish & save" onPress={() => void finishSession(summary)} disabled={busy} />}
             </>
@@ -456,7 +478,7 @@ function RecorderAtmosphere() {
 }
 
 export default function App() {
-  return <JourneyDeckShell recorder={<RecorderScreen />} />;
+  return <JourneyDeckShell recorder={RecorderScreen} />;
 }
 
 type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };
@@ -474,12 +496,15 @@ function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
 const styles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
-  recorderArtHeader: { width: '100%', marginBottom: 18, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },
+  liveBackButton: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 4 },
+  liveBackText: { color: '#c99bff', fontSize: 15, fontWeight: '800' },
+  recorderArtHeader: { alignSelf: 'stretch', marginHorizontal: -4, marginBottom: 18, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },
   eyebrow: { color: '#8d869c', fontSize: 11, fontWeight: '800', letterSpacing: 2.2 }, title: { color: '#f8f5ff', fontSize: 28, fontWeight: '800', letterSpacing: -0.7 },
   card: { backgroundColor: '#14111d', borderWidth: 1, borderColor: '#64427f', borderRadius: 24, padding: 20, gap: 13, shadowColor: '#9b61ff', shadowOpacity: 0.14, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardTitle: { color: '#fff', fontSize: 21, fontWeight: '800' }, body: { color: '#aca5b9', fontSize: 15, lineHeight: 22, marginBottom: 5 }, label: { color: '#9b90a5', fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginTop: 5 }, input: { backgroundColor: '#0c0a11', borderWidth: 1, borderColor: '#59406c', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 14, color: '#fff', fontSize: 15, shadowColor: '#9b61ff', shadowOpacity: 0.1, shadowRadius: 9 },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, check: { color: '#43e6ae', fontSize: 21, fontWeight: '800', width: 24 }, checkText: { color: '#d4cede', fontSize: 15 },
   statusCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#674788', borderRadius: 26, paddingVertical: 30, paddingHorizontal: 20, shadowColor: '#9b61ff', shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 8 } }, statusDot: { width: 12, height: 12, borderRadius: 6, marginBottom: 12, shadowOpacity: 0.9, shadowRadius: 9 }, statusText: { fontSize: 27, fontWeight: '800', textShadowColor: '#9b61ff55', textShadowRadius: 8 }, statusHint: { color: '#8f879b', fontSize: 14, marginTop: 6, textAlign: 'center' },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 76, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 13 }, metricLabel: { color: '#9a8ea2', fontSize: 10, fontWeight: '800', letterSpacing: 0.8, textAlign: 'center' }, metricValue: { color: '#f4f0fb', fontSize: 19, fontVariant: ['tabular-nums'], fontWeight: '800', marginTop: 6, textAlign: 'center' },
+  manualRecognitionCard: { backgroundColor: '#101526', borderColor: '#315e9a', padding: 18, gap: 8 }, manualRecognitionKicker: { color: '#6db5ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.35 }, manualRecognitionTitle: { color: '#f7f9ff', fontSize: 19, fontWeight: '900' }, manualRecognitionBody: { color: '#a5adc0', fontSize: 13, lineHeight: 19 }, manualRecognitionAction: { flexDirection: 'row', marginTop: 5 }, manualRecognitionSafety: { color: '#70798d', fontSize: 10, lineHeight: 15, textAlign: 'center' },
   primaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#ff6b4d', shadowOpacity: 0.48, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, primaryButtonText: { color: '#160a06', fontSize: 16, fontWeight: '800' }, secondaryButton: { minHeight: 58, borderRadius: 17, backgroundColor: '#1c1726', borderWidth: 1, borderColor: '#654d7e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 22, flex: 1, shadowColor: '#9b61ff', shadowOpacity: 0.24, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, secondaryButtonText: { color: '#e8e1f1', fontSize: 16, fontWeight: '700' }, buttonMuted: { opacity: 0.55 }, actionRow: { flexDirection: 'row', gap: 12 },
   progressRow: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'center', minHeight: 28 }, progressText: { color: '#b9afc7', fontSize: 14 },
   syncCard: { alignItems: 'center', backgroundColor: '#121019', borderWidth: 1, borderColor: '#4f3d63', borderRadius: 16, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14, shadowColor: '#65c9ff', shadowOpacity: 0.22, shadowRadius: 13, shadowOffset: { width: 0, height: 6 } }, syncDot: { width: 10, height: 10, borderRadius: 5, shadowOpacity: 0.8, shadowRadius: 7 }, syncCopy: { flex: 1 }, syncTitle: { fontSize: 14, fontWeight: '800' }, syncDetail: { color: '#938b9f', fontSize: 12, lineHeight: 17, marginTop: 3 },

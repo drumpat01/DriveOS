@@ -5,6 +5,8 @@ import test from 'node:test';
 const projectRoot = new URL('../', import.meta.url);
 const packageJson = JSON.parse(await readFile(new URL('package.json', projectRoot), 'utf8'));
 const appJson = JSON.parse(await readFile(new URL('app.json', projectRoot), 'utf8'));
+const membershipModule = await readFile(new URL('modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift', projectRoot), 'utf8');
+const membershipConfig = JSON.parse(await readFile(new URL('modules/journeydeck-membership/expo-module.config.json', projectRoot), 'utf8'));
 
 const requiredCapabilities = [
   '@expo/ui',
@@ -53,4 +55,14 @@ test('future design capabilities do not add unrelated privacy permissions', () =
     'NSAppleMusicUsageDescription',
     'NSMicrophoneUsageDescription',
   ]);
+});
+
+test('Build 10 carries a fail-closed StoreKit membership verifier', () => {
+  assert.deepEqual(membershipConfig.apple?.modules, ['JourneyDeckMembershipModule']);
+  assert.match(membershipModule, /Transaction\.currentEntitlements/);
+  assert.match(membershipModule, /case \.verified\(let transaction\)/);
+  assert.match(membershipModule, /Transaction\.updates/);
+  assert.match(membershipModule, /try await AppStore\.sync\(\)/);
+  assert.match(membershipModule, /com\.journeydeck\.recorder\.pro\.monthly/);
+  assert.match(membershipModule, /com\.journeydeck\.recorder\.pro\.annual/);
 });

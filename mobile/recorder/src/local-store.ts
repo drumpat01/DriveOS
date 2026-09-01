@@ -10,22 +10,30 @@
  *   coexist on the same device without data leakage between accounts.
  * - Additive-only migrations via PRAGMA user_version. Columns are NEVER dropped
  *   or renamed -- new columns are added with sensible defaults.
- * - Privacy by design: raw home/work coordinates are stored ONLY here, inside
- *   the Secure Enclave-backed app sandbox. They never leave the device in plain text.
+ * - Privacy by design: raw home/work coordinates are stored only in the iOS
+ *   application sandbox. They never cross the JourneyDeck application server.
  * - Exact GPS points leave the device only as private CloudKit route assets;
  *   they never cross the JourneyDeck application server or privacy edge.
  */
 
 import * as Crypto from 'expo-crypto';
-import * as SQLite from 'expo-sqlite';
+import { distanceBetweenCoordinatesMeters, SAVED_PLACE_MATCH_RADIUS_METERS } from './place-matching';
 import {
   buildRetentionPreview, DEFAULT_RETENTION_DAYS, type LocalRetentionPreview, type RetentionJourneyCandidate,
 } from './retention-preview';
+import {
+  MASTER_DATABASE_APPLICATION_ID,
+  MASTER_DATABASE_HARDENING_SQL,
+  MASTER_DATABASE_SCHEMA_VERSION,
+  SQLITE_CONNECTION_HARDENING_SQL,
+} from './database-hardening';
+import { getMasterDatabase } from './database-owner';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
-const db = SQLite.openDatabaseSync('journeydeck-local.db');
+const db = getMasterDatabase();
 let schemaVersion = 0;
+let initialized = false;
 
 // --- Public types ------------------------------------------------------------
 
@@ -412,22 +420,38 @@ const MIGRATIONS: Array<() => void> = [
       CREATE INDEX IF NOT EXISTS ix_lj_user_route_cloud ON local_journeys(user_id,route_synced_to_cloud,route_updated_at);
     `);
   },
+  // Migration 5 -- database-enforced ownership, value invariants, and query indexes
+  () => {
+    db.execSync(MASTER_DATABASE_HARDENING_SQL);
+  },
 ];
 
 // --- Initialisation ----------------------------------------------------------
 
 export function initializeLocalStore(): void {
-  if (schemaVersion > 0) return;
-  db.execSync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+  if (initialized) return;
+  db.execSync('PRAGMA journal_mode = WAL;');
+  db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
+  const applicationId = Number(db.getFirstSync<{ application_id: number }>('PRAGMA application_id;')?.application_id ?? 0);
+  if (applicationId === 0) db.execSync(`PRAGMA application_id = ${MASTER_DATABASE_APPLICATION_ID};`);
+  else if (applicationId !== MASTER_DATABASE_APPLICATION_ID) throw new Error('JourneyDeck local archive has an unexpected SQLite application id.');
   const current = db.getFirstSync<{ user_version: number }>('PRAGMA user_version;')?.user_version ?? 0;
+  if (current > MASTER_DATABASE_SCHEMA_VERSION || current > MIGRATIONS.length) {
+    throw new Error(`JourneyDeck local archive schema ${current} is newer than this app supports.`);
+  }
   schemaVersion = current;
   for (let i = current; i < MIGRATIONS.length; i++) {
     db.withTransactionSync(() => {
       MIGRATIONS[i]!();
       db.execSync(`PRAGMA user_version = ${i + 1};`);
-      schemaVersion = i + 1;
     });
+    schemaVersion = i + 1;
   }
+  const quickCheck = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
+  if (String(Object.values(quickCheck ?? {})[0] ?? '').toLowerCase() !== 'ok') {
+    throw new Error('JourneyDeck local archive failed SQLite quick_check.');
+  }
+  initialized = true;
 }
 
 // --- Helpers -----------------------------------------------------------------
@@ -730,18 +754,32 @@ export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMu
   if (input.journeyId) {
     const ownedJourney = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', input.journeyId, input.userId);
     if (!ownedJourney) throw new Error('Cannot attach music to another local user\'s journey.');
-    const recent = db.getAllSync<{ played_at: string }>(
-      'SELECT played_at FROM local_music_entries WHERE user_id=? AND journey_id=? AND source=? AND LOWER(track)=LOWER(?) AND LOWER(artist)=LOWER(?) ORDER BY played_at DESC LIMIT 8;',
+    const recent = db.getAllSync<{ id: string; played_at: string }>(
+      'SELECT id,played_at FROM local_music_entries WHERE user_id=? AND journey_id=? AND source=? AND LOWER(track)=LOWER(?) AND LOWER(artist)=LOWER(?) ORDER BY played_at DESC LIMIT 8;',
       input.userId, input.journeyId, input.source, input.track, input.artist,
     );
     const playedTs = Date.parse(input.playedAt);
-    if (options.syncedToCloud !== 1 && recent.some(r => Math.abs(Date.parse(r.played_at) - playedTs) <= 45_000)) return;
+    const duplicate = options.syncedToCloud !== 1
+      ? recent.find(r => r.id !== input.id && Math.abs(Date.parse(r.played_at) - playedTs) <= 45_000)
+      : undefined;
+    if (duplicate) {
+      db.runSync(`UPDATE local_music_entries SET
+        album=COALESCE(?,album),duration_ms=COALESCE(?,duration_ms),
+        artwork_url=COALESCE(?,artwork_url),external_url=COALESCE(?,external_url),
+        confidence=COALESCE(?,confidence),synced_to_cloud=0
+        WHERE id=? AND user_id=?;`, input.album ?? null, input.durationMs ?? null,
+      input.artworkUrl ?? null, input.externalUrl ?? null, input.confidence ?? null,
+      duplicate.id, input.userId);
+      return;
+    }
   }
   db.runSync(
     `INSERT INTO local_music_entries(id,user_id,journey_id,source,played_at,track,artist,album,duration_ms,artwork_url,external_url,confidence,synced_to_cloud,created_at)
      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET journey_id=excluded.journey_id,source=excluded.source,
-       played_at=excluded.played_at,track=excluded.track,artist=excluded.artist,album=excluded.album,duration_ms=excluded.duration_ms,
-       artwork_url=excluded.artwork_url,external_url=excluded.external_url,confidence=excluded.confidence,synced_to_cloud=excluded.synced_to_cloud;`,
+       played_at=excluded.played_at,track=excluded.track,artist=excluded.artist,
+       album=COALESCE(excluded.album,local_music_entries.album),duration_ms=COALESCE(excluded.duration_ms,local_music_entries.duration_ms),
+       artwork_url=COALESCE(excluded.artwork_url,local_music_entries.artwork_url),external_url=COALESCE(excluded.external_url,local_music_entries.external_url),
+       confidence=COALESCE(excluded.confidence,local_music_entries.confidence),synced_to_cloud=excluded.synced_to_cloud;`,
     input.id, input.userId, input.journeyId ?? null, input.source, input.playedAt,
     input.track, input.artist, input.album ?? null, input.durationMs ?? null, input.artworkUrl ?? null,
     input.externalUrl ?? null, input.confidence ?? null, options.syncedToCloud ?? 0, options.createdAt ?? now(),
@@ -765,6 +803,37 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
   ).map(r => r as unknown as LocalMusicEntry);
 }
 
+export type MusicArtworkCatalogItem = {
+  track: string;
+  artist: string;
+  album?: string | null;
+  artworkUrl: string;
+  externalUrl?: string | null;
+};
+
+/**
+ * Backfills catalog artwork without relying on MusicKit playback timestamps.
+ * Recently-played responses can omit lastPlayedDate even though their catalog
+ * metadata is complete, so title + artist is the safe local repair identity.
+ */
+export function enrichMusicEntriesWithArtwork(userId: LocalUserId, catalog: MusicArtworkCatalogItem[], options: { replaceExisting?: boolean } = {}): number {
+  initializeLocalStore();
+  let enriched = 0;
+  db.withTransactionSync(() => {
+    for (const item of catalog) {
+      const track = item.track.trim(), artist = item.artist.trim();
+      if (!track || !artist || !item.artworkUrl.startsWith('https://')) continue;
+      const result = db.runSync(`UPDATE local_music_entries SET
+        album=COALESCE(album,?),artwork_url=?,external_url=COALESCE(external_url,?),synced_to_cloud=0
+        WHERE user_id=? AND source='apple_music' AND (artwork_url IS NULL OR ?=1)
+          AND LOWER(TRIM(track))=LOWER(?) AND LOWER(TRIM(artist))=LOWER(?);`,
+      item.album ?? null, item.artworkUrl, item.externalUrl ?? null, userId, Number(Boolean(options.replaceExisting)), track, artist);
+      enriched += result.changes;
+    }
+  });
+  return enriched;
+}
+
 export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: string): LocalMusicEntry[] {
   initializeLocalStore();
   return db.getAllSync<Record<string, unknown>>(
@@ -778,6 +847,10 @@ export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: strin
 export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>): LocalPlace {
   initializeLocalStore();
   assertRowOwnership('local_places', input.id, input.userId);
+  const label = input.label.replace(/\s+/g, ' ').trim().slice(0, 200);
+  const lat = guard(input.lat, -90, 90), lng = guard(input.lng, -180, 180);
+  const radiusMeters = guard(input.radiusMeters, 1, 50_000);
+  if (!label || lat == null || lng == null || radiusMeters == null) throw new Error('Saved place coordinates, label, or radius are invalid.');
   const t = now();
   db.runSync(`
     INSERT INTO local_places(id,user_id,kind,label,lat,lng,radius_meters,foursquare_id,osm_id,cached_until,created_at,updated_at)
@@ -785,7 +858,7 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>):
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,label=excluded.label,lat=excluded.lat,lng=excluded.lng,
       radius_meters=excluded.radius_meters,foursquare_id=excluded.foursquare_id,osm_id=excluded.osm_id,
       cached_until=excluded.cached_until,updated_at=excluded.updated_at;
-  `, input.id, input.userId, input.kind, input.label, input.lat, input.lng, input.radiusMeters,
+  `, input.id, input.userId, input.kind, label, lat, lng, radiusMeters,
     input.foursquareId ?? null, input.osmId ?? null, input.cachedUntil ?? null, t, t);
   return db.getFirstSync<LocalPlace>(
     'SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE id=? AND user_id=?;',
@@ -801,23 +874,46 @@ export function getSensitivePlaces(userId: LocalUserId): LocalPlace[] {
   );
 }
 
+function placeDistanceMeters(lat: number, lng: number, place: Pick<LocalPlace, 'lat' | 'lng'>) {
+  return distanceBetweenCoordinatesMeters({ latitude: lat, longitude: lng }, { latitude: place.lat, longitude: place.lng });
+}
+
 export function findCachedPlace(userId: LocalUserId, lat: number, lng: number, radiusMeters = 100): LocalPlace | null {
   initializeLocalStore();
   const latDelta = radiusMeters / 111_000;
-  const lngDelta = radiusMeters / (111_000 * Math.cos((lat * Math.PI) / 180));
+  const lngDelta = radiusMeters / (111_000 * Math.max(0.01, Math.abs(Math.cos((lat * Math.PI) / 180))));
   const places = db.getAllSync<LocalPlace>(
     'SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE user_id=? AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? AND (cached_until IS NULL OR cached_until > ?) ORDER BY kind ASC LIMIT 10;',
     userId, lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta, now(),
   );
   if (!places.length) return null;
-  const R = 6_371_000;
   for (const place of places) {
-    const dLat = ((place.lat - lat) * Math.PI) / 180;
-    const dLng = ((place.lng - lng) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat * Math.PI) / 180) * Math.cos((place.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-    if (2 * R * Math.asin(Math.sqrt(a)) <= radiusMeters) return place;
+    if (placeDistanceMeters(lat, lng, place) <= radiusMeters) return place;
   }
   return null;
+}
+
+/** Returns only places explicitly named by the user, never a temporary geocoder cache row. */
+export function findNamedPlace(userId: LocalUserId, lat: number, lng: number, radiusMeters = SAVED_PLACE_MATCH_RADIUS_METERS): LocalPlace | null {
+  initializeLocalStore();
+  const latDelta = radiusMeters / 111_000;
+  const lngDelta = radiusMeters / (111_000 * Math.max(0.01, Math.cos((lat * Math.PI) / 180)));
+  const places = db.getAllSync<LocalPlace>(
+    `SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,
+      cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt
+      FROM local_places WHERE user_id=? AND kind IN ('home','work','custom')
+      AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? ORDER BY updated_at DESC LIMIT 20;`,
+    userId, lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta,
+  );
+  return places
+    .map(place => ({ place, distance: placeDistanceMeters(lat, lng, place) }))
+    .filter(candidate => candidate.distance <= Math.max(radiusMeters, candidate.place.radiusMeters))
+    .sort((left, right) => left.distance - right.distance)[0]?.place ?? null;
+}
+
+export function deletePlace(userId: LocalUserId, id: string): void {
+  initializeLocalStore();
+  db.runSync('DELETE FROM local_places WHERE user_id=? AND id=?;', userId, id);
 }
 
 // --- Collections & Memories --------------------------------------------------
@@ -1162,6 +1258,71 @@ export function listQuarantinedCloudDeletions(userId: LocalUserId): QuarantinedC
 }
 
 // --- Diagnostics -------------------------------------------------------------
+
+export type LocalDatabaseIntegrityReport = {
+  database: 'journeydeck-local.db';
+  applicationId: number;
+  schemaVersion: number;
+  quickCheck: 'ok' | 'failed';
+  foreignKeyViolationCount: number;
+  ownershipViolationCount: number;
+  invalidValueCount: number;
+  ok: boolean;
+};
+
+/**
+ * Runs a read-only integrity audit suitable for Data Health and support logs.
+ * It checks SQLite's physical structure plus JourneyDeck's profile boundaries
+ * and the most important pre-migration value invariants.
+ */
+export function localDatabaseIntegrityReport(): LocalDatabaseIntegrityReport {
+  initializeLocalStore();
+  const quickRow = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
+  const quickCheck = String(Object.values(quickRow ?? {})[0] ?? '').toLowerCase() === 'ok' ? 'ok' : 'failed';
+  const foreignKeyViolationCount = db.getAllSync<Record<string, unknown>>('PRAGMA foreign_key_check;').length;
+  const ownershipViolationCount = Number(db.getFirstSync<{ n: number }>(`SELECT
+    (SELECT COUNT(*) FROM local_music_entries m JOIN local_journeys j ON j.id=m.journey_id WHERE m.user_id<>j.user_id) +
+    (SELECT COUNT(*) FROM local_photos p JOIN local_collections c ON c.id=p.collection_id WHERE p.user_id<>c.user_id) +
+    (SELECT COUNT(*) FROM local_photos p JOIN local_memories m ON m.id=p.memory_id WHERE p.user_id<>m.user_id) +
+    (SELECT COUNT(*) FROM local_journeys j JOIN local_places p ON p.id=j.start_place_id WHERE j.user_id<>p.user_id) +
+    (SELECT COUNT(*) FROM local_journeys j JOIN local_places p ON p.id=j.end_place_id WHERE j.user_id<>p.user_id) +
+    (SELECT COUNT(*) FROM local_memories m JOIN local_photos p ON p.id=m.cover_photo_id WHERE m.user_id<>p.user_id) +
+    (SELECT COUNT(*) FROM local_collections c
+      JOIN json_each(CASE WHEN json_valid(c.journey_ids) THEN c.journey_ids ELSE '[]' END) ids
+      JOIN local_journeys j ON j.id=ids.value WHERE c.user_id<>j.user_id) +
+    (SELECT COUNT(*) FROM local_memories m
+      JOIN json_each(CASE WHEN json_valid(m.collection_ids) THEN m.collection_ids ELSE '[]' END) ids
+      JOIN local_collections c ON c.id=ids.value WHERE m.user_id<>c.user_id)
+    AS n;`)?.n ?? 0);
+  const invalidValueCount = Number(db.getFirstSync<{ n: number }>(`SELECT
+    (SELECT COUNT(*) FROM local_journeys WHERE duration_minutes<0 OR miles<0 OR song_count<0
+      OR synced_to_cloud NOT IN (0,1) OR route_synced_to_cloud NOT IN (0,1)
+      OR (start_lat IS NULL)<>(start_lng IS NULL) OR (end_lat IS NULL)<>(end_lng IS NULL)
+      OR start_lat NOT BETWEEN -90 AND 90 OR start_lng NOT BETWEEN -180 AND 180
+      OR end_lat NOT BETWEEN -90 AND 90 OR end_lng NOT BETWEEN -180 AND 180) +
+    (SELECT COUNT(*) FROM local_gps_points WHERE sequence<0 OR latitude NOT BETWEEN -90 AND 90
+      OR longitude NOT BETWEEN -180 AND 180) +
+    (SELECT COUNT(*) FROM local_places WHERE trim(label)='' OR lat NOT BETWEEN -90 AND 90
+      OR lng NOT BETWEEN -180 AND 180 OR radius_meters<=0 OR radius_meters>50000) +
+    (SELECT COUNT(*) FROM local_collections WHERE json_valid(journey_ids)=0 OR json_type(journey_ids)<>'array') +
+    (SELECT COUNT(*) FROM local_memories WHERE json_valid(collection_ids)=0 OR json_type(collection_ids)<>'array') +
+    (SELECT COUNT(*) FROM local_private_preferences WHERE json_valid(value_json)=0) +
+    (SELECT COUNT(*) FROM local_preferences p WHERE p.key='active_user_id'
+      AND NOT EXISTS(SELECT 1 FROM local_users u WHERE u.id=p.value))
+    AS n;`)?.n ?? 0);
+  const ok = quickCheck === 'ok' && foreignKeyViolationCount === 0
+    && ownershipViolationCount === 0 && invalidValueCount === 0;
+  return {
+    database: 'journeydeck-local.db',
+    applicationId: Number(db.getFirstSync<{ application_id: number }>('PRAGMA application_id;')?.application_id ?? 0),
+    schemaVersion,
+    quickCheck,
+    foreignKeyViolationCount,
+    ownershipViolationCount,
+    invalidValueCount,
+    ok,
+  };
+}
 
 export function localStoreDiagnostics(userId: LocalUserId): {
   schemaVersion: number; journeyCount: number; gpsPointCount: number; musicEntryCount: number;
