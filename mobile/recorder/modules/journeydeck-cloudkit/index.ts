@@ -1,6 +1,9 @@
 import JourneyDeckCloudKitModule from './src/JourneyDeckCloudKitModule';
 
-export type { CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult, CloudTransportRecord } from './src/JourneyDeckCloudKit.types';
+export type {
+  CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult,
+  CloudKitRecordFailure, CloudTransportRecord,
+} from './src/JourneyDeckCloudKit.types';
 
 export const isJourneyDeckCloudKitAvailable = JourneyDeckCloudKitModule !== null;
 
@@ -9,11 +12,13 @@ export async function getCloudKitAccountStatus() {
 }
 
 export async function getCloudKitCapabilities() {
-  return JourneyDeckCloudKitModule?.getCapabilitiesAsync ? JourneyDeckCloudKitModule.getCapabilitiesAsync() : { privateContentVersion: 1 };
+  return JourneyDeckCloudKitModule?.getCapabilitiesAsync
+    ? JourneyDeckCloudKitModule.getCapabilitiesAsync()
+    : { privateContentVersion: 1, transportVersion: 1, retryMetadata: false };
 }
 
 export async function ensureCloudKitPrivateZone(profileScope: string) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.9 native build.');
   return JourneyDeckCloudKitModule.ensurePrivateZoneAsync(profileScope);
 }
 
@@ -23,12 +28,12 @@ export async function deleteCloudKitPrivateZone(profileScope: string) {
 }
 
 export async function pushCloudKitRecords(profileScope: string, records: Parameters<NonNullable<typeof JourneyDeckCloudKitModule>['pushRecordsAsync']>[1]) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.9 native build.');
   return JourneyDeckCloudKitModule.pushRecordsAsync(profileScope, records);
 }
 
 export async function pullCloudKitChanges(profileScope: string) {
-  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.8 native build.');
+  if (!JourneyDeckCloudKitModule) throw new Error('Private iCloud sync requires the JourneyDeck 1.9 native build.');
   return JourneyDeckCloudKitModule.pullChangesAsync(profileScope);
 }
 

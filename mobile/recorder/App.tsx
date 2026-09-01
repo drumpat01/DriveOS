@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import './src/location-task';
+import './src/legacy-automatic-drive-task';
 import { NeonWidget, QuietInset } from './src/neon-widget-outline';
 import { HeaderArtwork } from './src/header-artwork';
 import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
@@ -26,16 +27,18 @@ import { appDataClient } from './src/app-data';
 import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { authorizeShazamMicrophone } from './modules/journeydeck-music';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
-import { loadAutomaticDriveEvent, loadAutomaticDriveState, resetAutomaticDriveState } from './src/automatic-drive-state';
-import { processAutomaticDriveLocations } from './src/automatic-drive-task';
+import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
 import { subscribeJourneyDeckRequestPolicy } from './src/network-activity';
 import {
   loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
 } from './src/recording-mode';
 import {
-  isAutomaticDetectionActive, startAutomaticDetection, stopAutomaticDetection,
-} from './src/tracking';
+  configureNativeAutomaticRecorder, finishNativeAutomaticJourney, getNativeAutomaticRecorderStatus,
+  isNativeAutomaticSession, pauseNativeAutomaticJourney, resumeNativeAutomaticJourney,
+} from './modules/journeydeck-recorder';
+import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
+import { stopAutomaticDetection } from './src/tracking';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -86,7 +89,6 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
   const refreshPending = useRef<Promise<void> | null>(null);
   const busyRef = useRef(false);
   const announcedAutomaticEvent = useRef('');
-  const parkingCheckPending = useRef<Promise<void> | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyLabel, setBusyLabel] = useState('Working…');
   const [syncStage, setSyncStage] = useState<SyncStage>('idle');
@@ -106,44 +108,53 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     const foreground = await Location.getForegroundPermissionsAsync();
     const background = await Location.getBackgroundPermissionsAsync();
     const available = await TaskManager.isAvailableAsync();
-    const permissionsReadyNow = foreground.status === 'granted' && background.status === 'granted' && available;
+    const locationPermissionsReady = foreground.status === 'granted' && background.status === 'granted';
     let taskRunning = false;
     if (available) {
       try { taskRunning = await isLocationTrackingActive(); } catch { taskRunning = false; }
     }
-    let automaticTaskRunning = false;
-    if (available) {
-      try { automaticTaskRunning = await isAutomaticDetectionActive(); } catch { automaticTaskRunning = false; }
-    }
+    const nativeRecorder = await getNativeAutomaticRecorderStatus().catch(() => null);
+    const automaticTaskRunning = Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking);
     const current = activeSession();
-    const action = decideRecovery(current?.status ?? null, taskRunning, permissionsReadyNow);
+    const currentIsNative = isNativeAutomaticSession(current?.id);
+    const recordingTransportRunning = currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning;
+    const action = decideRecovery(current?.status ?? null, recordingTransportRunning, locationPermissionsReady && (currentIsNative || available));
     if (action === 'stop-orphaned-task' || action === 'stop-paused-task' || action === 'stop-and-finish') {
-      if (taskRunning) await stopLocationTracking();
+      if (!currentIsNative && taskRunning) await stopLocationTracking();
       taskRunning = false;
     }
     if (action === 'restart-recording' && current) {
       try {
-        if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
-        await captureCurrentPoint(true);
+        if (currentIsNative) {
+          const resumed = await resumeNativeAutomaticJourney();
+          if (!resumed.recording) throw new Error('iOS did not confirm native background recording.');
+        } else {
+          if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.');
+          await captureCurrentPoint(true);
+          taskRunning = true;
+        }
         void sampleAppleMusicForActiveSession({ force: true });
-        taskRunning = true;
         setNotice('Recording resumed. A brief route gap may remain; existing points are safe.');
       } catch {
-        setLocalStatus(current.id, 'paused');
+        if (currentIsNative) await pauseNativeAutomaticJourney().catch(() => undefined);
+        else setLocalStatus(current.id, 'paused');
         taskRunning = false;
         setNotice('Recording paused because background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
       }
     }
     if (action === 'pause-interrupted-recording' && current) {
-      if (taskRunning) {
+      if (currentIsNative) {
+        await pauseNativeAutomaticJourney().catch(() => undefined);
+      } else if (taskRunning) {
         try { await stopLocationTracking(); } catch {}
         taskRunning = false;
+        setLocalStatus(current.id, 'paused');
       }
-      setLocalStatus(current.id, 'paused');
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
     if (action === 'stop-and-finish' && current) {
-      completeSessionLocally(current.id, Boolean(connection));
+      if (currentIsNative) await finishNativeAutomaticJourney();
+      else completeSessionLocally(current.id, Boolean(connection));
       enrichCompletedJourney(connection, current.id);
       setSyncStage('saved');
       setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
@@ -153,7 +164,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     setForegroundPermission(foreground.status === 'granted');
     setBackgroundPermission(background.status === 'granted');
     setTaskAvailable(available);
-    setTrackingActive(taskRunning);
+    setTrackingActive(currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning);
     setAutomaticDetectionActive(automaticTaskRunning);
     const automaticEvent = loadAutomaticDriveEvent();
     if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
@@ -175,37 +186,23 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     return tracked;
   }, [connection, runExclusive]);
 
-  const reconcileAutomaticParking = useCallback(() => {
-    if (parkingCheckPending.current) return parkingCheckPending.current;
-    const preferences = loadRecordingModePreferences();
-    const current = activeSession();
-    const detector = loadAutomaticDriveState();
-    if (!preferences.onboardingCompleted || preferences.mode !== 'automatic'
-      || current?.status !== 'recording' || detector.automaticSessionId !== current.id) return Promise.resolve();
-    const pending = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-      .then(location => processAutomaticDriveLocations([location]))
-      .catch(() => undefined)
-      .finally(() => { if (parkingCheckPending.current === pending) parkingCheckPending.current = null; });
-    parkingCheckPending.current = pending;
-    return pending;
-  }, []);
-
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
 
   useEffect(() => {
     let cancelled = false;
-    const shouldRun = Boolean(deviceId && foregroundPermission && backgroundPermission && taskAvailable
+    const shouldRun = Boolean(deviceId && foregroundPermission && backgroundPermission
       && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic');
     const updateTask = async () => {
-      if (shouldRun) await startAutomaticDetection();
-      else {
-        await stopAutomaticDetection();
-        if (recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
-      }
+      if (!deviceId) return;
+      // Remove the persisted Build 10 JavaScript detector before enabling the
+      // Build 11 native engine. This is idempotent on fresh installations.
+      await stopAutomaticDetection().catch(() => undefined);
+      const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
+      if (!shouldRun && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
+      return status;
     };
     void updateTask()
-      .then(() => isAutomaticDetectionActive())
-      .then(active => { if (!cancelled) setAutomaticDetectionActive(active); })
+      .then(status => { if (!cancelled) setAutomaticDetectionActive(Boolean(status?.significantMonitoring || status?.preciseTracking)); })
       .catch(() => { if (!cancelled) setAutomaticDetectionActive(false); });
     return () => { cancelled = true; };
   }, [backgroundPermission, deviceId, foregroundPermission, recordingPreferences, taskAvailable]);
@@ -223,7 +220,6 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     void refresh().catch(() => {});
     void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
-    void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
     void sampleAppleMusicForActiveSession({ force: true });
     void syncPendingLastFmBestEffort();
     let ticks = 0;
@@ -231,21 +227,18 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       setClock(value => value + 1);
       ticks += 1;
       if (ticks % 5 === 0 && !busyRef.current) void refresh().catch(() => {});
-      if (ticks % 15 === 0 && !busyRef.current) {
-        void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
-      }
       if (ticks % 30 === 0) void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       if (ticks % 60 === 0) void syncPendingLastFmBestEffort();
     }, 1000);
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active' || busyRef.current) return;
-      void reconcileAutomaticParking().finally(() => { void refresh().catch(() => {}); });
+      void refresh().catch(() => {});
       void sampleAppleMusicForActiveSession({ force: true });
       void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       void syncPendingLastFmBestEffort();
     });
     return () => { clearInterval(timer); subscription.remove(); };
-  }, [connection, reconcileAutomaticParking, refresh]);
+  }, [connection, refresh]);
 
   useEffect(() => {
     if (!connection) return;
@@ -315,15 +308,25 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
 
   const pause = () => withBusy(async () => {
     if (!summary) return;
-    await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
+    if (isNativeAutomaticSession(summary.id)) {
+      const status = await pauseNativeAutomaticJourney();
+      if (!status.paused) throw new Error('The native journey could not be paused safely.');
+    } else {
+      await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
+    }
     setNotice('Recording paused. Every captured point remains on this phone.');
   }, 'Pausing recording…');
 
   const resume = () => withBusy(async () => {
     if (!summary) return;
-    setLocalStatus(summary.id, 'recording');
-    try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
-    catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
+    if (isNativeAutomaticSession(summary.id)) {
+      const status = await resumeNativeAutomaticJourney();
+      if (!status.recording) throw new Error('iOS did not confirm native background recording.');
+    } else {
+      setLocalStatus(summary.id, 'recording');
+      try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
+      catch (error) { setLocalStatus(summary.id, 'paused'); throw error; }
+    }
     void sampleAppleMusicForActiveSession({ force: true });
     setNotice('Recording resumed on this iPhone.');
   }, 'Resuming recording…');
@@ -351,12 +354,17 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     busyRef.current = true; setBusy(true); setSyncStage('saving'); setNotice('');
     try {
       await runExclusive(async () => {
-        await captureCurrentPoint();
-        await stopLocationTracking();
+        if (isNativeAutomaticSession(currentSummary.id)) {
+          const status = await finishNativeAutomaticJourney();
+          if (status.sessionId === currentSummary.id && status.recording) throw new Error('The native journey is still recording.');
+        } else {
+          await captureCurrentPoint();
+          await stopLocationTracking();
+          setLocalStatus(currentSummary.id, 'finishing');
+          completeSessionLocally(currentSummary.id, Boolean(connection));
+        }
         resetAutomaticDriveState();
-        setLocalStatus(currentSummary.id, 'finishing');
         setTrackingActive(false);
-        completeSessionLocally(currentSummary.id, Boolean(connection));
         enrichCompletedJourney(connection, currentSummary.id);
         setSummary(null);
         setSyncStage('saved');

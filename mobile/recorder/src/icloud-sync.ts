@@ -23,6 +23,7 @@ export type PrivateICloudSyncResult = {
   downloaded: number;
   uploaded: number;
   failedUploads: number;
+  retryAfterSeconds: number | null;
   deletedRecordNames: string[];
   privateContentVersion: number;
   state: SyncState;
@@ -58,7 +59,7 @@ export async function syncCurrentUserWithPrivateICloud(options: { force?: boolea
   if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return recent.result;
   const promise = performSync(user)
     .then(result => {
-      recentSyncs.set(profileKey, { completedAt: Date.now(), result });
+      if (result.failedUploads === 0) recentSyncs.set(profileKey, { completedAt: Date.now(), result });
       return result;
     })
     .finally(() => {
@@ -82,14 +83,14 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
   });
   if (!isJourneyDeckCloudKitAvailable) {
     activity.finish({ outcome: 'skipped' });
-    return result(false, 'could_not_determine', 0, 0, 0, [], engine, capabilities.privateContentVersion);
+    return result(false, 'could_not_determine', 0, 0, 0, null, [], engine, capabilities.privateContentVersion);
   }
 
   try {
     const accountStatus = await getCloudKitAccountStatus();
     if (accountStatus !== 'available') {
       activity.finish({ outcome: 'skipped' });
-      return result(true, accountStatus, 0, 0, 0, [], engine, capabilities.privateContentVersion);
+      return result(true, accountStatus, 0, 0, 0, null, [], engine, capabilities.privateContentVersion);
     }
 
     engine.setSyncInProgress();
@@ -101,6 +102,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     if (capabilities.privateContentVersion >= 2) await commitCloudKitChangeToken(profileScope);
     let uploaded = 0;
     let failedUploads = 0;
+    let retryAfterSeconds: number | null = null;
     for (let batch = 0; batch < 5; batch++) {
       const pending = await engine.preparePushPayload(50);
       if (!pending.length) break;
@@ -109,11 +111,16 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       engine.acknowledgeSuccessfulPush(pushed.savedRecordNames);
       uploaded += pushed.savedRecordNames.length;
       failedUploads += pushed.failedRecordNames.length;
+      for (const failure of pushed.failedRecords ?? []) {
+        if (failure.retryAfterSeconds != null) retryAfterSeconds = Math.max(retryAfterSeconds ?? 0, failure.retryAfterSeconds);
+      }
       if (pushed.failedRecordNames.length || !pushed.savedRecordNames.length) break;
     }
     if (downloaded) rebuildAtlasSnapshot(user.id);
+    if (failedUploads) engine.setSyncError(new Error('private_cloud_partial'));
+    else engine.setSyncCompleted();
     activity.finish({ outcome: failedUploads ? 'failed' : 'succeeded' });
-    return result(true, accountStatus, downloaded, uploaded, failedUploads, pulled.deletedRecordNames, engine, capabilities.privateContentVersion);
+    return result(true, accountStatus, downloaded, uploaded, failedUploads, retryAfterSeconds, pulled.deletedRecordNames, engine, capabilities.privateContentVersion);
   } catch (error) {
     activity.finish({ outcome: 'failed' });
     engine.setSyncError(error);
@@ -127,9 +134,10 @@ function result(
   downloaded: number,
   uploaded: number,
   failedUploads: number,
+  retryAfterSeconds: number | null,
   deletedRecordNames: string[],
   engine: CloudKitSyncEngine,
   privateContentVersion: number,
 ): PrivateICloudSyncResult {
-  return { available, accountStatus, downloaded, uploaded, failedUploads, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
+  return { available, accountStatus, downloaded, uploaded, failedUploads, retryAfterSeconds, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
 }

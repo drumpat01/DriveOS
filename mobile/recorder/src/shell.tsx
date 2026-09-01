@@ -304,7 +304,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const [accountActionPending, setAccountActionPending] = useState(false);
   const [privateCloud, setPrivateCloud] = useState<PrivateCloudUiState>(() => isPrivateICloudNativeAvailable()
     ? { status: 'idle', detail: 'Ready to sync privately through iCloud.' }
-    : { status: 'unavailable', detail: 'Available after installing JourneyDeck 1.8.' });
+    : { status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
   const [dashboard, setDashboard] = useState<LoadState<AppDashboard>>({ status: 'loading', data: blankDashboard() });
   const [journeys, setJourneys] = useState<LoadState<JourneySummary[]>>({ status: 'loading', data: [] });
   const [journeyCursor, setJourneyCursor] = useState<string | null>(null);
@@ -471,7 +471,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       return;
     }
     if (!isPrivateICloudNativeAvailable()) {
-      setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.8.' });
+      setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
       return;
     }
     setPrivateCloud({ status: 'syncing', detail: 'Checking this profile’s private iCloud zone…' });

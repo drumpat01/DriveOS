@@ -7,7 +7,7 @@
  */
 
 export const MASTER_DATABASE_APPLICATION_ID = 0x4a444c31; // "JDL1"
-export const MASTER_DATABASE_SCHEMA_VERSION = 5;
+export const MASTER_DATABASE_SCHEMA_VERSION = 6;
 export const RECORDER_DATABASE_APPLICATION_ID = 0x4a445231; // "JDR1"
 export const RECORDER_DATABASE_SCHEMA_VERSION = 2;
 
@@ -18,6 +18,260 @@ export const SQLITE_CONNECTION_HARDENING_SQL = `
   PRAGMA secure_delete = FAST;
   PRAGMA journal_size_limit = 8388608;
   PRAGMA wal_autocheckpoint = 1000;
+`;
+
+/**
+ * Phase 2 moves every active runtime table into journeydeck-local.db. The
+ * recording_* names remain operational queues, not a second journey archive.
+ * The old journeydeck-recorder.db file is imported once and then retained as
+ * an inert rollback source.
+ */
+export const UNIFIED_DATABASE_SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS local_artworks (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+    remote_url TEXT,
+    cache_key TEXT,
+    cache_status TEXT NOT NULL DEFAULT 'pending' CHECK(cache_status IN ('pending','cached','failed')),
+    content_type TEXT,
+    byte_length INTEGER,
+    width INTEGER,
+    height INTEGER,
+    cached_at TEXT,
+    last_accessed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, remote_url)
+  );
+  CREATE INDEX IF NOT EXISTS ix_local_artworks_user_cache
+    ON local_artworks(user_id, cache_status, updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS local_albums (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    artist TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    normalized_artist TEXT NOT NULL,
+    artwork_id TEXT REFERENCES local_artworks(id) ON DELETE SET NULL,
+    external_url TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, normalized_title, normalized_artist)
+  );
+  CREATE INDEX IF NOT EXISTS ix_local_albums_user_artist
+    ON local_albums(user_id, normalized_artist, normalized_title);
+
+  CREATE TABLE IF NOT EXISTS local_songs (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    artist TEXT NOT NULL,
+    normalized_title TEXT NOT NULL,
+    normalized_artist TEXT NOT NULL,
+    album_id TEXT REFERENCES local_albums(id) ON DELETE SET NULL,
+    artwork_id TEXT REFERENCES local_artworks(id) ON DELETE SET NULL,
+    duration_ms INTEGER,
+    external_url TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, normalized_title, normalized_artist)
+  );
+  CREATE INDEX IF NOT EXISTS ix_local_songs_user_artist
+    ON local_songs(user_id, normalized_artist, normalized_title);
+
+  ALTER TABLE local_music_entries ADD COLUMN song_id TEXT REFERENCES local_songs(id) ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS ix_local_music_song ON local_music_entries(user_id, song_id, played_at DESC);
+
+  CREATE TABLE IF NOT EXISTS local_place_aliases (
+    alias_id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+    canonical_place_id TEXT NOT NULL REFERENCES local_places(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, alias_id)
+  );
+  CREATE INDEX IF NOT EXISTS ix_local_place_alias_canonical
+    ON local_place_aliases(user_id, canonical_place_id);
+  INSERT OR IGNORE INTO local_place_aliases(alias_id,user_id,canonical_place_id,created_at)
+    SELECT id,user_id,id,created_at FROM local_places;
+
+  CREATE TABLE IF NOT EXISTS local_migration_state (
+    key TEXT PRIMARY KEY NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('completed','failed')),
+    source_application_id INTEGER,
+    source_schema_version INTEGER,
+    source_counts_json TEXT NOT NULL DEFAULT '{}',
+    migrated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS recording_sessions (
+    id TEXT PRIMARY KEY NOT NULL,
+    owner_user_id TEXT NOT NULL REFERENCES local_users(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('recording','paused','finishing','completed')),
+    started_at TEXT NOT NULL,
+    ended_at TEXT,
+    next_sequence INTEGER NOT NULL DEFAULT 0,
+    remote_created INTEGER NOT NULL DEFAULT 0,
+    remote_completed INTEGER NOT NULL DEFAULT 0,
+    drive_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_recording_sessions_owner
+    ON recording_sessions(owner_user_id,status,created_at);
+
+  CREATE TABLE IF NOT EXISTS recording_points (
+    session_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    sequence INTEGER NOT NULL,
+    recorded_at TEXT NOT NULL,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    accuracy_meters REAL,
+    altitude_meters REAL,
+    heading_degrees REAL,
+    speed_mps REAL,
+    uploaded INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY(session_id, sequence)
+  );
+  CREATE INDEX IF NOT EXISTS ix_recording_points_queue
+    ON recording_points(session_id, uploaded, sequence);
+
+  CREATE TABLE IF NOT EXISTS recording_music_observations (
+    session_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    observation_id TEXT NOT NULL,
+    source TEXT NOT NULL CHECK(source IN ('apple_music','shazam','lastfm')),
+    played_at TEXT NOT NULL,
+    track TEXT NOT NULL,
+    artist TEXT NOT NULL,
+    album TEXT,
+    duration_ms INTEGER,
+    artwork_url TEXT,
+    external_url TEXT,
+    confidence REAL,
+    uploaded INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY(session_id, observation_id)
+  );
+  CREATE INDEX IF NOT EXISTS ix_recording_music_queue
+    ON recording_music_observations(session_id, uploaded, played_at);
+
+  CREATE TABLE IF NOT EXISTS recording_lastfm_sync (
+    session_id TEXT PRIMARY KEY NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
+    username TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','synced')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NOT NULL,
+    last_attempt_at TEXT,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ix_recording_lastfm_pending
+    ON recording_lastfm_sync(status, next_attempt_at);
+
+  CREATE TABLE IF NOT EXISTS recording_app_cache (
+    key TEXT PRIMARY KEY NOT NULL,
+    value_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+`;
+
+export const UNIFIED_DATABASE_HARDENING_SQL = `
+  CREATE TRIGGER IF NOT EXISTS guard_local_artworks_insert
+  BEFORE INSERT ON local_artworks
+  WHEN trim(NEW.id)='' OR trim(NEW.user_id)='' OR NEW.cache_status NOT IN ('pending','cached','failed')
+    OR (NEW.remote_url IS NOT NULL AND lower(substr(NEW.remote_url,1,8))<>'https://')
+    OR (NEW.byte_length IS NOT NULL AND NEW.byte_length<0)
+    OR (NEW.width IS NOT NULL AND NEW.width<1) OR (NEW.height IS NOT NULL AND NEW.height<1)
+    OR julianday(NEW.created_at) IS NULL OR julianday(NEW.updated_at) IS NULL
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical artwork'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_artworks_update
+  BEFORE UPDATE ON local_artworks
+  WHEN NEW.id<>OLD.id OR NEW.user_id<>OLD.user_id OR NEW.cache_status NOT IN ('pending','cached','failed')
+    OR (NEW.remote_url IS NOT NULL AND lower(substr(NEW.remote_url,1,8))<>'https://')
+    OR (NEW.byte_length IS NOT NULL AND NEW.byte_length<0)
+    OR (NEW.width IS NOT NULL AND NEW.width<1) OR (NEW.height IS NOT NULL AND NEW.height<1)
+    OR julianday(NEW.updated_at) IS NULL
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical artwork update'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_albums_insert
+  BEFORE INSERT ON local_albums
+  WHEN trim(NEW.id)='' OR trim(NEW.title)='' OR trim(NEW.artist)=''
+    OR trim(NEW.normalized_title)='' OR trim(NEW.normalized_artist)=''
+    OR (NEW.artwork_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_artworks a WHERE a.id=NEW.artwork_id AND a.user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical album'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_albums_update
+  BEFORE UPDATE ON local_albums
+  WHEN NEW.id<>OLD.id OR NEW.user_id<>OLD.user_id OR trim(NEW.title)='' OR trim(NEW.artist)=''
+    OR trim(NEW.normalized_title)='' OR trim(NEW.normalized_artist)=''
+    OR (NEW.artwork_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_artworks a WHERE a.id=NEW.artwork_id AND a.user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical album update'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_songs_insert
+  BEFORE INSERT ON local_songs
+  WHEN trim(NEW.id)='' OR trim(NEW.title)='' OR trim(NEW.artist)=''
+    OR trim(NEW.normalized_title)='' OR trim(NEW.normalized_artist)=''
+    OR (NEW.duration_ms IS NOT NULL AND NEW.duration_ms<0)
+    OR (NEW.album_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_albums a WHERE a.id=NEW.album_id AND a.user_id=NEW.user_id))
+    OR (NEW.artwork_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_artworks a WHERE a.id=NEW.artwork_id AND a.user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical song'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_songs_update
+  BEFORE UPDATE ON local_songs
+  WHEN NEW.id<>OLD.id OR NEW.user_id<>OLD.user_id OR trim(NEW.title)='' OR trim(NEW.artist)=''
+    OR trim(NEW.normalized_title)='' OR trim(NEW.normalized_artist)=''
+    OR (NEW.duration_ms IS NOT NULL AND NEW.duration_ms<0)
+    OR (NEW.album_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_albums a WHERE a.id=NEW.album_id AND a.user_id=NEW.user_id))
+    OR (NEW.artwork_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_artworks a WHERE a.id=NEW.artwork_id AND a.user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical song update'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_music_song_insert
+  BEFORE INSERT ON local_music_entries
+  WHEN NEW.song_id IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM local_songs s WHERE s.id=NEW.song_id AND s.user_id=NEW.user_id)
+  BEGIN SELECT RAISE(ABORT, 'music entry song belongs to another profile'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_music_song_update
+  BEFORE UPDATE OF song_id,user_id ON local_music_entries
+  WHEN NEW.song_id IS NOT NULL AND NOT EXISTS(
+    SELECT 1 FROM local_songs s WHERE s.id=NEW.song_id AND s.user_id=NEW.user_id)
+  BEGIN SELECT RAISE(ABORT, 'music entry song belongs to another profile'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_place_alias_insert
+  BEFORE INSERT ON local_place_aliases
+  WHEN trim(NEW.alias_id)='' OR NOT EXISTS(
+    SELECT 1 FROM local_places p WHERE p.id=NEW.canonical_place_id AND p.user_id=NEW.user_id)
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical place alias'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_local_place_alias_update
+  BEFORE UPDATE ON local_place_aliases
+  WHEN NEW.alias_id<>OLD.alias_id OR NEW.user_id<>OLD.user_id OR NOT EXISTS(
+    SELECT 1 FROM local_places p WHERE p.id=NEW.canonical_place_id AND p.user_id=NEW.user_id)
+  BEGIN SELECT RAISE(ABORT, 'invalid canonical place alias update'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_canonical_journey_place_insert
+  BEFORE INSERT ON local_journeys
+  WHEN (NEW.start_place_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_places WHERE id=NEW.start_place_id AND user_id=NEW.user_id))
+    OR (NEW.end_place_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_places WHERE id=NEW.end_place_id AND user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'journey references an unknown canonical place'); END;
+
+  CREATE TRIGGER IF NOT EXISTS guard_canonical_journey_place_update
+  BEFORE UPDATE OF start_place_id,end_place_id,user_id ON local_journeys
+  WHEN (NEW.start_place_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_places WHERE id=NEW.start_place_id AND user_id=NEW.user_id))
+    OR (NEW.end_place_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM local_places WHERE id=NEW.end_place_id AND user_id=NEW.user_id))
+  BEGIN SELECT RAISE(ABORT, 'journey references an unknown canonical place'); END;
 `;
 
 export const MASTER_DATABASE_HARDENING_SQL = `

@@ -3,7 +3,7 @@ import { File } from 'expo-file-system';
 
 import { finalizeActiveProfileDeletion, getCurrentUser, signOutToFreshLocalProfile } from './auth';
 import { resetAutomaticDriveState } from './automatic-drive-state';
-import { deleteCurrentProfileConnection } from './credentials';
+import { deleteCurrentProfileConnection, loadOrCreateDeviceId } from './credentials';
 import { deletePrivateCloudDataForUser } from './icloud-sync';
 import { listPhotosIncludingDeleted, type LocalUser } from './local-store';
 import { deleteCurrentProfileMusicSecrets } from './music-preferences';
@@ -12,12 +12,14 @@ import { activeSession, deleteCurrentProfileRecorderData } from './storage';
 import { deleteCurrentProfileTessieSecrets } from './tessie-direct';
 import { stopAutomaticDetection, stopLocationTracking } from './tracking';
 import { deletePrivateRouteStagingAssets } from './cloudkit-sync';
+import { configureNativeAutomaticRecorder } from '../modules/journeydeck-recorder';
 
 async function stopProfileBackgroundWork(): Promise<void> {
   // Keep Core Location task transitions serialized. Concurrent stop calls can
   // race inside expo-location on a real device during a profile handoff.
   await stopLocationTracking();
   await stopAutomaticDetection();
+  await configureNativeAutomaticRecorder(false, getCurrentUser().id, await loadOrCreateDeviceId());
   resetAutomaticDriveState();
 }
 

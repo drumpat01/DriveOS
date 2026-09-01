@@ -74,7 +74,9 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
         continue;
       }
       upsertPlace({
-        id: `geocoded-${key}`,
+        // local_places ids are database-wide, so the profile must be part of a
+        // deterministic geocoder cache id even when two drivers share a stop.
+        id: `geocoded-${userId}-${key}`,
         userId,
         kind: 'geocoded',
         label,

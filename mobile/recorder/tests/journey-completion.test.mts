@@ -14,6 +14,7 @@ const automaticDrive = await readFile(new URL('src/automatic-drive-task.ts', sou
 const completionJobs = await readFile(new URL('src/completion-jobs.ts', sourceRoot), 'utf8');
 const storage = await readFile(new URL('src/storage.ts', sourceRoot), 'utf8');
 const databaseOwner = await readFile(new URL('src/database-owner.ts', sourceRoot), 'utf8');
+const unifiedMigration = await readFile(new URL('src/unified-data-migration.ts', sourceRoot), 'utf8');
 const localStore = await readFile(new URL('src/local-store.ts', sourceRoot), 'utf8');
 const localAtlas = await readFile(new URL('src/local-atlas.ts', sourceRoot), 'utf8');
 const nativeMusic = await readFile(new URL('modules/journeydeck-music/ios/JourneyDeckMusicModule.swift', sourceRoot), 'utf8');
@@ -37,6 +38,7 @@ test('every journey completion path repairs and disk-caches compact Apple Music 
   assert.match(completion, /cacheJourneyArtworkOnDisk\(sessionId\)/);
   assert.match(musicCapture, /listMusicEntriesForJourney\(getCurrentUser\(\)\.id, journeyId\)/);
   assert.match(musicCapture, /Image\.prefetch\(urls, 'disk'\)/);
+  assert.match(musicCapture, /markArtworkUrlsCached\(getCurrentUser\(\)\.id, urls\)/);
   assert.match(nativeMusic, /artwork\?\.url\(width: 256, height: 256\)/);
   assert.match(app, /function enrichCompletedJourney\(connection: Connection \| null/);
   assert.match(app, /completeSessionLocally\(current\.id,[\s\S]*?enrichCompletedJourney\(connection, current\.id\)/);
@@ -45,7 +47,7 @@ test('every journey completion path repairs and disk-caches compact Apple Music 
   assert.match(completionJobs, /captureAppleMusicHistoryForSession\(job\.sessionId\)/);
 });
 
-test('completion is transactional, retryable, and uses one SQLite handle owner per file', () => {
+test('completion is retryable and recorder/archive use one unified live SQLite handle', () => {
   const completion = storage.slice(storage.indexOf('export function completeSessionLocally'), storage.indexOf('export function refreshCompletedSessionLocalMirror'));
   assert.match(completion, /db\.withTransactionSync/);
   assert.match(completion, /enqueueCompletionJobInTransaction\(sessionId, session\.owner_user_id, 'archive_mirror'/);
@@ -53,7 +55,11 @@ test('completion is transactional, retryable, and uses one SQLite handle owner p
   assert.match(storage, /lease_expired/);
   assert.match(completionJobs, /markCompletionJobForRetry/);
   assert.match(databaseOwner, /getMasterDatabase/);
-  assert.match(databaseOwner, /getRecorderDatabase/);
+  assert.match(databaseOwner, /function getRecorderDatabase[\s\S]*?return getMasterDatabase\(\)/);
+  assert.match(unifiedMigration, /ATTACH DATABASE \? AS legacy_recorder/);
+  assert.match(unifiedMigration, /legacy\.closeSync\(\)/);
+  assert.doesNotMatch(unifiedMigration, /DELETE FROM legacy_recorder|DROP TABLE legacy_recorder/);
+  assert.match(unifiedMigration, /local_migration_state/);
   assert.doesNotMatch(localStore, /openDatabaseSync/);
   assert.doesNotMatch(localAtlas, /openDatabaseSync/);
   assert.doesNotMatch(storage, /openDatabaseSync/);

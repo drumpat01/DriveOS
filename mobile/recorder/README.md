@@ -1,6 +1,6 @@
 # JourneyDeck Recorder
 
-JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. It captures GPS points in an on-device SQLite queue, continues while the phone is locked, and commits every journey to the on-device archive before optional provider enrichment, private iCloud sync, or legacy backup. Completion work is stored in a leased retry queue so closing the app can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
+JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. Build 11 moves automatic drive detection and route capture into a native Swift engine that continues independently of the React Native UI. It writes GPS points into the unified on-device SQLite queue and commits every journey locally before optional provider enrichment, private iCloud sync, or legacy backup. Completion work is stored in a leased retry queue so closing the UI can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
 
 ## Public-release scope
 
@@ -13,7 +13,7 @@ JourneyDeck Recorder is the private, local-first iPhone app for recording journe
 - no public Spotify, Last.fm, or direct Spotify import until the separate commercial permissions and review scope are complete;
 - no Android build.
 
-Force-quitting the app stops iOS background location. Locking the phone or opening another app does not.
+Locking the phone or opening another app does not stop native automatic recording. iOS does not relaunch location work after the user deliberately force-quits the app until JourneyDeck is opened again.
 
 `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=1` is reserved for development and preview builds. It exposes the owner-only Spotify and Last.fm experiments. Production explicitly sets it to `0`; do not change that setting for an App Store build.
 
@@ -56,7 +56,7 @@ npx expo start --dev-client --tunnel
 
 Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
 
-For Build 10, also complete the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production.
+For Build 11, retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Install Build 11 over an existing Build 10 TestFlight installation before clean-install testing so the version-6 unified migration and preserved recorder import are exercised on real user data.
 
 Then create a production build and submit it through the App Store workflow:
 

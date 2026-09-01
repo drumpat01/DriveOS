@@ -9,6 +9,8 @@ import {
   RECORDER_DATABASE_APPLICATION_ID,
   RECORDER_DATABASE_HARDENING_SQL,
   RECORDER_DATABASE_SCHEMA_VERSION,
+  UNIFIED_DATABASE_HARDENING_SQL,
+  UNIFIED_DATABASE_SCHEMA_SQL,
 } from '../src/database-hardening.ts';
 
 function masterDatabase() {
@@ -27,7 +29,10 @@ function masterDatabase() {
     CREATE TABLE local_cloud_deletion_quarantine(user_id TEXT REFERENCES local_users(id),record_name TEXT,observed_at TEXT,PRIMARY KEY(user_id,record_name));
     CREATE TABLE local_atlas_snapshots(user_id TEXT PRIMARY KEY REFERENCES local_users(id),generated_at TEXT,all_time_journey_count INTEGER,all_time_miles REAL,all_time_minutes REAL,last7_journey_count INTEGER,last7_miles REAL,last7_minutes REAL,last7_song_count INTEGER,listening_hours REAL,songs_on_road INTEGER,current_streak_days INTEGER,top_artists_json TEXT,mood_json TEXT,weekly_tour_miles REAL,weekly_tour_change_percent REAL);
   `);
+  db.exec(UNIFIED_DATABASE_SCHEMA_SQL);
   db.exec(MASTER_DATABASE_HARDENING_SQL);
+  db.exec(RECORDER_DATABASE_HARDENING_SQL);
+  db.exec(UNIFIED_DATABASE_HARDENING_SQL);
   return db;
 }
 
@@ -40,8 +45,8 @@ function insertJourney(db: DatabaseSync, id: string, userId: string, placeId: st
     VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, userId, '2026-08-31T12:00:00.000Z', '2026-08-31T12:10:00.000Z', 10, 4.2, 32.8, -97.2, 32.9, -97.1, placeId, 0, 0, '2026-08-31T12:10:00.000Z', '2026-08-31T12:10:00.000Z', 0, 1);
 }
 
-test('database identities and migration versions remain distinct and explicit', () => {
-  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 5);
+test('the unified database advances while the legacy recorder identity remains explicit for import', () => {
+  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 6);
   assert.equal(RECORDER_DATABASE_SCHEMA_VERSION, 2);
   assert.notEqual(MASTER_DATABASE_APPLICATION_ID, RECORDER_DATABASE_APPLICATION_ID);
 });
@@ -53,7 +58,7 @@ test('master database hardening enforces values and profile ownership', () => {
   assert.throws(() => db.prepare('INSERT INTO local_preferences VALUES(?,?,?)').run('active_user_id', 'missing-user', '2026-08-31T12:00:00.000Z'), /invalid local preference/);
   db.prepare('INSERT INTO local_preferences VALUES(?,?,?)').run('active_user_id', 'user-a', '2026-08-31T12:00:00.000Z');
   db.prepare(`INSERT INTO local_places VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run('place-b', 'user-b', 'custom', 'Other profile', 32.8, -97.2, 150, null, null, null, '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z');
-  assert.throws(() => insertJourney(db, 'journey-cross-place', 'user-a', 'place-b'), /another profile/);
+  assert.throws(() => insertJourney(db, 'journey-cross-place', 'user-a', 'place-b'), /another profile|unknown canonical place/);
 
   insertJourney(db, 'journey-a', 'user-a');
   insertJourney(db, 'journey-b', 'user-b');
@@ -63,6 +68,43 @@ test('master database hardening enforces values and profile ownership', () => {
 
   db.prepare(`INSERT INTO local_collections(id,user_id,name,journey_ids,synced_to_cloud,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)`).run('collection-b', 'user-b', 'Trips', '[]', 0, 1, '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z');
   assert.throws(() => db.prepare(`INSERT INTO local_photos(id,user_id,source,collection_id,file_name,content_type,byte_length,local_uri,synced_to_cloud,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run('photo-cross', 'user-a', 'collection', 'collection-b', 'photo.jpg', 'image/jpeg', 100, '/private/photo.jpg', 0, 1, '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z'), /ownership/);
+  assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
+});
+
+test('canonical places, songs, albums, and artwork enforce a single profile-owned graph', () => {
+  const db = masterDatabase();
+  insertUser(db, 'user-a');
+  insertUser(db, 'user-b');
+  db.prepare(`INSERT INTO local_places VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    'place-a', 'user-a', 'custom', 'Home', 32.8, -97.2, 250, null, null, null,
+    '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z',
+  );
+  db.prepare(`INSERT INTO local_place_aliases VALUES(?,?,?,?)`).run(
+    'old-place-a', 'user-a', 'place-a', '2026-08-31T12:00:00.000Z',
+  );
+  insertJourney(db, 'journey-a', 'user-a', 'place-a');
+  insertJourney(db, 'journey-a-2', 'user-a', 'place-a');
+  assert.equal(db.prepare(`SELECT label FROM local_places p JOIN local_journeys j ON j.start_place_id=p.id WHERE j.id='journey-a'`).get()?.label, 'Home');
+  db.prepare(`UPDATE local_places SET label='The House',updated_at=? WHERE id='place-a'`).run('2026-08-31T12:01:00.000Z');
+  assert.deepEqual(db.prepare(`SELECT label FROM local_places p JOIN local_journeys j ON j.start_place_id=p.id
+    WHERE j.id IN ('journey-a','journey-a-2') ORDER BY j.id`).all().map(row => row.label), ['The House', 'The House']);
+
+  db.prepare(`INSERT INTO local_artworks(id,user_id,remote_url,cache_key,cache_status,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?)`).run('art-a', 'user-a', 'https://example.com/cover.jpg', 'cover', 'cached', '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z');
+  db.prepare(`INSERT INTO local_albums(id,user_id,title,artist,normalized_title,normalized_artist,artwork_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?)`).run('album-a', 'user-a', 'Album', 'Artist', 'album', 'artist', 'art-a', '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z');
+  db.prepare(`INSERT INTO local_songs(id,user_id,title,artist,normalized_title,normalized_artist,album_id,artwork_id,created_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run('song-a', 'user-a', 'Song', 'Artist', 'song', 'artist', 'album-a', 'art-a', '2026-08-31T12:00:00.000Z', '2026-08-31T12:00:00.000Z');
+  db.prepare(`INSERT INTO local_music_entries(id,user_id,journey_id,source,played_at,track,artist,song_id,synced_to_cloud,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run('play-a', 'user-a', 'journey-a', 'apple_music', '2026-08-31T12:02:00.000Z', 'Song', 'Artist', 'song-a', 0, '2026-08-31T12:02:00.000Z');
+  db.prepare(`INSERT INTO local_music_entries(id,user_id,journey_id,source,played_at,track,artist,song_id,synced_to_cloud,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run('play-a-2', 'user-a', 'journey-a-2', 'apple_music', '2026-08-31T13:02:00.000Z', 'Song', 'Artist', 'song-a', 0, '2026-08-31T13:02:00.000Z');
+  const sharedSong = db.prepare(`SELECT COUNT(*) AS plays,COUNT(DISTINCT song_id) AS songs
+    FROM local_music_entries WHERE user_id='user-a'`).get();
+  assert.equal(sharedSong?.plays, 2);
+  assert.equal(sharedSong?.songs, 1);
+  assert.throws(() => db.prepare(`INSERT INTO local_music_entries(id,user_id,source,played_at,track,artist,song_id,synced_to_cloud,created_at)
+    VALUES(?,?,?,?,?,?,?,?,?)`).run('play-cross', 'user-b', 'apple_music', '2026-08-31T12:02:00.000Z', 'Song', 'Artist', 'song-a', 0, '2026-08-31T12:02:00.000Z'), /another profile/);
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
 });
 

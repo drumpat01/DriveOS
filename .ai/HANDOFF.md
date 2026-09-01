@@ -1,5 +1,34 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Phase 3 native reliability and Build 11 release candidate — September 1, 2026
+
+- Implemented the repository portion of the user-approved Phase 3 on `codex/native-runtime-prep`. App/runtime version is now `1.9.0` (`N1.9-RC1`) so the native boundary will ship as Build 11 rather than an incompatible OTA to Build 10.
+- Added the auto-linked `JourneyDeckRecorder` Swift module and app-delegate subscriber. Automatic mode now uses significant-change monitoring while idle, high-accuracy Core Location only while confirming/recording, native start/park decisions, and direct transactional writes into the verified schema-6 `journeydeck-local.db`. It completes a drive and enqueues the four durable completion jobs without React Native being alive. Native session ids are fenced from manual/Build-10 sessions.
+- Build 10's persisted Expo automatic task is explicitly stopped on upgrade and its task definition remains registered as a no-op only so old installations can unregister it safely. Manual recording continues through the Expo task. Profile handoff now shuts down manual, legacy automatic, and native automatic location before changing identity.
+- Hardened private CloudKit transport with bounded transient retries, server retry-delay support, per-record partial-failure metadata, correct server-winner handling, atomic downloaded-asset replacement, staged change tokens, and expired-token full recovery. Partial failures remain queued and do not enter the successful-sync cooldown.
+- Added a Build 10 upgrade fixture that starts with a schema-5 archive plus split legacy recorder database and proves preservation of the profile, journey, Collection, Memory, active session, GPS points, database integrity, and untouched legacy source after the production Phase-2/Build-11 migration.
+- Verification passed: TypeScript, all **159/159** mobile tests, Phase-3 native-release checks **3/3**, Expo Doctor **21/21**, iOS Expo export (**1,779 modules, 24 assets**), native autolinking discovery, and `git diff --check` (existing LF-to-CRLF notices only).
+- Pending release steps: obtain a successful EAS iOS production compile (the Expo GraphQL endpoint temporarily returned `Service Unavailable` during the first account/version checks), confirm it is remote build number **11**, submit it to TestFlight, then install it over Build 10 and execute the physical upgrade/background/CloudKit acceptance matrix. No App Store Connect portal change is expected unless EAS/Apple reports a signing or compliance gate.
+
+## Phase 2 unified data system — September 1, 2026
+
+- Implemented the user-approved Phase 2 in the working tree on `codex/native-runtime-prep`. `journeydeck-local.db` advances to additive schema version 6 and is now the only normal runtime database/Expo SQLite handle for active recording, completion jobs, completed journeys, places, music, artwork, memories, and statistics.
+- Added canonical `local_places` aliases plus endpoint relinking. User-named places beat geocoder cache rows, an explicit rename updates the one shared row used by every nearby journey, and legacy per-journey preferences can no longer overwrite canonical names merely by opening a list. Geocoder cache ids are now profile-scoped.
+- Added shared `local_songs`, `local_albums`, and `local_artworks` records. Playback facts link through `song_id`; all music queries resolve canonical metadata/artwork with legacy columns as preservation fallbacks. Successful compact Apple Music disk prefetches mark the shared artwork row cached.
+- Added a one-time legacy import from the former `journeydeck-recorder.db`. The source application id/schema/required tables/`quick_check` are validated, every source category copies in one transaction, source/destination counts must match before the marker commits, running leases recover as retry jobs, and the source file is never updated, renamed, or deleted. Fresh installs never create it.
+- Data Health now presents one unified database while still auditing recorder tables and durable completion jobs. Expanded integrity checks cover canonical graph ownership, missing song links, artwork URLs/cache state, and normalized music values. Replaced the database architecture guide with the version-6 unified map and preservation procedure.
+- Added an executable Node SQLite preservation test that uses the runtime import SQL, verifies all copied legacy categories, and reopens the source read-only to prove its contents/status remain unchanged. Canonical tests prove two journeys resolve a renamed shared place and two playbacks reference one song.
+- Final verification passed: `npm run typecheck`; all **156/156** mobile tests; production iOS Expo export (**1,776 modules, 24 assets**); and `git diff --check` with only the repository's existing LF-to-CRLF notices. The verification export remains at `C:\Users\patri\AppData\Local\Temp\journeydeck-phase2-1580bed1-4249-43db-ad16-cbea80333535` because the sandbox rejected automated recursive cleanup.
+- Phase 2 is now published through the production OTA documented below. No commit, git push, TestFlight upload, App Store Connect mutation, or user-data reset was performed. Next: verify the migration plus a real drive/place rename/artwork recall on the phone, then review/commit/push when requested.
+
+## Production OTA: Phase 2 unified data system — September 1, 2026
+
+- Published the completed Phase 2 working tree to the iOS `production` branch for runtime `1.8.0`; message: `Unify JourneyDeck local data`.
+- Current production update group: `5868d8f0-833b-45e9-a531-b2872939d815`; iOS update: `01a05d9a-aaf3-7b2f-832a-6e11231f20a0`.
+- A separate `eas update:list` check confirmed this group as the production head, immediately ahead of `Harden journey completion recovery`.
+- The update should download when Build 10 opens and apply after a full close/reopen. Its first database initialization performs the validated, transactional legacy-recorder import while retaining the old source database unchanged.
+- No native build, TestFlight upload, App Store Connect mutation, commit, git push, or data reset was performed.
+
 ## Git milestone synchronization — September 1, 2026
 
 - Consolidated the complete approved Build 10 milestone into commit `eab40a3` (`feat: complete JourneyDeck Build 10 milestone`): 171 files covering the production mobile UI/onboarding assets, StoreKit membership, 45-day history gating, Apple Music artwork recovery, place propagation, SQLite hardening and completion jobs, website/legal pages, tests, and design-source documentation.

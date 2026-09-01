@@ -10,10 +10,10 @@ const cloud = await readFile(new URL('../src/icloud-sync.ts', import.meta.url), 
 const nativeCloud = await readFile(new URL('../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKitModule.swift', import.meta.url), 'utf8');
 const app = JSON.parse(await readFile(new URL('../app.json', import.meta.url), 'utf8'));
 
-test('profile handoff stops manual and automatic background location before identity changes', () => {
+test('profile handoff stops manual, legacy automatic, and native automatic location before identity changes', () => {
   const stopIndex = lifecycle.indexOf('await stopProfileBackgroundWork()');
   assert.ok(stopIndex >= 0);
-  assert.match(lifecycle, /await stopLocationTracking\(\);[\s\S]*await stopAutomaticDetection\(\);[\s\S]*resetAutomaticDriveState\(\)/);
+  assert.match(lifecycle, /await stopLocationTracking\(\);[\s\S]*await stopAutomaticDetection\(\);[\s\S]*await configureNativeAutomaticRecorder\(false,[\s\S]*resetAutomaticDriveState\(\)/);
   assert.match(lifecycle, /activeSession\(\)/);
   assert.match(shell, /await prepareForProfileSwitch\(\)[\s\S]*switchActiveUser\(userId\)/);
   assert.match(auth, /await beforeProfileCommit\?\.\(\);[\s\S]*handleAppleSignInResult\(credential\)/);
@@ -33,8 +33,8 @@ test('sign-out preserves the old profile while account deletion removes cloud fi
   assert.match(shell, /Final confirmation[\s\S]*Delete forever/);
 });
 
-test('runtime 1.8 declares required permission and background-location configuration', () => {
-  assert.equal(app.expo.version, '1.8.0');
+test('runtime 1.9 declares required permission and background-location configuration', () => {
+  assert.equal(app.expo.version, '1.9.0');
   assert.deepEqual(app.expo.runtimeVersion, { policy: 'appVersion' });
   const location = app.expo.plugins.find((plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-location');
   assert.equal(location[1].isIosBackgroundLocationEnabled, true);

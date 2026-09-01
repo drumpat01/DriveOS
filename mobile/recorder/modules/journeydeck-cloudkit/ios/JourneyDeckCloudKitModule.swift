@@ -1,5 +1,6 @@
 import CloudKit
 import ExpoModulesCore
+import Foundation
 
 private let containerIdentifier = "iCloud.com.journeydeck.recorder"
 private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
@@ -48,9 +49,9 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(2, "Private iCloud is unavailable: \(accountStatusName(status)).")
     }
     let id = try zoneID(profileScope: profileScope)
-    let zones = try await database.recordZones(for: [id])
+    let zones = try await retrying { try await self.database.recordZones(for: [id]) }
     if case .success? = zones[id] { return id }
-    let result = try await database.modifyRecordZones(saving: [CKRecordZone(zoneID: id)], deleting: [])
+    let result = try await retrying { try await self.database.modifyRecordZones(saving: [CKRecordZone(zoneID: id)], deleting: []) }
     guard case .success? = result.saveResults[id] else {
       if case .failure(let error)? = result.saveResults[id] { throw error }
       throw JourneyDeckCloudKitError.make(3, "CloudKit did not create the private record zone.")
@@ -64,7 +65,7 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(2, "Private iCloud is unavailable: \(accountStatusName(status)).")
     }
     let id = try zoneID(profileScope: profileScope)
-    let result = try await database.modifyRecordZones(saving: [], deleting: [id])
+    let result = try await retrying { try await self.database.modifyRecordZones(saving: [], deleting: [id]) }
     if case .failure(let error)? = result.deleteResults[id], !isUnknownItem(error) { throw error }
     clearToken(zoneID: id)
     removePersistedAssets(zoneID: id)
@@ -73,13 +74,14 @@ private final class PrivateCloudKitTransport {
   func push(profileScope: String, inputs: [[String: Any]]) async throws -> [String: Any] {
     let zoneID = try await ensureZone(profileScope: profileScope)
     let parsed = try inputs.map { try parseInput($0, zoneID: zoneID) }
-    if parsed.isEmpty { return ["savedRecordNames": [], "remoteRecords": [], "failedRecordNames": []] }
+    if parsed.isEmpty { return ["savedRecordNames": [], "remoteRecords": [], "failedRecordNames": [], "failedRecords": []] }
 
     let ids = parsed.map { $0.recordID }
-    let fetched = try await database.records(for: ids, desiredKeys: nil)
+    let fetched = try await retrying { try await self.database.records(for: ids, desiredKeys: nil) }
     var recordsToSave: [CKRecord] = []
     var remoteWinners: [[String: Any]] = []
     var failedNames: [String] = []
+    var failedRecords: [[String: Any]] = []
 
     for item in parsed {
       let existing: CKRecord?
@@ -87,6 +89,7 @@ private final class PrivateCloudKitTransport {
         existing = record
       } else if case .failure(let error)? = fetched[item.recordID], !isUnknownItem(error) {
         failedNames.append(item.recordID.recordName)
+        failedRecords.append(failureDictionary(recordName: item.recordID.recordName, error: error))
         continue
       } else {
         existing = nil
@@ -123,10 +126,15 @@ private final class PrivateCloudKitTransport {
     }
 
     if recordsToSave.isEmpty {
-      return ["savedRecordNames": [], "remoteRecords": deduplicate(remoteWinners), "failedRecordNames": Array(Set(failedNames)).sorted()]
+      return [
+        "savedRecordNames": [], "remoteRecords": deduplicate(remoteWinners),
+        "failedRecordNames": Array(Set(failedNames)).sorted(), "failedRecords": deduplicateFailures(failedRecords)
+      ]
     }
 
-    let result = try await database.modifyRecords(saving: recordsToSave, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+    let result = try await retrying {
+      try await self.database.modifyRecords(saving: recordsToSave, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+    }
     var savedNames: [String] = []
     for record in recordsToSave {
       if case .success? = result.saveResults[record.recordID] {
@@ -134,14 +142,17 @@ private final class PrivateCloudKitTransport {
       } else if case .failure(let error)? = result.saveResults[record.recordID] {
         if let serverRecord = serverRecordChangedWinner(error) {
           remoteWinners.append(try dictionary(from: serverRecord))
+          continue
         }
         failedNames.append(record.recordID.recordName)
+        failedRecords.append(failureDictionary(recordName: record.recordID.recordName, error: error))
       }
     }
     return [
       "savedRecordNames": savedNames,
       "remoteRecords": deduplicate(remoteWinners),
-      "failedRecordNames": Array(Set(failedNames)).sorted()
+      "failedRecordNames": Array(Set(failedNames)).sorted(),
+      "failedRecords": deduplicateFailures(failedRecords)
     ]
   }
 
@@ -172,7 +183,9 @@ private final class PrivateCloudKitTransport {
     var deletedNames: [String] = []
     var moreComing = true
     while moreComing {
-      let result = try await database.recordZoneChanges(inZoneWith: zoneID, since: token, desiredKeys: nil, resultsLimit: 200)
+      let result = try await retrying {
+        try await self.database.recordZoneChanges(inZoneWith: zoneID, since: token, desiredKeys: nil, resultsLimit: 200)
+      }
       for (_, modificationResult) in result.modificationResultsByID {
         if case .success(let modification) = modificationResult {
           records.append(try dictionary(from: modification.record))
@@ -183,7 +196,7 @@ private final class PrivateCloudKitTransport {
       moreComing = result.moreComing
     }
     if let token { savePendingToken(token, zoneID: zoneID) }
-    return ["records": records, "deletedRecordNames": deletedNames]
+    return ["records": records, "deletedRecordNames": deletedNames, "changeTokenStaged": token != nil]
   }
 
   private struct ParsedInput {
@@ -251,8 +264,14 @@ private final class PrivateCloudKitTransport {
     let sourceExtension = source.pathExtension.lowercased()
     let fileExtension = recordType == "RouteArchive" ? "json" : (photoExtensions.contains(sourceExtension) ? sourceExtension : "jpg")
     let destination = profileBase.appendingPathComponent(safeName).appendingPathExtension(fileExtension)
-    if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
-    try FileManager.default.copyItem(at: source, to: destination)
+    let temporary = profileBase.appendingPathComponent(".\(safeName)-\(UUID().uuidString)").appendingPathExtension(fileExtension)
+    defer { try? FileManager.default.removeItem(at: temporary) }
+    try FileManager.default.copyItem(at: source, to: temporary)
+    if FileManager.default.fileExists(atPath: destination.path) {
+      _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
+    } else {
+      try FileManager.default.moveItem(at: temporary, to: destination)
+    }
     return destination.absoluteString
   }
 
@@ -301,6 +320,69 @@ private final class PrivateCloudKitTransport {
   private func serverRecordChangedWinner(_ error: Error) -> CKRecord? {
     guard let cloudError = error as? CKError, cloudError.code == .serverRecordChanged else { return nil }
     return cloudError.userInfo[CKRecordChangedErrorServerRecordKey] as? CKRecord
+  }
+
+  private func retrying<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+    var attempt = 0
+    while true {
+      do { return try await operation() }
+      catch {
+        guard attempt < 2, isRetryable(error) else { throw error }
+        let serverDelay = retryAfterSeconds(error) ?? 0
+        let exponential = min(8, pow(2, Double(attempt)))
+        let delay = max(serverDelay, exponential)
+        attempt += 1
+        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+      }
+    }
+  }
+
+  private func isRetryable(_ error: Error) -> Bool {
+    guard let code = (error as? CKError)?.code else { return false }
+    return [.networkFailure, .networkUnavailable, .requestRateLimited, .serviceUnavailable,
+            .zoneBusy, .accountTemporarilyUnavailable, .notAuthenticated].contains(code)
+  }
+
+  private func retryAfterSeconds(_ error: Error) -> Double? {
+    guard let cloudError = error as? CKError else { return nil }
+    return (cloudError.userInfo[CKErrorRetryAfterKey] as? NSNumber)?.doubleValue
+  }
+
+  private func failureCode(_ error: Error) -> String {
+    guard let code = (error as? CKError)?.code else { return "cloudkit_unknown" }
+    switch code {
+    case .networkFailure: return "network_failure"
+    case .networkUnavailable: return "network_unavailable"
+    case .requestRateLimited: return "rate_limited"
+    case .serviceUnavailable: return "service_unavailable"
+    case .zoneBusy: return "zone_busy"
+    case .accountTemporarilyUnavailable: return "account_temporarily_unavailable"
+    case .notAuthenticated: return "not_authenticated"
+    case .serverRecordChanged: return "server_record_changed"
+    case .quotaExceeded: return "quota_exceeded"
+    case .permissionFailure: return "permission_failure"
+    case .limitExceeded: return "limit_exceeded"
+    case .assetFileNotFound: return "asset_missing"
+    case .assetFileModified: return "asset_modified"
+    default: return "cloudkit_\(code.rawValue)"
+    }
+  }
+
+  private func failureDictionary(recordName: String, error: Error) -> [String: Any] {
+    [
+      "recordName": recordName,
+      "code": failureCode(error),
+      "retryable": isRetryable(error),
+      "retryAfterSeconds": retryAfterSeconds(error) ?? NSNull()
+    ]
+  }
+
+  private func deduplicateFailures(_ failures: [[String: Any]]) -> [[String: Any]] {
+    var names = Set<String>()
+    return failures.filter { failure in
+      guard let name = failure["recordName"] as? String else { return false }
+      return names.insert(name).inserted
+    }
   }
 
   private func deduplicate(_ records: [[String: Any]]) -> [[String: Any]] {
@@ -357,8 +439,8 @@ public final class JourneyDeckCloudKitModule: Module {
       try await self.transport.accountStatus()
     }
 
-    AsyncFunction("getCapabilitiesAsync") { () -> [String: Int] in
-      ["privateContentVersion": 3]
+    AsyncFunction("getCapabilitiesAsync") { () -> [String: Any] in
+      ["privateContentVersion": 3, "transportVersion": 4, "retryMetadata": true]
     }
 
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in

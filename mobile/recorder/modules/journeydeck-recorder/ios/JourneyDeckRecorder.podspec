@@ -1,0 +1,18 @@
+Pod::Spec.new do |s|
+  s.name           = 'JourneyDeckRecorder'
+  s.version        = '1.0.0'
+  s.summary        = 'JourneyDeck native automatic journey recorder'
+  s.description    = 'An iOS-only Core Location engine that detects, records, and durably completes automatic journeys independently of React Native.'
+  s.author         = 'JourneyDeck'
+  s.homepage       = 'https://github.com/drumpat01/DriveOS'
+  s.platforms      = { :ios => '16.4' }
+  s.source         = { git: '' }
+  s.static_framework = true
+  s.swift_version  = '5.9'
+
+  s.dependency 'ExpoModulesCore'
+  s.frameworks = 'CoreLocation', 'UIKit'
+  s.libraries = 'sqlite3'
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+end

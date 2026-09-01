@@ -2,16 +2,19 @@ import * as Crypto from 'expo-crypto';
 import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
 import { getCurrentUser } from './auth';
-import { insertGpsPoints, listMusicEntriesForJourney, refreshJourneySongCount, upsertJourney, upsertMusicEntry } from './local-store';
+import {
+  initializeLocalStore,
+  insertGpsPoints,
+  listMusicEntriesForJourney,
+  refreshJourneySongCount,
+  upsertJourney,
+  upsertMusicEntry,
+} from './local-store';
 import { rebuildAtlasSnapshot } from './local-atlas';
 import { notifyLocalArchiveChanged } from './local-archive-events';
-import {
-  RECORDER_DATABASE_APPLICATION_ID,
-  RECORDER_DATABASE_HARDENING_SQL,
-  RECORDER_DATABASE_SCHEMA_VERSION,
-  SQLITE_CONNECTION_HARDENING_SQL,
-} from './database-hardening';
+import { SQLITE_CONNECTION_HARDENING_SQL } from './database-hardening';
 import { getRecorderDatabase } from './database-owner';
+import { migrateLegacyRecorderIntoUnifiedDatabase } from './unified-data-migration';
 
 const db = getRecorderDatabase();
 let initialized = false;
@@ -45,71 +48,15 @@ const completionJobId = (sessionId: string, kind: CompletionJobKind) => `${sessi
 
 export function initializeDatabase() {
   if (initialized) return;
-  db.execSync(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS recording_sessions (
-      id TEXT PRIMARY KEY NOT NULL, owner_user_id TEXT, device_id TEXT NOT NULL,
-      status TEXT NOT NULL CHECK(status IN ('recording','paused','finishing','completed')),
-      started_at TEXT NOT NULL, ended_at TEXT, next_sequence INTEGER NOT NULL DEFAULT 0,
-      remote_created INTEGER NOT NULL DEFAULT 0, remote_completed INTEGER NOT NULL DEFAULT 0,
-      drive_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS recording_points (
-      session_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE, sequence INTEGER NOT NULL,
-      recorded_at TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, accuracy_meters REAL,
-      altitude_meters REAL, heading_degrees REAL, speed_mps REAL, uploaded INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY(session_id, sequence)
-    );
-    CREATE INDEX IF NOT EXISTS ix_recording_points_queue ON recording_points(session_id, uploaded, sequence);
-    CREATE TABLE IF NOT EXISTS recording_music_observations (
-      session_id TEXT NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
-      observation_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('apple_music','shazam','lastfm')),
-      played_at TEXT NOT NULL, track TEXT NOT NULL, artist TEXT NOT NULL, album TEXT,
-      duration_ms INTEGER, artwork_url TEXT, external_url TEXT, confidence REAL,
-      uploaded INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL,
-      PRIMARY KEY(session_id, observation_id)
-    );
-    CREATE INDEX IF NOT EXISTS ix_recording_music_queue
-      ON recording_music_observations(session_id, uploaded, played_at);
-    CREATE TABLE IF NOT EXISTS recording_lastfm_sync (
-      session_id TEXT PRIMARY KEY NOT NULL REFERENCES recording_sessions(id) ON DELETE CASCADE,
-      username TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','synced')),
-      attempt_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0,
-      next_attempt_at TEXT NOT NULL, last_attempt_at TEXT, updated_at TEXT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS ix_recording_lastfm_pending
-      ON recording_lastfm_sync(status, next_attempt_at);
-    CREATE TABLE IF NOT EXISTS recording_app_cache (
-      key TEXT PRIMARY KEY NOT NULL, value_json TEXT NOT NULL, updated_at TEXT NOT NULL
-    );
-  `);
+  // The local archive owns schema migration and the only live SQLite handle.
+  // Existing journeydeck-recorder.db rows are copied into this database once;
+  // the source file remains untouched so a failed/interrupted upgrade retries.
+  initializeLocalStore();
   db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
-  const applicationId = Number(db.getFirstSync<{ application_id: number }>('PRAGMA application_id;')?.application_id ?? 0);
-  if (applicationId === 0) db.execSync(`PRAGMA application_id = ${RECORDER_DATABASE_APPLICATION_ID};`);
-  else if (applicationId !== RECORDER_DATABASE_APPLICATION_ID) throw new Error('JourneyDeck recorder queue has an unexpected SQLite application id.');
-  const current = Number(db.getFirstSync<{ user_version: number }>('PRAGMA user_version;')?.user_version ?? 0);
-  if (current > RECORDER_DATABASE_SCHEMA_VERSION) {
-    throw new Error(`JourneyDeck recorder queue schema ${current} is newer than this app supports.`);
-  }
-  const sessionColumns = db.getAllSync<{ name: string }>('PRAGMA table_info(recording_sessions);');
-  if (!sessionColumns.some(column => column.name === 'remote_completed')) {
-    db.execSync('ALTER TABLE recording_sessions ADD COLUMN remote_completed INTEGER NOT NULL DEFAULT 0;');
-  }
-  if (!sessionColumns.some(column => column.name === 'owner_user_id')) {
-    db.execSync('ALTER TABLE recording_sessions ADD COLUMN owner_user_id TEXT;');
-  }
-  db.runSync('UPDATE recording_sessions SET owner_user_id=? WHERE owner_user_id IS NULL;', getCurrentUser().id);
-  db.execSync('CREATE INDEX IF NOT EXISTS ix_recording_sessions_owner ON recording_sessions(owner_user_id,status,created_at);');
+  migrateLegacyRecorderIntoUnifiedDatabase();
   db.runSync('UPDATE recording_sessions SET remote_completed=1 WHERE drive_id IS NOT NULL AND remote_completed=0;');
-  if (current < RECORDER_DATABASE_SCHEMA_VERSION) {
-    db.withTransactionSync(() => {
-      db.execSync(RECORDER_DATABASE_HARDENING_SQL);
-      db.execSync(`PRAGMA user_version = ${RECORDER_DATABASE_SCHEMA_VERSION};`);
-    });
-  }
-  // Schema v2 makes the cross-database archive handoff durable. Any completed
-  // legacy row receives an idempotent mirror job so an interrupted older build
-  // is repaired on the next runner pass.
+  // Any completed legacy row receives idempotent jobs so an interrupted older
+  // build is repaired by the normal completion runner.
   db.execSync(`
     INSERT OR IGNORE INTO recording_jobs(
       id,owner_user_id,session_id,kind,status,attempt_count,next_attempt_at,
@@ -536,11 +483,11 @@ export function markCompletionJobSucceeded(jobId: string): void {
   now, now, now, jobId, getCurrentUser().id);
 }
 
-export function markCompletionJobForRetry(jobId: string, errorCode: string, attemptCount: number): void {
+export function markCompletionJobForRetry(jobId: string, errorCode: string, attemptCount: number, minimumDelayMs = 0): void {
   initializeDatabase();
   const nowDate = new Date();
   const exponent = Math.max(0, Math.min(10, Math.trunc(attemptCount) - 1));
-  const delayMs = Math.min(6 * 60 * 60_000, 15_000 * (2 ** exponent));
+  const delayMs = Math.min(24 * 60 * 60_000, Math.max(15_000 * (2 ** exponent), Math.max(0, minimumDelayMs)));
   const code = /^[a-z0-9_]{1,64}$/.test(errorCode) ? errorCode : 'completion_job_failed';
   db.runSync(`UPDATE recording_jobs SET status='retry',lease_expires_at=NULL,last_error_code=?,
     completed_at=NULL,next_attempt_at=?,updated_at=? WHERE id=? AND owner_user_id=?;`,
@@ -559,7 +506,7 @@ export function totalQueuedPointCount() {
 }
 
 export type RecorderDatabaseIntegrityReport = {
-  database: 'journeydeck-recorder.db';
+  database: 'journeydeck-local.db';
   applicationId: number;
   schemaVersion: number;
   quickCheck: 'ok' | 'failed';
@@ -571,7 +518,7 @@ export type RecorderDatabaseIntegrityReport = {
   ok: boolean;
 };
 
-/** Read-only structural and logical audit for the recorder queue database. */
+/** Read-only audit of the recorder queue tables inside the unified database. */
 export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityReport {
   initializeDatabase();
   const quickRow = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
@@ -602,7 +549,7 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
   const ok = quickCheck === 'ok' && foreignKeyViolationCount === 0
     && duplicateActiveOwnerCount === 0 && invalidValueCount === 0;
   return {
-    database: 'journeydeck-recorder.db',
+    database: 'journeydeck-local.db',
     applicationId: Number(db.getFirstSync<{ application_id: number }>('PRAGMA application_id;')?.application_id ?? 0),
     schemaVersion: Number(db.getFirstSync<{ user_version: number }>('PRAGMA user_version;')?.user_version ?? 0),
     quickCheck,

@@ -12,7 +12,12 @@ import { appleCurrentTrackObservation, appleRecentSongObservation, shazamMatchOb
 import { activeSession, archivedJourneyIdForSession, getSession, queueMusicObservation, readAppCache, recentCompletedSessionIds, refreshCompletedSessionLocalMirror, writeAppCache } from './storage';
 import { sampleTessieMedia } from './tessie-direct';
 import { getCurrentUser } from './auth';
-import { enrichMusicEntriesWithArtwork, listMusicEntries, listMusicEntriesForJourney } from './local-store';
+import {
+  enrichMusicEntriesWithArtwork,
+  listMusicEntries,
+  listMusicEntriesForJourney,
+  markArtworkUrlsCached,
+} from './local-store';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { resolveMissingAppleMusicArtwork } from './apple-artwork-lookup';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
@@ -154,6 +159,7 @@ async function cacheJourneyArtworkOnDisk(sessionId: string) {
     .filter((url): url is string => Boolean(url?.startsWith('https://'))))];
   if (!urls.length) return 0;
   await Image.prefetch(urls, 'disk');
+  markArtworkUrlsCached(getCurrentUser().id, urls);
   return urls.length;
 }
 

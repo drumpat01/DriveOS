@@ -84,8 +84,10 @@ assert.match(src, /recorder: localRecorderHealth\(false\)/, 'dashboard reports c
 
 assert.match(src, /function localJourneyToSummary/, 'localJourneyToSummary mapper exists');
 assert.match(src, /soundtrackPreview: \[\]/, 'soundtrackPreview defaults to empty array (no server needed)');
-assert.match(src, /startingLocation: j\.startPlaceId/, 'maps startPlaceId → startingLocation');
-assert.match(src, /endingLocation: j\.endPlaceId/, 'maps endPlaceId → endingLocation');
+assert.match(src, /const startingPlace = j\.startPlaceId \? getPlace/, 'resolves startPlaceId through the canonical place table');
+assert.match(src, /const endingPlace = j\.endPlaceId \? getPlace/, 'resolves endPlaceId through the canonical place table');
+assert.match(src, /startingLocation: startingPlace\?\.label/, 'maps the canonical start label into the journey');
+assert.match(src, /endingLocation: endingPlace\?\.label/, 'maps the canonical destination label into the journey');
 assert.match(src, /coordinatePlaceAliasIdentity/, 'creates a stable local identity for GPS-only endpoints');
 assert.match(placeMatchingSrc, /latitude\.toFixed\(3\).*longitude\.toFixed\(3\)/, 'coarsens the exact endpoint identity');
 assert.match(src, /findNamedPlace/, 'resolves user-named places by nearby GPS distance');

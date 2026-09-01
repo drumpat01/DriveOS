@@ -129,9 +129,19 @@ function savedPlaceAliasId(userId: string, location: string) {
   return `saved-${localPlaceAliasKey(`${userId}\0${location}`).slice('place.alias.'.length)}`;
 }
 
-function primeCoordinatePlaceAlias(userId: string, location: string, label: string | null | undefined, coordinate?: { latitude: number; longitude: number } | null) {
+function primeCoordinatePlaceAlias(
+  userId: string,
+  location: string,
+  label: string | null | undefined,
+  coordinate?: { latitude: number; longitude: number } | null,
+  forceRename = false,
+) {
   const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
   if (!resolved || !label?.trim()) return;
+  // Old builds stored a separate preference for each journey endpoint. Once a
+  // canonical place exists those legacy aliases must never rename it while a
+  // list is merely being read; only an explicit user save may change it.
+  if (!forceRename && findNamedPlace(userId, resolved.latitude, resolved.longitude)) return;
   upsertPlace({
     id: savedPlaceAliasId(userId, location), userId, kind: 'custom', label: label.trim(), lat: resolved.latitude, lng: resolved.longitude,
     radiusMeters: SAVED_PLACE_MATCH_RADIUS_METERS, foursquareId: null, osmId: null, cachedUntil: null,
@@ -173,14 +183,16 @@ function applyLocalPlaceAliases<T extends JourneySummary>(journey: T): T {
   const endCoordinate = coordinateFromPlaceAliasIdentity(endKey) ?? routeEndpointCoordinate(journey, 'end');
   primeCoordinatePlaceAlias(userId, startKey, exactStart, startCoordinate);
   primeCoordinatePlaceAlias(userId, endKey, exactEnd, endCoordinate);
-  const start = exactStart || (startCoordinate
+  const start = startCoordinate
     ? findNamedPlace(userId, startCoordinate.latitude, startCoordinate.longitude)?.label
+      ?? exactStart
       ?? findCachedPlace(userId, startCoordinate.latitude, startCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
-    : null);
-  const end = exactEnd || (endCoordinate
+    : exactStart;
+  const end = endCoordinate
     ? findNamedPlace(userId, endCoordinate.latitude, endCoordinate.longitude)?.label
+      ?? exactEnd
       ?? findCachedPlace(userId, endCoordinate.latitude, endCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
-    : null);
+    : exactEnd;
   return {
     ...journey,
     rawStartingLocation,
@@ -705,7 +717,7 @@ export const appDataClient = {
     const normalized = label.trim();
     const userId = getCurrentUser().id;
     upsertPrivatePreference(userId, localPlaceAliasKey(location), normalized);
-    if (normalized) primeCoordinatePlaceAlias(userId, location, normalized, coordinate);
+    if (normalized) primeCoordinatePlaceAlias(userId, location, normalized, coordinate, true);
     else {
       deletePlace(userId, savedPlaceAliasId(userId, location));
       const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
@@ -881,6 +893,7 @@ import {
   upsertPlace,
   findCachedPlace,
   findNamedPlace,
+  getPlace,
   deletePlace,
   getPrivatePreference,
   upsertPrivatePreference,
@@ -906,6 +919,8 @@ const ATLAS_STALE_MS = 5 * 60_000;
 function localJourneyToSummary(j: import('./local-store').LocalJourney): JourneySummary {
   const startingLocationKey = j.startPlaceId ?? coordinatePlaceAliasIdentity(j.startLat, j.startLng) ?? `journey:${j.id}:start`;
   const endingLocationKey = j.endPlaceId ?? coordinatePlaceAliasIdentity(j.endLat, j.endLng) ?? `journey:${j.id}:end`;
+  const startingPlace = j.startPlaceId ? getPlace(j.userId, j.startPlaceId) : null;
+  const endingPlace = j.endPlaceId ? getPlace(j.userId, j.endPlaceId) : null;
   return {
     id: j.id,
     legacyDriveId: j.legacyDriveId,
@@ -915,10 +930,10 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
     endedAt: j.endedAt,
     durationMinutes: j.durationMinutes,
     miles: j.miles,
-    startingLocation: j.startPlaceId ?? null,
-    endingLocation: j.endPlaceId ?? null,
-    rawStartingLocation: j.startPlaceId ?? 'Recorded start',
-    rawEndingLocation: j.endPlaceId ?? 'Recorded destination',
+    startingLocation: startingPlace?.label ?? null,
+    endingLocation: endingPlace?.label ?? null,
+    rawStartingLocation: startingPlace?.label ?? 'Recorded start',
+    rawEndingLocation: endingPlace?.label ?? 'Recorded destination',
     startingLocationKey,
     endingLocationKey,
     averageSpeedMph: j.averageSpeedMph,

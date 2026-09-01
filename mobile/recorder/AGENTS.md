@@ -3,7 +3,7 @@
 ## Core Architecture Invariants & Rules
 
 1. **Expo SDK 57 Strict Adherence**:
-   - Runtime version is `1.6.0` on Expo SDK 57 with React 19 / React Native 0.86.
+   - Runtime version is `1.9.0` on Expo SDK 57 with React 19 / React Native 0.86.
    - Read versioned docs at https://docs.expo.dev/versions/v57.0.0/ before changing native modules.
 
 2. **Local-First & Multi-User Architecture**:

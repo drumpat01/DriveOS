@@ -499,6 +499,16 @@ export class CloudKitSyncEngine {
       photosPendingSync(this.userId, 500).length + preferencesPendingSync(this.userId, 500).length +
       (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0);
   }
+
+  public setSyncCompleted(): void {
+    syncStates.set(this.userId, {
+      ...stateFor(this.userId),
+      lastSyncAt: new Date().toISOString(),
+      syncInProgress: false,
+      lastError: null,
+      pendingUploadCount: this.pendingCount(),
+    });
+  }
 }
 
 function recordIds(names: string[], prefix: string): string[] {

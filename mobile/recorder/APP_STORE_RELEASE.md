@@ -6,7 +6,7 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 
 - The production EAS profile sets `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=0`.
 - Public builds use Apple Music as the only automatic streaming option. ShazamKit remains a manual, per-song Identify Song action and never starts from background journey detection. Last.fm and direct Spotify remain internal-preview capabilities and are blocked at the preferences, queue, and OAuth boundaries.
-- The preview-only `JourneyDeck Pro · $4.99 / month` card has been removed. There is no paid tier represented in the public UI.
+- StoreKit 2 verifies JourneyDeck Pro monthly and annual products. A verified entitlement unlocks Atlas and history older than 45 days; the free experience retains Statistics and a rolling 45-day timeline.
 - The mobile app now uses the documented production privacy-edge URL: `https://journeydeck-edge.patrickbstewart.workers.dev`.
 - Recording works without an account, a recorder key, or a working network connection. Optional integrations never block a recording.
 
@@ -22,6 +22,8 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 8. Test the signed production archive on real hardware: first launch, denied/limited permissions, manual and automatic recording, lock-screen route capture, offline completion, relaunch/recovery, private iCloud sync, deletion, and the App Store install/update path.
 9. Supply final App Store metadata: subtitle, description, keywords, age rating, privacy-policy and support URLs, copyright, support contact, and 6.9-inch/6.7-inch/6.5-inch iPhone screenshots that reflect the public build.
 10. Complete [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md), attach the configured products to the app-version submission, and verify purchase, pending approval, restore, expiration, and cross-device entitlement in Sandbox/TestFlight.
+11. Install Build 11 over Build 10 without deleting the app. Verify the first launch preserves profiles, journeys, Collections, Memories, music, artwork, saved places, and any recoverable recorder staging; then finish one automatic drive with the UI backgrounded and one with the phone locked.
+12. On two physical devices, verify CloudKit retries an offline/partial sync, resumes after connectivity returns, and does not advance a change token until downloaded records and assets have committed locally.
 
 ## Required preflight commands
 

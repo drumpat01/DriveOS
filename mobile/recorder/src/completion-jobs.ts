@@ -18,6 +18,10 @@ export type CompletionJobRunReport = {
   deferred: number;
 };
 
+class DeferredCompletionError extends Error {
+  constructor(message: string, readonly minimumDelayMs: number) { super(message); }
+}
+
 async function performCompletionJob(job: CompletionJob, connection: Connection | null): Promise<void> {
   if (job.kind === 'archive_mirror') {
     if (!refreshCompletedSessionLocalMirror(job.sessionId)) throw new Error('archive_mirror_failed');
@@ -30,7 +34,9 @@ async function performCompletionJob(job: CompletionJob, connection: Connection |
   }
   if (job.kind === 'private_cloud_sync') {
     const result = await syncCurrentUserWithPrivateICloud({ force: true });
-    if (result.failedUploads > 0) throw new Error('private_cloud_partial');
+    if (result.failedUploads > 0) {
+      throw new DeferredCompletionError('private_cloud_partial', Math.max(0, result.retryAfterSeconds ?? 0) * 1000);
+    }
     return;
   }
   if (!connection || areJourneyDeckRequestsBlocked()) throw new Error('remote_unavailable');
@@ -65,7 +71,8 @@ export async function processPendingCompletionJobs(options: {
       markCompletionJobSucceeded(job.id);
       report.completed += 1;
     } catch (error) {
-      markCompletionJobForRetry(job.id, failureCode(job, error), job.attemptCount);
+      markCompletionJobForRetry(job.id, failureCode(job, error), job.attemptCount,
+        error instanceof DeferredCompletionError ? error.minimumDelayMs : 0);
       report.deferred += 1;
       // Later jobs may depend on this one. Stop this pass and retry from the
       // persisted queue rather than allowing enrichment to overtake storage.

@@ -34,9 +34,9 @@ const requiredCapabilities = [
   'react-native-worklets',
 ] as const;
 
-test('the 1.8 native runtime contains the complete native foundation', () => {
-  assert.equal(packageJson.version, '1.8.0');
-  assert.equal(appJson.expo.version, '1.8.0');
+test('the 1.9 native runtime contains the complete native foundation', () => {
+  assert.equal(packageJson.version, '1.9.0');
+  assert.equal(appJson.expo.version, '1.9.0');
   assert.deepEqual(appJson.expo.runtimeVersion, { policy: 'appVersion' });
   assert.equal(appJson.expo.experiments?.reactCompiler, true);
 
@@ -57,7 +57,7 @@ test('future design capabilities do not add unrelated privacy permissions', () =
   ]);
 });
 
-test('Build 10 carries a fail-closed StoreKit membership verifier', () => {
+test('Build 11 retains the fail-closed StoreKit membership verifier', () => {
   assert.deepEqual(membershipConfig.apple?.modules, ['JourneyDeckMembershipModule']);
   assert.match(membershipModule, /Transaction\.currentEntitlements/);
   assert.match(membershipModule, /case \.verified\(let transaction\)/);

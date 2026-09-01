@@ -23,6 +23,7 @@ const primarySections = await readFile(new URL('../src/primary-sections.tsx', im
 const releaseFeatures = await readFile(new URL('../src/release-features.ts', import.meta.url), 'utf8');
 const credentials = await readFile(new URL('../src/credentials.ts', import.meta.url), 'utf8');
 const profileSecrets = await readFile(new URL('../src/profile-secure-store.ts', import.meta.url), 'utf8');
+const nativeRecorder = await readFile(new URL('../modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
@@ -46,7 +47,7 @@ test('active recording has no automatic JourneyDeck mirror loop', () => {
 });
 
 test('completed sessions remain queued locally and remote retries stop after one connectivity failure', () => {
-  assert.match(storage, /remote_completed INTEGER NOT NULL DEFAULT 0/);
+  assert.match(databaseHardening, /remote_completed INTEGER NOT NULL DEFAULT 0/);
   assert.match(storage, /sessionsPendingRemoteCompletion/);
   assert.match(storage, /status='completed' AND s\.remote_completed=0/);
   assert.match(api, /for \(const sessionId of sessionsPendingRemoteCompletion\(limit\)\)/);
@@ -77,23 +78,21 @@ test('clean profiles can record manually and automatically without JourneyDeck c
   assert.match(credentials, /export async function loadOrCreateDeviceId\(\)/);
   assert.match(app, /beginLocalSession\(deviceId\)/);
   assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
-  const automaticStart = automaticDrive.slice(automaticDrive.indexOf('async function startDetectedJourney'), automaticDrive.indexOf('async function finishDetectedJourney'));
-  assert.match(automaticStart, /beginLocalSession\(await loadOrCreateDeviceId\(\)\)/);
-  assert.doesNotMatch(automaticStart, /loadConnection/);
+  assert.match(nativeRecorder, /private func startSession\(identity:/);
+  assert.match(nativeRecorder, /INSERT INTO recording_sessions\(id,owner_user_id,device_id,status/);
+  assert.doesNotMatch(nativeRecorder, /loadConnection|JourneyDeck credentials/);
 });
 
-test('automatic journeys use both detector and active route updates to recognize parking', () => {
-  assert.match(locationTask, /try \{ await processAutomaticDriveLocations\(data\.locations, true\); \} catch/);
-  assert.match(automaticDrive, /processAutomaticDriveLocations\(locations: LocationObject\[\], locationAlreadyRecorded = false\)/);
-  assert.match(automaticDrive, /setLocalStatus\(sessionId, 'finishing'\)/);
-  assert.match(automaticDrive, /setLocalStatus\(sessionId, 'finishing'\);[\s\S]{0,120}recordFinishingLocation\(sessionId, location\)/);
-  assert.match(storage, /session\.status !== 'finishing'[\s\S]{0,100}insertLocationsForSession\(session, \[location\]\)/);
-  assert.match(tracking, /deferredUpdatesTimeout: 30_000/);
-  const automaticStart = tracking.slice(tracking.indexOf('export async function startAutomaticDetection'), tracking.indexOf('export async function stopAutomaticDetection'));
-  assert.doesNotMatch(automaticStart, /deferredUpdatesDistance|deferredUpdatesInterval|deferredUpdatesTimeout/);
-  assert.match(app, /const parkingCheckPending = useRef<Promise<void> \| null>\(null\)/);
-  assert.match(app, /ticks % 15 === 0[\s\S]{0,180}reconcileAutomaticParking\(\)/);
-  assert.match(app, /detector\.automaticSessionId !== current\.id/);
+test('automatic journeys are detected, recorded, and parked entirely by the native engine', () => {
+  assert.doesNotMatch(locationTask, /processAutomaticDriveLocations/);
+  assert.match(nativeRecorder, /startMonitoringSignificantLocationChanges\(\)/);
+  assert.match(nativeRecorder, /startUpdatingLocation\(\)/);
+  assert.match(nativeRecorder, /private func recordAndEvaluate\(_ locations: \[CLLocation\], session: ActiveSession\)/);
+  assert.match(nativeRecorder, /stoppedSince[\s\S]*driveStopDuration/);
+  assert.match(nativeRecorder, /try finishSession\(session, endedAt:/);
+  assert.match(nativeRecorder, /INSERT OR IGNORE INTO recording_points/);
+  assert.match(app, /configureNativeAutomaticRecorder\(/);
+  assert.doesNotMatch(app, /reconcileAutomaticParking\(/);
 });
 
 test('background GPS stays functional without opting into the persistent blue iOS indicator', () => {
@@ -105,7 +104,7 @@ test('background GPS stays functional without opting into the persistent blue iO
 });
 
 test('recorder sessions and screen caches are isolated by active profile', () => {
-  assert.match(storage, /owner_user_id TEXT/);
+  assert.match(databaseHardening, /recording_sessions[\s\S]*?owner_user_id TEXT NOT NULL REFERENCES local_users/);
   assert.match(storage, /WHERE owner_user_id=\? AND status!='completed'/);
   assert.match(storage, /`user:\$\{getCurrentUser\(\)\.id\}:\$\{key\}`/);
   assert.match(storage, /__legacy_cache_owner_v1/);

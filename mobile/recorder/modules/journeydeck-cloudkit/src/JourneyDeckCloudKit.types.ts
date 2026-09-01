@@ -8,15 +8,28 @@ export type CloudTransportRecord = {
   modificationDate?: string;
 };
 
-export type CloudKitCapabilities = { privateContentVersion: number };
+export type CloudKitCapabilities = {
+  privateContentVersion: number;
+  transportVersion?: number;
+  retryMetadata?: boolean;
+};
+
+export type CloudKitRecordFailure = {
+  recordName: string;
+  code: string;
+  retryable: boolean;
+  retryAfterSeconds: number | null;
+};
 
 export type CloudKitPushResult = {
   savedRecordNames: string[];
   remoteRecords: CloudTransportRecord[];
   failedRecordNames: string[];
+  failedRecords?: CloudKitRecordFailure[];
 };
 
 export type CloudKitPullResult = {
   records: CloudTransportRecord[];
   deletedRecordNames: string[];
+  changeTokenStaged?: boolean;
 };
