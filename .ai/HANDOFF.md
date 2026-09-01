@@ -1,5 +1,12 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Git milestone synchronization — September 1, 2026
+
+- Consolidated the complete approved Build 10 milestone into commit `eab40a3` (`feat: complete JourneyDeck Build 10 milestone`): 171 files covering the production mobile UI/onboarding assets, StoreKit membership, 45-day history gating, Apple Music artwork recovery, place propagation, SQLite hardening and completion jobs, website/legal pages, tests, and design-source documentation.
+- Excluded the accidental root `app.json` Expo stub and added `/dist-*/` to the recorder ignore rules so generated Expo export directories are not committed. A credential-pattern scan found no likely embedded private keys or provider tokens.
+- Verification immediately before the commit: mobile TypeScript passed; all **154/154** mobile tests passed; server TypeScript and ESLint passed; all **34/34** server tests passed; Cloudflare type generation, TypeScript, and preview deployment dry-run passed; staged `git diff --check` passed.
+- This handoff update follows the milestone commit. Push `codex/native-runtime-prep` to `origin` and verify a clean, non-divergent tracking state before beginning further work.
+
 ## Production OTA: Phase 1 journey-completion reliability — September 1, 2026
 
 - Published and verified the completed Phase 1 database/recovery implementation to the iOS `production` branch for runtime `1.8.0`.
