@@ -1,6 +1,6 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
-## Phase 3 native reliability and Build 11 release candidate — September 1, 2026
+## Phase 3 native reliability shipped as TestFlight Build 11 — September 1, 2026
 
 - Implemented the repository portion of the user-approved Phase 3 on `codex/native-runtime-prep`. App/runtime version is now `1.9.0` (`N1.9-RC1`) so the native boundary will ship as Build 11 rather than an incompatible OTA to Build 10.
 - Added the auto-linked `JourneyDeckRecorder` Swift module and app-delegate subscriber. Automatic mode now uses significant-change monitoring while idle, high-accuracy Core Location only while confirming/recording, native start/park decisions, and direct transactional writes into the verified schema-6 `journeydeck-local.db`. It completes a drive and enqueues the four durable completion jobs without React Native being alive. Native session ids are fenced from manual/Build-10 sessions.
@@ -9,7 +9,9 @@
 - Added a Build 10 upgrade fixture that starts with a schema-5 archive plus split legacy recorder database and proves preservation of the profile, journey, Collection, Memory, active session, GPS points, database integrity, and untouched legacy source after the production Phase-2/Build-11 migration.
 - Verification passed: TypeScript, all **159/159** mobile tests, Phase-3 native-release checks **3/3**, Expo Doctor **21/21**, iOS Expo export (**1,779 modules, 24 assets**), native autolinking discovery, and `git diff --check` (existing LF-to-CRLF notices only).
 - The first signed Build 11 compile (`cd55e2d6-3a35-433c-94c0-c79332d6f24f`) caught one Expo Swift bridge error: an async function had a synchronous `runOnQueue` modifier. Removed that invalid modifier (the implementation already marshals Core Location work through `MainActor`), added a regression contract, reran TypeScript/Phase-3 tests, and reset the failed remote counter from 11 to 10 so the corrected retry remains Build 11.
-- Pending release steps: obtain the corrected EAS iOS production compile, confirm it is remote build number **11**, submit it to TestFlight, then install it over Build 10 and execute the physical upgrade/background/CloudKit acceptance matrix. No App Store Connect portal change is expected unless EAS/Apple reports a signing or compliance gate.
+- Corrected production build `b6dd702e-13a1-4a51-81fb-44fa791f49d2` finished successfully as JourneyDeck **1.9.0 (11)** from commit `e6a01bee0b8f522418d2f5f68312b16f10331908`; IPA artifact: `https://expo.dev/artifacts/eas/_A8RnBNhtk7qVTM3uQDZFA0KDlKQZT_Oz0nbxxIZz4I.ipa`.
+- Expo's Sep-1 API/website partial outage caused EAS Submit jobs to report retryable false failures after scheduling. The user then received Apple's notification that Build 11 is available in TestFlight, which is authoritative confirmation that Apple received and processed the binary. Further submission retries were stopped.
+- Remaining physical acceptance: install TestFlight Build 11 **over Build 10 without deleting the app**, confirm all existing journeys/places/music/memories remain, complete automatic drives with the UI backgrounded and phone locked, test a manual drive, force an offline/partial CloudKit retry, and confirm sync recovery. No Apple Developer Portal action is currently required.
 
 ## Phase 2 unified data system — September 1, 2026
 
