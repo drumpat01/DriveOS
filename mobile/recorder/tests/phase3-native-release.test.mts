@@ -34,6 +34,8 @@ test('Build 11 owns automatic recording in Swift and retires the Build 10 JavaSc
   assert.match(swift, /BEGIN IMMEDIATE/);
   assert.match(swift, /native_recording_/);
   assert.match(swift, /archive_mirror.*apple_music_history.*private_cloud_sync.*remote_completion/s);
+  const configureBridge = swift.slice(swift.indexOf('AsyncFunction("configureAsync")'), swift.indexOf('AsyncFunction("getStatusAsync")'));
+  assert.doesNotMatch(configureBridge, /runOnQueue/, 'Expo async bridge functions cannot use the synchronous queue modifier');
   assert.match(app, /stopAutomaticDetection[\s\S]*configureNativeAutomaticRecorder/);
   assert.doesNotMatch(manualTask, /processAutomaticDriveLocations/);
 });

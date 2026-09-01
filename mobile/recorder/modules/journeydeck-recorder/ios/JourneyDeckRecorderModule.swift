@@ -704,7 +704,7 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("configureAsync") { (enabled: Bool, ownerUserID: String, deviceID: String) async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.configure(enabled: enabled, ownerUserID: ownerUserID, deviceID: deviceID)
-    }.runOnQueue(.main)
+    }
 
     AsyncFunction("getStatusAsync") { () async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.status()
