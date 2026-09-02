@@ -343,6 +343,8 @@ test('Soundtracks uses a frameless static header and Memories filters align with
 
 test('Memory photo cards keep their photos visible and omit generic sequence labels', () => {
   assert.doesNotMatch(shell, /memoryHeroKicker}>MEMORY \{String\(index \+ 1\)/);
+  assert.match(shell, /memory-default-floating-timeline-v1\.jpg/);
+  assert.doesNotMatch(shell, /memoryArtRoad/);
   assert.match(shell, /style=\{styles\.memoryCardShade\}/);
   assert.match(shell, /memoryCardShade: \{[^}]*bottom: 0, height: 92/);
   assert.match(shell, /memoryCardTitle: \{ marginTop: 0/);

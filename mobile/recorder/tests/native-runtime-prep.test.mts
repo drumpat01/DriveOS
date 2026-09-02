@@ -35,7 +35,7 @@ test('sign-out preserves the old profile while account deletion removes cloud fi
 
 test('runtime 1.9 declares required permission and background-location configuration', () => {
   assert.equal(app.expo.version, '1.9.0');
-  assert.deepEqual(app.expo.runtimeVersion, { policy: 'appVersion' });
+  assert.equal(app.expo.runtimeVersion, '1.9.0-build13');
   const location = app.expo.plugins.find((plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-location');
   assert.equal(location[1].isIosBackgroundLocationEnabled, true);
   assert.match(location[1].locationWhenInUsePermission, /record the route/);

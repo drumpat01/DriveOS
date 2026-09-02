@@ -29,6 +29,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "uploadSourceMaps": true,
       "channel": "production",
       "environment": "production",
       "env": {

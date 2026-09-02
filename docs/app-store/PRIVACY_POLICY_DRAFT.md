@@ -2,7 +2,7 @@
 
 > Confirm the technical statements against the deployed production services and have qualified counsel review the policy for the regions where JourneyDeck is offered before public App Store submission.
 
-**Effective date:** August 28, 2026
+**Effective date:** September 2, 2026
 
 **Controller / developer:** Patrick Benjamin Stewart
 
@@ -36,9 +36,9 @@ You can use Apple Music history for automatic soundtracks or manually tap Identi
 
 Sign in with Apple is optional. When used, JourneyDeck may keep the Apple subject identifier and a local profile record so your iPhone can recognize that profile. Private iCloud continuity is also optional. When you enable it, JourneyDeck may sync journey records, routes, labels, memories, collections, selected photos, and preferences to your private CloudKit database associated with your Apple Account. Patrick Benjamin Stewart does not use that data for advertising or sell it.
 
-### Optional vehicle connection
+### Anonymous diagnostics and performance
 
-If you choose to connect Tessie, the access token you provide is kept in your iPhone Keychain. JourneyDeck uses it only to request the vehicle information you ask it to refresh, such as status, charging, energy, and route-efficiency summaries. Review Tessie’s own privacy policy for how Tessie handles information you provide to that service.
+JourneyDeck uses Expo EAS Observe to understand production reliability. Expo may process a random identifier unique to one app installation, app/build/update identifiers, device and operating-system characteristics, startup and rendering timings, update-download performance, memory-pressure warnings, JavaScript error information, and privacy-safe recorder lifecycle events such as whether automatic detection armed, confirmed, or completed. JourneyDeck does not attach route coordinates, addresses, place names, journey titles, photos, music names, Apple identity, or account identifiers to these diagnostic events. The installation identifier is not derived from your identity and resets if you uninstall and reinstall JourneyDeck.
 
 ### Optional legacy owner backup
 
@@ -46,11 +46,11 @@ An existing JourneyDeck owner may choose to connect a private legacy backup endp
 
 ## How information is used
 
-JourneyDeck uses the information above to record and display your journeys, create your private archive, show optional music and vehicle context, protect sensitive-place presentation in share cards, provide optional private iCloud continuity, troubleshoot the app, and respond to support requests. JourneyDeck does not use this information for targeted advertising, cross-app tracking, or sale of personal information.
+JourneyDeck uses the information above to record and display your journeys, create your private archive, show optional music context, protect sensitive-place presentation in share cards, provide optional private iCloud continuity, troubleshoot reliability and performance, and respond to support requests. JourneyDeck does not use this information for targeted advertising, cross-app tracking, or sale of personal information.
 
 ## Service providers and sharing
 
-JourneyDeck may use Apple services that you enable or that are necessary to operate iOS features, including Location Services, CloudKit, Apple Music, Sign in with Apple, and ShazamKit. Map displays may retrieve tiles directly from the configured map provider. Optional Tessie requests are sent only when you choose to connect and refresh that service. Software updates may be delivered through Expo’s update service.
+JourneyDeck may use Apple services that you enable or that are necessary to operate iOS features, including Location Services, CloudKit, Apple Music, Sign in with Apple, and ShazamKit. Map displays may retrieve tiles directly from the configured map provider. Software updates and anonymous diagnostics may be processed through Expo services.
 
 JourneyDeck does not share your precise route with advertisers. A privacy-safe share card is designed to remove or replace sensitive Home and Work details before you choose to export it; review what you share before sending it to another person or service.
 
@@ -58,7 +58,7 @@ JourneyDeck does not share your precise route with advertisers. A privacy-safe s
 
 Journey data remains on your iPhone until you delete it, delete the relevant profile, or remove the app. If you enabled private iCloud continuity, deleting your JourneyDeck account/profile in the app is intended to remove that profile’s synced private CloudKit data as well. Patrick Benjamin Stewart should confirm and document any backup, legal-retention, or deletion limitations that apply to the deployed production service before publishing this policy.
 
-You can revoke Location, Music, Microphone, Photos, and iCloud permissions at any time in iOS Settings. You can disconnect Tessie by removing the connection in JourneyDeck. For privacy or deletion requests that cannot be completed in the app, contact Journeydeckme@gmail.com.
+You can revoke Location, Music, Microphone, Photos, and iCloud permissions at any time in iOS Settings. For privacy or deletion requests that cannot be completed in the app, contact Journeydeckme@gmail.com.
 
 ## Security
 

@@ -20,6 +20,7 @@ const requiredCapabilities = [
   'expo-image',
   'expo-linear-gradient',
   'expo-mesh-gradient',
+  'expo-observe',
   'expo-apple-authentication',
   'expo-splash-screen',
   'expo-symbols',
@@ -37,7 +38,7 @@ const requiredCapabilities = [
 test('the 1.9 native runtime contains the complete native foundation', () => {
   assert.equal(packageJson.version, '1.9.0');
   assert.equal(appJson.expo.version, '1.9.0');
-  assert.deepEqual(appJson.expo.runtimeVersion, { policy: 'appVersion' });
+  assert.equal(appJson.expo.runtimeVersion, '1.9.0-build13');
   assert.equal(appJson.expo.experiments?.reactCompiler, true);
 
   for (const dependency of requiredCapabilities) {
@@ -57,7 +58,7 @@ test('future design capabilities do not add unrelated privacy permissions', () =
   ]);
 });
 
-test('Build 12 retains the fail-closed StoreKit membership verifier', () => {
+test('Build 13 retains the fail-closed StoreKit membership verifier', () => {
   assert.deepEqual(membershipConfig.apple?.modules, ['JourneyDeckMembershipModule']);
   assert.match(membershipModule, /Transaction\.currentEntitlements/);
   assert.match(membershipModule, /case \.verified\(let transaction\)/);

@@ -9,6 +9,7 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 - StoreKit 2 verifies JourneyDeck Pro monthly and annual products. A verified entitlement unlocks Atlas and history older than 45 days; the free experience retains Statistics and a rolling 45-day timeline.
 - The mobile app now uses the documented production privacy-edge URL: `https://journeydeck-edge.patrickbstewart.workers.dev`.
 - Recording works without an account, a recorder key, or a working network connection. Optional integrations never block a recording.
+- Build 13 includes EAS Observe for anonymous performance, memory-pressure, JavaScript-error, and bounded recorder-lifecycle diagnostics. Its event wrapper rejects arbitrary names and private content fields; diagnostics remain additive and can never block recording.
 
 ## Must be completed outside this repository before submission
 
@@ -17,7 +18,7 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 3. Deploy the CloudKit production schema for `iCloud.com.journeydeck.recorder`, then exercise private sync and account deletion on two physical devices using a TestFlight build. Development-schema success is not production-schema proof.
 4. Keep Last.fm and direct Spotify out of the public binary and App Store metadata until written commercial permissions, branding approval, and their final privacy disclosures are in place.
 5. Confirm the production privacy-edge worker is deployed, reachable, rate-limited, and has only the public integrations it needs. Do not copy preview secrets or test allowlists into production.
-6. Complete App Store Connect privacy nutrition labels from the actual production data flow, including precise location and any linked or tracked data. Recheck them if any SDK or integration changes.
+6. Complete App Store Connect privacy nutrition labels from the actual production data flow, including the EAS Observe Device ID, Product Interaction, Performance Data, and Other Diagnostic Data declarations already planned as non-linked and non-tracking. Recheck them if any SDK or integration changes.
 7. Prepare App Review notes with a clean local first-run flow, demo steps for background route recording, an explanation of why background location is core functionality, and any credentials needed for optional integrations. Never make the reviewer depend on a personal account, vehicle, or music subscription to evaluate the core recorder.
 8. Test the signed production archive on real hardware: first launch, denied/limited permissions, manual and automatic recording, lock-screen route capture, offline completion, relaunch/recovery, private iCloud sync, deletion, and the App Store install/update path.
 9. Supply final App Store metadata: subtitle, description, keywords, age rating, privacy-policy and support URLs, copyright, support contact, and 6.9-inch/6.7-inch/6.5-inch iPhone screenshots that reflect the public build.

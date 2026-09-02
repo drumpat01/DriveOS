@@ -1,5 +1,39 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Build 13 implementation and release — September 2, 2026
+
+- Build 13 now embeds the latest production OTA work: bounded automatic-departure pre-roll, synchronized/reduced-motion-aware tab transitions, and the approved `Floating Memory Timeline` fallback artwork.
+- Installed `expo-observe` and enabled production source-map upload. JourneyDeck uses a fixed, sanitized event vocabulary for recorder milestones, artwork caching, CloudKit failures, and database recovery; diagnostic failures are caught outside recorder transactions and no coordinates, addresses, labels, journey/music names, Apple identity, account identifiers, or record payloads are attached. The app/privacy-policy source and App Store privacy worksheet now disclose anonymous diagnostics.
+- Corrected the dormant native Swift automatic-recorder wake path: a significant-location wake immediately begins a 90-second precise confirmation burst, unknown/slow first samples no longer terminate that burst, and native pre-roll is bounded. `NATIVE_AUTOMATIC_RECORDER_ENABLED` remains `false`, so the physically proven Expo detector continues to own automatic recording until the native path receives a controlled physical-drive test.
+- Runtime compatibility is explicitly isolated as `1.9.0-build13`, preventing Build 12 from receiving future Build 13-only OTAs that import the new native Observe module. Marketing version remains `1.9.0`; EAS remote build-number auto-increment should produce iOS Build 13.
+- Verification before commit/build: TypeScript passed, full suite **174/174**, Expo Doctor **21/21**, production iOS Expo export passed (**1,825 modules, 26 assets**), and iOS autolinking includes `expo-observe`. `npm audit --omit=dev` still reports 14 moderate transitive Expo-tooling advisories; no breaking `--force` dependency rewrite was applied.
+- Current release state: implementation is not yet committed, pushed, built, or submitted. Update this section with the Git commit, EAS build ID, and submission result when complete.
+- Build 13/version 1 exclusion: Foursquare integration remains explicitly deferred to JourneyDeck 2.0. Version 1 continues using native MapKit POI search, Apple's reverse geocoder fallback, and user-named canonical places; do not add Foursquare SDKs, API calls, credentials, disclosures, or UI before the user begins 2.0 work.
+
+## Production OTA: earlier automatic starts and synchronized tab motion — September 2, 2026
+
+- Published the bounded automatic departure pre-roll described below. JourneyDeck keeps its conservative three-sample drive confirmation, then backfills the saved journey to the last accurate stationary anchor and continuous departure points, correcting late starting location, route, duration, and mileage without increasing false starts.
+- Reworked primary-tab motion around one shared pager progress value. The native page glide, restrained 8% fade/1.5% scale, and orange navigation indicator now move from the same live progress; screens remain mounted and iOS Reduce Motion switches to an immediate, unscaled transition.
+- Included the already-approved `Floating Memory Timeline` fallback artwork in the same production bundle. User-selected Memory cover photos still take priority.
+- Verification passed: TypeScript, focused navigation **6/6**, drive detection **14/14**, tab runtime **29/29**, full mobile suite **172/172**, production iOS Expo export (**1,786 modules, 26 assets**), and `git diff --check` aside from existing LF-to-CRLF notices.
+- Published and independently verified the iOS production OTA for runtime `1.9.0`: update group `7e232a1d-485e-41c4-8a4b-1c68a90ac955`, iOS update `01a062ef-7885-7d87-b69b-7cf7d07bdd8a`, message `Improve automatic starts and tab transitions`. No native build, TestFlight upload, commit, git push, App Store Connect mutation, or data reset was performed.
+
+## Automatic journey departure pre-roll — September 2, 2026
+
+- Physical testing found that automatic routes can begin one to two miles after the real departure even though the journey eventually starts and completes. Repository history confirmed the original 15 mph / three samples / 20-second confirmation threshold was unchanged; the active Build 12 Expo safety fallback discarded all locations received before confirmation and created the session at only the final trigger point.
+- Added a bounded, local-only automatic pre-roll in `src/automatic-drive-preroll.ts`. While armed, JourneyDeck retains at most 32 accurate locations from the last four minutes. It still requires the existing conservative drive confirmation, then selects the continuous movement leading into confirmation plus the last accurate stationary anchor and rejects stale/inaccurate samples.
+- Automatic sessions can now be backdated to the selected departure anchor, and every selected pre-roll point is inserted before BestForNavigation live tracking continues. This restores the correct starting place, initial route segment, duration, and mileage without lowering the threshold or increasing false automatic starts. Existing stored automatic state remains backward compatible.
+- Added functional regressions for departure-anchor recovery, bounded retention, and inaccurate-point rejection plus structural coverage for session backdating and route insertion. Verification passed: focused recording/release tests **36/36**, TypeScript, full mobile suite **170/170**, and production iOS Expo export (**1,786 modules, 26 assets**).
+- This correction shipped in production OTA group `7e232a1d-485e-41c4-8a4b-1c68a90ac955`. No native build, TestFlight upload, commit, push, App Store Connect mutation, or data reset was performed.
+
+## Approved default Memory artwork option 1 — September 2, 2026
+
+- The tester selected generated option 1, `Floating Memory Timeline`, to replace the generic neon-road fallback used when a Memory has no chosen cover photo.
+- Added an optimized 1248x936 (4:3), 84 KB asset at `mobile/recorder/assets/memory-default-floating-timeline-v1.jpg`. It shows three cinematic photographic memory prints linked by a coral light thread, with dark plum edges and no road, map, text, logo, or UI baked into the image.
+- `MemoryArtwork` now renders the approved static asset with `expo-image` for both Memories carousel cards and Memory Detail. A user-selected cover photo remains the highest-priority artwork and all existing title-safe gradients remain unchanged.
+- Added a structural regression that requires the new asset and rejects the retired `memoryArtRoad` SVG. Verification passed: TypeScript, focused tab-runtime **29/29**, full mobile suite **167/167**, and production iOS Expo export (**1,785 modules, 26 assets**).
+- This artwork shipped in production OTA group `7e232a1d-485e-41c4-8a4b-1c68a90ac955`. No native build, TestFlight upload, commit, push, App Store Connect mutation, or data reset was performed.
+
 ## Continuous Apple Music playback deduplication — September 1, 2026
 
 - Physical Build 12/OTA screenshots showed identical consecutive soundtrack moments: `Lady Marmalade` twice, `Hakuna Matata` twice, and `Nobody Like U` three times. The native Apple Music sampler polls every 20 seconds, and iOS can temporarily return a zero or stale playback position; the old fixed 45-second database window therefore treated later samples of the same still-playing song as new moments.

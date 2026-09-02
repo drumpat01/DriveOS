@@ -67,6 +67,14 @@ test('completion is retryable and recorder/archive use one unified live SQLite h
   assert.doesNotMatch(storage, /openDatabaseSync/);
 });
 
+test('automatic confirmation backfills the bounded departure route instead of starting late', () => {
+  assert.match(automaticDrive, /appendAutomaticDrivePreRollPoint/);
+  assert.match(automaticDrive, /selectAutomaticDrivePreRoll\(preStartLocations, location\.timestamp\)/);
+  assert.match(automaticDrive, /beginLocalSession\(await loadOrCreateDeviceId\(\), ordered\[0\]\?\.timestamp\)/);
+  assert.match(automaticDrive, /recordLocations\(ordered\.map\(locationFromPreRoll\)\)/);
+  assert.match(storage, /export function beginLocalSession\(deviceId: string, detectedStartedAt\?: number\)/);
+});
+
 test('continuous Apple Music playback is deduplicated and existing duplicate rows are repaired once', () => {
   assert.match(storage, /findDuplicatePlayback\(observation/);
   assert.match(localStore, /findDuplicatePlayback\(input/);

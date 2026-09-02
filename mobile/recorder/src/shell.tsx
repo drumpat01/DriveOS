@@ -20,7 +20,8 @@ import { MeshGradientView } from 'expo-mesh-gradient';
 import PagerView from 'react-native-pager-view';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
+import { ObserveInteractiveMarker } from 'expo-observe';
 
 import {
   appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyCollection, type JourneyDetail,
@@ -44,10 +45,11 @@ import {
 } from './recording-mode';
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
-import { navigationGeometry, navigationIndexAtX, navigationIndicatorX, navigationTabX } from './navigation-motion';
+import { navigationGeometry, navigationIndexAtX, navigationProgressAtX, tabPageMotion } from './navigation-motion';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, upsertPlace, type LocalPlace, type LocalUser } from './local-store';
+import { observeJourneyDeckEvent } from './observability';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { buildSongRouteMoments } from './route-moments';
 import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
@@ -283,6 +285,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const tabRef = useRef<Tab>('home');
   const requestedTabRef = useRef<Tab>('home');
   const pagerRef = useRef<PagerView>(null);
+  const tabProgress = useSharedValue(0);
+  const [reduceTabMotion, setReduceTabMotion] = useState(false);
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
   const [firstRunProgress, setFirstRunProgress] = useState<FirstRunProgress | null>(() => loadFirstRunProgress());
@@ -319,6 +323,12 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const [recorderVisible, setRecorderVisible] = useState(false);
   const [membershipPaywallVisible, setMembershipPaywallVisible] = useState(false);
   const preferenceSyncAttempt = useRef('');
+
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceTabMotion).catch(() => undefined);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceTabMotion);
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     if (!Updates.isEnabled || !updateState.isUpdatePending) return;
@@ -482,14 +492,17 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
         const detail = result.accountStatus === 'no_account' ? 'Sign into iCloud in iPhone Settings to enable private sync.' : 'Private iCloud is unavailable right now; local data remains safe.';
         setPrivateCloud({ status: 'needs_icloud', detail });
         if (announce) Alert.alert('Private iCloud is not available', detail);
+        observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'account_status', reason: result.accountStatus });
         return;
       }
       const awaitingNative = result.privateContentVersion < 2 ? result.state.pendingUploadCount : 0;
       const detail = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} will retry` : ''}${awaitingNative ? ` · ${awaitingNative} private items waiting for the next native build` : ''}`;
       setPrivateCloud({ status: result.failedUploads ? 'error' : awaitingNative ? 'idle' : 'synced', detail });
+      if (result.failedUploads) observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'partial_upload', failed_count: result.failedUploads });
       if (announce) Alert.alert('Private iCloud sync finished', detail);
       await Promise.all([refreshDashboard(), refreshJourneys(), refreshMemories(), refreshMusicDashboard()]);
     } catch {
+      observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'sync_exception' });
       const detail = 'Sync will retry later. Everything remains saved on this iPhone.';
       setPrivateCloud({ status: 'error', detail });
       if (announce) Alert.alert('Private iCloud will retry', detail);
@@ -817,7 +830,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     requestedTabRef.current = next;
     tabRef.current = next;
     setTab(next);
-    pagerRef.current?.setPage(bottomNavigationItems.findIndex(item => item.id === next));
+    const nextIndex = bottomNavigationItems.findIndex(item => item.id === next);
+    if (reduceTabMotion) pagerRef.current?.setPageWithoutAnimation(nextIndex);
+    else pagerRef.current?.setPage(nextIndex);
     void Haptics.selectionAsync().catch(() => undefined);
   };
 
@@ -862,6 +877,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
 
   return (
     <View style={styles.app}>
+      {appVisible && primarySections.status !== 'loading' && <ObserveInteractiveMarker params={{ dataState: primarySections.status }} />}
       <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
@@ -913,6 +929,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
           scrollEnabled={false}
           overdrag
           offscreenPageLimit={1}
+          onPageScroll={event => {
+            tabProgress.value = event.nativeEvent.position + event.nativeEvent.offset;
+          }}
           onPageSelected={event => {
             const selected = bottomNavigationItems[event.nativeEvent.position]?.id;
             if (!selected || selected !== requestedTabRef.current) return;
@@ -920,24 +939,24 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
             setTab(selected);
           }}
         >
-          <View key="home" collapsable={false} style={styles.tabLayer}>
+          <CinematicTabPage key="home" index={0} progress={tabProgress} reduceMotion={reduceTabMotion}>
             <HomeScreen currentUser={currentUser} state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} tessieConnected={TESSIE_INTEGRATION_ENABLED && connectionCapabilities.tessieConfigured} onRecord={openRecorder} onJourneys={() => openTab('journeys')} onSoundtracks={() => openTab('music')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('menu')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
-          </View>
-          <View key="live" collapsable={false} style={styles.tabLayer}>
+          </CinematicTabPage>
+          <CinematicTabPage key="live" index={1} progress={tabProgress} reduceMotion={reduceTabMotion}>
             <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => refreshPrimarySections(true)} onRecord={openRecorder} onJourney={setSelectedJourneyId} />
             <View pointerEvents={recorderVisible ? 'auto' : 'none'} style={recorderVisible ? styles.persistentRecorderVisible : styles.persistentRecorderHidden}><Recorder onClose={() => setRecorderVisible(false)} /></View>
-          </View>
-          <View key="journeys" collapsable={false} style={styles.tabLayer}>
+          </CinematicTabPage>
+          <CinematicTabPage key="journeys" index={2} progress={tabProgress} reduceMotion={reduceTabMotion}>
             <MemoriesScreen catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />
-          </View>
-          <View key="music" collapsable={false} style={styles.tabLayer}>
+          </CinematicTabPage>
+          <CinematicTabPage key="music" index={3} progress={tabProgress} reduceMotion={reduceTabMotion}>
             <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />
-          </View>
-          <View key="atlas" collapsable={false} style={styles.tabLayer}>
+          </CinematicTabPage>
+          <CinematicTabPage key="atlas" index={4} progress={tabProgress} reduceMotion={reduceTabMotion}>
             {membership.atlasAccess
               ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} />
               : <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} historyDays={membership.timelineHistoryDays} />}
-          </View>
+          </CinematicTabPage>
         </PagerView>}
         {appVisible && utilityVisible && <View style={styles.utilityOverlay}><MoreScreen
           active requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => setUtilityVisible(false)} state={primarySections} dashboard={dashboard.data}
@@ -948,7 +967,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       {appVisible && <View pointerEvents="none" style={styles.bottomContentFade}>
         <LinearGradient colors={['rgba(3, 1, 5, 0)', 'rgba(3, 1, 5, 0.58)', 'rgba(3, 1, 5, 0.96)']} locations={[0, 0.48, 1]} style={StyleSheet.absoluteFill} />
       </View>}
-      {appVisible && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} items={bottomNavigationItems} /></SafeAreaView>}
+      {appVisible && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} items={bottomNavigationItems} progress={tabProgress} reduceMotion={reduceTabMotion} /></SafeAreaView>}
       <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => {
         if (!selectedJourneyId) return;
         setJourneyDetail({ status: 'loading', data: null });
@@ -2298,44 +2317,16 @@ function OverviewMetrics({ items }: { items: { label: string; value: string }[] 
   return <View style={[styles.overviewMetrics, styles.staticWidgetGlow]}>{items.map(item => <View key={item.label} style={styles.overviewMetric}><Text style={styles.overviewMetricValue}>{item.value}</Text><Text style={styles.overviewMetricLabel}>{item.label}</Text></View>)}</View>;
 }
 
-function MemoryArtwork({ artworkKey, photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
-  const isNight = artworkKey === 'favorite-night-drives' || artworkKey === 'golden-hour-drives';
+function MemoryArtwork({ photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
   if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} />;
-
-  return (
-    <View style={[styles.memoryArtwork, isNight && styles.memoryArtworkNight]}>
-      <LinearGradient
-        colors={isNight ? ['#0d142b', '#180f2c', '#080611'] : ['#281023', '#391230', '#100713']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <Svg width="100%" height="100%" viewBox="0 0 320 240" style={StyleSheet.absoluteFill}>
-        <Defs>
-          <SvgRadialGradient id="memoryArtGlow" cx="50%" cy="30%" rx="40%" ry="40%">
-            <Stop offset="0%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0.3" />
-            <Stop offset="100%" stopColor={isNight ? '#6347ff' : '#ff795b'} stopOpacity="0" />
-          </SvgRadialGradient>
-          <SvgLinearGradient id="memoryArtRoad" x1="0" y1="1" x2="0" y2="0">
-            <Stop offset="0%" stopColor={isNight ? '#5ce5c2' : '#ff795b'} />
-            <Stop offset="60%" stopColor={isNight ? '#b17aff' : '#ff4d87'} />
-            <Stop offset="100%" stopColor={isNight ? '#ff8bb9' : '#9b61ff'} />
-          </SvgLinearGradient>
-        </Defs>
-        <Rect width="320" height="240" fill="url(#memoryArtGlow)" />
-        <Path d="M 0 110 L 320 110" stroke="#482b57" strokeWidth="1" opacity="0.4" />
-        <Path d="M 120 240 L 157 110 L 163 110 L 200 240 Z" fill="#0d0915" opacity="0.85" />
-        <Path d="M 120 240 L 157 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
-        <Path d="M 200 240 L 163 110" stroke="url(#memoryArtRoad)" strokeWidth="2.5" />
-        <Path d="M 160 230 L 160 210" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" opacity="0.8" />
-        <Path d="M 160 190 L 160 174" stroke="#fff" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
-        <Path d="M 160 160 L 160 148" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" opacity="0.6" />
-        <Path d="M 160 138 L 160 130" stroke="#fff" strokeWidth="1" strokeLinecap="round" opacity="0.5" />
-        <Circle cx="160" cy="110" r="5" fill={isNight ? '#5ce5c2' : '#ff8c6d'} />
-        <Circle cx="160" cy="110" r="10" fill="none" stroke={isNight ? '#5ce5c2' : '#ff8c6d'} strokeWidth="1" opacity="0.35" />
-      </Svg>
-    </View>
-  );
+  return <ExpoImage
+    accessibilityLabel="Cinematic memory timeline artwork"
+    source={require('../assets/memory-default-floating-timeline-v1.jpg')}
+    contentFit="cover"
+    cachePolicy="memory-disk"
+    transition={120}
+    style={styles.memoryArtwork}
+  />;
 }
 
 function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
@@ -2824,14 +2815,29 @@ function ConnectionsScreen({
   );
 }
 
-function BottomNavigation({ active, onSelect, items }: { active: Tab; onSelect: (tab: Tab) => void; items: BottomNavigationItem[] }) {
+function CinematicTabPage({ children, index, progress, reduceMotion }: { children: ReactNode; index: number; progress: SharedValue<number>; reduceMotion: boolean }) {
+  const motionStyle = useAnimatedStyle(() => {
+    const motion = tabPageMotion(progress.value, index, reduceMotion);
+    return {
+      opacity: motion.opacity,
+      transform: [{ scale: motion.scale }],
+    };
+  }, [index, reduceMotion]);
+
+  return (
+    <View collapsable={false} style={styles.tabLayer}>
+      <Reanimated.View style={[styles.tabTransitionLayer, motionStyle]}>{children}</Reanimated.View>
+    </View>
+  );
+}
+
+function BottomNavigation({ active, onSelect, items, progress, reduceMotion }: { active: Tab; onSelect: (tab: Tab) => void; items: BottomNavigationItem[]; progress: SharedValue<number>; reduceMotion: boolean }) {
   const navigationPadding = 6;
   const navigationGap = 4;
   const navRef = useRef<View>(null);
   const navX = useRef(0);
   const navWidth = useRef(0);
   const indicatorWidthRef = useRef(0);
-  const indicatorX = useRef(new Animated.Value(0)).current;
   const [indicatorWidth, setIndicatorWidth] = useState(0);
   const activeRef = useRef(active);
   const dragging = useRef(false);
@@ -2846,18 +2852,14 @@ function BottomNavigation({ active, onSelect, items }: { active: Tab; onSelect: 
   }
 
   function snapToTab(tab: Tab) {
-    if (navWidth.current <= 0) return;
-    Animated.spring(indicatorX, {
-      toValue: navigationTabX(tabIndex(tab), navWidth.current, items.length, navigationPadding, navigationGap),
-      speed: 24,
-      bounciness: 5,
-      useNativeDriver: true,
-    }).start();
+    progress.value = reduceMotion
+      ? tabIndex(tab)
+      : withTiming(tabIndex(tab), { duration: 240, easing: Easing.out(Easing.cubic) });
   }
 
   function moveIndicator(locationX: number) {
     if (navWidth.current <= 0 || indicatorWidthRef.current <= 0) return;
-    indicatorX.setValue(navigationIndicatorX(locationX, navWidth.current, items.length, navigationPadding, navigationGap));
+    progress.value = navigationProgressAtX(locationX, navWidth.current, items.length, navigationPadding, navigationGap);
   }
 
   function selectAt(locationX: number) {
@@ -2893,7 +2895,7 @@ function BottomNavigation({ active, onSelect, items }: { active: Tab; onSelect: 
 
   useEffect(() => {
     if (!dragging.current) snapToTab(active);
-  }, [active, indicatorX]);
+  }, [active, progress, reduceMotion]);
 
   useEffect(() => {
     let mounted = true;
@@ -2914,9 +2916,17 @@ function BottomNavigation({ active, onSelect, items }: { active: Tab; onSelect: 
       const nextWidth = navigationGeometry(width, items.length, navigationPadding, navigationGap).itemWidth;
       indicatorWidthRef.current = nextWidth;
       setIndicatorWidth(previous => Math.abs(previous - nextWidth) < 0.5 ? previous : nextWidth);
-      indicatorX.setValue(navigationTabX(tabIndex(activeRef.current), width, items.length, navigationPadding, navigationGap));
+      progress.value = tabIndex(activeRef.current);
     });
   }
+
+  const indicatorMotionStyle = useAnimatedStyle(() => {
+    const maximumIndex = Math.max(0, items.length - 1);
+    const boundedProgress = Math.max(0, Math.min(maximumIndex, progress.value));
+    return {
+      transform: [{ translateX: navigationPadding + (boundedProgress * (indicatorWidth + navigationGap)) }],
+    };
+  }, [indicatorWidth, items.length]);
 
   const navigationItems = items.map(item => {
     const selected = active === item.id;
@@ -2952,10 +2962,10 @@ function BottomNavigation({ active, onSelect, items }: { active: Tab; onSelect: 
     {...dragResponder.panHandlers}
   >
     <View pointerEvents="none" style={styles.navGlassSheen} />
-    {indicatorWidth > 0 && <Animated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth, transform: [{ translateX: indicatorX }] }]}>
+    {indicatorWidth > 0 && <Reanimated.View pointerEvents="none" style={[styles.navGlidingIndicator, { width: indicatorWidth }, indicatorMotionStyle]}>
       <View style={styles.navSelectionGlow} />
       <View style={styles.navGlidingFill} />
-    </Animated.View>}
+    </Reanimated.View>}
     {navigationItems}
   </View>;
   const hasNativeLiquidGlass = !reduceTransparency && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
@@ -3428,7 +3438,7 @@ const pageSceneStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   staticWidgetGlow: { borderColor: '#684184', shadowColor: '#a85cff', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
-  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
+  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
   pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, cinematicPageTitle: { position: 'relative', zIndex: 10, elevation: 10, color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 1, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },

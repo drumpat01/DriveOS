@@ -4,6 +4,9 @@ import test from 'node:test';
 import {
   DRIVE_STOP_DURATION_MS, emptyDriveDetectionState, evaluateDriveDetection,
 } from '../src/drive-detection.ts';
+import {
+  appendAutomaticDrivePreRollPoint, selectAutomaticDrivePreRoll, type AutomaticDrivePreRollPoint,
+} from '../src/automatic-drive-preroll.ts';
 
 const sample = (timestamp: number, speedMps: number | null, accuracyMeters: number | null = 10) => ({ timestamp, speedMps, accuracyMeters });
 const positionedSample = (timestamp: number, speedMps: number | null, latitude: number, longitude: number) => ({
@@ -89,6 +92,40 @@ test('position movement prevents an unknown speed from looking parked', () => {
   result = evaluateDriveDetection(result.state, positionedSample(61_000, -1, 32.7655, -97.3308), true);
   assert.equal(result.action, 'none');
   assert.equal(result.state.stoppedSince, null);
+});
+
+test('confirmed driving keeps the departure anchor and candidate route points', () => {
+  const point = (timestamp: number, latitude: number, speedMps: number) => ({
+    timestamp, latitude, longitude: -97.3308, accuracyMeters: 8,
+    altitudeMeters: null, headingDegrees: 20, speedMps,
+  });
+  const buffered = [
+    point(0, 32.7555, 0),
+    point(15_000, 32.7555, 0),
+    point(30_000, 32.7560, 2),
+    point(45_000, 32.7570, 8),
+    point(60_000, 32.7580, 9),
+    point(75_000, 32.7590, 10),
+  ];
+  const selected = selectAutomaticDrivePreRoll(buffered, 75_000);
+  assert.deepEqual(selected.map(candidate => candidate.timestamp), [15_000, 30_000, 45_000, 60_000, 75_000]);
+  assert.equal(selected[0].latitude, 32.7555);
+});
+
+test('pre-roll rejects inaccurate points and cannot grow without bound', () => {
+  let buffered: AutomaticDrivePreRollPoint[] = [];
+  for (let index = 0; index < 50; index += 1) {
+    buffered = appendAutomaticDrivePreRollPoint(buffered, {
+      timestamp: index * 15_000, latitude: 32.7555 + index / 10_000, longitude: -97.3308,
+      accuracyMeters: 10, altitudeMeters: null, headingDegrees: null, speedMps: 8,
+    });
+  }
+  assert.ok(buffered.length <= 32);
+  assert.ok(buffered.every(candidate => candidate.timestamp >= buffered.at(-1)!.timestamp - 4 * 60_000));
+  const unchanged = appendAutomaticDrivePreRollPoint(buffered, {
+    timestamp: 800_000, latitude: 32.8, longitude: -97.3, accuracyMeters: 250,
+  });
+  assert.deepEqual(unchanged, buffered);
 });
 
 test('stationary coordinates override a stale positive iOS speed while parking', () => {

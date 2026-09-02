@@ -469,8 +469,8 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
           ? 'An existing native journey is finishing safely before the fallback takes ownership.'
           : !NATIVE_AUTOMATIC_RECORDER_ENABLED
             ? expoAutomaticDetectorActive
-              ? 'Build 12 safety fallback is watching regular GPS samples for driving.'
-              : 'Automatic is selected, but the Build 12 fallback task is not running.'
+              ? 'Build 13 safety fallback is watching regular GPS samples for driving.'
+              : 'Automatic is selected, but the Build 13 fallback task is not running.'
             : nativeRecorder.lastErrorCode
               ? `iOS reported ${nativeRecorder.lastErrorCode.replaceAll('_', ' ')}.`
               : nativeRecorder.preciseTracking

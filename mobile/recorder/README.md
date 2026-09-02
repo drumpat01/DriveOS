@@ -1,6 +1,6 @@
 # JourneyDeck Recorder
 
-JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. Build 12 runs automatic drive detection and route capture in a native Swift engine that continues independently of the React Native UI. Swift writes GPS points into its small native-owned SQLite inbox; the Expo runtime copies typed snapshots into the canonical on-device database through its sole SQLite connection, then acknowledges completed native sessions only after the entire route commits. This prevents different SQLite libraries from sharing one WAL file while preserving durable background recording. Completion work is stored in a leased retry queue so closing the UI can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
+JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. Build 13 keeps the physically proven Expo background-location detector as the public automatic-recording owner and adds bounded departure pre-roll so confirmation does not lose the beginning of a drive. A corrected native Swift confirmation-burst engine ships dormant for controlled TestFlight validation; if later enabled, Swift writes GPS points only into its small native-owned SQLite inbox and Expo copies typed snapshots into the canonical on-device database through its sole SQLite connection. This prevents different SQLite libraries from sharing one WAL file. Completion work is stored in a leased retry queue so closing the UI can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
 
 ## Public-release scope
 
@@ -56,7 +56,7 @@ npx expo start --dev-client --tunnel
 
 Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
 
-Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 12 adds the isolated native recorder inbox and native MapKit POI enrichment while keeping the canonical schema at version 6.
+Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 13 retains the isolated native recorder inbox and native MapKit POI enrichment, adds EAS Observe diagnostics and the dormant native confirmation-burst correction, and keeps the canonical schema at version 6.
 
 Then create a production build and submit it through the App Store workflow:
 

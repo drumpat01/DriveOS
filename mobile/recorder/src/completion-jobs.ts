@@ -11,6 +11,7 @@ import {
   refreshCompletedSessionLocalMirror,
   type CompletionJob,
 } from './storage';
+import { observeJourneyDeckEvent } from './observability';
 
 export type CompletionJobRunReport = {
   attempted: number;
@@ -28,8 +29,9 @@ async function performCompletionJob(job: CompletionJob, connection: Connection |
     return;
   }
   if (job.kind === 'apple_music_history') {
-    await captureAppleMusicHistoryForSession(job.sessionId);
+    const enriched = await captureAppleMusicHistoryForSession(job.sessionId);
     if (!refreshCompletedSessionLocalMirror(job.sessionId)) throw new Error('archive_mirror_failed');
+    if (enriched > 0) observeJourneyDeckEvent('music.artwork_cached', { enriched_count: enriched });
     return;
   }
   if (job.kind === 'private_cloud_sync') {
@@ -74,6 +76,11 @@ export async function processPendingCompletionJobs(options: {
       markCompletionJobForRetry(job.id, failureCode(job, error), job.attemptCount,
         error instanceof DeferredCompletionError ? error.minimumDelayMs : 0);
       report.deferred += 1;
+      observeJourneyDeckEvent(job.kind === 'private_cloud_sync' ? 'cloudkit.sync_failed' : 'recorder.completion_failed', {
+        stage: job.kind,
+        attempt_count: job.attemptCount,
+        error_code: failureCode(job, error),
+      });
       // Later jobs may depend on this one. Stop this pass and retry from the
       // persisted queue rather than allowing enrichment to overtake storage.
       break;

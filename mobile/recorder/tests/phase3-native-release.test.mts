@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const source = (relative: string) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
 
-test('Build 12 isolates Swift recording while the OTA safety fallback owns automatic start', () => {
+test('Build 13 isolates Swift recording while the proven safety fallback owns automatic start', () => {
   const config = JSON.parse(source('app.json'));
   const moduleConfig = JSON.parse(source('modules/journeydeck-recorder/expo-module.config.json'));
   const swift = source('modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift');
@@ -18,13 +18,20 @@ test('Build 12 isolates Swift recording while the OTA safety fallback owns autom
   const inbox = source('src/native-recorder-inbox.ts');
 
   assert.equal(config.expo.version, '1.9.0');
-  assert.deepEqual(config.expo.runtimeVersion, { policy: 'appVersion' });
+  assert.equal(config.expo.runtimeVersion, '1.9.0-build13');
   assert.deepEqual(moduleConfig.apple.modules, ['JourneyDeckRecorderModule']);
   assert.deepEqual(moduleConfig.apple.appDelegateSubscribers, ['JourneyDeckRecorderAppDelegateSubscriber']);
   assert.match(subscriber, /didFinishLaunchingWithOptions/);
   assert.match(subscriber, /JourneyDeckNativeRecorder\.shared\.bootstrap/);
   assert.match(swift, /startMonitoringSignificantLocationChanges/);
   assert.match(swift, /startUpdatingLocation/);
+  assert.match(swift, /driveStartConfirmationGrace: TimeInterval = 90/);
+  assert.match(swift, /startConfirmationBurstIfAuthorized/);
+  assert.match(swift, /DispatchQueue\.main\.asyncAfter\(deadline: \.now\(\) \+ driveStartConfirmationGrace/);
+  const nativeStartEvaluation = swift.slice(swift.indexOf('private func evaluateStart'), swift.indexOf('private func recordAndEvaluate'));
+  const nonqualifyingSpeedBranch = nativeStartEvaluation.slice(nativeStartEvaluation.indexOf('guard let speed'), nativeStartEvaluation.indexOf('let timestamp'));
+  assert.doesNotMatch(nonqualifyingSpeedBranch, /stopPreciseTracking/);
+  assert.match(nativeStartEvaluation, /appendPreRoll\(location\)/);
   assert.match(swift, /allowsBackgroundLocationUpdates = true/);
   assert.match(swift, /journeydeck-native-inbox\.db/);
   assert.doesNotMatch(swift, /journeydeck-local\.db/);
@@ -55,7 +62,7 @@ test('Build 12 isolates Swift recording while the OTA safety fallback owns autom
   assert.doesNotMatch(manualTask, /processAutomaticDriveLocations/);
 });
 
-test('Build 12 enriches unnamed journey endpoints with native MapKit POI and geocoder fallback', () => {
+test('Build 13 enriches unnamed journey endpoints with native MapKit POI and geocoder fallback', () => {
   const swift = source('modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift');
   const podspec = source('modules/journeydeck-recorder/ios/JourneyDeckRecorder.podspec');
   const module = source('modules/journeydeck-recorder/index.ts');

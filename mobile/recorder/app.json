@@ -4,9 +4,7 @@
     "slug": "journeydeck",
     "owner": "journeydeck",
     "version": "1.9.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.9.0-build13",
     "updates": {
       "url": "https://u.expo.dev/ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4",
       "checkAutomatically": "ON_LOAD",
@@ -84,8 +82,8 @@
     ],
     "extra": {
       "release": {
-        "label": "Native Runtime 1.9 — Build 12 reliability",
-        "sequence": "N1.9-B12"
+        "label": "Native Runtime 1.9 — Build 13 observability",
+        "sequence": "N1.9-B13"
       },
       "edge": {
         "url": "https://journeydeck-edge.patrickbstewart.workers.dev"

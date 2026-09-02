@@ -214,12 +214,18 @@ export function archivedJourneyIdForSession(sessionId: string): string {
   return `local_${sessionId}`;
 }
 
-export function beginLocalSession(deviceId: string) {
+export function beginLocalSession(deviceId: string, detectedStartedAt?: number) {
   initializeDatabase();
   const existing = activeSession();
   if (existing) return existing;
-  const id = `recording_${Crypto.randomUUID()}`, now = new Date().toISOString();
-  db.runSync("INSERT INTO recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);", id, getCurrentUser().id, deviceId, now, now, now);
+  const id = `recording_${Crypto.randomUUID()}`;
+  const createdAtMs = Date.now();
+  const boundedStartedAtMs = Number.isFinite(detectedStartedAt)
+    ? Math.max(createdAtMs - 10 * 60_000, Math.min(createdAtMs, Number(detectedStartedAt)))
+    : createdAtMs;
+  const createdAt = new Date(createdAtMs).toISOString();
+  const startedAt = new Date(boundedStartedAtMs).toISOString();
+  db.runSync("INSERT INTO recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);", id, getCurrentUser().id, deviceId, startedAt, createdAt, createdAt);
   return getSession(id)!;
 }
 

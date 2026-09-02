@@ -9,6 +9,9 @@ private let driveStartSpeedMetersPerSecond = 6.7
 private let driveStartSampleCount = 3
 private let driveStartMinimumSpan: TimeInterval = 20
 private let driveStartSampleWindow: TimeInterval = 120
+private let driveStartConfirmationGrace: TimeInterval = 90
+private let driveStartPreRollWindow: TimeInterval = 4 * 60
+private let driveStartPreRollLimit = 32
 private let driveStopSpeedMetersPerSecond = 2.2
 private let driveStopDuration: TimeInterval = 5 * 60
 private let maximumDetectionAccuracy = 100.0
@@ -249,9 +252,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   private let defaults = UserDefaults.standard
   private var state = DurableDetectionState.empty
   private var candidateLocations: [CLLocation] = []
+  private var preRollLocations: [CLLocation] = []
   private var lastLocation: CLLocation?
   private var significantMonitoring = false
   private var preciseTracking = false
+  private var confirmationBurstTimer: DispatchWorkItem?
 
   private override init() {
     super.init()
@@ -487,6 +492,9 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     let ordered = locations.sorted { $0.timestamp < $1.timestamp }
+    if defaults.bool(forKey: RecorderDefaults.enabled) && !preciseTracking {
+      startConfirmationBurstIfAuthorized()
+    }
     workQueue.async { [weak self] in self?.process(ordered) }
   }
 
@@ -514,7 +522,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       }
       if active != nil {
         resetCandidate()
-        DispatchQueue.main.async { self.stopPreciseTracking() }
+        preRollLocations = []
+        DispatchQueue.main.async {
+          self.cancelConfirmationBurst()
+          self.stopPreciseTracking()
+        }
         return
       }
       guard defaults.bool(forKey: RecorderDefaults.enabled) else { return }
@@ -529,11 +541,12 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
 
   private func evaluateStart(_ location: CLLocation, identity: (owner: String, device: String)) throws {
     guard validForDetection(location), abs(location.timestamp.timeIntervalSinceNow) <= driveStartSampleWindow else { return }
+    appendPreRoll(location)
     let speed = startSpeed(for: location)
     defer { lastLocation = location }
-    guard let speed, speed >= driveStartSpeedMetersPerSecond else {
+    guard let speed else { return }
+    guard speed >= driveStartSpeedMetersPerSecond else {
       resetCandidate()
-      DispatchQueue.main.async { self.stopPreciseTracking() }
       return
     }
     let timestamp = location.timestamp.timeIntervalSince1970
@@ -555,17 +568,24 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let span = timestamp - (state.candidateStartedAt ?? timestamp)
     guard state.candidateSamples >= driveStartSampleCount, span >= driveStartMinimumSpan else { return }
     do {
-      let session = try startSession(identity: identity, locations: candidateLocations)
+      let departureLocations = preRollLocations.isEmpty ? candidateLocations : preRollLocations
+      let session = try startSession(identity: identity, locations: departureLocations)
       state = DurableDetectionState.empty
       state.automaticSessionID = session.id
       candidateLocations = []
+      preRollLocations = []
       persistState()
+      DispatchQueue.main.async { self.cancelConfirmationBurst() }
       saveEvent("started", sessionID: session.id)
       setLastError(nil)
     } catch {
       saveEvent("start_failed", sessionID: nil)
       resetCandidate()
-      DispatchQueue.main.async { self.stopPreciseTracking() }
+      preRollLocations = []
+      DispatchQueue.main.async {
+        self.cancelConfirmationBurst()
+        self.stopPreciseTracking()
+      }
       throw error
     }
   }
@@ -756,7 +776,30 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     preciseTracking = true
   }
 
+  private func startConfirmationBurstIfAuthorized() {
+    startPreciseTrackingIfAuthorized()
+    guard preciseTracking else { return }
+    cancelConfirmationBurst()
+    let timer = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.workQueue.async {
+        guard self.state.automaticSessionID == nil else { return }
+        self.resetCandidate()
+        self.preRollLocations = []
+        DispatchQueue.main.async { self.stopPreciseTracking() }
+      }
+    }
+    confirmationBurstTimer = timer
+    DispatchQueue.main.asyncAfter(deadline: .now() + driveStartConfirmationGrace, execute: timer)
+  }
+
+  private func cancelConfirmationBurst() {
+    confirmationBurstTimer?.cancel()
+    confirmationBurstTimer = nil
+  }
+
   private func stopPreciseTracking() {
+    cancelConfirmationBurst()
     guard preciseTracking else { return }
     locationManager.stopUpdatingLocation()
     locationManager.allowsBackgroundLocationUpdates = false
@@ -769,6 +812,16 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     state.candidateSamples = 0
     candidateLocations = []
     persistState()
+  }
+
+  private func appendPreRoll(_ location: CLLocation) {
+    let cutoff = location.timestamp.addingTimeInterval(-driveStartPreRollWindow)
+    preRollLocations = (preRollLocations + [location])
+      .filter { $0.timestamp >= cutoff && validForDetection($0) }
+      .sorted { $0.timestamp < $1.timestamp }
+    if preRollLocations.count > driveStartPreRollLimit {
+      preRollLocations.removeFirst(preRollLocations.count - driveStartPreRollLimit)
+    }
   }
 
   private func validForDetection(_ location: CLLocation) -> Bool {

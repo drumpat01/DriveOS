@@ -14,10 +14,10 @@ Apple requires disclosure of data handled by the app and third-party partners. D
 | Optional Apple Music | Track, artist, album, playback timing, artwork URLs | On device; optional private iCloud continuity | Review **Audio Data** only if Apple’s final definition requires song/playback metadata to be classified that way; do not claim microphone recordings are collected. |
 | Optional ShazamKit recognition | Brief microphone input and recognized music metadata | Recognition runs on device; recognized metadata can be stored locally/private iCloud | Microphone audio is not saved. Confirm whether only stored recognition results require a label. |
 | Optional photo attachment | User-selected photos | On device and optional private iCloud | Review **Photos or Videos** for App Functionality. |
-| Optional Tessie | User-provided access token, vehicle status/energy/charging summaries | Token in iPhone Keychain; bounded requests to the configured privacy edge and Tessie | Review **Other User Content**, **Device ID**, or another applicable type only after confirming the production request payload and retention. Never disclose an untrue “no sharing” claim. |
 | Optional legacy owner backup | Device identifier, journey records, route points, music observations | Only when an existing owner supplies a private recorder endpoint and key | Review the actual deployed owner-backup policy before allowing public users to configure it. |
 | Map display | Map tile requests and device/network metadata | MapLibre/OpenFreeMap directly from the device | Review third-party service practices and any IP-address handling. |
 | Expo updates | Device/network metadata needed to deliver updates | Expo update infrastructure | Review the deployed Expo configuration and vendor documentation. |
+| EAS Observe | Random per-installation identifier; app/build/update and device/OS characteristics; performance timings; memory warnings; JavaScript errors; bounded lifecycle event names, counts, states, and safe error categories | Expo EAS Observe; no JourneyDeck content fields are attached | Disclose **Device ID**, **Product Interaction**, **Performance Data**, and **Other Diagnostic Data** as non-linked, non-tracking diagnostics/analytics. Reconfirm the final SDK privacy manifest and App Store Connect answers. |
 
 ## Intended label positions — confirm before App Store Connect entry
 
@@ -25,7 +25,7 @@ Apple requires disclosure of data handled by the app and third-party partners. D
 - **Advertising, data broker, or sale of personal information:** No.
 - **Core on-device-only data:** Not collected, only when it never leaves the iPhone.
 - **Optional iCloud continuity:** Treat as a conservative App Functionality disclosure until the final CloudKit/Apple interpretation is confirmed.
-- **Diagnostics and analytics:** No first-party analytics SDK is intentionally configured. Reconfirm after every dependency change.
+- **Diagnostics and analytics:** EAS Observe is intentionally configured for anonymous performance, reliability, and bounded lifecycle diagnostics. It must never receive coordinates, addresses, place or journey names, photos, music names, Apple identity, account identifiers, or record payloads.
 
 ## Final sign-off questions
 

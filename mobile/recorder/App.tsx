@@ -8,6 +8,7 @@ import * as TaskManager from 'expo-task-manager';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
+import { ObserveRoot } from 'expo-observe';
 
 import './src/location-task';
 import { NeonWidget, QuietInset } from './src/neon-widget-outline';
@@ -42,6 +43,9 @@ import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED } from './src/release-features';
+import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
+
+configureJourneyDeckObservability();
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -134,6 +138,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       taskRunning = false;
     }
     if (action === 'restart-recording' && current) {
+      observeJourneyDeckEvent('database.recovery_started', { action: 'restart_recording' });
       try {
         if (currentIsNative) {
           const resumed = await resumeNativeAutomaticJourney();
@@ -153,6 +158,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       }
     }
     if (action === 'pause-interrupted-recording' && current) {
+      observeJourneyDeckEvent('database.recovery_started', { action: 'pause_interrupted' });
       if (currentIsNative) {
         await pauseNativeAutomaticJourney().catch(() => undefined);
       } else if (taskRunning) {
@@ -163,6 +169,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       setNotice('Recording paused because required location access or background tracking is unavailable. Existing points are safe; the interruption may have left a route gap.');
     }
     if (action === 'stop-and-finish' && current) {
+      observeJourneyDeckEvent('database.recovery_started', { action: 'finish_interrupted' });
       if (currentIsNative) {
         await finishNativeAutomaticJourney();
         await syncNativeRecorderInbox();
@@ -214,9 +221,10 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       return Boolean(status.significantMonitoring || status.preciseTracking);
     }
 
-    // Build 12 fallback: prevent the unreliable native idle trigger from
-    // competing with the proven Expo automatic detector. If a native journey
-    // was already recording, let it finish rather than starting a duplicate.
+    // Build 13 fallback: keep the proven Expo automatic detector as the public
+    // owner while the corrected native confirmation burst is physically
+    // validated. If a native journey was already recording, let it finish
+    // rather than starting a duplicate.
     const nativeStatus = await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
     let active = false;
     if (nativeStatus.recording || nativeStatus.paused) {
@@ -224,6 +232,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       active = true;
     } else if (shouldRun) {
       active = await startAutomaticDetection();
+      if (active) observeJourneyDeckEventOnce('recorder.armed', 'expo', { engine: 'expo' });
     } else {
       await stopAutomaticDetection().catch(() => undefined);
     }
@@ -522,9 +531,11 @@ function RecorderAtmosphere() {
   return <Svg pointerEvents="none" viewBox="0 0 430 1250" preserveAspectRatio="none" style={styles.atmosphere}><Defs><SvgRadialGradient id="recorderTopBloom" cx="50%" cy="3%" rx="68%" ry="34%"><Stop offset="0" stopColor="#8d4fff" stopOpacity="0.25" /><Stop offset="0.5" stopColor="#642eb2" stopOpacity="0.08" /><Stop offset="1" stopColor="#642eb2" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderSideBloom" cx="100%" cy="55%" rx="78%" ry="36%"><Stop offset="0" stopColor="#4ca7ff" stopOpacity="0.17" /><Stop offset="0.55" stopColor="#704cff" stopOpacity="0.05" /><Stop offset="1" stopColor="#704cff" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderLowBloom" cx="0%" cy="88%" rx="82%" ry="30%"><Stop offset="0" stopColor="#ff6540" stopOpacity="0.13" /><Stop offset="1" stopColor="#ff6540" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="430" height="1250" fill="url(#recorderTopBloom)" /><Rect width="430" height="1250" fill="url(#recorderSideBloom)" /><Rect width="430" height="1250" fill="url(#recorderLowBloom)" /></Svg>;
 }
 
-export default function App() {
+function App() {
   return <JourneyDeckShell recorder={RecorderScreen} />;
 }
+
+export default ObserveRoot.wrap(App);
 
 type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };
 function PrimaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.primaryButtonText}>{label}</Text></Pressable>; }
