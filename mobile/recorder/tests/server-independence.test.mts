@@ -7,6 +7,7 @@ const api = await readFile(new URL('../src/api.ts', import.meta.url), 'utf8');
 const automaticDrive = await readFile(new URL('../src/automatic-drive-task.ts', import.meta.url), 'utf8');
 const locationTask = await readFile(new URL('../src/location-task.ts', import.meta.url), 'utf8');
 const tracking = await readFile(new URL('../src/tracking.ts', import.meta.url), 'utf8');
+const entrypoint = await readFile(new URL('../index.ts', import.meta.url), 'utf8');
 const appData = await readFile(new URL('../src/app-data.ts', import.meta.url), 'utf8');
 const primaryData = await readFile(new URL('../src/primary-sections-data.ts', import.meta.url), 'utf8');
 const storage = await readFile(new URL('../src/storage.ts', import.meta.url), 'utf8');
@@ -42,8 +43,10 @@ test('local completion invalidates the visible archive without a server refresh'
 test('active recording has no automatic JourneyDeck mirror loop', () => {
   assert.equal((app.match(/await flushRecording\(/g) ?? []).length, 1, 'only the explicit Sync saved data action may flush an active recording');
   assert.doesNotMatch(app, /setTimeout\([\s\S]{0,220}flushRecording/);
+  assert.doesNotMatch(locationTask, /flushRecording|completeRecording/);
   assert.doesNotMatch(automaticDrive, /flushRecording|completeRecording/);
   assert.match(automaticDrive, /completeSessionLocally\(sessionId, Boolean\(connection\)\)/);
+  assert.doesNotMatch(nativeRecorder, /https?:\/\/|URLSession|JourneyDeck credentials/);
 });
 
 test('completed sessions remain queued locally and remote retries stop after one connectivity failure', () => {
@@ -83,24 +86,25 @@ test('clean profiles can record manually and automatically without JourneyDeck c
   assert.doesNotMatch(nativeRecorder, /loadConnection|JourneyDeck credentials/);
 });
 
-test('automatic journeys are detected, recorded, and parked entirely by the native engine', () => {
+test('Build 12 automatic journeys use the Expo safety fallback without sharing Swift SQLite', () => {
   assert.doesNotMatch(locationTask, /processAutomaticDriveLocations/);
-  assert.match(nativeRecorder, /startMonitoringSignificantLocationChanges\(\)/);
-  assert.match(nativeRecorder, /startUpdatingLocation\(\)/);
-  assert.match(nativeRecorder, /private func recordAndEvaluate\(_ locations: \[CLLocation\], session: ActiveSession\)/);
-  assert.match(nativeRecorder, /stoppedSince[\s\S]*driveStopDuration/);
-  assert.match(nativeRecorder, /try finishSession\(session, endedAt:/);
-  assert.match(nativeRecorder, /INSERT OR IGNORE INTO native_recording_points/);
-  assert.match(app, /configureNativeAutomaticRecorder\(/);
-  assert.doesNotMatch(app, /reconcileAutomaticParking\(/);
+  assert.match(releaseFeatures, /NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false/);
+  assert.match(entrypoint, /\.\/src\/automatic-drive-task/);
+  assert.match(automaticDrive, /evaluateDriveDetection/);
+  assert.match(automaticDrive, /startDetectedJourney/);
+  assert.match(automaticDrive, /finishDetectedJourney/);
+  assert.match(app, /configureNativeAutomaticRecorder\(false,[\s\S]*startAutomaticDetection\(\)/);
+  assert.match(nativeRecorder, /journeydeck-native-inbox\.db/);
+  assert.doesNotMatch(nativeRecorder, /journeydeck-local\.db/);
 });
 
 test('background GPS stays functional without opting into the persistent blue iOS indicator', () => {
-  assert.equal((tracking.match(/showsBackgroundLocationIndicator: false/g) ?? []).length, 2);
+  assert.match(tracking, /showsBackgroundLocationIndicator: false/);
   assert.doesNotMatch(tracking, /showsBackgroundLocationIndicator: true/);
-  const automaticStart = tracking.slice(tracking.indexOf('export async function startAutomaticDetection'), tracking.indexOf('export async function stopAutomaticDetection'));
-  assert.doesNotMatch(automaticStart, /if \(await isAutomaticDetectionActive\(\)\) return true/);
-  assert.match(automaticStart, /Location\.startLocationUpdatesAsync\(AUTOMATIC_DETECTION_TASK_NAME/);
+  assert.match(nativeRecorder, /showsBackgroundLocationIndicator = false/);
+  assert.doesNotMatch(nativeRecorder, /showsBackgroundLocationIndicator = true/);
+  assert.match(entrypoint, /\.\/src\/automatic-drive-task/);
+  assert.match(automaticDrive, /defineTask<\{ locations: LocationObject\[\] \}>\(AUTOMATIC_DETECTION_TASK_NAME/);
 });
 
 test('recorder sessions and screen caches are isolated by active profile', () => {
@@ -138,16 +142,6 @@ test('direct Spotify remains a local owner capability with PKCE and no JourneyDe
   assert.match(profileSecrets, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
   assert.match(spotify, /user-read-recently-played/);
   assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
-});
-
-test('Tessie vehicle history is imported through the stateless edge and cached on device', () => {
-  assert.match(tessie, /\/api\/vehicle\/tessie\/sync/);
-  assert.match(tessie, /loadProfileSecret\(TESSIE_TOKEN_KEY\)/);
-  assert.match(profileSecrets, /AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY/);
-  assert.match(appData, /syncTessieDirect/);
-  assert.match(primaryData, /appDataClient\.vehicleIntelligence\(false\)/);
-  assert.doesNotMatch(tessie, /requestJourneyDeckJson|loadConnection/);
-  assert.doesNotMatch(appData, /api\/recorder\/vehicle-intelligence/);
 });
 
 test('version 1 retains Tessie code but disables every runtime and background entry point', () => {

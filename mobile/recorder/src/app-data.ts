@@ -1038,6 +1038,7 @@ export const localAtlasClient = {
     }));
     return {
       ...localJourneyToSummary(j),
+      songCount: soundtrack.length,
       startingBatteryPercent: null,
       endingBatteryPercent: null,
       energyUsedKwh: null,

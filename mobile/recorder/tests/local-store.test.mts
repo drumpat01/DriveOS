@@ -16,6 +16,7 @@ const src = readFileSync(resolve(__dir, '../src/local-store.ts'), 'utf8');
 const recorderStorageSrc = readFileSync(resolve(__dir, '../src/storage.ts'), 'utf8');
 const placeMatchingSrc = readFileSync(resolve(__dir, '../src/place-matching.ts'), 'utf8');
 const hardeningSrc = readFileSync(resolve(__dir, '../src/database-hardening.ts'), 'utf8');
+const playbackDedupeSrc = readFileSync(resolve(__dir, '../src/music-playback-dedupe.ts'), 'utf8');
 
 // ============================================================
 // 1. Type exports
@@ -145,7 +146,9 @@ assert.match(src, /nextCursor/, 'pagination returns nextCursor');
 // 13. Deduplication of music entries
 // ============================================================
 
-assert.match(src, /45_000/, 'music dedup uses 45-second window');
+assert.match(src, /findDuplicatePlayback/, 'music writes use playback-aware deduplication');
+assert.match(playbackDedupeSrc, /knownDuration \+ PLAYBACK_TIMESTAMP_GRACE_MS/, 'music dedup spans the song duration and timestamp uncertainty');
+assert.match(playbackDedupeSrc, /differentTrackBetween/, 'a later replay survives when another song played between');
 assert.match(src, /artwork_url=COALESCE\(excluded\.artwork_url,local_music_entries\.artwork_url\)/, 'music upserts preserve richer album artwork');
 assert.match(recorderStorageSrc, /artwork_url=COALESCE\(\?,artwork_url\)/, 'recorder duplicates are enriched when MusicKit returns artwork');
 assert.match(src, /export function enrichMusicEntriesWithArtwork/, 'recent Apple Music catalog results can repair stored artwork without playback timestamps');

@@ -9,6 +9,7 @@ const preferences = await readFile(new URL('../src/music-preferences.ts', import
 const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
 const recorder = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
+const entrypoint = await readFile(new URL('../index.ts', import.meta.url), 'utf8');
 const automaticDriveTask = await readFile(new URL('../src/automatic-drive-task.ts', import.meta.url), 'utf8');
 const locationTask = await readFile(new URL('../src/location-task.ts', import.meta.url), 'utf8');
 const musicCapture = await readFile(new URL('../src/music-capture.ts', import.meta.url), 'utf8');
@@ -35,6 +36,7 @@ test('production microphone purpose string describes only user-initiated recogni
 });
 
 test('public Shazam capture is manual per song and never starts from background drive tasks', () => {
+  assert.match(entrypoint, /\.\/src\/automatic-drive-task/);
   assert.doesNotMatch(automaticDriveTask, /sampleShazamForActiveSession|recognizeAndQueueActiveSessionMusic/);
   assert.doesNotMatch(locationTask, /sampleShazamForActiveSession|recognizeAndQueueActiveSessionMusic/);
   assert.doesNotMatch(musicCapture, /export async function sampleShazamForActiveSession/);

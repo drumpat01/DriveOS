@@ -69,6 +69,7 @@
     "test:privacy-masker": "node --experimental-strip-types tests/privacy-masker.test.mts",
     "test:local-atlas-client": "node --experimental-strip-types tests/local-atlas-client.test.mts",
     "test:cloudflare-workers": "node --experimental-strip-types tests/cloudflare-workers.test.mts",
+    "test:dormant-tessie": "node --experimental-strip-types --test tests/dormant/tessie.test.mts",
     "test:cloudkit-sync": "node --experimental-strip-types tests/cloudkit-sync.test.mts",
     "test:private-content": "node --experimental-strip-types tests/private-content.test.mts",
     "test:network-boundary": "node --experimental-strip-types --test tests/network-boundary.test.mts",

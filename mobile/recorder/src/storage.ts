@@ -1,6 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
+import { findDuplicatePlayback } from './music-playback-dedupe';
 import { getCurrentUser } from './auth';
 import {
   initializeLocalStore,
@@ -297,16 +298,20 @@ export function queueMusicObservation(sessionId: string, value: MusicObservation
   const observation = normalizeMusicObservation(value);
   if (!observation || !getSession(sessionId)) return false;
 
-  // Native playback clocks can drift by a second or two between samples. Keep one
-  // metadata row for the same song in the same short playback window.
+  // iOS can temporarily report a zero/stale playback position, making every
+  // poll look newly started. Keep one row for the full continuous playback,
+  // while preserving a genuine replay after another track has appeared.
   const recent = db.getAllSync<{ observation_id: string; track: string; artist: string; played_at: string; album: string | null; duration_ms: number | null; artwork_url: string | null; external_url: string | null; confidence: number | null }>(`
     SELECT observation_id,track,artist,played_at,album,duration_ms,artwork_url,external_url,confidence FROM recording_music_observations
     WHERE session_id=? AND source=? ORDER BY played_at DESC LIMIT 8;
   `, sessionId, observation.source);
-  const playedAt = Date.parse(observation.playedAt);
-  const duplicate = recent.find(row => row.track.toLowerCase() === observation.track.toLowerCase()
-    && row.artist.toLowerCase() === observation.artist.toLowerCase()
-    && Math.abs(Date.parse(row.played_at) - playedAt) <= 45_000);
+  const duplicateRow = findDuplicatePlayback(observation, recent.map(row => ({
+    ...row,
+    source: observation.source,
+    playedAt: row.played_at,
+    durationMs: row.duration_ms,
+  })));
+  const duplicate = duplicateRow ? recent.find(row => row.observation_id === duplicateRow.observation_id) : undefined;
   if (duplicate) {
     // The live Apple Music / Tessie sample arrives first without artwork. When
     // MusicKit history returns the richer catalog row, enrich the original

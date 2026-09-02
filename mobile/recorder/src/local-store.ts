@@ -31,6 +31,7 @@ import {
   UNIFIED_DATABASE_SCHEMA_SQL,
   RECORDER_DATABASE_HARDENING_SQL,
 } from './database-hardening';
+import { findDuplicatePlayback, partitionDuplicatePlaybacks } from './music-playback-dedupe';
 import { getMasterDatabase } from './database-owner';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
@@ -472,6 +473,78 @@ const MIGRATIONS: Array<() => void> = [
   },
 ];
 
+const PLAYBACK_DEDUPE_REPAIR_KEY = 'repair.music-playback-dedupe.v1';
+
+type DuplicateRepairRow = {
+  id: string;
+  contextId: string;
+  parentId: string;
+  source: string;
+  playedAt: string;
+  track: string;
+  artist: string;
+  album: string | null;
+  durationMs: number | null;
+  artworkUrl: string | null;
+  externalUrl: string | null;
+  confidence: number | null;
+  songId: string | null;
+  uploaded?: number;
+};
+
+function groupedDuplicatePairs(rows: DuplicateRepairRow[]) {
+  const groups = new Map<string, DuplicateRepairRow[]>();
+  rows.forEach(row => groups.set(row.contextId, [...(groups.get(row.contextId) ?? []), row]));
+  return [...groups.values()].flatMap(group => partitionDuplicatePlaybacks(group).duplicates);
+}
+
+function repairDuplicateMusicPlaybacksOnce() {
+  const state = db.getFirstSync<{ status: string }>('SELECT status FROM local_migration_state WHERE key=?;', PLAYBACK_DEDUPE_REPAIR_KEY);
+  if (state?.status === 'completed') return;
+  try {
+    db.withTransactionSync(() => {
+      const localRows = db.getAllSync<DuplicateRepairRow>(`SELECT id,user_id || ':' || journey_id || ':' || source AS contextId,journey_id AS parentId,
+        source,played_at AS playedAt,track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,
+        external_url AS externalUrl,confidence,song_id AS songId
+        FROM local_music_entries WHERE journey_id IS NOT NULL ORDER BY user_id,journey_id,source,played_at,id;`);
+      const affectedJourneys = new Set<string>();
+      for (const { keep, remove } of groupedDuplicatePairs(localRows)) {
+        db.runSync(`UPDATE local_music_entries SET
+          album=COALESCE(album,?),duration_ms=COALESCE(duration_ms,?),artwork_url=COALESCE(artwork_url,?),
+          external_url=COALESCE(external_url,?),confidence=COALESCE(confidence,?),song_id=COALESCE(song_id,?),synced_to_cloud=0
+          WHERE id=?;`, remove.album, remove.durationMs, remove.artworkUrl, remove.externalUrl, remove.confidence, remove.songId, keep.id);
+        affectedJourneys.add(remove.parentId);
+        db.runSync('DELETE FROM local_music_entries WHERE id=?;', remove.id);
+      }
+
+      const recorderRows = db.getAllSync<DuplicateRepairRow>(`SELECT observation_id AS id,session_id || ':' || source AS contextId,session_id AS parentId,
+        source,played_at AS playedAt,track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,
+        external_url AS externalUrl,confidence,NULL AS songId,uploaded
+        FROM recording_music_observations ORDER BY session_id,source,played_at,observation_id;`);
+      for (const { keep, remove } of groupedDuplicatePairs(recorderRows)) {
+        db.runSync(`UPDATE recording_music_observations SET
+          album=COALESCE(album,?),duration_ms=COALESCE(duration_ms,?),artwork_url=COALESCE(artwork_url,?),
+          external_url=COALESCE(external_url,?),confidence=COALESCE(confidence,?),uploaded=MIN(uploaded,?)
+          WHERE session_id=? AND observation_id=?;`, remove.album, remove.durationMs, remove.artworkUrl, remove.externalUrl,
+        remove.confidence, remove.uploaded ?? 0, keep.parentId, keep.id);
+        db.runSync('DELETE FROM recording_music_observations WHERE session_id=? AND observation_id=?;', remove.parentId, remove.id);
+      }
+
+      for (const journeyId of affectedJourneys) {
+        db.runSync(`UPDATE local_journeys SET song_count=(SELECT COUNT(*) FROM local_music_entries WHERE journey_id=?),
+          synced_to_cloud=0,updated_at=? WHERE id=?;`, journeyId, now(), journeyId);
+      }
+      db.runSync(`INSERT OR REPLACE INTO local_migration_state(
+        key,status,source_application_id,source_schema_version,source_counts_json,migrated_at
+      ) VALUES(?,?,?,?,?,?);`, PLAYBACK_DEDUPE_REPAIR_KEY, 'completed', MASTER_DATABASE_APPLICATION_ID,
+      MASTER_DATABASE_SCHEMA_VERSION, JSON.stringify({ scanned: localRows.length + recorderRows.length }), now());
+    });
+  } catch {
+    // Duplicate repair is defensive. A malformed legacy row must not prevent
+    // the owner from opening the rest of their local JourneyDeck archive.
+  }
+}
+
 // --- Initialisation ----------------------------------------------------------
 
 export function initializeLocalStore(): void {
@@ -493,6 +566,7 @@ export function initializeLocalStore(): void {
     });
     schemaVersion = i + 1;
   }
+  repairDuplicateMusicPlaybacksOnce();
   const quickCheck = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
   if (String(Object.values(quickCheck ?? {})[0] ?? '').toLowerCase() !== 'ok') {
     throw new Error('JourneyDeck local archive failed SQLite quick_check.');
@@ -940,22 +1014,21 @@ export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMu
     durationMs: input.durationMs, artworkUrl: input.artworkUrl, externalUrl: input.externalUrl,
   });
   if (input.journeyId) {
-    const recent = db.getAllSync<{ id: string; played_at: string }>(
-      'SELECT id,played_at FROM local_music_entries WHERE user_id=? AND journey_id=? AND source=? AND LOWER(track)=LOWER(?) AND LOWER(artist)=LOWER(?) ORDER BY played_at DESC LIMIT 8;',
-      input.userId, input.journeyId, input.source, input.track, input.artist,
+    const recent = db.getAllSync<{ id: string; source: string; playedAt: string; track: string; artist: string; durationMs: number | null }>(
+      `SELECT id,source,played_at AS playedAt,track,artist,duration_ms AS durationMs
+       FROM local_music_entries WHERE user_id=? AND journey_id=? AND source=? ORDER BY played_at DESC LIMIT 24;`,
+      input.userId, input.journeyId, input.source,
     );
-    const playedTs = Date.parse(input.playedAt);
-    const duplicate = options.syncedToCloud !== 1
-      ? recent.find(r => r.id !== input.id && Math.abs(Date.parse(r.played_at) - playedTs) <= 45_000)
-      : undefined;
+    const duplicate = findDuplicatePlayback(input, recent.filter(row => row.id !== input.id));
     if (duplicate) {
       db.runSync(`UPDATE local_music_entries SET song_id=?,
         album=COALESCE(?,album),duration_ms=COALESCE(?,duration_ms),
         artwork_url=COALESCE(?,artwork_url),external_url=COALESCE(?,external_url),
-        confidence=COALESCE(?,confidence),synced_to_cloud=0
+        confidence=COALESCE(?,confidence),
+        synced_to_cloud=CASE WHEN ?=1 THEN synced_to_cloud ELSE 0 END
         WHERE id=? AND user_id=?;`, songId, input.album ?? null, input.durationMs ?? null,
       input.artworkUrl ?? null, input.externalUrl ?? null, input.confidence ?? null,
-      duplicate.id, input.userId);
+      options.syncedToCloud ?? 0, duplicate.id, input.userId);
       return;
     }
   }
@@ -982,9 +1055,21 @@ export function refreshJourneySongCount(userId: LocalUserId, journeyId: string):
   return total;
 }
 
+function withoutDuplicateJourneyPlaybacks(rows: LocalMusicEntry[]) {
+  const visibleIds = new Set<string>();
+  const groups = new Map<string, LocalMusicEntry[]>();
+  rows.forEach(row => {
+    if (!row.journeyId) { visibleIds.add(row.id); return; }
+    const key = `${row.userId}\0${row.journeyId}\0${row.source}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  });
+  groups.forEach(group => partitionDuplicatePlaybacks(group).kept.forEach(row => visibleIds.add(row.id)));
+  return rows.filter(row => visibleIds.has(row.id));
+}
+
 export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEntry[] {
   initializeLocalStore();
-  return db.getAllSync<Record<string, unknown>>(
+  const rows = db.getAllSync<Record<string, unknown>>(
     `SELECT e.id,e.user_id AS userId,e.journey_id AS journeyId,e.source,e.played_at AS playedAt,
       COALESCE(s.title,e.track) AS track,COALESCE(s.artist,e.artist) AS artist,
       COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
@@ -999,6 +1084,7 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
       WHERE e.user_id=? ORDER BY e.played_at DESC LIMIT ?;`,
     userId, Math.max(1, Math.min(500, Math.trunc(limit))),
   ).map(r => r as unknown as LocalMusicEntry);
+  return withoutDuplicateJourneyPlaybacks(rows);
 }
 
 export type MusicArtworkCatalogItem = {
@@ -1056,7 +1142,7 @@ export function markArtworkUrlsCached(userId: LocalUserId, urls: string[]): numb
 
 export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: string): LocalMusicEntry[] {
   initializeLocalStore();
-  return db.getAllSync<Record<string, unknown>>(
+  const rows = db.getAllSync<Record<string, unknown>>(
     `SELECT e.id,e.user_id AS userId,e.journey_id AS journeyId,e.source,e.played_at AS playedAt,
       COALESCE(s.title,e.track) AS track,COALESCE(s.artist,e.artist) AS artist,
       COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
@@ -1071,6 +1157,7 @@ export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: strin
       WHERE e.user_id=? AND e.journey_id=? ORDER BY e.played_at,e.id;`,
     userId, journeyId,
   ).map(row => row as unknown as LocalMusicEntry);
+  return withoutDuplicateJourneyPlaybacks(rows);
 }
 
 // --- Places ------------------------------------------------------------------

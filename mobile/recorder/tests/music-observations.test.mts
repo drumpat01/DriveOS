@@ -6,8 +6,8 @@ import {
   appleRecentSongObservation,
   normalizeMusicObservation,
   shazamMatchObservation,
-  tessieMediaObservation,
 } from '../src/music-observations.ts';
+import { findDuplicatePlayback, partitionDuplicatePlaybacks } from '../src/music-playback-dedupe.ts';
 import { musicTrackDestination } from '../src/music-destination.ts';
 
 test('Apple Music samples of the same playback produce one stable observation identity', () => {
@@ -81,6 +81,37 @@ test('Apple Music does not queue paused, unavailable, or incomplete metadata', (
   }, '2026-08-23T14:59:00.000Z'), null);
 });
 
+test('stale zero playback positions remain one soundtrack moment for the song duration', () => {
+  const rows = [0, 60, 120, 180].map(seconds => ({
+    id: `poll-${seconds}`,
+    source: 'apple_music',
+    playedAt: new Date(Date.parse('2026-09-01T20:00:00.000Z') + seconds * 1_000).toISOString(),
+    track: 'Nobody Like U',
+    artist: '4*TOWN',
+    durationMs: 190_000,
+  }));
+  const result = partitionDuplicatePlaybacks(rows);
+  assert.equal(result.kept.length, 1);
+  assert.equal(result.duplicates.length, 3);
+});
+
+test('post-journey history timestamp enriches rather than duplicates the live playback', () => {
+  const live = {
+    source: 'apple_music', playedAt: '2026-09-01T20:00:00.000Z', track: 'Hakuna Matata',
+    artist: 'Nathan Lane', durationMs: 212_000,
+  };
+  const history = { ...live, playedAt: '2026-09-01T20:03:32.000Z' };
+  assert.equal(findDuplicatePlayback(history, [live]), live);
+});
+
+test('the same title remains a real replay after a different song', () => {
+  const first = { source: 'apple_music', playedAt: '2026-09-01T20:00:00.000Z', track: 'Lady Marmalade', artist: 'Cast', durationMs: 250_000 };
+  const middle = { source: 'apple_music', playedAt: '2026-09-01T20:03:00.000Z', track: 'Dancing Queen', artist: 'Cast', durationMs: 210_000 };
+  const replay = { ...first, playedAt: '2026-09-01T20:05:00.000Z' };
+  assert.equal(findDuplicatePlayback(replay, [first, middle]), null);
+  assert.equal(partitionDuplicatePlaybacks([first, middle, replay]).kept.length, 3);
+});
+
 test('Apple Music current playback keeps catalog artwork found by recent-history enrichment', () => {
   const observation = appleCurrentTrackObservation({
     available: true,
@@ -96,31 +127,6 @@ test('Apple Music current playback keeps catalog artwork found by recent-history
 
   assert.equal(observation?.artworkUrl, 'https://example.com/long-song.jpg');
   assert.equal(observation?.externalUrl, 'https://music.apple.com/song/apple-1');
-});
-
-test('Tessie media places Tesla built-in playback at its estimated route time', () => {
-  const observation = tessieMediaObservation({
-    available: true,
-    isPlaying: true,
-    sampledAt: '2026-08-30T15:05:48.000Z',
-    track: 'Midnight City',
-    artist: 'M83',
-    album: 'Hurry Up, We’re Dreaming',
-    source: 'AppleMusic',
-    durationMs: 243_000,
-    elapsedMs: 48_000,
-  }, '2026-08-30T15:00:00.000Z');
-
-  assert.ok(observation);
-  assert.equal(observation.playedAt, '2026-08-30T15:05:00.000Z');
-  assert.equal(observation.source, 'apple_music');
-  assert.equal(observation.durationMs, 243_000);
-});
-
-test('Tessie media rejects paused, unavailable, and incomplete playback', () => {
-  assert.equal(tessieMediaObservation({ available: true, isPlaying: false, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
-  assert.equal(tessieMediaObservation({ available: false, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
-  assert.equal(tessieMediaObservation({ available: true, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song' }, '2026-08-30T15:00:00.000Z'), null);
 });
 
 test('Shazam matches keep only bounded metadata and HTTPS links', () => {

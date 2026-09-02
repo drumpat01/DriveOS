@@ -924,7 +924,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
             <HomeScreen currentUser={currentUser} state={dashboard} primary={primarySections} recordingMode={activeRecordingPreferences!.mode!} tessieConnected={TESSIE_INTEGRATION_ENABLED && connectionCapabilities.tessieConfigured} onRecord={openRecorder} onJourneys={() => openTab('journeys')} onSoundtracks={() => openTab('music')} onAtlas={() => openTab('atlas')} onMore={openMore} onConnections={() => openMore('menu')} onJourney={id => { openTab('journeys'); setSelectedJourneyId(id); }} onRefresh={() => void refreshPrimarySections(true)} />
           </View>
           <View key="live" collapsable={false} style={styles.tabLayer}>
-            <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => void refreshPrimarySections(true)} onRecord={openRecorder} onJourney={setSelectedJourneyId} />
+            <LiveScreen state={primarySections} active={tab === 'live'} onRefresh={() => refreshPrimarySections(true)} onRecord={openRecorder} onJourney={setSelectedJourneyId} />
             <View pointerEvents={recorderVisible ? 'auto' : 'none'} style={recorderVisible ? styles.persistentRecorderVisible : styles.persistentRecorderHidden}><Recorder onClose={() => setRecorderVisible(false)} /></View>
           </View>
           <View key="journeys" collapsable={false} style={styles.tabLayer}>
@@ -935,13 +935,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
           </View>
           <View key="atlas" collapsable={false} style={styles.tabLayer}>
             {membership.atlasAccess
-              ? <AtlasScreen state={primarySections} onRefresh={() => void refreshPrimarySections(true)} onJourney={setSelectedJourneyId} />
-              : <StatisticsScreen state={primarySections} onRefresh={() => void refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} historyDays={membership.timelineHistoryDays} />}
+              ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} />
+              : <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} historyDays={membership.timelineHistoryDays} />}
           </View>
         </PagerView>}
         {appVisible && utilityVisible && <View style={styles.utilityOverlay}><MoreScreen
           active requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => setUtilityVisible(false)} state={primarySections} dashboard={dashboard.data}
-          privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => void refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)}
+          privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)}
           settings={<ConnectionsScreen dashboard={dashboard.data} provider={activePreferences!.provider!} recordingMode={activeRecordingPreferences!.mode!} capabilities={musicCapabilities} connectionCapabilities={connectionCapabilities} currentUser={currentUser} appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending} privateCloud={privateCloud} membershipTier={membership.tier} membershipExpirationDate={membershipStore.state.status.expirationDate} lastFmUsername={lastFmUsername} lastFmConnected={lastFmConnected} editingLastFm={editingLastFm} lastFmDraft={lastFmDraft} savingLastFm={savingLastFm} syncingLastFm={syncingLastFm} ownerSpotifyEligible={ownerSpotifyEligible} spotifyOwnerState={spotifyOwnerState} onBack={() => setMoreDestination('menu')} onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)} onTessieChanged={connected => setConnectionCapabilities(current => ({ ...current, tessieConfigured: connected }))} onSpotifyOwnerConnect={() => void connectSpotifyOwner()} onSpotifyOwnerSync={() => void syncSpotifyOwner()} onAppleSignIn={() => void connectAppleIdentity()} onPrivateCloudSync={() => void syncPrivateCloud(true)} onSignOut={signOutJourneyDeck} onDeleteAccount={deleteJourneyDeckAccount} onLastFmDraft={setLastFmDraft} onEditLastFm={() => setEditingLastFm(true)} onCancelLastFm={() => { setLastFmDraft(lastFmUsername); setEditingLastFm(false); }} onSaveLastFm={() => void saveLastFm()} onSyncLastFm={() => void syncLastFmNow()} onChangeRecordingMode={() => setEditingRecordingMode(true)} onChangeProvider={() => setEditingProvider(true)} onConnectAppleMusic={() => void connectAppleMusic()} onEnableRecognition={() => void enableRecognition()} />}
         /></View>}
       </View>
@@ -3159,31 +3159,11 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
 }
 
 function JourneyHeroAtmosphere() {
-  return <Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 390 125" preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFill}>
-    <Defs>
-      <SvgLinearGradient id="journeyHeroBackground" x1="0" y1="1" x2="1" y2="0">
-        <Stop offset="0" stopColor="#1b0711" />
-        <Stop offset="0.52" stopColor="#100916" />
-        <Stop offset="1" stopColor="#1d1032" />
-      </SvgLinearGradient>
-      <SvgLinearGradient id="journeyHeroTrail" x1="0" y1="1" x2="1" y2="0">
-        <Stop offset="0" stopColor="#ff795b" />
-        <Stop offset="0.48" stopColor="#ff4f86" />
-        <Stop offset="1" stopColor="#9b67ff" />
-      </SvgLinearGradient>
-      <SvgRadialGradient id="journeyHeroBloom" cx="78%" cy="18%" rx="50%" ry="75%">
-        <Stop offset="0" stopColor="#9f69ff" stopOpacity="0.3" />
-        <Stop offset="1" stopColor="#9f69ff" stopOpacity="0" />
-      </SvgRadialGradient>
-    </Defs>
-    <Rect width="390" height="125" fill="url(#journeyHeroBackground)" />
-    <Rect width="390" height="125" fill="url(#journeyHeroBloom)" />
-    <Path d="M -30 132 C 54 125 92 101 151 93 C 217 84 236 102 292 68 C 333 43 356 25 420 14" fill="none" stroke="url(#journeyHeroTrail)" strokeWidth="16" opacity="0.1" />
-    <Path d="M -30 132 C 54 125 92 101 151 93 C 217 84 236 102 292 68 C 333 43 356 25 420 14" fill="none" stroke="url(#journeyHeroTrail)" strokeWidth="3.2" opacity="0.94" />
-    <Path d="M -20 141 C 62 135 99 112 158 104 C 224 95 244 112 301 77 C 342 52 365 34 425 23" fill="none" stroke="#8e67ff" strokeWidth="1.2" opacity="0.55" />
-    <Circle cx="292" cy="68" r="4.5" fill="#ff795b" stroke="#ffd2c5" strokeWidth="1.5" />
-    <Circle cx="357" cy="25" r="3.5" fill="#9b67ff" stroke="#eadfff" strokeWidth="1.2" />
-  </Svg>;
+  return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <ExpoImage source={require('../assets/journey-detail-memory-hero-v1.jpg')} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={['rgba(5,2,8,0.9)', 'rgba(7,3,10,0.45)', 'rgba(7,3,10,0)']} locations={[0, 0.38, 0.66]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={['rgba(7,3,10,0)', 'rgba(7,3,10,0.68)']} locations={[0.28, 1]} style={StyleSheet.absoluteFill} />
+  </View>;
 }
 
 function JourneyCinematicHero({ journey, title }: { journey: JourneyDetail; title: string }) {

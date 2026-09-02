@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import './src/location-task';
-import './src/legacy-automatic-drive-task';
 import { NeonWidget, QuietInset } from './src/neon-widget-outline';
 import { HeaderArtwork } from './src/header-artwork';
 import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
@@ -21,7 +20,10 @@ import {
 } from './src/storage';
 import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
-import { isLocationTrackingActive, startLocationTracking, stopLocationTracking } from './src/tracking';
+import {
+  isAutomaticDetectionActive, isLocationTrackingActive, startAutomaticDetection,
+  startLocationTracking, stopAutomaticDetection, stopLocationTracking,
+} from './src/tracking';
 import { JourneyDeckShell } from './src/shell';
 import { appDataClient } from './src/app-data';
 import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
@@ -38,8 +40,8 @@ import {
 } from './modules/journeydeck-recorder';
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
-import { stopAutomaticDetection } from './src/tracking';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
+import { NATIVE_AUTOMATIC_RECORDER_ENABLED } from './src/release-features';
 
 const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
@@ -114,9 +116,15 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     if (available) {
       try { taskRunning = await isLocationTrackingActive(); } catch { taskRunning = false; }
     }
+    let expoAutomaticDetectorRunning = false;
+    if (available) {
+      try { expoAutomaticDetectorRunning = await isAutomaticDetectionActive(); } catch { expoAutomaticDetectorRunning = false; }
+    }
     const nativeRecorder = await getNativeAutomaticRecorderStatus().catch(() => null);
     await syncNativeRecorderInbox().catch(() => undefined);
-    const automaticTaskRunning = Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking);
+    const automaticTaskRunning = NATIVE_AUTOMATIC_RECORDER_ENABLED
+      ? Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking)
+      : expoAutomaticDetectorRunning || Boolean(nativeRecorder?.recording);
     const current = activeSession();
     const currentIsNative = isNativeAutomaticSession(current?.id);
     const recordingTransportRunning = currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning;
@@ -171,7 +179,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     setTaskAvailable(available);
     setTrackingActive(currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning);
     setAutomaticDetectionActive(automaticTaskRunning);
-    const automaticEvent = nativeRecorder?.lastEvent && nativeRecorder.lastEventAt
+    const automaticEvent = NATIVE_AUTOMATIC_RECORDER_ENABLED && nativeRecorder?.lastEvent && nativeRecorder.lastEventAt
       ? { kind: nativeRecorder.lastEvent, occurredAt: nativeRecorder.lastEventAt }
       : loadAutomaticDriveEvent();
     if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
@@ -195,25 +203,42 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
 
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
 
-  useEffect(() => {
-    let cancelled = false;
+  const reconcileAutomaticRecorder = useCallback(async () => {
     const shouldRun = Boolean(deviceId && foregroundPermission && backgroundPermission
       && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic');
-    const updateTask = async () => {
-      if (!deviceId) return;
-      // Remove the persisted Build 10 JavaScript detector before enabling the
-      // Build 11 native engine. This is idempotent on fresh installations.
+    if (!deviceId) return false;
+    if (NATIVE_AUTOMATIC_RECORDER_ENABLED) {
       await stopAutomaticDetection().catch(() => undefined);
       const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
       await syncNativeRecorderInbox();
-      if (!shouldRun && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
-      return status;
-    };
-    void updateTask()
-      .then(status => { if (!cancelled) setAutomaticDetectionActive(Boolean(status?.significantMonitoring || status?.preciseTracking)); })
+      return Boolean(status.significantMonitoring || status.preciseTracking);
+    }
+
+    // Build 12 fallback: prevent the unreliable native idle trigger from
+    // competing with the proven Expo automatic detector. If a native journey
+    // was already recording, let it finish rather than starting a duplicate.
+    const nativeStatus = await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
+    let active = false;
+    if (nativeStatus.recording || nativeStatus.paused) {
+      await stopAutomaticDetection().catch(() => undefined);
+      active = true;
+    } else if (shouldRun) {
+      active = await startAutomaticDetection();
+    } else {
+      await stopAutomaticDetection().catch(() => undefined);
+    }
+    await syncNativeRecorderInbox();
+    if (!shouldRun && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
+    return active;
+  }, [backgroundPermission, deviceId, foregroundPermission, recordingPreferences]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void reconcileAutomaticRecorder()
+      .then(active => { if (!cancelled) setAutomaticDetectionActive(active); })
       .catch(() => { if (!cancelled) setAutomaticDetectionActive(false); });
     return () => { cancelled = true; };
-  }, [backgroundPermission, deviceId, foregroundPermission, recordingPreferences, taskAvailable]);
+  }, [reconcileAutomaticRecorder]);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,13 +265,16 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     }, 1000);
     const subscription = AppState.addEventListener('change', state => {
       if (state !== 'active' || busyRef.current) return;
+      void reconcileAutomaticRecorder()
+        .then(setAutomaticDetectionActive)
+        .catch(() => setAutomaticDetectionActive(false));
       void refresh().catch(() => {});
       void sampleAppleMusicForActiveSession({ force: true });
       void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       void syncPendingLastFmBestEffort();
     });
     return () => { clearInterval(timer); subscription.remove(); };
-  }, [connection, refresh]);
+  }, [connection, reconcileAutomaticRecorder, refresh]);
 
   useEffect(() => {
     if (!connection) return;

@@ -1,5 +1,6 @@
 import JourneyDeckRecorderModule from './src/JourneyDeckRecorderModule';
 import type { NativeRecorderInboxExport } from './src/JourneyDeckRecorder.types';
+import { createLatestNativeRecorderConfiguration } from './src/LatestNativeRecorderConfiguration';
 
 export type {
   NativeMapKitPointOfInterest, NativeRecorderAuthorization, NativeRecorderInboxExport,
@@ -23,9 +24,13 @@ const unavailableStatus = {
 
 export const isJourneyDeckNativeRecorderAvailable = JourneyDeckRecorderModule !== null;
 
-export async function configureNativeAutomaticRecorder(enabled: boolean, ownerUserId: string, deviceId: string) {
+const nativeRecorderConfiguration = createLatestNativeRecorderConfiguration(async target => {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
-  return JourneyDeckRecorderModule.configureAsync(enabled, ownerUserId, deviceId);
+  return JourneyDeckRecorderModule.configureAsync(target.enabled, target.ownerUserId, target.deviceId);
+});
+
+export async function configureNativeAutomaticRecorder(enabled: boolean, ownerUserId: string, deviceId: string) {
+  return nativeRecorderConfiguration.request({ enabled, ownerUserId, deviceId });
 }
 
 export async function getNativeAutomaticRecorderStatus() {

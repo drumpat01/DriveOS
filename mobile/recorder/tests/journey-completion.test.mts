@@ -18,6 +18,7 @@ const unifiedMigration = await readFile(new URL('src/unified-data-migration.ts',
 const localStore = await readFile(new URL('src/local-store.ts', sourceRoot), 'utf8');
 const localAtlas = await readFile(new URL('src/local-atlas.ts', sourceRoot), 'utf8');
 const nativeMusic = await readFile(new URL('modules/journeydeck-music/ios/JourneyDeckMusicModule.swift', sourceRoot), 'utf8');
+const playbackDedupe = await readFile(new URL('src/music-playback-dedupe.ts', sourceRoot), 'utf8');
 
 test('ordinary GPS drift resolves to one user-named place while distinct places stay separate', () => {
   const driveway = { latitude: 32.93412, longitude: -97.07821 };
@@ -44,6 +45,7 @@ test('every journey completion path repairs and disk-caches compact Apple Music 
   assert.match(app, /completeSessionLocally\(current\.id,[\s\S]*?enrichCompletedJourney\(connection, current\.id\)/);
   assert.match(app, /completeSessionLocally\(currentSummary\.id,[\s\S]*?enrichCompletedJourney\(connection, currentSummary\.id\)/);
   assert.match(automaticDrive, /completeSessionLocally\(sessionId,[\s\S]*?processPendingCompletionJobs\(\{ connection, sessionId/);
+  assert.match(storage, /importNativeRecorderInbox[\s\S]*?'apple_music_history'[\s\S]*?completed\.push\(session\.id\)/);
   assert.match(completionJobs, /captureAppleMusicHistoryForSession\(job\.sessionId\)/);
 });
 
@@ -63,4 +65,15 @@ test('completion is retryable and recorder/archive use one unified live SQLite h
   assert.doesNotMatch(localStore, /openDatabaseSync/);
   assert.doesNotMatch(localAtlas, /openDatabaseSync/);
   assert.doesNotMatch(storage, /openDatabaseSync/);
+});
+
+test('continuous Apple Music playback is deduplicated and existing duplicate rows are repaired once', () => {
+  assert.match(storage, /findDuplicatePlayback\(observation/);
+  assert.match(localStore, /findDuplicatePlayback\(input/);
+  assert.match(localStore, /repair\.music-playback-dedupe\.v1/);
+  assert.match(localStore, /repairDuplicateMusicPlaybacksOnce\(\)/);
+  assert.match(localStore, /DELETE FROM local_music_entries WHERE id=/);
+  assert.match(localStore, /partitionDuplicatePlaybacks/);
+  assert.match(playbackDedupe, /differentTrackBetween/);
+  assert.match(playbackDedupe, /knownDuration \+ PLAYBACK_TIMESTAMP_GRACE_MS/);
 });

@@ -304,6 +304,13 @@ test('every major destination has a distinct cinematic header scene', () => {
   assert.match(shell, /settings-header-cinematic-v1\.png/);
 });
 
+test('Shared tab background loading cannot activate the native refresh inset', () => {
+  assert.match(primarySections, /refreshing=\{manualRefreshing\}/);
+  assert.match(primarySections, /await onRefresh\(\)/);
+  assert.doesNotMatch(primarySections, /refreshing=\{state\.status/);
+  assert.doesNotMatch(primarySections, /refreshing=\{refreshing\}/);
+});
+
 test('every destination artwork header shares one frameless, feathered frame', () => {
   assert.match(headerArtwork, /HEADER_ARTWORK_ASPECT_RATIO = 1672 \/ 941/);
   assert.match(headerArtwork, /aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
@@ -488,8 +495,11 @@ test('Journey details keep one dark route map beneath a map-free summary hero', 
   assert.match(shell, /<JourneyCinematicHero journey=\{journey\} title=\{displayTitle\} \/>/);
   assert.match(shell, /kicker="ROAD MEMORY" title="Drive details"/);
   assert.match(shell, /loadCityLabelForCoordinate/);
-  assert.match(journeyAtmosphere, /journeyHeroTrail/);
-  assert.match(journeyAtmosphere, /<Path/);
+  assert.match(journeyAtmosphere, /journey-detail-memory-hero-v1\.jpg/);
+  assert.match(journeyAtmosphere, /<ExpoImage/);
+  assert.match(journeyAtmosphere, /contentFit="cover"/);
+  assert.match(journeyAtmosphere, /cachePolicy="memory-disk"/);
+  assert.doesNotMatch(journeyAtmosphere, /<Path|RouteSketch|InteractiveRouteMap/);
   assert.match(journeyHero, /styles\.journeyHeroIntro/);
   assert.doesNotMatch(journeyHero, /RouteSketch|InteractiveRouteMap/);
   assert.doesNotMatch(journeyHero, /journeyHeroGlowCoral|journeyHeroGlowViolet/);
