@@ -1,5 +1,12 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Settings touch-redraw bounce correction — September 3, 2026
+
+- Re-reviewed the tester's 7.8-second recording at individual keypress frames after the prior transition and modal-animation changes did not resolve the problem. The editor/modal remains stationary, but the underlying Settings `ScrollView` drops roughly 12 pixels for a frame whenever editor state changes, including each typed letter. This supersedes the earlier cross-fade-only diagnosis below.
+- Cached the visible Settings scroll page separately from the Saved Place and Primary Driver editor state. Opening an editor and changing its draft now reconcile only the editor layer, preventing iOS from briefly reapplying the background scroll content offset. No Settings layout, approved Home/navigation/Journey Details/sharing UI, or persistence behavior changed.
+- Added a regression requiring editor draft/busy state to remain outside the cached Settings page. Verification passed: TypeScript, focused Settings/navigation checks **41/41**, complete mobile suite **183/183**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` (only repository LF-to-CRLF notices).
+- Implementation commit `3614bd9` (`fix: freeze Settings behind editors`) is pushed to `origin/codex/native-runtime-prep`. Published and independently verified the Build 13-compatible iOS production OTA: group `7dcf52f3-6dd6-41ce-9093-62b1317ddf83`, update `01a06906-4638-7b8f-b721-11981516e1f3`, runtime `1.9.0-build13`, message `Stop Settings touch redraw bounce`. No native build, TestFlight upload, App Store Connect mutation, or data reset was performed.
+
 ## Settings modal cross-fade glitch — September 3, 2026
 
 - Reviewed the tester's 7.8-second, 1320x2868/60fps screen recording frame by frame. The Settings page itself and its scroll offset remain stable; the visible glitch occurs during the native modal fade, when the partially transparent Saved Place sheet briefly overlaps the still-visible Settings labels and controls beneath it.
