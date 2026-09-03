@@ -1,5 +1,12 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Settings Saved Place keyboard stabilization — September 3, 2026
+
+- Reviewed the tester's follow-up 19.15-second, 1320x2868/58.77fps recording after OTA `01a06906-4638-7b8f-b721-11981516e1f3`. The Primary Driver editor and its background remain stable. The Saved Place sheet still exposed one roughly 12-pixel background displacement lasting four 60fps frames immediately around a key-preview interaction.
+- Isolated the remaining difference to the shared bottom-sheet keyboard container. Replaced its continuously managed native keyboard-avoidance wrapper with a settled `keyboardDidShow`/`keyboardDidHide` height spacer. The sheet still moves above the keyboard and retains its Done control, scrolling, layout, and styling, but ordinary keypresses can no longer change the container geometry.
+- Added structural regressions for the settled keyboard height and continued Memory-editor keyboard usability. Verification passed: TypeScript, focused Settings/navigation checks **42/42**, complete mobile suite **184/184**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` (only repository LF-to-CRLF notices).
+- Implementation commit `3123eee` (`fix: stabilize editor keyboard layout`) is pushed to `origin/codex/native-runtime-prep`. Published and independently verified the Build 13-compatible iOS production OTA: group `eaa06198-08c2-4409-bb54-684ca9c5391e`, update `01a06917-bc5c-7111-97eb-1ba279389d9a`, runtime `1.9.0-build13`, message `Stabilize Settings editor keyboard`. No native build, TestFlight upload, App Store Connect mutation, or data reset was performed.
+
 ## Settings touch-redraw bounce correction — September 3, 2026
 
 - Re-reviewed the tester's 7.8-second recording at individual keypress frames after the prior transition and modal-animation changes did not resolve the problem. The editor/modal remains stationary, but the underlying Settings `ScrollView` drops roughly 12 pixels for a frame whenever editor state changes, including each typed letter. This supersedes the earlier cross-fade-only diagnosis below.
