@@ -2,9 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  circularPagerProgress,
-  circularPagerTabIndex,
-  circularPagerTransition,
   navigationGeometry,
   navigationIndexAtX,
   navigationIndicatorX,
@@ -57,23 +54,6 @@ test('continuous navigation progress follows the pager between tabs', () => {
   assertClose(navigationProgressAtX(118.6, width, count, padding, gap), 1);
   assertClose(navigationProgressAtX(156.8, width, count, padding, gap), 1.5);
   assertClose(navigationProgressAtX(347.8, width, count, padding, gap), 4);
-});
-
-test('the circular pager uses one-step edge transitions in both directions', () => {
-  assert.deepEqual(circularPagerTransition(0, 4, 5), { targetPosition: 0, canonicalSnapPosition: 5 });
-  assert.deepEqual(circularPagerTransition(4, 0, 5), { targetPosition: 6, canonicalSnapPosition: 1 });
-  assert.deepEqual(circularPagerTransition(1, 3, 5), { targetPosition: 4, canonicalSnapPosition: null });
-  assert.deepEqual(circularPagerTransition(0, 4, 5, true), { targetPosition: 5, canonicalSnapPosition: null });
-});
-
-test('circular pager sentinels map back to canonical tabs and motion progress', () => {
-  assert.equal(circularPagerTabIndex(0, 5), 4);
-  assert.equal(circularPagerTabIndex(1, 5), 0);
-  assert.equal(circularPagerTabIndex(3, 5), 2);
-  assert.equal(circularPagerTabIndex(6, 5), 0);
-  assert.equal(circularPagerProgress(0, 0), -1);
-  assert.equal(circularPagerProgress(3, 0), 2);
-  assert.equal(circularPagerProgress(6, 0), 5);
 });
 
 test('tab motion remains subtle and respects Reduce Motion', () => {

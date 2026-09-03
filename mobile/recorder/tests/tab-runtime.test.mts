@@ -26,29 +26,28 @@ const releaseFeatures = await readFile(new URL('release-features.ts', sourceRoot
 const app = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
 const moreScreen = primarySections.slice(primarySections.indexOf('export function MoreScreen'), primarySections.indexOf('function MoreTile'));
 
-test('tabs use one native pager with a bounded offscreen memory budget', () => {
+test('Settings is a single stable sibling while the four content tabs keep the native pager', () => {
+  const pager = shell.slice(shell.indexOf('          <PagerView'), shell.indexOf('</PagerView>'));
   assert.match(shell, /<PagerView/);
   assert.match(shell, /scrollEnabled=\{false\}/);
   assert.match(shell, /offscreenPageLimit=\{1\}/);
   assert.match(shell, /transform: \[\{ scaleX: motion\.scale \}\]/);
   assert.doesNotMatch(shell, /transform: \[\{ scale: motion\.scale \}\]/);
-  assert.match(shell, /key="music"/);
-  assert.match(shell, /key="journeys"/);
-  assert.match(shell, /key="home"/);
-  assert.match(shell, /key="statistics"/);
-  assert.match(shell, /key="settings"/);
+  assert.match(pager, /key="music"/);
+  assert.match(pager, /key="journeys"/);
+  assert.match(pager, /key="home"/);
+  assert.match(pager, /key="statistics"/);
+  assert.doesNotMatch(pager, /key="settings"|settingsPage\(\)|<ConnectionsScreen/);
   assert.doesNotMatch(shell, /key="live"|key="atlas"/);
   assert.doesNotMatch(shell, /key="more"/);
   assert.match(shell, /type Tab = 'music' \| 'journeys' \| 'home' \| 'statistics' \| 'settings'/);
-  assert.match(shell, /initialPage=\{3\}/);
+  assert.match(shell, /initialPage=\{2\}/);
   assert.match(shell, /useSharedValue\(2\)/);
-  assert.match(shell, /key="settings-wrap" index=\{-1\}/);
-  assert.match(shell, /key="music-wrap" index=\{5\}/);
-  assert.match(shell, /onPageScrollStateChanged=\{event => \{/);
-  assert.match(shell, /pageScrollState !== 'idle'/);
-  assert.match(shell, /pendingPagerSnapRef\.current = null/);
-  assert.match(shell, /setPageWithoutAnimation\(canonicalPosition\)/);
-  assert.match(shell, /accessibilityElementsHidden importantForAccessibility="no-hide-descendants"/);
+  assert.match(shell, /style=\{\[styles\.settingsTabLayer, tab !== 'settings' && styles\.settingsTabLayerHidden\]\}/);
+  assert.match(shell, /pointerEvents=\{tab === 'settings' \? 'auto' : 'none'\}/);
+  assert.match(shell, /settingsTabLayerHidden: \{ display: 'none' \}/);
+  assert.equal(shell.match(/<ConnectionsScreen\b/g)?.length, 1);
+  assert.doesNotMatch(shell, /settings-wrap|music-wrap|pendingPagerSnapRef|circularPager/);
   assert.doesNotMatch(shell, /transitionVeil|visibleTab|recorderHidden/);
   assert.match(shell, /navItemPressed: \{ transform: \[\{ scale: 0\.98 \}\], opacity: 0\.88 \}/);
   assert.doesNotMatch(shell, /navItemPressed: \{[^}]*backgroundColor/);
@@ -61,7 +60,7 @@ test('the local-first model still builds Live, Atlas, the merged Statistics time
   assert.match(primarySections, /export function StatisticsScreen/);
   assert.match(primarySections, /export function SearchScreen/);
   assert.match(primarySections, /export function DataHealthScreen/);
-  assert.match(primarySections, /export type MoreDestination = 'menu' \| 'health' \| 'settings'/);
+  assert.match(primarySections, /export type MoreDestination = 'menu' \| 'health'/);
   assert.match(primaryData, /getLiveRecorderSnapshot/);
   assert.match(primaryData, /primary\.sections\.\$\{userId\}\.v1/);
   assert.match(primaryData, /buildTimeline/);
@@ -178,7 +177,8 @@ test('Settings is the fifth primary tab and keeps Data Health under Advanced Sup
   assert.match(shell, /utilityVisible && <View style=\{styles\.utilityOverlay\}><MoreScreen/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
-  assert.match(moreScreen, /title="Settings"[\s\S]*?onRequestedChange\('settings'\)/);
+  assert.match(moreScreen, /onBack=\{onClose\}/);
+  assert.doesNotMatch(moreScreen, /title="Settings"|onRequestedChange\('settings'\)|settings: ReactNode/);
   assert.doesNotMatch(moreScreen, /Search all JourneyDeck|title="Timeline"|title="Statistics"|onRequestedChange\('search'\)|onRequestedChange\('timeline'\)|onRequestedChange\('statistics'\)/);
   assert.doesNotMatch(shell, /timelineHistoryDays=\{membership\.timelineHistoryDays\}[\s\S]*?<MoreScreen/);
   assert.doesNotMatch(primarySections, /title="Music" detail="Road soundtrack"/);

@@ -43,7 +43,7 @@ import {
 } from './recording-mode';
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
-import { circularPagerProgress, circularPagerTabIndex, circularPagerTransition, navigationGeometry, navigationIndexAtX, navigationProgressAtX, tabPageMotion } from './navigation-motion';
+import { navigationGeometry, navigationIndexAtX, navigationProgressAtX, tabPageMotion } from './navigation-motion';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, type LocalPlace, type LocalUser } from './local-store';
@@ -273,10 +273,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [homeRecorderActive, setHomeRecorderActive] = useState(false);
+  const [settingsEditorActive, setSettingsEditorActive] = useState(false);
   const tabRef = useRef<Tab>('home');
-  const requestedTabRef = useRef<Tab>('home');
   const pagerRef = useRef<PagerView>(null);
-  const pendingPagerSnapRef = useRef<number | null>(null);
   const tabProgress = useSharedValue(2);
   const pagerProgress = useSharedValue(2);
   const [reduceTabMotion, setReduceTabMotion] = useState(false);
@@ -812,18 +811,18 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     setUtilityVisible(false);
     setAtlasVisible(false);
     if (next === tabRef.current) return;
-    const previousIndex = bottomNavigationItems.findIndex(item => item.id === tabRef.current);
+    const previousTab = tabRef.current;
+    if (previousTab === 'settings') Keyboard.dismiss();
     setSelectedJourneyId(null);
-    requestedTabRef.current = next;
     tabRef.current = next;
     setTab(next);
     const nextIndex = bottomNavigationItems.findIndex(item => item.id === next);
-    const pagerTransition = circularPagerTransition(previousIndex, nextIndex, bottomNavigationItems.length, reduceTabMotion);
-    pendingPagerSnapRef.current = pagerTransition.canonicalSnapPosition;
-    if (reduceTabMotion) {
+    if (next !== 'settings' && (reduceTabMotion || previousTab === 'settings')) {
       pagerProgress.value = nextIndex;
-      pagerRef.current?.setPageWithoutAnimation(nextIndex + 1);
-    } else pagerRef.current?.setPage(pagerTransition.targetPosition);
+      pagerRef.current?.setPageWithoutAnimation(nextIndex);
+    } else if (next !== 'settings') {
+      pagerRef.current?.setPage(nextIndex);
+    }
     void Haptics.selectionAsync().catch(() => undefined);
   };
 
@@ -872,10 +871,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     setFirstRunProgress(saveFirstRunProgress({ stage, recordingMode }));
   };
 
-  const settingsPage = (onBack?: () => void) => <ConnectionsScreen
-    dashboard={dashboard.data}
+  const settingsPage = () => <ConnectionsScreen
     provider={activePreferences!.provider!}
-    capabilities={musicCapabilities}
     connectionCapabilities={connectionCapabilities}
     currentUser={currentUser}
     appleIdentityStatus={appleIdentityStatus}
@@ -892,7 +889,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     syncingLastFm={syncingLastFm}
     ownerSpotifyEligible={ownerSpotifyEligible}
     spotifyOwnerState={spotifyOwnerState}
-    onBack={onBack}
     onDataHealth={() => openMore('health')}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
@@ -907,8 +903,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     onSaveLastFm={() => void saveLastFm()}
     onSyncLastFm={() => void syncLastFmNow()}
     onChangeProvider={() => setEditingProvider(true)}
-    onConnectAppleMusic={() => void connectAppleMusic()}
-    onEnableRecognition={() => void enableRecognition()}
+    onEditorActiveChange={setSettingsEditorActive}
   />;
 
   return (
@@ -957,65 +952,53 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
-        {appVisible && <PagerView
-          ref={pagerRef}
-          style={styles.pager}
-          initialPage={3}
-          scrollEnabled={false}
-          overdrag
-          offscreenPageLimit={1}
-          onPageScroll={event => {
-            pagerProgress.value = circularPagerProgress(event.nativeEvent.position, event.nativeEvent.offset);
-          }}
-          onPageSelected={event => {
-            const position = event.nativeEvent.position;
-            const selected = bottomNavigationItems[circularPagerTabIndex(position, bottomNavigationItems.length)]?.id;
-            if (!selected || selected !== requestedTabRef.current) return;
-            tabRef.current = selected;
-            setTab(selected);
-          }}
-          onPageScrollStateChanged={event => {
-            if (event.nativeEvent.pageScrollState !== 'idle') return;
-            const canonicalPosition = pendingPagerSnapRef.current;
-            if (canonicalPosition === null) return;
-            pendingPagerSnapRef.current = null;
-            pagerRef.current?.setPageWithoutAnimation(canonicalPosition);
-            pagerProgress.value = canonicalPosition - 1;
-          }}
-        >
-          <CinematicTabPage key="settings-wrap" index={-1} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <View style={styles.flex} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">{settingsPage()}</View>
-          </CinematicTabPage>
-          <CinematicTabPage key="music" index={0} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />
-          </CinematicTabPage>
-          <CinematicTabPage key="journeys" index={1} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <MemoriesScreen catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />
-          </CinematicTabPage>
-          <CinematicTabPage key="home" index={2} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={setSelectedJourneyId} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />
-          </CinematicTabPage>
-          <CinematicTabPage key="statistics" index={3} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />
-          </CinematicTabPage>
-          <CinematicTabPage key="settings" index={4} progress={pagerProgress} reduceMotion={reduceTabMotion}>
+        {appVisible && <View style={styles.primaryTabHost}>
+          <PagerView
+            ref={pagerRef}
+            style={styles.pager}
+            initialPage={2}
+            scrollEnabled={false}
+            overdrag
+            offscreenPageLimit={1}
+            pointerEvents={tab === 'settings' ? 'none' : 'auto'}
+            accessibilityElementsHidden={tab === 'settings'}
+            importantForAccessibility={tab === 'settings' ? 'no-hide-descendants' : 'auto'}
+            onPageScroll={event => {
+              pagerProgress.value = event.nativeEvent.position + event.nativeEvent.offset;
+            }}
+          >
+            <CinematicTabPage key="music" index={0} progress={pagerProgress} reduceMotion={reduceTabMotion}>
+              <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />
+            </CinematicTabPage>
+            <CinematicTabPage key="journeys" index={1} progress={pagerProgress} reduceMotion={reduceTabMotion}>
+              <MemoriesScreen catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />
+            </CinematicTabPage>
+            <CinematicTabPage key="home" index={2} progress={pagerProgress} reduceMotion={reduceTabMotion}>
+              <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={setSelectedJourneyId} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />
+            </CinematicTabPage>
+            <CinematicTabPage key="statistics" index={3} progress={pagerProgress} reduceMotion={reduceTabMotion}>
+              <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />
+            </CinematicTabPage>
+          </PagerView>
+          <View
+            style={[styles.settingsTabLayer, tab !== 'settings' && styles.settingsTabLayerHidden]}
+            pointerEvents={tab === 'settings' ? 'auto' : 'none'}
+            accessibilityElementsHidden={tab !== 'settings'}
+            importantForAccessibility={tab === 'settings' ? 'auto' : 'no-hide-descendants'}
+          >
             {settingsPage()}
-          </CinematicTabPage>
-          <CinematicTabPage key="music-wrap" index={5} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-            <View style={styles.flex} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} /></View>
-          </CinematicTabPage>
-        </PagerView>}
+          </View>
+        </View>}
         {appVisible && utilityVisible && <View style={styles.utilityOverlay}><MoreScreen
           active requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => setUtilityVisible(false)} state={primarySections} dashboard={dashboard.data}
           privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)}
-          settings={settingsPage(() => setMoreDestination('menu'))}
         /></View>}
         {appVisible && atlasVisible && <View style={styles.utilityOverlay}><AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onBack={() => setAtlasVisible(false)} /></View>}
       </View>
       {appVisible && <View pointerEvents="none" style={styles.bottomContentFade}>
         <LinearGradient colors={['rgba(3, 1, 5, 0)', 'rgba(3, 1, 5, 0.58)', 'rgba(3, 1, 5, 0.96)']} locations={[0, 0.48, 1]} style={StyleSheet.absoluteFill} />
       </View>}
-      {appVisible && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} items={bottomNavigationItems} progress={tabProgress} reduceMotion={reduceTabMotion} /></SafeAreaView>}
+      {appVisible && !settingsEditorActive && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} items={bottomNavigationItems} progress={tabProgress} reduceMotion={reduceTabMotion} /></SafeAreaView>}
       <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => {
         if (!selectedJourneyId) return;
         setJourneyDetail({ status: 'loading', data: null });
@@ -2464,15 +2447,200 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   </>;
 }
 
+type SettingsDestination =
+  | { kind: 'overview' }
+  | { kind: 'profile' }
+  | { kind: 'saved-place'; slot: SavedPlaceSlot };
+
+function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
+  eyebrow: string;
+  title: string;
+  onBack: () => void;
+  backDisabled?: boolean;
+  primaryAction?: { label: string; onPress: () => void; disabled?: boolean };
+  children: ReactNode;
+}) {
+  const insets = useSafeAreaInsets();
+  const close = () => {
+    if (backDisabled) return;
+    Keyboard.dismiss();
+    onBack();
+  };
+  return (
+    <View style={styles.settingsEditorScreen}>
+      <ScrollView
+        contentContainerStyle={[styles.settingsEditorContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 132 }]}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        automaticallyAdjustKeyboardInsets={false}
+        automaticallyAdjustsScrollIndicatorInsets={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      >
+        <AtmosphericBackdrop variant="settings" />
+        <View style={styles.settingsEditorNavigation}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back to Settings" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={[styles.settingsEditorBack, backDisabled && styles.pressed]}>
+            <Text style={styles.settingsEditorBackText}>‹  Settings</Text>
+          </Pressable>
+          {primaryAction && <Pressable accessibilityRole="button" accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled} onPress={primaryAction.onPress} style={[styles.settingsEditorHeaderAction, primaryAction.disabled && styles.pressed]}><Text style={styles.settingsEditorHeaderActionText}>{primaryAction.label}</Text></Pressable>}
+        </View>
+        <Text style={styles.settingsEditorEyebrow}>{eyebrow}</Text>
+        <Text accessibilityRole="header" style={styles.settingsEditorTitle}>{title}</Text>
+        {children}
+      </ScrollView>
+    </View>
+  );
+}
+
+function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { currentUser: LocalUser; appearance: ProfileAppearance; onSaved: (appearance: ProfileAppearance) => void; onBack: () => void }) {
+  const [draft, setDraft] = useState(appearance);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+
+  const pickAvatar = async () => {
+    setAvatarBusy(true);
+    try {
+      const avatarDataUri = await chooseProfileAvatar();
+      if (avatarDataUri) setDraft(current => ({ ...current, avatarDataUri }));
+    } catch (error) {
+      Alert.alert('Profile image was not changed', error instanceof Error ? error.message : 'Try another image.');
+    } finally {
+      setAvatarBusy(false);
+    }
+  };
+  const save = () => {
+    Keyboard.dismiss();
+    const saved = saveProfileAppearance(currentUser, draft);
+    onSaved(saved);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+  };
+
+  return (
+    <SettingsEditorScaffold eyebrow="PRIMARY DRIVER" title="Edit your profile" onBack={onBack} backDisabled={avatarBusy} primaryAction={{ label: 'Save', onPress: save, disabled: avatarBusy }}>
+      <View style={[styles.profileEditorCard, styles.settingsEditorPanel]}>
+        <Text style={styles.profileEditorBody}>Your name and photo stay in your private JourneyDeck profile.</Text>
+        <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()} style={styles.profileEditorAvatarButton}>
+          <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}><View style={styles.profileEditorAvatarInner}>{draft.avatarDataUri ? <ExpoImage source={draft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.profileEditorAvatarInitials}>{profileInitialsFor(draft.displayName)}</Text>}</View></LinearGradient>
+          <View style={styles.profileEditorPhotoBadge}>{avatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}</View>
+        </Pressable>
+        <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()}><Text style={styles.profileEditorPhotoAction}>{draft.avatarDataUri ? 'Choose a different photo' : 'Choose profile photo'}</Text></Pressable>
+        {draft.avatarDataUri && <Pressable onPress={() => setDraft(current => ({ ...current, avatarDataUri: null }))}><Text style={styles.profileEditorRemovePhoto}>Use initials instead</Text></Pressable>}
+        <Text style={styles.profileEditorLabel}>NAME</Text>
+        <TextInput
+          value={draft.displayName}
+          onChangeText={displayName => setDraft(current => ({ ...current, displayName }))}
+          editable={!avatarBusy}
+          maxLength={48}
+          placeholder="Primary Driver"
+          placeholderTextColor="#71677a"
+          selectionColor="#ff795b"
+          returnKeyType="done"
+          onSubmitEditing={save}
+          style={styles.profileEditorInput}
+        />
+      </View>
+    </SettingsEditorScaffold>
+  );
+}
+
+function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged, onBack }: { currentUser: LocalUser; slot: SavedPlaceSlot; hasSavedPlace: boolean; onChanged: () => void; onBack: () => void }) {
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const operationGeneration = useRef(0);
+  const label = SAVED_PLACE_SLOTS.find(option => option.id === slot)?.label ?? 'place';
+  useEffect(() => () => {
+    operationGeneration.current += 1;
+  }, []);
+  const finish = (latitude: number, longitude: number) => {
+    saveSavedPlace(currentUser.id, slot, latitude, longitude);
+    Keyboard.dismiss();
+    onChanged();
+    onBack();
+  };
+  const saveAddress = async () => {
+    if (!address.trim()) return;
+    const operation = ++operationGeneration.current;
+    setBusy(true);
+    try {
+      const matches = await Location.geocodeAsync(address.trim());
+      if (operation !== operationGeneration.current) return;
+      const match = matches[0];
+      if (!match) {
+        setBusy(false);
+        Alert.alert('Location not found', 'Try a complete street address or use your current location.');
+        return;
+      }
+      setBusy(false);
+      finish(match.latitude, match.longitude);
+    } catch (error) {
+      if (operation !== operationGeneration.current) return;
+      setBusy(false);
+      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not find that location.');
+    }
+  };
+  const saveCurrent = async () => {
+    Keyboard.dismiss();
+    const operation = ++operationGeneration.current;
+    setBusy(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (operation !== operationGeneration.current) return;
+      if (permission.status !== 'granted') {
+        setBusy(false);
+        Alert.alert('Location permission needed', 'Allow location access, then try again.');
+        return;
+      }
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      if (operation !== operationGeneration.current) return;
+      setBusy(false);
+      finish(current.coords.latitude, current.coords.longitude);
+    } catch (error) {
+      if (operation !== operationGeneration.current) return;
+      setBusy(false);
+      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not read your current location.');
+    }
+  };
+  const remove = () => {
+    removeSavedPlace(currentUser.id, slot);
+    Keyboard.dismiss();
+    onChanged();
+    onBack();
+  };
+
+  return (
+    <SettingsEditorScaffold eyebrow="SAVED PLACE" title={`Set ${label}`} onBack={onBack} backDisabled={busy}>
+      <View style={styles.settingsEditorPanel}>
+        <Text style={styles.settingsEditorBody}>Use an address or your current location. JourneyDeck uses this place to name journeys and protect it when you share.</Text>
+        <Text style={styles.profileEditorLabel}>ADDRESS</Text>
+        <TextInput
+          value={address}
+          onChangeText={setAddress}
+          editable={!busy}
+          autoCapitalize="words"
+          autoCorrect={false}
+          returnKeyType="search"
+          onSubmitEditing={() => void saveAddress()}
+          placeholder="Street address"
+          placeholderTextColor="#716879"
+          selectionColor="#ff795b"
+          style={styles.editorInput}
+        />
+        <Pressable onPress={() => void saveAddress()} disabled={busy || !address.trim()} style={[styles.savedPlacePrimary, (busy || !address.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>{busy ? 'Saving…' : 'Use this address'}</Text></Pressable>
+        <Pressable onPress={() => void saveCurrent()} disabled={busy} style={[styles.savedPlaceCurrent, busy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{busy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
+        {hasSavedPlace && <Pressable onPress={remove} disabled={busy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
+      </View>
+    </SettingsEditorScaffold>
+  );
+}
+
 function ConnectionsScreen({
-  dashboard, provider, capabilities, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
+  provider, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
-  onConnectAppleMusic, onEnableRecognition, currentUser, appleIdentityStatus, signingInWithApple,
-  privateCloud, membershipTier, membershipExpirationDate, onMembership, onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible, spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onBack, onDataHealth,
+  currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, onMembership,
+  onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange,
 }: {
-  dashboard: AppDashboard;
   provider: MusicProvider;
-  capabilities: JourneyDeckMusicCapabilityStatus | null;
   connectionCapabilities: ConnectionCapabilities;
   currentUser: LocalUser;
   appleIdentityStatus: AppleIdentityStatus;
@@ -2497,109 +2665,52 @@ function ConnectionsScreen({
   onSpotifyOwnerConnect: () => void;
   onSpotifyOwnerSync: () => void;
   onChangeProvider: () => void;
-  onConnectAppleMusic: () => void;
-  onEnableRecognition: () => void;
   onMembership: () => void;
   onAppleSignIn: () => void;
   onPrivateCloudSync: () => void;
   onSignOut: () => void;
   onDeleteAccount: () => void;
-  onBack?: () => void;
   onDataHealth: () => void;
+  onEditorActiveChange: (active: boolean) => void;
 }) {
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
-  const [savedPlaceEditor, setSavedPlaceEditor] = useState<SavedPlaceSlot | null>(null);
-  const [savedPlaceAddress, setSavedPlaceAddress] = useState('');
-  const [savedPlaceBusy, setSavedPlaceBusy] = useState(false);
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
-  const [profileDraft, setProfileDraft] = useState(() => loadProfileAppearance(currentUser));
-  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
-  const [profileAvatarBusy, setProfileAvatarBusy] = useState(false);
+  const [destination, setDestination] = useState<SettingsDestination>({ kind: 'overview' });
+  const settingsScrollOffset = useRef(0);
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
-  const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
   useEffect(() => {
     setSavedPlaces(loadSavedPlaces(currentUser.id));
-    setSavedPlaceEditor(null);
-    setSavedPlaceAddress('');
-    const appearance = loadProfileAppearance(currentUser);
-    setProfileAppearance(appearance);
-    setProfileDraft(appearance);
-    setProfileEditorOpen(false);
+    setProfileAppearance(loadProfileAppearance(currentUser));
+    setDestination({ kind: 'overview' });
   }, [currentUser.id]);
+  useEffect(() => {
+    onEditorActiveChange(destination.kind !== 'overview');
+  }, [destination.kind, onEditorActiveChange]);
+  useEffect(() => () => onEditorActiveChange(false), [onEditorActiveChange]);
   const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
-  const finishSavedPlace = (slot: SavedPlaceSlot, latitude: number, longitude: number) => {
-    saveSavedPlace(currentUser.id, slot, latitude, longitude);
-    refreshSavedPlaces();
-    setSavedPlaceEditor(null);
-    setSavedPlaceAddress('');
-  };
-  const saveAddressPlace = async () => {
-    if (!savedPlaceEditor || !savedPlaceAddress.trim()) return;
-    setSavedPlaceBusy(true);
-    try {
-      const matches = await Location.geocodeAsync(savedPlaceAddress.trim());
-      const match = matches[0];
-      if (!match) return Alert.alert('Location not found', 'Try a complete street address or use your current location.');
-      finishSavedPlace(savedPlaceEditor, match.latitude, match.longitude);
-    } catch (error) {
-      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not find that location.');
-    } finally { setSavedPlaceBusy(false); }
-  };
-  const saveCurrentPlace = async () => {
-    if (!savedPlaceEditor) return;
-    setSavedPlaceBusy(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== 'granted') return Alert.alert('Location permission needed', 'Allow location access, then try again.');
-      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      finishSavedPlace(savedPlaceEditor, current.coords.latitude, current.coords.longitude);
-    } catch (error) {
-      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not read your current location.');
-    } finally { setSavedPlaceBusy(false); }
-  };
-  const clearSavedPlace = () => {
-    if (!savedPlaceEditor) return;
-    removeSavedPlace(currentUser.id, savedPlaceEditor);
-    refreshSavedPlaces();
-    setSavedPlaceEditor(null);
-    setSavedPlaceAddress('');
-  };
-  const editProfile = useCallback(() => {
-    setProfileDraft(profileAppearance);
-    setProfileEditorOpen(true);
-    void Haptics.selectionAsync();
-  }, [profileAppearance]);
-  const pickProfileAvatar = async () => {
-    setProfileAvatarBusy(true);
-    try {
-      const avatarDataUri = await chooseProfileAvatar();
-      if (avatarDataUri) setProfileDraft(current => ({ ...current, avatarDataUri }));
-    } catch (error) {
-      Alert.alert('Profile image was not changed', error instanceof Error ? error.message : 'Try another image.');
-    } finally { setProfileAvatarBusy(false); }
-  };
-  const saveSettingsProfile = () => {
-    const saved = saveProfileAppearance(currentUser, profileDraft);
-    setProfileAppearance(saved);
-    setProfileDraft(saved);
-    setProfileEditorOpen(false);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-  // The editors intentionally live beside (not inside) this cached page. Text
-  // input changes otherwise reconcile the entire native ScrollView behind the
-  // modal, which makes iOS briefly reapply its content offset on every touch.
-  const settingsScrollView = useMemo(() => (
+  const closeEditor = () => setDestination({ kind: 'overview' });
+
+  if (destination.kind === 'profile') {
+    return <SettingsProfileEditor currentUser={currentUser} appearance={profileAppearance} onSaved={appearance => { setProfileAppearance(appearance); closeEditor(); }} onBack={closeEditor} />;
+  }
+  if (destination.kind === 'saved-place') {
+    return <SettingsSavedPlaceEditor currentUser={currentUser} slot={destination.slot} hasSavedPlace={Boolean(savedPlaces[destination.slot])} onChanged={refreshSavedPlaces} onBack={closeEditor} />;
+  }
+
+  return (
       <ScrollView
         contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+        contentOffset={{ x: 0, y: settingsScrollOffset.current }}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustsScrollIndicatorInsets={false}
+        onScroll={event => { settingsScrollOffset.current = event.nativeEvent.contentOffset.y; }}
+        scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
       >
         <AtmosphericBackdrop variant="settings" />
-        {onBack && <Pressable accessibilityRole="button" accessibilityLabel="Back to Tools" onPress={onBack} style={styles.settingsBackButton}><Text style={styles.settingsBackText}>‹  Tools</Text></Pressable>}
         <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
 
         <SectionHeading title="Membership" />
@@ -2629,7 +2740,7 @@ function ConnectionsScreen({
         </View>
 
         <SectionHeading title="Account" />
-        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={editProfile} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }, pressed && styles.pressed]}>
           <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: '#3a2446' }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
           <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
           <Text style={styles.savedPlaceAction}>Edit</Text>
@@ -2645,7 +2756,7 @@ function ConnectionsScreen({
         <SectionHeading title="Saved Places" />
         <View style={styles.savedPlacesCard}>
           <Text style={styles.savedPlacesHint}>Name journeys automatically and protect these locations when sharing.</Text>
-          {SAVED_PLACE_SLOTS.map((slot, index) => <Pressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => { setSavedPlaceAddress(''); setSavedPlaceEditor(slot.id); }} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
+          {SAVED_PLACE_SLOTS.map((slot, index) => <Pressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => setDestination({ kind: 'saved-place', slot: slot.id })} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
             <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor="#ff9478" size={20} /></View>
             <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
             <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
@@ -2689,46 +2800,6 @@ function ConnectionsScreen({
           <Text style={styles.settingsDataHealthArrow}>›</Text>
         </Pressable>}
       </ScrollView>
-  ), [
-    accountActionPending, advancedSupportVisible, appleIdentityStatus, connectionCapabilities.lastFmConfigured,
-    currentUser.appleSubject, editProfile, editingLastFm, insets.bottom, insets.top, lastFmConnected, lastFmDraft,
-    lastFmUsername, membershipExpirationDate, membershipTier, onAppleSignIn, onCancelLastFm, onChangeProvider,
-    onDataHealth, onDeleteAccount, onEditLastFm, onLastFmDraft, onMembership, onPrivateCloudSync, onSaveLastFm,
-    onSignOut, onSpotifyOwnerConnect, onSpotifyOwnerSync, onSyncLastFm, ownerSpotifyEligible, privateCloud,
-    profileAppearance, savedPlaces, savingLastFm, selected, signingInWithApple, spotifyOwnerState, syncingLastFm,
-  ]);
-  return (
-    <View style={styles.safe}>
-      {settingsScrollView}
-      <OverlayModal visible={Boolean(savedPlaceEditor)} kicker="SAVED PLACE" title={savedPlaceEditor ? `Set ${SAVED_PLACE_SLOTS.find(slot => slot.id === savedPlaceEditor)?.label}` : 'Set place'} animationType="none" onClose={() => { if (!savedPlaceBusy) { setSavedPlaceEditor(null); setSavedPlaceAddress(''); } }}>
-        <TextInput value={savedPlaceAddress} onChangeText={setSavedPlaceAddress} editable={!savedPlaceBusy} autoCapitalize="words" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => void saveAddressPlace()} placeholder="Street address" placeholderTextColor="#716879" style={styles.editorInput} />
-        <Pressable onPress={() => void saveAddressPlace()} disabled={savedPlaceBusy || !savedPlaceAddress.trim()} style={[styles.savedPlacePrimary, (savedPlaceBusy || !savedPlaceAddress.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>Use this address</Text></Pressable>
-        <Pressable onPress={() => void saveCurrentPlace()} disabled={savedPlaceBusy} style={[styles.savedPlaceCurrent, savedPlaceBusy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{savedPlaceBusy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
-        {savedPlaceEditor && savedPlaces[savedPlaceEditor] && <Pressable onPress={clearSavedPlace} disabled={savedPlaceBusy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
-      </OverlayModal>
-      <Modal visible={profileEditorOpen} transparent animationType="none" statusBarTranslucent onRequestClose={() => !profileAvatarBusy && setProfileEditorOpen(false)}>
-        <View style={styles.profileEditorRoot}>
-          <Pressable style={StyleSheet.absoluteFill} disabled={profileAvatarBusy} onPress={() => setProfileEditorOpen(false)}><BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} /></Pressable>
-          <CinematicGlass style={styles.profileEditorCard}>
-            <Text style={styles.profileEditorEyebrow}>PRIMARY DRIVER</Text>
-            <Text style={styles.profileEditorTitle}>Edit your profile</Text>
-            <Text style={styles.profileEditorBody}>Your name and photo stay in your private JourneyDeck profile.</Text>
-            <Pressable disabled={profileAvatarBusy} onPress={() => void pickProfileAvatar()} style={styles.profileEditorAvatarButton}>
-              <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}><View style={styles.profileEditorAvatarInner}>{profileDraft.avatarDataUri ? <ExpoImage source={profileDraft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.profileEditorAvatarInitials}>{profileInitialsFor(profileDraft.displayName)}</Text>}</View></LinearGradient>
-              <View style={styles.profileEditorPhotoBadge}>{profileAvatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}</View>
-            </Pressable>
-            <Pressable disabled={profileAvatarBusy} onPress={() => void pickProfileAvatar()}><Text style={styles.profileEditorPhotoAction}>{profileDraft.avatarDataUri ? 'Choose a different photo' : 'Choose profile photo'}</Text></Pressable>
-            {profileDraft.avatarDataUri && <Pressable onPress={() => setProfileDraft(current => ({ ...current, avatarDataUri: null }))}><Text style={styles.profileEditorRemovePhoto}>Use initials instead</Text></Pressable>}
-            <Text style={styles.profileEditorLabel}>NAME</Text>
-            <TextInput value={profileDraft.displayName} onChangeText={displayName => setProfileDraft(current => ({ ...current, displayName }))} maxLength={48} placeholder="Primary Driver" placeholderTextColor="#71677a" selectionColor="#ff795b" style={styles.profileEditorInput} />
-            <View style={styles.profileEditorActions}>
-              <Pressable disabled={profileAvatarBusy} onPress={() => setProfileEditorOpen(false)} style={styles.profileEditorCancel}><Text style={styles.profileEditorCancelText}>Cancel</Text></Pressable>
-              <Pressable disabled={profileAvatarBusy} onPress={saveSettingsProfile} style={styles.profileEditorSave}><LinearGradient colors={['#ff795b', '#ff597f']} style={StyleSheet.absoluteFill} /><Text style={styles.profileEditorSaveText}>Save profile</Text></Pressable>
-            </View>
-          </CinematicGlass>
-        </View>
-      </Modal>
-    </View>
   );
 }
 
@@ -3393,7 +3464,7 @@ const pageSceneStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   staticWidgetGlow: { borderColor: '#684184', shadowColor: '#a85cff', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
-  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, pager: { flex: 1, backgroundColor: '#08070d' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
+  app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, primaryTabHost: { flex: 1, backgroundColor: '#08070d' }, pager: { flex: 1, backgroundColor: '#08070d' }, settingsTabLayer: { ...StyleSheet.absoluteFill, zIndex: 5, backgroundColor: '#08070d' }, settingsTabLayerHidden: { display: 'none' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
   pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, cinematicPageTitle: { position: 'relative', zIndex: 10, elevation: 10, color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 1, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
@@ -3580,6 +3651,17 @@ const styles = StyleSheet.create({
   cinematicAvatarButton: { width: 68, height: 68, borderRadius: 34, alignItems: 'center', justifyContent: 'center', shadowColor: '#f35aa7', shadowOpacity: 0.62, shadowRadius: 15, shadowOffset: { width: 0, height: 5 } },
   settingsBackButton: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
   settingsBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
+  settingsEditorScreen: { flex: 1, backgroundColor: '#08070d' },
+  settingsEditorContent: { minHeight: '100%', paddingHorizontal: 20 },
+  settingsEditorNavigation: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  settingsEditorBack: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 2 },
+  settingsEditorBackText: { color: '#d0a6ff', fontSize: 15, fontWeight: '900' },
+  settingsEditorHeaderAction: { minWidth: 68, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,121,91,0.5)', backgroundColor: 'rgba(255,96,91,0.14)', paddingHorizontal: 14 },
+  settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
+  settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 16 },
+  settingsEditorTitle: { color: '#fff8ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, marginTop: 6 },
+  settingsEditorPanel: { width: '100%', overflow: 'hidden', gap: 14, borderRadius: 24, borderWidth: 1, borderColor: '#5b3a69', backgroundColor: '#130d19', padding: 20, marginTop: 22, shadowColor: '#8d51aa', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
+  settingsEditorBody: { color: '#aa9ead', fontSize: 13, lineHeight: 20 },
   settingsDataHealth: { minHeight: 86, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(83,210,177,0.34)', backgroundColor: 'rgba(10,22,24,0.82)', paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#43e6ae', shadowOpacity: 0.13, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
   settingsDataHealthIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(30,89,75,0.44)', borderWidth: 1, borderColor: 'rgba(87,235,194,0.28)' },
   settingsDataHealthKicker: { color: '#68d9bc', fontSize: 7, fontWeight: '900', letterSpacing: 1.15 },

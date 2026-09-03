@@ -18,42 +18,54 @@ test('Saved Places supports Home, Work, and School through private local-first p
 });
 
 test('Settings replaces the passive safe-zone and recording cards with one compact Saved Places editor', () => {
-  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
+  const settings = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function CinematicTabPage'));
   assert.match(settings, /SectionHeading title="Saved Places"/);
   assert.match(settings, /SAVED_PLACE_SLOTS\.map/);
   assert.match(settings, /Location\.geocodeAsync/);
   assert.match(settings, /Location\.getCurrentPositionAsync/);
-  assert.match(settings, /title=\{savedPlaceEditor[\s\S]*?animationType="none"/);
+  assert.match(settings, /setDestination\(\{ kind: 'saved-place', slot: slot\.id \}\)/);
+  assert.match(settings, /<SettingsSavedPlaceEditor/);
   assert.doesNotMatch(settings, /Home & Work Safe Zones/);
   assert.doesNotMatch(settings, /SectionHeading title="Recording"/);
 });
 
 test('the Primary Driver account row opens the private name and profile-photo editor', () => {
-  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
+  const settings = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function CinematicTabPage'));
   assert.match(settings, /accessibilityLabel="Edit primary driver profile"/);
-  assert.match(settings, /onPress=\{editProfile\}/);
+  assert.match(settings, /setDestination\(\{ kind: 'profile' \}\)/);
+  assert.match(settings, /<SettingsProfileEditor/);
   assert.match(settings, /chooseProfileAvatar\(\)/);
-  assert.match(settings, /saveProfileAppearance\(currentUser, profileDraft\)/);
-  assert.match(settings, /visible=\{profileEditorOpen\}/);
-  assert.match(settings, /visible=\{profileEditorOpen\} transparent animationType="none"/);
-  assert.match(settings, />Edit your profile</);
+  assert.match(settings, /saveProfileAppearance\(currentUser, draft\)/);
+  assert.match(settings, /title="Edit your profile"/);
 });
 
-test('Settings editors do not redraw the native scroll view on each keystroke', () => {
+test('Settings editors replace the overview instead of redrawing it underneath', () => {
   const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
-  const cachedPageStart = settings.indexOf('const settingsScrollView = useMemo');
-  const cachedPageEnd = settings.indexOf('return (', cachedPageStart);
-  const cachedPage = settings.slice(cachedPageStart, cachedPageEnd);
-
-  assert.ok(cachedPageStart >= 0, 'Settings should cache the visible scroll view separately from its editors');
-  assert.match(settings, /\{settingsScrollView\}[\s\S]*?<OverlayModal visible=\{Boolean\(savedPlaceEditor\)\}/);
-  assert.doesNotMatch(cachedPage, /savedPlaceAddress|profileDraft|savedPlaceBusy|profileAvatarBusy/);
+  assert.match(settings, /if \(destination\.kind === 'profile'\) \{[\s\S]*?return <SettingsProfileEditor/);
+  assert.match(settings, /if \(destination\.kind === 'saved-place'\) \{[\s\S]*?return <SettingsSavedPlaceEditor/);
+  assert.match(settings, /contentOffset=\{\{ x: 0, y: settingsScrollOffset\.current \}\}/);
+  assert.match(settings, /settingsScrollOffset\.current = event\.nativeEvent\.contentOffset\.y/);
+  assert.doesNotMatch(settings, /settingsScrollView|<OverlayModal|<Modal/);
+  assert.equal(shell.match(/<ConnectionsScreen\b/g)?.length, 1);
 });
 
-test('the shared editor sheet ignores transient iOS key-preview frame changes', () => {
-  const overlay = shell.slice(shell.indexOf('function OverlayModal'), shell.indexOf('function OverviewMetrics'));
+test('Settings editors never resize from transient iOS keyboard frames', () => {
+  const editors = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function ConnectionsScreen'));
 
-  assert.match(overlay, /Keyboard\.addListener\('keyboardDidShow'/);
-  assert.match(overlay, /setKeyboardHeight\(Math\.max\(0, event\.endCoordinates\.height\)\)/);
-  assert.doesNotMatch(overlay, /<KeyboardAvoidingView|keyboardWillChangeFrame/);
+  assert.match(editors, /automaticallyAdjustKeyboardInsets=\{false\}/);
+  assert.match(editors, /keyboardShouldPersistTaps="handled"/);
+  assert.doesNotMatch(editors, /Keyboard\.addListener|KeyboardAvoidingView|keyboardHeight|paddingBottom: keyboard/);
+  assert.doesNotMatch(editors, /<Modal|<OverlayModal|BlurView|CinematicGlass/);
+});
+
+test('Settings editors own navigation and cancel stale asynchronous place work', () => {
+  const editors = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function ConnectionsScreen'));
+  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
+
+  assert.match(editors, /backDisabled=\{avatarBusy\}/);
+  assert.match(editors, /backDisabled=\{busy\}/);
+  assert.match(editors, /operationGeneration\.current \+= 1/);
+  assert.match(editors, /operation !== operationGeneration\.current/);
+  assert.match(settings, /onEditorActiveChange\(destination\.kind !== 'overview'\)/);
+  assert.match(shell, /appVisible && !settingsEditorActive && <SafeAreaView style=\{styles\.navSafe\}>/);
 });

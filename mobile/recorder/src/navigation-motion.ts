@@ -37,25 +37,6 @@ export function navigationProgressAtX(locationX: number, width: number, count: n
   return clamp((indicatorX - geometry.minimumX) / geometry.stride, 0, Math.max(0, count - 1));
 }
 
-export function circularPagerTransition(currentIndex: number, nextIndex: number, count: number, reduceMotion = false) {
-  const lastIndex = Math.max(0, count - 1);
-  const current = clamp(currentIndex, 0, lastIndex);
-  const next = clamp(nextIndex, 0, lastIndex);
-  if (!reduceMotion && current === 0 && next === lastIndex) return { targetPosition: 0, canonicalSnapPosition: count };
-  if (!reduceMotion && current === lastIndex && next === 0) return { targetPosition: count + 1, canonicalSnapPosition: 1 };
-  return { targetPosition: next + 1, canonicalSnapPosition: null };
-}
-
-export function circularPagerTabIndex(position: number, count: number) {
-  if (position <= 0) return Math.max(0, count - 1);
-  if (position >= count + 1) return 0;
-  return clamp(position - 1, 0, Math.max(0, count - 1));
-}
-
-export function circularPagerProgress(position: number, offset: number) {
-  return position + offset - 1;
-}
-
 export function tabPageMotion(progress: number, index: number, reduceMotion: boolean) {
   'worklet';
   if (reduceMotion) return { opacity: 1, scale: 1 };

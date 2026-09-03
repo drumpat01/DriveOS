@@ -34,7 +34,7 @@ import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture'
 import { buildSongRouteMoments } from './route-moments';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
-export type MoreDestination = 'menu' | 'health' | 'settings';
+export type MoreDestination = 'menu' | 'health';
 
 const accentForKind: Record<SearchRecord['kind'], string> = {
   journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', memory: '#8ba6ff',
@@ -635,29 +635,24 @@ function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferen
 
 export function MoreScreen({
   active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync,
-  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, settings, onClose,
+  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, onClose,
 }: {
   active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
   privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void;
   providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
   currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
-  settings: ReactNode; onClose: () => void;
+  onClose: () => void;
 }) {
   const destination = requested;
-  const backToTools = () => onRequestedChange('menu');
   let content: ReactNode;
   if (destination !== 'menu') {
-    const child = destination === 'health'
-      ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} onBack={backToTools} />
-      : settings;
-    content = child;
+    content = <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} onBack={onClose} />;
   } else {
     content = <ScreenScaffold eyebrow="JOURNEYDECK UTILITIES" title="Tools" subtitle="Data confidence and app controls." onRefresh={onRefresh} leadingAction={{ label: 'Close', onPress: onClose }}>
       <View style={styles.moreGrid}>
         <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color="#58d5b6" onPress={() => onRequestedChange('health')} />
-        <MoreTile symbol="gearshape" fallback="⚙" title="Settings" detail="Accounts + app" color="#8ca4ff" onPress={() => onRequestedChange('settings')} />
       </View>
-      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Data Health explains what is saved and safe to retry. Settings contains account, recording, and provider controls.</Text></View>
+      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Data Health explains what is saved and safe to retry.</Text></View>
     </ScreenScaffold>;
   }
   return <View style={styles.screen}>{content}</View>;

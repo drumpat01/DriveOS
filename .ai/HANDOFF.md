@@ -1,5 +1,13 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Settings rendering architecture rebuild — September 3, 2026
+
+- Replaced the repeated Settings workarounds with a structural isolation. The native pager now owns only Soundtracks, Memories, Home, and Statistics; Settings has one canonical opaque screen instance outside the pager, outside `CinematicTabPage`, and outside all page transforms. The circular Settings/music sentinel copies and the duplicate Settings entry under Tools were removed.
+- Rebuilt Primary Driver and Saved Place editing as ordinary opaque full-screen Settings destinations instead of transparent native modals over the Settings `ScrollView`. Editors have their own draft/busy state, do not observe or resize from keyboard-frame events, hide the bottom navigation while active, expose a keyboard-safe top Save action for the profile, and disable Back while native photo/location work is pending. Stale asynchronous place lookups are invalidated on unmount and cannot save after cancellation.
+- Settings remembers its prior scroll offset across editor round-trips. Leaving Settings dismisses any focused keyboard. Approved Home, bottom-navigation appearance, Journey Details, sharing, recording, persistence, membership, and music behavior were not redesigned; only the transition into/out of Settings is now immediate instead of using the circular pager animation.
+- Verification passed: required subsystem commands, TypeScript, focused Settings/tab/navigation checks, complete V1 mobile suite **183/183**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` aside from repository LF-to-CRLF notices. The optional dormant Tessie suite remains **4/5** because its already-stale UI assertion expects `VehicleIntelligenceScreen`, which is absent from both this tree and the prior published commit after Tessie was deferred to V2.
+- Pending at this checkpoint: commit/push the rebuild and publish a Build 13-compatible iOS production OTA. Physical acceptance should repeatedly tap Settings rows, edit every character of the Primary Driver name, open each Saved Place editor, use Back/Save, and switch into/out of Settings while watching for any page displacement.
+
 ## Settings Saved Place keyboard stabilization — September 3, 2026
 
 - Reviewed the tester's follow-up 19.15-second, 1320x2868/58.77fps recording after OTA `01a06906-4638-7b8f-b721-11981516e1f3`. The Primary Driver editor and its background remain stable. The Saved Place sheet still exposed one roughly 12-pixel background displacement lasting four 60fps frames immediately around a key-preview interaction.
