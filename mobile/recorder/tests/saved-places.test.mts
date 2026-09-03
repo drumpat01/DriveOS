@@ -39,13 +39,11 @@ test('the Primary Driver account row opens the private name and profile-photo ed
   assert.match(settings, /title="Edit your profile"/);
 });
 
-test('Settings editors replace the overview instead of redrawing it underneath', () => {
+test('Settings editors replace the overview without controlling its native scroll position', () => {
   const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
   assert.match(settings, /if \(destination\.kind === 'profile'\) \{[\s\S]*?return <SettingsProfileEditor/);
   assert.match(settings, /if \(destination\.kind === 'saved-place'\) \{[\s\S]*?return <SettingsSavedPlaceEditor/);
-  assert.match(settings, /contentOffset=\{\{ x: 0, y: settingsScrollOffset\.current \}\}/);
-  assert.match(settings, /settingsScrollOffset\.current = event\.nativeEvent\.contentOffset\.y/);
-  assert.doesNotMatch(settings, /settingsScrollView|<OverlayModal|<Modal/);
+  assert.doesNotMatch(settings, /settingsScrollView|settingsScrollOffset|contentOffset=|onScroll=|scrollEventThrottle|<OverlayModal|<Modal/);
   assert.equal(shell.match(/<ConnectionsScreen\b/g)?.length, 1);
 });
 

@@ -2677,7 +2677,6 @@ function ConnectionsScreen({
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
   const [destination, setDestination] = useState<SettingsDestination>({ kind: 'overview' });
-  const settingsScrollOffset = useRef(0);
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
   const insets = useSafeAreaInsets();
   useEffect(() => {
@@ -2702,12 +2701,9 @@ function ConnectionsScreen({
   return (
       <ScrollView
         contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
-        contentOffset={{ x: 0, y: settingsScrollOffset.current }}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustsScrollIndicatorInsets={false}
-        onScroll={event => { settingsScrollOffset.current = event.nativeEvent.contentOffset.y; }}
-        scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
       >
         <AtmosphericBackdrop variant="settings" />
