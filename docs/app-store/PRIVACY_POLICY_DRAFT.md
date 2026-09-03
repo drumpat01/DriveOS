@@ -52,7 +52,7 @@ JourneyDeck uses the information above to record and display your journeys, crea
 
 JourneyDeck may use Apple services that you enable or that are necessary to operate iOS features, including Location Services, CloudKit, Apple Music, Sign in with Apple, StoreKit, and ShazamKit. Map displays may retrieve tiles directly from the configured map provider. Software updates and anonymous diagnostics may be processed through Expo services.
 
-JourneyDeck does not share your precise route with advertisers. A privacy-safe share card is designed to remove or replace sensitive Home and Work details before you choose to export it; review what you share before sending it to another person or service.
+JourneyDeck does not share your precise route with advertisers. A privacy-safe share card is designed to remove or replace sensitive Home, Work, and School details before you choose to export it; review what you share before sending it to another person or service.
 
 ## Retention and deletion
 

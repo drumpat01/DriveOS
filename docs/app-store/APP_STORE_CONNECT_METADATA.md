@@ -30,7 +30,7 @@ What you can do:
 - Start and finish routes manually, with Apple Music building the soundtrack while you record.
 - Review distance, drive time, recurring routes, frequently visited places, and private road memories.
 - Add optional soundtracks with Apple Music history or ShazamKit recognition. JourneyDeck never saves microphone audio.
-- Protect sensitive places with Home and Work safe zones before creating a share card.
+- Save Home, Work, or School to name journeys automatically and protect those places when creating a share card.
 - Keep private continuity through optional iCloud sync.
 
 JourneyDeck’s free experience includes manual recording and keeps the latest 45 days available. An optional auto-renewable membership unlocks Atlas and complete history. Expiration never deletes locally stored journeys; older history is hidden until membership is active again.

@@ -153,6 +153,7 @@ export function maskCoordinate(coord: RawCoord, sensitivePlaces: LocalPlace[]): 
 
   const label = hit.kind === 'home' ? 'Home area'
     : hit.kind === 'work' ? 'Work area'
+    : hit.label.trim().toLocaleLowerCase() === 'school' ? 'School area'
     : hit.label || 'Private area';
 
   return {
@@ -220,7 +221,9 @@ export function maskLocationLabel(
   if (!coord || !sensitivePlaces.length) return label;
   const hit = findSensitivePlace(coord, sensitivePlaces);
   if (!hit) return label;
-  return hit.kind === 'home' ? 'Home' : hit.kind === 'work' ? 'Work' : hit.label || 'Private location';
+  return hit.kind === 'home' ? 'Home' : hit.kind === 'work' ? 'Work'
+    : hit.label.trim().toLocaleLowerCase() === 'school' ? 'School'
+      : hit.label || 'Private location';
 }
 
 // --- Batch coordinate scrubbing for share cards ------------------------------

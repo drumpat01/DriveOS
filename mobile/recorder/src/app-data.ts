@@ -19,6 +19,7 @@ import {
 } from './place-matching';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId } from './memory-model';
+import { loadSavedPlaces } from './saved-places';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -160,6 +161,7 @@ function primeSavedPlaceAliases(journeys: JourneySummary[]) {
 }
 
 function applyLocalPlaceAliasesToJourneys<T extends JourneySummary>(journeys: T[]) {
+  loadSavedPlaces(getCurrentUser().id);
   primeSavedPlaceAliases(journeys);
   return journeys.map(applyLocalPlaceAliases);
 }
@@ -568,6 +570,7 @@ export const appDataClient = {
   async dashboard(_refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    loadSavedPlaces(getCurrentUser().id);
     primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
     return { ...dashboard, latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
       recentJourneys: applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys), weeklyJourneys: applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys) };
@@ -576,6 +579,7 @@ export const appDataClient = {
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    loadSavedPlaces(getCurrentUser().id);
     primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
     return {
       ...dashboard,
@@ -593,6 +597,7 @@ export const appDataClient = {
   },
 
   async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {
+    loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     if (local && cached) return applyLocalPlaceAliases(mergeJourneyWithLocalDetail(cached, local));
@@ -602,6 +607,7 @@ export const appDataClient = {
   },
 
   localOrCachedJourney(id: string): JourneyDetail | null {
+    loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     const detail = local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);

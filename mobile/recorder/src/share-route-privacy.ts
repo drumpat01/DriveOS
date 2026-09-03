@@ -14,7 +14,7 @@ export const PRIVATE_SHARE_ROUTE_DISTANCE_METERS = 1_609.344;
 const EARTH_RADIUS_METERS = 6_371_000;
 
 function isPrivateLabel(value: string | null) {
-  return /^(home|work)$/i.test(value?.trim() ?? '');
+  return /^(home|work|school)$/i.test(value?.trim() ?? '');
 }
 
 function validCoordinate(value: [number, number]) {
@@ -45,7 +45,7 @@ function closestRouteIndex(route: [number, number][], coordinate: [number, numbe
 }
 
 /**
- * Removes the portion of a share route nearest a Home/Work endpoint.
+ * Removes the portion of a share route nearest a Home, Work, or School endpoint.
  *
  * The cut is deterministic: it uses the first recorded point at least one
  * mile from the private endpoint, or the nearest outer soundtrack moment when

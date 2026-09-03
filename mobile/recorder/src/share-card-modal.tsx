@@ -173,7 +173,7 @@ const JourneySharePreview = forwardRef<View, {
       {featured?.artworkUrl && artwork === 'album' ? <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareAlbum} /> : <View style={[styles.journeyShareAlbumFallback, { backgroundColor: `${palette.accent2}44` }]}><Text style={[styles.journeyShareAlbumNote, { color: palette.accent2 }]}>♪</Text></View>}
       <View style={styles.journeyShareMusicCopy}><Text style={[styles.journeyShareMusicLabel, { color: palette.accent }]}>JOURNEY SOUNDTRACK</Text><Text style={[styles.journeyShareTrack, { color: palette.text }]} numberOfLines={1}>{featured?.track ?? 'The road, remembered'}</Text><Text style={[styles.journeyShareArtist, { color: palette.accent2 }]} numberOfLines={1}>{featured?.artist ?? (journey.topArtist || 'JourneyDeck')}</Text></View>
     </View>
-    <Text style={styles.journeySharePrivacy}>{safeRoute.trimmedStart || safeRoute.trimmedEnd ? 'REAL ROUTE · HOME / WORK SEGMENT TRIMMED · © OPENSTREETMAP' : safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
+    <Text style={styles.journeySharePrivacy}>{safeRoute.trimmedStart || safeRoute.trimmedEnd ? 'REAL ROUTE · SAVED PLACE SEGMENT TRIMMED · © OPENSTREETMAP' : safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
   </View>;
 });
 

@@ -1231,7 +1231,7 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>):
   const radiusMeters = guard(input.radiusMeters, 1, 50_000);
   if (!label || lat == null || lng == null || radiusMeters == null) throw new Error('Saved place coordinates, label, or radius are invalid.');
   const aliased = placeByIdInternal(input.userId, input.id);
-  const nearby = input.kind === 'geocoded'
+  const nearby = input.id.startsWith('saved-place-v1-') ? null : input.kind === 'geocoded'
     ? findCachedPlace(input.userId, lat, lng, Math.min(radiusMeters, 150))
     : findNamedPlace(input.userId, lat, lng, Math.min(radiusMeters, SAVED_PLACE_MATCH_RADIUS_METERS));
   const existing = aliased ?? nearby;
@@ -1264,7 +1264,7 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>):
 export function getSensitivePlaces(userId: LocalUserId): LocalPlace[] {
   initializeLocalStore();
   return db.getAllSync<LocalPlace>(
-    "SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE user_id=? AND kind IN ('home','work') ORDER BY kind;",
+    "SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE user_id=? AND (kind IN ('home','work') OR (kind='custom' AND LOWER(label)='school')) ORDER BY kind,label;",
     userId,
   );
 }

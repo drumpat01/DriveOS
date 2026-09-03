@@ -143,7 +143,7 @@ test('version 1 is manual-only while dormant automatic code stays fail-closed', 
   assert.doesNotMatch(primarySections, /Connect Tessie in Settings to show live battery and range/);
 });
 
-test('Home owns the single recorder instance while Settings keeps recording preferences', () => {
+test('Home owns the single recorder instance while Settings omits redundant recording controls', () => {
   assert.match(shell, /recorder=\{<Recorder presentation="home"/);
   assert.doesNotMatch(shell, /<LiveScreen|recorderVisible|setRecorderVisible|openTab\('live'\)/);
   assert.match(app, /presentation === 'home'/);
@@ -156,7 +156,7 @@ test('Home owns the single recorder instance while Settings keeps recording pref
   assert.match(shell, /const appleMusicConnected = musicCapabilities === null[\s\S]*?storedAppleMusicConnected[\s\S]*?musicCapabilities\.appleMusicAuthorizationStatus === 'authorized'/);
   assert.match(shell, /const showManualSongButton = activePreferences\?\.provider !== 'apple-music' \|\| !appleMusicConnected/);
   assert.match(shell, /<Recorder presentation="home" showManualSongButton=\{showManualSongButton\}/);
-  assert.match(shell, /<SectionHeading title="Recording" \/>/);
+  assert.doesNotMatch(shell, /<SectionHeading title="Recording" \/>/);
   assert.doesNotMatch(primarySections, /title="Record"|onRequestedChange\('record'\)|destination === 'record'/);
 });
 
@@ -559,13 +559,13 @@ test('Settings presents one iCloud Backup status and keeps Apple identity under 
   assert.match(shell, /onAppleSignIn/);
   assert.match(shell, /onPrivateCloudSync/);
   assert.match(shell, /<SectionHeading title="iCloud Backup" \/>/);
-  assert.match(shell, /Journeys, routes, soundtracks, Memories, photos, and preferences sync privately/);
+  assert.match(shell, /Your JourneyDeck library stays private in your iCloud account/);
   assert.match(shell, /<SectionHeading title="Account" \/>/);
-  assert.match(shell, /Sign in with Apple is connected/);
-  assert.match(shell, /Sign in with Apple is optional and helps identify this profile/);
+  assert.match(shell, /Apple connected/);
+  assert.match(shell, /Apple sign-in is optional/);
 });
 
-test('Journey sharing has web-parity controls and never exports raw Home or Work geometry', () => {
+test('Journey sharing has web-parity controls and never exports raw saved-place geometry', () => {
   assert.match(shell, /function privacySafeRealShareRoute/);
   assert.match(shell, /prepareShareCardCoords/);
   assert.match(shell, /const sensitivePlaces = \[\.\.\.getSensitivePlaces\(userId\), \.\.\.inferredPrivatePlaces\]/);
@@ -601,7 +601,7 @@ test('Journey sharing has web-parity controls and never exports raw Home or Work
   assert.match(shareCard, /fill="#36defa" opacity="0\.2"/);
   assert.match(shareCard, /fill="#07303a" stroke="#36defa"/);
   assert.match(shareCard, /stroke="#d9fbff"/);
-  assert.match(shareCard, /HOME \/ WORK SEGMENT TRIMMED/);
+  assert.match(shareCard, /SAVED PLACE SEGMENT TRIMMED/);
   assert.match(shareCard, /https:\/\/tile\.openstreetmap\.org/);
   assert.match(shareCard, /function privacySafeJourneyRoute/);
   assert.doesNotMatch(shareCard, /privateCityRoute/);

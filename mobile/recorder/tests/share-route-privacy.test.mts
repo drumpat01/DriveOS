@@ -50,3 +50,9 @@ test('a short route between two private endpoints exports no reconstructable geo
   assert.equal(result.trimmedStart, true);
   assert.equal(result.trimmedEnd, true);
 });
+
+test('School receives the same endpoint privacy protection as Home and Work', () => {
+  const result = trimPrivateShareRoute({ route, songPoints: songs, startLabel: 'Coffee shop', endLabel: 'School' });
+  assert.equal(result.trimmedEnd, true);
+  assert.notDeepEqual(result.route.at(-1), route.at(-1));
+});

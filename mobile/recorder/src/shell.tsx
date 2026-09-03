@@ -7,6 +7,7 @@ import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
 import * as Updates from 'expo-updates';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'expo-glass-effect';
@@ -45,7 +46,8 @@ import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { circularPagerProgress, circularPagerTabIndex, circularPagerTransition, navigationGeometry, navigationIndexAtX, navigationProgressAtX, tabPageMotion } from './navigation-motion';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
-import { getSensitivePlaces, upsertPlace, type LocalPlace, type LocalUser } from './local-store';
+import { getSensitivePlaces, type LocalPlace, type LocalUser } from './local-store';
+import { loadSavedPlaces, removeSavedPlace, saveSavedPlace, SAVED_PLACE_SLOTS, type SavedPlaceSlot } from './saved-places';
 import { observeJourneyDeckEvent } from './observability';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { buildSongRouteMoments } from './route-moments';
@@ -2263,12 +2265,12 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
   const inferredPrivatePlaces: LocalPlace[] = [];
   const inferEndpoint = (label: string | null, coordinate: [number, number] | undefined, suffix: string) => {
     const kind = label?.trim().toLocaleLowerCase();
-    if ((kind !== 'home' && kind !== 'work') || !coordinate) return;
+    if ((kind !== 'home' && kind !== 'work' && kind !== 'school') || !coordinate) return;
     inferredPrivatePlaces.push({
       id: `share-card-${kind}-${suffix}`,
       userId,
-      kind,
-      label: kind === 'home' ? 'Home' : 'Work',
+      kind: kind === 'school' ? 'custom' : kind,
+      label: kind === 'home' ? 'Home' : kind === 'work' ? 'Work' : 'School',
       lat: coordinate[1],
       lng: coordinate[0],
       radiusMeters: 300,
@@ -2308,7 +2310,7 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
     endLocation: trimmed.trimmedEnd ? null : prepared.endLabel,
     routeCoordinates: prepared.route?.coordinates ?? [],
     routeProtected: trimmed.trimmedStart || trimmed.trimmedEnd || prepared.privacySummary !== 'Full route shown',
-    routePrivacySummary: trimmed.trimmedStart || trimmed.trimmedEnd ? 'Private Home or Work route trimmed' : prepared.privacySummary,
+    routePrivacySummary: trimmed.trimmedStart || trimmed.trimmedEnd ? 'Private saved-place route trimmed' : prepared.privacySummary,
     routeTrimmedStart: trimmed.trimmedStart,
     routeTrimmedEnd: trimmed.trimmedEnd,
     songPoints,
@@ -2499,10 +2501,56 @@ function ConnectionsScreen({
   onDataHealth: () => void;
 }) {
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
+  const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
+  const [savedPlaceEditor, setSavedPlaceEditor] = useState<SavedPlaceSlot | null>(null);
+  const [savedPlaceAddress, setSavedPlaceAddress] = useState('');
+  const [savedPlaceBusy, setSavedPlaceBusy] = useState(false);
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
-  const selectedRecordingMode = recordingModeOptions.find(option => option.id === 'manual')!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
+  useEffect(() => {
+    setSavedPlaces(loadSavedPlaces(currentUser.id));
+    setSavedPlaceEditor(null);
+    setSavedPlaceAddress('');
+  }, [currentUser.id]);
+  const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
+  const finishSavedPlace = (slot: SavedPlaceSlot, latitude: number, longitude: number) => {
+    saveSavedPlace(currentUser.id, slot, latitude, longitude);
+    refreshSavedPlaces();
+    setSavedPlaceEditor(null);
+    setSavedPlaceAddress('');
+  };
+  const saveAddressPlace = async () => {
+    if (!savedPlaceEditor || !savedPlaceAddress.trim()) return;
+    setSavedPlaceBusy(true);
+    try {
+      const matches = await Location.geocodeAsync(savedPlaceAddress.trim());
+      const match = matches[0];
+      if (!match) return Alert.alert('Location not found', 'Try a complete street address or use your current location.');
+      finishSavedPlace(savedPlaceEditor, match.latitude, match.longitude);
+    } catch (error) {
+      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not find that location.');
+    } finally { setSavedPlaceBusy(false); }
+  };
+  const saveCurrentPlace = async () => {
+    if (!savedPlaceEditor) return;
+    setSavedPlaceBusy(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') return Alert.alert('Location permission needed', 'Allow location access, then try again.');
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      finishSavedPlace(savedPlaceEditor, current.coords.latitude, current.coords.longitude);
+    } catch (error) {
+      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not read your current location.');
+    } finally { setSavedPlaceBusy(false); }
+  };
+  const clearSavedPlace = () => {
+    if (!savedPlaceEditor) return;
+    removeSavedPlace(currentUser.id, savedPlaceEditor);
+    refreshSavedPlaces();
+    setSavedPlaceEditor(null);
+    setSavedPlaceAddress('');
+  };
   return (
     <View style={styles.safe}>
       <ScrollView
@@ -2514,7 +2562,7 @@ function ConnectionsScreen({
       >
         <AtmosphericBackdrop variant="settings" />
         {onBack && <Pressable accessibilityRole="button" accessibilityLabel="Back to Tools" onPress={onBack} style={styles.settingsBackButton}><Text style={styles.settingsBackText}>‹  Tools</Text></Pressable>}
-        <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="JourneyDeck records manually on its own. Choose how music is added and whether your private library is backed up to iCloud." />
+        <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
 
         <SectionHeading title="Membership" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: membershipTier === 'paid' ? '#ff795b' : '#6d4a78' }]}>
@@ -2522,7 +2570,7 @@ function ConnectionsScreen({
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text>
             <Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text>
-            <Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas journey maps, insights, and your complete drive history are unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Upgrade for Atlas—your complete journey map and insights—plus every drive older than 45 days.'}</Text>
+            <Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text>
           </View>
           <Pressable accessibilityRole="button" onPress={onMembership} style={styles.changeButton}><Text style={styles.changeButtonText}>{membershipTier === 'paid' ? 'Manage' : 'Unlock'}</Text></Pressable>
         </View>
@@ -2538,15 +2586,14 @@ function ConnectionsScreen({
           <Pressable onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Install 1.7' : 'Sync'}</Text></Pressable>
         </View>
         <View style={styles.privateCloudCard}>
-          <Text style={styles.privateCloudTitle}>WHAT IS BACKED UP</Text>
-          <Text style={styles.privateCloudBody}>Journeys, routes, soundtracks, Memories, photos, and preferences sync privately through the iCloud account on this iPhone. JourneyDeck cannot browse your private iCloud data.</Text>
+          <Text style={styles.privateCloudBody}>Your JourneyDeck library stays private in your iCloud account.</Text>
           <Pressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></Pressable>
         </View>
 
         <SectionHeading title="Account" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }]}>
           <View style={[styles.connectionIcon, { backgroundColor: '#3a2446' }]}><Text style={styles.connectionIconText}></Text></View>
-          <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{currentUser.displayName || 'Primary Driver'}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Sign in with Apple is connected.' : 'Sign in with Apple is optional and helps identify this profile.'}</Text></View>
+          <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{currentUser.displayName || 'Primary Driver'}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
         </View>
         {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
         {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
@@ -2556,20 +2603,14 @@ function ConnectionsScreen({
           <Pressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></Pressable>
         </View>
 
-        <SectionHeading title="Privacy geofences" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#43e6ae' }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: '#10b981' }]}><Text style={styles.connectionIconText}>🛡</Text></View>
-          <View style={styles.flex}>
-            <Text style={styles.connectionKicker}>AUTOMATIC PRIVACY MASKING</Text>
-            <Text style={styles.connectionName}>Home & Work Safe Zones</Text>
-            <Text style={styles.connectionDetail}>300m safety radius active · Coordinates scrubbed on share cards</Text>
-          </View>
-        </View>
-
-        <SectionHeading title="Recording" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: selectedRecordingMode.color }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: selectedRecordingMode.color }]}><Text style={styles.connectionIconText}>{selectedRecordingMode.symbol}</Text></View>
-          <View style={styles.flex}><Text style={styles.connectionKicker}>VERSION 1 · SIMPLE AND PREDICTABLE</Text><Text style={styles.connectionName}>Manual Recording</Text><Text style={styles.connectionDetail}>Tap Start Journey when you leave and End Journey when you arrive.</Text></View>
+        <SectionHeading title="Saved Places" />
+        <View style={styles.savedPlacesCard}>
+          <Text style={styles.savedPlacesHint}>Name journeys automatically and protect these locations when sharing.</Text>
+          {SAVED_PLACE_SLOTS.map((slot, index) => <Pressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => { setSavedPlaceAddress(''); setSavedPlaceEditor(slot.id); }} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
+            <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor="#ff9478" size={20} /></View>
+            <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
+            <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
+          </Pressable>)}
         </View>
 
         <SectionHeading title="Soundtrack capture" />
@@ -2609,6 +2650,12 @@ function ConnectionsScreen({
           <Text style={styles.settingsDataHealthArrow}>›</Text>
         </Pressable>}
       </ScrollView>
+      <OverlayModal visible={Boolean(savedPlaceEditor)} kicker="SAVED PLACE" title={savedPlaceEditor ? `Set ${SAVED_PLACE_SLOTS.find(slot => slot.id === savedPlaceEditor)?.label}` : 'Set place'} onClose={() => { if (!savedPlaceBusy) { setSavedPlaceEditor(null); setSavedPlaceAddress(''); } }}>
+        <TextInput value={savedPlaceAddress} onChangeText={setSavedPlaceAddress} editable={!savedPlaceBusy} autoCapitalize="words" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => void saveAddressPlace()} placeholder="Street address" placeholderTextColor="#716879" style={styles.editorInput} />
+        <Pressable onPress={() => void saveAddressPlace()} disabled={savedPlaceBusy || !savedPlaceAddress.trim()} style={[styles.savedPlacePrimary, (savedPlaceBusy || !savedPlaceAddress.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>Use this address</Text></Pressable>
+        <Pressable onPress={() => void saveCurrentPlace()} disabled={savedPlaceBusy} style={[styles.savedPlaceCurrent, savedPlaceBusy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{savedPlaceBusy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
+        {savedPlaceEditor && savedPlaces[savedPlaceEditor] && <Pressable onPress={clearSavedPlace} disabled={savedPlaceBusy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
+      </OverlayModal>
     </View>
   );
 }
@@ -3352,6 +3399,18 @@ const styles = StyleSheet.create({
   journeyMapHeading: { marginTop: 8, paddingHorizontal: 2, gap: 5 }, journeyMapKicker: { color: '#ff8d72', fontSize: 9, fontWeight: '900', letterSpacing: 1.65 }, journeyMapTitle: { color: '#fff8ff', fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.5 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, membershipSettingsIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, membershipSettingsIconText: { color: '#fff8fb', fontSize: 17, fontWeight: '900' }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  savedPlacesCard: { overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#553449', backgroundColor: '#141018' },
+  savedPlacesHint: { color: '#a99eae', fontSize: 11, lineHeight: 16, paddingHorizontal: 15, paddingTop: 13, paddingBottom: 9 },
+  savedPlaceRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 },
+  savedPlaceRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#352937' },
+  savedPlaceIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: '#2a1821', borderWidth: 1, borderColor: '#62363c' },
+  savedPlaceName: { color: '#f7f0fa', fontSize: 14, fontWeight: '900' },
+  savedPlaceStatus: { color: '#8e8496', fontSize: 10, marginTop: 3 },
+  savedPlaceAction: { color: '#ff9a7c', fontSize: 11, fontWeight: '900' },
+  savedPlacePrimary: { minHeight: 48, borderRadius: 14, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' },
+  savedPlacePrimaryText: { color: '#1b0b07', fontSize: 13, fontWeight: '900' },
+  savedPlaceCurrent: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: '#503766', backgroundColor: '#21162e', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  savedPlaceCurrentText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' },
   setupCard: { gap: 11, backgroundColor: '#171019', borderWidth: 1, borderColor: '#713e58', borderRadius: 18, padding: 15, shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, setupTitle: { color: '#ff7b82', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, setupBody: { color: '#9b929f', fontSize: 12, lineHeight: 18 }, setupInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#5d466b', backgroundColor: '#0e0c12', color: '#f4eef8', paddingHorizontal: 14, fontSize: 15, shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 9 }, setupWarning: { color: '#ffb15c', fontSize: 11, lineHeight: 16 }, setupSync: { minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, borderColor: '#7f4151', backgroundColor: '#281318', shadowColor: '#ff4f7d', shadowOpacity: 0.25, shadowRadius: 10 }, setupSyncText: { color: '#ff8c93', fontSize: 12, fontWeight: '900' }, setupActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 }, setupSecondary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#241f29', shadowColor: '#a85cff', shadowOpacity: 0.18, shadowRadius: 8 }, setupSecondaryText: { color: '#a79daa', fontSize: 12, fontWeight: '800' }, setupPrimary: { minHeight: 40, minWidth: 88, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#f23d47', shadowColor: '#ff4f65', shadowOpacity: 0.42, shadowRadius: 11 }, setupPrimaryText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   // Keep the content readable until it reaches the dock; the dock itself remains crisp above this veil.
   bottomContentFade: { position: 'absolute', right: 0, bottom: 0, left: 0, height: 132, zIndex: 30 },
