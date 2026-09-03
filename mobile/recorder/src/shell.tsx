@@ -2559,11 +2559,11 @@ function ConnectionsScreen({
     setSavedPlaceEditor(null);
     setSavedPlaceAddress('');
   };
-  const editProfile = () => {
+  const editProfile = useCallback(() => {
     setProfileDraft(profileAppearance);
     setProfileEditorOpen(true);
     void Haptics.selectionAsync();
-  };
+  }, [profileAppearance]);
   const pickProfileAvatar = async () => {
     setProfileAvatarBusy(true);
     try {
@@ -2580,8 +2580,10 @@ function ConnectionsScreen({
     setProfileEditorOpen(false);
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
-  return (
-    <View style={styles.safe}>
+  // The editors intentionally live beside (not inside) this cached page. Text
+  // input changes otherwise reconcile the entire native ScrollView behind the
+  // modal, which makes iOS briefly reapply its content offset on every touch.
+  const settingsScrollView = useMemo(() => (
       <ScrollView
         contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
         contentInsetAdjustmentBehavior="never"
@@ -2680,6 +2682,17 @@ function ConnectionsScreen({
           <Text style={styles.settingsDataHealthArrow}>›</Text>
         </Pressable>}
       </ScrollView>
+  ), [
+    accountActionPending, advancedSupportVisible, appleIdentityStatus, connectionCapabilities.lastFmConfigured,
+    currentUser.appleSubject, editProfile, editingLastFm, insets.bottom, insets.top, lastFmConnected, lastFmDraft,
+    lastFmUsername, membershipExpirationDate, membershipTier, onAppleSignIn, onCancelLastFm, onChangeProvider,
+    onDataHealth, onDeleteAccount, onEditLastFm, onLastFmDraft, onMembership, onPrivateCloudSync, onSaveLastFm,
+    onSignOut, onSpotifyOwnerConnect, onSpotifyOwnerSync, onSyncLastFm, ownerSpotifyEligible, privateCloud,
+    profileAppearance, savedPlaces, savingLastFm, selected, signingInWithApple, spotifyOwnerState, syncingLastFm,
+  ]);
+  return (
+    <View style={styles.safe}>
+      {settingsScrollView}
       <OverlayModal visible={Boolean(savedPlaceEditor)} kicker="SAVED PLACE" title={savedPlaceEditor ? `Set ${SAVED_PLACE_SLOTS.find(slot => slot.id === savedPlaceEditor)?.label}` : 'Set place'} animationType="none" onClose={() => { if (!savedPlaceBusy) { setSavedPlaceEditor(null); setSavedPlaceAddress(''); } }}>
         <TextInput value={savedPlaceAddress} onChangeText={setSavedPlaceAddress} editable={!savedPlaceBusy} autoCapitalize="words" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => void saveAddressPlace()} placeholder="Street address" placeholderTextColor="#716879" style={styles.editorInput} />
         <Pressable onPress={() => void saveAddressPlace()} disabled={savedPlaceBusy || !savedPlaceAddress.trim()} style={[styles.savedPlacePrimary, (savedPlaceBusy || !savedPlaceAddress.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>Use this address</Text></Pressable>

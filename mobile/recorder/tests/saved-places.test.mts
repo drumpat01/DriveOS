@@ -38,3 +38,14 @@ test('the Primary Driver account row opens the private name and profile-photo ed
   assert.match(settings, /visible=\{profileEditorOpen\} transparent animationType="none"/);
   assert.match(settings, />Edit your profile</);
 });
+
+test('Settings editors do not redraw the native scroll view on each keystroke', () => {
+  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
+  const cachedPageStart = settings.indexOf('const settingsScrollView = useMemo');
+  const cachedPageEnd = settings.indexOf('return (', cachedPageStart);
+  const cachedPage = settings.slice(cachedPageStart, cachedPageEnd);
+
+  assert.ok(cachedPageStart >= 0, 'Settings should cache the visible scroll view separately from its editors');
+  assert.match(settings, /\{settingsScrollView\}[\s\S]*?<OverlayModal visible=\{Boolean\(savedPlaceEditor\)\}/);
+  assert.doesNotMatch(cachedPage, /savedPlaceAddress|profileDraft|savedPlaceBusy|profileAvatarBusy/);
+});
