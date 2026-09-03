@@ -1,5 +1,12 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Settings modal cross-fade glitch — September 3, 2026
+
+- Reviewed the tester's 7.8-second, 1320x2868/60fps screen recording frame by frame. The Settings page itself and its scroll offset remain stable; the visible glitch occurs during the native modal fade, when the partially transparent Saved Place sheet briefly overlaps the still-visible Settings labels and controls beneath it.
+- Added an explicit animation choice to the shared overlay while retaining `fade` as the default for approved experiences. Settings Saved Place and Primary Driver profile editors now use an immediate opaque presentation, preventing ghosted/doubled text and the apparent jiggle without changing their layout, keyboard avoidance, or other screens' transitions.
+- Verification passed: TypeScript, focused Settings/navigation/tab checks **40/40**, full mobile suite **182/182**, and production iOS Expo export (**1,825 modules / 25 assets**). Implementation commit `a575b47` (`fix: remove Settings modal cross-fade`) is pushed to `origin/codex/native-runtime-prep`.
+- Published and independently verified the Build 13-compatible iOS production OTA: group `12460a72-5d06-41bb-8819-589f04c90ca7`, update `01a068f9-d846-7af9-9e47-020a3d71d84f`, runtime `1.9.0-build13`, message `Fix Settings modal presentation glitch`. No native build, TestFlight upload, App Store Connect mutation, or data reset was performed.
+
 ## Settings Primary Driver profile editor — September 3, 2026
 
 - Made the full **Primary Driver** account card in Settings actionable. Tapping it opens the existing private profile-editing experience for changing the display name, choosing/replacing a profile photo, or returning to initials.
