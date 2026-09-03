@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, KeyboardAvoidingView, Linking, Modal, PanResponder, Platform, Pressable,
+  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, PanResponder, Pressable,
   SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -2172,14 +2172,21 @@ function MemoryDetailModal({
 }
 
 function OverlayModal({ visible, kicker, title, onClose, children, animationType = 'fade' }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode; animationType?: 'fade' | 'none' }) {
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const keyboardVisible = keyboardHeight > 0;
   useEffect(() => {
     if (!visible) {
-      setKeyboardVisible(false);
+      setKeyboardHeight(0);
       return;
     }
-    const showSubscription = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    // RN's KeyboardAvoidingView follows every transient iOS keyboard frame,
+    // including the key-preview bubble. That briefly moves the transparent
+    // presenting page. Only the settled show/hide height should position this
+    // sheet, so ordinary keypresses cannot change either layer's geometry.
+    const showSubscription = Keyboard.addListener('keyboardDidShow', event => {
+      setKeyboardHeight(Math.max(0, event.endCoordinates.height));
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
@@ -2187,20 +2194,20 @@ function OverlayModal({ visible, kicker, title, onClose, children, animationType
   }, [visible]);
   const closeModal = () => {
     Keyboard.dismiss();
-    setKeyboardVisible(false);
+    setKeyboardHeight(0);
     onClose();
   };
 
   return <Modal visible={visible} transparent animationType={animationType} statusBarTranslucent onRequestClose={closeModal}>
-    <KeyboardAvoidingView style={styles.overlayKeyboardAvoider} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={[styles.overlayKeyboardAvoider, keyboardHeight > 0 && { paddingBottom: keyboardHeight }]}>
     <SafeAreaView style={styles.overlayRoot}>
       <Pressable accessibilityLabel="Close" onPress={closeModal} style={StyleSheet.absoluteFill} />
       <View style={styles.overlaySheet}>
         <View style={styles.overlayHeader}><View style={styles.flex}><Text style={styles.overlayKicker}>{kicker}</Text><Text style={styles.overlayTitle} numberOfLines={1}>{title}</Text></View><View style={styles.overlayHeaderActions}>{keyboardVisible && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={() => Keyboard.dismiss()} style={styles.overlayKeyboardDone}><Text style={styles.overlayKeyboardDoneText}>Done</Text></Pressable>}<Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={closeModal} style={styles.overlayClose}><Text style={styles.overlayCloseText}>×</Text></Pressable></View></View>
-        <ScrollView contentContainerStyle={styles.overlayContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>{children}</ScrollView>
+        <ScrollView contentContainerStyle={styles.overlayContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">{children}</ScrollView>
       </View>
     </SafeAreaView>
-    </KeyboardAvoidingView>
+    </View>
   </Modal>;
 }
 

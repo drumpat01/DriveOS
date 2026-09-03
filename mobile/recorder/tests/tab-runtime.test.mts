@@ -480,9 +480,9 @@ test('Memory detail directly groups Journeys with the approved cinematic present
 });
 
 test('Memory editor remains usable while the iOS keyboard is open', () => {
-  assert.match(shell, /KeyboardAvoidingView style=\{styles\.overlayKeyboardAvoider\}/);
-  assert.match(shell, /behavior=\{Platform\.OS === 'ios' \? 'padding' : 'height'\}/);
-  assert.match(shell, /keyboardDismissMode=\{Platform\.OS === 'ios' \? 'interactive' : 'on-drag'\}/);
+  assert.match(shell, /style=\{\[styles\.overlayKeyboardAvoider, keyboardHeight > 0 && \{ paddingBottom: keyboardHeight \}\]\}/);
+  assert.match(shell, /setKeyboardHeight\(Math\.max\(0, event\.endCoordinates\.height\)\)/);
+  assert.match(shell, /keyboardDismissMode="on-drag"/);
   assert.match(shell, /Keyboard\.addListener\('keyboardDidShow'/);
   assert.match(shell, /accessibilityLabel="Dismiss keyboard"/);
   assert.match(shell, /<Text style=\{styles\.overlayKeyboardDoneText\}>Done<\/Text>/);

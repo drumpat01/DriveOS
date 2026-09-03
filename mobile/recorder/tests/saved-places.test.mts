@@ -49,3 +49,11 @@ test('Settings editors do not redraw the native scroll view on each keystroke', 
   assert.match(settings, /\{settingsScrollView\}[\s\S]*?<OverlayModal visible=\{Boolean\(savedPlaceEditor\)\}/);
   assert.doesNotMatch(cachedPage, /savedPlaceAddress|profileDraft|savedPlaceBusy|profileAvatarBusy/);
 });
+
+test('the shared editor sheet ignores transient iOS key-preview frame changes', () => {
+  const overlay = shell.slice(shell.indexOf('function OverlayModal'), shell.indexOf('function OverviewMetrics'));
+
+  assert.match(overlay, /Keyboard\.addListener\('keyboardDidShow'/);
+  assert.match(overlay, /setKeyboardHeight\(Math\.max\(0, event\.endCoordinates\.height\)\)/);
+  assert.doesNotMatch(overlay, /<KeyboardAvoidingView|keyboardWillChangeFrame/);
+});
