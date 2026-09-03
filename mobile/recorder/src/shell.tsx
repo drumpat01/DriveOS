@@ -2171,7 +2171,7 @@ function MemoryDetailModal({
   </View>;
 }
 
-function OverlayModal({ visible, kicker, title, onClose, children }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode }) {
+function OverlayModal({ visible, kicker, title, onClose, children, animationType = 'fade' }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode; animationType?: 'fade' | 'none' }) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   useEffect(() => {
     if (!visible) {
@@ -2191,7 +2191,7 @@ function OverlayModal({ visible, kicker, title, onClose, children }: { visible: 
     onClose();
   };
 
-  return <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={closeModal}>
+  return <Modal visible={visible} transparent animationType={animationType} statusBarTranslucent onRequestClose={closeModal}>
     <KeyboardAvoidingView style={styles.overlayKeyboardAvoider} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
     <SafeAreaView style={styles.overlayRoot}>
       <Pressable accessibilityLabel="Close" onPress={closeModal} style={StyleSheet.absoluteFill} />
@@ -2680,13 +2680,13 @@ function ConnectionsScreen({
           <Text style={styles.settingsDataHealthArrow}>›</Text>
         </Pressable>}
       </ScrollView>
-      <OverlayModal visible={Boolean(savedPlaceEditor)} kicker="SAVED PLACE" title={savedPlaceEditor ? `Set ${SAVED_PLACE_SLOTS.find(slot => slot.id === savedPlaceEditor)?.label}` : 'Set place'} onClose={() => { if (!savedPlaceBusy) { setSavedPlaceEditor(null); setSavedPlaceAddress(''); } }}>
+      <OverlayModal visible={Boolean(savedPlaceEditor)} kicker="SAVED PLACE" title={savedPlaceEditor ? `Set ${SAVED_PLACE_SLOTS.find(slot => slot.id === savedPlaceEditor)?.label}` : 'Set place'} animationType="none" onClose={() => { if (!savedPlaceBusy) { setSavedPlaceEditor(null); setSavedPlaceAddress(''); } }}>
         <TextInput value={savedPlaceAddress} onChangeText={setSavedPlaceAddress} editable={!savedPlaceBusy} autoCapitalize="words" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => void saveAddressPlace()} placeholder="Street address" placeholderTextColor="#716879" style={styles.editorInput} />
         <Pressable onPress={() => void saveAddressPlace()} disabled={savedPlaceBusy || !savedPlaceAddress.trim()} style={[styles.savedPlacePrimary, (savedPlaceBusy || !savedPlaceAddress.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>Use this address</Text></Pressable>
         <Pressable onPress={() => void saveCurrentPlace()} disabled={savedPlaceBusy} style={[styles.savedPlaceCurrent, savedPlaceBusy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{savedPlaceBusy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
         {savedPlaceEditor && savedPlaces[savedPlaceEditor] && <Pressable onPress={clearSavedPlace} disabled={savedPlaceBusy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
       </OverlayModal>
-      <Modal visible={profileEditorOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => !profileAvatarBusy && setProfileEditorOpen(false)}>
+      <Modal visible={profileEditorOpen} transparent animationType="none" statusBarTranslucent onRequestClose={() => !profileAvatarBusy && setProfileEditorOpen(false)}>
         <View style={styles.profileEditorRoot}>
           <Pressable style={StyleSheet.absoluteFill} disabled={profileAvatarBusy} onPress={() => setProfileEditorOpen(false)}><BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} /></Pressable>
           <CinematicGlass style={styles.profileEditorCard}>

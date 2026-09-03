@@ -23,6 +23,7 @@ test('Settings replaces the passive safe-zone and recording cards with one compa
   assert.match(settings, /SAVED_PLACE_SLOTS\.map/);
   assert.match(settings, /Location\.geocodeAsync/);
   assert.match(settings, /Location\.getCurrentPositionAsync/);
+  assert.match(settings, /title=\{savedPlaceEditor[\s\S]*?animationType="none"/);
   assert.doesNotMatch(settings, /Home & Work Safe Zones/);
   assert.doesNotMatch(settings, /SectionHeading title="Recording"/);
 });
@@ -34,5 +35,6 @@ test('the Primary Driver account row opens the private name and profile-photo ed
   assert.match(settings, /chooseProfileAvatar\(\)/);
   assert.match(settings, /saveProfileAppearance\(currentUser, profileDraft\)/);
   assert.match(settings, /visible=\{profileEditorOpen\}/);
+  assert.match(settings, /visible=\{profileEditorOpen\} transparent animationType="none"/);
   assert.match(settings, />Edit your profile</);
 });
