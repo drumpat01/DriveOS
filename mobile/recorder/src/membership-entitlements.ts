@@ -3,6 +3,7 @@ export type JourneyDeckMembershipTier = 'free' | 'paid';
 export type JourneyDeckMembershipEntitlements = {
   tier: JourneyDeckMembershipTier;
   atlasAccess: boolean;
+  tessieAccess: boolean;
   timelineHistoryDays: number | null;
 };
 
@@ -13,8 +14,8 @@ export type VerifiedMembershipStatus = {
 
 export function entitlementsForMembershipTier(tier: JourneyDeckMembershipTier): JourneyDeckMembershipEntitlements {
   return tier === 'paid'
-    ? { tier, atlasAccess: true, timelineHistoryDays: null }
-    : { tier, atlasAccess: false, timelineHistoryDays: 45 };
+    ? { tier, atlasAccess: true, tessieAccess: false, timelineHistoryDays: null }
+    : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: 45 };
 }
 
 export function entitlementsForVerifiedMembership(status: VerifiedMembershipStatus): JourneyDeckMembershipEntitlements {

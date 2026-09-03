@@ -1,11 +1,11 @@
 # JourneyDeck Recorder
 
-JourneyDeck Recorder is the private, local-first iPhone app for recording journeys without Tessie or a Tesla. Build 13 keeps the physically proven Expo background-location detector as the public automatic-recording owner and adds bounded departure pre-roll so confirmation does not lose the beginning of a drive. A corrected native Swift confirmation-burst engine ships dormant for controlled TestFlight validation; if later enabled, Swift writes GPS points only into its small native-owned SQLite inbox and Expo copies typed snapshots into the canonical on-device database through its sole SQLite connection. This prevents different SQLite libraries from sharing one WAL file. Completion work is stored in a leased retry queue so closing the UI can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
+JourneyDeck Recorder is a private, local-first iPhone driving journal. Version 1 uses one predictable recording flow for everyone: tap Start Journey, drive, then tap End Journey. Apple Music can build the soundtrack while the journey is active, or the user can choose manual song recognition instead. Completion work is stored in a leased retry queue so closing the UI can delay enrichment but cannot reopen or lose a finished drive. Optional recorder credentials are stored in iOS Keychain and are never bundled with the app.
 
 ## Public-release scope
 
 - iPhone-only, local-first journey recording;
-- iOS background GPS recording;
+- manual Start and Finish with background GPS route capture;
 - Start, Pause, Resume, Finish, and manual retry;
 - offline-first local storage with optional private iCloud continuity;
 - Apple Music history for automatic soundtracks, plus user-initiated ShazamKit recognition for individual songs;
@@ -13,7 +13,7 @@ JourneyDeck Recorder is the private, local-first iPhone app for recording journe
 - no public Spotify, Last.fm, or direct Spotify import until the separate commercial permissions and review scope are complete;
 - no Android build.
 
-Locking the phone or opening another app does not stop native automatic recording. iOS does not relaunch location work after the user deliberately force-quits the app until JourneyDeck is opened again.
+Locking the phone or opening another app does not stop an active journey. Version 1 never starts a journey automatically.
 
 `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=1` is reserved for development and preview builds. It exposes the owner-only Spotify and Last.fm experiments. Production explicitly sets it to `0`; do not change that setting for an App Store build.
 
@@ -56,7 +56,7 @@ npx expo start --dev-client --tunnel
 
 Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
 
-Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 13 retains the isolated native recorder inbox and native MapKit POI enrichment, adds EAS Observe diagnostics and the dormant native confirmation-burst correction, and keeps the canonical schema at version 6.
+Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 13 retains the isolated native recorder inbox and native MapKit POI enrichment, adds EAS Observe diagnostics, and keeps the canonical schema at version 6. Automatic recording and Tessie remain disabled for version 1.
 
 Then create a production build and submit it through the App Store workflow:
 

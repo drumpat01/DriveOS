@@ -32,7 +32,6 @@ assert.match(src, /ensureLocalUser/, 'imports ensureLocalUser');
 assert.match(src, /listJourneys/, 'imports listJourneys');
 assert.match(src, /getJourney/, 'imports getJourney');
 assert.match(src, /listMusicEntries/, 'imports listMusicEntries');
-assert.match(src, /listCollections/, 'imports listCollections');
 assert.match(src, /listMemories/, 'imports listMemories');
 assert.match(src, /readAtlasSnapshot/, 'imports readAtlasSnapshot');
 assert.match(src, /localStoreDiagnostics/, 'imports localStoreDiagnostics');
@@ -66,8 +65,9 @@ assert.match(src, /: AppDashboard \{/, 'dashboard() returns AppDashboard');
 assert.match(src, /: JourneyDetail \| null/, 'journey() returns JourneyDetail | null');
 assert.match(src, /: MusicDashboardData \{/, 'musicDashboard() returns MusicDashboardData');
 assert.match(src, /: MemoriesCatalog \{/, 'memories() returns MemoriesCatalog');
-assert.match(src, /satisfies JourneyCollection/, 'collections mapped to JourneyCollection');
 assert.match(src, /satisfies JourneyMemory/, 'memories mapped to JourneyMemory');
+assert.match(src, /JSON\.parse\(m\.journeyIds\)/, 'Memories read direct Journey membership');
+assert.doesNotMatch(src, /JourneyCollection/, 'Collections are not part of the V1 product data model');
 
 // ============================================================
 // 5. Offline-first behaviour
@@ -126,7 +126,7 @@ assert.match(src, /coordinateAtRecordedTime\(samples, entry\.playedAt\)/, 'song 
 
 assert.match(src, /export const appDataClient/, 'original appDataClient still exported');
 assert.match(src, /async dashboard\(_refreshRemote = false\)/, 'appDataClient.dashboard() stays local even when the user refreshes');
-assert.match(src, /async importLegacyOwnerArchive\(\)/, 'legacy server reads require an explicit owner import action');
+assert.doesNotMatch(src, /importLegacyOwnerArchive/, 'the retired hierarchy import is not exposed in V1');
 assert.match(src, /localAtlasClient[\s\S]*dashboard\(userId/, 'localAtlasClient.dashboard is sync (local-first)');
 assert.match(src, /localAtlasClient\.dashboard\(getCurrentUser\(\)\.id\)/, 'live dashboard falls back to the on-device Atlas client');
 assert.match(src, /localAtlasClient\.journeys\(getCurrentUser\(\)\.id/, 'live journey history falls back to the on-device store');

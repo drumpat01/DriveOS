@@ -9,7 +9,7 @@ Apple requires disclosure of data handled by the app and third-party partners. D
 | Feature | Data involved | Where it is handled | Required label review |
 | --- | --- | --- | --- |
 | Core journey recorder | Precise route coordinates, timestamps, speed/heading, derived distance and duration | On-device SQLite by default | If the user never enables an off-device path, this is on-device processing. Confirm whether the production app ever transmits it by default. |
-| Optional private iCloud sync | Journey records, route coordinates, labels, memories, collections, selected photos, preferences | User’s private CloudKit database | Conservatively review **Precise Location**, **Photos or Videos**, and relevant **User Content** as linked to the user for App Functionality. Confirm the final CloudKit design with counsel/Apple guidance. |
+| Optional private iCloud sync | Journey records, route coordinates, labels, memories, selected photos, preferences | User’s private CloudKit database | Conservatively review **Precise Location**, **Photos or Videos**, and relevant **User Content** as linked to the user for App Functionality. Confirm the final CloudKit design with counsel/Apple guidance. |
 | Optional Sign in with Apple | Apple subject identifier and any display name the user provides | Local profile and private iCloud when enabled | Review **User ID** and **Name** for App Functionality. |
 | Optional Apple Music | Track, artist, album, playback timing, artwork URLs | On device; optional private iCloud continuity | Review **Audio Data** only if Apple’s final definition requires song/playback metadata to be classified that way; do not claim microphone recordings are collected. |
 | Optional ShazamKit recognition | Brief microphone input and recognized music metadata | Recognition runs on device; recognized metadata can be stored locally/private iCloud | Microphone audio is not saved. Confirm whether only stored recognition results require a label. |
@@ -29,7 +29,7 @@ Apple requires disclosure of data handled by the app and third-party partners. D
 
 ## Final sign-off questions
 
-1. Does the production build transmit any route, vehicle, photo, or music data automatically outside the device?
+1. Does the production build transmit any route, photo, or music data automatically outside the device?
 2. Does the deployed privacy edge log, retain, or forward any request data beyond servicing the request?
 3. Are all selected third-party SDK privacy manifests present and reviewed?
 4. Is every optional integration and account flow described accurately in the public policy?

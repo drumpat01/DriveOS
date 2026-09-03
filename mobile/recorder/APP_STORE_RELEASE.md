@@ -6,9 +6,9 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 
 - The production EAS profile sets `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=0`.
 - Public builds use Apple Music as the only automatic streaming option. ShazamKit remains a manual, per-song Identify Song action and never starts from background journey detection. Last.fm and direct Spotify remain internal-preview capabilities and are blocked at the preferences, queue, and OAuth boundaries.
-- StoreKit 2 verifies JourneyDeck Pro monthly and annual products. A verified entitlement unlocks Atlas and history older than 45 days; the free experience retains Statistics and a rolling 45-day timeline.
+- StoreKit 2 verifies JourneyDeck Pro monthly and annual products. A verified entitlement unlocks Atlas and history older than 45 days; the free experience retains manual recording, Statistics, and a rolling 45-day timeline.
 - The mobile app now uses the documented production privacy-edge URL: `https://journeydeck-edge.patrickbstewart.workers.dev`.
-- Recording works without an account, a recorder key, or a working network connection. Optional integrations never block a recording.
+- Manual recording works without an account, a recorder key, or a working network connection. Version 1 exposes no automatic recorder or vehicle connection.
 - Build 13 includes EAS Observe for anonymous performance, memory-pressure, JavaScript-error, and bounded recorder-lifecycle diagnostics. Its event wrapper rejects arbitrary names and private content fields; diagnostics remain additive and can never block recording.
 
 ## Must be completed outside this repository before submission
@@ -17,13 +17,13 @@ This checklist is deliberately conservative. A green JavaScript test suite prove
 2. Publish a support URL or support email that a reviewer and customer can use. Enter both the privacy URL and support URL in App Store Connect; do not use placeholders.
 3. Deploy the CloudKit production schema for `iCloud.com.journeydeck.recorder`, then exercise private sync and account deletion on two physical devices using a TestFlight build. Development-schema success is not production-schema proof.
 4. Keep Last.fm and direct Spotify out of the public binary and App Store metadata until written commercial permissions, branding approval, and their final privacy disclosures are in place.
-5. Confirm the production privacy-edge worker is deployed, reachable, rate-limited, and has only the public integrations it needs. Do not copy preview secrets or test allowlists into production.
+5. Confirm the production privacy-edge worker is deployed, reachable, rate-limited, and has only the public integrations it needs. Tessie routes must remain unreachable from the version-1 app. Do not copy preview secrets or test allowlists into production.
 6. Complete App Store Connect privacy nutrition labels from the actual production data flow, including the EAS Observe Device ID, Product Interaction, Performance Data, and Other Diagnostic Data declarations already planned as non-linked and non-tracking. Recheck them if any SDK or integration changes.
-7. Prepare App Review notes with a clean local first-run flow, demo steps for background route recording, an explanation of why background location is core functionality, and any credentials needed for optional integrations. Never make the reviewer depend on a personal account, vehicle, or music subscription to evaluate the core recorder.
-8. Test the signed production archive on real hardware: first launch, denied/limited permissions, manual and automatic recording, lock-screen route capture, offline completion, relaunch/recovery, private iCloud sync, deletion, and the App Store install/update path.
+7. Prepare App Review notes with a clean manual-recording first-run flow, demo steps for background route recording, and an explanation of why background location is core functionality. Never make the reviewer depend on a personal account or music subscription to evaluate the free manual recorder.
+8. Test the signed production archive on real hardware: first launch, denied/limited permissions, manual recording, lock-screen route capture, offline completion, relaunch/recovery, private iCloud sync, deletion, purchase/restore, and the App Store install/update path.
 9. Supply final App Store metadata: subtitle, description, keywords, age rating, privacy-policy and support URLs, copyright, support contact, and 6.9-inch/6.7-inch/6.5-inch iPhone screenshots that reflect the public build.
 10. Complete [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md), attach the configured products to the app-version submission, and verify purchase, pending approval, restore, expiration, and cross-device entitlement in Sandbox/TestFlight.
-11. Install Build 11 over Build 10 without deleting the app. Verify the first launch preserves profiles, journeys, Collections, Memories, music, artwork, saved places, and any recoverable recorder staging; then finish one automatic drive with the UI backgrounded and one with the phone locked.
+11. Install the submission build over Build 13 without deleting the app. Verify the first launch preserves profiles, Journeys, Memories, music, artwork, saved places, and any recoverable recorder staging; confirm any previously selected Automatic mode immediately returns to Manual.
 12. On two physical devices, verify CloudKit retries an offline/partial sync, resumes after connectivity returns, and does not advance a change token until downloaded records and assets have committed locally.
 
 ## Required preflight commands

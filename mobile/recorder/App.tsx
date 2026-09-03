@@ -6,6 +6,8 @@ import {
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 import { ObserveRoot } from 'expo-observe';
@@ -17,7 +19,7 @@ import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection }
 import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder } from './src/api';
 import {
   activeSession, beginLocalSession, completeSessionLocally, getSessionSummary, initializeDatabase,
-  recordLocations, setLocalStatus, type LocalSessionStatus, type SessionSummary,
+  getLiveRecorderSnapshot, recordLocations, setLocalStatus, type LocalSessionStatus, type QueuedPoint, type SessionSummary,
 } from './src/storage';
 import { decideRecovery } from './src/recovery';
 import { syncPresentation, type SyncStage } from './src/sync-status';
@@ -30,7 +32,7 @@ import { appDataClient } from './src/app-data';
 import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { authorizeShazamMicrophone } from './modules/journeydeck-music';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
-import { loadAutomaticDriveEvent, resetAutomaticDriveState } from './src/automatic-drive-state';
+import { loadAutomaticDriveEvent, loadAutomaticDriveState, resetAutomaticDriveState } from './src/automatic-drive-state';
 import { subscribeJourneyDeckRequestPolicy } from './src/network-activity';
 import {
   loadRecordingModePreferences, subscribeRecordingMode, type RecordingModePreferences,
@@ -42,8 +44,9 @@ import {
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
-import { NATIVE_AUTOMATIC_RECORDER_ENABLED } from './src/release-features';
+import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED } from './src/release-features';
 import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
+import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
 
 configureJourneyDeckObservability();
 
@@ -79,18 +82,39 @@ function statusLabel(status?: LocalSessionStatus, nativeTracking = false) {
   return status === 'recording' ? (nativeTracking ? 'Recording' : 'Recovering recording') : status === 'paused' ? 'Paused' : status === 'finishing' ? 'Waiting to finish' : 'Ready';
 }
 
-function RecorderScreen({ onClose }: { onClose: () => void }) {
+function routeDistanceMiles(points: QueuedPoint[]) {
+  const toRadians = (degrees: number) => degrees * Math.PI / 180;
+  const meters = points.slice(1).reduce((total, point, index) => {
+    const previous = points[index]!;
+    const latitudeDelta = toRadians(point.latitude - previous.latitude);
+    const longitudeDelta = toRadians(point.longitude - previous.longitude);
+    const chord = Math.sin(latitudeDelta / 2) ** 2
+      + Math.cos(toRadians(previous.latitude)) * Math.cos(toRadians(point.latitude)) * Math.sin(longitudeDelta / 2) ** 2;
+    return total + 12_742_000 * Math.asin(Math.sqrt(chord));
+  }, 0);
+  return meters / 1609.344;
+}
+
+function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange }: {
+  onClose: () => void;
+  presentation?: 'screen' | 'home';
+  showManualSongButton?: boolean;
+  onJourneyChange?: () => void;
+  onActivityChange?: (active: boolean) => void;
+}) {
   const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
   const [token, setToken] = useState('');
   const [summary, setSummary] = useState<SessionSummary | null>(null);
+  const [distanceMiles, setDistanceMiles] = useState(0);
   const [foregroundPermission, setForegroundPermission] = useState(false);
   const [backgroundPermission, setBackgroundPermission] = useState(false);
   const [taskAvailable, setTaskAvailable] = useState(false);
   const [trackingActive, setTrackingActive] = useState(false);
   const [automaticDetectionActive, setAutomaticDetectionActive] = useState(false);
+  const [recorderInitialized, setRecorderInitialized] = useState(false);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences>(() => loadRecordingModePreferences());
   const operation = useRef<Promise<void>>(Promise.resolve());
   const refreshPending = useRef<Promise<void> | null>(null);
@@ -180,7 +204,9 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       setNotice('Journey finished in your on-device archive. Optional backup continues in the background.');
     }
     const reconciled = activeSession();
+    const liveSnapshot = getLiveRecorderSnapshot();
     setSummary(reconciled ? getSessionSummary(reconciled.id) : null);
+    setDistanceMiles(liveSnapshot.session ? routeDistanceMiles(liveSnapshot.route) : 0);
     setForegroundPermission(foreground.status === 'granted');
     setBackgroundPermission(background.status === 'granted');
     setTaskAvailable(available);
@@ -211,9 +237,14 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
 
   const reconcileAutomaticRecorder = useCallback(async () => {
-    const shouldRun = Boolean(deviceId && foregroundPermission && backgroundPermission
-      && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic');
     if (!deviceId) return false;
+    const tessieEligible = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic'
+      ? await tessieAutomaticRecordingEligible()
+      : false;
+    const current = activeSession();
+    const automaticState = loadAutomaticDriveState();
+    const finishingExistingAutomaticJourney = Boolean(current && automaticState.automaticSessionId === current.id);
+    const shouldRun = Boolean(foregroundPermission && backgroundPermission && (tessieEligible || finishingExistingAutomaticJourney));
     if (NATIVE_AUTOMATIC_RECORDER_ENABLED) {
       await stopAutomaticDetection().catch(() => undefined);
       const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
@@ -237,7 +268,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       await stopAutomaticDetection().catch(() => undefined);
     }
     await syncNativeRecorderInbox();
-    if (!shouldRun && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'manual') resetAutomaticDriveState();
+    if (!shouldRun) resetAutomaticDriveState();
     return active;
   }, [backgroundPermission, deviceId, foregroundPermission, recordingPreferences]);
 
@@ -260,7 +291,8 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
   }, []);
 
   useEffect(() => {
-    void refresh().catch(() => {});
+    let mounted = true;
+    void refresh().catch(() => {}).finally(() => { if (mounted) setRecorderInitialized(true); });
     void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
     void sampleAppleMusicForActiveSession({ force: true });
     void syncPendingLastFmBestEffort();
@@ -282,7 +314,7 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
       void syncPendingLastFmBestEffort();
     });
-    return () => { clearInterval(timer); subscription.remove(); };
+    return () => { mounted = false; clearInterval(timer); subscription.remove(); };
   }, [connection, reconcileAutomaticRecorder, refresh]);
 
   useEffect(() => {
@@ -298,12 +330,18 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
   const permissionsReady = foregroundPermission && backgroundPermission && taskAvailable;
   const accent = summary?.status === 'recording' && trackingActive ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
 
+  useEffect(() => {
+    onActivityChange?.(active);
+    return () => onActivityChange?.(false);
+  }, [active, onActivityChange]);
+
   const withBusy = useCallback(async (work: () => Promise<void>, label = 'Working…') => {
+    if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setBusyLabel(label); setSyncStage('idle'); setNotice('');
     try { await runExclusive(work); }
     catch (error) { const message = messageOf(error); setNotice(message); Alert.alert('JourneyDeck Recorder', message); }
-    finally { await refresh().catch(() => {}); busyRef.current = false; setBusy(false); }
-  }, [refresh, runExclusive]);
+    finally { await refresh().catch(() => {}); busyRef.current = false; setBusy(false); onJourneyChange?.(); }
+  }, [onJourneyChange, refresh, runExclusive]);
 
   const connect = () => withBusy(async () => {
     const candidate = { serverUrl: serverUrl.trim().replace(/\/+$/, ''), token: token.trim() };
@@ -425,8 +463,9 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
       busyRef.current = false;
       setBusy(false);
       void refresh().catch(() => {});
+      onJourneyChange?.();
     }
-  }, [connection, refresh, runExclusive]);
+  }, [connection, onJourneyChange, refresh, runExclusive]);
 
   const finish = () => {
     if (!summary) return;
@@ -451,15 +490,60 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
     }
   }, 'Syncing to JourneyDeck…');
 
-  const importLegacyArchive = () => withBusy(async () => {
-    const result = await appDataClient.importLegacyOwnerArchive();
-    Alert.alert('Legacy archive imported', `${result.journeys} journeys · ${result.memories} Memories · ${result.collections} Collections are now cached for this profile.`);
-  }, 'Importing legacy archive…');
-
   const metrics = useMemo(() => [
     ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
   ], [connection, summary]);
-  const automaticMode = recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
+  const automaticMode = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
+
+  if (presentation === 'home') {
+    const recording = summary?.status === 'recording';
+    const paused = summary?.status === 'paused';
+    const startupPending = !deviceId || !recorderInitialized;
+    const showStartPortal = !active && !automaticMode && (startupPending || permissionsReady);
+    return (
+      <View style={styles.homeRecorderStack}>
+        {showStartPortal ? (
+          <HomeRecorderStartPortal onPress={start} disabled={busy || startupPending} showProgress={busy} />
+        ) : (
+          <View style={styles.homeRecorderCard}>
+            <View style={styles.homeRecorderStatusRow}>
+              <View style={styles.homeRecorderPulseOuter}><View style={[styles.homeRecorderPulseMiddle, paused && styles.homeRecorderPulsePaused]}><View style={[styles.homeRecorderPulseCore, paused && styles.homeRecorderPulseCorePaused]} /></View></View>
+              <View style={styles.homeRecorderStatusCopy}>
+                <Text style={[styles.homeRecorderEyebrow, paused && styles.homeRecorderEyebrowPaused]}>{active ? paused ? 'PAUSED' : 'RECORDING' : automaticMode ? 'TESLA AUTOMATION' : 'READY'}</Text>
+                <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : 'Your journey is being remembered.' : automaticMode ? 'Waiting for Tessie to confirm your drive.' : 'Ready to remember your next drive.'}</Text>
+              </View>
+              {busy && <ActivityIndicator color="#ff795b" size="small" />}
+            </View>
+
+            {active && <View style={styles.homeRecorderMetrics}>
+              <View style={styles.homeRecorderMetric}><SymbolView name="clock" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricValue}>{durationLabel(summary?.startedAt)}</Text></View>
+              <View style={styles.homeRecorderMetricDivider} />
+              <View style={styles.homeRecorderMetric}><SymbolView name="road.lanes" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricValue}>{distanceMiles.toFixed(1)} <Text style={styles.homeRecorderMetricUnit}>MI</Text></Text></View>
+              <View style={styles.homeRecorderMetricDivider} />
+              <View style={styles.homeRecorderMetric}><SymbolView name="location.fill" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricLabel}>GPS SAVED</Text><Text style={styles.homeRecorderMetricValue}>{summary?.pointCount ?? 0}</Text></View>
+            </View>}
+          </View>
+        )}
+
+        {startupPending ? null
+          : !permissionsReady ? <HomeRecorderPrimaryAction label="Enable Location" symbol="location.fill" onPress={enablePermissions} disabled={busy} />
+          : !active && !automaticMode ? null
+          : recording ? <>
+            {showManualSongButton && <Pressable disabled={busy} onPress={identifySong} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}>
+              <LinearGradient colors={['rgba(88,43,148,0.96)', 'rgba(20,13,30,0.96)']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.homeRecorderIdentifyIcon}><SymbolView name="music.note" tintColor="#d595ff" size={27} /></LinearGradient>
+              <View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Identify Song</Text><Text style={styles.homeRecorderIdentifyBody}>Tap once for each song you want to remember.</Text></View>
+              <Text style={styles.homeRecorderChevron}>›</Text>
+            </Pressable>}
+            <HomeRecorderPrimaryAction label="End Journey" symbol="waveform" onPress={finish} disabled={busy} />
+          </>
+          : paused ? <>
+            <Pressable disabled={busy} onPress={resume} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}><View style={styles.homeRecorderIdentifyIcon}><SymbolView name="play.fill" tintColor="#d595ff" size={24} /></View><View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Resume Journey</Text><Text style={styles.homeRecorderIdentifyBody}>Continue saving your route.</Text></View><Text style={styles.homeRecorderChevron}>›</Text></Pressable>
+            <HomeRecorderPrimaryAction label="End Journey" symbol="waveform" onPress={finish} disabled={busy} />
+          </> : null}
+        {!!notice && <Text style={styles.homeRecorderNotice}>{notice}</Text>}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.safeArea}>
@@ -516,7 +600,6 @@ function RecorderScreen({ onClose }: { onClose: () => void }) {
               <SecondaryButton label="Connect owner backup" onPress={connect} disabled={busy} />
             </NeonWidget>
           ) : null}
-          {connection ? <NeonWidget radius={22} style={styles.card}><Text style={styles.cardTitle}>Owner legacy tools</Text><Text style={styles.body}>Normal JourneyDeck use stays on this iPhone. Import is an explicit one-time owner action.</Text><SecondaryButton label="Import legacy archive" onPress={importLegacyArchive} disabled={busy} /></NeonWidget> : null}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
@@ -541,6 +624,71 @@ type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };
 function PrimaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.primaryButtonText}>{label}</Text></Pressable>; }
 function SecondaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.secondaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.secondaryButtonText}>{label}</Text></Pressable>; }
 function Check({ ready, label }: { ready: boolean; label: string }) { return <View style={styles.checkRow}><Text style={styles.check}>{ready ? '✓' : '○'}</Text><Text style={styles.checkText}>{label}</Text></View>; }
+function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { onPress: () => void; disabled?: boolean; showProgress?: boolean }) {
+  return <Pressable
+    testID="home-start-journey-portal"
+    accessibilityRole="button"
+    accessibilityLabel="Start Journey"
+    accessibilityHint="Begins recording your route on this iPhone."
+    accessibilityState={{ disabled: Boolean(disabled) }}
+    disabled={disabled}
+    onPress={onPress}
+    style={({ pressed }) => [styles.homeRecorderStartPortal, pressed && styles.homeRecorderStartPortalPressed]}
+  >
+    <View style={styles.homeRecorderStartPortalCanvas}>
+      <HomeRecorderStartPortalAtmosphere />
+      <View pointerEvents="none" style={styles.homeRecorderStartPortalOutline} />
+      <View pointerEvents="none" style={styles.homeRecorderStartPortalStatus}>
+        <View style={styles.homeRecorderStartPortalPulseOuter}>
+          <View style={styles.homeRecorderStartPortalPulseMiddle}>
+            <View style={styles.homeRecorderStartPortalPulseCore} />
+          </View>
+        </View>
+        <Text style={styles.homeRecorderStartPortalEyebrow}>READY</Text>
+        <Text style={styles.homeRecorderStartPortalBody}>Ready to remember your next drive.</Text>
+      </View>
+      <View pointerEvents="none" style={styles.homeRecorderStartPortalAction}>
+        <Text style={styles.homeRecorderStartPortalTitle}>Start Journey</Text>
+        {showProgress ? <ActivityIndicator color="#fff6f1" size="small" /> : <SymbolView name="arrow.right" tintColor="#fff6f1" size={31} />}
+      </View>
+    </View>
+  </Pressable>;
+}
+function HomeRecorderStartPortalAtmosphere() {
+  return <Svg pointerEvents="none" viewBox="0 0 360 360" preserveAspectRatio="none" style={styles.homeRecorderStartPortalAtmosphere}>
+    <Defs>
+      <SvgRadialGradient id="startPortalGlass" cx="50%" cy="45%" rx="49%" ry="45%">
+        <Stop offset="0" stopColor="#07050d" stopOpacity="0.68" />
+        <Stop offset="0.56" stopColor="#090610" stopOpacity="0.46" />
+        <Stop offset="0.78" stopColor="#0b0712" stopOpacity="0.11" />
+        <Stop offset="0.88" stopColor="#0b0712" stopOpacity="0" />
+        <Stop offset="1" stopColor="#0b0712" stopOpacity="0" />
+      </SvgRadialGradient>
+      <SvgRadialGradient id="startPortalCoral" cx="50%" cy="54%" rx="82%" ry="78%" fx="50%" fy="70%">
+        <Stop offset="0" stopColor="#ff405f" stopOpacity="0.62" />
+        <Stop offset="0.35" stopColor="#ff4f66" stopOpacity="0.42" />
+        <Stop offset="0.68" stopColor="#ff7654" stopOpacity="0.18" />
+        <Stop offset="1" stopColor="#ff7654" stopOpacity="0.10" />
+      </SvgRadialGradient>
+      <SvgRadialGradient id="startPortalHalo" cx="50%" cy="30%" rx="34%" ry="25%">
+        <Stop offset="0" stopColor="#ff795b" stopOpacity="0.12" />
+        <Stop offset="0.82" stopColor="#ff795b" stopOpacity="0" />
+        <Stop offset="1" stopColor="#ff795b" stopOpacity="0" />
+      </SvgRadialGradient>
+    </Defs>
+    <Rect width="360" height="360" fill="url(#startPortalGlass)" />
+    <Rect width="360" height="360" rx="30" ry="30" fill="url(#startPortalCoral)" />
+    <Rect width="360" height="360" fill="url(#startPortalHalo)" />
+  </Svg>;
+}
+function HomeRecorderPrimaryAction({ label, symbol, onPress, disabled }: { label: string; symbol: SFSymbol; onPress: () => void; disabled?: boolean }) {
+  return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.homeRecorderPrimary, pressed && styles.homeRecorderPressed]}>
+    <LinearGradient colors={['#ff7654', '#ff376f']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.homeRecorderPrimaryIcon}><SymbolView name={symbol} tintColor="#fff4ee" size={26} /></View>
+    <Text style={styles.homeRecorderPrimaryText}>{label}</Text>
+    <Text style={styles.homeRecorderPrimaryArrow}>›</Text>
+  </Pressable>;
+}
 function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
   const presentation = syncPresentation(stage);
   return <View style={[styles.syncCard, { borderColor: presentation.color }]} accessible accessibilityLabel={`${presentation.title}. ${presentation.detail}`}>
@@ -552,6 +700,49 @@ function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
 const styles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
+  homeRecorderStack: { gap: 12 },
+  homeRecorderCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1, borderColor: 'rgba(190,168,194,0.44)', backgroundColor: 'rgba(9,8,14,0.86)', paddingHorizontal: 18, paddingVertical: 20, shadowColor: '#bc6aff', shadowOpacity: 0.15, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } },
+  homeRecorderStatusRow: { minHeight: 94, flexDirection: 'row', alignItems: 'center', gap: 20 },
+  homeRecorderStatusCopy: { flex: 1, gap: 7 },
+  homeRecorderPulseOuter: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(181,255,104,0.18)', backgroundColor: 'rgba(109,167,64,0.05)', shadowColor: '#b4ff68', shadowOpacity: 0.28, shadowRadius: 20 },
+  homeRecorderPulseMiddle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(181,255,104,0.42)', backgroundColor: 'rgba(113,162,69,0.08)' },
+  homeRecorderPulsePaused: { borderColor: 'rgba(255,183,92,0.45)' },
+  homeRecorderPulseCore: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#b4ff68', shadowColor: '#b4ff68', shadowOpacity: 1, shadowRadius: 15 },
+  homeRecorderPulseCorePaused: { backgroundColor: '#ffb45c', shadowColor: '#ffb45c' },
+  homeRecorderEyebrow: { color: '#b4ff68', fontSize: 14, fontWeight: '700', letterSpacing: 2.5 },
+  homeRecorderEyebrowPaused: { color: '#ffb45c' },
+  homeRecorderBody: { color: '#b4aaba', fontSize: 14, lineHeight: 20 },
+  homeRecorderMetrics: { flexDirection: 'row', alignItems: 'center', minHeight: 105, marginTop: 18, paddingTop: 18, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(198,178,204,0.24)' },
+  homeRecorderMetric: { flex: 1, minHeight: 78, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
+  homeRecorderMetricDivider: { width: StyleSheet.hairlineWidth, height: 64, backgroundColor: 'rgba(190,175,195,0.19)' },
+  homeRecorderMetricValue: { color: '#fffaff', fontSize: 23, fontWeight: '400', fontVariant: ['tabular-nums'], textAlign: 'center' },
+  homeRecorderMetricUnit: { fontSize: 11, fontWeight: '800' },
+  homeRecorderMetricLabel: { color: '#c291ed', fontSize: 10, fontWeight: '700', letterSpacing: 0.55, textAlign: 'center' },
+  homeRecorderPrimary: { minHeight: 78, overflow: 'hidden', borderRadius: 21, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, shadowColor: '#ff455f', shadowOpacity: 0.34, shadowRadius: 15, shadowOffset: { width: 0, height: 8 } },
+  homeRecorderPrimaryIcon: { width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,122,84,0.2)' },
+  homeRecorderPrimaryText: { flex: 1, color: '#fff8f5', fontSize: 22, fontWeight: '500', marginLeft: 14 },
+  homeRecorderPrimaryArrow: { color: '#fff8f5', fontSize: 31, lineHeight: 32 },
+  homeRecorderStartPortal: { minHeight: 360 },
+  homeRecorderStartPortalPressed: { transform: [{ scale: 0.992 }] },
+  homeRecorderStartPortalCanvas: { flex: 1, alignItems: 'center', paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
+  homeRecorderStartPortalAtmosphere: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+  homeRecorderStartPortalOutline: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,126,88,0.92)', shadowColor: '#ff704f', shadowOpacity: 0.72, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } },
+  homeRecorderStartPortalStatus: { alignItems: 'center' },
+  homeRecorderStartPortalPulseOuter: { width: 116, height: 116, borderRadius: 58, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,123,91,0.30)', backgroundColor: 'rgba(255,102,79,0.035)' },
+  homeRecorderStartPortalPulseMiddle: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,123,91,0.55)', backgroundColor: 'rgba(255,102,79,0.055)' },
+  homeRecorderStartPortalPulseCore: { width: 37, height: 37, borderRadius: 19, backgroundColor: '#ff8060', shadowColor: '#ff654f', shadowOpacity: 1, shadowRadius: 19 },
+  homeRecorderStartPortalEyebrow: { color: '#ff8b69', fontSize: 14, fontWeight: '800', letterSpacing: 3.2, marginTop: 20 },
+  homeRecorderStartPortalBody: { color: '#c4b7c4', fontSize: 14, lineHeight: 20, marginTop: 7, textAlign: 'center' },
+  homeRecorderStartPortalAction: { flex: 1, minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 13, paddingTop: 19 },
+  homeRecorderStartPortalTitle: { color: '#fff8f5', fontSize: 26, fontWeight: '500', textAlign: 'center', textShadowColor: 'rgba(255,90,79,0.45)', textShadowRadius: 12 },
+  homeRecorderIdentify: { minHeight: 92, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(174,119,207,0.42)', backgroundColor: 'rgba(13,9,21,0.88)', flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 17 },
+  homeRecorderIdentifyIcon: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(182,126,255,0.3)' },
+  homeRecorderIdentifyCopy: { flex: 1 },
+  homeRecorderIdentifyTitle: { color: '#c78cff', fontSize: 18, fontWeight: '700' },
+  homeRecorderIdentifyBody: { color: '#95899d', fontSize: 12, lineHeight: 17, marginTop: 4 },
+  homeRecorderChevron: { color: '#bc9ad1', fontSize: 31, lineHeight: 32 },
+  homeRecorderPressed: { opacity: 0.76, transform: [{ scale: 0.992 }] },
+  homeRecorderNotice: { color: '#c9baca', fontSize: 11, lineHeight: 16, marginTop: 4 },
   liveBackButton: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 4 },
   liveBackText: { color: '#c99bff', fontSize: 15, fontWeight: '800' },
   recorderArtHeader: { alignSelf: 'stretch', marginHorizontal: -4, marginBottom: 18, overflow: 'hidden', borderRadius: 25, backgroundColor: '#08030e' }, brandRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginBottom: 8 }, logo: { width: 48, height: 48, borderRadius: 16, backgroundColor: '#ff7b54', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff7b54', shadowOpacity: 0.35, shadowRadius: 18 }, logoText: { color: '#fff', fontSize: 25, fontWeight: '900' },

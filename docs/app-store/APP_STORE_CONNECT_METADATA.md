@@ -27,17 +27,17 @@ Record a journey from your iPhone, keep its route and timing in your personal ar
 
 What you can do:
 
-- Record a route manually or let JourneyDeck watch for sustained driving when you enable Automatic Drive Detection.
+- Start and finish routes manually, with Apple Music building the soundtrack while you record.
 - Review distance, drive time, recurring routes, frequently visited places, and private road memories.
 - Add optional soundtracks with Apple Music history or ShazamKit recognition. JourneyDeck never saves microphone audio.
 - Protect sensitive places with Home and Work safe zones before creating a share card.
 - Keep private continuity through optional iCloud sync.
 
-JourneyDeck’s free experience keeps the latest 45 days available. An optional auto-renewable membership unlocks Atlas and complete history. Expiration never deletes locally stored journeys; older history is hidden until membership is active again.
+JourneyDeck’s free experience includes manual recording and keeps the latest 45 days available. An optional auto-renewable membership unlocks Atlas and complete history. Expiration never deletes locally stored journeys; older history is hidden until membership is active again.
 
 JourneyDeck is not a navigation app. Do not interact with it while driving; set up recording before you begin a journey.
 
-Music, vehicle, and iCloud features are optional. JourneyDeck’s core recorder works without an account, a music subscription, a vehicle connection, or a network connection.
+Music and iCloud features are optional. JourneyDeck’s manual recorder works without an account, a music subscription, or a network connection.
 
 ## Keywords
 
@@ -54,12 +54,12 @@ Welcome to JourneyDeck — a local-first driving journal for routes, road memori
 Use a consistent, public-build data set without a real home, work address, vehicle identifier, private photo, or personally revealing route.
 
 1. **Home** — “The road remembers.” Show the latest road memory and the local-first theme.
-2. **Live** — Show a parked vehicle card and tilted local map; avoid implying live vehicle data is required.
-3. **Memories** — Show Journey Library filters, favorite routes, and private personal history.
-4. **Statistics** — Show the live 45-day story and its recent timeline.
-5. **Atlas** — Show the subscriber-only frequent-place and recurring-pattern experience with generic labels.
-6. **Recorder** — Show Manual Recording ready to start and explain background route capture in the accompanying caption.
-7. **Settings** — Show privacy-safe controls, optional iCloud, and membership status without Spotify or Tessie paths.
+2. **Recording on Home** — Show a Journey in progress with End Journey visible; explain that route capture continues while the iPhone is locked.
+3. **Memories** — Show the simple Journey-and-Memory hierarchy, Journey Library filters, and private personal history.
+4. **Statistics** — Show the 45-day story and its recent timeline.
+5. **Atlas** — Show the subscriber-only complete journey map, favorite places, repeated routes, and travel patterns with generic labels.
+6. **Journey details** — Show a completed route with numbered soundtrack moments.
+7. **Settings** — Show the selected music method, simple iCloud Backup status, membership, and privacy controls. Do not show internal Spotify or Last.fm paths.
 
 Capture every screenshot from a production-configured build with internal testing disabled. Use only App Store Connect’s currently accepted iPhone display sizes; do not reuse development-client screenshots or red error screens.
 
@@ -68,4 +68,5 @@ Capture every screenshot from a production-configured build with internal testin
 - A subscription price or free trial that is not exactly configured and approved in App Store Connect.
 - Spotify, Last.fm, direct Spotify, or any other unapproved public music import.
 - Navigation, emergency response, crash detection, or driving-safety guarantees.
-- That iCloud, Apple Music, ShazamKit, Tessie, or an owner legacy backup is required for the core app.
+- That iCloud, Apple Music, ShazamKit, or an owner legacy backup is required for manual recording.
+- Automatic recording, Tesla integration, or Tessie support in version 1.

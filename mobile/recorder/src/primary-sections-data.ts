@@ -48,7 +48,7 @@ export type StatisticsData = {
 
 export type SearchRecord = {
   id: string;
-  kind: 'journey' | 'song' | 'artist' | 'place' | 'collection' | 'memory';
+  kind: 'journey' | 'song' | 'artist' | 'place' | 'memory';
   title: string;
   subtitle: string;
   keywords: string;
@@ -346,8 +346,7 @@ export function buildSearchRecords(journeys: JourneySummary[], details: JourneyD
     tracks.forEach(track => pushTrack(records, seen, track, journey.id));
   }
   for (const place of places) records.push({ id: `place:${place.id}`, kind: 'place', title: place.name, subtitle: `${place.visitCount} visits · ${place.category}`, keywords: `${place.name} ${place.category}` });
-  for (const collection of memories.collections) records.push({ id: `collection:${collection.id}`, kind: 'collection', title: collection.name, subtitle: `${collection.driveIds.length} journeys`, keywords: `${collection.name} ${collection.description}` });
-  for (const memory of memories.memories) records.push({ id: `memory:${memory.id}`, kind: 'memory', title: memory.name, subtitle: memory.notes || 'Memory', keywords: `${memory.name} ${memory.notes}` });
+  for (const memory of memories.memories) records.push({ id: `memory:${memory.id}`, kind: 'memory', title: memory.name, subtitle: memory.notes || `${memory.journeyIds.length} ${memory.journeyIds.length === 1 ? 'journey' : 'journeys'}`, keywords: `${memory.name} ${memory.notes}` });
   return records;
 }
 

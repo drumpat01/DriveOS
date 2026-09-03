@@ -10,6 +10,7 @@ test('free members receive Statistics and a rolling 45-day timeline', () => {
   assert.deepEqual(entitlementsForMembershipTier('free'), {
     tier: 'free',
     atlasAccess: false,
+    tessieAccess: false,
     timelineHistoryDays: 45,
   });
 });
@@ -18,6 +19,7 @@ test('paid members receive Atlas and their complete timeline', () => {
   assert.deepEqual(entitlementsForMembershipTier('paid'), {
     tier: 'paid',
     atlasAccess: true,
+    tessieAccess: false,
     timelineHistoryDays: null,
   });
 });

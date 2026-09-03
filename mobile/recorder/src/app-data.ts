@@ -18,6 +18,7 @@ import {
   SAVED_PLACE_MATCH_RADIUS_METERS,
 } from './place-matching';
 import { notifyLocalArchiveChanged } from './local-archive-events';
+import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId } from './memory-model';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -266,25 +267,12 @@ export type ConnectionCapabilities = {
   tessieConfigured: boolean;
 };
 
-export type JourneyCollection = {
-  id: string;
-  name: string;
-  description: string;
-  driveIds: string[];
-  createdAtUtc: string;
-  updatedAtUtc: string;
-  photos: JourneyPhoto[];
-};
-
 export type JourneyPhoto = {
   id: string;
   fileName: string;
   contentType: 'image/jpeg' | 'image/png' | 'image/webp';
   byteLength: number;
   createdAtUtc: string;
-  source: 'collection' | 'memory';
-  collectionId: string | null;
-  memoryId: string | null;
 };
 
 export type JourneyMemory = {
@@ -294,16 +282,14 @@ export type JourneyMemory = {
   artworkKey: string;
   coverPhotoId: string | null;
   photos: JourneyPhoto[];
-  collectionIds: string[];
+  journeyIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
 };
 
 export type MemoriesCatalog = {
   memories: JourneyMemory[];
-  collections: JourneyCollection[];
   deletedMemoryIds?: string[];
-  deletedCollectionIds?: string[];
   deletedPhotoIds?: string[];
 };
 
@@ -354,50 +340,15 @@ const JOURNEYS_CACHE_KEY = 'app.journeys.v1';
 const WEEKLY_JOURNEYS_CACHE_KEY = 'app.weekly-journeys.v1';
 const MEMORIES_CACHE_KEY = 'app.memories.v1';
 const MUSIC_DASHBOARD_CACHE_KEY = 'app.music-dashboard.v1';
-
-function mergeMemoriesCatalog(remote: MemoriesCatalog, local: MemoriesCatalog, cached?: MemoriesCatalog | null): MemoriesCatalog {
-  const cachedCollections = new Map((cached?.collections ?? []).map(item => [item.id, item]));
-  const cachedMemories = new Map((cached?.memories ?? []).map(item => [item.id, item]));
-  const deletedCollections = new Set(local.deletedCollectionIds ?? []), deletedMemories = new Set(local.deletedMemoryIds ?? []), deletedPhotos = new Set(local.deletedPhotoIds ?? []);
-  const cleanPhotos = (photos: JourneyPhoto[]) => photos.filter(photo => !deletedPhotos.has(photo.id));
-  const collections = new Map(remote.collections.filter(item => !deletedCollections.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
-  local.collections.forEach(item => {
-    const remoteItem = collections.get(item.id);
-    const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    const inherited = [...item.photos, ...(cachedCollections.get(item.id)?.photos ?? []), ...(remoteItem?.photos ?? [])];
-    collections.set(item.id, { ...winner, photos: cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index)) });
-  });
-  const memories = new Map(remote.memories.filter(item => !deletedMemories.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
-  local.memories.forEach(item => {
-    const cachedItem = cachedMemories.get(item.id);
-    const remoteItem = memories.get(item.id);
-    const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    const inherited = [...item.photos, ...(cachedItem?.photos ?? []), ...(remoteItem?.photos ?? [])];
-    const photos = cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index));
-    const requestedCover = winner.coverPhotoId ?? cachedItem?.coverPhotoId ?? remoteItem?.coverPhotoId ?? null;
-    memories.set(item.id, { ...winner, coverPhotoId: requestedCover && photos.some(photo => photo.id === requestedCover) ? requestedCover : null, photos });
-  });
-  return {
-    collections: [...collections.values()].filter(item => !deletedCollections.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
-    memories: [...memories.values()].filter(item => !deletedMemories.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
-    deletedCollectionIds: [...deletedCollections], deletedMemoryIds: [...deletedMemories], deletedPhotoIds: [...deletedPhotos],
-  };
-}
-
-function cacheCollection(collection: JourneyCollection) {
-  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-  writeAppCache(MEMORIES_CACHE_KEY, { ...current, collections: [collection, ...current.collections.filter(item => item.id !== collection.id)] });
-}
-
 function cacheMemory(memory: JourneyMemory) {
-  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
   writeAppCache(MEMORIES_CACHE_KEY, { ...current, memories: [memory, ...current.memories.filter(item => item.id !== memory.id)] });
 }
 const vehicleIntelligenceCacheKey = (userId: string) => `app.vehicle-intelligence.${userId}.v1`;
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
 const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
-async function savePrivatePhoto(source: JourneyPhoto['source'], ownerId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
+async function savePrivateMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
   const userId = getCurrentUser().id, base = FileSystem.documentDirectory;
   if (!base) throw new Error('JourneyDeck cannot access its private photo folder on this device.');
   const byteLength = Math.ceil(input.dataBase64.length * 0.75);
@@ -409,20 +360,16 @@ async function savePrivatePhoto(source: JourneyPhoto['source'], ownerId: string,
   await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
   try {
     upsertPhoto({
-      id, userId, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null,
+      id, userId, source: 'memory', collectionId: null, memoryId,
       fileName: input.fileName, contentType: input.contentType, byteLength, localUri,
     });
   } catch (error) {
     await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
     throw error;
   }
-  const photo: JourneyPhoto = { id, fileName: input.fileName, contentType: input.contentType, byteLength, createdAtUtc, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null };
-  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-  if (source === 'collection') {
-    cached.collections = cached.collections.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
-  } else {
-    cached.memories = cached.memories.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
-  }
+  const photo: JourneyPhoto = { id, fileName: input.fileName, contentType: input.contentType, byteLength, createdAtUtc };
+  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
+  cached.memories = cached.memories.map(item => item.id === memoryId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
   writeAppCache(MEMORIES_CACHE_KEY, cached);
   return photo;
 }
@@ -432,7 +379,6 @@ function removeCachedPhoto(photoId: string): void {
   if (!cached) return;
   writeAppCache(MEMORIES_CACHE_KEY, {
     ...cached,
-    collections: cached.collections.map(item => ({ ...item, photos: item.photos.filter(photo => photo.id !== photoId) })),
     memories: cached.memories.map(item => ({ ...item, coverPhotoId: item.coverPhotoId === photoId ? null : item.coverPhotoId, photos: item.photos.filter(photo => photo.id !== photoId) })),
     deletedPhotoIds: [...new Set([...(cached.deletedPhotoIds ?? []), photoId])],
   });
@@ -618,28 +564,6 @@ function localDashboardWithCachedContext(connected: boolean): AppDashboard {
     recorder: localRecorderHealth(connected), weeklyJourneys: cachedWeekly };
 }
 
-async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {
-  const journeys: JourneySummary[] = [];
-  let cursor: string | undefined;
-  const cutoff = weeklyCutoff();
-
-  // A busy week may contain more journeys than the dashboard preview. Follow the
-  // existing history cursor until the first journey outside the visible week.
-  for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
-    const query = new URLSearchParams({ limit: '50' });
-    if (cursor) query.set('cursor', cursor);
-    const page = await request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, `/api/recorder/journeys?${query.toString()}`);
-    journeys.push(...page.items);
-    const oldest = page.items.at(-1);
-    if (!page.nextCursor || !oldest || Date.parse(oldest.startedAt) < cutoff) break;
-    cursor = page.nextCursor;
-  }
-
-  const weekly = journeysInsideWeeklyWindow(journeys);
-  writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weekly);
-  return weekly;
-}
-
 export const appDataClient = {
   async dashboard(_refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
@@ -730,8 +654,8 @@ export const appDataClient = {
 
   async memories(_refreshRemote = false): Promise<MemoriesCatalog> {
     const local = localAtlasClient.memories(getCurrentUser().id);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
-    return local.memories.length || local.collections.length ? mergeMemoriesCatalog(cached ?? local, local, cached) : (cached ?? local);
+    writeAppCache(MEMORIES_CACHE_KEY, local);
+    return local;
   },
 
   async musicDashboard(refreshRemote = false, details: JourneyDetail[] = []): Promise<MusicDashboardData> {
@@ -744,36 +668,22 @@ export const appDataClient = {
     return data;
   },
 
-  async saveCollection(input: { id?: string | null; name: string; description?: string | null; driveIds: string[] }): Promise<JourneyCollection> {
+  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; journeyIds: string[] }): Promise<JourneyMemory> {
     const userId = getCurrentUser().id;
-    const id = input.id ?? `collection_${Crypto.randomUUID()}`;
-    const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.collections.find(item => item.id === id);
-    const localExisting = getCollectionIncludingDeleted(userId, id);
-    const timestamp = new Date().toISOString();
-    const local: JourneyCollection = { id, name: input.name.trim(), description: input.description?.trim() ?? '', driveIds: [...new Set(input.driveIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp, photos: existing?.photos ?? [] };
-    upsertCollection({ id, userId, name: local.name, description: local.description, journeyIds: JSON.stringify(local.driveIds) });
-    cacheCollection(local);
-    return local;
-  },
-
-  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
-    const userId = getCurrentUser().id;
-    const id = input.id ?? `memory_${Crypto.randomUUID()}`;
+    const id = input.id ?? `${DIRECT_JOURNEY_MEMORY_ID_PREFIX}${Crypto.randomUUID()}`;
     const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.memories.find(item => item.id === id);
     const localExisting = getMemoryIncludingDeleted(userId, id);
     const timestamp = new Date().toISOString();
-    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], collectionIds: [...new Set(input.collectionIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
-    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, collectionIds: JSON.stringify(local.collectionIds) });
+    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], journeyIds: [...new Set(input.journeyIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
+    // `collection_ids` is retained as an additive-schema compatibility column,
+    // but from V1 forward it stores the Memory's direct journey membership.
+    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, journeyIds: JSON.stringify(local.journeyIds) });
     cacheMemory(local);
     return local;
   },
 
-  async uploadCollectionPhoto(collectionId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    return savePrivatePhoto('collection', collectionId, input);
-  },
-
   async uploadMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    return savePrivatePhoto('memory', memoryId, input);
+    return savePrivateMemoryPhoto(memoryId, input);
   },
 
   async photoDataUrl(photo: JourneyPhoto): Promise<string> {
@@ -802,17 +712,10 @@ export const appDataClient = {
     removeCachedPhoto(photoId);
   },
 
-  async deleteCollection(collectionId: string): Promise<void> {
-    const userId = getCurrentUser().id;
-    softDeleteCollection(userId, collectionId);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-    writeAppCache(MEMORIES_CACHE_KEY, { ...cached, collections: cached.collections.filter(item => item.id !== collectionId), deletedCollectionIds: [...new Set([...(cached.deletedCollectionIds ?? []), collectionId])] });
-  },
-
   async deleteMemory(memoryId: string): Promise<void> {
     const userId = getCurrentUser().id;
     softDeleteMemory(userId, memoryId);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
     writeAppCache(MEMORIES_CACHE_KEY, { ...cached, memories: cached.memories.filter(item => item.id !== memoryId), deletedMemoryIds: [...new Set([...(cached.deletedMemoryIds ?? []), memoryId])] });
   },
 
@@ -825,23 +728,6 @@ export const appDataClient = {
     const local: ProviderPreferences = { deviceId: 'this-iphone', ...input, updatedAt: new Date().toISOString() };
     upsertPrivatePreference(userId, 'provider.preferences', local);
     return local;
-  },
-
-  /** Explicit owner-only bridge for importing the retained legacy JourneyDeck archive. */
-  async importLegacyOwnerArchive(): Promise<{ journeys: number; memories: number; collections: number }> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect the optional owner backup before importing legacy data.');
-    const [dashboard, weeklyJourneys, journeyPage, remoteMemories] = await Promise.all([
-      request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
-      loadWeeklyJourneys(connection),
-      request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, '/api/recorder/journeys?limit=50'),
-      request<MemoriesCatalog>(connection, '/api/recorder/memories'),
-    ]);
-    writeAppCache(DASHBOARD_CACHE_KEY, dashboard);
-    writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weeklyJourneys);
-    writeAppCache(JOURNEYS_CACHE_KEY, journeyPage);
-    writeAppCache(MEMORIES_CACHE_KEY, remoteMemories);
-    return { journeys: journeyPage.items.length, memories: remoteMemories.memories.length, collections: remoteMemories.collections.length };
   },
 
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
@@ -875,19 +761,14 @@ import {
   getJourneyRouteSamples,
   listMusicEntries,
   listMusicEntriesForJourney,
-  listCollections,
   listMemories,
-  listCollectionsIncludingDeleted,
   listMemoriesIncludingDeleted,
   listPhotos,
   listPhotosIncludingDeleted,
   getPhotoIncludingDeleted,
-  getCollectionIncludingDeleted,
   getMemoryIncludingDeleted,
-  upsertCollection,
   upsertMemory,
   upsertPhoto,
-  softDeleteCollection,
   softDeleteMemory,
   softDeletePhoto,
   upsertPlace,
@@ -1096,41 +977,27 @@ export const localAtlasClient = {
     };
   },
 
-  /**
-   * Returns the local MemoriesCatalog (collections + memories) from on-device SQLite.
-   */
+  /** Returns Memories with direct journey membership from on-device SQLite. */
   memories(userId: LocalUserId): MemoriesCatalog {
     initializeLocalStore();
     const localPhotos = listPhotos(userId);
     const toPhoto = (photo: import('./local-store').LocalPhoto): JourneyPhoto => ({
       id: photo.id, fileName: photo.fileName, contentType: photo.contentType, byteLength: photo.byteLength,
-      createdAtUtc: photo.createdAt, source: photo.source, collectionId: photo.collectionId, memoryId: photo.memoryId,
+      createdAtUtc: photo.createdAt,
     });
-    const collections = listCollections(userId).map(c => ({
-      id: c.id,
-      name: c.name,
-      description: c.description ?? '',
-      driveIds: JSON.parse(c.journeyIds) as string[],
-      createdAtUtc: c.createdAt,
-      updatedAtUtc: c.updatedAt,
-      photos: localPhotos.filter(photo => photo.collectionId === c.id).map(toPhoto),
-    } satisfies JourneyCollection));
-
-    const memories = listMemories(userId).map(m => {
-      const collectionIds = JSON.parse(m.collectionIds) as string[];
-      const photos = localPhotos.filter(photo => photo.memoryId === m.id || (photo.collectionId && collectionIds.includes(photo.collectionId))).map(toPhoto)
-        .filter((photo, index, all) => all.findIndex(candidate => candidate.id === photo.id) === index);
+    const memories = listMemories(userId).filter(memory => isDirectJourneyMemoryId(memory.id)).map(m => {
+      const journeyIds = [...new Set(JSON.parse(m.journeyIds) as string[])];
+      const photos = localPhotos.filter(photo => photo.memoryId === m.id).map(toPhoto);
       return {
         id: m.id, name: m.name, notes: m.notes ?? '', artworkKey: m.artworkKey ?? '',
         coverPhotoId: m.coverPhotoId && photos.some(photo => photo.id === m.coverPhotoId) ? m.coverPhotoId : null,
-        photos, collectionIds, createdAtUtc: m.createdAt, updatedAtUtc: m.updatedAt,
+        photos, journeyIds, createdAtUtc: m.createdAt, updatedAtUtc: m.updatedAt,
       } satisfies JourneyMemory;
     });
 
     return {
-      memories, collections,
-      deletedCollectionIds: listCollectionsIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
-      deletedMemoryIds: listMemoriesIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
+      memories,
+      deletedMemoryIds: listMemoriesIncludingDeleted(userId).filter(item => item.deletedAt && isDirectJourneyMemoryId(item.id)).map(item => item.id),
       deletedPhotoIds: listPhotosIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
     };
   },

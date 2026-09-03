@@ -13,6 +13,9 @@ const entrypoint = await readFile(new URL('../index.ts', import.meta.url), 'utf8
 const automaticDriveTask = await readFile(new URL('../src/automatic-drive-task.ts', import.meta.url), 'utf8');
 const locationTask = await readFile(new URL('../src/location-task.ts', import.meta.url), 'utf8');
 const musicCapture = await readFile(new URL('../src/music-capture.ts', import.meta.url), 'utf8');
+const tessie = await readFile(new URL('../src/tessie-direct.ts', import.meta.url), 'utf8');
+const releaseFeatures = await readFile(new URL('../src/release-features.ts', import.meta.url), 'utf8');
+const firstRunScreen = await readFile(new URL('../src/first-run-onboarding-screen.tsx', import.meta.url), 'utf8');
 const checklist = await readFile(new URL('../APP_STORE_RELEASE.md', import.meta.url), 'utf8');
 const publicPreflight = await readFile(new URL('../scripts/public-release-preflight.mjs', import.meta.url), 'utf8');
 const membershipPaywall = await readFile(new URL('../src/membership-paywall.tsx', import.meta.url), 'utf8');
@@ -53,7 +56,25 @@ test('public music choices cannot include preview-only Spotify integrations', ()
   assert.match(spotify, /function requireInternalPreview\(\)/);
   assert.match(spotify, /requireInternalPreview\(\);/);
   assert.match(shell, /const publicProviderOptions = providerOptions\.filter\(option => isMusicProviderAvailable\(option\.id\)\)/);
-  assert.match(shell, /\{isInternalTestingBuild\(\) && <>/);
+  assert.match(shell, /\{isInternalTestingBuild\(\) && advancedSupportVisible && <>/);
+});
+
+test('public recording defaults to manual while Apple Music continues during an active route', () => {
+  assert.match(firstRunScreen, /await onContinue\('manual'\)/);
+  assert.doesNotMatch(firstRunScreen, /<RecordingChoice mode="automatic"/);
+  assert.match(locationTask, /sampleAppleMusicForActiveSession\(\)/);
+  assert.match(recorder, /!active && !automaticMode && <PrimaryButton label="Start recording"/);
+});
+
+test('version 1 disables Tessie and automatic recording for every membership tier', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+  assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
+  assert.match(tessie, /storedVerifiedVehicleCount/);
+  assert.match(tessie, /if \(vehicleCount < 1\)/);
+  assert.match(automaticDriveTask, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);
+  assert.match(recorder, /const shouldRun = Boolean\(foregroundPermission && backgroundPermission && \(tessieEligible \|\| finishingExistingAutomaticJourney\)\)/);
+  assert.match(recorder, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
+  assert.doesNotMatch(membershipPaywall, /Tessie|Tesla|Automatic Drive Detection/);
 });
 
 test('public membership uses verified StoreKit products without hardcoded pricing', () => {

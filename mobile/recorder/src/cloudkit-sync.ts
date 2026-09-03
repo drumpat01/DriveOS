@@ -19,37 +19,31 @@ import {
   LocalUserId,
   LocalJourney,
   LocalMusicEntry,
-  LocalCollection,
   LocalMemory,
   LocalPhoto,
   LocalPrivatePreference,
   LocalRouteArchive,
   journeysPendingSync,
   musicEntriesPendingSync,
-  collectionsPendingSync,
   memoriesPendingSync,
   photosPendingSync,
   preferencesPendingSync,
   routeArchivesPendingSync,
   markJourneysSynced,
   markMusicEntriesSynced,
-  markCollectionRevisionsSynced,
   markMemoryRevisionsSynced,
   markPhotoRevisionsSynced,
   markPreferenceRevisionsSynced,
   markRouteArchiveRevisionsSynced,
   upsertJourney,
   upsertMusicEntry,
-  upsertCollection,
   upsertMemory,
   upsertPhoto,
   upsertPrivatePreference,
   getJourney,
-  getCollectionIncludingDeleted,
   getMemoryIncludingDeleted,
   getMusicEntry,
   getPhotoIncludingDeleted,
-  listCollectionsIncludingDeleted,
   listMemoriesIncludingDeleted,
   listPhotosIncludingDeleted,
   listPrivatePreferences,
@@ -60,6 +54,7 @@ import {
 } from './local-store';
 import { resolveVersionedPrivateConflict } from './private-content-conflicts';
 import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive } from './route-archive';
+import { isDirectJourneyMemoryId } from './memory-model';
 
 export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
 
@@ -225,30 +220,11 @@ export function ckRecordToMusicEntry(record: CloudKitRecord, userId: LocalUserId
   };
 }
 
-export function collectionToCKRecord(collection: LocalCollection): CloudKitRecord {
-  return {
-    recordName: `collection_${collection.id}`, recordType: 'Collection',
-    fields: { id: collection.id, name: collection.name, description: collection.description, journeyIds: collection.journeyIds, deletedAt: collection.deletedAt, syncRevision: collection.syncRevision, createdAt: collection.createdAt, updatedAt: collection.updatedAt },
-    modificationDate: collection.updatedAt,
-  };
-}
-
-export function ckRecordToCollection(record: CloudKitRecord, userId: LocalUserId): LocalCollection {
-  const f = record.fields;
-  return {
-    id: String(f.id), userId, name: String(f.name), description: f.description ? String(f.description) : null,
-    journeyIds: String(f.journeyIds || '[]'), syncedToCloud: 1,
-    deletedAt: f.deletedAt ? String(f.deletedAt) : null,
-    syncRevision: Math.max(1, Number(f.syncRevision) || 1),
-    createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
-    updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
-  };
-}
-
 export function memoryToCKRecord(memory: LocalMemory): CloudKitRecord {
   return {
     recordName: `memory_${memory.id}`, recordType: 'Memory',
-    fields: { id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, collectionIds: memory.collectionIds, deletedAt: memory.deletedAt, syncRevision: memory.syncRevision, createdAt: memory.createdAt, updatedAt: memory.updatedAt },
+    // CloudKit keeps the deployed field name, but the value is now direct Journey membership.
+    fields: { id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, collectionIds: memory.journeyIds, deletedAt: memory.deletedAt, syncRevision: memory.syncRevision, createdAt: memory.createdAt, updatedAt: memory.updatedAt },
     modificationDate: memory.updatedAt,
   };
 }
@@ -258,7 +234,7 @@ export function ckRecordToMemory(record: CloudKitRecord, userId: LocalUserId): L
   return {
     id: String(f.id), userId, name: String(f.name), notes: f.notes ? String(f.notes) : null,
     artworkKey: f.artworkKey ? String(f.artworkKey) : null, coverPhotoId: f.coverPhotoId ? String(f.coverPhotoId) : null, coverPhotoLocalPath: null,
-    collectionIds: String(f.collectionIds || '[]'), syncedToCloud: 1,
+    journeyIds: String(f.collectionIds || '[]'), syncedToCloud: 1,
     deletedAt: f.deletedAt ? String(f.deletedAt) : null,
     syncRevision: Math.max(1, Number(f.syncRevision) || 1),
     createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
@@ -361,29 +337,27 @@ export class CloudKitSyncEngine {
   public async preparePushPayload(limit = 50): Promise<CloudKitRecord[]> {
     const pendingJourneyIds = journeysPendingSync(this.userId, limit);
     const pendingMusicIds = musicEntriesPendingSync(this.userId, limit);
-    const pendingCollectionIds = collectionsPendingSync(this.userId, limit);
-    const pendingMemoryIds = memoriesPendingSync(this.userId, limit);
+    const pendingMemoryIds = memoriesPendingSync(this.userId, limit).filter(isDirectJourneyMemoryId);
     const pendingPhotoIds = this.privateContentV2 ? photosPendingSync(this.userId, limit) : [];
     const pendingPreferenceKeys = this.privateContentV2 ? preferencesPendingSync(this.userId, limit) : [];
     const pendingRoutes = this.privateRouteAssets ? routeArchivesPendingSync(this.userId, Math.min(10, limit)) : [];
     const pendingJourneys = pendingJourneyIds.map(id => getJourney(this.userId, id)).filter((item): item is LocalJourney => Boolean(item));
     const pendingMusic = pendingMusicIds.map(id => getMusicEntry(this.userId, id)).filter((item): item is LocalMusicEntry => Boolean(item));
-    const collections = listCollectionsIncludingDeleted(this.userId).filter(item => pendingCollectionIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
     const memories = listMemoriesIncludingDeleted(this.userId).filter(item => pendingMemoryIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
+    const memoryPhotos = listPhotosIncludingDeleted(this.userId).filter(item => item.source === 'memory' && isDirectJourneyMemoryId(item.memoryId) && pendingPhotoIds.includes(item.id));
     const routeRecords = await Promise.all(pendingRoutes.map(routeArchiveToCKRecord));
     const records = [
       ...pendingJourneys.map(journeyToCKRecord),
       ...routeRecords,
       ...pendingMusic.map(musicEntryToCKRecord),
-      ...collections.map(collectionToCKRecord),
       ...memories.map(memoryToCKRecord),
-      ...listPhotosIncludingDeleted(this.userId).filter(item => pendingPhotoIds.includes(item.id)).map(photoToCKRecord),
+      ...memoryPhotos.map(photoToCKRecord),
       ...listPrivatePreferences(this.userId, true).filter(item => pendingPreferenceKeys.includes(item.key)).map(preferenceToCKRecord),
     ].slice(0, Math.max(1, Math.min(200, limit * 4)));
     for (const record of records) {
       const revision = Number(record.fields.syncRevision);
       if (Number.isFinite(revision)) this.preparedRevisions.set(record.recordName, revision);
-      if (!this.privateContentV2 && (record.recordType === 'Collection' || record.recordType === 'Memory')) {
+      if (!this.privateContentV2 && record.recordType === 'Memory') {
         delete record.fields.deletedAt;
         delete record.fields.syncRevision;
         if (record.recordType === 'Memory') delete record.fields.coverPhotoId;
@@ -404,7 +378,6 @@ export class CloudKitSyncEngine {
       markJourneysSynced(this.userId, journeyIds);
     }
     markMusicEntriesSynced(this.userId, recordIds(pushedRecordNames, 'music_'));
-    markCollectionRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'collection_', this.preparedRevisions));
     markMemoryRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'memory_', this.preparedRevisions));
     markPhotoRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'photo_', this.preparedRevisions));
     markPreferenceRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'preference_', this.preparedRevisions, true));
@@ -452,15 +425,9 @@ export class CloudKitSyncEngine {
         const entry = ckRecordToMusicEntry(record, this.userId);
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });
         count++;
-      } else if (record.recordType === 'Collection') {
-        const remote = ckRecordToCollection(record, this.userId);
-        const local = getCollectionIncludingDeleted(this.userId, remote.id);
-        if (!local || resolvePrivateConflict(local, remote) === remote) {
-          upsertCollection(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
-          count++;
-        }
       } else if (record.recordType === 'Memory') {
         const remote = ckRecordToMemory(record, this.userId);
+        if (!isDirectJourneyMemoryId(remote.id)) continue;
         const local = getMemoryIncludingDeleted(this.userId, remote.id);
         if (!local || resolvePrivateConflict(local, remote) === remote) {
           upsertMemory(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
@@ -468,7 +435,7 @@ export class CloudKitSyncEngine {
         }
       } else if (record.recordType === 'Photo') {
         const remote = ckRecordToPhoto(record, this.userId), local = getPhotoIncludingDeleted(this.userId, remote.id);
-        if ((remote.source === 'collection' && !remote.collectionId) || (remote.source === 'memory' && !remote.memoryId)) continue;
+        if (remote.source !== 'memory' || !isDirectJourneyMemoryId(remote.memoryId)) continue;
         if ((!local && !remote.deletedAt && !remote.localUri) || (local && resolvePrivateConflict(local, remote) !== remote)) continue;
         if (!remote.localUri && local) remote.localUri = local.localUri;
         upsertPhoto(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
@@ -494,9 +461,12 @@ export class CloudKitSyncEngine {
   }
 
   private pendingCount(): number {
+    const pendingPhotoIds = new Set(photosPendingSync(this.userId, 500));
+    const pendingMemoryPhotoCount = listPhotosIncludingDeleted(this.userId)
+      .filter(item => item.source === 'memory' && isDirectJourneyMemoryId(item.memoryId) && pendingPhotoIds.has(item.id)).length;
+    const pendingDirectMemoryCount = memoriesPendingSync(this.userId, 500).filter(isDirectJourneyMemoryId).length;
     return journeysPendingSync(this.userId, 500).length + musicEntriesPendingSync(this.userId, 500).length +
-      collectionsPendingSync(this.userId, 500).length + memoriesPendingSync(this.userId, 500).length +
-      photosPendingSync(this.userId, 500).length + preferencesPendingSync(this.userId, 500).length +
+      pendingDirectMemoryCount + pendingMemoryPhotoCount + preferencesPendingSync(this.userId, 500).length +
       (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0);
   }
 

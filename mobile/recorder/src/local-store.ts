@@ -178,7 +178,8 @@ export type LocalMemory = {
   artworkKey: string | null;
   coverPhotoId: string | null;
   coverPhotoLocalPath: string | null;
-  collectionIds: string;
+  /** JSON array of Journey IDs. The SQLite column keeps its legacy name for additive-schema safety. */
+  journeyIds: string;
   syncedToCloud: number;
   deletedAt: string | null;
   syncRevision: number;
@@ -1316,7 +1317,7 @@ export function deletePlace(userId: LocalUserId, id: string): void {
   });
 }
 
-// --- Collections & Memories --------------------------------------------------
+// --- Memories (legacy Collection storage remains dormant) -------------------
 
 type CloudUpsertOptions = {
   syncedToCloud?: 0 | 1;
@@ -1384,20 +1385,20 @@ export function upsertMemory(input: LocalMemoryInput, options: CloudUpsertOption
   const revision = nextSyncRevision('local_memories', input.id, options);
   db.runSync(
     'INSERT INTO local_memories(id,user_id,name,notes,artwork_key,cover_photo_id,cover_photo_local_path,collection_ids,synced_to_cloud,deleted_at,sync_revision,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,notes=excluded.notes,artwork_key=excluded.artwork_key,cover_photo_id=excluded.cover_photo_id,cover_photo_local_path=COALESCE(excluded.cover_photo_local_path,local_memories.cover_photo_local_path),collection_ids=excluded.collection_ids,synced_to_cloud=excluded.synced_to_cloud,deleted_at=excluded.deleted_at,sync_revision=excluded.sync_revision,updated_at=excluded.updated_at;',
-    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoId ?? null, input.coverPhotoLocalPath ?? null, input.collectionIds, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, createdAt, updatedAt,
+    input.id, input.userId, input.name, input.notes ?? null, input.artworkKey ?? null, input.coverPhotoId ?? null, input.coverPhotoLocalPath ?? null, input.journeyIds, options.syncedToCloud ?? 0, options.deletedAt ?? null, revision, createdAt, updatedAt,
   );
 }
 
 export function listMemories(userId: LocalUserId): LocalMemory[] {
   initializeLocalStore();
   return db.getAllSync<LocalMemory>(
-    'SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND deleted_at IS NULL ORDER BY updated_at DESC;', userId,
+    'SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND deleted_at IS NULL ORDER BY updated_at DESC;', userId,
   );
 }
 
 export function getMemoryIncludingDeleted(userId: LocalUserId, id: string): LocalMemory | null {
   initializeLocalStore();
-  return db.getFirstSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND id=?;', userId, id) ?? null;
+  return db.getFirstSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? AND id=?;', userId, id) ?? null;
 }
 
 export function softDeleteMemory(userId: LocalUserId, id: string, deletedAt = now()): void {
@@ -1565,7 +1566,7 @@ export function listCollectionsIncludingDeleted(userId: LocalUserId): LocalColle
 
 export function listMemoriesIncludingDeleted(userId: LocalUserId): LocalMemory[] {
   initializeLocalStore();
-  return db.getAllSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS collectionIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? ORDER BY updated_at DESC;', userId);
+  return db.getAllSync<LocalMemory>('SELECT id,user_id AS userId,name,notes,artwork_key AS artworkKey,cover_photo_id AS coverPhotoId,cover_photo_local_path AS coverPhotoLocalPath,collection_ids AS journeyIds,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_memories WHERE user_id=? ORDER BY updated_at DESC;', userId);
 }
 
 export function listPhotosIncludingDeleted(userId: LocalUserId): LocalPhoto[] {
@@ -1802,17 +1803,17 @@ export function previewLocalRetention(
     matchedSongCount: Number(journey.matchedSongCount ?? 0),
   }));
   const protectedJourneyIds = new Set<string>();
-  let collectionMetadataComplete = true;
-  const collections = db.getAllSync<{ journeyIds: string }>(
-    'SELECT journey_ids AS journeyIds FROM local_collections WHERE user_id=? AND deleted_at IS NULL;', userId,
+  let memoryMetadataComplete = true;
+  const memories = db.getAllSync<{ journeyIds: string }>(
+    'SELECT collection_ids AS journeyIds FROM local_memories WHERE user_id=? AND deleted_at IS NULL;', userId,
   );
-  for (const collection of collections) {
+  for (const memory of memories) {
     try {
-      const ids = JSON.parse(collection.journeyIds) as unknown;
+      const ids = JSON.parse(memory.journeyIds) as unknown;
       if (Array.isArray(ids)) for (const id of ids) if (typeof id === 'string' && id) protectedJourneyIds.add(id);
-    } catch { collectionMetadataComplete = false; }
+    } catch { memoryMetadataComplete = false; }
   }
-  if (!collectionMetadataComplete) for (const journey of journeys) {
+  if (!memoryMetadataComplete) for (const journey of journeys) {
     protectedJourneyIds.add(journey.id);
     if (journey.legacyDriveId) protectedJourneyIds.add(journey.legacyDriveId);
   }
@@ -1833,7 +1834,6 @@ export function previewLocalRetention(
     totalSongCount,
     oldUnmatchedSpotifySongCount,
     memoryCount,
-    collectionCount: collections.length,
     now: nowDate,
     retentionDays,
   });

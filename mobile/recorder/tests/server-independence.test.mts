@@ -74,10 +74,10 @@ test('normal archive navigation stays local even when the user refreshes', () =>
   const normalJourneys = appData.slice(appData.indexOf('async journeys('), appData.indexOf('async journey('));
   const normalMemories = appData.slice(appData.indexOf('async memories('), appData.indexOf('async musicDashboard('));
   assert.doesNotMatch(`${normalDashboard}${normalJourneys}${normalMemories}`, /request<|request\(/);
-  assert.match(appData, /async importLegacyOwnerArchive\(\)/);
+  assert.doesNotMatch(appData, /importLegacyOwnerArchive/, 'the retired hierarchy import is absent from V1');
 });
 
-test('clean profiles can record manually and automatically without JourneyDeck credentials', () => {
+test('clean profiles can record manually without JourneyDeck credentials', () => {
   assert.match(credentials, /export async function loadOrCreateDeviceId\(\)/);
   assert.match(app, /beginLocalSession\(deviceId\)/);
   assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
@@ -118,7 +118,7 @@ test('recorder sessions and screen caches are isolated by active profile', () =>
 
 test('preferences and place names are private profile data, not normal server writes', () => {
   const places = appData.slice(appData.indexOf('async savePlaceAlias('), appData.indexOf('async memories('));
-  const preferences = appData.slice(appData.indexOf('async providerPreferences('), appData.indexOf('async importLegacyOwnerArchive('));
+  const preferences = appData.slice(appData.indexOf('async providerPreferences('), appData.indexOf('async connectionCapabilities('));
   assert.match(places, /upsertPrivatePreference/);
   assert.match(preferences, /upsertPrivatePreference/);
   assert.doesNotMatch(`${places}${preferences}`, /request<|request\(/);
@@ -144,14 +144,18 @@ test('direct Spotify remains a local owner capability with PKCE and no JourneyDe
   assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
 });
 
-test('version 1 retains Tessie code but disables every runtime and background entry point', () => {
+test('version 1 disables Tessie and automatic recording for every membership tier', () => {
   assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
-  assert.match(tessie, /if \(!TESSIE_INTEGRATION_ENABLED\) return 'not_connected'/);
-  assert.match(tessie, /sampleTessieMedia[\s\S]*?if \(!TESSIE_INTEGRATION_ENABLED\) return null/);
+  assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
+  assert.match(tessie, /TESSIE_VERIFIED_VEHICLE_KEY/);
+  assert.match(tessie, /if \(vehicleCount < 1\) throw new Error\('Tessie did not find an active Tesla/);
+  assert.match(tessie, /tessieDirectStatus[\s\S]*?tessieAutomaticRecordingEligible/);
+  assert.match(tessie, /sampleTessieMedia[\s\S]*?if \(!\(await tessieAutomaticRecordingEligible\(\)\)\) return null/);
   assert.match(musicCapture, /sampleTessieMediaForActiveSession[\s\S]*?if \(!TESSIE_INTEGRATION_ENABLED\) return \{ status: 'unavailable' \}/);
-  assert.match(automaticDrive, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
+  assert.match(automaticDrive, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);
   assert.match(locationTask, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
   assert.match(appData, /if \(!TESSIE_INTEGRATION_ENABLED\) return localVehicleIntelligence\(userId\)/);
   assert.match(primarySections, /if \(!active \|\| !TESSIE_INTEGRATION_ENABLED\) return/);
-  assert.match(shell, /\{TESSIE_INTEGRATION_ENABLED && <>[\s\S]*?<SectionHeading title="Vehicle" \/>/);
+  assert.doesNotMatch(shell, /from '\.\/tessie-direct'|Tessie Automatic Recording|Drive intelligence/i);
+  assert.match(app, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
 });

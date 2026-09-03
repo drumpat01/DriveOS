@@ -2,8 +2,8 @@ import type { PrimarySectionsData } from './primary-sections-data';
 import type { SoundtrackTrack } from './app-data';
 
 export type HomeSummary = {
-  archive: { journeys: number; collections: number; memories: number; places: number };
-  memorySpotlight: { id: string; name: string; collections: number; journeys: number; photos: number } | null;
+  archive: { journeys: number; memories: number; places: number };
+  memorySpotlight: { id: string; name: string; journeys: number; photos: number } | null;
   topTrack: { track: string; artist: string; artworkUrl: string | null; plays: number } | null;
   latestTrack: SoundtrackTrack | null;
   favoriteRoute: { label: string; count: number; averageMiles: number } | null;
@@ -70,25 +70,19 @@ function favoriteRouteFrom(data: PrimarySectionsData) {
 
 export function buildHomeSummary(data: PrimarySectionsData): HomeSummary {
   const latestMemory = [...data.memories.memories].sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc))[0] ?? null;
-  const memoryCollections = latestMemory
-    ? latestMemory.collectionIds.map(id => data.memories.collections.find(collection => collection.id === id)).filter(Boolean)
-    : [];
-  const memoryJourneyIds = new Set(memoryCollections.flatMap(collection => collection?.driveIds ?? []));
   const topTrack = topTrackFrom(data);
   const route = favoriteRouteFrom(data);
   const topPlace = [...data.vehicle.places].sort((a, b) => b.visitCount - a.visitCount || b.lastSeenAt.localeCompare(a.lastSeenAt))[0] ?? null;
   return {
     archive: {
       journeys: data.journeys.length,
-      collections: data.memories.collections.length,
       memories: data.memories.memories.length,
       places: data.vehicle.places.length,
     },
     memorySpotlight: latestMemory ? {
       id: latestMemory.id,
       name: latestMemory.name,
-      collections: memoryCollections.length,
-      journeys: memoryJourneyIds.size,
+      journeys: latestMemory.journeyIds.length,
       photos: latestMemory.photos.length,
     } : null,
     topTrack,

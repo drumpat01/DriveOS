@@ -38,11 +38,11 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
         <View style={styles.topRow}><Text style={styles.brand}>JOURNEYDECK</Text><Pressable accessibilityRole="button" accessibilityLabel="Close membership" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable></View>
         <Text style={styles.eyebrow}>THE WHOLE ROAD · YOURS</Text>
         <Text style={styles.title}>Keep every journey within reach.</Text>
-        <Text style={styles.subtitle}>Free JourneyDeck keeps your latest 45 days. Membership unlocks Atlas and your complete private history without changing how your journeys are stored.</Text>
+        <Text style={styles.subtitle}>Free JourneyDeck includes manual recording and your latest 45 days. Membership unlocks Atlas and your complete journey history.</Text>
 
         <View style={styles.featureCard}>
-          <Feature glyph="⌁" title="Atlas" detail="See the places, patterns, and roads that shape your life." />
-          <Feature glyph="∞" title="Complete history" detail="Open journeys, memories, and timeline moments beyond 45 days." />
+          <Feature glyph="⌁" title="Atlas" detail="Explore your complete journey map, favorite places, repeated routes, and travel patterns." />
+          <Feature glyph="∞" title="Complete drive history" detail="Open every Journey, Memory, and soundtrack beyond the free 45-day window." />
           <Feature glyph="⌂" title="Still local-first" detail="Your routes and memories remain private on your iPhone and in your private iCloud." last />
         </View>
 

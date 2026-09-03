@@ -18,6 +18,7 @@ const productionSchema = readFileSync(resolve(__dir, '../cloudkit/journeydeck-de
 const podspec = readFileSync(resolve(__dir, '../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKit.podspec'), 'utf8');
 const app = readFileSync(resolve(__dir, '../App.tsx'), 'utf8');
 const completionJobs = readFileSync(resolve(__dir, '../src/completion-jobs.ts'), 'utf8');
+const memoryModel = readFileSync(resolve(__dir, '../src/memory-model.ts'), 'utf8');
 
 // ============================================================
 // 1. Exports
@@ -29,8 +30,11 @@ assert.match(src, /export function ckRecordToJourney/, 'exports ckRecordToJourne
 assert.match(src, /export function resolveConflict/, 'exports resolveConflict');
 assert.match(src, /export class CloudKitSyncEngine/, 'exports CloudKitSyncEngine');
 assert.match(src, /musicEntryToCKRecord/, 'syncs music entries');
-assert.match(src, /collectionToCKRecord/, 'syncs collections');
+assert.doesNotMatch(src, /collectionToCKRecord|collectionsPendingSync/, 'retired Collections are not synchronized by V1');
 assert.match(src, /memoryToCKRecord/, 'syncs memories');
+assert.match(memoryModel, /memory_v1_/, 'direct Journey-group Memories have an explicit V1 identity');
+assert.match(src, /filter\(isDirectJourneyMemoryId\)/, 'legacy grouping records cannot re-enter through CloudKit');
+assert.match(src, /remote\.source !== 'memory' \|\| !isDirectJourneyMemoryId\(remote\.memoryId\)/, 'legacy grouping photos cannot re-enter through CloudKit');
 assert.match(src, /photoToCKRecord/, 'syncs private photo assets');
 assert.match(src, /preferenceToCKRecord/, 'syncs user-scoped private preferences');
 assert.match(src, /routeArchiveToCKRecord/, 'syncs exact routes as private assets');

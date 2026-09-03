@@ -1,5 +1,31 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## V1 product simplification: Journeys and Memories — September 3, 2026
+
+- Simplified the public information model to two levels: a **Journey** is one recorded drive, and a **Memory** is a user-created group of one or more Journeys. Collections and their public data/API/search/sync paths are retired. The user explicitly confirmed that previous grouping data does not need to be preserved because they are the only user; existing recorded Journeys remain intact.
+- New direct-group Memories use a `memory_v1_` identity and store Journey IDs directly. Pre-V1 Memory/Collection rows and their photos are quarantined from display and CloudKit synchronization so disposable legacy grouping data cannot reappear from iCloud. The physical legacy SQLite column/record-type declarations remain inert for additive-schema and deployed-CloudKit compatibility.
+- Simplified Settings to one selected soundtrack method with one **Change** button, one **iCloud Backup** status, Apple identity under **Account**, manual recording only, and **Data Health** nested under collapsed **Advanced Support**. Drive Intelligence and Tessie are absent from the V1 public experience; automatic recording and Tessie network behavior remain fail-closed behind disabled release gates. Paid membership now unlocks only Atlas and complete history; free history remains the latest 45 days.
+- Updated first-run instructions, paywall language, App Store metadata/review notes, privacy documents, release documentation, retention language, and tests. The approved Home, primary navigation, Journey Details, and sharing compositions were not redesigned by this simplification.
+- Verification passed: TypeScript, full mobile suite **178/178**, production iOS Expo export (**1,824 modules / 25 assets**), and `git diff --check` (only repository LF-to-CRLF notices). No OTA, native build, TestFlight upload, App Store Connect mutation, commit, push, or destructive data reset was performed.
+
+## Production OTA: merged Home recorder and centered five-tab dock — September 2, 2026
+
+- Replaced the primary Live destination with the approved merged Home experience. Home now owns the single mounted recorder UI and immediately presents **Start Journey**; while recording it presents **End Journey** and conditionally presents **Identify Song** only when Apple Music is not authorized. Location permission setup, recording duration, route-point count, song count, pause/resume recovery, confirmation before finish, local persistence, Apple Music capture, and manual recognition continue to use the existing recorder controller rather than a second implementation.
+- Reordered the fixed primary navigation to **Soundtracks · Memories · Home · Statistics · Settings**. Home is page/index 2 at startup and has the approved option-3 raised glass pedestal plus a persistent coral shimmer. The old Live page is no longer mounted or exposed in primary navigation.
+- Promoted Settings to a real rightmost primary tab and added a one-tap Data Health row inside it. Statistics is now always the fourth tab for both tiers; verified paid members retain Atlas through **Open Your Atlas** inside Statistics, while free members retain the existing upgrade action.
+- Verification passed: TypeScript; focused tab runtime **29/29**; every subsystem command required by `mobile/recorder/AGENTS.md`; full mobile suite **176/176**; Expo Doctor **21/21**; production iOS export **1,825 modules / 26 assets**; `git diff --check` with only existing LF-to-CRLF notices.
+- Published the final Build 13-compatible iOS production OTA: group `5ca5437f-af35-4bd9-b226-f0fd7d849775`, update `01a064ec-b12f-7634-8f2a-b4acfec6838e`, runtime `1.9.0-build13`, message `Merge recorder into Home and center the primary navigation`. It supersedes the immediately prior group from the same task with the corrected Apple-Music-selection check for the conditional **Identify Song** control. No native build, TestFlight upload, App Store Connect mutation, commit, git push, or data reset was performed.
+
+## Production OTA: manual-first V1 with paid Tesla/Tessie automation — September 2, 2026
+
+- Changed the public V1 recording model to Manual Start/Finish by default. New first-run users are no longer offered Automatic; Live keeps the Start control visible in Manual mode, and the existing background route task continues sampling authorized Apple Music playback while a manual journey is active.
+- Re-enabled the preserved Tessie integration as a paid capability. Automatic Drive Detection now fails closed unless StoreKit reports an active membership, Tessie has verified at least one active Tesla for the current local profile, the user explicitly chooses Automatic, and iOS foreground/background location permissions are granted. The iPhone remains the GPS route recorder; Tessie is the eligibility and optional vehicle/media layer.
+- Tessie tokens remain profile-scoped in iPhone Keychain. A successful connection stores a separate verified-vehicle marker; disconnect, membership loss, or invalid eligibility returns an idle app to Manual and prevents new automatic journeys. An already active automatic journey may finish safely before the downgrade is applied.
+- Updated paywall/Settings/Live wording plus App Review, metadata, subscription, release, privacy-policy, and privacy-label source documents. The public `web/privacy.html` source now discloses Tessie, but the website deployment was not performed in this OTA task and must be published before public distribution of this behavior.
+- Verification passed: TypeScript; full mobile suite **176/176**; focused drive detection **14/14**, dormant Tessie **5/5**, Phase-3 native release **3/3**, and Cloudflare worker checks; Expo Doctor **21/21**; production iOS export **1,825 modules / 26 assets**; `git diff --check` with only existing LF-to-CRLF notices. The production edge health endpoint reported `status=healthy`, `environment=production`, and `features.tessie=true`.
+- Published and independently verified the Build 13-compatible iOS production OTA: group `4029c1d4-66a6-422a-8556-e9accde36dea`, update `01a06499-e914-73fe-baa9-906f25f5df5c`, runtime `1.9.0-build13`, message `Default to manual recording and gate automation with Tessie`. No native build, TestFlight upload, App Store Connect mutation, commit, git push, or data reset was performed.
+- Physical acceptance: open Build 13, wait briefly, fully close/reopen once, confirm Settings shows Manual Recording and the paid Tessie tile, complete a manual journey with the phone locked, and verify its Apple Music soundtrack. Then restore/purchase membership, connect a real Tessie token with a Tesla, choose Automatic, confirm Data Health reports Armed, and complete one automatic start/finish test.
+
 ## Build 13 implementation and release — September 2, 2026
 
 - Build 13 now embeds the latest production OTA work: bounded automatic-departure pre-roll, synchronized/reduced-motion-aware tab transitions, and the approved `Floating Memory Timeline` fallback artwork.
@@ -2027,6 +2053,125 @@ This scope supersedes older handoff or App Store documentation that says the pub
 - Verification: `npm run typecheck` passed; focused tab-runtime, local-store, native-capabilities, and drive-detection tests passed; full `npm test` passed 142/142; final `npx expo export --platform ios` completed with all seven onboarding assets in the 1.8.0 bundle; `git diff --check` found no whitespace errors beyond existing CRLF notices.
 - Published and verified iOS production OTA runtime `1.8.0`: update group `fd1412c1-e380-43c1-8a86-d7714c52c7cc`, iOS update `01a0597f-0aff-7db5-a48b-9bdf1044f324`, message `Implement exact approved first-run onboarding`. The initial CLI invocation was rejected before upload because `--environment` was required; the successful invocation explicitly used the production environment.
 - No native build, TestFlight upload, build-number change, commit, push, website deployment, or App Store mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; all source remains uncommitted.
+
+### Correct approved Home and navigation implementation (2026-09-02)
+
+- Rebuilt the merged Home/recorder surface to match the user's approved Option 1 reference: full-screen twilight Pacific-coast artwork, minimal HOME header controls, a large glass recording status card with live timer/distance/GPS metrics, separate Identify Song and coral-pink End Journey controls, and a live latest-memory card. Idle, permission, recording, and paused states retain the same composition.
+- Rebuilt the five-item dock to match approved nav Option 3: Soundtracks, Memories, Home, Statistics, Settings; a 104-point raised circular Home medallion with house icon and permanent coral glow; lavender secondary controls; and no visible sliding rectangular selection background.
+- Generated the text-free photographic foundation with the image-generation tool using the approved Home mockup as the layout/style reference and saved it as `mobile/recorder/assets/home-recorder-coast-v1.png`; all UI, text, metrics, and controls remain native and live.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 29/29; full `npm test` passed 176/176; `npx expo-doctor` passed 21/21; `npx expo export --platform ios` completed with the new asset; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.9.0-build13`: update group `b8749d29-8605-467a-80a0-eb32ed39fb75`, iOS update `01a064fd-1c40-788e-af52-63647ba36e43`, message `Match approved Home and navigation designs`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed. EAS records base commit `e55accf` with a dirty-working-tree marker; source remains uncommitted.
+
+### Home control alignment and active-recorder reachability follow-up (2026-09-02)
+
+- Replaced the two separately positioned Home circles with one 104-point, item-owned medallion so the gradient, rings, glow, house glyph, label, and touch target share one mathematical center.
+- Added recorder activity reporting to the Home shell. The scenic spacer remains 310 points while idle but collapses to 135 points while recording or paused, keeping Identify Song and End Journey above the dock. Home also scrolls to the top when recorder activity changes so the header cannot inherit an awkward prior offset.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 29/29; full `npm test` passed 176/176; `npx expo export --platform ios` completed successfully; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS-only production OTA runtime `1.9.0-build13`: update group `fd4a1a28-71c5-40cb-9719-d85c821ef5fc`, iOS update `01a06506-3ed1-7a11-8ff2-0f9e6ffeeadd`, message `Center Home control and surface recording actions`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Approved integrated navigation geometry correction (2026-09-02)
+
+- Replaced the oversized floating Home disc and ordinary rounded bar with one continuous SVG dock silhouette measured from the approved Option 3 reference: a 64-point body, shallow 21-point center rise, 66-point Home ring, and proportionally wider center slot. Removed the straight outline through the Home control and limited the center treatment to the integrated contour plus two restrained inset rings.
+- Matched the reference icon treatment with medium-weight outline symbols (`music.note`, `photo.on.rectangle`, `house`, `chart.xyaxis.line`, and `gearshape`), lavender secondary labels, and a coral-centered violet edge gradient. The Home symbol and label now share the same mathematical center inside the raised contour.
+- Reduced the idle Home scenic spacer from 310 to 190 points and the active spacer from 135 to 85 points. Recorder activity still resets Home to scroll position zero, so recording controls remain reachable above the dock.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 29/29; the prior full `npm test` run passed 176/176; EAS export/publish completed successfully; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Final corrective iOS production OTA for runtime `1.9.0-build13`: update group `6d40486b-2e4c-482d-8c46-57c81a0f6cf7`, iOS update `01a0651d-7062-7ede-9043-62cdba1520fb`, message `Finalize approved integrated navigation`. This supersedes the intermediate geometry update group `e32b8ae0-eff8-4c65-8108-8cad5f58ae96`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Home dock text, latest-song rail, and circular edge navigation (2026-09-02)
+
+- Added a compact live **Latest song played** card beneath Home's latest-memory card. It reads the newest shared soundtrack record, renders its disk-cached album artwork (or a truthful empty state), shows the real track, artist, and played time, and opens Soundtracks when tapped.
+- Cleared the Home label from the concentric navigation lines with a small medallion-colored label plate, preserving the approved raised-center silhouette while preventing the circle strokes from running through the text.
+- Made the five-tab pager circular at its endpoints with inert accessibility-hidden sentinels. Soundtracks → Settings now animates one page left; Settings → Soundtracks animates one page right. The invisible reset to each canonical screen occurs only after PagerView reports `idle`, preserving the canonical screen instances and avoiding a mid-transition snap. Reduce Motion uses an immediate canonical jump.
+- Added pure circular-pager transition, sentinel mapping, and progress tests, plus structural coverage for the Home song card and label treatment. Verification: `npm run typecheck` passed; focused tab-runtime tests passed 29/29; navigation-motion tests passed 8/8; full `npm test` passed 178/178; EAS export/publish succeeded; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and verified iOS production OTA runtime `1.9.0-build13`: update group `94f1dfa9-de57-4c43-9c37-da3c1d4827eb`, iOS update `01a06544-98bc-7452-a75d-a10c71f43715`, message `Polish Home dock and circular tab edges`.
+- No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Unlabeled Home nav control and combined-start concepts (2026-09-02)
+
+- Removed the Home text label from the raised center navigation control and increased the house symbol from 27 to 31 points inside a 32-point symbol frame. The continuous approved Option 3 dock silhouette, circular endpoint navigation, and other four labels remain unchanged.
+- Created four full-screen design-only concepts for combining the READY status frame and Start Journey action into one control: `docs/design/home-combined-start-options/option-1-beacon-card.png`, `option-2-coral-launch.png`, `option-3-split-horizon.png`, and `option-4-journey-portal.png`. The combined control has not been implemented; user selection is pending.
+- Revised Option 4 at the user's direction by changing only its green beacon/status accents to JourneyDeck orange-coral. The preserved revised mockup is `docs/design/home-combined-start-options/option-4-journey-portal-coral.png`; it remains design-only and is not implemented in the app.
+- Verification: `npm run typecheck` passed; focused tab-runtime tests passed 29/29; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the nav-only iOS production OTA for runtime `1.9.0-build13`: update group `04c0837e-287a-450f-8c2e-729a5a4f80fa`, iOS update `01a0655b-2686-7d9b-8f09-429707a3e440`, message `Remove Home label and enlarge nav icon`.
+- No combined READY/Start implementation, native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Approved coral Journey Portal implementation and OTA (2026-09-03)
+
+- Implemented the approved coral revision of **Option 4 — Journey Portal** for Home's idle manual-recording state. The READY beacon, explanatory copy, Start Journey label, arrow, translucent dark glass, coral/pink outline, and illuminated lower bloom now form one continuous control.
+- The complete rounded portal is a single accessible `Pressable`; tapping anywhere inside it starts the existing recorder. Decorative gradients and beacon layers ignore touches, VoiceOver receives one Start Journey button, and a synchronous busy guard rejects ultra-fast duplicate taps before a second local session can be queued.
+- Preparing, permission-required, paid Tessie automatic, recording, finishing, and paused states retain their existing behavior. Active recording still exposes live metrics, Identify Song when applicable, Resume, and End Journey separately.
+- Moved only the idle Home composition upward by reducing its scenic spacer from 190 to 70 points, matching the approved reference while retaining the 85-point active spacer that keeps recording controls reachable.
+- Recorded the approved reference and interaction invariants in `docs/design/home-combined-start-options/SELECTED.md`.
+- Verification: TypeScript passed; tab-runtime 29/29; navigation-motion 8/8; drive-detection 14/14; full mobile suite 178/178; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published and independently verified the iOS production OTA for runtime `1.9.0-build13`: update group `b3ff352b-b95c-455f-bac1-e2bf86d140fe`, iOS update `01a06724-39a2-786a-9c45-db504929263a`, message `Combine ready state and Start Journey portal`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Diffused Home portal correction and OTA (2026-09-03)
+
+- Corrected the physical-device rendering reported after the first portal OTA. Removed the opaque gradient border wrapper, 80%-opaque rounded glass fill, hard-edged circular bloom view, parent rectangular shadow, and press-state opacity change that made the control appear transparent only while touched.
+- The portal now uses one continuously transparent Pressable plus a pointer-disabled SVG atmosphere. Dark glass, coral action light, and the beacon halo are radial gradients sized so they reach zero opacity before every canvas boundary; there is no outline stroke, filled card shape, bloom boundary, or rectangular clipping edge. Touch feedback is scale-only, so transparency is stable from first render through press and busy states.
+- Updated the selected-design invariants to require fully feathered edges without a visible rounded outline while retaining the entire 360-point portal footprint as one Start Journey target.
+- Verification: TypeScript passed; tab-runtime 29/29; navigation-motion 8/8; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices. The immediately preceding full suite remained 178/178.
+- Published the corrected iOS production OTA for runtime `1.9.0-build13`: update group `69e7607d-70f8-45ff-944c-16514f1f7a11`, iOS update `01a0672e-be0c-7d89-8194-7f91be8d8faa`, message `Diffuse Home start portal into background`. This supersedes portal group `b3ff352b-b95c-455f-bac1-e2bf86d140fe`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Home portal outline and header-dot cleanup OTA (2026-09-03)
+
+- Made only the two user-requested visual edits: added a one-point coral-orange rounded neon outline as an absolute, noninteractive overlay around the existing diffused Start Journey portal, and removed the orange notification dot from Home's top-right Soundtracks button.
+- The portal's transparency, radial atmosphere, glow, size, spacing, copy, one-button touch target, and recording behavior are unchanged. Removing the music dot did not alter the button, symbol, Soundtracks navigation, or latest-song card.
+- Verification: TypeScript passed; tab-runtime 29/29; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `2844a4ab-6520-45da-8f37-ea66afb8e6c9`, iOS update `01a06771-050d-71c9-8fe7-df0ed1444304`, message `Outline Home recorder and remove music dot`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Expanded Home portal action glow OTA (2026-09-03)
+
+- Expanded only the coral/pink radial haze behind `Start Journey`. Its visible field now fills approximately 90% of the portal width and 75% of its height—most, but not all, of the outlined area—and still reaches zero opacity before the one-point neon border.
+- Border, transparency, beacon, copy, layout, spacing, portal size, one-button touch behavior, header controls, memory/song cards, and navigation were not changed.
+- Verification: TypeScript passed; tab-runtime 29/29; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `f000e6ba-8f55-42e6-b976-ad535b6fa6bf`, iOS update `01a06779-06cc-7df1-a9db-a63beb4a33a1`, message `Expand Home Start Journey glow`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Markup-matched Home haze boundary OTA (2026-09-03)
+
+- Enlarged only the Start Journey coral haze to match the user's red physical-device markup. The feathered field now reaches approximately 95% of the outlined width and 92% of its height, while its focal point remains shifted behind the Start Journey label.
+- The haze still reaches zero opacity at the neon border. Outline, glass transparency, beacon, text, layout, cards, navigation, and recorder interaction were not changed.
+- Verification: TypeScript passed; tab-runtime 29/29; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `c8c4e7b8-5876-4d17-ad23-cc937bb27511`, iOS update `01a0677e-6fe8-7151-bd0e-a9bff38b68ac`, message `Match Home glow to approved boundary`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Full-interior Home portal haze OTA (2026-09-03)
+
+- At the user's final direction, extended the translucent coral/pink action haze across the complete interior of the rounded neon outline. A low-opacity coral wash now reaches every edge while the brighter focal glow remains behind `Start Journey`; the road photograph remains visible through the portal.
+- Clipped only the SVG atmosphere to the existing 30-point rounded shape so no color can escape the corners. The outline remains a separate sibling, preserving its neon glow. Border, beacon, text, layout, cards, navigation, full-portal touch target, and recorder behavior were not changed.
+- Verification: TypeScript passed; tab-runtime passed 29/29; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `d0b565c8-e02d-4f6d-a8af-cb089362af0c`, iOS update `01a06783-a49d-7354-b4dd-7f5919472f6d`, message `Fill Home portal with coral haze`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Build 13 full-haze OTA startup crash diagnosis (2026-09-03)
+
+- Inspected the user-supplied `testflight_feedback (2).zip`. It contains a Build 13 crash at 2026-09-03 08:51:59 CDT, about seven minutes after full-haze update `01a06783-a49d-7354-b4dd-7f5919472f6d` was published and roughly four seconds after launch.
+- The crash is `EXC_CRASH (SIGABRT)` in Expo Updates `StartupProcedure.throwException` → `ErrorRecovery.crash` while waiting for the remote loader. This signature means update activation encountered an early fatal application error and Expo Updates re-threw it after recovery; it is not the earlier Build 11 SQLite/WAL `SIGBUS` crash. MapLibre worker threads shown in the report are idle and are not the triggering thread.
+- Apple's TestFlight crash package omits the original JavaScript/native-view exception message. The runtime delta is isolated to the enlarged SVG coral gradient and the newly-added `borderRadius`/`overflow: 'hidden'` clipping style on the top-level SVG. The SVG clipping style is the strongest suspect but is not proven without an attached Xcode/macOS Console reproduction.
+- No repair, rollback, new OTA, native build, TestFlight upload, commit, or push was performed during this diagnostic step. Safest fix-forward is to remove top-level SVG clipping and constrain the gradient with rounded SVG rectangles (or first republish the preceding known-good update).
+
+### Build 13 portal OTA startup repair (2026-09-03)
+
+- Removed `borderRadius` and `overflow: hidden` from the top-level `Svg`. The same full coral/pink haze is now bounded by its own native SVG `Rect` using `rx="30" ry="30"`, preserving the approved full-interior treatment without clipping the SVG host view.
+- Verification: TypeScript passed; focused tab-runtime passed 29/29; the complete mobile suite passed 178/178; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the repair to iOS production runtime `1.9.0-build13`: update group `29e6e64c-0c34-40a4-9ff3-98672832f0e5`, iOS update `01a06797-65c5-77a1-88e6-b8a1fe0f72f7`, message `Repair Home portal OTA startup`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
+### Silent Home recorder initialization OTA (2026-09-03)
+
+- Removed the visible transient Home startup state captured on-device: the old compact READY card plus `Preparing your private recorder…` appeared while the Keychain device ID and recorder/permission state were still loading.
+- Home now renders the complete approved Start Journey portal from the first visible React frame. During the brief bootstrap it is silently disabled but remains visually identical, including its normal arrow; when initialization completes it becomes tappable in place without a spinner, message, card swap, or layout jump. A genuinely missing location permission still reveals the real Enable Location action after checks settle.
+- Added structural coverage for the silent bootstrap portal and removed the obsolete preparing styles/copy. Verification: TypeScript passed; focused tab-runtime passed 29/29; complete mobile suite passed 178/178; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `f1cab5f8-bad1-40ac-b507-6fbed6f46b95`, iOS update `01a067a6-e1a9-73ef-919e-6e2d7cf622d5`, message `Show final Home portal from first frame`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.
+
 ## Automatic endpoint naming and saved-place propagation repair — August 31, 2026
 
 - Compared the native location pipeline with the older web behavior. The native regression had three causes: the saved-place radius was only 125 meters despite rounded endpoint identities and normal parking/GPS drift; detail records with journey-specific keys did not fall back to their recorded route endpoints; and iOS had only a city-summary lookup rather than an endpoint address/name cache.
@@ -2035,3 +2180,12 @@ This scope supersedes older handoff or App Store documentation that says the pub
 - Added behavioral tests for realistic property/parking drift, separation from a different neighborhood, and geocoder-label selection. Verification: `npm run typecheck` passed; focused place/journey/tab tests passed 33/33; full `npm test` passed 149/149; `npx expo export --platform ios` completed successfully (1,771 modules, 24 project assets); `git diff --check` found no whitespace errors beyond existing CRLF notices.
 - Published and verified the iOS production OTA for runtime `1.8.0`: update group `8e464530-87c8-45c0-9bc9-423067a31edc`, iOS update `01a05af4-d8c8-7ae6-adcf-d99963f6bb81`, message `Restore automatic journey place naming`. It applies to TestFlight Build 10 after download and restart.
 - No native build, TestFlight upload, build-number change, commit, push, Worker deployment, or App Store Connect mutation was performed. EAS records base commit `ff75d37` with a dirty-working-tree marker; all source remains uncommitted.
+
+### Apple Music manual-control visibility correction OTA (2026-09-03)
+
+- Fixed the Home recorder showing `Identify Song` during a journey even though Apple Music was selected, authorized, and already capturing tracks automatically. The shell's native music-capability state began as unknown and previously refreshed only through the retired utility-overlay path, so the old conditional incorrectly treated startup as disconnected.
+- The shell now refreshes native music capabilities at launch. Until that result arrives, it uses the persisted Apple Music connection status so the control is correct on the first rendered recording frame; once loaded, the native authorization result is authoritative.
+- `Identify Song` remains available when manual song recognition is selected or Apple Music is not connected/authorized. No recording, Apple Music capture, navigation, or visual styling behavior was changed.
+- Verification: TypeScript passed; focused tab-runtime passed 29/29; complete mobile suite passed 178/178; iOS Expo export passed with 1,826 modules and 27 assets; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- Published the iOS production OTA for runtime `1.9.0-build13`: update group `8cba8498-ec8a-4c5e-8af1-204827a9369b`, iOS update `01a067af-0c47-7bd8-82f4-0e76b3cb2fa7`, message `Hide manual song button for Apple Music`.
+- No native build, TestFlight upload, build-number change, commit, git push, Worker deployment, or App Store mutation was performed; source remains uncommitted.

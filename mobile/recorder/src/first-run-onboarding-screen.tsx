@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Animated, Image, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Image, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
@@ -16,7 +16,6 @@ const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
 
 type Props = {
   stage: Exclude<FirstRunStage, 'complete'>;
-  initialRecordingMode: RecordingMode;
   onWelcomeComplete: () => void;
   onRecordingContinue: (mode: RecordingMode) => Promise<void>;
   onConnectAppleMusic: () => Promise<void>;
@@ -81,66 +80,54 @@ function Bullet({ children, warning = false }: { children: ReactNode; warning?: 
   return <View style={styles.bulletRow}><View style={[styles.bulletMark, warning ? styles.bulletWarning : styles.bulletGood]}><Text style={styles.bulletMarkText}>{warning ? '!' : '✓'}</Text></View><Text style={styles.bulletText}>{children}</Text></View>;
 }
 
-function SelectionGlyph({ selected, mode }: { selected: boolean; mode: RecordingMode }) {
-  const automatic = mode === 'automatic';
-  return <View style={[styles.selectionGlyph, automatic ? styles.selectionGlyphAuto : styles.selectionGlyphManual]}>
-    <View style={[styles.selectionRing, automatic ? styles.selectionRingAuto : styles.selectionRingManual]}><View style={[styles.selectionDot, automatic ? styles.selectionDotAuto : styles.selectionDotManual]} /></View>
+function SelectionGlyph({ selected }: { selected: boolean }) {
+  return <View style={[styles.selectionGlyph, styles.selectionGlyphManual]}>
+    <View style={[styles.selectionRing, styles.selectionRingManual]}><View style={[styles.selectionDot, styles.selectionDotManual]} /></View>
     {selected && <View style={styles.selectedCheck}><Text style={styles.selectedCheckText}>✓</Text></View>}
   </View>;
 }
 
-function RecordingChoice({ mode, selected, onPress }: { mode: RecordingMode; selected: boolean; onPress: () => void }) {
-  const automatic = mode === 'automatic';
-  return <Pressable accessibilityRole="button" accessibilityLabel={`Select ${automatic ? 'Automatic' : 'Manual'} recording`} onPress={onPress} style={[styles.choiceCard, selected && (automatic ? styles.choiceSelectedAuto : styles.choiceSelectedManual)]}>
+function RecordingChoice({ selected, onPress }: { selected: boolean; onPress: () => void }) {
+  return <Pressable accessibilityRole="button" accessibilityLabel="Manual recording selected" onPress={onPress} style={[styles.choiceCard, selected && styles.choiceSelectedManual]}>
     <View style={styles.choiceHeader}>
-      <SelectionGlyph selected={selected} mode={mode} />
+      <SelectionGlyph selected={selected} />
       <View style={styles.choiceHeaderCopy}>
-        {selected && <Text style={styles.choiceSelectedKicker}>{automatic ? 'SELECTED · HANDS-FREE' : "SELECTED · YOU'RE IN CONTROL"}</Text>}
-        <Text style={styles.choiceTitle}>{automatic ? 'Automatic' : 'Manual Recording'}</Text>
-        {!selected && <Text style={styles.choiceSummary}>{automatic ? 'Starts when driving is detected.' : 'Tap Start and Finish for every journey.'}</Text>}
+        {selected && <Text style={styles.choiceSelectedKicker}>SELECTED · YOU&apos;RE IN CONTROL</Text>}
+        <Text style={styles.choiceTitle}>Manual Recording</Text>
+        {!selected && <Text style={styles.choiceSummary}>Tap Start and Finish for every journey.</Text>}
       </View>
       {!selected && <Text style={styles.choiceChevron}>›</Text>}
     </View>
     {selected && <View style={styles.choiceDetails}>
-      <Text style={styles.choiceDescription}>{automatic ? 'Starts when driving is detected and stops after you park.' : "Tap Start when your journey begins and Finish when you're done."}</Text>
+      <Text style={styles.choiceDescription}>Tap Start when your journey begins and Finish when you&apos;re done.</Text>
       <Text style={styles.detailLabelGood}>BENEFITS</Text>
-      <Bullet>{automatic ? 'No need to open JourneyDeck' : 'Every journey starts only when you choose'}</Bullet>
-      <Bullet>{automatic ? 'Your complete route is easier to capture' : 'Lower background battery use'}</Bullet>
-      {!automatic && <Bullet>Apple Music can still add your soundtrack afterward</Bullet>}
+      <Bullet>Every journey starts only when you choose</Bullet>
+      <Bullet>Lower background battery use</Bullet>
+      <Bullet>Apple Music can still add your soundtrack afterward</Bullet>
       <Text style={styles.detailLabelWarning}>LIMITATIONS</Text>
-      <Bullet warning>{automatic ? 'Always Location uses more background battery' : 'Nothing before you tap Start can be recovered'}</Bullet>
-      <Bullet warning>{automatic ? 'Detection can occasionally start late' : 'You must remember to finish the journey'}</Bullet>
-      {!automatic && <Bullet warning>Only interact with the controls when it’s safe</Bullet>}
+      <Bullet warning>Nothing before you tap Start can be recovered</Bullet>
+      <Bullet warning>You must remember to finish the journey</Bullet>
+      <Bullet warning>Only interact with the controls when it’s safe</Bullet>
     </View>}
     {!selected && <Text style={styles.tapCompare}>Tap to compare</Text>}
   </Pressable>;
 }
 
-function RecordingScreen({ initial, onContinue }: { initial: RecordingMode; onContinue: (mode: RecordingMode) => Promise<void> }) {
-  const [selected, setSelected] = useState<RecordingMode>(initial);
+function RecordingScreen({ onContinue }: { onContinue: (mode: RecordingMode) => Promise<void> }) {
   const [saving, setSaving] = useState(false);
-  const opacity = useRef(new Animated.Value(1)).current;
-  const select = (next: RecordingMode) => {
-    if (next === selected || saving) return;
-    Animated.timing(opacity, { toValue: 0.2, duration: 120, useNativeDriver: true }).start(() => {
-      setSelected(next);
-      Animated.timing(opacity, { toValue: 1, duration: 160, useNativeDriver: true }).start();
-    });
-  };
   const proceed = async () => {
     if (saving) return;
     setSaving(true);
-    try { await onContinue(selected); } finally { setSaving(false); }
+    try { await onContinue('manual'); } finally { setSaving(false); }
   };
-  return <ScreenFrame bottom={<View style={styles.fixedAction}><GradientAction label={`Continue with ${selected === 'automatic' ? 'Automatic' : 'Manual'}`} disabled={saving} onPress={() => void proceed()} /></View>}>
+  return <ScreenFrame bottom={<View style={styles.fixedAction}><GradientAction label="Continue with Manual" disabled={saving} onPress={() => void proceed()} /></View>}>
     <ProgressHeader step="02 / 04" />
     <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.eyebrow}>GPS METHOD</Text><Text accessibilityRole="header" style={styles.title}>Choose how journeys begin.</Text><Text style={styles.subtitle}>You can change this anytime in Settings.</Text>
-      <Animated.View style={[styles.choiceStack, { opacity }]}>
-        <RecordingChoice mode="automatic" selected={selected === 'automatic'} onPress={() => select('automatic')} />
-        <RecordingChoice mode="manual" selected={selected === 'manual'} onPress={() => select('manual')} />
-        <View style={styles.privacyPill}><Text style={styles.privacyGlyph}>♙</Text><Text style={styles.privacyText}>{selected === 'automatic' ? 'Automatic needs Always Location. Your routes stay private.' : 'Location recording runs only after you tap Start.'}</Text></View>
-      </Animated.View>
+      <Text style={styles.eyebrow}>GPS RECORDING</Text><Text accessibilityRole="header" style={styles.title}>You decide when the journey begins.</Text><Text style={styles.subtitle}>JourneyDeck records only after you tap Start.</Text>
+      <View style={styles.choiceStack}>
+        <RecordingChoice selected onPress={() => undefined} />
+        <View style={styles.privacyPill}><Text style={styles.privacyGlyph}>♙</Text><Text style={styles.privacyText}>Your route stays private. Apple Music can still build the soundtrack automatically while you record.</Text></View>
+      </View>
     </ScrollView>
   </ScreenFrame>;
 }
@@ -167,25 +154,20 @@ function AppleMusicScreen({ onConnect, onSkip }: { onConnect: () => Promise<void
   </ScreenFrame>;
 }
 
-function RadarGraphic() {
-  return <View style={styles.radar}><View style={[styles.radarRing, styles.radarRingOuter]} /><View style={[styles.radarRing, styles.radarRingMiddle]} /><View style={[styles.radarRing, styles.radarRingInner]} /><View style={styles.radarCenter} /><View style={styles.radarRoute} /><View style={styles.radarPin} /></View>;
-}
-
 function InstructionStep({ number, label, detail, accent = false }: { number: number; label: string; detail: string; accent?: boolean }) {
   return <View style={styles.instructionRow}><View style={[styles.stepNumber, accent && styles.stepNumberAccent]}><Text style={[styles.stepNumberText, accent && styles.stepNumberTextAccent]}>{number}</Text></View><View style={styles.instructionCopy}><Text style={[styles.instructionLabel, accent && styles.instructionLabelAccent]}>{label}</Text><Text style={styles.instructionDetail}>{detail}</Text></View>{label === 'PRESS PLAY' && <Image source={APPLE_MUSIC_ICON} resizeMode="contain" style={styles.inlineMusicIcon} />}</View>;
 }
 
-function FinishScreen({ recordingMode, onFinish }: { recordingMode: RecordingMode; onFinish: () => void }) {
-  const automatic = recordingMode === 'automatic';
+function FinishScreen({ onFinish }: { onFinish: () => void }) {
   return <ScreenFrame bottom={<View style={styles.fixedAction}><GradientAction label="Let the Journey Begin" onPress={onFinish} /></View>}>
     <ProgressHeader step="04 / 04" />
     <ScrollView style={styles.scroll} contentContainerStyle={styles.finishScrollContent} showsVerticalScrollIndicator={false}>
-      <Text style={[styles.eyebrow, !automatic && styles.manualEyebrow]}>{automatic ? 'AUTOMATIC IS READY' : 'MANUAL IS READY'}</Text><Text accessibilityRole="header" style={styles.title}>{automatic ? 'You’re ready. Just drive.' : 'You’re in the driver’s seat.'}</Text><Text style={styles.subtitle}>{automatic ? 'JourneyDeck handles the route while you enjoy the road.' : 'Start and finish every journey when you choose.'}</Text>
-      <View style={[styles.finishCard, !automatic && styles.finishCardManual]}>
-        {automatic ? <RadarGraphic /> : <View style={styles.startPreview}><Text style={styles.startPreviewKicker}>HOME · MANUAL RECORDING</Text><View style={styles.startPreviewButton}><Text style={styles.startPreviewPlay}>▶</Text><Text style={styles.startPreviewLabel}>Start Your Journey</Text><Text style={styles.startPreviewArrow}>›</Text></View></View>}
-        <Text style={styles.finishCardKicker}>{automatic ? 'SIMPLY GET IN AND GO' : 'START. DRIVE. REMEMBER TO FINISH.'}</Text><View style={styles.cardDivider} />
-        {automatic ? <><InstructionStep number={1} label="GET IN" detail="Take your iPhone with you." /><InstructionStep number={2} label="DRIVE" detail="Your journey starts automatically." /><InstructionStep number={3} label="PRESS PLAY" detail="Play Apple Music through your iPhone or CarPlay." accent /><InstructionStep number={4} label="ARRIVE" detail="Park and JourneyDeck finishes the journey." /></> : <><InstructionStep number={1} label="OPEN" detail="Open JourneyDeck after you enter your car." /><InstructionStep number={2} label="START" detail="On Home, tap Start Your Journey." accent /><InstructionStep number={3} label="DRIVE" detail="Enjoy the road and play your music." /><InstructionStep number={4} label="FINISH" detail="When you arrive, open JourneyDeck and end the journey." accent /></>}
-        <View style={[styles.readyPill, !automatic && styles.reminderPill]}><Text style={styles.readyMark}>{automatic ? '✓' : '!'}</Text><Text style={styles.readyText}>{automatic ? 'Automatic recording is ready.' : 'Remember to tap Finish Journey when the drive is over.'}</Text></View>
+      <Text style={[styles.eyebrow, styles.manualEyebrow]}>MANUAL IS READY</Text><Text accessibilityRole="header" style={styles.title}>You’re in the driver’s seat.</Text><Text style={styles.subtitle}>Start and finish every journey when you choose.</Text>
+      <View style={[styles.finishCard, styles.finishCardManual]}>
+        <View style={styles.startPreview}><Text style={styles.startPreviewKicker}>HOME · MANUAL RECORDING</Text><View style={styles.startPreviewButton}><Text style={styles.startPreviewPlay}>▶</Text><Text style={styles.startPreviewLabel}>Start Your Journey</Text><Text style={styles.startPreviewArrow}>›</Text></View></View>
+        <Text style={styles.finishCardKicker}>START. DRIVE. REMEMBER TO FINISH.</Text><View style={styles.cardDivider} />
+        <InstructionStep number={1} label="OPEN" detail="Open JourneyDeck after you enter your car." /><InstructionStep number={2} label="START" detail="On Home, tap Start Your Journey." accent /><InstructionStep number={3} label="DRIVE" detail="Enjoy the road and play your music." /><InstructionStep number={4} label="FINISH" detail="When you arrive, open JourneyDeck and end the journey." accent />
+        <View style={[styles.readyPill, styles.reminderPill]}><Text style={styles.readyMark}>!</Text><Text style={styles.readyText}>Remember to tap Finish Journey when the drive is over.</Text></View>
       </View>
     </ScrollView>
   </ScreenFrame>;
@@ -194,9 +176,9 @@ function FinishScreen({ recordingMode, onFinish }: { recordingMode: RecordingMod
 export function FirstRunOnboardingScreen(props: Props) {
   return <View style={styles.fullScreen}><ExpoStatusBar hidden /><StatusBar hidden animated={false} />
     {props.stage === 'welcome' && <WelcomeAnimation onComplete={props.onWelcomeComplete} />}
-    {props.stage === 'recording' && <RecordingScreen initial={props.initialRecordingMode} onContinue={props.onRecordingContinue} />}
+    {props.stage === 'recording' && <RecordingScreen onContinue={props.onRecordingContinue} />}
     {props.stage === 'music' && <AppleMusicScreen onConnect={props.onConnectAppleMusic} onSkip={props.onSkipAppleMusic} />}
-    {props.stage === 'instructions' && <FinishScreen recordingMode={props.initialRecordingMode} onFinish={props.onFinish} />}
+    {props.stage === 'instructions' && <FinishScreen onFinish={props.onFinish} />}
   </View>;
 }
 

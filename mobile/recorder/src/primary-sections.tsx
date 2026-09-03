@@ -29,17 +29,15 @@ import { isInternalTestingBuild } from './internal-testing';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
 import { loadRecordingModePreferences } from './recording-mode';
 import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
-import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 import { buildSongRouteMoments } from './route-moments';
-import { getNativeAutomaticRecorderStatus, type NativeRecorderStatus } from '../modules/journeydeck-recorder';
-import { isAutomaticDetectionActive } from './tracking';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'health' | 'settings';
 
 const accentForKind: Record<SearchRecord['kind'], string> = {
-  journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', collection: '#f0b75f', memory: '#8ba6ff',
+  journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', memory: '#8ba6ff',
 };
 
 function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, leadingAction, headerPresentation = 'default', pageTone = 'default', headerTone = 'default', children }: {
@@ -162,7 +160,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
     : automaticMode
       ? 'JourneyDeck is ready to recognize driving. Apple Music builds soundtracks automatically after each journey.'
       : 'Start a journey to capture its route and time. Apple Music adds the automatic soundtrack.';
-  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle="Automatic routes and Apple Music soundtracks, captured privately from this iPhone." headerImage={require('../assets/live-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="live" onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle={automaticMode ? 'Tessie-powered automatic routes and Apple Music soundtracks, captured privately.' : 'Start and finish each route yourself. Apple Music builds the soundtrack while you record.'} headerImage={require('../assets/live-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="live" onRefresh={onRefresh}>
     <DataNotice state={state} />
     {(snapshot.session || !automaticMode) && <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>{liveKicker}</Text><Text style={styles.heroTitle}>{liveTitle}</Text></View><View style={[styles.liveDot, snapshot.session && styles.liveDotActive]} /></View>
@@ -206,7 +204,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   </ScreenScaffold>;
 }
 
-export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const data = state.data;
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Record<string, AtlasPattern['review']>>({});
@@ -216,7 +214,7 @@ export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDat
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="ATLAS" subtitle="Places, representative routes, and recurring patterns from your private journey archive." headerImage={require('../assets/atlas-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="ATLAS" subtitle="Your complete journey map, favorite places, repeated routes, and travel patterns—all built from your private archive." headerImage={require('../assets/atlas-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     <PrimaryMobilityMap routes={routes} places={mapPlaces} height={355} emptyMessage="Recorded route geometry will build your long-term Atlas." />
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
@@ -278,8 +276,8 @@ export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state:
   </ScreenScaffold>;
 }
 
-export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, historyDays = 45 }: {
-  state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; historyDays?: number | null;
+export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, onAtlas, historyDays = 45 }: {
+  state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; onAtlas?: () => void; historyDays?: number | null;
 }) {
   const statistics = state.data?.statistics;
   const [visibleTimelineCount, setVisibleTimelineCount] = useState(10);
@@ -334,6 +332,7 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
           <Text style={styles.storyStatsHistoryDay}>{historyDays === null ? `${timelineItems.length} MOMENTS` : `DAY ${historyDay} OF ${statistics.windowDays}`}</Text>
         </View>
         {historyDays !== null && onUpgrade && <Pressable accessibilityRole="button" accessibilityLabel="Unlock Atlas and complete history" onPress={onUpgrade} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>UNLOCK ATLAS + COMPLETE HISTORY</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
+        {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas" onPress={onAtlas} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>OPEN YOUR ATLAS</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
       </View>
 
       <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
@@ -391,7 +390,7 @@ function timelineEpoch(value: string) {
 export function SearchScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const [query, setQuery] = useState('');
   const results = useMemo(() => searchPrimarySections(state.data?.search ?? [], query), [query, state.data?.search]);
-  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search journeys, songs, artists, places, Collections, and Memories from one private index." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
+  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search Journeys, Memories, songs, artists, and places from one private index." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor="#9b8ba4" size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor="#756d7c" autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
     <Text style={styles.resultCount}>{query.trim() ? `${results.length} RESULTS` : 'RECENT + FREQUENT'}</Text>
@@ -435,8 +434,6 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [artworkRefreshState, setArtworkRefreshState] = useState<'idle' | 'running' | 'complete' | 'warning' | 'error'>('idle');
   const [artworkRefreshDetail, setArtworkRefreshDetail] = useState('Re-check Apple Music and retry missing exact-match cover artwork on this iPhone.');
-  const [nativeRecorder, setNativeRecorder] = useState<NativeRecorderStatus | null>(null);
-  const [expoAutomaticDetectorActive, setExpoAutomaticDetectorActive] = useState<boolean | null>(null);
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
   const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
@@ -444,59 +441,10 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     + masterIntegrity.invalidValueCount + recorderIntegrity.duplicateActiveOwnerCount + recorderIntegrity.invalidValueCount;
   const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic + recorderIntegrity.pendingCompletionJobCount;
   const testProfile = isIsolationTestProfile(currentUser);
-  const automaticRecordingSelected = loadRecordingModePreferences().mode === 'automatic';
-  const nativeRecorderArmed = Boolean(nativeRecorder?.enabled && (nativeRecorder.significantMonitoring || nativeRecorder.preciseTracking));
-  const automaticRecorderArmed = NATIVE_AUTOMATIC_RECORDER_ENABLED ? nativeRecorderArmed : expoAutomaticDetectorActive === true;
-  const automaticRecorderHealthy = automaticRecordingSelected
-    ? Boolean(nativeRecorder?.authorization === 'always' && (automaticRecorderArmed || nativeRecorder?.recording))
-    : true;
-  const automaticRecorderState = !automaticRecordingSelected
-    ? 'Manual mode'
-    : !nativeRecorder || (!NATIVE_AUTOMATIC_RECORDER_ENABLED && expoAutomaticDetectorActive === null)
-      ? 'Checking'
-      : nativeRecorder.recording
-        ? 'Recording'
-        : automaticRecorderArmed
-          ? 'Armed'
-          : 'Not armed';
-  const automaticRecorderDetail = !automaticRecordingSelected
-    ? 'Automatic detection is off because Manual recording is selected.'
-    : !nativeRecorder || (!NATIVE_AUTOMATIC_RECORDER_ENABLED && expoAutomaticDetectorActive === null)
-      ? 'Reading the active iOS detector state…'
-      : nativeRecorder.authorization !== 'always'
-        ? 'Location permission must be set to Always.'
-        : nativeRecorder.recording
-          ? 'An existing native journey is finishing safely before the fallback takes ownership.'
-          : !NATIVE_AUTOMATIC_RECORDER_ENABLED
-            ? expoAutomaticDetectorActive
-              ? 'Build 13 safety fallback is watching regular GPS samples for driving.'
-              : 'Automatic is selected, but the Build 13 fallback task is not running.'
-            : nativeRecorder.lastErrorCode
-              ? `iOS reported ${nativeRecorder.lastErrorCode.replaceAll('_', ' ')}.`
-              : nativeRecorder.preciseTracking
-                ? 'High-accuracy route capture is active.'
-                : nativeRecorder.significantMonitoring
-                  ? 'iOS is watching for significant movement.'
-                  : 'Automatic is selected, but iOS monitoring is not running.';
   const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
     && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
-    && profileDiagnostics.collectionCount === 0 && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
+    && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
   useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
-  useEffect(() => {
-    if (!active) return undefined;
-    let cancelled = false;
-    const refreshAutomaticRecorder = () => void Promise.all([
-      getNativeAutomaticRecorderStatus().catch(() => null),
-      isAutomaticDetectionActive().catch(() => false),
-    ]).then(([nativeStatus, expoActive]) => {
-      if (cancelled) return;
-      setNativeRecorder(nativeStatus);
-      setExpoAutomaticDetectorActive(expoActive);
-    });
-    refreshAutomaticRecorder();
-    const timer = setInterval(refreshAutomaticRecorder, 5_000);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [active, state.data?.loadedAt]);
   useEffect(() => {
     if (!active) return;
     setRetentionPreviewState('loading');
@@ -545,7 +493,6 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local tasks are waiting to finish or sync. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
     <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
-    <HealthRow title="Automatic drive detector" status={automaticRecorderState} detail={automaticRecorderDetail} healthy={automaticRecorderHealthy} />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
@@ -596,7 +543,6 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         <ProfileLabMetric label="GPS POINTS" value={profileDiagnostics.gpsPointCount} />
         <ProfileLabMetric label="SONGS" value={profileDiagnostics.musicEntryCount} />
         <ProfileLabMetric label="MEMORIES" value={profileDiagnostics.memoryCount} />
-        <ProfileLabMetric label="COLLECTIONS" value={profileDiagnostics.collectionCount} />
         <ProfileLabMetric label="RECORDER QUEUE" value={dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic} />
       </View>
       {testProfile ? <>
@@ -628,9 +574,8 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
             <RetentionRow label="Route points" count={retentionPreview.counts.routePoints} />
             <RetentionRow label="Songs" count={retentionPreview.counts.songs} />
             <RetentionRow label="Memories" count={retentionPreview.counts.memories} />
-            <RetentionRow label="Collections" count={retentionPreview.counts.collections} />
-            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.collectionProtectedJourneys)} Collection-linked journeys protected</Text>
-            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, Collections, native recordings, recent history, and linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
+            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.memoryProtectedJourneys)} Memory-linked journeys protected</Text>
+            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, native recordings, recent history, and Memory-linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
           </>}
       <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
     </View>
@@ -750,7 +695,7 @@ function SectionTitle({ title, detail }: { title: string; detail: string }) { re
 function EmptyCard({ text }: { text: string }) { return <NeonWidget radius={18} style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></NeonWidget>; }
 function timelineGlyph(kind: string) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'charging' ? 'ϟ' : '◉'; }
 function timelineColor(kind: string) { return kind === 'journey' ? '#ff6a54' : kind === 'song' ? '#a85cff' : kind === 'charging' ? '#5bd6b9' : '#678cff'; }
-function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : kind === 'collection' ? '▦' : '✦'; }
+function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : '✦'; }
 function formatClock(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'; }
 function relativeTime(value?: string) { if (!value) return 'from saved data'; const minutes = Math.max(0, Math.round((Date.now() - Date.parse(value)) / 60_000)); return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`; }
 function routeMiles(coordinates: [number, number][]) { let meters = 0; for (let index = 1; index < coordinates.length; index += 1) { const [aLng, aLat] = coordinates[index - 1], [bLng, bLat] = coordinates[index], rad = Math.PI / 180; const dLat = (bLat - aLat) * rad, dLng = (bLng - aLng) * rad; const chord = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2; meters += 12_742_000 * Math.asin(Math.sqrt(chord)); } return meters / 1609.344; }

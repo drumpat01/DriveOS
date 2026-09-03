@@ -12,7 +12,7 @@
 
 ## Overview
 
-JourneyDeck is a local-first iPhone driving journal. It helps you record journeys, revisit route memories and patterns, and optionally add music, vehicle, photos, and private iCloud continuity. JourneyDeck is not a navigation, emergency, crash-detection, or driving-safety service.
+JourneyDeck is a local-first iPhone driving journal. It helps you record journeys, revisit route memories and patterns, and optionally add music, photos, and private iCloud continuity. JourneyDeck is not a navigation, emergency, crash-detection, or driving-safety service.
 
 This policy explains what the public JourneyDeck iPhone app handles, why it handles it, where it is stored, and the choices available to you.
 
@@ -20,13 +20,13 @@ This policy explains what the public JourneyDeck iPhone app handles, why it hand
 
 ### Journey and location information
 
-When you start a journey, or enable Automatic Drive Detection, JourneyDeck may use your iPhone’s precise location, timing, speed, heading, and accuracy information to record a route and derive trip details such as distance and drive time. This information is stored on your iPhone first. Location access is optional, but the route-recording features cannot work without it.
+When you tap Start Journey, JourneyDeck may use your iPhone’s precise location, timing, speed, heading, and accuracy information to record a route and derive trip details such as distance and drive time. Version 1 never begins a journey automatically. The iPhone records the GPS route and stores it locally first. Location access is optional, but route recording cannot work without it.
 
-JourneyDeck requests background location only so a journey you choose to record, or the Automatic Drive Detection mode you choose to enable, can continue while your iPhone is locked or another app is open. You can change or revoke location access in iOS Settings.
+JourneyDeck requests background location only so a journey you intentionally started can continue while your iPhone is locked or another app is open. You can change or revoke location access in iOS Settings.
 
 ### Profile, labels, memories, and photos
 
-JourneyDeck can store the profile name you choose, place labels, memories, collections, journey notes, and photos you choose to attach. Photos are requested only when you select them. JourneyDeck does not access your camera or photo library beyond the media you choose.
+JourneyDeck can store the profile name you choose, place labels, Journeys, Memories that group one or more Journeys, journey notes, and photos you choose to attach. Photos are requested only when you select them. JourneyDeck does not access your camera or photo library beyond the media you choose.
 
 ### Optional music features
 
@@ -34,11 +34,11 @@ You can use Apple Music history for automatic soundtracks or manually tap Identi
 
 ### Optional Sign in with Apple and private iCloud continuity
 
-Sign in with Apple is optional. When used, JourneyDeck may keep the Apple subject identifier and a local profile record so your iPhone can recognize that profile. Private iCloud continuity is also optional. When you enable it, JourneyDeck may sync journey records, routes, labels, memories, collections, selected photos, and preferences to your private CloudKit database associated with your Apple Account. Patrick Benjamin Stewart does not use that data for advertising or sell it.
+Sign in with Apple is optional. When used, JourneyDeck may keep the Apple subject identifier and a local profile record so your iPhone can recognize that profile. Private iCloud continuity is also optional. When you enable it, JourneyDeck may sync journey records, routes, labels, Memories, selected photos, and preferences to your private CloudKit database associated with your Apple Account. Patrick Benjamin Stewart does not use that data for advertising or sell it.
 
 ### Anonymous diagnostics and performance
 
-JourneyDeck uses Expo EAS Observe to understand production reliability. Expo may process a random identifier unique to one app installation, app/build/update identifiers, device and operating-system characteristics, startup and rendering timings, update-download performance, memory-pressure warnings, JavaScript error information, and privacy-safe recorder lifecycle events such as whether automatic detection armed, confirmed, or completed. JourneyDeck does not attach route coordinates, addresses, place names, journey titles, photos, music names, Apple identity, or account identifiers to these diagnostic events. The installation identifier is not derived from your identity and resets if you uninstall and reinstall JourneyDeck.
+JourneyDeck uses Expo EAS Observe to understand production reliability. Expo may process a random identifier unique to one app installation, app/build/update identifiers, device and operating-system characteristics, startup and rendering timings, update-download performance, memory-pressure warnings, JavaScript error information, and privacy-safe recorder lifecycle events such as whether a user-started recording began or completed. JourneyDeck does not attach route coordinates, addresses, place names, journey titles, photos, music names, Apple identity, or account identifiers to these diagnostic events. The installation identifier is not derived from your identity and resets if you uninstall and reinstall JourneyDeck.
 
 ### Optional legacy owner backup
 
@@ -50,7 +50,7 @@ JourneyDeck uses the information above to record and display your journeys, crea
 
 ## Service providers and sharing
 
-JourneyDeck may use Apple services that you enable or that are necessary to operate iOS features, including Location Services, CloudKit, Apple Music, Sign in with Apple, and ShazamKit. Map displays may retrieve tiles directly from the configured map provider. Software updates and anonymous diagnostics may be processed through Expo services.
+JourneyDeck may use Apple services that you enable or that are necessary to operate iOS features, including Location Services, CloudKit, Apple Music, Sign in with Apple, StoreKit, and ShazamKit. Map displays may retrieve tiles directly from the configured map provider. Software updates and anonymous diagnostics may be processed through Expo services.
 
 JourneyDeck does not share your precise route with advertisers. A privacy-safe share card is designed to remove or replace sensitive Home and Work details before you choose to export it; review what you share before sending it to another person or service.
 
@@ -62,7 +62,7 @@ You can revoke Location, Music, Microphone, Photos, and iCloud permissions at an
 
 ## Security
 
-JourneyDeck uses iOS-provided secure storage for sensitive local credentials such as optional vehicle and owner-backup tokens. No method of storage or transmission is completely secure, but JourneyDeck is designed to minimize server dependency and keep private journey data under your control.
+JourneyDeck uses iOS-provided secure storage for sensitive local credentials such as an optional owner-backup token. No method of storage or transmission is completely secure, but JourneyDeck is designed to minimize server dependency and keep private journey data under your control.
 
 ## Children
 

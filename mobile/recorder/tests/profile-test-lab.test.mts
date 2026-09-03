@@ -46,7 +46,8 @@ test('synthetic profiles cannot pull existing private iCloud records into the cl
 test('Data Health exposes exact aggregate isolation counts and a safe return path', () => {
   assert.match(health, /Profile Test Lab/);
   assert.match(health, /localStoreDiagnostics\(currentUser\.id\)/);
-  for (const label of ['JOURNEYS', 'GPS POINTS', 'SONGS', 'MEMORIES', 'COLLECTIONS', 'RECORDER QUEUE']) assert.match(health, new RegExp(label));
+  for (const label of ['JOURNEYS', 'GPS POINTS', 'SONGS', 'MEMORIES', 'RECORDER QUEUE']) assert.match(health, new RegExp(label));
+  assert.doesNotMatch(health, /COLLECTIONS/);
   assert.match(health, /Return to \{profile\.displayName/);
   assert.match(health, /This never deletes, merges, or edits your current data/);
 });

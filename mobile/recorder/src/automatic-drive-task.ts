@@ -23,6 +23,7 @@ import {
 } from './tracking';
 import { processPendingCompletionJobs } from './completion-jobs';
 import { observeJourneyDeckEvent } from './observability';
+import { tessieAutomaticRecordingEligible } from './tessie-direct';
 
 function preRollPoint(location: LocationObject): AutomaticDrivePreRollPoint {
   return {
@@ -111,6 +112,11 @@ export async function processAutomaticDriveLocations(locations: LocationObject[]
     saveAutomaticDriveState(emptyAutomaticDriveState());
     return;
   }
+
+  // Never start a new automatic journey without both paid membership and a
+  // verified Tesla. If access changes during an existing automatic journey,
+  // keep processing only long enough to finish and preserve that recording.
+  if (!current && !(await tessieAutomaticRecordingEligible())) return;
 
   let automaticSessionActive = Boolean(current?.status === 'recording' && detector.automaticSessionId === current.id);
   const ordered = [...locations].sort((left, right) => left.timestamp - right.timestamp);

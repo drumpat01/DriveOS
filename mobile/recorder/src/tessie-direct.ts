@@ -2,9 +2,12 @@ import Constants from 'expo-constants';
 
 import { requestPrivacyEdgeJson } from './network-request';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
+import { getMembershipStatus } from '../modules/journeydeck-membership';
+import { entitlementsForVerifiedMembership } from './membership-entitlements';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 const TESSIE_TOKEN_KEY = 'journeydeck.vehicle.tessie.token.v1';
+const TESSIE_VERIFIED_VEHICLE_KEY = 'journeydeck.vehicle.tessie.verified-count.v1';
 
 export type TessieVehicleSnapshot = {
   vehicleKey: string; name: string; status: string; batteryPercent: number | null; rangeMiles: number | null;
@@ -54,13 +57,32 @@ async function storedToken() {
   } catch { return null; }
 }
 
+async function storedVerifiedVehicleCount() {
+  try {
+    const count = Number(await loadProfileSecret(TESSIE_VERIFIED_VEHICLE_KEY));
+    return Number.isInteger(count) && count > 0 && count <= 4 ? count : 0;
+  } catch { return 0; }
+}
+
+async function paidTessieAccess() {
+  if (!TESSIE_INTEGRATION_ENABLED) return false;
+  try { return entitlementsForVerifiedMembership(await getMembershipStatus()).tessieAccess; }
+  catch { return false; }
+}
+
+export async function tessieAutomaticRecordingEligible() {
+  if (!(await paidTessieAccess())) return false;
+  const [accessToken, vehicleCount] = await Promise.all([storedToken(), storedVerifiedVehicleCount()]);
+  return Boolean(accessToken && vehicleCount > 0);
+}
+
 export async function tessieDirectStatus() {
-  if (!TESSIE_INTEGRATION_ENABLED) return 'not_connected' as const;
-  return (await storedToken()) ? 'connected' as const : 'not_connected' as const;
+  return (await tessieAutomaticRecordingEligible()) ? 'connected' as const : 'not_connected' as const;
 }
 
 export async function connectTessieDirect(accessToken: string) {
   if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
+  if (!(await paidTessieAccess())) throw new Error('An active JourneyDeck membership is required to connect Tessie.');
   const clean = accessToken.trim();
   if (!validToken(clean)) throw new Error('Enter the Tessie access token from Tessie developer settings.');
   const edge = edgeUrl();
@@ -69,20 +91,34 @@ export async function connectTessieDirect(accessToken: string) {
     reason: 'external_import', operation: 'Tessie connection check', timeoutMs: 15_000,
   });
   if (result.valid !== true) throw new Error('Tessie did not accept that access token.');
+  const vehicleCount = Math.max(0, Math.min(4, Math.round(Number(result.vehicleCount) || 0)));
+  if (vehicleCount < 1) throw new Error('Tessie did not find an active Tesla on that account.');
   await saveProfileSecret(TESSIE_TOKEN_KEY, clean);
-  return Math.max(0, Math.round(Number(result.vehicleCount) || 0));
+  try { await saveProfileSecret(TESSIE_VERIFIED_VEHICLE_KEY, String(vehicleCount)); }
+  catch (error) {
+    await deleteProfileSecret(TESSIE_TOKEN_KEY).catch(() => undefined);
+    throw error;
+  }
+  return vehicleCount;
 }
 
 export async function disconnectTessieDirect() {
-  await deleteProfileSecret(TESSIE_TOKEN_KEY);
+  await Promise.all([
+    deleteProfileSecret(TESSIE_TOKEN_KEY),
+    deleteProfileSecret(TESSIE_VERIFIED_VEHICLE_KEY),
+  ]);
 }
 
 export async function deleteCurrentProfileTessieSecrets(): Promise<void> {
-  await deleteProfileSecretAndOwnedLegacy(TESSIE_TOKEN_KEY);
+  await Promise.all([
+    deleteProfileSecretAndOwnedLegacy(TESSIE_TOKEN_KEY),
+    deleteProfileSecretAndOwnedLegacy(TESSIE_VERIFIED_VEHICLE_KEY),
+  ]);
 }
 
 export async function syncTessieDirect(): Promise<TessieSnapshot> {
   if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
+  if (!(await tessieAutomaticRecordingEligible())) throw new Error('Connect a verified Tesla with an active JourneyDeck membership first.');
   const accessToken = await storedToken();
   if (!accessToken) throw new Error('Connect Tessie in Settings first.');
   const edge = edgeUrl();
@@ -98,7 +134,7 @@ export async function syncTessieDirect(): Promise<TessieSnapshot> {
 }
 
 export async function sampleTessieMedia(): Promise<TessieMediaSample | null> {
-  if (!TESSIE_INTEGRATION_ENABLED) return null;
+  if (!(await tessieAutomaticRecordingEligible())) return null;
   const accessToken = await storedToken();
   if (!accessToken) return null;
   const edge = edgeUrl();

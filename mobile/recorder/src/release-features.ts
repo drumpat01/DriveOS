@@ -1,9 +1,9 @@
 /**
  * Public version-1 release gates.
  *
- * Keep the Tessie implementation in the repository, but do not expose or run
- * it in version 1. In particular, no Tessie work may share either background
- * location task used for automatic drive detection and route recording.
+ * Version 1 is deliberately manual-recording only. The Tessie implementation
+ * stays dormant for a possible version-2 return, but no version-1 runtime,
+ * entitlement, onboarding step, or setting may expose it.
  */
 export const TESSIE_INTEGRATION_ENABLED: boolean = false;
 

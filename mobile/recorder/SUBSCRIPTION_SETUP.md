@@ -22,6 +22,7 @@ The app safely handles partial setup. If only one product is available, it shows
 
 ## Access model
 
-- Free: Statistics in the fifth tab and the latest 45 days of Journeys, Memories, Statistics, and timeline history.
-- Paid: Atlas in the fifth tab and complete locally stored history.
+- Free: Manual Start and Finish, Statistics in the fifth tab, and the latest 45 days of Journeys, Memories, Statistics, and timeline history.
+- Paid: Atlas and complete locally stored Journey, Memory, and soundtrack history.
 - Downgrade or expiration never deletes history. Older content is hidden until a current entitlement is verified again.
+- Recording remains manual for free and paid users in version 1.
