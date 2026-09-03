@@ -1,5 +1,14 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Saved Places and simplified Settings — September 3, 2026
+
+- Replaced the passive **Home & Work Safe Zones** card with a compact **Saved Places** editor for **Home, Work, and School**. Each place can be set from a street address or the iPhone's current location, changed, or removed.
+- Saved Places remain local-first and privately synchronize as profile preferences. They materialize into the canonical places table so one saved name automatically propagates to matching Journey start/end labels.
+- Home, Work, and School now receive the same share-card endpoint protection. Share copy refers to a saved place rather than exposing which sensitive category was trimmed.
+- Removed the redundant visible **Manual Recording** section from Settings because JourneyDeck V1 is manual-only. Tightened the Settings header, membership, iCloud, and account copy without changing the approved Home, navigation, Journey Details, or sharing layouts.
+- Verification passed: TypeScript, focused Saved Places/privacy/storage/Settings checks **38/38**, full mobile suite **181/181**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` (only repository LF-to-CRLF notices). Implementation commit `9160ca3` (`feat: simplify settings with saved places`) is pushed to `origin/codex/native-runtime-prep`.
+- Published and independently verified the Build 13-compatible iOS production OTA: group `1bb59ed4-24a4-4d22-8f8f-4387c8f8234b`, update `01a068af-7e22-73c9-b24c-d03ebbb88b1d`, runtime `1.9.0-build13`, message `Add Saved Places and simplify Settings`. No native build, TestFlight upload, App Store Connect mutation, or data reset was performed.
+
 ## V1 product simplification: Journeys and Memories — September 3, 2026
 
 - Simplified the public information model to two levels: a **Journey** is one recorded drive, and a **Memory** is a user-created group of one or more Journeys. Collections and their public data/API/search/sync paths are retired. The user explicitly confirmed that previous grouping data does not need to be preserved because they are the only user; existing recorded Journeys remain intact.
