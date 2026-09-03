@@ -1,5 +1,13 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Settings Primary Driver profile editor — September 3, 2026
+
+- Made the full **Primary Driver** account card in Settings actionable. Tapping it opens the existing private profile-editing experience for changing the display name, choosing/replacing a profile photo, or returning to initials.
+- The Settings card now displays the saved profile name and photo/initials immediately after saving. Profile appearance continues to use the existing private, profile-scoped preference and photo-size safeguards; the approved Home, navigation, Journey Details, and sharing layouts were not changed.
+- Removed the vertical departure jiggle from Settings and other tall tabs. The shared transition retains its subtle fade and horizontal depth compression but no longer scales vertically around the screen center, so the page's top edge remains fixed while navigating away.
+- Verification passed: TypeScript, focused Settings/navigation/tab checks **40/40**, full mobile suite **182/182**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` (only repository LF-to-CRLF notices). Implementation commit `c54df5b` (`fix: connect profile editor and stabilize tab motion`) is pushed to `origin/codex/native-runtime-prep`.
+- Published and independently verified the Build 13-compatible iOS production OTA: group `56df5710-6a20-4586-a7ff-48146a9a4215`, update `01a068d6-a63f-7b70-a2a6-2f8dc61a429c`, runtime `1.9.0-build13`, message `Add profile editing and stabilize tab transitions`. No native build, TestFlight upload, App Store Connect mutation, or data reset was performed.
+
 ## Saved Places and simplified Settings — September 3, 2026
 
 - Replaced the passive **Home & Work Safe Zones** card with a compact **Saved Places** editor for **Home, Work, and School**. Each place can be set from a street address or the iPhone's current location, changed, or removed.
