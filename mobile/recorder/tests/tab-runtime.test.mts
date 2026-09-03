@@ -30,6 +30,8 @@ test('tabs use one native pager with a bounded offscreen memory budget', () => {
   assert.match(shell, /<PagerView/);
   assert.match(shell, /scrollEnabled=\{false\}/);
   assert.match(shell, /offscreenPageLimit=\{1\}/);
+  assert.match(shell, /transform: \[\{ scaleX: motion\.scale \}\]/);
+  assert.doesNotMatch(shell, /transform: \[\{ scale: motion\.scale \}\]/);
   assert.match(shell, /key="music"/);
   assert.match(shell, /key="journeys"/);
   assert.match(shell, /key="home"/);

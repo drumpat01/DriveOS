@@ -2505,6 +2505,10 @@ function ConnectionsScreen({
   const [savedPlaceEditor, setSavedPlaceEditor] = useState<SavedPlaceSlot | null>(null);
   const [savedPlaceAddress, setSavedPlaceAddress] = useState('');
   const [savedPlaceBusy, setSavedPlaceBusy] = useState(false);
+  const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
+  const [profileDraft, setProfileDraft] = useState(() => loadProfileAppearance(currentUser));
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [profileAvatarBusy, setProfileAvatarBusy] = useState(false);
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
   const connections = dashboard.providerPreferences?.connections ?? defaultConnections;
   const insets = useSafeAreaInsets();
@@ -2512,6 +2516,10 @@ function ConnectionsScreen({
     setSavedPlaces(loadSavedPlaces(currentUser.id));
     setSavedPlaceEditor(null);
     setSavedPlaceAddress('');
+    const appearance = loadProfileAppearance(currentUser);
+    setProfileAppearance(appearance);
+    setProfileDraft(appearance);
+    setProfileEditorOpen(false);
   }, [currentUser.id]);
   const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
   const finishSavedPlace = (slot: SavedPlaceSlot, latitude: number, longitude: number) => {
@@ -2550,6 +2558,27 @@ function ConnectionsScreen({
     refreshSavedPlaces();
     setSavedPlaceEditor(null);
     setSavedPlaceAddress('');
+  };
+  const editProfile = () => {
+    setProfileDraft(profileAppearance);
+    setProfileEditorOpen(true);
+    void Haptics.selectionAsync();
+  };
+  const pickProfileAvatar = async () => {
+    setProfileAvatarBusy(true);
+    try {
+      const avatarDataUri = await chooseProfileAvatar();
+      if (avatarDataUri) setProfileDraft(current => ({ ...current, avatarDataUri }));
+    } catch (error) {
+      Alert.alert('Profile image was not changed', error instanceof Error ? error.message : 'Try another image.');
+    } finally { setProfileAvatarBusy(false); }
+  };
+  const saveSettingsProfile = () => {
+    const saved = saveProfileAppearance(currentUser, profileDraft);
+    setProfileAppearance(saved);
+    setProfileDraft(saved);
+    setProfileEditorOpen(false);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
   return (
     <View style={styles.safe}>
@@ -2591,10 +2620,11 @@ function ConnectionsScreen({
         </View>
 
         <SectionHeading title="Account" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: '#3a2446' }]}><Text style={styles.connectionIconText}></Text></View>
-          <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{currentUser.displayName || 'Primary Driver'}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
-        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={editProfile} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }, pressed && styles.pressed]}>
+          <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: '#3a2446' }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
+          <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
+          <Text style={styles.savedPlaceAction}>Edit</Text>
+        </Pressable>
         {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
         {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
         {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
@@ -2656,6 +2686,28 @@ function ConnectionsScreen({
         <Pressable onPress={() => void saveCurrentPlace()} disabled={savedPlaceBusy} style={[styles.savedPlaceCurrent, savedPlaceBusy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{savedPlaceBusy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
         {savedPlaceEditor && savedPlaces[savedPlaceEditor] && <Pressable onPress={clearSavedPlace} disabled={savedPlaceBusy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
       </OverlayModal>
+      <Modal visible={profileEditorOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => !profileAvatarBusy && setProfileEditorOpen(false)}>
+        <View style={styles.profileEditorRoot}>
+          <Pressable style={StyleSheet.absoluteFill} disabled={profileAvatarBusy} onPress={() => setProfileEditorOpen(false)}><BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} /></Pressable>
+          <CinematicGlass style={styles.profileEditorCard}>
+            <Text style={styles.profileEditorEyebrow}>PRIMARY DRIVER</Text>
+            <Text style={styles.profileEditorTitle}>Edit your profile</Text>
+            <Text style={styles.profileEditorBody}>Your name and photo stay in your private JourneyDeck profile.</Text>
+            <Pressable disabled={profileAvatarBusy} onPress={() => void pickProfileAvatar()} style={styles.profileEditorAvatarButton}>
+              <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}><View style={styles.profileEditorAvatarInner}>{profileDraft.avatarDataUri ? <ExpoImage source={profileDraft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.profileEditorAvatarInitials}>{profileInitialsFor(profileDraft.displayName)}</Text>}</View></LinearGradient>
+              <View style={styles.profileEditorPhotoBadge}>{profileAvatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}</View>
+            </Pressable>
+            <Pressable disabled={profileAvatarBusy} onPress={() => void pickProfileAvatar()}><Text style={styles.profileEditorPhotoAction}>{profileDraft.avatarDataUri ? 'Choose a different photo' : 'Choose profile photo'}</Text></Pressable>
+            {profileDraft.avatarDataUri && <Pressable onPress={() => setProfileDraft(current => ({ ...current, avatarDataUri: null }))}><Text style={styles.profileEditorRemovePhoto}>Use initials instead</Text></Pressable>}
+            <Text style={styles.profileEditorLabel}>NAME</Text>
+            <TextInput value={profileDraft.displayName} onChangeText={displayName => setProfileDraft(current => ({ ...current, displayName }))} maxLength={48} placeholder="Primary Driver" placeholderTextColor="#71677a" selectionColor="#ff795b" style={styles.profileEditorInput} />
+            <View style={styles.profileEditorActions}>
+              <Pressable disabled={profileAvatarBusy} onPress={() => setProfileEditorOpen(false)} style={styles.profileEditorCancel}><Text style={styles.profileEditorCancelText}>Cancel</Text></Pressable>
+              <Pressable disabled={profileAvatarBusy} onPress={saveSettingsProfile} style={styles.profileEditorSave}><LinearGradient colors={['#ff795b', '#ff597f']} style={StyleSheet.absoluteFill} /><Text style={styles.profileEditorSaveText}>Save profile</Text></Pressable>
+            </View>
+          </CinematicGlass>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -2665,7 +2717,9 @@ function CinematicTabPage({ children, index, progress, reduceMotion }: { childre
     const motion = tabPageMotion(progress.value, index, reduceMotion);
     return {
       opacity: motion.opacity,
-      transform: [{ scale: motion.scale }],
+      // Keep the page's top edge fixed. A centered two-axis scale made tall
+      // screens such as Settings appear to jump downward while departing.
+      transform: [{ scaleX: motion.scale }],
     };
   }, [index, reduceMotion]);
 
