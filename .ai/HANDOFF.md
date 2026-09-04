@@ -4,7 +4,7 @@
 
 - Shortened the temporary Settings iCloud check message to **“Checking iCloud zone…”** and constrained only that brief syncing state to one line. Stable iCloud status and explanatory copy can still wrap normally, while the momentary check can no longer resize the card and resemble a visual glitch.
 - Added a regression covering the exact copy and conditional one-line behavior. TypeScript, focused tab runtime **29/29**, complete V1 suite **183/183**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` pass.
-- Awaiting implementation commit, push, and Build 13-compatible production OTA publication.
+- Implementation commit `42d6df8` (`fix: stabilize transient iCloud status`) is pushed to `origin/codex/native-runtime-prep`. Published and independently verified the Build 13-compatible iOS production OTA: group `86549ee4-4eb5-413b-9409-f5d23ba77c91`, update `01a06a6a-459f-7415-bc10-ec7744db5da9`, runtime `1.9.0-build13`, message `Shorten iCloud status`. No native build, TestFlight upload, App Store Connect mutation, or user data change was performed.
 
 ## Settings inertial-scroll sawtooth correction — September 3, 2026
 
