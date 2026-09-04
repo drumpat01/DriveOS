@@ -20,6 +20,7 @@ const checklist = await readFile(new URL('../APP_STORE_RELEASE.md', import.meta.
 const publicPreflight = await readFile(new URL('../scripts/public-release-preflight.mjs', import.meta.url), 'utf8');
 const membershipPaywall = await readFile(new URL('../src/membership-paywall.tsx', import.meta.url), 'utf8');
 const membershipStore = await readFile(new URL('../src/membership-store.ts', import.meta.url), 'utf8');
+const membershipNative = await readFile(new URL('../modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift', import.meta.url), 'utf8');
 
 test('production uses the production privacy edge and keeps internal testing disabled', () => {
   assert.equal(app.expo.extra.edge.url, 'https://journeydeck-edge.patrickbstewart.workers.dev');
@@ -80,10 +81,43 @@ test('version 1 disables Tessie and automatic recording for every membership tie
 test('public membership uses verified StoreKit products without hardcoded pricing', () => {
   assert.match(shell, /membershipTier=\{membership\.tier\}/);
   assert.match(membershipStore, /entitlementsForVerifiedMembership/);
+  assert.match(membershipStore, /const availableProducts = await getMembershipProducts\(\)/);
+  assert.match(membershipStore, /productLoadGeneration/);
+  assert.match(membershipStore, /setProducts\(\[\]\)/);
   assert.match(membershipPaywall, /product\.displayPrice/);
+  assert.match(membershipPaywall, /selectedProduct\.displayPrice/);
+  assert.match(membershipPaywall, /loadProductsRef\.current\(\)/);
   assert.match(membershipPaywall, /Restore Purchases/);
-  assert.doesNotMatch(shell, /\$4\.99/);
-  assert.doesNotMatch(membershipPaywall, /\$4\.99/);
+  assert.doesNotMatch(shell, /[$€£¥]\s?\d/);
+  assert.doesNotMatch(membershipPaywall, /[$€£¥]\s?\d/);
+  assert.match(membershipNative, /product\.displayPrice/);
+});
+
+test('membership sells Atlas intelligence and complete history in one full-screen composition', () => {
+  assert.match(membershipPaywall, /presentationStyle="fullScreen"/);
+  assert.match(membershipPaywall, /atlas-globe-membership-v1\.jpg/);
+  assert.match(membershipPaywall, /atlas-header-orbit-v1\.png/);
+  assert.match(membershipPaywall, /ambientGlow: \{[\s\S]*?width: 320,[\s\S]*?height: 320,/);
+  assert.doesNotMatch(membershipPaywall, /rgba\(170,36,157,0\.18\)/);
+  assert.match(membershipPaywall, /Your driving story, decoded\./);
+  assert.match(membershipPaywall, /YOUR PRIVATE ATLAS/);
+  assert.match(membershipPaywall, /Pattern Intelligence/);
+  assert.match(membershipPaywall, /Favorite Places/);
+  assert.match(membershipPaywall, /Repeated Routes/);
+  assert.match(membershipPaywall, /Music Moments/);
+  assert.match(membershipPaywall, /Every journey beyond the latest 45 days/);
+  assert.match(membershipPaywall, /BEST VALUE/);
+  assert.match(membershipPaywall, /accessibilityRole="radio"/);
+  assert.match(membershipPaywall, /purchaseInFlight/);
+  assert.match(membershipPaywall, /useWindowDimensions/);
+  assert.match(membershipPaywall, /useSafeAreaInsets/);
+  assert.match(membershipPaywall, /\(usableHeight - 790\) \/ 60/);
+  assert.match(membershipPaywall, /height: 156 \+ \(44 \* expansion\)/);
+  assert.match(membershipPaywall, /minHeight: 84 \+ \(14 \* expansion\)/);
+  assert.match(membershipPaywall, /fontScale >= 1\.25/);
+  assert.match(membershipPaywall, /featureRow: \{ flexDirection: 'row'/);
+  assert.doesNotMatch(membershipPaywall, /featureGrid: \{[^\n]*flexWrap/);
+  assert.match(membershipPaywall, /ctaShell: \{ minHeight: 52, marginTop: 9/);
 });
 
 test('release checklist keeps the non-code App Store gates explicit', () => {

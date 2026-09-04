@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
 import {
@@ -38,6 +38,8 @@ export function useJourneyDeckMembership() {
   const [productsLoading, setProductsLoading] = useState(false);
   const [purchasePending, setPurchasePending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const productLoadGeneration = useRef(0);
+  const purchaseInFlight = useRef(false);
 
   const applyStatus = useCallback((nextStatus: JourneyDeckMembershipStatus) => {
     setStatus(nextStatus);
@@ -56,24 +58,35 @@ export function useJourneyDeckMembership() {
   }, [applyStatus]);
 
   const loadProducts = useCallback(async () => {
+    const generation = productLoadGeneration.current + 1;
+    productLoadGeneration.current = generation;
+    setProducts([]);
     if (!isJourneyDeckMembershipNativeAvailable) {
+      setProductsLoading(false);
       setMessage('Subscriptions require JourneyDeck Build 10 or newer.');
-      return;
+      return false;
     }
     setProductsLoading(true);
     setMessage(null);
     try {
       const availableProducts = await getMembershipProducts();
+      if (productLoadGeneration.current !== generation) return false;
       setProducts(availableProducts);
       if (!availableProducts.length) setMessage('JourneyDeck memberships are not available from the App Store yet.');
+      return true;
     } catch (error) {
+      if (productLoadGeneration.current !== generation) return false;
+      setProducts([]);
       setMessage(error instanceof Error ? error.message : 'The App Store could not load membership options.');
+      return false;
     } finally {
-      setProductsLoading(false);
+      if (productLoadGeneration.current === generation) setProductsLoading(false);
     }
   }, []);
 
   const purchase = useCallback(async (productId: string) => {
+    if (purchaseInFlight.current) return 'pending' as const;
+    purchaseInFlight.current = true;
     setPurchasePending(true);
     setMessage(null);
     try {
@@ -85,11 +98,14 @@ export function useJourneyDeckMembership() {
       setMessage(error instanceof Error ? error.message : 'The App Store purchase did not finish.');
       return 'failed' as const;
     } finally {
+      purchaseInFlight.current = false;
       setPurchasePending(false);
     }
   }, [applyStatus]);
 
   const restore = useCallback(async () => {
+    if (purchaseInFlight.current) return;
+    purchaseInFlight.current = true;
     setPurchasePending(true);
     setMessage(null);
     try {
@@ -99,6 +115,7 @@ export function useJourneyDeckMembership() {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'The App Store could not restore purchases.');
     } finally {
+      purchaseInFlight.current = false;
       setPurchasePending(false);
     }
   }, [applyStatus]);

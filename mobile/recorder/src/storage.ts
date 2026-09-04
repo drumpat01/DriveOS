@@ -500,7 +500,17 @@ export function markPointsUploaded(sessionId: string, sequences: number[]) {
 export function setLocalStatus(sessionId: string, status: Exclude<LocalSessionStatus, 'completed'>) {
   initializeDatabase();
   const endedAt = status === 'finishing' ? new Date().toISOString() : null;
-  db.runSync('UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=? AND owner_user_id=?;', status, endedAt, new Date().toISOString(), sessionId, getCurrentUser().id);
+  db.runSync("UPDATE recording_sessions SET status=?,ended_at=COALESCE(?,ended_at),updated_at=? WHERE id=? AND owner_user_id=? AND status<>'completed';", status, endedAt, new Date().toISOString(), sessionId, getCurrentUser().id);
+}
+
+/** Atomically gives the manual failsafe sole ownership of finishing a session. */
+export function claimManualSessionForFailsafeFinish(sessionId: string): boolean {
+  initializeDatabase();
+  const now = new Date().toISOString();
+  const result = db.runSync(`UPDATE recording_sessions SET status='finishing',ended_at=COALESCE(ended_at,?),updated_at=?
+    WHERE id=? AND owner_user_id=? AND status IN ('recording','paused') AND id NOT LIKE 'native_recording_%';`,
+  now, now, sessionId, getCurrentUser().id);
+  return result.changes === 1;
 }
 
 export function recentCompletedSessionIds(limit = 5) {

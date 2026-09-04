@@ -16,6 +16,7 @@ import {
 } from './membership-entitlements';
 import { getLiveRecorderSnapshot, readAppCache, writeAppCache, type LiveRecorderSnapshot } from './storage';
 import { enrichJourneyEndpointPlaces } from './journey-place-enrichment';
+import { isVisibleJourney } from './journey-visibility';
 
 export type TimelineItem = {
   id: string;
@@ -406,7 +407,7 @@ async function loadJourneyArchive(membership: JourneyDeckMembershipEntitlements,
     const result = await appDataClient.journeys(50, cursor, refreshRemote);
     const existing = new Set(journeys.map(journey => journey.id));
     journeys.push(...result.items.filter(journey => !existing.has(journey.id)));
-    if (!result.nextCursor || result.items.length === 0) break;
+    if (!result.nextCursor) break;
     if (membership.timelineHistoryDays !== null && result.items.some(journey => !membershipCanAccessDate(membership, journey.startedAt))) break;
     if (seenCursors.has(result.nextCursor)) break;
     seenCursors.add(result.nextCursor);
@@ -424,7 +425,7 @@ export async function loadPrimarySectionsData(
     appDataClient.dashboard(forceRefresh).catch(() => appDataClient.localDashboard()),
     loadJourneyArchive(membership, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(false), appDataClient.vehicleIntelligence(false),
   ]);
-  const accessibleJourneys = journeys.filter(journey => membershipCanAccessDate(membership, journey.startedAt));
+  const accessibleJourneys = journeys.filter(journey => isVisibleJourney(journey) && membershipCanAccessDate(membership, journey.startedAt));
   const detailCandidates = accessibleJourneys;
   const details = (await Promise.all(detailCandidates.map(journey => {
     const local = appDataClient.localOrCachedJourney(journey.id);
@@ -433,8 +434,13 @@ export async function loadPrimarySectionsData(
     .filter((detail): detail is JourneyDetail => Boolean(detail));
   const accessibleChargingSessions = vehicle.chargingSessions.filter(session => membershipCanAccessDate(membership, session.startedAt));
   const accessibleMusic = membership.timelineHistoryDays === null ? music : buildAccessibleMusicDashboard(accessibleJourneys, details, music);
-  const accessibleDashboard = membership.timelineHistoryDays === null ? dashboard : {
+  const recentCutoff = Date.now() - 7 * 86_400_000;
+  const last7DaysJourneys = accessibleJourneys.filter(journey => safeEpoch(journey.startedAt) >= recentCutoff);
+  const accessibleDashboard = {
     ...dashboard,
+    latestJourney: accessibleJourneys[0] ?? null,
+    recentJourneys: accessibleJourneys.slice(0, 10),
+    weeklyJourneys: last7DaysJourneys,
     summary: {
       ...dashboard.summary,
       allTime: accessibleJourneys.reduce((total, journey) => ({
@@ -442,14 +448,25 @@ export async function loadPrimarySectionsData(
         miles: total.miles + journey.miles,
         minutes: total.minutes + journey.durationMinutes,
       }), { journeyCount: 0, miles: 0, minutes: 0 }),
+      last7Days: last7DaysJourneys.reduce((total, journey) => ({
+        journeyCount: total.journeyCount + 1,
+        miles: total.miles + journey.miles,
+        minutes: total.minutes + journey.durationMinutes,
+        songCount: total.songCount + journey.songCount,
+      }), { journeyCount: 0, miles: 0, minutes: 0, songCount: 0 }),
     },
   };
+  const accessibleJourneyIds = new Set(accessibleJourneys.map(journey => journey.id));
+  const accessibleMemories: MemoriesCatalog = {
+    ...memories,
+    memories: memories.memories.map(memory => ({ ...memory, journeyIds: memory.journeyIds.filter(id => accessibleJourneyIds.has(id)) })),
+  };
   const data: PrimarySectionsData = {
-    loadedAt: new Date().toISOString(), dashboard: accessibleDashboard, journeys: accessibleJourneys, details, memories, music: accessibleMusic, vehicle,
+    loadedAt: new Date().toISOString(), dashboard: accessibleDashboard, journeys: accessibleJourneys, details, memories: accessibleMemories, music: accessibleMusic, vehicle,
     live: getLiveRecorderSnapshot(),
     timeline: buildTimeline(accessibleJourneys, details, accessibleChargingSessions),
     statistics: buildStatistics(accessibleJourneys, details),
-    search: buildSearchRecords(accessibleJourneys, details, memories, vehicle.places),
+    search: buildSearchRecords(accessibleJourneys, details, accessibleMemories, vehicle.places),
     atlasPatterns: membership.atlasAccess ? buildAtlasPatterns(accessibleJourneys, vehicle) : [],
   };
   writeAppCache(cacheKey, data);

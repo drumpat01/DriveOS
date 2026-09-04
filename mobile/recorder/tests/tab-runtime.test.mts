@@ -86,7 +86,28 @@ test('the fixed Statistics tab merges live Statistics with the recent Timeline a
   assert.match(primaryData, /membershipCanAccessDate\(membership, journey\.startedAt\)/);
   assert.match(primaryData, /membership\.atlasAccess \? buildAtlasPatterns/);
   assert.match(primarySections, /UNLOCK ATLAS \+ COMPLETE HISTORY/);
+  assert.match(primarySections, /historyDays === null && onAtlas[\s\S]*?Open your Atlas/);
+  assert.match(primarySections, /atlasGateway[\s\S]*?atlas-globe-membership-v1\.jpg/);
+  assert.doesNotMatch(primarySections, /accessibilityLabel="Open Atlas"[\s\S]*?storyStatsUnlock/);
+  assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
+});
+
+test('Atlas uses the selected premium command-center layout without changing the five-item navigation', () => {
+  assert.match(primarySections, /ATLAS PULSE/);
+  assert.match(primarySections, /Route DNA/);
+  assert.match(primarySections, /Driving Rhythms/);
+  assert.match(primarySections, /Exploration Score/);
+  assert.match(primarySections, /Place Relationships/);
+  assert.match(primarySections, /SOUNDTRACK INTELLIGENCE/);
+  assert.match(primarySections, /PRIVATE · ON DEVICE/);
+  assert.match(primarySections, /buildAtlasInsights\(data\?\.journeys \?\? \[\], data\?\.details \?\? \[\], window\)/);
+  assert.match(primarySections, /\[\['30d', '30 DAYS'\], \['90d', '90 DAYS'\], \['all', 'ALL TIME'\]\]/);
+  assert.match(shell, /\{ id: 'music', label: 'Soundtracks'/);
+  assert.match(shell, /\{ id: 'journeys', label: 'Memories'/);
+  assert.match(shell, /\{ id: 'home', label: 'Home'/);
+  assert.match(shell, /\{ id: 'statistics', label: 'Statistics'/);
+  assert.match(shell, /\{ id: 'settings', label: 'Settings'/);
 });
 
 test('Statistics reproduces the selected cinematic option-3 composition with live data', () => {
@@ -184,6 +205,14 @@ test('Settings is the fifth primary tab and keeps Data Health under Advanced Sup
   assert.doesNotMatch(primarySections, /title="Music" detail="Road soundtrack"/);
   assert.match(shell, /if \(tab === 'music'\) void refreshMusicDashboard\(true\)/);
   assert.match(shell, /forceAppleMusicArtworkRefreshAfterUpdate\(\)/);
+});
+
+test('Soundtracks refresh keeps complete journey music and rejects stale replacements', () => {
+  assert.match(shell, /const effectiveDetails = details \?\? primarySections\.data\?\.details \?\? \[\]/);
+  assert.match(shell, /const refreshGeneration = \+\+musicRefreshGeneration\.current/);
+  assert.match(shell, /if \(refreshGeneration !== musicRefreshGeneration\.current\) return/);
+  assert.match(shell, /musicRefreshGeneration\.current \+= 1;\s+setMusicDashboard\(\{ status: 'ready', data: data\.music \}\)/);
+  assert.match(shell, /buildAccessibleMusicDashboard\(accessibleJourneys, effectiveDetails, data\)/);
 });
 
 test('Phase 2 maps use recorded geometry and the same themed OpenFreeMap basemap', () => {
@@ -561,6 +590,7 @@ test('Settings presents one iCloud Backup status and keeps Apple identity under 
   assert.match(shell, /onAppleSignIn/);
   assert.match(shell, /onPrivateCloudSync/);
   assert.match(shell, /<SectionHeading title="iCloud Backup" \/>/);
+  assert.match(shell, /style=\{styles\.icloudMark\}><SymbolView name="icloud\.fill" tintColor="#1687ff"/);
   assert.match(shell, /detail: 'Checking iCloud zone…'/);
   assert.match(shell, /numberOfLines=\{privateCloud\.status === 'syncing' \? 1 : undefined\}/);
   assert.match(shell, /Your JourneyDeck library stays private in your iCloud account/);

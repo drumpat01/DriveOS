@@ -6,7 +6,7 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HeaderArtwork, HeaderEdgeBleed, HeaderEdgeFeather, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
-import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
@@ -32,6 +32,7 @@ import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 import { buildSongRouteMoments } from './route-moments';
+import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'health';
@@ -206,26 +207,46 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
 
 export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const data = state.data;
+  const [window, setWindow] = useState<AtlasInsightWindow>('30d');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Record<string, AtlasPattern['review']>>({});
+  const insights = useMemo(() => buildAtlasInsights(data?.journeys ?? [], data?.details ?? [], window), [data?.details, data?.journeys, window]);
   const places = useMemo(() => data?.vehicle.places ?? [], [data?.vehicle.places]);
   const selectedPlace = useMemo(() => places.find(place => place.id === selectedPlaceId) ?? places[0], [places, selectedPlaceId]);
   const routes = useMemo(() => (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates })), [data?.details]);
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="ATLAS" subtitle="Your complete journey map, favorite places, repeated routes, and travel patterns—all built from your private archive." headerImage={require('../assets/atlas-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
+  return <ScreenScaffold eyebrow="" title="ATLAS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
     <DataNotice state={state} />
-    <PrimaryMobilityMap routes={routes} places={mapPlaces} height={355} emptyMessage="Recorded route geometry will build your long-term Atlas." />
+    <View style={styles.atlasCommandHeader}>
+      <View style={styles.atlasPrivacyBadge}><SymbolView name="lock.fill" tintColor="#ff8b70" size={11} /><Text style={styles.atlasPrivacyText}>PRIVATE · ON DEVICE</Text></View>
+      <View style={styles.atlasWindowRail} accessibilityRole="tablist">
+        {([['30d', '30 DAYS'], ['90d', '90 DAYS'], ['all', 'ALL TIME']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: window === value }} onPress={() => setWindow(value)} style={[styles.atlasWindowChip, window === value && styles.atlasWindowChipActive]}><Text style={[styles.atlasWindowText, window === value && styles.atlasWindowTextActive]}>{label}</Text></Pressable>)}
+      </View>
+    </View>
+    <AtlasPulseCard insights={insights} />
+    <Text style={styles.atlasSectionLabel}>YOUR PRIVATE INTELLIGENCE</Text>
+    <View style={styles.atlasInsightRow}>
+      <RouteDnaCard insight={insights.routeDna} />
+      <DrivingRhythmsCard insight={insights.drivingRhythms} />
+    </View>
+    <View style={styles.atlasInsightRow}>
+      <ExplorationCard insight={insights.exploration} />
+      <PlaceRelationshipsCard insight={insights.placeRelationships} />
+    </View>
+    <SoundtrackIntelligenceCard insight={insights.soundtrack} />
+    <SectionTitle title="Your Atlas map" detail={`${routes.length} mapped journeys`} />
+    <View style={styles.atlasMapFrame}><NeonWidgetOutline radius={24} /><PrimaryMobilityMap routes={routes} places={mapPlaces} height={330} emptyMessage="Recorded route geometry will build your long-term Atlas." /></View>
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
-    <SectionTitle title="Frequent places" detail={`${places.length} discovered`} />
+    <SectionTitle title="Place deep dive" detail={`${places.length} discovered`} />
     {places.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalCards}>
       {places.slice(0, 12).map(place => <Pressable key={place.id} onPress={() => setSelectedPlaceId(place.id)} style={[styles.placeChip, selectedPlace?.id === place.id && styles.placeChipActive]}>{selectedPlace?.id === place.id && <NeonWidgetOutline radius={19} tone="selected" />}
         <Text style={styles.placeCategory}>{place.category.toUpperCase()}</Text><Text style={styles.placeName} numberOfLines={1}>{place.name}</Text><Text style={styles.placeVisits}>{place.visitCount} visits</Text>
       </Pressable>)}
-    </ScrollView> : <EmptyCard text="Places are discovered from journey starts and destinations." />}
+    </ScrollView> : <EmptyCard text="Place relationships form from the named starts and destinations in your journeys." />}
     {selectedPlace && <PlaceDetails place={selectedPlace} onJourney={onJourney} />}
-    <SectionTitle title="Recurring patterns" detail="Confirm what feels meaningful" />
+    <SectionTitle title="Route DNA review" detail="Confirm what feels meaningful" />
     {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}><NeonWidgetOutline radius={18} /><View style={styles.patternContent}>
       <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{formatAtlasPatternRoute(pattern.startLabel, pattern.endLabel)}</Text>
       <Text style={styles.itemDetail}>{pattern.miles.toFixed(1)} mi total{pattern.averageWhPerMile > 0 ? ` · ${Math.round(pattern.averageWhPerMile)} Wh/mi average` : ' · energy appears when vehicle telemetry is available'}</Text>
@@ -234,9 +255,100 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
         <PatternAction symbol="×" label="Dismiss" onPress={() => reviewPattern(pattern.id, 'dismissed')} />
       </View>
     </View></View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
-    <SectionTitle title="Representative routes" detail={`${routes.length} routes cached`} />
+    <SectionTitle title="Recent mapped journeys" detail={`${routes.length} routes cached`} />
     {(data?.details ?? []).slice(0, 8).map(journey => <JourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)}
   </ScreenScaffold>;
+}
+
+function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
+  const windowLabel = insights.window === '30d' ? 'the last 30 days' : insights.window === '90d' ? 'the last 90 days' : 'your complete history';
+  return <View style={styles.atlasPulseCard}>
+    <NeonWidgetOutline radius={28} tone="selected" />
+    <Image pointerEvents="none" source={require('../assets/atlas-header-cinematic-v1.png')} style={styles.atlasPulseBackdrop} contentFit="cover" />
+    <LinearGradient pointerEvents="none" colors={['rgba(255,91,78,0.18)', 'rgba(129,49,179,0.1)', 'rgba(7,3,11,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasPulseOrb}>
+      <View style={styles.atlasPulseRingOuter}><View style={styles.atlasPulseRingInner}><View style={styles.atlasPulseCore} /></View></View>
+    </View>
+    <View style={styles.atlasPulseCopy}>
+      <Text style={styles.atlasPulseEyebrow}>ATLAS PULSE</Text>
+      <Text style={styles.atlasPulseTitle}>{insights.journeyCount ? `${insights.journeyCount} ${insights.journeyCount === 1 ? 'journey is' : 'journeys are'} shaping your Atlas.` : 'Your Atlas is ready to learn.'}</Text>
+      <Text style={styles.atlasPulseDetail}>{insights.journeyCount ? `${insights.miles.toFixed(1)} miles across ${insights.activeDays} active ${insights.activeDays === 1 ? 'day' : 'days'} in ${windowLabel}.` : 'Complete a journey to begin building private drive intelligence.'}</Text>
+    </View>
+    <View style={styles.atlasPulseMetrics}>
+      <AtlasPulseMetric value={String(insights.mappedJourneyCount)} label="MAPPED" />
+      <View style={styles.atlasPulseDivider} />
+      <AtlasPulseMetric value={String(insights.routePointCount)} label="GPS POINTS" />
+      <View style={styles.atlasPulseDivider} />
+      <AtlasPulseMetric value={String(insights.songCount)} label="SONGS" />
+    </View>
+  </View>;
+}
+
+function AtlasPulseMetric({ value, label }: { value: string; label: string }) {
+  return <View style={styles.atlasPulseMetric}><Text style={styles.atlasPulseMetricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text><Text style={styles.atlasPulseMetricLabel}>{label}</Text></View>;
+}
+
+function AtlasInsightShell({ symbol, title, accent = '#ff7967', children }: { symbol: SFSymbol; title: string; accent?: string; children: ReactNode }) {
+  return <View style={styles.atlasInsightCard}>
+    <NeonWidgetOutline radius={20} />
+    <LinearGradient pointerEvents="none" colors={[`${accent}24`, 'rgba(8,4,12,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.8 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: `${accent}99` }]}><SymbolView name={symbol} tintColor={accent} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
+    {children}
+  </View>;
+}
+
+function RouteDnaCard({ insight }: { insight: AtlasInsights['routeDna'] }) {
+  return <AtlasInsightShell symbol="point.topleft.down.to.point.bottomright.curvepath.fill" title="Route DNA">
+    <View style={styles.atlasRoutePreview}>{insight.ready && insight.route.length >= 2 ? <TimelineRouteThumbnail coordinates={insight.route} /> : <SymbolView name="road.lanes.curved.right" tintColor="#654164" size={37} />}</View>
+    {insight.ready ? <>
+      <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} {insight.bidirectional ? '↔' : '→'} {insight.endLabel}</Text>
+      <Text style={styles.atlasInsightDetail}>{insight.trips} {insight.trips === 1 ? 'trip' : 'trips'} · {insight.averageMinutes === null ? 'time unavailable' : `${Math.round(insight.averageMinutes)} min avg`}{insight.averageMiles === null ? '' : ` · ${insight.averageMiles.toFixed(1)} mi`}</Text>
+      <Text style={styles.atlasInsightCallout}>{!insight.established ? 'First signal captured · repeat this route to compare timing' : insight.durationSpreadMinutes === null ? 'Timing will appear when journey duration is available' : insight.durationSpreadMinutes >= 1 ? `${Math.round(insight.durationSpreadMinutes)} min fastest-to-slowest spread` : 'Your timing is remarkably consistent'}</Text>
+    </> : <AtlasLearningCopy text="Complete a journey to reveal its route shape and timing." />}
+  </AtlasInsightShell>;
+}
+
+function DrivingRhythmsCard({ insight }: { insight: AtlasInsights['drivingRhythms'] }) {
+  const maximum = Math.max(1, ...insight.weekdays.map(day => day.journeys));
+  return <AtlasInsightShell symbol="chart.bar.xaxis" title="Driving Rhythms" accent="#bd72ff">
+    <View style={styles.atlasRhythmChart}>{insight.weekdays.map(day => <View key={day.label} style={styles.atlasRhythmColumn}><View style={styles.atlasRhythmTrack}><LinearGradient colors={day.journeys ? ['#ff7767', '#ad5eff'] : ['#2d2132', '#211925']} style={[styles.atlasRhythmBar, { height: Math.max(4, Math.round((day.journeys / maximum) * 48)) }]} /></View><Text style={styles.atlasRhythmDay}>{day.label.slice(0, 1)}</Text></View>)}</View>
+    {insight.ready ? <><Text style={styles.atlasInsightValue}>{insight.leadingDay} leads</Text><Text style={styles.atlasInsightDetail}>{insight.leadingDayJourneys} journeys · {insight.leadingTime?.toLocaleLowerCase()} drives are most common</Text></> : <AtlasLearningCopy text="Three journeys unlock your weekly and time-of-day rhythm." />}
+  </AtlasInsightShell>;
+}
+
+function ExplorationCard({ insight }: { insight: AtlasInsights['exploration'] }) {
+  const score = insight.score ?? 0;
+  const circumference = 175.93;
+  return <AtlasInsightShell symbol="safari.fill" title="Exploration Score" accent="#ff5a86">
+    <View style={styles.atlasGaugeWrap}><Svg width="86" height="86" viewBox="0 0 70 70"><Circle cx="35" cy="35" r="28" fill="none" stroke="#2b1b31" strokeWidth="6" /><Circle cx="35" cy="35" r="28" fill="none" stroke="#ff647d" strokeWidth="6" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={circumference * (1 - score / 100)} rotation="-90" origin="35,35" /></Svg><Text style={styles.atlasGaugeValue}>{insight.ready ? `${score}%` : '—'}</Text></View>
+    {insight.ready ? <><Text style={styles.atlasInsightValue}>{score >= 65 ? 'Explorer' : score >= 35 ? 'Mixing it up' : 'Familiar roads'}</Text><Text style={styles.atlasInsightDetail}>{insight.oneJourneyAreas} of {insight.mappedAreas} mapped areas appeared on one journey.</Text></> : <AtlasLearningCopy text={`${Math.max(0, 2 - insight.mappedJourneys)} more mapped ${Math.max(0, 2 - insight.mappedJourneys) === 1 ? 'journey' : 'journeys'} needed for a reliable score.`} />}
+  </AtlasInsightShell>;
+}
+
+function PlaceRelationshipsCard({ insight }: { insight: AtlasInsights['placeRelationships'] }) {
+  return <AtlasInsightShell symbol="point.3.connected.trianglepath.dotted" title="Place Relationships" accent="#b66cff">
+    {insight.ready ? <>
+      <View style={styles.atlasRelationshipGraph}><Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 150 68"><Path d="M 28 36 C 60 8, 91 60, 122 30" fill="none" stroke="#b767ff" strokeWidth="2" opacity={0.72} /><Path d="M 28 36 C 60 63, 95 6, 122 30" fill="none" stroke="#ff6c70" strokeWidth="1" opacity={0.34} /></Svg><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeLeft]}><View style={styles.atlasPlaceNodeCore} /></View><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeRight]}><View style={styles.atlasPlaceNodeCore} /></View></View>
+      <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} → {insight.endLabel}</Text>
+      <Text style={styles.atlasInsightDetail}>{insight.trips} direct {insight.trips === 1 ? 'journey' : 'journeys'} · {insight.connections.length} strongest links mapped</Text>
+    </> : <AtlasLearningCopy text="Named starts and destinations reveal how your places connect." />}
+  </AtlasInsightShell>;
+}
+
+function SoundtrackIntelligenceCard({ insight }: { insight: AtlasInsights['soundtrack'] }) {
+  return <View style={styles.atlasSoundtrackCard}>
+    <NeonWidgetOutline radius={22} tone="selected" />
+    <LinearGradient pointerEvents="none" colors={['rgba(109,41,159,0.22)', 'rgba(255,77,103,0.12)', 'rgba(8,4,12,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasSoundtrackHeading}><View><Text style={styles.atlasSoundtrackEyebrow}>SOUNDTRACK INTELLIGENCE</Text><Text style={styles.atlasSoundtrackTitle}>{insight.ready ? 'The rhythm behind your roads.' : 'Your road sound is forming.'}</Text></View><SymbolView name="waveform" tintColor="#ff6e86" size={28} /></View>
+    <View style={styles.atlasSoundtrackBody}>
+      <View style={styles.atlasArtworkStack}>{insight.artworkUrls.length ? insight.artworkUrls.slice(0, 3).map((uri, index) => <Image key={uri} source={{ uri }} style={[styles.atlasSoundtrackArtwork, { marginLeft: index ? -11 : 0, zIndex: 3 - index }]} contentFit="cover" cachePolicy="memory-disk" />) : <View style={styles.atlasSoundtrackPlaceholder}><SymbolView name="music.note" tintColor="#c16fff" size={28} /></View>}</View>
+      <View style={styles.atlasSoundtrackCopy}>{insight.ready ? <><Text style={styles.atlasSoundtrackArtist} numberOfLines={1}>{insight.topArtist ?? 'Artist unavailable'}</Text><Text style={styles.atlasInsightDetail}>{insight.topArtist ? `${insight.topArtistPlays} plays` : `${insight.plays} road plays`} · {insight.uniqueSongs} unique songs</Text><Text style={styles.atlasInsightCallout}>{insight.journeyMatchPercent}% of journeys carried music{insight.leadingTime ? ` · ${insight.leadingTime.toLocaleLowerCase()} is most common` : ''}</Text></> : <AtlasLearningCopy text="Two matched songs unlock artists, variety, and listening patterns." />}</View>
+    </View>
+  </View>;
+}
+
+function AtlasLearningCopy({ text }: { text: string }) {
+  return <View style={styles.atlasLearning}><View style={styles.atlasLearningDot} /><Text style={styles.atlasLearningText}>{text}</Text></View>;
 }
 
 function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJourney: (id: string) => void }) {
@@ -298,6 +410,16 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
   const historyDay = statistics ? Math.min(statistics.windowDays, Math.max(1, Math.floor((Date.now() - earliestVisibleEpoch) / 86_400_000) + 1)) : 1;
   return <ScreenScaffold eyebrow="" title="STATISTICS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="statistics" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
+    {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas private drive intelligence" onPress={onAtlas} style={styles.atlasGateway}>
+      <Image source={require('../assets/atlas-globe-membership-v1.jpg')} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <LinearGradient colors={['rgba(8,3,12,0.18)', 'rgba(10,4,15,0.82)', 'rgba(16,5,17,0.98)']} locations={[0, 0.58, 1]} start={{ x: 1, y: 0.3 }} end={{ x: 0, y: 0.7 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.atlasGatewayCopy}>
+        <Text style={styles.atlasGatewayKicker}>ATLAS · PRIVATE DRIVE INTELLIGENCE</Text>
+        <Text style={styles.atlasGatewayTitle}>Open your Atlas</Text>
+        <Text style={styles.atlasGatewayDetail}>Patterns, favorite places, repeated routes, and music moments.</Text>
+      </View>
+      <View style={styles.atlasGatewayAction}><SymbolView name="globe.americas.fill" tintColor="#ff8a70" size={24} /><Text style={styles.atlasGatewayArrow}>›</Text></View>
+    </Pressable>}
     {statistics ? <>
       <View style={styles.storyStatsHero}>
         <HeaderEdgeBleed />
@@ -332,7 +454,6 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
           <Text style={styles.storyStatsHistoryDay}>{historyDays === null ? `${timelineItems.length} MOMENTS` : `DAY ${historyDay} OF ${statistics.windowDays}`}</Text>
         </View>
         {historyDays !== null && onUpgrade && <Pressable accessibilityRole="button" accessibilityLabel="Unlock Atlas and complete history" onPress={onUpgrade} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>UNLOCK ATLAS + COMPLETE HISTORY</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
-        {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas" onPress={onAtlas} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>OPEN YOUR ATLAS</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
       </View>
 
       <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
@@ -761,6 +882,65 @@ const styles = StyleSheet.create({
   healthStrip: { marginTop: 13, borderRadius: 17, backgroundColor: '#091713', borderWidth: 1, borderColor: '#1d4d40', padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   healthStripTitle: { color: '#5ed9b9', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   healthStripText: { color: '#79a99d', fontSize: 9, flex: 1, textAlign: 'right' },
+  atlasCommandHeader: { marginTop: -3, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 },
+  atlasPrivacyBadge: { minHeight: 30, borderRadius: 15, paddingHorizontal: 10, borderWidth: 1, borderColor: '#573243', backgroundColor: 'rgba(25,10,22,0.86)', flexDirection: 'row', alignItems: 'center', gap: 5, shadowColor: '#ff6e5b', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  atlasPrivacyText: { color: '#e7b3bd', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 0.9 },
+  atlasWindowRail: { flex: 1, maxWidth: 194, minHeight: 34, borderRadius: 17, padding: 3, flexDirection: 'row', backgroundColor: '#100814', borderWidth: 1, borderColor: '#35203e' },
+  atlasWindowChip: { flex: 1, minWidth: 0, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  atlasWindowChipActive: { backgroundColor: '#392036', shadowColor: '#ff6b69', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  atlasWindowText: { color: '#7f7186', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 0.5 },
+  atlasWindowTextActive: { color: '#ffd2c9' },
+  atlasPulseCard: { position: 'relative', minHeight: 222, borderRadius: 28, overflow: 'hidden', backgroundColor: '#0b0610', borderWidth: StyleSheet.hairlineWidth, borderColor: '#633047', padding: 19, shadowColor: '#ff536d', shadowOpacity: 0.26, shadowRadius: 24, shadowOffset: { width: 0, height: 9 }, marginBottom: 20 },
+  atlasPulseBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.18 },
+  atlasPulseOrb: { position: 'absolute', width: 154, height: 154, right: -11, top: 4, alignItems: 'center', justifyContent: 'center' },
+  atlasPulseRingOuter: { width: 130, height: 130, borderRadius: 65, borderWidth: 1, borderColor: 'rgba(183,87,255,0.34)', backgroundColor: 'rgba(94,32,117,0.08)', alignItems: 'center', justifyContent: 'center', shadowColor: '#b54eff', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseRingInner: { width: 90, height: 90, borderRadius: 45, borderWidth: 1, borderColor: 'rgba(255,104,104,0.65)', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff5d65', shadowOpacity: 0.75, shadowRadius: 17, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseCore: { width: 37, height: 37, borderRadius: 19, backgroundColor: '#ff7a63', borderWidth: 1, borderColor: '#ffc0a9', shadowColor: '#ff536b', shadowOpacity: 1, shadowRadius: 21, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseCopy: { position: 'relative', zIndex: 2, width: '68%', minHeight: 124, justifyContent: 'center' },
+  atlasPulseEyebrow: { color: '#ff947e', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.65, marginBottom: 7 },
+  atlasPulseTitle: { color: '#fff9fd', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.75 },
+  atlasPulseDetail: { color: '#b7a8b7', fontSize: 10, lineHeight: 15, marginTop: 7, maxWidth: 240 },
+  atlasPulseMetrics: { minHeight: 58, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(152,84,159,0.3)', backgroundColor: 'rgba(8,4,12,0.7)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
+  atlasPulseMetric: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  atlasPulseMetricValue: { color: '#fff8fe', fontSize: 18, lineHeight: 21, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  atlasPulseMetricLabel: { color: '#9d819d', fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.8, marginTop: 2 },
+  atlasPulseDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: '#4b304d' },
+  atlasSectionLabel: { color: '#bfa9c2', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.55, marginLeft: 3, marginBottom: 10 },
+  atlasInsightRow: { flexDirection: 'row', gap: 9, alignItems: 'stretch', marginBottom: 9 },
+  atlasInsightCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 230, borderRadius: 20, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4a294f', backgroundColor: '#0b0610', paddingHorizontal: 13, paddingVertical: 13, shadowColor: '#a747b8', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
+  atlasInsightHeading: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 9 },
+  atlasInsightIcon: { width: 32, height: 32, borderRadius: 11, borderWidth: 1, backgroundColor: 'rgba(31,12,31,0.84)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  atlasInsightTitle: { color: '#f7edf8', fontSize: 11, lineHeight: 14, fontWeight: '900', flex: 1 },
+  atlasInsightValue: { color: '#fff8fd', fontSize: 15, lineHeight: 18, fontWeight: '900', letterSpacing: -0.25, marginTop: 7 },
+  atlasInsightDetail: { color: '#a597a7', fontSize: 9, lineHeight: 13, marginTop: 4 },
+  atlasInsightCallout: { color: '#ff9b8b', fontSize: 8, lineHeight: 12, fontWeight: '800', marginTop: 7 },
+  atlasRoutePreview: { height: 66, borderRadius: 13, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(21,10,24,0.7)', borderWidth: StyleSheet.hairlineWidth, borderColor: '#412546', padding: 4 },
+  atlasRhythmChart: { height: 78, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 3, paddingTop: 7, marginBottom: 2 },
+  atlasRhythmColumn: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'flex-end' },
+  atlasRhythmTrack: { height: 50, width: '100%', maxWidth: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(46,31,52,0.6)', justifyContent: 'flex-end' },
+  atlasRhythmBar: { width: '100%', borderRadius: 6 },
+  atlasRhythmDay: { color: '#7e7184', fontSize: 7, lineHeight: 9, fontWeight: '800', marginTop: 4 },
+  atlasGaugeWrap: { height: 91, alignItems: 'center', justifyContent: 'center' },
+  atlasGaugeValue: { position: 'absolute', color: '#fff8fd', fontSize: 22, lineHeight: 25, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  atlasRelationshipGraph: { height: 77, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  atlasPlaceNode: { position: 'absolute', width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#b96cff', backgroundColor: '#201026', alignItems: 'center', justifyContent: 'center', shadowColor: '#b95dff', shadowOpacity: 0.9, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } },
+  atlasPlaceNodeLeft: { left: 13, top: 27 },
+  atlasPlaceNodeRight: { right: 12, top: 21, borderColor: '#ff766a', shadowColor: '#ff5c69' },
+  atlasPlaceNodeCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#ff8b78' },
+  atlasLearning: { minHeight: 78, flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 },
+  atlasLearningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#8c547f', marginBottom: 9, shadowColor: '#cc67bd', shadowOpacity: 0.7, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  atlasLearningText: { color: '#958799', fontSize: 9, lineHeight: 14, textAlign: 'center' },
+  atlasSoundtrackCard: { position: 'relative', minHeight: 176, borderRadius: 22, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#693359', backgroundColor: '#0c0611', padding: 16, marginBottom: 4, shadowColor: '#cf4fba', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 7 } },
+  atlasSoundtrackHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  atlasSoundtrackEyebrow: { color: '#ff8c78', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.55 },
+  atlasSoundtrackTitle: { color: '#fff7fd', fontSize: 17, lineHeight: 21, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
+  atlasSoundtrackBody: { minHeight: 86, flexDirection: 'row', alignItems: 'center', gap: 15, marginTop: 12 },
+  atlasArtworkStack: { minWidth: 96, height: 66, flexDirection: 'row', alignItems: 'center' },
+  atlasSoundtrackArtwork: { width: 58, height: 58, borderRadius: 13, borderWidth: 1, borderColor: '#82456e', shadowColor: '#dc5fff', shadowOpacity: 0.38, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  atlasSoundtrackPlaceholder: { width: 66, height: 66, borderRadius: 18, borderWidth: 1, borderColor: '#6a3474', backgroundColor: '#23102e', alignItems: 'center', justifyContent: 'center' },
+  atlasSoundtrackCopy: { flex: 1, minWidth: 0 },
+  atlasSoundtrackArtist: { color: '#fff8fd', fontSize: 19, lineHeight: 22, fontWeight: '900', letterSpacing: -0.45 },
+  atlasMapFrame: { position: 'relative', borderRadius: 24, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4e2a55', backgroundColor: '#09050d', padding: 1, shadowColor: '#a845cb', shadowOpacity: 0.18, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } },
   mapLegend: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginTop: 9 },
   legendLine: { color: '#ff755f', fontSize: 9, fontWeight: '700' },
   legendPlace: { color: '#ad6df4', fontSize: 9, fontWeight: '700' },
@@ -804,6 +984,13 @@ const styles = StyleSheet.create({
   timelineIconText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   timelineTime: { color: '#b17fce', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginBottom: 5 },
   storyStatsHero: { width: '100%', alignSelf: 'center', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO, overflow: 'visible', justifyContent: 'center', marginBottom: 9 },
+  atlasGateway: { position: 'relative', minHeight: 104, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#a84761', backgroundColor: '#170917', marginBottom: 12, paddingHorizontal: 15, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', shadowColor: '#ff526c', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
+  atlasGatewayCopy: { flex: 1, paddingRight: 12 },
+  atlasGatewayKicker: { color: '#ff9a7a', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.35 },
+  atlasGatewayTitle: { color: '#fff8fd', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.55, marginTop: 4 },
+  atlasGatewayDetail: { color: '#c2b2c3', fontSize: 10, lineHeight: 14, marginTop: 4, maxWidth: 265 },
+  atlasGatewayAction: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: '#8a425b', backgroundColor: 'rgba(36,10,25,0.82)', alignItems: 'center', justifyContent: 'center' },
+  atlasGatewayArrow: { position: 'absolute', right: 3, bottom: -2, color: '#ffd0c0', fontSize: 18, lineHeight: 19, fontWeight: '700' },
   storyStatsHeroCopy: { width: '72%', paddingHorizontal: 17, paddingVertical: 14 },
   storyStatsKicker: { color: '#ff8069', fontSize: 8, fontWeight: '900', letterSpacing: 1.7, marginBottom: 8 },
   storyStatsHeadline: { color: '#fff8ff', fontFamily: 'Georgia', fontSize: 22, lineHeight: 25, fontWeight: '700', letterSpacing: -0.75 },

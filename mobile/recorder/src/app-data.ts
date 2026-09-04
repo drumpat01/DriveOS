@@ -20,6 +20,7 @@ import {
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId } from './memory-model';
 import { loadSavedPlaces } from './saved-places';
+import { isVisibleJourney, visibleJourneys } from './journey-visibility';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -405,7 +406,7 @@ function localPlaceId(label: string) {
 
 function localVehicleIntelligence(userId: string): VehicleIntelligenceData {
   const localPage = localAtlasClient.journeys(userId, 50);
-  const journeys = localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []);
+  const journeys = visibleJourneys(localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []));
   const places = new Map<string, SavedPlaceIntelligence>();
   const addPlace = (labelValue: string | null, journey: JourneySummary, arrival: boolean) => {
     const label = labelValue?.trim(); if (!label) return;
@@ -572,8 +573,10 @@ export const appDataClient = {
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
     loadSavedPlaces(getCurrentUser().id);
     primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
-    return { ...dashboard, latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
-      recentJourneys: applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys), weeklyJourneys: applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys) };
+    const latestJourney = dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null;
+    const recentJourneys = visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys));
+    return { ...dashboard, latestJourney: latestJourney && isVisibleJourney(latestJourney) ? latestJourney : recentJourneys[0] ?? null,
+      recentJourneys, weeklyJourneys: visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys)) };
   },
 
   async localDashboard(): Promise<AppDashboard> {
@@ -581,11 +584,13 @@ export const appDataClient = {
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
     loadSavedPlaces(getCurrentUser().id);
     primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
+    const latestJourney = dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null;
+    const recentJourneys = visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys));
     return {
       ...dashboard,
-      latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
-      recentJourneys: applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys),
-      weeklyJourneys: applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys),
+      latestJourney: latestJourney && isVisibleJourney(latestJourney) ? latestJourney : recentJourneys[0] ?? null,
+      recentJourneys,
+      weeklyJourneys: visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys)),
     };
   },
 
@@ -593,7 +598,7 @@ export const appDataClient = {
     const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
     const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
     const page = local.items.length || cached ? mergeLocalJourneyPage(local, cached, limit) : local;
-    return { ...page, items: applyLocalPlaceAliasesToJourneys(page.items) };
+    return { ...page, items: visibleJourneys(applyLocalPlaceAliasesToJourneys(page.items)) };
   },
 
   async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {

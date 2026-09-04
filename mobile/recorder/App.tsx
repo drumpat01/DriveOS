@@ -47,6 +47,10 @@ import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
 import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED } from './src/release-features';
 import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
 import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
+import { manualRecordingFailsafeNotice } from './src/manual-recording-failsafe';
+import {
+  evaluateCurrentManualRecordingFailsafe, finishManualRecordingForFailsafe,
+} from './src/manual-recording-failsafe-runtime';
 
 configureJourneyDeckObservability();
 
@@ -153,8 +157,17 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const automaticTaskRunning = NATIVE_AUTOMATIC_RECORDER_ENABLED
       ? Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking)
       : expoAutomaticDetectorRunning || Boolean(nativeRecorder?.recording);
-    const current = activeSession();
-    const currentIsNative = isNativeAutomaticSession(current?.id);
+    let current = activeSession();
+    let currentIsNative = isNativeAutomaticSession(current?.id);
+    const manualFailsafe = evaluateCurrentManualRecordingFailsafe();
+    if (manualFailsafe.decision.shouldFinish && manualFailsafe.decision.reason
+      && await finishManualRecordingForFailsafe(manualFailsafe.sessionId, manualFailsafe.decision, connection ?? undefined)) {
+      taskRunning = false;
+      setSyncStage('saved');
+      setNotice(manualRecordingFailsafeNotice(manualFailsafe.decision.reason));
+      current = activeSession();
+      currentIsNative = isNativeAutomaticSession(current?.id);
+    }
     const recordingTransportRunning = currentIsNative ? Boolean(nativeRecorder?.recording) : taskRunning;
     const action = decideRecovery(current?.status ?? null, recordingTransportRunning, locationPermissionsReady && (currentIsNative || available));
     if (action === 'stop-orphaned-task' || action === 'stop-paused-task' || action === 'stop-and-finish') {

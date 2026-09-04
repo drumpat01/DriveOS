@@ -36,3 +36,5 @@ obj/
 .idea/
 Thumbs.db
 .DS_Store
+__MACOSX/
+._*

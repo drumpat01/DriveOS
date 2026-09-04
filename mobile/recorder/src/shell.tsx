@@ -315,6 +315,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const [atlasVisible, setAtlasVisible] = useState(false);
   const [membershipPaywallVisible, setMembershipPaywallVisible] = useState(false);
   const preferenceSyncAttempt = useRef('');
+  const musicRefreshGeneration = useRef(0);
 
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceTabMotion).catch(() => undefined);
@@ -416,15 +417,21 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     catch { setMemories(current => ({ status: 'error', data: current.data, message: 'Memories could not refresh. Your saved journeys are still safe.' })); }
   }, []);
 
-  const refreshMusicDashboard = useCallback(async (refreshRemote = false, details: JourneyDetail[] = []) => {
+  const refreshMusicDashboard = useCallback(async (refreshRemote = false, details?: JourneyDetail[]) => {
+    const refreshGeneration = ++musicRefreshGeneration.current;
+    const effectiveDetails = details ?? primarySections.data?.details ?? [];
     setMusicDashboard(current => ({ ...current, status: 'loading', message: undefined }));
     try {
-      const data = await appDataClient.musicDashboard(refreshRemote, details);
+      const data = await appDataClient.musicDashboard(refreshRemote, effectiveDetails);
+      if (refreshGeneration !== musicRefreshGeneration.current) return;
       const accessibleJourneys = primarySections.data?.journeys ?? journeys.data;
-      setMusicDashboard({ status: 'ready', data: membership.timelineHistoryDays === null ? data : buildAccessibleMusicDashboard(accessibleJourneys, details, data) });
+      setMusicDashboard({ status: 'ready', data: membership.timelineHistoryDays === null ? data : buildAccessibleMusicDashboard(accessibleJourneys, effectiveDetails, data) });
     }
-    catch (error) { setMusicDashboard(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Your music archive could not be loaded.' })); }
-  }, [membership.timelineHistoryDays, primarySections.data?.journeys, journeys.data]);
+    catch (error) {
+      if (refreshGeneration !== musicRefreshGeneration.current) return;
+      setMusicDashboard(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Your music archive could not be loaded.' }));
+    }
+  }, [membership.timelineHistoryDays, primarySections.data?.details, primarySections.data?.journeys, journeys.data]);
 
   const loadMoreJourneys = useCallback(async () => {
     if (!journeyCursor || journeysLoadingMore) return;
@@ -457,6 +464,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       setJourneys({ status: 'ready', data: data.journeys });
       setJourneyCursor(null);
       setMemories({ status: 'ready', data: data.memories });
+      musicRefreshGeneration.current += 1;
       setMusicDashboard({ status: 'ready', data: data.music });
     } catch (error) {
       setPrimarySections(current => ({ status: 'error', data: current.data, message: error instanceof Error ? error.message : 'Some JourneyDeck data could not refresh.' }));
@@ -859,11 +867,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
   const membershipMemories = useMemo<LoadState<MemoriesCatalog>>(() => {
-    if (membership.timelineHistoryDays === null) return memories;
     const visibleJourneyIds = new Set(primarySections.data?.journeys.map(journey => journey.id) ?? journeys.data.map(journey => journey.id));
-    const visibleMemoryItems = memories.data.memories.filter(memory =>
-      membershipCanAccessDate(membership, memory.createdAtUtc) || memory.journeyIds.some(id => visibleJourneyIds.has(id)),
-    );
+    const sanitizedMemoryItems = memories.data.memories.map(memory => ({
+      ...memory,
+      journeyIds: memory.journeyIds.filter(id => visibleJourneyIds.has(id)),
+    }));
+    const visibleMemoryItems = membership.timelineHistoryDays === null
+      ? sanitizedMemoryItems
+      : sanitizedMemoryItems.filter(memory => membershipCanAccessDate(membership, memory.createdAtUtc) || memory.journeyIds.length > 0);
     return { ...memories, data: { ...memories.data, memories: visibleMemoryItems } };
   }, [membership, memories, primarySections.data?.journeys, journeys.data]);
 
@@ -1011,11 +1022,11 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
         visible={membershipPaywallVisible}
         state={membershipStore.state}
         onClose={() => setMembershipPaywallVisible(false)}
-        onLoadProducts={() => void membershipStore.loadProducts()}
-        onPurchase={productId => void membershipStore.purchase(productId).then(outcome => {
+        onLoadProducts={membershipStore.loadProducts}
+        onPurchase={async productId => membershipStore.purchase(productId).then(outcome => {
           if (outcome === 'purchased') setMembershipPaywallVisible(false);
         })}
-        onRestore={() => void membershipStore.restore()}
+        onRestore={membershipStore.restore}
       />
     </View>
   );
@@ -2711,7 +2722,9 @@ function ConnectionsScreen({
 
         <SectionHeading title="Membership" />
         <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: membershipTier === 'paid' ? '#ff795b' : '#6d4a78' }]}>
-          <LinearGradient colors={membershipTier === 'paid' ? ['#ff875d', '#ff3f78'] : ['#4a285d', '#26152f']} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>{membershipTier === 'paid' ? '∞' : '45'}</Text></LinearGradient>
+          {membershipTier === 'paid'
+            ? <Image source={require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} />
+            : <LinearGradient colors={['#4a285d', '#26152f']} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text>
             <Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text>
@@ -2721,8 +2734,8 @@ function ConnectionsScreen({
         </View>
 
         <SectionHeading title="iCloud Backup" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#a88aff' }]}>
-          <View style={[styles.connectionIcon, { backgroundColor: '#a88aff' }]}><SymbolView name="icloud.fill" tintColor="#ffffff" size={24} /></View>
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#4598ff' }]}>
+          <View style={styles.icloudMark}><SymbolView name="icloud.fill" tintColor="#1687ff" size={27} /></View>
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text>
             <Text style={styles.connectionName}>iCloud Backup</Text>
@@ -3539,7 +3552,7 @@ const styles = StyleSheet.create({
   journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroIntro: { position: 'relative', minHeight: 125, overflow: 'hidden', justifyContent: 'flex-end', paddingHorizontal: 18, paddingTop: 26, paddingBottom: 19 }, journeyHeroCopy: { position: 'relative' }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
   journeyMapHeading: { marginTop: 8, paddingHorizontal: 2, gap: 5 }, journeyMapKicker: { color: '#ff8d72', fontSize: 9, fontWeight: '900', letterSpacing: 1.65 }, journeyMapTitle: { color: '#fff8ff', fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.5 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
-  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, membershipSettingsIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, membershipSettingsIconText: { color: '#fff8fb', fontSize: 17, fontWeight: '900' }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
+  selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, membershipSettingsIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, membershipSettingsLogo: { width: 46, height: 46, borderRadius: 14 }, membershipSettingsIconText: { color: '#fff8fb', fontSize: 17, fontWeight: '900' }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, icloudMark: { width: 46, height: 46, borderRadius: 13, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#b9dcff', alignItems: 'center', justifyContent: 'center', shadowColor: '#1687ff', shadowOpacity: 0.42, shadowRadius: 11, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   savedPlacesCard: { overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#553449', backgroundColor: '#141018' },
   savedPlacesHint: { color: '#a99eae', fontSize: 11, lineHeight: 16, paddingHorizontal: 15, paddingTop: 13, paddingBottom: 9 },
   savedPlaceRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 },
