@@ -1,5 +1,11 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## One-line transient iCloud status — September 3, 2026
+
+- Shortened the temporary Settings iCloud check message to **“Checking iCloud zone…”** and constrained only that brief syncing state to one line. Stable iCloud status and explanatory copy can still wrap normally, while the momentary check can no longer resize the card and resemble a visual glitch.
+- Added a regression covering the exact copy and conditional one-line behavior. TypeScript, focused tab runtime **29/29**, complete V1 suite **183/183**, production iOS Expo export (**1,825 modules / 25 assets**), and `git diff --check` pass.
+- Awaiting implementation commit, push, and Build 13-compatible production OTA publication.
+
 ## Settings inertial-scroll sawtooth correction — September 3, 2026
 
 - Reviewed the tester's 14.89-second, 1320x2868/59.93fps recording of architecture OTA `01a06932-07c7-743b-8c65-fbe30dc89515` frame by frame. The rebuilt Saved Place editor is pixel-stable through keyboard presentation and every recorded keypress. The Settings overview, however, visibly reverses direction every few frames during inertial scrolling, producing extreme sawtooth judder.

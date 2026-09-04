@@ -561,6 +561,8 @@ test('Settings presents one iCloud Backup status and keeps Apple identity under 
   assert.match(shell, /onAppleSignIn/);
   assert.match(shell, /onPrivateCloudSync/);
   assert.match(shell, /<SectionHeading title="iCloud Backup" \/>/);
+  assert.match(shell, /detail: 'Checking iCloud zone…'/);
+  assert.match(shell, /numberOfLines=\{privateCloud\.status === 'syncing' \? 1 : undefined\}/);
   assert.match(shell, /Your JourneyDeck library stays private in your iCloud account/);
   assert.match(shell, /<SectionHeading title="Account" \/>/);
   assert.match(shell, /Apple connected/);

@@ -482,7 +482,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
       return;
     }
-    setPrivateCloud({ status: 'syncing', detail: 'Checking this profile’s private iCloud zone…' });
+    setPrivateCloud({ status: 'syncing', detail: 'Checking iCloud zone…' });
     try {
       const result = await syncCurrentUserWithPrivateICloud({ force: announce });
       if (result.accountStatus !== 'available') {
@@ -2726,7 +2726,7 @@ function ConnectionsScreen({
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text>
             <Text style={styles.connectionName}>iCloud Backup</Text>
-            <Text style={styles.connectionDetail}>{privateCloud.detail}</Text>
+            <Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text>
           </View>
           <Pressable onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Install 1.7' : 'Sync'}</Text></Pressable>
         </View>
