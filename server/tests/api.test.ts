@@ -75,7 +75,7 @@ test("hosted root is public while login and the private app keep separate routes
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
 
     for (const [url, mime] of [
-      ["/landing.css?v=cinematic-1", /text\/css/],
+      ["/landing.css?v=cinematic-2", /text\/css/],
       ["/landing.js?v=cinematic-1", /javascript/],
       ["/assets/journeydeck-coast-v2.jpg", /image\/jpeg/],
       ["/assets/journeydeck-cinematic-512.png", /image\/png/]
