@@ -56,14 +56,34 @@ test("hosted root is public while login and the private app keep separate routes
     assert.equal(landing.statusCode, 200, landing.body);
     assert.match(String(landing.headers["content-type"]), /text\/html/);
     assert.match(landing.body, /Every road has a soundtrack/i);
-    assert.match(landing.body, /The roads become the stories/i);
+    assert.match(landing.body, /Some drives<br><span class="serif-line">stay with you\./i);
+    assert.match(landing.body, /Submitted to the App Store/i);
+    assert.match(landing.body, /Coming soon for iPhone/i);
+    assert.match(landing.body, /Light mode theme/i);
+    assert.match(landing.body, /dedicated iPad app/i);
+    assert.match(landing.body, /Tessie integration for Tesla owners/i);
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.equal(landing.body.match(/https:\/\/x\.com\/JourneyDeck/g)?.length, 2);
+    assert.equal(landing.body.match(/https:\/\/x\.com\/JourneyDeck/g)?.length, 4);
+    assert.match(landing.body, /class="nav-social" href="https:\/\/x\.com\/JourneyDeck" target="_blank" rel="noopener noreferrer"/);
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
-    assert.match(landing.body, /The road is already moving\./i);
+    assert.match(landing.body, /src="\/assets\/journeydeck-cinematic-512\.png"/);
+    assert.match(landing.body, /class="wordmark-journey">Journey<\/span><span class="wordmark-deck">Deck<\/span>/);
+    assert.match(landing.body, /<script src="\/landing\.js\?v=cinematic-1" defer><\/script>/);
+    assert.doesNotMatch(landing.body, /noindex|DESIGN PREVIEW|editorial\.html|cinematic\.html|127\.0\.0\.1|Join the TestFlight/);
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
+
+    for (const [url, mime] of [
+      ["/landing.css?v=cinematic-1", /text\/css/],
+      ["/landing.js?v=cinematic-1", /javascript/],
+      ["/assets/journeydeck-coast-v2.jpg", /image\/jpeg/],
+      ["/assets/journeydeck-cinematic-512.png", /image\/png/]
+    ] as const) {
+      const asset = await runtime.app.inject({ method: "GET", url });
+      assert.equal(asset.statusCode, 200, url);
+      assert.match(String(asset.headers["content-type"]), mime, url);
+    }
 
     const login = await runtime.app.inject({ method: "GET", url: "/login" });
     assert.equal(login.statusCode, 200, login.body);
