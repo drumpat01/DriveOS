@@ -310,7 +310,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       setLastError("always_location_required")
       return await status()
     }
-    await withCheckedContinuation { continuation in
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       workQueue.async {
         defer { continuation.resume() }
         do {
