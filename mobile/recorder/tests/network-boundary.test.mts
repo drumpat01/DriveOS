@@ -125,7 +125,8 @@ test('network measurement avoids response-body rescans and hidden Data Health re
   assert.doesNotMatch(requestSource, /response\.text\(\)|JSON\.parse\(body\)/);
   assert.match(requestSource, /headers\.get\('content-length'\)/);
   assert.match(primarySections, /active \? subscribeNetworkActivity\(setNetwork\) : undefined/);
-  assert.match(shell, /utilityVisible && <View[\s\S]*?<MoreScreen\s+active requested=/);
+  assert.match(shell, /const utilityVisible = usePathname\(\) === '\/tools'/);
+  assert.match(shell, /tools: <MoreScreen active=\{utilityVisible\} requested=/);
 });
 
 test('normal navigation surfaces remain free of direct network access and expose local-only diagnostics', async () => {

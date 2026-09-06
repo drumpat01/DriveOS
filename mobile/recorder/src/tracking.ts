@@ -10,7 +10,7 @@ export async function isLocationTrackingActive() {
 export async function startLocationTracking() {
   if (await isLocationTrackingActive()) return true;
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 15, timeInterval: 10_000,
+    accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 0, timeInterval: 10_000,
     deferredUpdatesDistance: 50, deferredUpdatesInterval: 30_000, deferredUpdatesTimeout: 30_000,
     activityType: Location.ActivityType.AutomotiveNavigation, pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: false,

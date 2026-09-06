@@ -12,10 +12,14 @@ import { activeSession, deleteCurrentProfileRecorderData } from './storage';
 import { deleteCurrentProfileTessieSecrets } from './tessie-direct';
 import { stopAutomaticDetection, stopLocationTracking } from './tracking';
 import { deletePrivateRouteStagingAssets } from './cloudkit-sync';
-import { configureNativeAutomaticRecorder } from '../modules/journeydeck-recorder';
+import { configureNativeAutomaticRecorder, configureNativeManualRecorder, setNativeManualProfileTransition } from '../modules/journeydeck-recorder';
 import { syncNativeRecorderInbox } from './native-recorder-inbox';
 
 async function stopProfileBackgroundWork(): Promise<void> {
+  setNativeManualProfileTransition(true);
+  await configureNativeManualRecorder(false, getCurrentUser().id, false);
+  await syncNativeRecorderInbox();
+  if (activeSession()) throw new Error('Finish the active journey before switching profiles.');
   // Keep Core Location task transitions serialized. Concurrent stop calls can
   // race inside expo-location on a real device during a profile handoff.
   await stopLocationTracking();
@@ -25,17 +29,24 @@ async function stopProfileBackgroundWork(): Promise<void> {
 }
 
 export async function prepareForProfileSwitch(): Promise<void> {
-  await syncNativeRecorderInbox();
-  if (activeSession()) throw new Error('Finish or discard the active journey before switching profiles.');
-  await stopProfileBackgroundWork();
+  try {
+    await syncNativeRecorderInbox();
+    if (activeSession()) throw new Error('Finish or discard the active journey before switching profiles.');
+    await stopProfileBackgroundWork();
+  } catch (error) { finishProfileSwitch(); throw error; }
 }
 
+export function finishProfileSwitch(): void { setNativeManualProfileTransition(false); }
+
 export async function signOutOfJourneyDeck(): Promise<LocalUser> {
-  await prepareForProfileSwitch();
-  return signOutToFreshLocalProfile();
+  try {
+    await prepareForProfileSwitch();
+    return signOutToFreshLocalProfile();
+  } finally { finishProfileSwitch(); }
 }
 
 export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
+  try {
   const user = getCurrentUser();
   await syncNativeRecorderInbox();
   if (activeSession()) throw new Error('Finish or discard the active journey before deleting this account.');
@@ -62,4 +73,5 @@ export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
   ]);
   deleteCurrentProfileRecorderData();
   return finalizeActiveProfileDeletion(user.id);
+  } finally { finishProfileSwitch(); }
 }

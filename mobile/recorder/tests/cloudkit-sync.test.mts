@@ -36,6 +36,8 @@ assert.match(memoryModel, /memory_v1_/, 'direct Journey-group Memories have an e
 assert.match(src, /filter\(isDirectJourneyMemoryId\)/, 'legacy grouping records cannot re-enter through CloudKit');
 assert.match(src, /remote\.source !== 'memory' \|\| !isDirectJourneyMemoryId\(remote\.memoryId\)/, 'legacy grouping photos cannot re-enter through CloudKit');
 assert.match(src, /photoToCKRecord/, 'syncs private photo assets');
+assert.match(src, /resolvePrivatePhotoFile\(photo\)[\s\S]*preparationFailures\.add\(`photo_\$\{photo\.id\}`\)/, 'a missing local photo is checked for path recovery before it is isolated from the private sync batch');
+assert.match(transport, /failedUploads \+= engine\.getPreparationFailureCount\(\)/, 'reports locally unavailable photo assets while valid records continue syncing');
 assert.match(src, /preferenceToCKRecord/, 'syncs user-scoped private preferences');
 assert.match(src, /routeArchiveToCKRecord/, 'syncs exact routes as private assets');
 

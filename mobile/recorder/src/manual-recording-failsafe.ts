@@ -1,7 +1,7 @@
-export const MANUAL_RECORDING_INACTIVITY_LIMIT_MS = 15 * 60_000;
+export const MANUAL_RECORDING_INACTIVITY_LIMIT_MS = 10 * 60_000;
 export const MANUAL_RECORDING_MAXIMUM_DURATION_MS = 24 * 60 * 60_000;
 export const MANUAL_RECORDING_MOVEMENT_SPEED_MPS = 2.2;
-export const MANUAL_RECORDING_MAXIMUM_ACCURACY_METERS = 100;
+export const MANUAL_RECORDING_MAXIMUM_ACCURACY_METERS = 50;
 
 export type ManualRecordingFailsafeReason = 'stationary_timeout' | 'maximum_duration';
 
@@ -53,31 +53,38 @@ function validAccuratePoint(point: FailsafePoint, startedAtMs: number, evaluated
 }
 
 function lastMeaningfulMovementAt(points: FailsafePoint[], startedAtMs: number, evaluatedAtMs: number) {
-  let lastMovementAt = startedAtMs;
+  let stationarySince: number | null = null;
   let previous: FailsafePoint | null = null;
+  let latestAt: number | null = null;
   for (const point of [...points].sort((left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt))) {
-    if (!validAccuratePoint(point, startedAtMs, evaluatedAtMs)) continue;
     const recordedAtMs = Date.parse(point.recordedAt);
-    const nativeSpeed = point.speedMps != null && Number.isFinite(point.speedMps)
-      && point.speedMps >= 0 && point.speedMps <= 150 ? point.speedMps : null;
-    let inferredSpeed: number | null = null;
-    if (previous) {
-      const previousAtMs = Date.parse(previous.recordedAt);
-      const elapsedSeconds = (recordedAtMs - previousAtMs) / 1000;
-      if (elapsedSeconds > 0) {
-        const uncertainty = Math.max(previous.accuracyMeters ?? 0, point.accuracyMeters ?? 0);
-        inferredSpeed = Math.max(0, distanceMeters(previous, point) - uncertainty) / elapsedSeconds;
-      }
+    if (!Number.isFinite(recordedAtMs) || recordedAtMs < startedAtMs || recordedAtMs > evaluatedAtMs
+      || (latestAt != null && recordedAtMs <= latestAt)) continue;
+    if (!validAccuratePoint(point, startedAtMs, evaluatedAtMs)) {
+      stationarySince = null; previous = null; latestAt = recordedAtMs;
+      continue;
     }
-    // Once two trustworthy positions exist, displacement is more reliable than
-    // iOS briefly repeating a positive speed after the vehicle has parked.
-    const effectiveSpeed = inferredSpeed ?? nativeSpeed;
-    if (effectiveSpeed != null && effectiveSpeed > MANUAL_RECORDING_MOVEMENT_SPEED_MPS) {
-      lastMovementAt = recordedAtMs;
+    if (latestAt != null && recordedAtMs - latestAt > 120_000) { stationarySince = null; previous = null; }
+    latestAt = recordedAtMs;
+    if (!previous) {
+      previous = point;
+      stationarySince = point.speedMps != null && point.speedMps >= 0 && point.speedMps <= 2.2 ? recordedAtMs : null;
+      continue;
+    }
+    const previousAtMs = Date.parse(previous.recordedAt);
+    const elapsedSeconds = (recordedAtMs - previousAtMs) / 1000;
+    if (elapsedSeconds < 15) continue;
+    const uncertainty = Math.max(previous.accuracyMeters ?? 0, point.accuracyMeters ?? 0);
+    const distance = distanceMeters(previous, point);
+    const upperSpeed = (distance + uncertainty) / elapsedSeconds;
+    if (upperSpeed <= MANUAL_RECORDING_MOVEMENT_SPEED_MPS) {
+      stationarySince ??= previousAtMs;
+    } else {
+      stationarySince = null;
     }
     previous = point;
   }
-  return lastMovementAt;
+  return latestAt != null && evaluatedAtMs - latestAt <= 60_000 ? stationarySince : null;
 }
 
 export function evaluateManualRecordingFailsafe(input: {
@@ -102,6 +109,7 @@ export function evaluateManualRecordingFailsafe(input: {
   }
   if (session.status !== 'recording') return continueRecording();
   const lastMovementAt = lastMeaningfulMovementAt(input.route, startedAtMs, evaluatedAtMs);
+  if (lastMovementAt === null) return continueRecording();
   const inactiveForMs = Math.max(0, evaluatedAtMs - lastMovementAt);
   if (inactiveForMs >= MANUAL_RECORDING_INACTIVITY_LIMIT_MS) {
     return { shouldFinish: true, reason: 'stationary_timeout', inactiveForMs };
@@ -112,5 +120,5 @@ export function evaluateManualRecordingFailsafe(input: {
 export function manualRecordingFailsafeNotice(reason: ManualRecordingFailsafeReason): string {
   return reason === 'maximum_duration'
     ? 'Journey finished automatically at the 24-hour safety limit.'
-    : 'Journey finished automatically after 15 minutes without driving.';
+    : 'Journey finished automatically after 10 minutes without driving.';
 }

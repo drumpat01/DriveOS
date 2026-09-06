@@ -1,3 +1,7 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
+import { isIpad } from './device-layout';
+import { IpadMusicScreen } from './ipad-music-screen';
+import { ipadListeningDays } from './ipad-music-data';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -37,6 +41,9 @@ async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
 }
 
 export function MusicScreen({ state, provider, journeys, details, onJourney, onRefresh }: { state: MusicDashboardState; provider: MusicProvider; journeys: JourneySummary[]; details: JourneyDetail[]; onJourney: (id: string) => void; onRefresh: () => Promise<void> }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const data = state.data;
   const canOpenTracks = provider === 'apple-music' || provider === 'lastfm';
   const insets = useSafeAreaInsets();
@@ -45,21 +52,24 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
   const archive = useMemo(() => buildMusicArchive(journeys, details), [journeys, details]);
   const visibleArchive = useMemo(() => filterMusicArchive(archive, archiveQuery), [archive, archiveQuery]);
   const topTracks = useMemo(() => topArchiveTracks(archive), [archive]);
+  const ipadDaily = useMemo(() => ipadListeningDays(archive), [archive, state.data?.generatedAt]);
   const refreshFromGesture = useCallback(async () => {
     if (manualRefreshing) return;
     setManualRefreshing(true);
     try { await onRefresh(); }
     finally { setManualRefreshing(false); }
   }, [manualRefreshing, onRefresh]);
+  if (isIpad()) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
+    canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} />;
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
       automaticallyAdjustsScrollIndicatorInsets={false}
-      refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={colors.pink} />}
+      refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={theme.color(colors.pink, 'text')} />}
     >
       <MusicAtmosphere />
       <SoundtracksHeroHeader />
@@ -69,7 +79,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
         <Text style={styles.sourceGuidanceText}>{provider === 'apple-music' ? 'JourneyDeck checks your authorized Apple Music history during and after each journey. Some song locations may be estimated.' : provider === 'shazam' ? 'JourneyDeck does not listen automatically. During an active journey, open the recorder and tap Identify Song for every track you want to save.' : 'This music source is available only in internal testing.'}</Text>
       </View>
 
-      {state.status === 'loading' && !data ? <View style={styles.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.loadingText}>Building your soundtrack…</Text></View> : null}
+      {state.status === 'loading' && !data ? <View style={styles.loading}><ActivityIndicator color={theme.color(colors.pink, 'text')} /><Text style={styles.loadingText}>Building your soundtrack…</Text></View> : null}
       {state.status === 'error' ? <View style={styles.notice}><Text style={styles.noticeTitle}>Music archive unavailable</Text><Text style={styles.noticeBody}>{state.message}</Text><Pressable onPress={() => void onRefresh()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
 
       {data ? <>
@@ -96,7 +106,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
         </Panel>
 
         <Panel title="Listening history" kicker={`${visibleArchive.length} JOURNEY PLAYS`}>
-          <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor="#746a7c" style={styles.archiveSearch} />
+          <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor={theme.color("#746a7c", 'text')} style={styles.archiveSearch} />
           {visibleArchive.slice(0, 60).map(entry => <View key={entry.key} style={styles.archiveRow}>
             <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
               {entry.artworkUrl ? <Image source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
@@ -149,10 +159,15 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
 }
 
 function Metric({ symbol, label, value, detail, accent }: { symbol: string; label: string; value: string; detail: string; accent: string }) {
-  return <QuietInset radius={19} accent={accent} style={styles.metric}><View style={[styles.metricIcon, { borderColor: `${accent}55`, backgroundColor: `${accent}12`, shadowColor: accent }]}><Text style={[styles.metricSymbol, { color: accent }]}>{symbol}</Text></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <QuietInset radius={19} accent={accent} style={styles.metric}><View style={[styles.metricIcon, { borderColor: theme.color(`${accent}55`, 'border'), backgroundColor: theme.color(`${accent}12`, 'surface'), shadowColor: theme.color(accent, 'shadow') }]}><Text style={[styles.metricSymbol, { color: theme.color(accent, 'text') }]}>{symbol}</Text></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
 }
 
 function SoundtracksHeroHeader() {
+  const musicHeaderStyles = useThemedStyles(darkMusicHeaderStyles);
+
   return <>
     <Text accessibilityRole="header" style={musicHeaderStyles.pageTitle}>SOUNDTRACKS</Text>
     <View style={musicHeaderStyles.heroCardHeader}>
@@ -162,14 +177,20 @@ function SoundtracksHeroHeader() {
 }
 
 function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <NeonWidget radius={24} style={styles.panel}><CardHeader title={title} kicker={kicker} />{children}</NeonWidget>;
 }
 
 function CardHeader({ title, kicker }: { title: string; kicker: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.cardHeader}><View style={styles.cardTitleGroup}><View style={styles.cardAccent} /><Text style={styles.cardTitle}>{title}</Text></View><Text style={styles.cardKicker}>{kicker}</Text></View>;
 }
 
 function AlbumCard({ track, enabled, onPress }: { track: SoundtrackTrack; enabled: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable disabled={!enabled} onPress={onPress} style={({ pressed }) => [styles.albumCard, pressed && enabled && styles.albumPressed]}>
     <NeonWidgetOutline radius={18} />
     {track.artworkUrl ? <Image source={{ uri: track.artworkUrl }} style={styles.albumArtwork} contentFit="cover" cachePolicy="memory-disk" transition={120} /> : <View style={styles.albumFallback}><Text style={styles.albumNote}>♪</Text></View>}
@@ -180,40 +201,56 @@ function AlbumCard({ track, enabled, onPress }: { track: SoundtrackTrack; enable
   </Pressable>;
 }
 
-function Empty({ text }: { text: string }) { return <Text style={styles.empty}>{text}</Text>; }
+function Empty({ text }: { text: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <Text style={styles.empty}>{text}</Text>; }
 
 function RouteGlow() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.routeGraphic}>
     <Svg width="100%" height="100%" viewBox="0 0 150 70">
-      <Defs><SvgLinearGradient id="mileageRoad" x1="8" y1="58" x2="142" y2="12" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor="#ff795b" /><Stop offset="0.55" stopColor="#ff4d87" /><Stop offset="1" stopColor="#b46cff" /></SvgLinearGradient></Defs>
-      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="#28152f" strokeWidth="11" strokeLinecap="round" />
+      <Defs><SvgLinearGradient id="mileageRoad" x1="8" y1="58" x2="142" y2="12" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={theme.color("#ff795b", 'accent')} /><Stop offset="0.55" stopColor={theme.color("#ff4d87", 'accent')} /><Stop offset="1" stopColor={theme.color("#b46cff", 'accent')} /></SvgLinearGradient></Defs>
+      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke={theme.color("#28152f", 'accent')} strokeWidth="11" strokeLinecap="round" />
       <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="url(#mileageRoad)" strokeWidth="3" strokeLinecap="round" />
-      <Path d="M15 54 C37 49 38 27 61 25 C87 23 101 48 133 18" fill="none" stroke="#ffe3d8" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="5 7" opacity="0.78" />
-      <Circle cx="8" cy="57" r="5" fill="#ffb39d" stroke="#fff2ec" strokeWidth="2" />
-      <Circle cx="140" cy="13" r="6" fill="#ff4d87" stroke="#ffd9ea" strokeWidth="2" />
-      <Circle cx="140" cy="13" r="11" fill="none" stroke="#ff4d87" strokeWidth="2" opacity="0.23" />
+      <Path d="M15 54 C37 49 38 27 61 25 C87 23 101 48 133 18" fill="none" stroke={theme.color("#ffe3d8", 'accent')} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="5 7" opacity="0.78" />
+      <Circle cx="8" cy="57" r="5" fill={theme.color("#ffb39d", 'accent')} stroke={theme.color("#fff2ec", 'accent')} strokeWidth="2" />
+      <Circle cx="140" cy="13" r="6" fill={theme.color("#ff4d87", 'accent')} stroke={theme.color("#ffd9ea", 'accent')} strokeWidth="2" />
+      <Circle cx="140" cy="13" r="11" fill="none" stroke={theme.color("#ff4d87", 'accent')} strokeWidth="2" opacity="0.23" />
     </Svg>
   </View>;
 }
 
 function MusicAtmosphere() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <Svg pointerEvents="none" viewBox="0 0 430 1450" preserveAspectRatio="none" style={styles.atmosphere}>
-    <Defs><SvgRadialGradient id="musicTopBloom" cx="50%" cy="4%" rx="68%" ry="31%"><Stop offset="0" stopColor="#b72d92" stopOpacity="0.28" /><Stop offset="0.48" stopColor="#7d247a" stopOpacity="0.1" /><Stop offset="1" stopColor="#7d247a" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicSideBloom" cx="100%" cy="48%" rx="75%" ry="34%"><Stop offset="0" stopColor="#6250e8" stopOpacity="0.2" /><Stop offset="0.56" stopColor="#6b36be" stopOpacity="0.06" /><Stop offset="1" stopColor="#6b36be" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicLowBloom" cx="0%" cy="86%" rx="80%" ry="30%"><Stop offset="0" stopColor="#ff3f78" stopOpacity="0.13" /><Stop offset="1" stopColor="#ff3f78" stopOpacity="0" /></SvgRadialGradient></Defs>
+    <Defs><SvgRadialGradient id="musicTopBloom" cx="50%" cy="4%" rx="68%" ry="31%"><Stop offset="0" stopColor={theme.color("#b72d92", 'accent')} stopOpacity="0.28" /><Stop offset="0.48" stopColor={theme.color("#7d247a", 'accent')} stopOpacity="0.1" /><Stop offset="1" stopColor={theme.color("#7d247a", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicSideBloom" cx="100%" cy="48%" rx="75%" ry="34%"><Stop offset="0" stopColor={theme.color("#6250e8", 'accent')} stopOpacity="0.2" /><Stop offset="0.56" stopColor={theme.color("#6b36be", 'accent')} stopOpacity="0.06" /><Stop offset="1" stopColor={theme.color("#6b36be", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="musicLowBloom" cx="0%" cy="86%" rx="80%" ry="30%"><Stop offset="0" stopColor={theme.color("#ff3f78", 'accent')} stopOpacity="0.13" /><Stop offset="1" stopColor={theme.color("#ff3f78", 'accent')} stopOpacity="0" /></SvgRadialGradient></Defs>
     <Rect width="430" height="1450" fill="url(#musicTopBloom)" /><Rect width="430" height="1450" fill="url(#musicSideBloom)" /><Rect width="430" height="1450" fill="url(#musicLowBloom)" />
   </Svg>;
 }
 
 function MoodBar({ items }: { items: MusicDashboardData['mood'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const palette = [colors.blue, '#7658dd', '#b34cd0', colors.pink];
-  return <View style={styles.moodBlock}><View style={styles.moodBar}>{items.map((item, index) => <View key={item.label} style={{ flex: Math.max(item.percent, item.count ? 4 : 0.5), backgroundColor: palette[index] }} />)}</View><View style={styles.moodLegend}>{items.map((item, index) => <View key={item.label} style={styles.moodItem}><Text style={[styles.moodPercent, { color: palette[index] }]}>{item.percent}%</Text><Text style={styles.moodLabel}>{item.label}</Text></View>)}</View><Text style={styles.moodFootnote}>Your real listening rhythm across the day</Text></View>;
+  return <View style={styles.moodBlock}><View style={styles.moodBar}>{items.map((item, index) => <View key={item.label} style={{ flex: Math.max(item.percent, item.count ? 4 : 0.5), backgroundColor: theme.color(palette[index], 'surface') }} />)}</View><View style={styles.moodLegend}>{items.map((item, index) => <View key={item.label} style={styles.moodItem}><Text style={[styles.moodPercent, { color: theme.color(palette[index], 'text') }]}>{item.percent}%</Text><Text style={styles.moodLabel}>{item.label}</Text></View>)}</View><Text style={styles.moodFootnote}>Your real listening rhythm across the day</Text></View>;
 }
 
 function CityBars({ items }: { items: MusicDashboardData['cities'] }) {
+  const styles = useThemedStyles(darkStyles);
+
   const maximum = Math.max(1, ...items.map(item => item.songs));
   return items.length ? <View style={styles.cityList}>{items.map(item => <View key={item.label} style={styles.cityRow}><Text style={styles.cityName} numberOfLines={1}>{item.label}</Text><View style={styles.cityTrack}><View style={[styles.cityFill, { width: `${Math.max(5, Math.round((item.songs / maximum) * 100))}%` }]} /></View><Text style={styles.cityCount}>{item.songs}</Text></View>)}<Text style={styles.cityAttribution}>City labels © OpenStreetMap contributors · coordinates reduced before leaving this iPhone</Text></View> : <Empty text="Pull to refresh to add privacy-safe city labels for journey music." />;
 }
 
 function IntensityChart({ daily }: { daily: MusicDashboardData['daily'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [width, setWidth] = useState(0), height = 116;
   const maximum = Math.max(1, ...daily.map(day => day.minutes ?? 0));
   const points = useMemo(() => daily.map((day, index) => ({
@@ -236,23 +273,23 @@ function IntensityChart({ daily }: { daily: MusicDashboardData['daily'] }) {
       <Svg width={width} height={height} style={StyleSheet.absoluteFill}>
         <Defs>
           <SvgLinearGradient id="intensityAreaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0%" stopColor="#ff6c50" stopOpacity="0.32" />
-            <Stop offset="55%" stopColor="#ff3f82" stopOpacity="0.12" />
-            <Stop offset="100%" stopColor="#9b61ff" stopOpacity="0.0" />
+            <Stop offset="0%" stopColor={theme.color("#ff6c50", 'accent')} stopOpacity="0.32" />
+            <Stop offset="55%" stopColor={theme.color("#ff3f82", 'accent')} stopOpacity="0.12" />
+            <Stop offset="100%" stopColor={theme.color("#9b61ff", 'accent')} stopOpacity="0.0" />
           </SvgLinearGradient>
           <SvgLinearGradient id="intensityLineGrad" x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0%" stopColor="#ff795b" />
-            <Stop offset="50%" stopColor="#ff4d87" />
-            <Stop offset="100%" stopColor="#b46cff" />
+            <Stop offset="0%" stopColor={theme.color("#ff795b", 'accent')} />
+            <Stop offset="50%" stopColor={theme.color("#ff4d87", 'accent')} />
+            <Stop offset="100%" stopColor={theme.color("#b46cff", 'accent')} />
           </SvgLinearGradient>
         </Defs>
         {areaPath ? <Path d={areaPath} fill="url(#intensityAreaGrad)" /> : null}
         {points.map((point, index) => (
-          <Path key={`guide-${index}`} d={`M ${point.x} ${point.y} L ${point.x} 100`} stroke="#3b204e" strokeWidth="1" strokeDasharray="3 3" opacity="0.45" />
+          <Path key={`guide-${index}`} d={`M ${point.x} ${point.y} L ${point.x} 100`} stroke={theme.color("#3b204e", 'accent')} strokeWidth="1" strokeDasharray="3 3" opacity="0.45" />
         ))}
         {linePath ? <Path d={linePath} fill="none" stroke="url(#intensityLineGrad)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /> : null}
         {points.map((point, index) => (
-          <Circle key={`dot-${index}`} cx={point.x} cy={point.y} r="4.5" fill="#ff765a" stroke="#fff0ea" strokeWidth="2" />
+          <Circle key={`dot-${index}`} cx={point.x} cy={point.y} r="4.5" fill={theme.color("#ff765a", 'accent')} stroke={theme.color("#fff0ea", 'accent')} strokeWidth="2" />
         ))}
       </Svg>
     ) : null}
@@ -260,30 +297,35 @@ function IntensityChart({ daily }: { daily: MusicDashboardData['daily'] }) {
 }
 
 function WeekBars({ daily }: { daily: MusicDashboardData['daily'] }) {
+  const styles = useThemedStyles(darkStyles);
+
   const maximum = Math.max(1, ...daily.map(day => day.count));
   return <View style={styles.weekBars}>{daily.map(day => <View key={day.date} style={styles.weekBarItem}><View style={styles.weekBarTrack}><View style={[styles.weekBarFill, { height: `${Math.max(day.count ? 10 : 2, Math.round((day.count / maximum) * 100))}%` }]} /></View><Text style={styles.weekBarLabel}>{day.label.slice(0, 1)}</Text></View>)}</View>;
 }
 
 function MusicHeaderScene() {
+  const theme = useAppTheme();
+  const musicHeaderStyles = useThemedStyles(darkMusicHeaderStyles);
+
   const bars = [26, 48, 76, 42, 92, 60, 105, 52, 82, 45, 68, 38, 74];
   return <>
-    <LinearGradient pointerEvents="none" colors={['#0c102c', '#1b0b29', '#100611'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['#0c102c', '#1b0b29', '#100611'] as const)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <Svg pointerEvents="none" viewBox="0 0 360 170" style={musicHeaderStyles.sceneCanvas}>
       <Defs>
         <SvgRadialGradient id="musicSceneGlow" cx="82%" cy="32%" rx="65%" ry="75%">
-          <Stop offset="0" stopColor="#ff3f82" stopOpacity="0.3" />
-          <Stop offset="45%" stopColor="#9b61ff" stopOpacity="0.1" />
-          <Stop offset="1" stopColor="#9b61ff" stopOpacity="0" />
+          <Stop offset="0" stopColor={theme.color("#ff3f82", 'accent')} stopOpacity="0.3" />
+          <Stop offset="45%" stopColor={theme.color("#9b61ff", 'accent')} stopOpacity="0.1" />
+          <Stop offset="1" stopColor={theme.color("#9b61ff", 'accent')} stopOpacity="0" />
         </SvgRadialGradient>
         <SvgLinearGradient id="soundwaveGrad1" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#ff795b" stopOpacity="0.8" />
-          <Stop offset="50%" stopColor="#ff3f82" stopOpacity="0.95" />
-          <Stop offset="100%" stopColor="#c57fff" stopOpacity="0.9" />
+          <Stop offset="0%" stopColor={theme.color("#ff795b", 'accent')} stopOpacity="0.8" />
+          <Stop offset="50%" stopColor={theme.color("#ff3f82", 'accent')} stopOpacity="0.95" />
+          <Stop offset="100%" stopColor={theme.color("#c57fff", 'accent')} stopOpacity="0.9" />
         </SvgLinearGradient>
         <SvgLinearGradient id="soundwaveGrad2" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#43e6ae" stopOpacity="0.4" />
-          <Stop offset="50%" stopColor="#7658dd" stopOpacity="0.75" />
-          <Stop offset="100%" stopColor="#ff3f82" stopOpacity="0.8" />
+          <Stop offset="0%" stopColor={theme.color("#43e6ae", 'accent')} stopOpacity="0.4" />
+          <Stop offset="50%" stopColor={theme.color("#7658dd", 'accent')} stopOpacity="0.75" />
+          <Stop offset="100%" stopColor={theme.color("#ff3f82", 'accent')} stopOpacity="0.8" />
         </SvgLinearGradient>
       </Defs>
       <Rect width="360" height="170" fill="url(#musicSceneGlow)" />
@@ -293,22 +335,22 @@ function MusicHeaderScene() {
       <Path d="M 155 90 Q 200 130 250 80 T 325 105 T 360 75" fill="none" stroke="url(#soundwaveGrad2)" strokeWidth="1.75" opacity="0.5" />
 
       {/* Primary Harmonic Neon Equalizer Beam */}
-      <Path d="M 150 78 C 190 32, 220 120, 265 65 S 315 110, 355 60" fill="none" stroke="#ff3f82" strokeWidth="8" opacity="0.18" strokeLinecap="round" />
+      <Path d="M 150 78 C 190 32, 220 120, 265 65 S 315 110, 355 60" fill="none" stroke={theme.color("#ff3f82", 'accent')} strokeWidth="8" opacity="0.18" strokeLinecap="round" />
       <Path d="M 150 78 C 190 32, 220 120, 265 65 S 315 110, 355 60" fill="none" stroke="url(#soundwaveGrad1)" strokeWidth="2.5" strokeLinecap="round" />
 
       {/* Floating Audio Nodes / Constellation */}
-      <Circle cx="210" cy="55" r="4" fill="#ff795b" stroke="#fff0ea" strokeWidth="1.5" />
-      <Circle cx="265" cy="65" r="5.5" fill="#ff3f82" stroke="#fff" strokeWidth="2" />
-      <Circle cx="265" cy="65" r="11" fill="none" stroke="#ff3f82" strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
-      <Circle cx="315" cy="88" r="4.5" fill="#c57fff" stroke="#f6efff" strokeWidth="1.5" />
-      <Circle cx="348" cy="62" r="3.5" fill="#43e6ae" stroke="#eafff8" strokeWidth="1.5" />
+      <Circle cx="210" cy="55" r="4" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff0ea", 'accent')} strokeWidth="1.5" />
+      <Circle cx="265" cy="65" r="5.5" fill={theme.color("#ff3f82", 'accent')} stroke={theme.color("#fff", 'accent')} strokeWidth="2" />
+      <Circle cx="265" cy="65" r="11" fill="none" stroke={theme.color("#ff3f82", 'accent')} strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
+      <Circle cx="315" cy="88" r="4.5" fill={theme.color("#c57fff", 'accent')} stroke={theme.color("#f6efff", 'accent')} strokeWidth="1.5" />
+      <Circle cx="348" cy="62" r="3.5" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#eafff8", 'accent')} strokeWidth="1.5" />
     </Svg>
     <View pointerEvents="none" style={musicHeaderStyles.spectrum}>{bars.map((height, index) => <View key={`${height}-${index}`} style={[musicHeaderStyles.spectrumBar, { height }]} />)}</View>
     <View pointerEvents="none" style={musicHeaderStyles.rail}><View style={musicHeaderStyles.railCore} /></View>
   </>;
 }
 
-const musicHeaderStyles = StyleSheet.create({
+const darkMusicHeaderStyles = StyleSheet.create({
   pageTitle: { color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 4, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
   heroCardHeader: { width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO },
   header: { minHeight: 166, borderColor: '#652d70', backgroundColor: '#0d0818', shadowColor: '#ff4594', shadowOpacity: 0.3, shadowRadius: 24 },
@@ -322,7 +364,7 @@ const musicHeaderStyles = StyleSheet.create({
   railCore: { width: '72%', height: '100%', borderRadius: 3, backgroundColor: '#ff8467', shadowColor: '#ff8467', shadowOpacity: 1, shadowRadius: 8 },
 });
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.page },
   pageContent: { paddingHorizontal: 16, gap: 13 },
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1460 },

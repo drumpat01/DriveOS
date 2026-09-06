@@ -1,3 +1,5 @@
+import { IpadRecorderControls } from './src/ipad-home';
+import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
@@ -5,6 +7,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { randomUUID } from 'expo-crypto';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -28,6 +31,9 @@ import {
   startLocationTracking, stopAutomaticDetection, stopLocationTracking,
 } from './src/tracking';
 import { JourneyDeckShell } from './src/shell';
+import { JourneyDeckNativeStack } from './src/native-navigation';
+import { CardMotionProvider } from './src/card-detail-link';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { appDataClient } from './src/app-data';
 import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { authorizeShazamMicrophone } from './modules/journeydeck-music';
@@ -40,6 +46,7 @@ import {
 import {
   configureNativeAutomaticRecorder, finishNativeAutomaticJourney, getNativeAutomaticRecorderStatus,
   isNativeAutomaticSession, pauseNativeAutomaticJourney, resumeNativeAutomaticJourney,
+  configureNativeManualRecorder, isNativeManualRecorderAvailable, startNativeManualJourney,
 } from './modules/journeydeck-recorder';
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
@@ -101,11 +108,14 @@ function routeDistanceMiles(points: QueuedPoint[]) {
 
 function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange }: {
   onClose: () => void;
-  presentation?: 'screen' | 'home';
+  presentation?: 'screen' | 'home' | 'ipad-home';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
@@ -159,6 +169,13 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       : expoAutomaticDetectorRunning || Boolean(nativeRecorder?.recording);
     let current = activeSession();
     let currentIsNative = isNativeAutomaticSession(current?.id);
+    await configureNativeManualRecorder(locationPermissionsReady, getCurrentUser().id, Boolean(current && !currentIsNative));
+    if (current?.id.startsWith('native_recording_manual_') && nativeRecorder?.recording && !taskRunning && available) {
+      // Keep the existing Expo background music sampling cadence; GPS sequence
+      // ownership remains exclusively in the native inbox for these sessions.
+      taskRunning = await startLocationTracking().catch(() => false);
+    }
+    if (!current && taskRunning) { await stopLocationTracking().catch(() => undefined); taskRunning = false; }
     const manualFailsafe = evaluateCurrentManualRecordingFailsafe();
     if (manualFailsafe.decision.shouldFinish && manualFailsafe.decision.reason
       && await finishManualRecordingForFailsafe(manualFailsafe.sessionId, manualFailsafe.decision, connection ?? undefined)) {
@@ -208,7 +225,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (action === 'stop-and-finish' && current) {
       observeJourneyDeckEvent('database.recovery_started', { action: 'finish_interrupted' });
       if (currentIsNative) {
-        await finishNativeAutomaticJourney();
+        await finishNativeAutomaticJourney(current.id);
         await syncNativeRecorderInbox();
       }
       else completeSessionLocally(current.id, Boolean(connection));
@@ -228,6 +245,11 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const automaticEvent = NATIVE_AUTOMATIC_RECORDER_ENABLED && nativeRecorder?.lastEvent && nativeRecorder.lastEventAt
       ? { kind: nativeRecorder.lastEvent, occurredAt: nativeRecorder.lastEventAt }
       : loadAutomaticDriveEvent();
+    if (nativeRecorder?.lastEvent === 'manual_auto_finished' && nativeRecorder.lastEventAt
+      && announcedAutomaticEvent.current !== nativeRecorder.lastEventAt) {
+      announcedAutomaticEvent.current = nativeRecorder.lastEventAt;
+      setNotice('Journey finished automatically and is saved on this iPhone.');
+    }
     if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
       && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
       announcedAutomaticEvent.current = automaticEvent.occurredAt;
@@ -261,6 +283,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (NATIVE_AUTOMATIC_RECORDER_ENABLED) {
       await stopAutomaticDetection().catch(() => undefined);
       const status = await configureNativeAutomaticRecorder(shouldRun, getCurrentUser().id, deviceId);
+      await configureNativeManualRecorder(foregroundPermission && backgroundPermission, getCurrentUser().id,
+        Boolean(current && !isNativeAutomaticSession(current.id)));
       await syncNativeRecorderInbox();
       return Boolean(status.significantMonitoring || status.preciseTracking);
     }
@@ -270,6 +294,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     // validated. If a native journey was already recording, let it finish
     // rather than starting a duplicate.
     const nativeStatus = await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
+    await configureNativeManualRecorder(foregroundPermission && backgroundPermission, getCurrentUser().id,
+      Boolean(current && !isNativeAutomaticSession(current.id)));
     let active = false;
     if (nativeStatus.recording || nativeStatus.paused) {
       await stopAutomaticDetection().catch(() => undefined);
@@ -395,6 +421,20 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const start = () => withBusy(async () => {
     if (!deviceId) throw new Error('The local recorder is still getting ready.');
     if (!permissionsReady) throw new Error('Enable background location first.');
+    if (isNativeManualRecorderAvailable) {
+      await syncNativeRecorderInbox();
+      const current = activeSession();
+      if (current) throw new Error('A journey is already active.');
+      await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
+      await configureNativeManualRecorder(true, getCurrentUser().id, false);
+      const status = await startNativeManualJourney(randomUUID());
+      if (!status.recording) throw new Error('Recording could not start. Check Always location access on this iPhone.');
+      await syncNativeRecorderInbox();
+      await startLocationTracking().catch(() => false);
+      void sampleAppleMusicForActiveSession({ force: true });
+      setNotice('Recording started and is being saved on this iPhone.');
+      return;
+    }
     const session = beginLocalSession(deviceId);
     try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
     catch (error) { setLocalStatus(session.id, 'paused'); throw error; }
@@ -407,6 +447,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (isNativeAutomaticSession(summary.id)) {
       const status = await pauseNativeAutomaticJourney();
       if (!status.paused) throw new Error('The native journey could not be paused safely.');
+      await stopLocationTracking().catch(() => undefined);
     } else {
       await captureCurrentPoint(); await stopLocationTracking(); setLocalStatus(summary.id, 'paused');
     }
@@ -418,6 +459,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     if (isNativeAutomaticSession(summary.id)) {
       const status = await resumeNativeAutomaticJourney();
       if (!status.recording) throw new Error('iOS did not confirm native background recording.');
+      if (summary.id.startsWith('native_recording_manual_')) await startLocationTracking().catch(() => false);
     } else {
       setLocalStatus(summary.id, 'recording');
       try { if (!(await startLocationTracking())) throw new Error('iOS did not confirm background location tracking.'); await captureCurrentPoint(true); }
@@ -451,9 +493,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     try {
       await runExclusive(async () => {
         if (isNativeAutomaticSession(currentSummary.id)) {
-          const status = await finishNativeAutomaticJourney();
-          if (status.sessionId === currentSummary.id && status.recording) throw new Error('The native journey is still recording.');
+          const status = await finishNativeAutomaticJourney(currentSummary.id);
+          if (status.sessionId === currentSummary.id || status.lastErrorCode) throw new Error('The native journey could not be finished safely.');
           await syncNativeRecorderInbox();
+          await stopLocationTracking().catch(() => undefined);
         } else {
           await captureCurrentPoint();
           await stopLocationTracking();
@@ -508,6 +551,15 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   ], [connection, summary]);
   const automaticMode = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
 
+  if (presentation === 'ipad-home') {
+    const startupPending = !deviceId || !recorderInitialized;
+    const tabletStatus = startupPending ? 'loading' : summary?.status === 'finishing' ? 'finishing'
+      : summary?.status === 'recording' ? 'recording' : summary?.status === 'paused' ? 'paused'
+      : !permissionsReady ? 'permission' : automaticMode ? 'automatic' : 'ready';
+    return <IpadRecorderControls status={tabletStatus} busy={busy} onStart={start} onEnable={enablePermissions}
+      onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />;
+  }
+
   if (presentation === 'home') {
     const recording = summary?.status === 'recording';
     const paused = summary?.status === 'paused';
@@ -525,15 +577,15 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
                 <Text style={[styles.homeRecorderEyebrow, paused && styles.homeRecorderEyebrowPaused]}>{active ? paused ? 'PAUSED' : 'RECORDING' : automaticMode ? 'TESLA AUTOMATION' : 'READY'}</Text>
                 <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : 'Your journey is being remembered.' : automaticMode ? 'Waiting for Tessie to confirm your drive.' : 'Ready to remember your next drive.'}</Text>
               </View>
-              {busy && <ActivityIndicator color="#ff795b" size="small" />}
+              {busy && <ActivityIndicator color={theme.color("#ff795b", 'text')} size="small" />}
             </View>
 
             {active && <View style={styles.homeRecorderMetrics}>
-              <View style={styles.homeRecorderMetric}><SymbolView name="clock" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricValue}>{durationLabel(summary?.startedAt)}</Text></View>
+              <View style={styles.homeRecorderMetric}><SymbolView name="clock" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricValue}>{durationLabel(summary?.startedAt)}</Text></View>
               <View style={styles.homeRecorderMetricDivider} />
-              <View style={styles.homeRecorderMetric}><SymbolView name="road.lanes" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricValue}>{distanceMiles.toFixed(1)} <Text style={styles.homeRecorderMetricUnit}>MI</Text></Text></View>
+              <View style={styles.homeRecorderMetric}><SymbolView name="road.lanes" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricValue}>{distanceMiles.toFixed(1)} <Text style={styles.homeRecorderMetricUnit}>MI</Text></Text></View>
               <View style={styles.homeRecorderMetricDivider} />
-              <View style={styles.homeRecorderMetric}><SymbolView name="location.fill" tintColor="#a49baa" size={22} /><Text style={styles.homeRecorderMetricLabel}>GPS SAVED</Text><Text style={styles.homeRecorderMetricValue}>{summary?.pointCount ?? 0}</Text></View>
+              <View style={styles.homeRecorderMetric}><SymbolView name="location.fill" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricLabel}>GPS SAVED</Text><Text style={styles.homeRecorderMetricValue}>{summary?.pointCount ?? 0}</Text></View>
             </View>}
           </View>
         )}
@@ -543,14 +595,14 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
           : !active && !automaticMode ? null
           : recording ? <>
             {showManualSongButton && <Pressable disabled={busy} onPress={identifySong} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}>
-              <LinearGradient colors={['rgba(88,43,148,0.96)', 'rgba(20,13,30,0.96)']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.homeRecorderIdentifyIcon}><SymbolView name="music.note" tintColor="#d595ff" size={27} /></LinearGradient>
+              <LinearGradient colors={theme.gradient(['rgba(88,43,148,0.96)', 'rgba(20,13,30,0.96)'])} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.homeRecorderIdentifyIcon}><SymbolView name="music.note" tintColor={theme.color("#d595ff", 'text')} size={27} /></LinearGradient>
               <View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Identify Song</Text><Text style={styles.homeRecorderIdentifyBody}>Tap once for each song you want to remember.</Text></View>
               <Text style={styles.homeRecorderChevron}>›</Text>
             </Pressable>}
             <HomeRecorderPrimaryAction label="End Journey" symbol="waveform" onPress={finish} disabled={busy} />
           </>
           : paused ? <>
-            <Pressable disabled={busy} onPress={resume} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}><View style={styles.homeRecorderIdentifyIcon}><SymbolView name="play.fill" tintColor="#d595ff" size={24} /></View><View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Resume Journey</Text><Text style={styles.homeRecorderIdentifyBody}>Continue saving your route.</Text></View><Text style={styles.homeRecorderChevron}>›</Text></Pressable>
+            <Pressable disabled={busy} onPress={resume} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}><View style={styles.homeRecorderIdentifyIcon}><SymbolView name="play.fill" tintColor={theme.color("#d595ff", 'text')} size={24} /></View><View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Resume Journey</Text><Text style={styles.homeRecorderIdentifyBody}>Continue saving your route.</Text></View><Text style={styles.homeRecorderChevron}>›</Text></Pressable>
             <HomeRecorderPrimaryAction label="End Journey" symbol="waveform" onPress={finish} disabled={busy} />
           </> : null}
         {!!notice && <Text style={styles.homeRecorderNotice}>{notice}</Text>}
@@ -560,7 +612,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 
   return (
     <View style={styles.safeArea}>
-      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={[styles.content, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
@@ -574,7 +626,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
           <View style={styles.recorderArtHeader}><HeaderArtwork source={require('./assets/recorder-header-hero-v2.jpg')} /></View>
 
           {!deviceId ? (
-            <NeonWidget radius={22} style={styles.card}><ActivityIndicator color="#9b7cff" /><Text style={styles.body}>Preparing the private on-device recorder…</Text></NeonWidget>
+            <NeonWidget radius={22} style={styles.card}><ActivityIndicator color={theme.color("#9b7cff", 'text')} /><Text style={styles.body}>Preparing the private on-device recorder…</Text></NeonWidget>
           ) : !permissionsReady ? (
             <NeonWidget radius={22} style={styles.card}>
               <Text style={styles.cardTitle}>Allow background location</Text>
@@ -586,7 +638,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
             </NeonWidget>
           ) : (
             <>
-              <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: accent }]}><View style={[styles.statusDot, { backgroundColor: accent }]} /><Text style={[styles.statusText, { color: accent }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
+              <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: theme.color(accent, 'border') }]}><View style={[styles.statusDot, { backgroundColor: theme.color(accent, 'surface') }]} /><Text style={[styles.statusText, { color: theme.color(accent, 'text') }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
               <View style={styles.metrics}>{metrics.map(([label, value], index) => <QuietInset radius={16} accent={index === 0 ? '#ff795b' : index === 1 ? '#ff4d87' : index === 2 ? '#a66cff' : '#5aa7ff'} style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue} numberOfLines={1}>{value}</Text></QuietInset>)}</View>
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
@@ -609,11 +661,11 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
               <Text style={styles.label}>JOURNEYDECK ADDRESS</Text>
               <TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
               <Text style={styles.label}>RECORDER KEY</Text>
-              <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor="#655f74" style={styles.input} />
+              <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor={theme.color("#655f74", 'text')} style={styles.input} />
               <SecondaryButton label="Connect owner backup" onPress={connect} disabled={busy} />
             </NeonWidget>
           ) : null}
-          {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color="#9b7cff" /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
+          {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color={theme.color("#9b7cff", 'text')} /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
           <Text style={styles.footer}>Private on-device recorder • {connection ? 'Owner backup connected' : 'No server required'}</Text>
@@ -624,20 +676,32 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 }
 
 function RecorderAtmosphere() {
-  return <Svg pointerEvents="none" viewBox="0 0 430 1250" preserveAspectRatio="none" style={styles.atmosphere}><Defs><SvgRadialGradient id="recorderTopBloom" cx="50%" cy="3%" rx="68%" ry="34%"><Stop offset="0" stopColor="#8d4fff" stopOpacity="0.25" /><Stop offset="0.5" stopColor="#642eb2" stopOpacity="0.08" /><Stop offset="1" stopColor="#642eb2" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderSideBloom" cx="100%" cy="55%" rx="78%" ry="36%"><Stop offset="0" stopColor="#4ca7ff" stopOpacity="0.17" /><Stop offset="0.55" stopColor="#704cff" stopOpacity="0.05" /><Stop offset="1" stopColor="#704cff" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderLowBloom" cx="0%" cy="88%" rx="82%" ry="30%"><Stop offset="0" stopColor="#ff6540" stopOpacity="0.13" /><Stop offset="1" stopColor="#ff6540" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="430" height="1250" fill="url(#recorderTopBloom)" /><Rect width="430" height="1250" fill="url(#recorderSideBloom)" /><Rect width="430" height="1250" fill="url(#recorderLowBloom)" /></Svg>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Svg pointerEvents="none" viewBox="0 0 430 1250" preserveAspectRatio="none" style={styles.atmosphere}><Defs><SvgRadialGradient id="recorderTopBloom" cx="50%" cy="3%" rx="68%" ry="34%"><Stop offset="0" stopColor={theme.color("#8d4fff", 'accent')} stopOpacity="0.25" /><Stop offset="0.5" stopColor={theme.color("#642eb2", 'accent')} stopOpacity="0.08" /><Stop offset="1" stopColor={theme.color("#642eb2", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderSideBloom" cx="100%" cy="55%" rx="78%" ry="36%"><Stop offset="0" stopColor={theme.color("#4ca7ff", 'accent')} stopOpacity="0.17" /><Stop offset="0.55" stopColor={theme.color("#704cff", 'accent')} stopOpacity="0.05" /><Stop offset="1" stopColor={theme.color("#704cff", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="recorderLowBloom" cx="0%" cy="88%" rx="82%" ry="30%"><Stop offset="0" stopColor={theme.color("#ff6540", 'accent')} stopOpacity="0.13" /><Stop offset="1" stopColor={theme.color("#ff6540", 'accent')} stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="430" height="1250" fill="url(#recorderTopBloom)" /><Rect width="430" height="1250" fill="url(#recorderSideBloom)" /><Rect width="430" height="1250" fill="url(#recorderLowBloom)" /></Svg>;
 }
 
 function App() {
-  return <JourneyDeckShell recorder={RecorderScreen} />;
+  return <GestureHandlerRootView style={{ flex: 1 }}><AppThemeProvider><CardMotionProvider><JourneyDeckShell recorder={RecorderScreen}><JourneyDeckNativeStack /></JourneyDeckShell></CardMotionProvider></AppThemeProvider></GestureHandlerRootView>;
 }
 
 export default ObserveRoot.wrap(App);
 
 type ButtonProps = { label: string; onPress: () => void; disabled?: boolean };
-function PrimaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.primaryButtonText}>{label}</Text></Pressable>; }
-function SecondaryButton({ label, onPress, disabled }: ButtonProps) { return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.secondaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.secondaryButtonText}>{label}</Text></Pressable>; }
-function Check({ ready, label }: { ready: boolean; label: string }) { return <View style={styles.checkRow}><Text style={styles.check}>{ready ? '✓' : '○'}</Text><Text style={styles.checkText}>{label}</Text></View>; }
+function PrimaryButton({ label, onPress, disabled }: ButtonProps) {
+  const styles = useThemedStyles(darkStyles);
+ return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.primaryButtonText}>{label}</Text></Pressable>; }
+function SecondaryButton({ label, onPress, disabled }: ButtonProps) {
+  const styles = useThemedStyles(darkStyles);
+ return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.secondaryButton, (disabled || pressed) && styles.buttonMuted]}><Text style={styles.secondaryButtonText}>{label}</Text></Pressable>; }
+function Check({ ready, label }: { ready: boolean; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.checkRow}><Text style={styles.check}>{ready ? '✓' : '○'}</Text><Text style={styles.checkText}>{label}</Text></View>; }
 function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { onPress: () => void; disabled?: boolean; showProgress?: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable
     testID="home-start-journey-portal"
     accessibilityRole="button"
@@ -648,45 +712,48 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { 
     onPress={onPress}
     style={({ pressed }) => [styles.homeRecorderStartPortal, pressed && styles.homeRecorderStartPortalPressed]}
   >
-    <View style={styles.homeRecorderStartPortalCanvas}>
+    <View style={[styles.homeRecorderStartPortalCanvas, theme.isLight && { backgroundColor: 'rgba(250,244,255,0.78)', borderRadius: 30 }]}>
       <HomeRecorderStartPortalAtmosphere />
-      <View pointerEvents="none" style={styles.homeRecorderStartPortalOutline} />
+      <View pointerEvents="none" style={[styles.homeRecorderStartPortalOutline, theme.isLight && { borderColor: '#694079', shadowColor: '#8e58b0' }]} />
       <View pointerEvents="none" style={styles.homeRecorderStartPortalStatus}>
-        <View style={styles.homeRecorderStartPortalPulseOuter}>
-          <View style={styles.homeRecorderStartPortalPulseMiddle}>
-            <View style={styles.homeRecorderStartPortalPulseCore} />
+        <View style={[styles.homeRecorderStartPortalPulseOuter, theme.isLight && { borderColor: 'rgba(105,64,121,0.30)', backgroundColor: 'rgba(150,100,183,0.06)' }]}>
+          <View style={[styles.homeRecorderStartPortalPulseMiddle, theme.isLight && { borderColor: 'rgba(105,64,121,0.55)', backgroundColor: 'rgba(150,100,183,0.12)' }]}>
+            <View style={[styles.homeRecorderStartPortalPulseCore, theme.isLight && { backgroundColor: '#75448e', shadowColor: '#985ac0' }]} />
           </View>
         </View>
-        <Text style={styles.homeRecorderStartPortalEyebrow}>READY</Text>
-        <Text style={styles.homeRecorderStartPortalBody}>Ready to remember your next drive.</Text>
+        <Text style={[styles.homeRecorderStartPortalEyebrow, theme.isLight && { color: '#59316d' }]}>READY</Text>
+        <Text style={[styles.homeRecorderStartPortalBody, theme.isLight && { color: '#49354f' }]}>Ready to remember your next drive.</Text>
       </View>
       <View pointerEvents="none" style={styles.homeRecorderStartPortalAction}>
-        <Text style={styles.homeRecorderStartPortalTitle}>Start Journey</Text>
-        {showProgress ? <ActivityIndicator color="#fff6f1" size="small" /> : <SymbolView name="arrow.right" tintColor="#fff6f1" size={31} />}
+        <Text style={[styles.homeRecorderStartPortalTitle, theme.isLight && { color: '#3f2052', textShadowColor: 'transparent', textShadowRadius: 0 }]}>Start Journey</Text>
+        {showProgress ? <ActivityIndicator color={theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size="small" /> : <SymbolView name="arrow.right" tintColor={theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size={31} />}
       </View>
     </View>
   </Pressable>;
 }
 function HomeRecorderStartPortalAtmosphere() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <Svg pointerEvents="none" viewBox="0 0 360 360" preserveAspectRatio="none" style={styles.homeRecorderStartPortalAtmosphere}>
     <Defs>
       <SvgRadialGradient id="startPortalGlass" cx="50%" cy="45%" rx="49%" ry="45%">
-        <Stop offset="0" stopColor="#07050d" stopOpacity="0.68" />
-        <Stop offset="0.56" stopColor="#090610" stopOpacity="0.46" />
-        <Stop offset="0.78" stopColor="#0b0712" stopOpacity="0.11" />
-        <Stop offset="0.88" stopColor="#0b0712" stopOpacity="0" />
-        <Stop offset="1" stopColor="#0b0712" stopOpacity="0" />
+        <Stop offset="0" stopColor={theme.isLight ? '#faf4ff' : theme.color("#07050d", 'accent')} stopOpacity="0.68" />
+        <Stop offset="0.56" stopColor={theme.isLight ? '#faf4ff' : theme.color("#090610", 'accent')} stopOpacity="0.46" />
+        <Stop offset="0.78" stopColor={theme.isLight ? '#faf4ff' : theme.color("#0b0712", 'accent')} stopOpacity="0.11" />
+        <Stop offset="0.88" stopColor={theme.color("#0b0712", 'accent')} stopOpacity="0" />
+        <Stop offset="1" stopColor={theme.color("#0b0712", 'accent')} stopOpacity="0" />
       </SvgRadialGradient>
       <SvgRadialGradient id="startPortalCoral" cx="50%" cy="54%" rx="82%" ry="78%" fx="50%" fy="70%">
-        <Stop offset="0" stopColor="#ff405f" stopOpacity="0.62" />
-        <Stop offset="0.35" stopColor="#ff4f66" stopOpacity="0.42" />
-        <Stop offset="0.68" stopColor="#ff7654" stopOpacity="0.18" />
-        <Stop offset="1" stopColor="#ff7654" stopOpacity="0.10" />
+        <Stop offset="0" stopColor={theme.isLight ? '#b78dd7' : theme.color("#ff405f", 'accent')} stopOpacity="0.62" />
+        <Stop offset="0.35" stopColor={theme.isLight ? '#bda0dc' : theme.color("#ff4f66", 'accent')} stopOpacity="0.42" />
+        <Stop offset="0.68" stopColor={theme.isLight ? '#b995d1' : theme.color("#ff7654", 'accent')} stopOpacity="0.18" />
+        <Stop offset="1" stopColor={theme.isLight ? '#b995d1' : theme.color("#ff7654", 'accent')} stopOpacity="0.10" />
       </SvgRadialGradient>
       <SvgRadialGradient id="startPortalHalo" cx="50%" cy="30%" rx="34%" ry="25%">
-        <Stop offset="0" stopColor="#ff795b" stopOpacity="0.12" />
-        <Stop offset="0.82" stopColor="#ff795b" stopOpacity="0" />
-        <Stop offset="1" stopColor="#ff795b" stopOpacity="0" />
+        <Stop offset="0" stopColor={theme.isLight ? '#985ac0' : theme.color("#ff795b", 'accent')} stopOpacity="0.12" />
+        <Stop offset="0.82" stopColor={theme.isLight ? '#985ac0' : theme.color("#ff795b", 'accent')} stopOpacity="0" />
+        <Stop offset="1" stopColor={theme.isLight ? '#985ac0' : theme.color("#ff795b", 'accent')} stopOpacity="0" />
       </SvgRadialGradient>
     </Defs>
     <Rect width="360" height="360" fill="url(#startPortalGlass)" />
@@ -695,22 +762,28 @@ function HomeRecorderStartPortalAtmosphere() {
   </Svg>;
 }
 function HomeRecorderPrimaryAction({ label, symbol, onPress, disabled }: { label: string; symbol: SFSymbol; onPress: () => void; disabled?: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.homeRecorderPrimary, pressed && styles.homeRecorderPressed]}>
-    <LinearGradient colors={['#ff7654', '#ff376f']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
-    <View style={styles.homeRecorderPrimaryIcon}><SymbolView name={symbol} tintColor="#fff4ee" size={26} /></View>
+    <LinearGradient colors={theme.gradient(['#ff7654', '#ff376f'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.homeRecorderPrimaryIcon}><SymbolView name={symbol} tintColor={theme.color("#fff4ee", 'text')} size={26} /></View>
     <Text style={styles.homeRecorderPrimaryText}>{label}</Text>
     <Text style={styles.homeRecorderPrimaryArrow}>›</Text>
   </Pressable>;
 }
 function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const presentation = syncPresentation(stage);
-  return <View style={[styles.syncCard, { borderColor: presentation.color }]} accessible accessibilityLabel={`${presentation.title}. ${presentation.detail}`}>
-    {presentation.spinning ? <ActivityIndicator color={presentation.color} /> : <View style={[styles.syncDot, { backgroundColor: presentation.color }]} />}
-    <View style={styles.syncCopy}><Text style={[styles.syncTitle, { color: presentation.color }]}>{presentation.title}</Text><Text style={styles.syncDetail}>{presentation.detail}</Text></View>
+  return <View style={[styles.syncCard, { borderColor: theme.color(presentation.color, 'border') }]} accessible accessibilityLabel={`${presentation.title}. ${presentation.detail}`}>
+    {presentation.spinning ? <ActivityIndicator color={theme.color(presentation.color, 'text')} /> : <View style={[styles.syncDot, { backgroundColor: theme.color(presentation.color, 'surface') }]} />}
+    <View style={styles.syncCopy}><Text style={[styles.syncTitle, { color: theme.color(presentation.color, 'text') }]}>{presentation.title}</Text><Text style={styles.syncDetail}>{presentation.detail}</Text></View>
   </View>;
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
   homeRecorderStack: { gap: 12 },

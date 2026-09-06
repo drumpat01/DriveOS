@@ -20,6 +20,7 @@ import {
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId } from './memory-model';
 import { loadSavedPlaces } from './saved-places';
+import { resolvePrivatePhotoFile } from './private-photo-file';
 import { isVisibleJourney, visibleJourneys } from './journey-visibility';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
@@ -693,13 +694,29 @@ export const appDataClient = {
     return local;
   },
 
+  async addJourneysToMemory(memoryId: string, journeyIds: string[]): Promise<void> {
+    const userId = getCurrentUser().id;
+    // Read the full local record at drop time, not a filtered/stale gallery card.
+    const memory = getMemoryIncludingDeleted(userId, memoryId);
+    if (!memory || memory.deletedAt || !isDirectJourneyMemoryId(memoryId)) throw new Error('This Memory is no longer available.');
+    if (!journeyIds.length || journeyIds.some(id => !getJourney(userId, id))) throw new Error('One of these journeys is no longer available.');
+    const existing: string[] = JSON.parse(memory.journeyIds);
+    const merged = [...new Set([...existing, ...journeyIds])];
+    if (merged.length === existing.length) return;
+    upsertMemory({ ...memory, journeyIds: JSON.stringify(merged) });
+  },
+
   async uploadMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
     return savePrivateMemoryPhoto(memoryId, input);
   },
 
   async photoDataUrl(photo: JourneyPhoto): Promise<string> {
     const local = getPhotoIncludingDeleted(getCurrentUser().id, photo.id);
-    if (local && !local.deletedAt) return local.localUri;
+    if (local && !local.deletedAt) {
+      const file = await resolvePrivatePhotoFile(local);
+      if (file.status === 'available') return file.localUri;
+      throw new Error('This saved photo is unavailable on this device.');
+    }
     const cached = readAppCache<string>(photoCacheKey(photo.id));
     if (cached) return cached;
     const connection = await loadConnection();

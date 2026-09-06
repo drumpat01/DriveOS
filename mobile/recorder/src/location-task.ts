@@ -4,13 +4,21 @@ import { sampleAppleMusicForActiveSession, sampleTessieMediaForActiveSession } f
 import {
   evaluateCurrentManualRecordingFailsafe, finishManualRecordingForFailsafe,
 } from './manual-recording-failsafe-runtime';
-import { recordLocations } from './storage';
-import { LOCATION_TASK_NAME } from './tracking';
+import { activeSession, recordLocations } from './storage';
+import { LOCATION_TASK_NAME, stopLocationTracking } from './tracking';
+import { isNativeAutomaticSession } from '../modules/journeydeck-recorder';
+import { syncNativeRecorderInbox } from './native-recorder-inbox';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { observeJourneyDeckEvent } from './observability';
 
 TaskManager.defineTask<{ locations: LocationObject[] }>(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
+  if (isNativeAutomaticSession(activeSession()?.id)) {
+    await syncNativeRecorderInbox();
+    if (!activeSession()) { await stopLocationTracking(); return; }
+    await sampleAppleMusicForActiveSession();
+    return;
+  }
   const inserted = recordLocations(data.locations);
   try {
     const failsafe = evaluateCurrentManualRecordingFailsafe();

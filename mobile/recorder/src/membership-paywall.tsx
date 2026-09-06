@@ -1,3 +1,5 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
+import { headerImageSource } from './header-image-sources';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -56,6 +58,9 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
   onPurchase: (productId: string) => Promise<void>;
   onRestore: () => Promise<void>;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [productsFresh, setProductsFresh] = useState(false);
   const loadProductsRef = useRef(onLoadProducts);
@@ -115,7 +120,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
 
   return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={['#1d071f', '#09050f', '#020106']} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={theme.gradient(['#1d071f', '#09050f', '#020106'])} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
       <View pointerEvents="none" style={styles.ambientGlow}>
         <Image
           accessible={false}
@@ -151,13 +156,13 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
         <View style={[styles.hero, { height: 156 + (44 * expansion), marginTop: 11 + (5 * expansion) }]}>
           <ImageBackground
             accessible={false}
-            source={require('../assets/atlas-globe-membership-v1.jpg')}
+            source={headerImageSource(require('../assets/atlas-globe-membership-v1.jpg'), theme.mode)}
             resizeMode="cover"
             style={styles.heroImage}
             imageStyle={styles.heroImageCorners}
           >
             <LinearGradient
-              colors={['rgba(3,1,8,0.02)', 'rgba(4,1,9,0.08)', 'rgba(5,2,10,0.88)']}
+              colors={theme.gradient(['rgba(3,1,8,0.02)', 'rgba(4,1,9,0.08)', 'rgba(5,2,10,0.88)'])}
               locations={[0, 0.57, 1]}
               style={StyleSheet.absoluteFill}
             />
@@ -214,7 +219,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
 
         <View style={[styles.planArea, { minHeight: 86 + (14 * expansion), marginTop: 8 + (3 * expansion) }]}>
           {state.productsLoading && <View accessibilityLiveRegion="polite" style={[styles.loading, { minHeight: 84 + (14 * expansion) }]}>
-            <ActivityIndicator color="#ff7962" />
+            <ActivityIndicator color={theme.color("#ff7962", 'text')} />
             <Text style={styles.loadingText}>Checking live App Store prices…</Text>
           </View>}
 
@@ -275,13 +280,13 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
           style={({ pressed }) => [styles.ctaShell, { minHeight: 52 + (6 * expansion) }, purchaseDisabled && styles.ctaDisabled, pressed && styles.pressed]}
         >
           <LinearGradient
-            colors={purchaseDisabled ? ['#5b3e4e', '#523149'] : ['#ff8a4d', '#ff3f72']}
+            colors={theme.gradient(purchaseDisabled ? ['#5b3e4e', '#523149'] : ['#ff8a4d', '#ff3f72'])}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.cta, { minHeight: 52 + (6 * expansion) }]}
           >
             {state.purchasePending
-              ? <ActivityIndicator color="#24060c" />
+              ? <ActivityIndicator color={theme.color("#24060c", 'text')} />
               : <Text style={styles.ctaText}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
           </LinearGradient>
         </Pressable>
@@ -327,6 +332,8 @@ function IntelligenceFeature({ expansion, stacked, kind, title, description }: {
   title: string;
   description: string;
 }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.feature, stacked && styles.featureStacked, { minHeight: 72 + (12 * expansion), paddingVertical: 9 + (3 * expansion) }]}>
     <MiniIntelligence kind={kind} />
     <View style={styles.featureCopy}>
@@ -337,6 +344,8 @@ function IntelligenceFeature({ expansion, stacked, kind, title, description }: {
 }
 
 function MiniIntelligence({ kind }: { kind: 'pattern' | 'places' | 'routes' | 'music' }) {
+  const styles = useThemedStyles(darkStyles);
+
   if (kind === 'places') {
     return <View accessible={false} style={styles.mini}>
       <View style={styles.placeOuter}><View style={styles.placeInner}><View style={styles.placeDot} /></View></View>
@@ -359,7 +368,7 @@ function MiniIntelligence({ kind }: { kind: 'pattern' | 'places' | 'routes' | 'm
   </View>;
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#020106' },
   ambientGlow: {
     position: 'absolute',

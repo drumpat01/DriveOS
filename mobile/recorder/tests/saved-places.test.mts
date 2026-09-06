@@ -40,7 +40,7 @@ test('the Primary Driver account row opens the private name and profile-photo ed
 });
 
 test('Settings editors replace the overview without controlling its native scroll position', () => {
-  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function CinematicTabPage'));
+  const settings = shell.slice(shell.indexOf('function ConnectionsScreen'), shell.indexOf('function AppearanceSwitch'));
   assert.match(settings, /if \(destination\.kind === 'profile'\) \{[\s\S]*?return <SettingsProfileEditor/);
   assert.match(settings, /if \(destination\.kind === 'saved-place'\) \{[\s\S]*?return <SettingsSavedPlaceEditor/);
   assert.doesNotMatch(settings, /settingsScrollView|settingsScrollOffset|contentOffset=|onScroll=|scrollEventThrottle|<OverlayModal|<Modal/);
@@ -65,5 +65,7 @@ test('Settings editors own navigation and cancel stale asynchronous place work',
   assert.match(editors, /operationGeneration\.current \+= 1/);
   assert.match(editors, /operation !== operationGeneration\.current/);
   assert.match(settings, /onEditorActiveChange\(destination\.kind !== 'overview'\)/);
-  assert.match(shell, /appVisible && !settingsEditorActive && <SafeAreaView style=\{styles\.navSafe\}>/);
+  const navigation = readFileSync(new URL('../src/native-navigation.tsx', import.meta.url), 'utf8');
+  assert.match(shell, /tabBarHidden: settingsEditorActive/);
+  assert.match(navigation, /<NativeTabs\b[^>]*\bhidden=\{tabBarHidden\}/);
 });

@@ -2,7 +2,7 @@ import CloudKit
 import ExpoModulesCore
 import Foundation
 
-private let containerIdentifier = "iCloud.com.journeydeck.recorder"
+private let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckCloudKitContainer") as? String ?? "iCloud.com.journeydeck.recorder"
 private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
 private let assetRecordTypes: Set<String> = ["Photo", "RouteArchive"]
 private let maximumPhotoAssetBytes: UInt64 = 10 * 1_024 * 1_024

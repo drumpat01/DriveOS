@@ -1,7 +1,14 @@
+import { useAppTheme, useThemedStyles, useThemeChoice } from './app-theme';
+import { isIpad } from './device-layout';
+import { IpadHomeScreen } from './ipad-home';
+import { IpadStatisticsScreen } from './ipad-statistics-screen';
+import { IpadMemoriesScreen } from './ipad-memories-screen';
+import { SettingsScrollView } from './settings-scroll-view';
+import { IpadSettingsScreen } from './ipad-settings-screen';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, PanResponder, Pressable,
-  SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions,
+  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, Pressable,
+  SafeAreaView, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import * as Haptics from 'expo-haptics';
@@ -16,10 +23,17 @@ import { BlurView } from 'expo-blur';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MeshGradientView } from 'expo-mesh-gradient';
-import PagerView from 'react-native-pager-view';
+import { router, useLocalSearchParams, usePathname } from 'expo-router';
+import { NativeNavigationContext, tabPaths, useJourneyDeckNavigation } from './native-navigation-context';
+import { useJourneyDetail } from './use-journey-detail';
+import { NativeSheet, requestSheetClose } from './native-sheet';
+import { CardDetailLink, useCardDetailDismissal } from './card-detail-link';
+import { useJourneyCardAction } from './journey-card-action';
+import { NativeActionMenu } from './native-action-menu';
+import { DetailScreenFrame, useDetailViewportInsets } from './detail-screen-frame';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming, type SharedValue } from 'react-native-reanimated';
+import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { ObserveInteractiveMarker } from 'expo-observe';
 
 import {
@@ -43,10 +57,10 @@ import {
 } from './recording-mode';
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
-import { navigationGeometry, navigationIndexAtX, navigationProgressAtX, tabPageMotion } from './navigation-motion';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
-import { deleteCurrentJourneyDeckAccount, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
+import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, type LocalPlace, type LocalUser } from './local-store';
+import { PlaceDataCredits } from './place-data-credits';
 import { loadSavedPlaces, removeSavedPlace, saveSavedPlace, SAVED_PLACE_SLOTS, type SavedPlaceSlot } from './saved-places';
 import { observeJourneyDeckEvent } from './observability';
 import { InteractiveRouteMap } from './interactive-route-map';
@@ -60,6 +74,7 @@ import { loadCityLabelForCoordinate } from './music-city-summary';
 import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } from './profile-appearance';
 import { NeonWidgetOutline } from './neon-widget-outline';
 import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { headerImageSource } from './header-image-sources';
 import { isInternalTestingBuild } from './internal-testing';
 import { maskCoordinate, prepareShareCardCoords } from './privacy-masker';
 import { trimPrivateShareRoute } from './share-route-privacy';
@@ -79,19 +94,6 @@ import {
 type Tab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
 type PrivateCloudUiState = { status: 'unavailable' | 'idle' | 'syncing' | 'synced' | 'needs_icloud' | 'error'; detail: string };
-
-type BottomNavigationItem = { id: Tab; label: string; symbol: SFSymbol; fallback: string };
-
-export function bottomNavigationItemsFor(atlasAccess: boolean): BottomNavigationItem[] {
-  void atlasAccess;
-  return [
-  { id: 'music', label: 'Soundtracks', symbol: 'music.note', fallback: '♪' },
-  { id: 'journeys', label: 'Memories', symbol: 'photo.on.rectangle', fallback: '▧' },
-  { id: 'home', label: 'Home', symbol: 'house', fallback: '⌂' },
-  { id: 'statistics', label: 'Statistics', symbol: 'chart.xyaxis.line', fallback: '↗' },
-  { id: 'settings', label: 'Settings', symbol: 'gearshape', fallback: '⚙' },
-  ];
-}
 
 function dashboardForMembership(
   dashboard: AppDashboard,
@@ -254,37 +256,34 @@ function blankDashboard(): AppDashboard {
 
 type RecorderComponent = ComponentType<{
   onClose: () => void;
-  presentation?: 'screen' | 'home';
+  presentation?: 'screen' | 'home' | 'ipad-home';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
 }>;
 
-export function JourneyDeckShell({ recorder }: { recorder: RecorderComponent }) {
+export function JourneyDeckShell({ recorder, children }: { recorder: RecorderComponent; children: ReactNode }) {
   const [profileRevision, setProfileRevision] = useState(0);
-  return <JourneyDeckShellContent key={profileRevision} recorder={recorder} onProfileChanged={() => setProfileRevision(revision => revision + 1)} />;
+  return <JourneyDeckShellContent key={profileRevision} recorder={recorder} onProfileChanged={() => setProfileRevision(revision => revision + 1)}>{children}</JourneyDeckShellContent>;
 }
 
-function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { recorder: RecorderComponent; onProfileChanged: () => void }) {
+function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, children }: { recorder: RecorderComponent; onProfileChanged: () => void; children: ReactNode }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const updateState = Updates.useUpdates();
   const membershipStore = useJourneyDeckMembership();
   const membership = membershipStore.state.entitlements;
-  const bottomNavigationItems = useMemo(() => bottomNavigationItemsFor(membership.atlasAccess), [membership.atlasAccess]);
   const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [homeRecorderActive, setHomeRecorderActive] = useState(false);
   const [settingsEditorActive, setSettingsEditorActive] = useState(false);
   const tabRef = useRef<Tab>('home');
-  const pagerRef = useRef<PagerView>(null);
-  const tabProgress = useSharedValue(2);
-  const pagerProgress = useSharedValue(2);
-  const [reduceTabMotion, setReduceTabMotion] = useState(false);
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
   const [firstRunProgress, setFirstRunProgress] = useState<FirstRunProgress | null>(() => loadFirstRunProgress());
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
-  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
   const [musicCapabilities, setMusicCapabilities] = useState<JourneyDeckMusicCapabilityStatus | null>(null);
   const [connectionCapabilities, setConnectionCapabilities] = useState<ConnectionCapabilities>({ lastFmConfigured: false, tessieConfigured: false });
   const [lastFmUsername, setLastFmUsername] = useState('');
@@ -308,20 +307,12 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   const [journeysLoadingMore, setJourneysLoadingMore] = useState(false);
   const [memories, setMemories] = useState<LoadState<MemoriesCatalog>>({ status: 'loading', data: { memories: [] } });
   const [musicDashboard, setMusicDashboard] = useState<MusicDashboardState>({ status: 'loading', data: null });
-  const [journeyDetail, setJourneyDetail] = useState<LoadState<JourneyDetail | null>>({ status: 'ready', data: null });
   const [primarySections, setPrimarySections] = useState<PrimaryDataState>({ status: 'loading', data: null });
   const [moreDestination, setMoreDestination] = useState<MoreDestination>('menu');
-  const [utilityVisible, setUtilityVisible] = useState(false);
-  const [atlasVisible, setAtlasVisible] = useState(false);
+  const utilityVisible = usePathname() === '/tools';
   const [membershipPaywallVisible, setMembershipPaywallVisible] = useState(false);
   const preferenceSyncAttempt = useRef('');
   const musicRefreshGeneration = useRef(0);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceTabMotion).catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceTabMotion);
-    return () => subscription.remove();
-  }, []);
 
   useEffect(() => {
     if (!Updates.isEnabled || !updateState.isUpdatePending) return;
@@ -471,14 +462,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     }
   }, [membership]);
 
-  const refreshJourneyLocations = useCallback(async () => {
-    const detailPromise = selectedJourneyId
-      ? appDataClient.journey(selectedJourneyId, true).catch(() => null)
-      : Promise.resolve(null);
-    const [detail] = await Promise.all([detailPromise, refreshPrimarySections(false)]);
-    if (detail) setJourneyDetail({ status: 'ready', data: detail });
-  }, [refreshPrimarySections, selectedJourneyId]);
-
   const syncPrivateCloud = useCallback(async (announce = false) => {
     if (isIsolationTestProfile()) {
       const detail = 'Paused for the temporary clean-profile isolation test.';
@@ -494,25 +477,31 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     try {
       const result = await syncCurrentUserWithPrivateICloud({ force: announce });
       if (result.accountStatus !== 'available') {
-        const detail = result.accountStatus === 'no_account' ? 'Sign into iCloud in iPhone Settings to enable private sync.' : 'Private iCloud is unavailable right now; local data remains safe.';
+        const detail = result.accountStatus === 'no_account' ? `Sign into iCloud in ${isIpad() ? 'iPad' : 'iPhone'} Settings to enable private sync.` : 'Private iCloud is unavailable right now; local data remains safe.';
         setPrivateCloud({ status: 'needs_icloud', detail });
         if (announce) Alert.alert('Private iCloud is not available', detail);
         observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'account_status', reason: result.accountStatus });
         return;
       }
       const awaitingNative = result.privateContentVersion < 2 ? result.state.pendingUploadCount : 0;
-      const detail = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} will retry` : ''}${awaitingNative ? ` · ${awaitingNative} private items waiting for the next native build` : ''}`;
-      setPrivateCloud({ status: result.failedUploads ? 'error' : awaitingNative ? 'idle' : 'synced', detail });
+      const pending = awaitingNative ? 0 : result.state.pendingUploadCount;
+      const summary = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} need${result.failedUploads === 1 ? 's' : ''} attention` : ''}${pending ? ` · ${pending} ${pending === 1 ? 'item' : 'items'} still waiting to upload.${result.failedUploads ? '' : ' Tap Sync again to continue.'}` : ''}${awaitingNative ? ` · ${awaitingNative} private items waiting for the next native build` : ''}`;
+      const detail = [summary, ...(result.issueDetails ?? [])].join('\n\n');
+      setPrivateCloud({ status: result.failedUploads ? 'error' : awaitingNative || pending ? 'idle' : 'synced', detail });
       if (result.failedUploads) observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'partial_upload', failed_count: result.failedUploads });
-      if (announce) Alert.alert('Private iCloud sync finished', detail);
-      await Promise.all([refreshDashboard(), refreshJourneys(), refreshMemories(), refreshMusicDashboard()]);
-    } catch {
+      if (announce) Alert.alert(result.failedUploads ? 'Private iCloud needs attention' : pending || awaitingNative ? 'Private iCloud sync is incomplete' : 'Private iCloud sync finished', detail);
+      // Refresh the shared library snapshot so restored data reaches Home/Music.
+      await refreshPrimarySections(false);
+    } catch (error) {
       observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'sync_exception' });
-      const detail = 'Sync will retry later. Everything remains saved on this iPhone.';
+      const reason = error instanceof Error && error.message.trim()
+        ? error.message.trim()
+        : 'CloudKit did not return an error description.';
+      const detail = `${reason}\n\nEverything remains saved on this ${isIpad() ? 'iPad' : 'iPhone'}.`;
       setPrivateCloud({ status: 'error', detail });
       if (announce) Alert.alert('Private iCloud will retry', detail);
     }
-  }, [refreshDashboard, refreshJourneys, refreshMemories, refreshMusicDashboard]);
+  }, [refreshPrimarySections]);
 
   const createProfileIsolationTest = useCallback(() => {
     if (dashboard.data.recorder.state !== 'ready') {
@@ -528,7 +517,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
           onProfileChanged();
         } catch (error) {
           Alert.alert('Test profile was not created', error instanceof Error ? error.message : 'No profile data was changed.');
-        }
+        } finally { finishProfileSwitch(); }
       })() },
     ]);
   }, [dashboard.data.recorder.state, onProfileChanged]);
@@ -546,7 +535,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
         onProfileChanged();
       } catch (error) {
         Alert.alert('Profile was not changed', error instanceof Error ? error.message : 'No profile data was changed.');
-      }
+      } finally { finishProfileSwitch(); }
     })();
   }, [dashboard.data.recorder.state, onProfileChanged]);
 
@@ -607,19 +596,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
         Alert.alert('Apple sign-in did not finish', error instanceof Error ? error.message : 'Try again from Settings. Your local data was not changed.');
       }
     } finally {
+      finishProfileSwitch();
       setSigningInWithApple(false);
     }
   }, [dashboard.data.recorder.state, onProfileChanged]);
 
   useEffect(() => { if (tab === 'home') void refreshDashboard(); }, [refreshDashboard, tab]);
   useEffect(() => { void refreshPrimarySections(false); }, [refreshPrimarySections]);
-  useEffect(() => {
-    if (membership.timelineHistoryDays === null || !journeyDetail.data) return;
-    if (!membershipCanAccessDate(membership, journeyDetail.data.startedAt)) {
-      setSelectedJourneyId(null);
-      setJourneyDetail({ status: 'ready', data: null });
-    }
-  }, [journeyDetail.data, membership]);
   useEffect(() => { void forceAppleMusicArtworkRefreshAfterUpdate().catch(() => undefined); }, []);
   useEffect(() => subscribeLocalArchiveChanges(() => { void refreshPrimarySections(false); }), [refreshPrimarySections]);
   useEffect(() => { void refreshAppleIdentity(); void syncPrivateCloud(false); }, [refreshAppleIdentity, syncPrivateCloud]);
@@ -654,17 +637,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       if (preferenceSyncAttempt.current === attemptKey) preferenceSyncAttempt.current = '';
     });
   }, [dashboard, preferences, refreshDashboard]);
-
-  useEffect(() => {
-    if (!selectedJourneyId) { setJourneyDetail({ status: 'ready', data: null }); return; }
-    let alive = true;
-    setJourneyDetail({ status: 'loading', data: null });
-    void appDataClient.journey(selectedJourneyId).then(
-      data => { if (alive) setJourneyDetail({ status: 'ready', data }); },
-      () => { if (alive) setJourneyDetail({ status: 'error', data: null, message: 'This journey could not be loaded. Try again when JourneyDeck is connected.' }); },
-    );
-    return () => { alive = false; };
-  }, [selectedJourneyId]);
 
   const refreshMusicCapabilities = useCallback(async () => {
     try { setMusicCapabilities(await getMusicCapabilityStatus()); }
@@ -815,28 +787,21 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     }
   }, []);
 
-  const openTab = (next: Tab) => {
-    setUtilityVisible(false);
-    setAtlasVisible(false);
-    if (next === tabRef.current) return;
-    const previousTab = tabRef.current;
-    if (previousTab === 'settings') Keyboard.dismiss();
-    setSelectedJourneyId(null);
+  const onTabFocus = useCallback((next: Tab) => {
+    if (tabRef.current === next) return;
+    Keyboard.dismiss();
     tabRef.current = next;
     setTab(next);
-    const nextIndex = bottomNavigationItems.findIndex(item => item.id === next);
-    if (next !== 'settings' && (reduceTabMotion || previousTab === 'settings')) {
-      pagerProgress.value = nextIndex;
-      pagerRef.current?.setPageWithoutAnimation(nextIndex);
-    } else if (next !== 'settings') {
-      pagerRef.current?.setPage(nextIndex);
-    }
-    void Haptics.selectionAsync().catch(() => undefined);
+  }, []);
+  const openJourney = (id: string) => router.navigate({ pathname: '/journey/[id]', params: { id } });
+  const openMemory = (id: string) => router.navigate({ pathname: '/memory/[id]', params: { id } });
+  const openTab = (next: Tab) => {
+    if (navigationReady) router.navigate(tabPaths[next]);
   };
 
   const openMore = (destination: MoreDestination) => {
     setMoreDestination(destination);
-    setUtilityVisible(true);
+    router.navigate('/tools');
     void Haptics.selectionAsync().catch(() => undefined);
   };
 
@@ -845,8 +810,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
       setMembershipPaywallVisible(true);
       return;
     }
-    setUtilityVisible(false);
-    setAtlasVisible(true);
+    router.navigate('/atlas');
     void Haptics.selectionAsync().catch(() => undefined);
   };
 
@@ -866,6 +830,10 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     : null;
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
+  // Keep the navigator and single recorder mounted while editing a provider.
+  const enteredApp = useRef(false);
+  if (appVisible) enteredApp.current = true;
+  const navigationReady = appVisible || enteredApp.current;
   const membershipMemories = useMemo<LoadState<MemoriesCatalog>>(() => {
     const visibleJourneyIds = new Set(primarySections.data?.journeys.map(journey => journey.id) ?? journeys.data.map(journey => journey.id));
     const sanitizedMemoryItems = memories.data.memories.map(memory => ({
@@ -883,7 +851,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
   };
 
   const settingsPage = () => <ConnectionsScreen
-    provider={activePreferences!.provider!}
+    provider={preferences?.provider ?? 'apple-music'}
     connectionCapabilities={connectionCapabilities}
     currentUser={currentUser}
     appleIdentityStatus={appleIdentityStatus}
@@ -917,10 +885,36 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
     onEditorActiveChange={setSettingsEditorActive}
   />;
 
+  const navigationContent = {
+    tabs: isIpad() ? {
+      music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
+      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+      statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />,
+      settings: settingsPage(),
+      home: <IpadHomeScreen memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
+        loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
+        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+    } : {
+      music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
+      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+      home: <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+      statistics: <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />,
+      settings: settingsPage(),
+    },
+    memory: (id: string) => <MemoriesScreen detailId={id} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+    atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
+    tools: <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} />,
+    membership,
+    refreshArchive: () => refreshPrimarySections(false),
+    showUpgrade: () => setMembershipPaywallVisible(true),
+    onTabFocus,
+    tabBarHidden: settingsEditorActive,
+  };
+
   return (
-    <View style={styles.app}>
+    <NativeNavigationContext.Provider value={navigationContent}><View style={styles.app}>
       {appVisible && primarySections.status !== 'loading' && <ObserveInteractiveMarker params={{ dataState: primarySections.status }} />}
-      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
         {firstRunStage && <FirstRunOnboardingScreen
@@ -963,61 +957,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
           }}
           onCancel={preferences.onboardingCompleted ? () => setEditingProvider(false) : undefined}
         />}
-        {appVisible && <View style={styles.primaryTabHost}>
-          <PagerView
-            ref={pagerRef}
-            style={styles.pager}
-            initialPage={2}
-            scrollEnabled={false}
-            overdrag
-            offscreenPageLimit={1}
-            pointerEvents={tab === 'settings' ? 'none' : 'auto'}
-            accessibilityElementsHidden={tab === 'settings'}
-            importantForAccessibility={tab === 'settings' ? 'no-hide-descendants' : 'auto'}
-            onPageScroll={event => {
-              pagerProgress.value = event.nativeEvent.position + event.nativeEvent.offset;
-            }}
-          >
-            <CinematicTabPage key="music" index={0} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-              <MusicScreen state={musicDashboard} provider={activePreferences!.provider!} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={setSelectedJourneyId} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />
-            </CinematicTabPage>
-            <CinematicTabPage key="journeys" index={1} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-              <MemoriesScreen catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={setSelectedJourneyId} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />
-            </CinematicTabPage>
-            <CinematicTabPage key="home" index={2} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-              <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={setSelectedJourneyId} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />
-            </CinematicTabPage>
-            <CinematicTabPage key="statistics" index={3} progress={pagerProgress} reduceMotion={reduceTabMotion}>
-              <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />
-            </CinematicTabPage>
-          </PagerView>
-          <View
-            style={[styles.settingsTabLayer, tab !== 'settings' && styles.settingsTabLayerHidden]}
-            pointerEvents={tab === 'settings' ? 'auto' : 'none'}
-            accessibilityElementsHidden={tab !== 'settings'}
-            importantForAccessibility={tab === 'settings' ? 'auto' : 'no-hide-descendants'}
-          >
-            {settingsPage()}
-          </View>
-        </View>}
-        {appVisible && utilityVisible && <View style={styles.utilityOverlay}><MoreScreen
-          active requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => setUtilityVisible(false)} state={primarySections} dashboard={dashboard.data}
-          privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)}
-        /></View>}
-        {appVisible && atlasVisible && <View style={styles.utilityOverlay}><AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={setSelectedJourneyId} onBack={() => setAtlasVisible(false)} /></View>}
+        {navigationReady && <View style={[styles.primaryTabHost, !appVisible && { display: 'none' }]}>{children}</View>}
       </View>
-      {appVisible && <View pointerEvents="none" style={styles.bottomContentFade}>
-        <LinearGradient colors={['rgba(3, 1, 5, 0)', 'rgba(3, 1, 5, 0.58)', 'rgba(3, 1, 5, 0.96)']} locations={[0, 0.48, 1]} style={StyleSheet.absoluteFill} />
-      </View>}
-      {appVisible && !settingsEditorActive && <SafeAreaView style={styles.navSafe}><BottomNavigation active={tab} onSelect={openTab} items={bottomNavigationItems} progress={tabProgress} reduceMotion={reduceTabMotion} /></SafeAreaView>}
-      <JourneyDetailModal visible={Boolean(selectedJourneyId)} state={journeyDetail} onClose={() => setSelectedJourneyId(null)} onRetry={() => {
-        if (!selectedJourneyId) return;
-        setJourneyDetail({ status: 'loading', data: null });
-        void appDataClient.journey(selectedJourneyId, true).then(
-          data => setJourneyDetail({ status: 'ready', data }),
-          () => setJourneyDetail({ status: 'error', data: null, message: 'This journey could not be loaded. Try again when JourneyDeck is connected.' }),
-        );
-      }} onLocationsSaved={refreshJourneyLocations} />
       <MembershipPaywall
         visible={membershipPaywallVisible}
         state={membershipStore.state}
@@ -1028,15 +969,21 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged }: { rec
         })}
         onRestore={membershipStore.restore}
       />
-    </View>
+    </View></NativeNavigationContext.Provider>
   );
 }
 
 function AppLoading() {
-  return <SafeAreaView style={styles.loadingScreen}><ExpoStatusBar style="light" /><ActivityIndicator color="#a88aff" size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <SafeAreaView style={styles.loadingScreen}><ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><ActivityIndicator color={theme.color("#a88aff", 'text')} size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
 }
 
 function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const routeReveal = useSharedValue(0);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -1057,14 +1004,14 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
 
   return (
     <SafeAreaView style={styles.welcomeIntroSafe}>
-      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <View style={styles.welcomeIntroContent}>
         <View style={styles.welcomeIntroBrand}><JourneyDeckLogo size={42} /><JourneyDeckWordmark variant="intro" /></View>
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={styles.welcomeIntroScene}>
           <Reanimated.View style={[styles.welcomeIntroHero, routeRevealStyle]}>
             <Image source={require('../assets/welcome-journey-hero-v1.png')} resizeMode="cover" style={StyleSheet.absoluteFill} />
           </Reanimated.View>
-          <LinearGradient pointerEvents="none" colors={['rgba(5, 5, 13, 0.14)', 'rgba(7, 4, 15, 0.02)', 'rgba(4, 4, 11, 0.5)']} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
+          <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(5, 5, 13, 0.14)', 'rgba(7, 4, 15, 0.02)', 'rgba(4, 4, 11, 0.5)'])} locations={[0, 0.5, 1]} style={StyleSheet.absoluteFill} />
           <View style={styles.welcomeIntroSignal}><View style={styles.welcomeIntroSignalDot} /><Text style={styles.welcomeIntroSignalText}>PRIVATE BY DESIGN</Text></View>
         </View>
         <Text style={styles.welcomeIntroTitle}>The road{`\n`}remembers.</Text>
@@ -1077,6 +1024,9 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
 }
 
 function RecordingModePicker({ initial, onContinue, onCancel }: { initial: RecordingMode; onContinue: (mode: RecordingMode) => Promise<void>; onCancel?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const { width } = useWindowDimensions();
   const availableModes = recordingModeOptions;
   const cardWidth = Math.max(280, width - 44);
@@ -1094,15 +1044,15 @@ function RecordingModePicker({ initial, onContinue, onCancel }: { initial: Recor
 
   return (
     <SafeAreaView style={styles.onboardingSafe}>
-      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.onboardingEyebrow}>HOW SHOULD JOURNEYS BEGIN</Text>
         <Text style={styles.onboardingTitle}>Choose how JourneyDeck starts recording</Text>
         <Text style={styles.onboardingBody}>You can change this later. Manual Start and Finish always remain available.</Text>
         <View style={styles.recordingModeTabs}>
           {availableModes.map((option, optionIndex) => (
-            <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.recordingModeTab, index === optionIndex && { borderColor: option.color, backgroundColor: option.tint }]}>
-              <Text style={[styles.recordingModeTabTitle, index === optionIndex && { color: option.color }]}>{option.id === 'automatic' ? 'Automatic' : 'Manual'}</Text>
+            <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.recordingModeTab, index === optionIndex && { borderColor: theme.color(option.color, 'border'), backgroundColor: theme.color(option.tint, 'surface') }]}>
+              <Text style={[styles.recordingModeTabTitle, index === optionIndex && { color: theme.color(option.color, 'text') }]}>{option.id === 'automatic' ? 'Automatic' : 'Manual'}</Text>
               <Text style={styles.recordingModeTabDetail}>{option.tabDetail}</Text>
             </Pressable>
           ))}
@@ -1116,7 +1066,7 @@ function RecordingModePicker({ initial, onContinue, onCancel }: { initial: Recor
         >
           {availableModes.map(option => <RecordingModeCard key={option.id} option={option} width={cardWidth} />)}
         </ScrollView>
-        <View style={styles.pageDots}>{availableModes.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: selected.color }]} />)}</View>
+        <View style={styles.pageDots}>{availableModes.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: theme.color(selected.color, 'surface') }]} />)}</View>
         <PrimaryAction label={saving ? 'Saving your choice…' : 'Use Manual Recording'} onPress={() => void finish()} disabled={saving} />
         {onCancel && <Pressable onPress={onCancel} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Keep my current choice</Text></Pressable>}
         <Text style={styles.providerFootnote}>Every journey starts and finishes only when you choose.</Text>
@@ -1126,21 +1076,27 @@ function RecordingModePicker({ initial, onContinue, onCancel }: { initial: Recor
 }
 
 function RecordingModeCard({ option, width }: { option: RecordingModeOption; width: number }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return (
-    <View style={[styles.providerCard, { width, borderColor: option.color }]}>
+    <View style={[styles.providerCard, { width, borderColor: theme.color(option.color, 'border') }]}>
       <View style={styles.providerCardHeader}>
-        <View style={[styles.providerIcon, { backgroundColor: option.color }]}><Text style={styles.providerIconText}>{option.symbol}</Text></View>
-        <View style={styles.flex}><Text style={[styles.providerKicker, { color: option.color }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
+        <View style={[styles.providerIcon, { backgroundColor: theme.color(option.color, 'surface') }]}><Text style={styles.providerIconText}>{option.symbol}</Text></View>
+        <View style={styles.flex}><Text style={[styles.providerKicker, { color: theme.color(option.color, 'text') }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
       </View>
       <Text style={styles.providerSummary}>{option.summary}</Text>
-      <ProsCons title="WHY YOU MAY LOVE IT" color="#4ce1b1" items={option.benefits} symbol="+" />
-      <ProsCons title="WHAT TO KNOW" color="#ffb15c" items={option.drawbacks} symbol="–" />
-      <View style={[styles.privacyNote, { backgroundColor: option.tint }]}><Text style={[styles.privacyTitle, { color: option.color }]}>PRIVACY</Text><Text style={styles.privacyCopy}>{option.privacy}</Text></View>
+      <ProsCons title="WHY YOU MAY LOVE IT" color={theme.color("#4ce1b1", 'text')} items={option.benefits} symbol="+" />
+      <ProsCons title="WHAT TO KNOW" color={theme.color("#ffb15c", 'text')} items={option.drawbacks} symbol="–" />
+      <View style={[styles.privacyNote, { backgroundColor: theme.color(option.tint, 'surface') }]}><Text style={[styles.privacyTitle, { color: theme.color(option.color, 'text') }]}>PRIVACY</Text><Text style={styles.privacyCopy}>{option.privacy}</Text></View>
     </View>
   );
 }
 
 function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: { initial: MusicProvider; ownerSpotifyEnabled: boolean; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const { width } = useWindowDimensions();
   const availableProviders = selectableProviderOptions(ownerSpotifyEnabled);
   const cardWidth = Math.max(280, width - 44);
@@ -1158,7 +1114,7 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
 
   return (
     <SafeAreaView style={styles.onboardingSafe}>
-      <ExpoStatusBar style="light" /><StatusBar barStyle="light-content" />
+      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
         <BrandHeader compact />
         <Text style={styles.onboardingEyebrow}>AUTOMATIC SOUNDTRACKS</Text>
@@ -1166,7 +1122,7 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
         <Text style={styles.onboardingBody}>Apple Music is JourneyDeck’s recommended automatic option at launch. Manual Song Recognition remains available, but you must tap Identify Song for every track.</Text>
         <View style={styles.providerTabs}>
           {availableProviders.map((option, optionIndex) => (
-            <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.providerTab, index === optionIndex && { borderColor: option.color, backgroundColor: option.tint }]}>
+            <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.providerTab, index === optionIndex && { borderColor: theme.color(option.color, 'border'), backgroundColor: theme.color(option.tint, 'surface') }]}>
               <ProviderMark brand={option.brand} size={28} />
             </Pressable>
           ))}
@@ -1180,7 +1136,7 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
         >
           {availableProviders.map(option => <ProviderCard key={option.id} option={option} width={cardWidth} />)}
         </ScrollView>
-        <View style={styles.pageDots}>{availableProviders.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: selected.color }]} />)}</View>
+        <View style={styles.pageDots}>{availableProviders.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: theme.color(selected.color, 'surface') }]} />)}</View>
         <PrimaryAction label={saving ? 'Saving your choice…' : selected.id === 'apple-music' ? 'Connect Apple Music' : selected.id === 'shazam' ? 'Use Manual Song Recognition' : `Continue with ${selected.name}`} onPress={() => void finish()} disabled={saving} />
         {onCancel && <Pressable onPress={onCancel} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Keep my current choice</Text></Pressable>}
         <Text style={styles.providerFootnote}>Apple Music requires an active subscription for automatic soundtracks. Route recording always works without a music service.</Text>
@@ -1190,22 +1146,27 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
 }
 
 function ProviderCard({ option, width }: { option: ProviderOption; width: number }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return (
-    <View style={[styles.providerCard, { width, borderColor: option.color }]}>
+    <View style={[styles.providerCard, { width, borderColor: theme.color(option.color, 'border') }]}>
       {option.id === 'apple-music' && <Text style={styles.providerRecommendation}>RECOMMENDED · AUTOMATIC</Text>}
       <View style={styles.providerCardHeader}>
         <ProviderMark brand={option.brand} size={50} />
-        <View style={styles.flex}><Text style={[styles.providerKicker, { color: option.color }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
+        <View style={styles.flex}><Text style={[styles.providerKicker, { color: theme.color(option.color, 'text') }]}>{option.kicker}</Text><Text style={styles.providerName}>{option.name}</Text></View>
       </View>
       <Text style={styles.providerSummary}>{option.summary}</Text>
-      <ProsCons title="WHY YOU MAY LOVE IT" color="#4ce1b1" items={option.benefits} symbol="+" />
-      <ProsCons title="WHAT TO KNOW" color="#ffb15c" items={option.drawbacks} symbol="–" />
-      <View style={[styles.privacyNote, { backgroundColor: option.tint }]}><Text style={[styles.privacyTitle, { color: option.color }]}>PRIVACY</Text><Text style={styles.privacyCopy}>{option.privacy}</Text></View>
+      <ProsCons title="WHY YOU MAY LOVE IT" color={theme.color("#4ce1b1", 'text')} items={option.benefits} symbol="+" />
+      <ProsCons title="WHAT TO KNOW" color={theme.color("#ffb15c", 'text')} items={option.drawbacks} symbol="–" />
+      <View style={[styles.privacyNote, { backgroundColor: theme.color(option.tint, 'surface') }]}><Text style={[styles.privacyTitle, { color: theme.color(option.color, 'text') }]}>PRIVACY</Text><Text style={styles.privacyCopy}>{option.privacy}</Text></View>
     </View>
   );
 }
 
 function ProviderMark({ brand, size }: { brand: ProviderBrand; size: number }) {
+  const styles = useThemedStyles(darkStyles);
+
   if (brand === 'spotify') {
     return <View style={[styles.spotifyMarkFrame, { width: size, height: size, borderRadius: size / 2 }]}><Image source={providerBrandImages.spotify} resizeMode="contain" style={{ width: size / 2, height: size / 2 }} /></View>;
   }
@@ -1213,10 +1174,16 @@ function ProviderMark({ brand, size }: { brand: ProviderBrand; size: number }) {
 }
 
 function ProsCons({ title, color, items, symbol }: { title: string; color: string; items: string[]; symbol: string }) {
-  return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: color }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: theme.color(color, 'border') }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
 function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJourney, recorder }: { primary: PrimaryDataState; recorderActive: boolean; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; recorder: ReactNode }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const latestSummary = primary.data?.journeys[0] ?? null;
@@ -1225,39 +1192,41 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
   const latestTitle = latestJourney ? homeHeroTitle(latestJourney) : 'Your first road memory';
   const latestRoute = latestJourney ? homeRouteContext(latestJourney) : 'Your next completed journey will appear here.';
   const latestDate = latestJourney ? new Date(latestJourney.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Ready when you are';
-  const latestImage = homeHeroImageFor(latestJourney?.startedAt);
+  const latestImage = headerImageSource(homeHeroImageFor(latestJourney?.startedAt), theme.mode);
   const latestTrack = primary.data?.music.recentSelections[0] ?? null;
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [recorderActive]);
   return <View style={styles.approvedHomeSafe}>
-    <ExpoImage source={require('../assets/home-recorder-coast-v1.png')} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
-    <LinearGradient colors={['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
-    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 146 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+    <ExpoImage source={headerImageSource(require('../assets/home-recorder-coast-v1.png'), theme.mode)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
+    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
       <View style={styles.approvedHomeHeader}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor="#c5afd1" size={22} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></Pressable>
         <Text accessibilityRole="header" style={styles.approvedHomeTitle}>HOME</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor="#d3b5e4" size={23} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor={theme.color("#d3b5e4", 'text')} size={23} /></Pressable>
       </View>
       <View style={[styles.approvedHomeScenicSpace, recorderActive && styles.approvedHomeScenicSpaceActive]} />
       <View style={styles.approvedHomePanels}>
         {recorder}
+        <CardDetailLink kind="journey" id={latestJourney?.id}>
         <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.approvedLatestMemory, pressed && styles.pressed]}>
-          <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor="#c990ff" size={15} /><Text style={styles.approvedLatestMemoryKicker}>Latest memory</Text></View>
+          <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={theme.color("#c990ff", 'text')} size={15} /><Text style={styles.approvedLatestMemoryKicker}>Latest memory</Text></View>
           <View style={styles.approvedLatestMemoryRow}>
-            <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor="#fff" size={13} /></View>}</View>
-            <View style={styles.flex}><Text style={styles.approvedLatestMemoryTitle} numberOfLines={1}>{latestTitle}</Text><View style={styles.approvedLatestMemoryMeta}><SymbolView name="mappin.and.ellipse" tintColor="#9e91a5" size={13} /><Text style={styles.approvedLatestMemoryMetaText} numberOfLines={1}>{latestRoute}</Text></View><View style={styles.approvedLatestMemoryMeta}><SymbolView name="calendar" tintColor="#9e91a5" size={13} /><Text style={styles.approvedLatestMemoryMetaText}>{latestDate}</Text></View></View>
+            <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor={theme.color("#fff", 'text')} size={13} /></View>}</View>
+            <View style={styles.flex}><Text style={styles.approvedLatestMemoryTitle} numberOfLines={1}>{latestTitle}</Text><View style={styles.approvedLatestMemoryMeta}><SymbolView name="mappin.and.ellipse" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText} numberOfLines={1}>{latestRoute}</Text></View><View style={styles.approvedLatestMemoryMeta}><SymbolView name="calendar" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText}>{latestDate}</Text></View></View>
             <View style={styles.approvedLatestMemoryMore}><Text style={styles.approvedLatestMemoryMoreText}>•••</Text></View>
           </View>
         </Pressable>
+        </CardDetailLink>
         <Pressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} style={({ pressed }) => [styles.approvedLatestSong, pressed && styles.pressed]}>
-          {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={styles.approvedLatestSongFallback}><SymbolView name="music.note" tintColor="#cf91ff" size={25} /></View>}
+          {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={styles.approvedLatestSongFallback}><SymbolView name="music.note" tintColor={theme.color("#cf91ff", 'text')} size={25} /></View>}
           <View style={styles.flex}>
             <Text style={styles.approvedLatestSongKicker}>LATEST SONG PLAYED</Text>
             <Text style={styles.approvedLatestSongTitle} numberOfLines={1}>{latestTrack?.track ?? 'Your soundtrack starts here'}</Text>
             <Text style={styles.approvedLatestSongMeta} numberOfLines={1}>{latestTrack ? `${latestTrack.artist}${formatTrackTime(latestTrack.playedAt)}` : 'The most recent song from a journey will appear here.'}</Text>
           </View>
-          <View style={styles.approvedLatestSongArrow}><SymbolView name="chevron.right" tintColor="#d5a4f3" size={15} weight="semibold" /></View>
+          <View style={styles.approvedLatestSongArrow}><SymbolView name="chevron.right" tintColor={theme.color("#d5a4f3", 'text')} size={15} weight="semibold" /></View>
         </Pressable>
       </View>
     </ScrollView>
@@ -1265,6 +1234,9 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
 }
 
 function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, onSoundtracks, onJourney, onRefresh, recorder }: { currentUser: LocalUser; state: LoadState<AppDashboard>; primary: PrimaryDataState; onJourneys: () => void; onSoundtracks: () => void; onJourney: (id: string) => void; onRefresh: () => void; recorder: ReactNode }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const { data } = state;
   const home = useMemo(() => primary.data ? buildHomeSummary(primary.data) : null, [primary.data]);
@@ -1330,7 +1302,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           <View style={styles.cinematicHeaderActions}>
             <View style={styles.cinematicAvatarAnchor}><View pointerEvents="none" style={styles.cinematicAvatarGlow} />
               <Pressable accessibilityRole="button" accessibilityLabel="Edit profile" onPress={editProfile} style={({ pressed }) => [styles.cinematicAvatarButton, pressed && styles.pressed]}>
-              <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} start={{ x: 0.1, y: 0.08 }} end={{ x: 0.92, y: 0.94 }} style={styles.cinematicAvatarRing}>
+              <LinearGradient colors={theme.gradient(['#ff795b', '#db55a6', '#8d61ff'])} start={{ x: 0.1, y: 0.08 }} end={{ x: 0.92, y: 0.94 }} style={styles.cinematicAvatarRing}>
                 <View style={styles.cinematicAvatarInner}>
                   {appearance.avatarDataUri ? (
                     <ExpoImage source={appearance.avatarDataUri} cachePolicy="memory" contentFit="cover" transition={180} style={StyleSheet.absoluteFill} />
@@ -1340,7 +1312,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
                 </View>
               </LinearGradient>
               <View style={styles.cinematicAvatarEdit}>
-                <SymbolView name="pencil" tintColor="#fff4fb" type="hierarchical" style={styles.cinematicAvatarEditSymbol} />
+                <SymbolView name="pencil" tintColor={theme.color("#fff4fb", 'text')} type="hierarchical" style={styles.cinematicAvatarEditSymbol} />
               </View>
               </Pressable>
             </View>
@@ -1356,7 +1328,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           <View style={styles.cinematicHeroAura}>
             <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.cinematicHero, pressed && styles.cinematicPressed]}>
               <ExpoImage source={heroImage} cachePolicy="memory-disk" contentFit="cover" transition={220} style={StyleSheet.absoluteFill} />
-              <LinearGradient colors={['rgba(8,3,14,0.34)', 'rgba(8,3,14,0.12)', 'rgba(5,2,10,0.85)', 'rgba(4,1,8,0.97)']} locations={[0, 0.28, 0.72, 1]} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={theme.gradient(['rgba(8,3,14,0.34)', 'rgba(8,3,14,0.12)', 'rgba(5,2,10,0.85)', 'rgba(4,1,8,0.97)'])} locations={[0, 0.28, 0.72, 1]} style={StyleSheet.absoluteFill} />
               <LiquidGlassEdges radius={29} />
               {/* Top Bar of Hero */}
               <View style={styles.cinematicHeroHeader}>
@@ -1367,7 +1339,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
                   <Text style={styles.cinematicHeroMeta}>{heroStats}</Text>
                 </View>
                 <Pressable onPress={() => latestJourney && onJourney(latestJourney.id)} style={styles.cinematicRelive}>
-                  <SymbolView name="play.fill" tintColor="#fff" type="hierarchical" style={styles.cinematicReliveSymbol} />
+                  <SymbolView name="play.fill" tintColor={theme.color("#fff", 'text')} type="hierarchical" style={styles.cinematicReliveSymbol} />
                   <Text style={styles.cinematicReliveText}>Relive</Text>
                 </Pressable>
               </View>
@@ -1375,7 +1347,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               {/* Keep the Home hero editorial; the recorded route belongs in the drive detail. */}
               <View style={styles.cinematicHeroBottomActions}>
                 <Pressable onPress={() => latestJourney ? onJourney(latestJourney.id) : onJourneys()} style={styles.cinematicHeroRouteButton}>
-                  <SymbolView name="arrow.right" tintColor="#fff" type="hierarchical" style={styles.cinematicHeroPillIcon} />
+                  <SymbolView name="arrow.right" tintColor={theme.color("#fff", 'text')} type="hierarchical" style={styles.cinematicHeroPillIcon} />
                   <Text style={styles.cinematicHeroPillText}>Open drive</Text>
                 </Pressable>
               </View>
@@ -1399,7 +1371,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
                 ) : (
                   <MemoryArtwork artworkKey="road-trips" />
                 )}
-                <LinearGradient colors={['rgba(5,2,9,0)', 'rgba(5,2,9,0.38)', 'rgba(5,2,9,0.96)']} locations={[0.3, 0.65, 1]} style={StyleSheet.absoluteFill} />
+                <LinearGradient colors={theme.gradient(['rgba(5,2,9,0)', 'rgba(5,2,9,0.38)', 'rgba(5,2,9,0.96)'])} locations={[0.3, 0.65, 1]} style={StyleSheet.absoluteFill} />
                 <LiquidGlassEdges radius={22} />
                 <View style={styles.cinematicStoryCopy}>
                   <Text style={styles.cinematicStoryTitle} numberOfLines={1}>{item.title}</Text>
@@ -1408,8 +1380,8 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               </Pressable>
             ))}
             <Pressable accessibilityRole="button" accessibilityLabel="See more memories" onPress={onJourneys} style={({ pressed }) => [styles.cinematicStoryMoreCard, pressed && styles.cinematicPressed]}>
-              <LinearGradient colors={['rgba(115,67,159,0.42)', 'rgba(20,9,31,0.92)']} style={StyleSheet.absoluteFill} />
-              <SymbolView name="rectangle.stack.fill" tintColor="#dcb9ff" type="hierarchical" style={styles.cinematicStoryMoreIcon} />
+              <LinearGradient colors={theme.gradient(['rgba(115,67,159,0.42)', 'rgba(20,9,31,0.92)'])} style={StyleSheet.absoluteFill} />
+              <SymbolView name="rectangle.stack.fill" tintColor={theme.color("#dcb9ff", 'text')} type="hierarchical" style={styles.cinematicStoryMoreIcon} />
               <Text style={styles.cinematicStoryMoreTitle}>See more</Text>
               <Text style={styles.cinematicStoryMoreMeta}>All memories  ›</Text>
               <LiquidGlassEdges radius={22} />
@@ -1423,15 +1395,15 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
             {/* Card Header Row */}
             <View style={styles.cinematicSoundtrackHeaderRow}>
               <View style={styles.cinematicSoundtrackKickerWrap}>
-                <SymbolView name="waveform" tintColor="#ff6078" type="hierarchical" style={styles.cinematicWaveformKickerIcon} />
+                <SymbolView name="waveform" tintColor={theme.color("#ff6078", 'text')} type="hierarchical" style={styles.cinematicWaveformKickerIcon} />
                 <Text style={styles.cinematicSoundtrackKickerText}>{hasRoadSoundtrack ? 'Last heard on your road' : 'Your road soundtrack'}</Text>
               </View>
               <View style={styles.cinematicStatusBadgePill}>
-                <View style={[styles.cinematicStatusDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} />
+                <View style={[styles.cinematicStatusDot, { backgroundColor: theme.color(recorderColor(data.recorder.state, data.recorder.connected), 'surface') }]} />
                 <Text style={styles.cinematicStatusBadgeText}>
                   {data.recorder.state === 'recording' ? 'Recording' : 'Ready'} · On device
                 </Text>
-                <SymbolView name="checkmark.shield.fill" tintColor="#4be8c4" type="hierarchical" style={styles.cinematicShieldIcon} />
+                <SymbolView name="checkmark.shield.fill" tintColor={theme.color("#4be8c4", 'text')} type="hierarchical" style={styles.cinematicShieldIcon} />
               </View>
             </View>
 
@@ -1441,8 +1413,8 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
                 {latestHeardTrack ? (
                   <Artwork track={latestHeardTrack} size={76} />
                 ) : (
-                  <LinearGradient colors={['rgba(255,96,120,0.28)', 'rgba(141,97,255,0.26)', 'rgba(12,8,18,0.95)']} style={styles.cinematicEmptyAlbumCover}>
-                    <SymbolView name="music.note" tintColor="#e5c8ff" type="hierarchical" style={styles.cinematicEmptyAlbumIcon} />
+                  <LinearGradient colors={theme.gradient(['rgba(255,96,120,0.28)', 'rgba(141,97,255,0.26)', 'rgba(12,8,18,0.95)'])} style={styles.cinematicEmptyAlbumCover}>
+                    <SymbolView name="music.note" tintColor={theme.color("#e5c8ff", 'text')} type="hierarchical" style={styles.cinematicEmptyAlbumIcon} />
                   </LinearGradient>
                 )}
               </View>
@@ -1452,9 +1424,9 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
                 {hasRoadSoundtrack ? <SoundtrackWaveform /> : <Text style={styles.cinematicEmptySoundtrackHint}>Open music setup  ›</Text>}
               </View>
               <Pressable onPress={onSoundtracks} style={styles.cinematicPlayButtonOuter}>
-                <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.cinematicPlayButtonRing}>
+                <LinearGradient colors={theme.gradient(['#ff795b', '#db55a6', '#8d61ff'])} style={styles.cinematicPlayButtonRing}>
                   <View style={styles.cinematicPlayButtonDisc}>
-                    <SymbolView name={hasRoadSoundtrack ? 'play.fill' : 'arrow.right'} tintColor="#ffffff" type="hierarchical" style={styles.cinematicPlaySymbol} />
+                    <SymbolView name={hasRoadSoundtrack ? 'play.fill' : 'arrow.right'} tintColor={theme.color("#ffffff", 'text')} type="hierarchical" style={styles.cinematicPlaySymbol} />
                   </View>
                 </LinearGradient>
               </Pressable>
@@ -1470,14 +1442,14 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
     <Modal visible={profileEditorOpen} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setProfileEditorOpen(false)}>
       <View style={styles.profileEditorRoot}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setProfileEditorOpen(false)}>
-          <BlurView intensity={28} tint="dark" style={StyleSheet.absoluteFill} />
+          <BlurView intensity={28} tint={theme.mode} style={StyleSheet.absoluteFill} />
         </Pressable>
         <CinematicGlass style={styles.profileEditorCard}>
           <Text style={styles.profileEditorEyebrow}>HOME PROFILE</Text>
           <Text style={styles.profileEditorTitle}>Make it yours</Text>
           <Text style={styles.profileEditorBody}>Your profile image and greeting stay in your private JourneyDeck profile.</Text>
           <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()} style={styles.profileEditorAvatarButton}>
-            <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}>
+            <LinearGradient colors={theme.gradient(['#ff795b', '#db55a6', '#8d61ff'])} style={styles.profileEditorAvatarRing}>
               <View style={styles.profileEditorAvatarInner}>
                 {profileDraft.avatarDataUri ? (
                   <ExpoImage source={profileDraft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} />
@@ -1487,7 +1459,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               </View>
             </LinearGradient>
             <View style={styles.profileEditorPhotoBadge}>
-              {avatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}
+              {avatarBusy ? <ActivityIndicator color={theme.color("#fff", 'text')} size="small" /> : <SymbolView name="camera.fill" tintColor={theme.color("#fff", 'text')} type="hierarchical" style={styles.profileEditorCamera} />}
             </View>
           </Pressable>
           <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()}>
@@ -1499,13 +1471,13 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
             </Pressable>
           )}
           <Text style={styles.profileEditorLabel}>GREETING NAME</Text>
-          <TextInput value={profileDraft.displayName} onChangeText={displayName => setProfileDraft(current => ({ ...current, displayName }))} maxLength={48} placeholder="Primary Driver" placeholderTextColor="#71677a" selectionColor="#ff795b" style={styles.profileEditorInput} />
+          <TextInput value={profileDraft.displayName} onChangeText={displayName => setProfileDraft(current => ({ ...current, displayName }))} maxLength={48} placeholder="Primary Driver" placeholderTextColor={theme.color("#71677a", 'text')} selectionColor="#ff795b" style={styles.profileEditorInput} />
           <View style={styles.profileEditorActions}>
             <Pressable onPress={() => setProfileEditorOpen(false)} style={styles.profileEditorCancel}>
               <Text style={styles.profileEditorCancelText}>Cancel</Text>
             </Pressable>
             <Pressable onPress={saveProfile} style={styles.profileEditorSave}>
-              <LinearGradient colors={['#ff795b', '#ff597f']} style={StyleSheet.absoluteFill} />
+              <LinearGradient colors={theme.gradient(['#ff795b', '#ff597f'])} style={StyleSheet.absoluteFill} />
               <Text style={styles.profileEditorSaveText}>Save profile</Text>
             </Pressable>
           </View>
@@ -1547,31 +1519,43 @@ function homeRouteContext(journey: Pick<JourneySummary, 'startingLocation' | 'en
 }
 
 function HomeMeshAtmosphere() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View pointerEvents="none" style={styles.cinematicMeshRoot}>
-    <MeshGradientView columns={3} rows={3} points={[[0, 0], [0.54, 0], [1, 0], [0, 0.5], [0.48, 0.44], [1, 0.53], [0, 1], [0.5, 1], [1, 1]]} colors={['#050208', '#13071b', '#09030b', '#120610', '#08030c', '#1b0a29', '#050208', '#0b040f', '#050208']} smoothsColors style={StyleSheet.absoluteFill} />
-    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id="homeCoralHaze" cx="82%" cy="16%" rx="42%" ry="30%"><Stop offset="0" stopColor="#ff506f" stopOpacity="0.25" /><Stop offset="0.42" stopColor="#aa274e" stopOpacity="0.1" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeVioletHaze" cx="18%" cy="40%" rx="50%" ry="34%"><Stop offset="0" stopColor="#9b4cff" stopOpacity="0.15" /><Stop offset="0.5" stopColor="#50207d" stopOpacity="0.06" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeLowHaze" cx="70%" cy="72%" rx="55%" ry="24%"><Stop offset="0" stopColor="#ff4f72" stopOpacity="0.1" /><Stop offset="1" stopColor="#050208" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="100%" height="100%" fill="url(#homeCoralHaze)" /><Rect width="100%" height="100%" fill="url(#homeVioletHaze)" /><Rect width="100%" height="100%" fill="url(#homeLowHaze)" /></Svg>
-    <LinearGradient colors={['rgba(5,2,8,0.02)', 'rgba(5,2,8,0.22)', '#050208']} locations={[0, 0.72, 1]} style={StyleSheet.absoluteFill} />
+    <MeshGradientView columns={3} rows={3} points={[[0, 0], [0.54, 0], [1, 0], [0, 0.5], [0.48, 0.44], [1, 0.53], [0, 1], [0.5, 1], [1, 1]]} colors={theme.gradient(['#050208', '#13071b', '#09030b', '#120610', '#08030c', '#1b0a29', '#050208', '#0b040f', '#050208'])} smoothsColors style={StyleSheet.absoluteFill} />
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id="homeCoralHaze" cx="82%" cy="16%" rx="42%" ry="30%"><Stop offset="0" stopColor={theme.color("#ff506f", 'accent')} stopOpacity="0.25" /><Stop offset="0.42" stopColor={theme.color("#aa274e", 'accent')} stopOpacity="0.1" /><Stop offset="1" stopColor={theme.color("#050208", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeVioletHaze" cx="18%" cy="40%" rx="50%" ry="34%"><Stop offset="0" stopColor={theme.color("#9b4cff", 'accent')} stopOpacity="0.15" /><Stop offset="0.5" stopColor={theme.color("#50207d", 'accent')} stopOpacity="0.06" /><Stop offset="1" stopColor={theme.color("#050208", 'accent')} stopOpacity="0" /></SvgRadialGradient><SvgRadialGradient id="homeLowHaze" cx="70%" cy="72%" rx="55%" ry="24%"><Stop offset="0" stopColor={theme.color("#ff4f72", 'accent')} stopOpacity="0.1" /><Stop offset="1" stopColor={theme.color("#050208", 'accent')} stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="100%" height="100%" fill="url(#homeCoralHaze)" /><Rect width="100%" height="100%" fill="url(#homeVioletHaze)" /><Rect width="100%" height="100%" fill="url(#homeLowHaze)" /></Svg>
+    <LinearGradient colors={theme.gradient(['rgba(5,2,8,0.02)', 'rgba(5,2,8,0.22)', '#050208'])} locations={[0, 0.72, 1]} style={StyleSheet.absoluteFill} />
   </View>;
 }
 
 function CinematicGlass({ children, style }: { children: ReactNode; style?: any }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const nativeGlass = isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
-  return <View style={[styles.cinematicGlass, style]}><View pointerEvents="none" style={styles.cinematicGlassAura} /><View pointerEvents="none" style={styles.cinematicGlassMaterial}>{nativeGlass ? <GlassView glassEffectStyle="clear" tintColor="rgba(10,4,16,0.04)" colorScheme="dark" style={StyleSheet.absoluteFill} /> : <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />}<View style={styles.cinematicGlassDarkener} /><LinearGradient colors={['rgba(255,255,255,0.14)', 'rgba(111,68,130,0.055)', 'rgba(255,72,95,0.045)', 'rgba(3,1,6,0.28)']} locations={[0, 0.22, 0.72, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /></View><LiquidGlassEdges radius={25} />{children}</View>;
+  return <View style={[styles.cinematicGlass, style]}><View pointerEvents="none" style={styles.cinematicGlassAura} /><View pointerEvents="none" style={styles.cinematicGlassMaterial}>{nativeGlass ? <GlassView glassEffectStyle="clear" tintColor={theme.color("rgba(10,4,16,0.04)", 'text')} colorScheme={theme.mode} style={StyleSheet.absoluteFill} /> : <BlurView intensity={25} tint={theme.mode} style={StyleSheet.absoluteFill} />}<View style={styles.cinematicGlassDarkener} /><LinearGradient colors={theme.gradient(['rgba(255,255,255,0.14)', 'rgba(111,68,130,0.055)', 'rgba(255,72,95,0.045)', 'rgba(3,1,6,0.28)'])} locations={[0, 0.22, 0.72, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /></View><LiquidGlassEdges radius={25} />{children}</View>;
 }
 
 function LiquidGlassEdges({ radius }: { radius: number }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View pointerEvents="none" style={[styles.liquidGlassEdges, { borderRadius: radius }]}>
     <NeonWidgetOutline radius={radius} />
     <View style={[styles.liquidGlassOuterBevel, { borderRadius: radius }]} />
-    <LinearGradient colors={['rgba(204,139,242,0.11)', 'rgba(164,85,197,0.035)', 'rgba(255,255,255,0)']} locations={[0, 0.45, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassTopEdge, { borderTopLeftRadius: radius, borderTopRightRadius: radius }]} />
-    <LinearGradient colors={['rgba(186,117,222,0.075)', 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassLeftEdge, { borderTopLeftRadius: radius, borderBottomLeftRadius: radius }]} />
-    <LinearGradient colors={['rgba(41,13,62,0.16)', 'rgba(152,82,182,0.045)']} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={[styles.liquidGlassRightEdge, { borderTopRightRadius: radius, borderBottomRightRadius: radius }]} />
-    <LinearGradient colors={['rgba(33,10,48,0.18)', 'rgba(170,99,207,0.05)']} start={{ x: 0, y: 1 }} end={{ x: 0, y: 0 }} style={[styles.liquidGlassBottomEdge, { borderBottomLeftRadius: radius, borderBottomRightRadius: radius }]} />
+    <LinearGradient colors={theme.gradient(['rgba(204,139,242,0.11)', 'rgba(164,85,197,0.035)', 'rgba(255,255,255,0)'])} locations={[0, 0.45, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassTopEdge, { borderTopLeftRadius: radius, borderTopRightRadius: radius }]} />
+    <LinearGradient colors={theme.gradient(['rgba(186,117,222,0.075)', 'rgba(255,255,255,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.liquidGlassLeftEdge, { borderTopLeftRadius: radius, borderBottomLeftRadius: radius }]} />
+    <LinearGradient colors={theme.gradient(['rgba(41,13,62,0.16)', 'rgba(152,82,182,0.045)'])} start={{ x: 1, y: 0 }} end={{ x: 0, y: 1 }} style={[styles.liquidGlassRightEdge, { borderTopRightRadius: radius, borderBottomRightRadius: radius }]} />
+    <LinearGradient colors={theme.gradient(['rgba(33,10,48,0.18)', 'rgba(170,99,207,0.05)'])} start={{ x: 0, y: 1 }} end={{ x: 0, y: 0 }} style={[styles.liquidGlassBottomEdge, { borderBottomLeftRadius: radius, borderBottomRightRadius: radius }]} />
     <View style={[styles.liquidGlassInsetBevel, { borderRadius: Math.max(radius - 4, 0) }]} />
   </View>;
 }
 
 function SoundtrackWaveform() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const bars = [10, 16, 26, 12, 30, 22, 38, 16, 28, 42, 22, 34, 15, 26, 36, 18, 30, 12, 24, 34, 16, 26, 10, 20];
   return (
     <View style={styles.cinematicWaveformContainer}>
@@ -1585,7 +1569,7 @@ function SoundtrackWaveform() {
               key={index}
               style={[
                 styles.cinematicWaveBar,
-                { height: Math.round(height * 0.68), backgroundColor: color },
+                { height: Math.round(height * 0.68), backgroundColor: theme.color(color, 'surface') },
               ]}
             />
           );
@@ -1597,10 +1581,16 @@ function SoundtrackWaveform() {
 }
 
 function CinematicHomeAction({ symbol, label, onPress }: { symbol: SFSymbol; label: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.cinematicWeekAction, pressed && styles.cinematicPressed]}><View style={styles.cinematicWeekActionIcon}><SymbolView name={symbol} tintColor="#d7b8ff" type="hierarchical" style={styles.cinematicWeekActionSymbol} /></View><Text style={styles.cinematicWeekActionLabel}>{label}</Text></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.cinematicWeekAction, pressed && styles.cinematicPressed]}><View style={styles.cinematicWeekActionIcon}><SymbolView name={symbol} tintColor={theme.color("#d7b8ff", 'text')} type="hierarchical" style={styles.cinematicWeekActionSymbol} /></View><Text style={styles.cinematicWeekActionLabel}>{label}</Text></Pressable>;
 }
 
 function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRecord, onJourneys, onLive, onSoundtracks, onAtlas, onMore, onConnections, onJourney, onRefresh }: { state: LoadState<AppDashboard>; primary: PrimaryDataState; recordingMode: RecordingMode; tessieConnected: boolean; onRecord: () => void; onJourneys: () => void; onLive: () => void; onSoundtracks: () => void; onAtlas: () => void; onMore: (destination: MoreDestination | 'search' | 'timeline' | 'statistics') => void; onConnections: () => void; onJourney: (id: string) => void; onRefresh: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const { data } = state;
   const week = data.summary.last7Days;
@@ -1634,7 +1624,7 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
             <View style={styles.webHeroShade} />
             <View style={styles.webHeroTop}>
               <View><Text style={styles.webHeroKicker}>YOUR ROAD</Text><Text style={styles.webHeroScript}>In motion</Text></View>
-              <Pressable onPress={onLive} style={styles.webLivePill}><View style={[styles.webLiveDot, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /><Text style={styles.webLiveText}>{data.recorder.state === 'recording' ? 'RECORDING' : automaticMode ? 'WATCHING' : 'READY'}</Text></Pressable>
+              <Pressable onPress={onLive} style={styles.webLivePill}><View style={[styles.webLiveDot, { backgroundColor: theme.color(recorderColor(data.recorder.state, data.recorder.connected), 'surface') }]} /><Text style={styles.webLiveText}>{data.recorder.state === 'recording' ? 'RECORDING' : automaticMode ? 'WATCHING' : 'READY'}</Text></Pressable>
             </View>
             <View style={styles.webHeroBottom}>
               <Text style={styles.webHeroWeekLabel}>LAST 7 DAYS</Text>
@@ -1668,46 +1658,46 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
           </View>
 
           <Pressable onPress={onRecord} style={({ pressed }) => [styles.webRecorderStrip, pressed && styles.pressed]}>
-            <View style={[styles.webRecorderBeacon, { borderColor: recorderColor(data.recorder.state, data.recorder.connected) }]}><View style={[styles.webRecorderBeaconCore, { backgroundColor: recorderColor(data.recorder.state, data.recorder.connected) }]} /></View>
+            <View style={[styles.webRecorderBeacon, { borderColor: theme.color(recorderColor(data.recorder.state, data.recorder.connected), 'border') }]}><View style={[styles.webRecorderBeaconCore, { backgroundColor: theme.color(recorderColor(data.recorder.state, data.recorder.connected), 'surface') }]} /></View>
             <View style={styles.flex}><Text style={styles.webRecorderTitle}>{automaticMode && data.recorder.state === 'ready' ? 'Automatic detection is watching' : recorderTitle(data.recorder.state, data.recorder.connected)}</Text><Text style={styles.webRecorderDetail}>{automaticMode && data.recorder.state === 'ready' ? 'JourneyDeck will begin after sustained driving speed.' : recorderDetail(data.recorder.state, data.recorder.queuedPoints, data.recorder.queuedMusic)}</Text></View>
             <Text style={styles.webRecorderChevron}>›</Text>
           </Pressable>
           {(recordingMode === 'manual' || data.recorder.state === 'recording') && <PrimaryAction label={data.recorder.state === 'recording' ? 'Open active recording' : 'Start a journey'} onPress={onRecord} />}
 
           <View style={styles.webActions}>
-            <WebAction symbol="arrow.clockwise" title="Sync" detail="Latest journey" color="#ff645d" onPress={onRefresh} />
-            <WebAction symbol="play.fill" title="Replay" detail="Your journey" color="#a75cff" onPress={data.latestJourney ? () => onJourney(data.latestJourney!.id) : onJourneys} />
-            <WebAction symbol="map" title="Journeys" detail="Your archive" color="#45bdf4" onPress={onJourneys} />
-            <WebAction symbol="link" title="Connect" detail="Music & car" color="#ff9a5d" onPress={onConnections} />
+            <WebAction symbol="arrow.clockwise" title="Sync" detail="Latest journey" color={theme.color("#ff645d", 'text')} onPress={onRefresh} />
+            <WebAction symbol="play.fill" title="Replay" detail="Your journey" color={theme.color("#a75cff", 'text')} onPress={data.latestJourney ? () => onJourney(data.latestJourney!.id) : onJourneys} />
+            <WebAction symbol="map" title="Journeys" detail="Your archive" color={theme.color("#45bdf4", 'text')} onPress={onJourneys} />
+            <WebAction symbol="link" title="Connect" detail="Music & car" color={theme.color("#ff9a5d", 'text')} onPress={onConnections} />
           </View>
 
           {home && <>
             <View style={styles.homeSummaryHeading}><View><Text style={styles.webPanelTitle}>YOUR JOURNEYDECK</Text><Text style={styles.homeSummarySubtitle}>Everything the road has saved on this iPhone</Text></View><View style={styles.homeLocalPill}><View style={styles.homeLocalDot} /><Text style={styles.homeLocalText}>LOCAL</Text></View></View>
             <View style={styles.homeArchiveGrid}>
-              <HomeArchiveTile value={home.archive.journeys} label="Journeys" color="#ff765a" onPress={onJourneys} />
-              <HomeArchiveTile value={home.archive.memories} label="Memories" color="#a876ff" onPress={onJourneys} />
-              <HomeArchiveTile value={home.archive.places} label="Places" color="#4bd6b1" onPress={onAtlas} />
+              <HomeArchiveTile value={home.archive.journeys} label="Journeys" color={theme.color("#ff765a", 'text')} onPress={onJourneys} />
+              <HomeArchiveTile value={home.archive.memories} label="Memories" color={theme.color("#a876ff", 'text')} onPress={onJourneys} />
+              <HomeArchiveTile value={home.archive.places} label="Places" color={theme.color("#4bd6b1", 'text')} onPress={onAtlas} />
             </View>
 
             <View style={styles.homeSpotlightGrid}>
               <Pressable onPress={onJourneys} style={[styles.homeSpotlight, styles.homeMemorySpotlight]}>
-                <LinearGradient colors={['#35164a', '#140a20']} style={StyleSheet.absoluteFill} />
+                <LinearGradient colors={theme.gradient(['#35164a', '#140a20'])} style={StyleSheet.absoluteFill} />
                 <Text style={styles.homeSpotlightKicker}>MEMORY SPOTLIGHT</Text>
                 <Text style={styles.homeSpotlightTitle} numberOfLines={2}>{home.memorySpotlight?.name ?? 'Create your first chapter'}</Text>
                 <Text style={styles.homeSpotlightMeta}>{home.memorySpotlight ? `${home.memorySpotlight.journeys} journeys  •  ${home.memorySpotlight.photos} photos` : 'Group the journeys you want to remember.'}</Text>
                 <Text style={styles.homeSpotlightAction}>Open Memories  ›</Text>
               </Pressable>
               <Pressable onPress={onSoundtracks} style={[styles.homeSpotlight, styles.homeMusicSpotlight]}>
-                <LinearGradient colors={['#471329', '#150918']} style={StyleSheet.absoluteFill} />
-                <Text style={[styles.homeSpotlightKicker, { color: '#ff769e' }]}>ROAD SOUNDTRACK</Text>
+                <LinearGradient colors={theme.gradient(['#471329', '#150918'])} style={StyleSheet.absoluteFill} />
+                <Text style={[styles.homeSpotlightKicker, { color: theme.color('#ff769e', 'text') }]}>ROAD SOUNDTRACK</Text>
                 <Text style={styles.homeSpotlightTitle} numberOfLines={2}>{home.topTrack?.track ?? 'Your soundtrack is waiting'}</Text>
                 <Text style={styles.homeSpotlightMeta} numberOfLines={2}>{home.topTrack ? `${home.topTrack.artist}  •  ${home.topTrack.plays} road play${home.topTrack.plays === 1 ? '' : 's'}` : 'Matched songs will be ranked locally.'}</Text>
-                <Text style={[styles.homeSpotlightAction, { color: '#ff91b0' }]}>Open Music  ›</Text>
+                <Text style={[styles.homeSpotlightAction, { color: theme.color('#ff91b0', 'text') }]}>Open Music  ›</Text>
               </Pressable>
             </View>
 
             <Pressable onPress={onAtlas} style={styles.homePatternCard}>
-              <View style={styles.homePatternIcon}><SymbolView name="point.bottomleft.forward.to.point.topright.scurvepath" tintColor="#ff8065" type="hierarchical" style={styles.homePatternSymbol} /></View>
+              <View style={styles.homePatternIcon}><SymbolView name="point.bottomleft.forward.to.point.topright.scurvepath" tintColor={theme.color("#ff8065", 'text')} type="hierarchical" style={styles.homePatternSymbol} /></View>
               <View style={styles.flex}><Text style={styles.homeSpotlightKicker}>YOUR ROAD PATTERN</Text><Text style={styles.homePatternTitle} numberOfLines={1}>{home.favoriteRoute?.label ?? (home.topPlace ? `Back to ${home.topPlace.name}` : 'Atlas is learning your roads')}</Text><Text style={styles.homeSpotlightMeta}>{home.favoriteRoute ? `${home.favoriteRoute.count} drives  •  ${formatMiles(home.favoriteRoute.averageMiles)} average` : home.topPlace ? `${home.topPlace.visits} recorded visits` : 'Recurring routes and places stay on this iPhone.'}</Text></View>
               <Text style={styles.webRecorderChevron}>›</Text>
             </Pressable>
@@ -1724,10 +1714,10 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
             <View style={styles.homeExploreCard}>
               <View style={styles.homeSummaryHeading}><View><Text style={styles.webPanelTitle}>EXPLORE YOUR ROAD</Text><Text style={styles.homeSummarySubtitle}>Jump back into your local archive</Text></View></View>
               <View style={styles.homeExploreGrid}>
-                <HomeExploreAction symbol="clock.arrow.circlepath" title="Timeline" detail={`${home.timelineEvents} recent events`} color="#6b9cff" onPress={() => onMore('timeline')} />
-                <HomeExploreAction symbol="globe.americas" title="Atlas" detail="Places & patterns" color="#4bd6b1" onPress={onAtlas} />
-                <HomeExploreAction symbol="chart.bar.xaxis" title="Statistics" detail="Trends & highlights" color="#ff8065" onPress={() => onMore('statistics')} />
-                <HomeExploreAction symbol="magnifyingglass" title="Search" detail="Find anything" color="#d57aff" onPress={() => onMore('search')} />
+                <HomeExploreAction symbol="clock.arrow.circlepath" title="Timeline" detail={`${home.timelineEvents} recent events`} color={theme.color("#6b9cff", 'text')} onPress={() => onMore('timeline')} />
+                <HomeExploreAction symbol="globe.americas" title="Atlas" detail="Places & patterns" color={theme.color("#4bd6b1", 'text')} onPress={onAtlas} />
+                <HomeExploreAction symbol="chart.bar.xaxis" title="Statistics" detail="Trends & highlights" color={theme.color("#ff8065", 'text')} onPress={() => onMore('statistics')} />
+                <HomeExploreAction symbol="magnifyingglass" title="Search" detail="Find anything" color={theme.color("#d57aff", 'text')} onPress={() => onMore('search')} />
               </View>
             </View>
           </>}
@@ -1738,7 +1728,7 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
               {recentJourneys.length ? recentJourneys.map(journey => <CompactJourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />) : <Text style={styles.webPanelEmpty}>Your completed journeys will appear here.</Text>}
             </View>
             <View style={styles.webHealthPanel}>
-              <View style={styles.webPanelHeader}><Text style={[styles.webPanelTitle, { color: '#45c6f0' }]}>DATA HEALTH</Text></View>
+              <View style={styles.webPanelHeader}><Text style={[styles.webPanelTitle, { color: theme.color('#45c6f0', 'text') }]}>DATA HEALTH</Text></View>
               <CompactHealthRow symbol="J" label="JourneyDeck" detail={data.recorder.connected ? 'Connected' : 'Offline'} healthy={data.recorder.connected} />
               <CompactHealthRow symbol="♪" label="Music" detail={musicConnected ? 'Ready' : 'Check'} healthy={musicConnected} />
             </View>
@@ -1760,33 +1750,49 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
 }
 
 function HomeArchiveTile({ value, label, color, onPress }: { value: number; label: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={[styles.homeArchiveTile, { borderColor: `${color}66`, shadowColor: color }]}><View style={[styles.homeArchiveGlow, { backgroundColor: `${color}22` }]} /><Text style={[styles.homeArchiveValue, { color }]}>{value.toLocaleString()}</Text><Text style={styles.homeArchiveLabel}>{label}</Text></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={[styles.homeArchiveTile, { borderColor: theme.color(`${color}66`, 'border'), shadowColor: theme.color(color, 'shadow') }]}><View style={[styles.homeArchiveGlow, { backgroundColor: theme.color(`${color}22`, 'surface') }]} /><Text style={[styles.homeArchiveValue, { color }]}>{value.toLocaleString()}</Text><Text style={styles.homeArchiveLabel}>{label}</Text></Pressable>;
 }
 
 function HomeIntelligenceMetric({ value, label, detail }: { value: string; label: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.homeIntelligenceMetric}><Text style={styles.homeIntelligenceValue} numberOfLines={1}>{value}</Text><Text style={styles.homeIntelligenceLabel}>{label}</Text><Text style={styles.homeIntelligenceDetail} numberOfLines={1}>{detail}</Text></View>;
 }
 
 function HomeExploreAction({ symbol, title, detail, color, onPress }: { symbol: SFSymbol; title: string; detail: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.homeExploreAction}><View style={[styles.homeExploreIcon, { backgroundColor: `${color}18`, borderColor: `${color}55` }]}><SymbolView name={symbol} tintColor={color} type="hierarchical" style={styles.homeExploreSymbol} /></View><View style={styles.flex}><Text style={styles.homeExploreTitle}>{title}</Text><Text style={styles.homeExploreDetail}>{detail}</Text></View><Text style={[styles.webRecorderChevron, { color }]}>›</Text></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={styles.homeExploreAction}><View style={[styles.homeExploreIcon, { backgroundColor: theme.color(`${color}18`, 'surface'), borderColor: theme.color(`${color}55`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(color, 'text')} type="hierarchical" style={styles.homeExploreSymbol} /></View><View style={styles.flex}><Text style={styles.homeExploreTitle}>{title}</Text><Text style={styles.homeExploreDetail}>{detail}</Text></View><Text style={[styles.webRecorderChevron, { color }]}>›</Text></Pressable>;
 }
 
 function DashboardWaveform() {
+  const styles = useThemedStyles(darkStyles);
+
   const bars = [8, 16, 27, 13, 31, 20, 38, 17, 29, 42, 20, 34, 14, 27, 37, 18, 31, 11, 24, 35, 16, 27, 9, 20];
   return <View style={styles.webWaveform}>{bars.map((height, index) => <View key={index} style={[styles.webWaveBar, { height }]} />)}</View>;
 }
 
 function WebAction({ symbol, title, detail, color, onPress }: { symbol: SFSymbol; title: string; detail: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webAction, { borderColor: `${color}88`, shadowColor: color }, pressed && styles.pressed]}>
-    <LinearGradient pointerEvents="none" colors={[`${color}70`, `${color}25`, '#12091b']} locations={[0, 0.48, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <Svg pointerEvents="none" viewBox="0 0 100 120" preserveAspectRatio="none" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id={`actionGlint${title.replace(/\s/g, '')}`} cx="28%" cy="8%" rx="64%" ry="48%"><Stop offset="0" stopColor="#ffffff" stopOpacity="0.23" /><Stop offset="0.42" stopColor="#ffffff" stopOpacity="0.06" /><Stop offset="1" stopColor="#ffffff" stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="100" height="120" fill={`url(#actionGlint${title.replace(/\s/g, '')})`} /></Svg>
-    <View style={[styles.webActionIcon, { borderColor: `${color}cc`, shadowColor: color }]}><SymbolView name={symbol} tintColor={color} type="hierarchical" style={styles.webActionSymbol} /></View>
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.webAction, { borderColor: theme.color(`${color}88`, 'border'), shadowColor: theme.color(color, 'shadow') }, pressed && styles.pressed]}>
+    <LinearGradient pointerEvents="none" colors={theme.gradient([`${color}70`, `${color}25`, '#12091b'])} locations={[0, 0.48, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Svg pointerEvents="none" viewBox="0 0 100 120" preserveAspectRatio="none" style={StyleSheet.absoluteFill}><Defs><SvgRadialGradient id={`actionGlint${title.replace(/\s/g, '')}`} cx="28%" cy="8%" rx="64%" ry="48%"><Stop offset="0" stopColor={theme.color("#ffffff", 'accent')} stopOpacity="0.23" /><Stop offset="0.42" stopColor={theme.color("#ffffff", 'accent')} stopOpacity="0.06" /><Stop offset="1" stopColor={theme.color("#ffffff", 'accent')} stopOpacity="0" /></SvgRadialGradient></Defs><Rect width="100" height="120" fill={theme.color(`url(#actionGlint${title.replace(/\s/g, '')})`, 'accent')} /></Svg>
+    <View style={[styles.webActionIcon, { borderColor: theme.color(`${color}cc`, 'border'), shadowColor: theme.color(color, 'shadow') }]}><SymbolView name={symbol} tintColor={theme.color(color, 'text')} type="hierarchical" style={styles.webActionSymbol} /></View>
     <View style={styles.webActionSpacer} />
     <Text style={styles.webActionTitle}>{title}</Text><Text style={styles.webActionDetail} numberOfLines={1}>{detail}</Text>
   </Pressable>;
 }
 
 function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}>
       <View style={styles.webPlaceIcon}><Text>⌂</Text></View>
@@ -1797,9 +1803,9 @@ function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPr
       </View>
       <View style={styles.webRouteThumb}>
         <Svg width={48} height={38} viewBox="0 0 48 38">
-          <Path d="M 6 30 Q 20 10 42 12" fill="none" stroke="#ff694f" strokeWidth="2.5" strokeLinecap="round" />
-          <Circle cx="6" cy="30" r="3" fill="#9746f5" />
-          <Circle cx="42" cy="12" r="3" fill="#ffc2af" />
+          <Path d="M 6 30 Q 20 10 42 12" fill="none" stroke={theme.color("#ff694f", 'accent')} strokeWidth="2.5" strokeLinecap="round" />
+          <Circle cx="6" cy="30" r="3" fill={theme.color("#9746f5", 'accent')} />
+          <Circle cx="42" cy="12" r="3" fill={theme.color("#ffc2af", 'accent')} />
         </Svg>
       </View>
     </Pressable>
@@ -1807,7 +1813,10 @@ function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPr
 }
 
 function CompactHealthRow({ symbol, icon, label, detail, healthy }: { symbol: string; icon?: ReactNode; label: string; detail: string; healthy: boolean }) {
-  return <View style={styles.webCompactHealth}>{icon ?? <View style={[styles.webServiceIcon, { backgroundColor: healthy ? '#2589c8' : '#62334c' }]}><Text style={styles.webServiceIconText}>{symbol}</Text></View>}<View style={styles.flex}><Text style={styles.webServiceName} numberOfLines={1}>{label}</Text><Text style={styles.webServiceDetail} numberOfLines={1}>{detail}</Text></View><View style={[styles.webHealthCheck, { backgroundColor: healthy ? '#2caeea' : '#ff9a5d' }]}><Text style={styles.webHealthCheckText}>{healthy ? '✓' : '!'}</Text></View></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.webCompactHealth}>{icon ?? <View style={[styles.webServiceIcon, { backgroundColor: theme.color(healthy ? '#2589c8' : '#62334c', 'surface') }]}><Text style={styles.webServiceIconText}>{symbol}</Text></View>}<View style={styles.flex}><Text style={styles.webServiceName} numberOfLines={1}>{label}</Text><Text style={styles.webServiceDetail} numberOfLines={1}>{detail}</Text></View><View style={[styles.webHealthCheck, { backgroundColor: theme.color(healthy ? '#2caeea' : '#ff9a5d', 'surface') }]}><Text style={styles.webHealthCheckText}>{healthy ? '✓' : '!'}</Text></View></View>;
 }
 
 function hourlyDrivingActivity(journeys: JourneySummary[]) {
@@ -1823,54 +1832,65 @@ function hourlyDrivingActivity(journeys: JourneySummary[]) {
 }
 
 function DashboardStatCard({ symbol, kicker, value, detail, color }: { symbol: string; kicker: string; value: string; detail: string; color: string }) {
-  return <View style={styles.dashboardStatCard}><View style={[styles.dashboardStatIcon, { backgroundColor: `${color}20` }]}><Text style={[styles.dashboardStatSymbol, { color }]}>{symbol}</Text></View><Text style={styles.dashboardStatKicker}>{kicker}</Text><Text style={styles.dashboardStatValue} numberOfLines={1}>{value}</Text><Text style={styles.dashboardStatDetail}>{detail}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.dashboardStatCard}><View style={[styles.dashboardStatIcon, { backgroundColor: theme.color(`${color}20`, 'surface') }]}><Text style={[styles.dashboardStatSymbol, { color }]}>{symbol}</Text></View><Text style={styles.dashboardStatKicker}>{kicker}</Text><Text style={styles.dashboardStatValue} numberOfLines={1}>{value}</Text><Text style={styles.dashboardStatDetail}>{detail}</Text></View>;
 }
 
 function QuickAction({ symbol, title, detail, onPress, color }: { symbol: string; title: string; detail: string; onPress: () => void; color: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable onPress={onPress} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}><Text style={[styles.quickActionSymbol, { color }]}>{symbol}</Text><Text style={styles.quickActionTitle}>{title}</Text><Text style={styles.quickActionDetail}>{detail}</Text></Pressable>;
 }
 
 function DashboardHealthRow({ label, detail, healthy }: { label: string; detail: string; healthy: boolean }) {
-  return <View style={styles.dashboardHealthRow}><View style={[styles.dashboardHealthDot, { backgroundColor: healthy ? '#43e6ae' : '#ffb15c' }]} /><View style={styles.flex}><Text style={styles.dashboardHealthLabel}>{label}</Text><Text style={styles.dashboardHealthDetail}>{detail}</Text></View><Text style={[styles.dashboardHealthState, { color: healthy ? '#43e6ae' : '#ffb15c' }]}>{healthy ? 'READY' : 'CHECK'}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.dashboardHealthRow}><View style={[styles.dashboardHealthDot, { backgroundColor: theme.color(healthy ? '#43e6ae' : '#ffb15c', 'surface') }]} /><View style={styles.flex}><Text style={styles.dashboardHealthLabel}>{label}</Text><Text style={styles.dashboardHealthDetail}>{detail}</Text></View><Text style={[styles.dashboardHealthState, { color: theme.color(healthy ? '#43e6ae' : '#ffb15c', 'text') }]}>{healthy ? 'READY' : 'CHECK'}</Text></View>;
 }
 
 function OpenRoadArtwork() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.openRoad} pointerEvents="none">
     <Svg width="100%" height={132} viewBox="0 0 360 132" style={StyleSheet.absoluteFill}>
       <Defs>
         <SvgLinearGradient id="openRoadSky" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#1a0c28" />
-          <Stop offset="0.6" stopColor="#0d0918" />
-          <Stop offset="1" stopColor="#050308" />
+          <Stop offset="0" stopColor={theme.color("#1a0c28", 'accent')} />
+          <Stop offset="0.6" stopColor={theme.color("#0d0918", 'accent')} />
+          <Stop offset="1" stopColor={theme.color("#050308", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="openRoadSun" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#ff9a78" />
-          <Stop offset="1" stopColor="#ff5a43" />
+          <Stop offset="0" stopColor={theme.color("#ff9a78", 'accent')} />
+          <Stop offset="1" stopColor={theme.color("#ff5a43", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="openRoadGlow" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0" stopColor="#ff5a43" stopOpacity={0} />
-          <Stop offset="0.5" stopColor="#ff7b54" stopOpacity={0.6} />
-          <Stop offset="1" stopColor="#ff5a43" stopOpacity={0} />
+          <Stop offset="0" stopColor={theme.color("#ff5a43", 'accent')} stopOpacity={0} />
+          <Stop offset="0.5" stopColor={theme.color("#ff7b54", 'accent')} stopOpacity={0.6} />
+          <Stop offset="1" stopColor={theme.color("#ff5a43", 'accent')} stopOpacity={0} />
         </SvgLinearGradient>
         <SvgLinearGradient id="openRoadPav" x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#1e142e" />
-          <Stop offset="1" stopColor="#0a0612" />
+          <Stop offset="0" stopColor={theme.color("#1e142e", 'accent')} />
+          <Stop offset="1" stopColor={theme.color("#0a0612", 'accent')} />
         </SvgLinearGradient>
       </Defs>
       <Rect width="360" height="132" fill="url(#openRoadSky)" />
-      <Circle cx={45} cy={22} r={1.5} fill="#e4d6ff" opacity={0.7} />
-      <Circle cx={120} cy={35} r={1} fill="#e4d6ff" opacity={0.5} />
-      <Circle cx={275} cy={18} r={1.5} fill="#e4d6ff" opacity={0.8} />
-      <Circle cx={320} cy={38} r={1} fill="#e4d6ff" opacity={0.6} />
+      <Circle cx={45} cy={22} r={1.5} fill={theme.color("#e4d6ff", 'accent')} opacity={0.7} />
+      <Circle cx={120} cy={35} r={1} fill={theme.color("#e4d6ff", 'accent')} opacity={0.5} />
+      <Circle cx={275} cy={18} r={1.5} fill={theme.color("#e4d6ff", 'accent')} opacity={0.8} />
+      <Circle cx={320} cy={38} r={1} fill={theme.color("#e4d6ff", 'accent')} opacity={0.6} />
       <Circle cx={180} cy={56} r={28} fill="url(#openRoadSun)" opacity={0.9} />
-      <Circle cx={180} cy={56} r={44} fill="#ff5a43" opacity={0.15} />
+      <Circle cx={180} cy={56} r={44} fill={theme.color("#ff5a43", 'accent')} opacity={0.15} />
       <Path d="M 16 58 L 344 58" stroke="url(#openRoadGlow)" strokeWidth={1.5} />
       <Path d="M 162 58 L 198 58 L 290 132 L 70 132 Z" fill="url(#openRoadPav)" />
-      <Path d="M 162 58 L 70 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
-      <Path d="M 198 58 L 290 132" stroke="#9d70ff" strokeWidth={2} opacity={0.75} />
-      <Path d="M 180 62 L 180 70" stroke="#ff8767" strokeWidth={1.5} opacity={0.8} />
-      <Path d="M 180 76 L 180 90" stroke="#ff8767" strokeWidth={2.5} opacity={0.9} />
-      <Path d="M 180 98 L 180 124" stroke="#ff8767" strokeWidth={4} opacity={1} />
+      <Path d="M 162 58 L 70 132" stroke={theme.color("#9d70ff", 'accent')} strokeWidth={2} opacity={0.75} />
+      <Path d="M 198 58 L 290 132" stroke={theme.color("#9d70ff", 'accent')} strokeWidth={2} opacity={0.75} />
+      <Path d="M 180 62 L 180 70" stroke={theme.color("#ff8767", 'accent')} strokeWidth={1.5} opacity={0.8} />
+      <Path d="M 180 76 L 180 90" stroke={theme.color("#ff8767", 'accent')} strokeWidth={2.5} opacity={0.9} />
+      <Path d="M 180 98 L 180 124" stroke={theme.color("#ff8767", 'accent')} strokeWidth={4} opacity={1} />
     </Svg>
     <View style={styles.roadSoundwave}><View style={styles.roadSoundBarSmall} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarMedium} /><View style={styles.roadSoundBarTall} /><View style={styles.roadSoundBarSmall} /></View>
     <Text style={styles.roadCaption}>OPEN ROAD  •  YOUR STORY</Text>
@@ -1883,21 +1903,24 @@ function memoryDraftSignature(draft: MemoryEditorDraft) {
   return JSON.stringify({ name: draft.name.trim(), notes: draft.notes.trim(), journeyIds: [...new Set(draft.journeyIds)].sort(), coverPhotoId: draft.coverPhotoId });
 }
 
-function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onRefresh }: {
+function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, detailId, studio = false }: {
   catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; details: JourneyDetail[];
-  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onRefresh: () => void;
+  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; detailId?: string; studio?: boolean;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(260, width - 74), cardStep = cardWidth + 14;
   const scrollX = useRef(new Animated.Value(0)).current;
   const carousel = useRef<any>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [memoryOverview, setMemoryOverview] = useState<JourneyMemory | null>(null);
+  const memoryOverview = detailId ? catalog.data.memories.find(memory => memory.id === detailId) ?? null : null;
   const [shareCard, setShareCard] = useState<ShareCardPayload | null>(null);
   const [memoryDraft, setMemoryDraft] = useState<MemoryEditorDraft | null>(null);
+  const studioArtworkKey = useRef('road-trips');
   const [memorySavedSignature, setMemorySavedSignature] = useState<string | null>(null);
-  const memoryTransitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [section, setSection] = useState<'library' | 'memories'>('memories');
@@ -1905,6 +1928,8 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   const [libraryFilter, setLibraryFilter] = useState<JourneyLibraryFilter>('all');
   const [librarySort, setLibrarySort] = useState<JourneyLibrarySort>('newest');
   const [assignJourneyId, setAssignJourneyId] = useState<string | null>(null);
+  const afterAssignDismiss = useRef<(() => void) | null>(null);
+  const afterEditorDismiss = useRef<(() => void) | null>(null);
   const visibleJourneys = useMemo(() => filterJourneyLibrary(journeys.data, query, libraryFilter, librarySort), [journeys.data, query, libraryFilter, librarySort]);
   const recurringRoutes = useMemo(() => favoriteRoutes(journeys.data).slice(0, 3), [journeys.data]);
   const visibleMemories = useMemo(() => catalog.data.memories.filter(item => `${item.name} ${item.notes}`.toLowerCase().includes(query.trim().toLowerCase())), [catalog.data.memories, query]);
@@ -1914,19 +1939,8 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   const memoryDraftDirty = Boolean(memoryDraft && memoryDraftSignature(memoryDraft) !== memorySavedSignature);
 
   useEffect(() => { if (selectedIndex >= catalog.data.memories.length && catalog.data.memories.length) setSelectedIndex(catalog.data.memories.length - 1); }, [catalog.data.memories.length, selectedIndex]);
-  useEffect(() => () => { if (memoryTransitionTimer.current) clearTimeout(memoryTransitionTimer.current); }, []);
-
-  const closeMemoryThen = (action: () => void) => {
-    if (memoryTransitionTimer.current) clearTimeout(memoryTransitionTimer.current);
-    setMemoryOverview(null);
-    memoryTransitionTimer.current = setTimeout(() => {
-      memoryTransitionTimer.current = null;
-      action();
-    }, 260);
-  };
-
   const editMemory = (memory: JourneyMemory | null, preselectedJourneyId?: string | null) => {
-    setMemoryOverview(null);
+    studioArtworkKey.current = memory?.artworkKey ?? 'road-trips';
     const draft = { id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', journeyIds: [...(memory?.journeyIds ?? (preselectedJourneyId ? [preselectedJourneyId] : []))], coverPhotoId: memory?.coverPhotoId ?? null, photos: [...(memory?.photos ?? [])] };
     setMemoryDraft(draft);
     setMemorySavedSignature(memory ? memoryDraftSignature(draft) : null);
@@ -1941,7 +1955,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
     if (!memoryDraft.journeyIds.length) return Alert.alert('Choose a journey', 'A Memory needs at least one journey.');
     setSaving(true);
     try {
-      const saved = await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, journeyIds: memoryDraft.journeyIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: selectedMemory?.artworkKey ?? 'road-trips' });
+      const saved = await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, journeyIds: memoryDraft.journeyIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: studio ? studioArtworkKey.current : (memoryOverview ?? selectedMemory)?.artworkKey ?? 'road-trips' });
       const next = { ...memoryDraft, id: saved.id, name: saved.name, notes: saved.notes, journeyIds: saved.journeyIds, coverPhotoId: saved.coverPhotoId, photos: saved.photos };
       setMemoryDraft(next);
       setMemorySavedSignature(memoryDraftSignature(next));
@@ -1979,7 +1993,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => void (async () => {
         setSaving(true);
-        try { await appDataClient.deleteMemory(memoryDraft.id!); setMemoryDraft(null); onRefresh(); }
+        try { await appDataClient.deleteMemory(memoryDraft.id!); if (detailId) afterEditorDismiss.current = () => router.back(); setMemoryDraft(null); onRefresh(); }
         catch (error) { Alert.alert('Memory not deleted', error instanceof Error ? error.message : 'JourneyDeck could not delete this Memory.'); }
         finally { setSaving(false); }
       })() },
@@ -1990,23 +2004,35 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   const memoryCover = memoryOverview?.coverPhotoId ? memoryOverview.photos.find(photo => photo.id === memoryOverview.coverPhotoId) ?? null : null;
   const openMemoryShare = (memory: JourneyMemory) => {
     const memoryJourneys = journeys.data.filter(journey => memory.journeyIds.includes(journey.id));
-    setMemoryOverview(null);
     setShareCard({ kind: 'memory', eyebrow: 'A JOURNEYDECK MEMORY', title: memory.name, subtitle: memory.notes || 'A group of journeys worth remembering.', metrics: [{ label: 'JOURNEYS', value: String(memoryJourneys.length) }, { label: 'MILES', value: formatMiles(memoryJourneys.reduce((sum, journey) => sum + journey.miles, 0)) }, { label: 'PHOTOS', value: String(memory.photos.length) }], photo: memory.coverPhotoId ? memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null : null, accent: '#ff6a68' });
   };
   const toggleJourneyInMemory = async (memory: JourneyMemory) => {
-    if (!assignJourneyId) return;
+    if (!assignJourneyId || saving) return;
     setSaving(true);
     try {
       const journeyIds = memory.journeyIds.includes(assignJourneyId) ? memory.journeyIds.filter(id => id !== assignJourneyId) : [...memory.journeyIds, assignJourneyId];
       await appDataClient.saveMemory({ id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, journeyIds });
       setAssignJourneyId(null);
       onRefresh();
-    } finally { setSaving(false); }
+    } catch (error) { Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setSaving(false); }
   };
 
   return <View style={styles.safe}>
-    <ScrollView
-      contentContainerStyle={[styles.memoriesPage, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+    {studio && !detailId && <IpadMemoriesScreen presentation={isIpad() ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
+      renderArtwork={memory => <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />}
+      onCreate={ids => { editMemory(null); setMemoryDraft(draft => draft ? { ...draft, journeyIds: [...new Set(ids)] } : draft); }}
+      onAdd={async (id, ids) => { await appDataClient.addJourneysToMemory(id, ids); onRefresh(); }}
+      onEdit={memory => { void appDataClient.memories().then(data => {
+        const latest = data.memories.find(item => item.id === memory.id);
+        if (latest) editMemory(latest);
+        else Alert.alert('Memory unavailable', 'This Memory is no longer in your library.');
+      }).catch(() => Alert.alert('Memory unavailable', 'Your library could not be read. Please try again.')); }}
+      onShare={openMemoryShare} onMemory={onMemory} onJourney={onJourney} onRefresh={onRefresh}
+      loading={catalog.status === 'loading' || journeys.status === 'loading'} error={catalog.status === 'error' || journeys.status === 'error' ? catalog.message ?? journeys.message ?? 'Your library could not refresh.' : undefined}
+      historyLimited={historyLimited} onUpgrade={onUpgrade} busy={Boolean(memoryDraft || shareCard) || saving} />}
+    {!studio && !detailId && <ScrollView
+      contentContainerStyle={[styles.memoriesPage, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
       automaticallyAdjustsScrollIndicatorInsets={false}
@@ -2018,7 +2044,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       {(catalog.status === 'error' || journeys.status === 'error') && <InlineNotice message={catalog.message ?? journeys.message ?? 'Memories could not refresh.'} onRetry={onRefresh} />}
 
       <View style={styles.libraryTabs}><NeonWidgetOutline radius={16} />{(['memories', 'library'] as const).map(item => <Pressable key={item} onPress={() => { setSection(item); setQuery(''); }} style={[styles.libraryTab, section === item && styles.libraryTabActive]}>{section === item && <View pointerEvents="none" style={styles.libraryTabSelectionGlow} />}<Text style={[styles.libraryTabText, section === item && styles.libraryTabTextActive]}>{item === 'library' ? 'Journeys' : 'Memories'}</Text></Pressable>)}</View>
-      <View style={styles.librarySearchFrame}><NeonWidgetOutline radius={15} /><TextInput value={query} onChangeText={setQuery} placeholder={`Search ${section}`} placeholderTextColor="#716879" style={styles.librarySearch} /></View>
+      <View style={styles.librarySearchFrame}><NeonWidgetOutline radius={15} /><TextInput value={query} onChangeText={setQuery} placeholder={`Search ${section}`} placeholderTextColor={theme.color("#716879", 'text')} style={styles.librarySearch} /></View>
       {historyLimited && <Pressable accessibilityRole="button" accessibilityLabel="Unlock complete journey and memory history" onPress={onUpgrade} style={styles.memoryHistoryGate}><View><Text style={styles.memoryHistoryGateKicker}>LATEST 45 DAYS</Text><Text style={styles.memoryHistoryGateText}>Unlock every Journey and Memory</Text></View><Text style={styles.memoryHistoryGateArrow}>›</Text></Pressable>}
 
       {section === 'memories' && <>
@@ -2036,78 +2062,81 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
           const scale = scrollX.interpolate({ inputRange, outputRange: [0.9, 1, 0.9], extrapolate: 'clamp' });
           const translateY = scrollX.interpolate({ inputRange, outputRange: [12, 0, 12], extrapolate: 'clamp' });
           return <Animated.View key={memory.id} style={{ width: cardWidth, transform: [{ scale }, { translateY }] }}>
-            <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); setMemoryOverview(memory); }} style={styles.memoryHeroCard}><NeonWidgetOutline radius={26} />
+            <CardDetailLink kind="memory" id={memory.id} onSelect={() => setSelectedIndex(index)} actions={[
+              { id: 'edit', title: 'Edit Memory', icon: 'pencil', onPress: () => editMemory(memory) },
+              { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up', onPress: () => openMemoryShare(memory) },
+            ]}>
+            <Pressable onPress={() => { setSelectedIndex(index); carousel.current?.scrollTo({ x: index * cardStep, animated: true }); onMemory(memory.id); }} style={styles.memoryHeroCard}><NeonWidgetOutline radius={26} />
               <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.coverPhotoId ? memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null : null} />
-              <LinearGradient colors={['rgba(9,7,16,0)', 'rgba(9,7,16,0.28)', 'rgba(9,7,16,0.88)']} locations={[0, 0.35, 1]} style={styles.memoryCardShade} />
+              <LinearGradient colors={theme.gradient(['rgba(9,7,16,0)', 'rgba(9,7,16,0.28)', 'rgba(9,7,16,0.88)'])} locations={[0, 0.35, 1]} style={styles.memoryCardShade} />
               <Text style={[styles.memoryHeroTitle, styles.memoryCardTitle]}>{memory.name}</Text>
               <Text style={[styles.memoryHeroMeta, styles.memoryCardMeta]}>{memory.journeyIds.length} {memory.journeyIds.length === 1 ? 'journey' : 'journeys'}  •  {memory.photos.length} photos</Text>
             </Pressable>
+            </CardDetailLink>
           </Animated.View>;
         })}
         {!catalog.data.memories.length && <Pressable onPress={() => editMemory(null)} style={[styles.memoryHeroCard, styles.memoryEmptyHero, { width: cardWidth }]}><NeonWidgetOutline radius={26} /><MemoryArtwork artworkKey="road-trips" /><View style={styles.memoryHeroShade} /><Text style={styles.memoryHeroKicker}>YOUR FIRST MEMORY</Text><Text style={styles.memoryHeroTitle}>Keep journeys together</Text><Text style={styles.memoryHeroMeta}>Choose one or more journeys to begin</Text></Pressable>}
       </Animated.ScrollView>
       <View style={styles.memoryDots}>{visibleMemories.map((memory, index) => <View key={memory.id} style={[styles.memoryDot, index === selectedIndex && styles.memoryDotActive]} />)}</View>
 
-      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEYS</Text><Text style={styles.memorySectionTitle}>{selectedMemory?.name ?? 'Build your first Memory'}</Text></View>{selectedMemory && <Pressable onPress={() => editMemory(selectedMemory)}><Text style={styles.memoryHeaderAction}>Edit</Text></Pressable>}</View>
+      <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEYS</Text><Text style={styles.memorySectionTitle}>{selectedMemory?.name ?? 'Build your first Memory'}</Text></View>{selectedMemory && <NativeActionMenu label="Memory actions" compact actions={[
+        { id: 'open', title: 'Open Memory', image: 'photo.on.rectangle', onSelect: () => onMemory(selectedMemory.id) },
+        { id: 'edit', title: 'Edit Memory', image: 'pencil', onSelect: () => editMemory(selectedMemory) },
+        { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: () => openMemoryShare(selectedMemory) },
+      ]} />}</View>
       <View style={styles.memoryJourneyList}>{selectedMemoryJourneys.map(journey => <JourneyCard key={journey.id} journey={journey} compact onPress={() => onJourney(journey.id)} />)}</View>
       {selectedMemory && !selectedMemoryJourneys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
       </>}
 
       {section === 'library' && <>
-      <View style={styles.libraryFilterRow}>{([['all', 'All'], ['music', 'With music'], ['long', '10+ miles'], ['efficient', 'Easy pace']] as const).map(([id, label]) => <LibraryChoiceChip key={id} label={label} selected={libraryFilter === id} onPress={() => setLibraryFilter(id)} />)}</View>
-      <View style={styles.libraryFilterRow}>{([['newest', 'Newest'], ['oldest', 'Oldest'], ['distance', 'Distance'], ['duration', 'Drive time']] as const).map(([id, label]) => <LibraryChoiceChip key={id} label={label} selected={librarySort === id} compact onPress={() => setLibrarySort(id)} />)}</View>
+      <View style={styles.libraryFilterRow}>
+        <NativeActionMenu stretch label={`Filter: ${{all: 'All', music: 'With music', long: '10+ miles', efficient: 'Easy pace'}[libraryFilter]}`} actions={(['all', 'music', 'long', 'efficient'] as const).map(id => ({ id, title: {all: 'All journeys', music: 'With music', long: '10+ miles', efficient: 'Easy pace'}[id], state: libraryFilter === id ? 'on' : 'off', onSelect: () => setLibraryFilter(id) }))} />
+        <NativeActionMenu stretch label={`Sort: ${{newest: 'Newest', oldest: 'Oldest', distance: 'Distance', duration: 'Drive time'}[librarySort]}`} actions={(['newest', 'oldest', 'distance', 'duration'] as const).map(id => ({ id, title: {newest: 'Newest first', oldest: 'Oldest first', distance: 'Distance', duration: 'Drive time'}[id], state: librarySort === id ? 'on' : 'off', onSelect: () => setLibrarySort(id) }))} />
+      </View>
       {recurringRoutes.length > 0 && <><View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>FAVORITE ROUTES</Text><Text style={styles.memorySectionTitle}>Roads you return to</Text></View></View>{recurringRoutes.map(route => <View key={route.key} style={styles.favoriteRoute}><NeonWidgetOutline radius={17} /><View style={styles.flex}><Text style={styles.favoriteRouteTitle}>{route.label}</Text><Text style={styles.favoriteRouteMeta}>{route.count} drives  •  {formatMiles(route.averageMiles)} average  •  {Math.round(route.averageMinutes)} min</Text></View><Text style={styles.favoriteRouteCount}>{route.count}×</Text></View>)}</>}
       <View style={styles.memorySectionHeader}><View><Text style={styles.memoryLevel}>JOURNEY LIBRARY</Text><Text style={styles.memorySectionTitle}>{visibleJourneys.length} archived drives</Text></View></View>
       <View style={styles.memoryJourneyList}>{visibleJourneys.map(journey => <View key={journey.id} style={styles.libraryJourneyWrap}><JourneyCard journey={journey} compact onPress={() => onJourney(journey.id)} /><Pressable onPress={() => setAssignJourneyId(journey.id)} style={styles.libraryAddButton}><NeonWidgetOutline radius={11} /><Text style={styles.libraryAddText}>+ Memory</Text></Pressable></View>)}</View>
       {!journeys.data.length && journeys.status !== 'loading' && <EmptyCard title="No journeys yet" body="Finish a recording and it will appear here, ready to organize." />}
       </>}
       {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
-    </ScrollView>
+    </ScrollView>}
 
-    <MemoryDetailModal
+    {detailId && !memoryOverview && <InlineNotice message={catalog.status === 'loading' ? 'Loading Memory…' : 'This Memory is no longer available.'} onRetry={onRefresh} />}
+    <MemoryDetailScreen
       visible={Boolean(memoryOverview)}
       memory={memoryOverview}
       cover={memoryCover}
       journeys={overviewJourneys}
-      onClose={() => setMemoryOverview(null)}
-      onOpenJourney={journeyId => closeMemoryThen(() => onJourney(journeyId))}
-      onShare={() => memoryOverview && closeMemoryThen(() => openMemoryShare(memoryOverview))}
-      onEdit={() => memoryOverview && closeMemoryThen(() => editMemory(memoryOverview))}
+      onClose={() => router.back()}
+      onOpenJourney={onJourney}
+      onShare={() => memoryOverview && openMemoryShare(memoryOverview)}
+      onEdit={() => memoryOverview && editMemory(memoryOverview)}
     />
 
-    <OverlayModal visible={Boolean(memoryDraft)} kicker={memoryDraft?.id ? 'EDIT MEMORY' : 'NEW MEMORY'} title={memoryDraft?.id ? 'Shape this chapter' : 'Create a Memory'} onClose={() => setMemoryDraft(null)}>
+    <NativeSheet dirty={memoryDraftDirty} busy={saving || photoBusy} onDismiss={() => { const next = afterEditorDismiss.current; afterEditorDismiss.current = null; next?.(); }} visible={Boolean(memoryDraft)} kicker={memoryDraft?.id ? 'EDIT MEMORY' : 'NEW MEMORY'} title={memoryDraft?.id ? 'Shape this chapter' : 'Create a Memory'} onClose={() => setMemoryDraft(null)}>
       {memoryDraft && <View style={styles.modalEditorBody}>
-        <TextInput value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor="#716879" maxLength={80} style={styles.editorInput} />
-        <TextInput value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor="#716879" maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
+        <TextInput value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor={theme.color("#716879", 'text')} maxLength={80} style={styles.editorInput} />
+        <TextInput value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor={theme.color("#716879", 'text')} maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
         <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>MEMORY PHOTOS</Text><Text style={styles.photoEditorHelp}>Add a photo and choose one as this Memory’s cover.</Text></View><Pressable onPress={() => void uploadMemoryPhoto()} disabled={photoBusy || !memoryDraft.id} style={[styles.photoAddButton, (!memoryDraft.id || photoBusy) && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add'}</Text></Pressable></View>
         {!memoryDraft.id && <Text style={styles.photoSaveFirst}>Save the Memory once before adding its own photos.</Text>}
         {availableMemoryPhotos.length ? <View style={styles.photoGrid}>{availableMemoryPhotos.map(photo => <PhotoTile key={photo.id} photo={photo} selected={memoryDraft.coverPhotoId === photo.id} label="MEMORY" onPress={() => setMemoryDraft(current => current ? { ...current, coverPhotoId: photo.id } : current)} onRemove={() => removePhoto(photo)} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Add a photo after saving this Memory.</Text></View>}
         <Text style={styles.editorInstruction}>JOURNEYS IN THIS MEMORY</Text>
         {journeys.data.map(journey => <MembershipRow key={journey.id} title={locationPair(journey)} detail={`${formatCompactDate(journey.startedAt)}  •  ${formatMiles(journey.miles)}`} selected={memoryDraft.journeyIds.includes(journey.id)} onPress={() => toggleMemoryJourney(journey.id)} />)}
         {memoryDraft.id && <Pressable onPress={deleteMemory} disabled={saving} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Delete Memory</Text></Pressable>}
-        <View style={styles.editorActions}><Pressable onPress={() => setMemoryDraft(null)} style={styles.editorCancel}><Text style={styles.editorCancelText}>{memoryDraftDirty ? 'Cancel' : 'Done'}</Text></Pressable><Pressable onPress={() => void saveMemory()} disabled={saving || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'SAVING…' : memoryDraftDirty ? 'SAVE' : 'SAVED'}</Text></Pressable></View>
+        <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(memoryDraftDirty, saving || photoBusy, () => setMemoryDraft(null))} disabled={saving || photoBusy} style={styles.editorCancel}><Text style={styles.editorCancelText}>{memoryDraftDirty ? 'Cancel' : 'Done'}</Text></Pressable><Pressable onPress={() => void saveMemory()} disabled={saving || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'SAVING…' : memoryDraftDirty ? 'SAVE' : 'SAVED'}</Text></Pressable></View>
       </View>}
-    </OverlayModal>
+    </NativeSheet>
 
-    <OverlayModal visible={Boolean(assignJourneyId)} kicker="QUICK ORGANIZE" title="Add to a Memory" onClose={() => setAssignJourneyId(null)}>
+    <NativeSheet busy={saving} onDismiss={() => { const next = afterAssignDismiss.current; afterAssignDismiss.current = null; next?.(); }} visible={Boolean(assignJourneyId)} kicker="QUICK ORGANIZE" title="Add to a Memory" onClose={() => setAssignJourneyId(null)}>
       <Text style={styles.overviewBodyMuted}>Choose a Memory for this journey. A journey can appear in more than one Memory.</Text>
       {catalog.data.memories.map(memory => <MembershipRow key={memory.id} title={memory.name} detail={`${memory.journeyIds.length} ${memory.journeyIds.length === 1 ? 'journey' : 'journeys'}`} selected={Boolean(assignJourneyId && memory.journeyIds.includes(assignJourneyId))} onPress={() => void toggleJourneyInMemory(memory)} />)}
-      {!catalog.data.memories.length && <Pressable onPress={() => { const journeyId = assignJourneyId; setAssignJourneyId(null); editMemory(null, journeyId); }} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Create your first Memory</Text></Pressable>}
-    </OverlayModal>
+      {!catalog.data.memories.length && <Pressable onPress={() => { const journeyId = assignJourneyId; afterAssignDismiss.current = () => editMemory(null, journeyId); setAssignJourneyId(null); }} style={styles.overviewPrimary}><Text style={styles.overviewPrimaryText}>Create your first Memory</Text></Pressable>}
+    </NativeSheet>
     <ShareCardModal payload={shareCard} onClose={() => setShareCard(null)} />
   </View>;
 }
 
-function LibraryChoiceChip({ label, selected, compact = false, onPress }: { label: string; selected: boolean; compact?: boolean; onPress: () => void }) {
-  const radius = compact ? 12 : 16;
-  return <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={onPress} style={[compact ? styles.librarySortChip : styles.libraryChip, selected && styles.libraryChoiceActive]}>
-    {selected && <View pointerEvents="none" style={[styles.libraryChoiceGlow, { borderRadius: radius }]} />}
-    <View pointerEvents="none" style={[styles.libraryChoiceRim, { borderRadius: radius }, selected && styles.libraryChoiceRimActive]} />
-    <Text style={[compact ? styles.librarySortText : styles.libraryChipText, selected && styles.libraryChipTextActive]}>{label}</Text>
-  </Pressable>;
-}
-
-function MemoryDetailModal({
+function MemoryDetailScreen({
   visible, memory, cover, journeys, onClose, onOpenJourney, onShare, onEdit,
 }: {
   visible: boolean;
@@ -2119,101 +2148,48 @@ function MemoryDetailModal({
   onShare: () => void;
   onEdit: () => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
-  const sweepX = useSharedValue(-width * 1.4);
-  const sweepStyle = useAnimatedStyle(() => ({ transform: [{ translateX: sweepX.value }] }));
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
 
-  useEffect(() => {
-    if (!visible) {
-      sweepX.value = -width * 1.4;
-      return;
-    }
-    sweepX.value = -width * 1.4;
-    sweepX.value = withDelay(170, withTiming(width * 1.5, { duration: 540, easing: Easing.out(Easing.cubic) }));
-  }, [sweepX, visible, width]);
-
+  const insets = useDetailViewportInsets();
   if (!visible || !memory) return null;
 
-  return <View style={[styles.memoryDetailRoot, StyleSheet.absoluteFill, { zIndex: 100 }]}>
-      <Reanimated.View entering={FadeIn.duration(180)} exiting={FadeOut.duration(150)} style={styles.memoryDetailBackdrop}>
-        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
-      </Reanimated.View>
-      <Reanimated.View entering={FadeInDown.duration(260).springify().damping(20)} exiting={FadeOut.duration(150)} style={[styles.memoryDetailSheet, { paddingTop: insets.top + 10, paddingBottom: insets.bottom + 10 }]}>
-        <LinearGradient colors={['#2b172b', '#120d1a', '#08070c'] as const} locations={[0, 0.36, 1]} style={StyleSheet.absoluteFill} />
-        <Reanimated.View pointerEvents="none" style={[styles.memoryDetailSweep, sweepStyle]}>
-          <LinearGradient colors={['transparent', 'rgba(255,127,92,0.34)', 'rgba(176,112,255,0.18)', 'transparent'] as const} locations={[0, 0.43, 0.58, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.memoryDetailSweepGradient} />
-        </Reanimated.View>
-        <View style={styles.memoryDetailHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close memory" onPress={onClose} style={styles.memoryDetailClose}><Text style={styles.memoryDetailCloseText}>‹</Text></Pressable>
-          <View style={styles.memoryDetailHeaderActions}><Pressable onPress={onShare} style={styles.memoryDetailHeaderAction}><Text style={styles.memoryDetailHeaderActionText}>Share</Text></Pressable><Pressable onPress={onEdit} style={styles.memoryDetailHeaderAction}><Text style={styles.memoryDetailHeaderActionText}>Edit</Text></Pressable></View>
-        </View>
-        <ScrollView contentContainerStyle={styles.memoryDetailContent} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}>
-          <Reanimated.View entering={FadeInUp.delay(150).duration(360)} style={styles.memoryDetailHero}>
+  return <DetailScreenFrame title="Memory" onBack={onClose} actions={<NativeActionMenu compact label="Memory actions" actions={[
+    { id: 'edit', title: 'Edit Memory', image: 'pencil', onSelect: onEdit },
+    { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: onShare },
+  ]} />}><View style={styles.safe}>
+    <LinearGradient colors={theme.gradient(['#2b172b', '#120d1a', '#08070c'] as const)} locations={[0, 0.36, 1]} style={StyleSheet.absoluteFill} />
+        <ScrollView contentContainerStyle={[styles.memoryDetailContent, { paddingTop: 16, paddingBottom: insets.bottom + 38 }]} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}>
+          <Reanimated.View style={styles.memoryDetailHero}>
             <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} /> : <MemoryArtwork artworkKey={memory.artworkKey} />}</View>
-            <LinearGradient colors={['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={theme.gradient(['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const)} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
             <View style={styles.memoryDetailHeroGlowOne} /><View style={styles.memoryDetailHeroGlowTwo} />
             <View style={styles.memoryDetailHeroContent}><Text style={styles.memoryDetailKicker}>MEMORY</Text><Text style={styles.memoryDetailTitle}>{memory.name}</Text><Text style={styles.memoryDetailMeta}>{journeys.length} {journeys.length === 1 ? 'journey' : 'journeys'}  ·  {memory.photos.length} photos</Text></View>
           </Reanimated.View>
-          <Reanimated.View entering={FadeInUp.delay(230).duration(280)} style={styles.memoryDetailBreadcrumb}><Text style={styles.memoryDetailBreadcrumbActive}>Memory</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbMuted}>Journeys</Text></Reanimated.View>
-          {memory.notes ? <Reanimated.Text entering={FadeInUp.delay(270).duration(260)} style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text> : null}
-          <Reanimated.Text entering={FadeInUp.delay(300).duration(260)} style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
-          <View style={styles.memoryJourneyList}>{journeys.map((journey, index) => <Reanimated.View key={journey.id} entering={FadeInUp.delay(330 + index * 55).duration(300)}><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
+          <Reanimated.View style={styles.memoryDetailBreadcrumb}><Text style={styles.memoryDetailBreadcrumbActive}>Memory</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbMuted}>Journeys</Text></Reanimated.View>
+          {memory.notes ? <Reanimated.Text style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text> : null}
+          <Reanimated.Text style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
+          <View style={styles.memoryJourneyList}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
           {!journeys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
         </ScrollView>
-      </Reanimated.View>
-  </View>;
+  </View></DetailScreenFrame>;
 }
 
-function OverlayModal({ visible, kicker, title, onClose, children, animationType = 'fade' }: { visible: boolean; kicker: string; title: string; onClose: () => void; children: ReactNode; animationType?: 'fade' | 'none' }) {
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const keyboardVisible = keyboardHeight > 0;
-  useEffect(() => {
-    if (!visible) {
-      setKeyboardHeight(0);
-      return;
-    }
-    // RN's KeyboardAvoidingView follows every transient iOS keyboard frame,
-    // including the key-preview bubble. That briefly moves the transparent
-    // presenting page. Only the settled show/hide height should position this
-    // sheet, so ordinary keypresses cannot change either layer's geometry.
-    const showSubscription = Keyboard.addListener('keyboardDidShow', event => {
-      setKeyboardHeight(Math.max(0, event.endCoordinates.height));
-    });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, [visible]);
-  const closeModal = () => {
-    Keyboard.dismiss();
-    setKeyboardHeight(0);
-    onClose();
-  };
-
-  return <Modal visible={visible} transparent animationType={animationType} statusBarTranslucent onRequestClose={closeModal}>
-    <View style={[styles.overlayKeyboardAvoider, keyboardHeight > 0 && { paddingBottom: keyboardHeight }]}>
-    <SafeAreaView style={styles.overlayRoot}>
-      <Pressable accessibilityLabel="Close" onPress={closeModal} style={StyleSheet.absoluteFill} />
-      <View style={styles.overlaySheet}>
-        <View style={styles.overlayHeader}><View style={styles.flex}><Text style={styles.overlayKicker}>{kicker}</Text><Text style={styles.overlayTitle} numberOfLines={1}>{title}</Text></View><View style={styles.overlayHeaderActions}>{keyboardVisible && <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={() => Keyboard.dismiss()} style={styles.overlayKeyboardDone}><Text style={styles.overlayKeyboardDoneText}>Done</Text></Pressable>}<Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={closeModal} style={styles.overlayClose}><Text style={styles.overlayCloseText}>×</Text></Pressable></View></View>
-        <ScrollView contentContainerStyle={styles.overlayContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">{children}</ScrollView>
-      </View>
-    </SafeAreaView>
-    </View>
-  </Modal>;
-}
 
 function OverviewMetrics({ items }: { items: { label: string; value: string }[] }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.overviewMetrics, styles.staticWidgetGlow]}>{items.map(item => <View key={item.label} style={styles.overviewMetric}><Text style={styles.overviewMetricValue}>{item.value}</Text><Text style={styles.overviewMetricLabel}>{item.label}</Text></View>)}</View>;
 }
 
 function MemoryArtwork({ photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} />;
   return <ExpoImage
     accessibilityLabel="Cinematic memory timeline artwork"
-    source={require('../assets/memory-default-floating-timeline-v1.jpg')}
+    source={headerImageSource(require('../assets/memory-default-floating-timeline-v1.jpg'), theme.mode)}
     contentFit="cover"
     cachePolicy="memory-disk"
     transition={120}
@@ -2222,20 +2198,30 @@ function MemoryArtwork({ photo }: { artworkKey: string; photo?: JourneyPhoto | n
 }
 
 function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [uri, setUri] = useState<string | null>(null);
   useEffect(() => { let active = true; void appDataClient.photoDataUrl(photo).then(value => { if (active) setUri(value); }).catch(() => undefined); return () => { active = false; }; }, [photo.id]);
-  return uri ? <Image source={{ uri }} resizeMode="cover" style={style} /> : <View style={[style, styles.photoLoading]}><ActivityIndicator color="#b693ff" /></View>;
+  return uri ? <Image source={{ uri }} resizeMode="cover" style={style} /> : <View style={[style, styles.photoLoading]}><ActivityIndicator color={theme.color("#b693ff", 'text')} /></View>;
 }
 
 function PhotoTile({ photo, selected = false, label, onPress, onRemove }: { photo: JourneyPhoto; selected?: boolean; label: string; onPress: () => void; onRemove?: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.photoTile, selected && styles.photoTileSelected]}><Pressable onPress={onPress} style={styles.photoTileImage}><JourneyPhotoImage photo={photo} style={styles.photoTileImage} /><View style={styles.photoTileShade} /><Text style={styles.photoTileLabel}>{selected ? '✓ COVER' : label}</Text></Pressable>{onRemove && <Pressable onPress={onRemove} style={styles.photoRemove}><Text style={styles.photoRemoveText}>×</Text></Pressable>}</View>;
 }
 
 function MembershipRow({ title, detail, selected, onPress }: { title: string; detail: string; selected: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable onPress={onPress} style={[styles.membershipRow, selected && styles.membershipRowSelected]}><View style={[styles.membershipCheck, selected && styles.membershipCheckSelected]}><Text style={styles.membershipCheckText}>{selected ? '✓' : '+'}</Text></View><View style={styles.flex}><Text style={styles.membershipTitle}>{title}</Text><Text style={styles.membershipDetail}>{detail}</Text></View><Text style={[styles.membershipAction, selected && styles.membershipActionRemove]}>{selected ? 'Remove' : 'Add'}</Text></Pressable>;
 }
 
 function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onLoadMore }: { state: LoadState<JourneySummary[]>; hasMore: boolean; loadingMore: boolean; onJourney: (id: string) => void; onRefresh: () => void; onLoadMore: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   return (
     <View style={styles.safe}>
@@ -2252,7 +2238,7 @@ function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onL
         {state.status === 'loading' && state.data.length === 0 ? <LoadingCard /> : state.data.length
           ? state.data.map(journey => <JourneyCard key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)
           : <EmptyCard title="Your timeline starts here" body="Finish your first recording and it will appear here automatically. Recording still works offline." />}
-        {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color="#b59cff" /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
+        {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color={theme.color("#b59cff", 'text')} /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
       </ScrollView>
     </View>
   );
@@ -2318,7 +2304,24 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
   };
 }
 
-function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void> }) {
+export function NativeJourneyScreen() {
+  useCardDetailDismissal();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { membership, refreshArchive, showUpgrade } = useJourneyDeckNavigation();
+  const { state, refresh } = useJourneyDetail(id);
+  if (state.data && !membershipCanAccessDate(membership, state.data.startedAt)) {
+    return <DetailScreenFrame title="Journey" onBack={() => router.back()}><InlineNotice message="Unlock complete history to open this Journey." onRetry={showUpgrade} /></DetailScreenFrame>;
+  }
+  return <JourneyDetailScreen visible state={state} onClose={() => router.back()} onRetry={refresh} onLocationsSaved={async () => {
+    await refreshArchive();
+    refresh();
+  }} />;
+}
+
+function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void> }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const journey = state.data;
   const rawStartingLocation = journey?.rawStartingLocation || journey?.startingLocation || 'Recorded start';
   const rawEndingLocation = journey?.rawEndingLocation || journey?.endingLocation || 'Recorded destination';
@@ -2329,6 +2332,8 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   const [startingName, setStartingName] = useState('');
   const [endingName, setEndingName] = useState('');
   const [savingLocations, setSavingLocations] = useState(false);
+  const [locationsSignature, setLocationsSignature] = useState('');
+  const locationsDirty = JSON.stringify([startingName.trim(), endingName.trim()]) !== locationsSignature;
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
   const [journeyCityLabel, setJourneyCityLabel] = useState<string | null>(null);
   const songMoments = useMemo(() => journey ? buildSongRouteMoments(
@@ -2340,7 +2345,7 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
 
   useEffect(() => {
     if (!visible) { setEditingLocations(false); setSelectedSongIndex(null); return; }
-    if (!journey) return;
+    if (!journey || editingLocations) return;
     setSelectedSongIndex(null);
     setStartingName(journey.startingLocation && journey.startingLocation !== rawStartingLocation ? journey.startingLocation : '');
     setEndingName(journey.endingLocation && journey.endingLocation !== rawEndingLocation ? journey.endingLocation : '');
@@ -2360,6 +2365,42 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   }, [journey, visible]);
 
   const displayTitle = journey ? journeyDisplayTitle(journey, journeyCityLabel) : 'Drive details';
+
+  const openJourneyShare = () => {
+    if (!journey) return;
+    const featured = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null;
+    const artistCounts = new Map<string, number>();
+    journey.soundtrack.forEach(track => artistCounts.set(track.artist, (artistCounts.get(track.artist) ?? 0) + 1));
+    const topArtist = [...artistCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? featured?.artist ?? null;
+    const shareRoute = privacySafeRealShareRoute(journey);
+    setShareCard({
+      kind: 'journey',
+      eyebrow: 'A JOURNEY REMEMBERED',
+      title: formatFullDate(journey.startedAt),
+      subtitle: 'A privacy-safe recap of time on the road—without precise locations.',
+      metrics: [{ label: 'DISTANCE', value: formatMiles(journey.miles) }, { label: 'DRIVE TIME', value: formatDuration(journey.durationMinutes) }, { label: 'SONGS', value: String(journey.songCount) }],
+      accent: '#43e6ae',
+      journey: {
+        startedAt: journey.startedAt,
+        miles: journey.miles,
+        durationMinutes: journey.durationMinutes,
+        energyUsedKwh: journey.energyUsedKwh,
+        songCount: journey.songCount,
+        ...shareRoute,
+        featured: featured ? { track: featured.track, artist: featured.artist, artworkUrl: featured.artworkUrl } : null,
+        topArtist,
+      },
+    });
+  };
+
+  const openLocationEditor = () => {
+    if (!journey) return;
+    const start = journey.startingLocation && journey.startingLocation !== rawStartingLocation ? journey.startingLocation : '';
+    const end = journey.endingLocation && journey.endingLocation !== rawEndingLocation ? journey.endingLocation : '';
+    setStartingName(start); setEndingName(end); setLocationsSignature(JSON.stringify([start.trim(), end.trim()])); setEditingLocations(true);
+  };
+
+  useJourneyCardAction(visible && state.status === 'ready' && Boolean(journey), openLocationEditor, openJourneyShare);
 
   const saveLocations = async () => {
     if (!journey) return;
@@ -2384,7 +2425,8 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
   };
 
   return <>
-    <OverlayModal visible={visible} kicker="ROAD MEMORY" title="Drive details" onClose={onClose}>
+    <DetailScreenFrame title="Journey" onBack={onClose}>
+    <ScrollView style={styles.safe} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} contentContainerStyle={[styles.overlayContent, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       {state.status === 'loading' ? <LoadingCard /> : state.status === 'error' || !journey ? <InlineNotice message={state.message ?? 'Journey unavailable.'} onRetry={onRetry} /> : <>
             <JourneyCinematicHero journey={journey} title={displayTitle} />
             <View style={styles.journeyMapHeading}>
@@ -2416,44 +2458,22 @@ function JourneyDetailModal({ visible, state, onClose, onRetry, onLocationsSaved
                 {journey.energyUsedKwh != null && <InfoRow label="ENERGY USED" value={`${journey.energyUsedKwh.toFixed(1)} kWh`} />}
               </View>
             </>}
-            {editingLocations && <View style={styles.locationEditor}>
-              <Text style={styles.locationEditorKicker}>NAME THE PLACES IN THIS JOURNEY</Text>
-              <Text style={styles.locationEditorHelp}>Names are reused whenever the same place appears. Leave a name blank to restore the original location.</Text>
-              <View style={styles.locationField}><Text style={styles.locationFieldLabel}>START</Text><TextInput value={startingName} onChangeText={setStartingName} placeholder="Home, Work, School…" placeholderTextColor="#716879" maxLength={64} returnKeyType="next" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawStartingLocation}</Text></View>
-              <View style={styles.locationField}><Text style={styles.locationFieldLabel}>DESTINATION</Text><TextInput value={endingName} onChangeText={setEndingName} placeholder="Home, Work, School…" placeholderTextColor="#716879" maxLength={64} returnKeyType="done" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawEndingLocation}</Text></View>
-              <View style={styles.editorActions}><Pressable onPress={() => setEditingLocations(false)} disabled={savingLocations} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveLocations()} disabled={savingLocations} style={[styles.editorSave, savingLocations && styles.pressed]}><Text style={styles.editorSaveText}>{savingLocations ? 'Saving…' : 'Save names'}</Text></Pressable></View>
-            </View>}
             {!editingLocations && <View style={styles.journeyActions}>
-              <Pressable onPress={() => {
-                onClose();
-                const featured = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null;
-                const artistCounts = new Map<string, number>();
-                journey.soundtrack.forEach(track => artistCounts.set(track.artist, (artistCounts.get(track.artist) ?? 0) + 1));
-                const topArtist = [...artistCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? featured?.artist ?? null;
-                const shareRoute = privacySafeRealShareRoute(journey);
-                setShareCard({
-                  kind: 'journey',
-                  eyebrow: 'A JOURNEY REMEMBERED',
-                  title: formatFullDate(journey.startedAt),
-                  subtitle: 'A privacy-safe recap of time on the road—without precise locations.',
-                  metrics: [{ label: 'DISTANCE', value: formatMiles(journey.miles) }, { label: 'DRIVE TIME', value: formatDuration(journey.durationMinutes) }, { label: 'SONGS', value: String(journey.songCount) }],
-                  accent: '#43e6ae',
-                  journey: {
-                    startedAt: journey.startedAt,
-                    miles: journey.miles,
-                    durationMinutes: journey.durationMinutes,
-                    energyUsedKwh: journey.energyUsedKwh,
-                    songCount: journey.songCount,
-                    ...shareRoute,
-                    featured: featured ? { track: featured.track, artist: featured.artist, artworkUrl: featured.artworkUrl } : null,
-                    topArtist,
-                  },
-                });
-              }} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
-              <Pressable onPress={() => setEditingLocations(true)} style={styles.journeyEditButton}><Text style={styles.journeyEditButtonText}>Edit locations</Text></Pressable>
+              <Pressable onPress={openJourneyShare} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
+              <Pressable onPress={openLocationEditor} style={styles.journeyEditButton}><Text style={styles.journeyEditButtonText}>Edit locations</Text></Pressable>
             </View>}
           </>}
-    </OverlayModal>
+    </ScrollView>
+    </DetailScreenFrame>
+    <NativeSheet visible={editingLocations} kicker="JOURNEY PLACES" title="Edit locations" dirty={locationsDirty} busy={savingLocations} onClose={() => setEditingLocations(false)}>
+            <View style={styles.locationEditor}>
+              <Text style={styles.locationEditorKicker}>NAME THE PLACES IN THIS JOURNEY</Text>
+              <Text style={styles.locationEditorHelp}>Names are reused whenever the same place appears. Leave a name blank to restore the original location.</Text>
+              <View style={styles.locationField}><Text style={styles.locationFieldLabel}>START</Text><TextInput value={startingName} onChangeText={setStartingName} placeholder="Home, Work, School…" placeholderTextColor={theme.color("#716879", 'text')} maxLength={64} returnKeyType="next" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawStartingLocation}</Text></View>
+              <View style={styles.locationField}><Text style={styles.locationFieldLabel}>DESTINATION</Text><TextInput value={endingName} onChangeText={setEndingName} placeholder="Home, Work, School…" placeholderTextColor={theme.color("#716879", 'text')} maxLength={64} returnKeyType="done" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawEndingLocation}</Text></View>
+              <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(locationsDirty, savingLocations, () => setEditingLocations(false))} disabled={savingLocations} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveLocations()} disabled={savingLocations} style={[styles.editorSave, savingLocations && styles.pressed]}><Text style={styles.editorSaveText}>{savingLocations ? 'Saving…' : 'Save names'}</Text></Pressable></View>
+            </View>
+    </NativeSheet>
     <ShareCardModal payload={shareCard} onClose={() => setShareCard(null)} />
   </>;
 }
@@ -2471,6 +2491,8 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
   primaryAction?: { label: string; onPress: () => void; disabled?: boolean };
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const close = () => {
     if (backDisabled) return;
@@ -2479,8 +2501,8 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
   };
   return (
     <View style={styles.settingsEditorScreen}>
-      <ScrollView
-        contentContainerStyle={[styles.settingsEditorContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 132 }]}
+      <SettingsScrollView
+        contentContainerStyle={[styles.settingsEditorContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustKeyboardInsets={false}
@@ -2499,12 +2521,15 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
         <Text style={styles.settingsEditorEyebrow}>{eyebrow}</Text>
         <Text accessibilityRole="header" style={styles.settingsEditorTitle}>{title}</Text>
         {children}
-      </ScrollView>
+      </SettingsScrollView>
     </View>
   );
 }
 
 function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { currentUser: LocalUser; appearance: ProfileAppearance; onSaved: (appearance: ProfileAppearance) => void; onBack: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [draft, setDraft] = useState(appearance);
   const [avatarBusy, setAvatarBusy] = useState(false);
 
@@ -2531,8 +2556,8 @@ function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { c
       <View style={[styles.profileEditorCard, styles.settingsEditorPanel]}>
         <Text style={styles.profileEditorBody}>Your name and photo stay in your private JourneyDeck profile.</Text>
         <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()} style={styles.profileEditorAvatarButton}>
-          <LinearGradient colors={['#ff795b', '#db55a6', '#8d61ff']} style={styles.profileEditorAvatarRing}><View style={styles.profileEditorAvatarInner}>{draft.avatarDataUri ? <ExpoImage source={draft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.profileEditorAvatarInitials}>{profileInitialsFor(draft.displayName)}</Text>}</View></LinearGradient>
-          <View style={styles.profileEditorPhotoBadge}>{avatarBusy ? <ActivityIndicator color="#fff" size="small" /> : <SymbolView name="camera.fill" tintColor="#fff" type="hierarchical" style={styles.profileEditorCamera} />}</View>
+          <LinearGradient colors={theme.gradient(['#ff795b', '#db55a6', '#8d61ff'])} style={styles.profileEditorAvatarRing}><View style={styles.profileEditorAvatarInner}>{draft.avatarDataUri ? <ExpoImage source={draft.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.profileEditorAvatarInitials}>{profileInitialsFor(draft.displayName)}</Text>}</View></LinearGradient>
+          <View style={styles.profileEditorPhotoBadge}>{avatarBusy ? <ActivityIndicator color={theme.color("#fff", 'text')} size="small" /> : <SymbolView name="camera.fill" tintColor={theme.color("#fff", 'text')} type="hierarchical" style={styles.profileEditorCamera} />}</View>
         </Pressable>
         <Pressable disabled={avatarBusy} onPress={() => void pickAvatar()}><Text style={styles.profileEditorPhotoAction}>{draft.avatarDataUri ? 'Choose a different photo' : 'Choose profile photo'}</Text></Pressable>
         {draft.avatarDataUri && <Pressable onPress={() => setDraft(current => ({ ...current, avatarDataUri: null }))}><Text style={styles.profileEditorRemovePhoto}>Use initials instead</Text></Pressable>}
@@ -2543,7 +2568,7 @@ function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { c
           editable={!avatarBusy}
           maxLength={48}
           placeholder="Primary Driver"
-          placeholderTextColor="#71677a"
+          placeholderTextColor={theme.color("#71677a", 'text')}
           selectionColor="#ff795b"
           returnKeyType="done"
           onSubmitEditing={save}
@@ -2555,6 +2580,9 @@ function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { c
 }
 
 function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged, onBack }: { currentUser: LocalUser; slot: SavedPlaceSlot; hasSavedPlace: boolean; onChanged: () => void; onBack: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
   const operationGeneration = useRef(0);
@@ -2632,12 +2660,12 @@ function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged,
           returnKeyType="search"
           onSubmitEditing={() => void saveAddress()}
           placeholder="Street address"
-          placeholderTextColor="#716879"
+          placeholderTextColor={theme.color("#716879", 'text')}
           selectionColor="#ff795b"
           style={styles.editorInput}
         />
         <Pressable onPress={() => void saveAddress()} disabled={busy || !address.trim()} style={[styles.savedPlacePrimary, (busy || !address.trim()) && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>{busy ? 'Saving…' : 'Use this address'}</Text></Pressable>
-        <Pressable onPress={() => void saveCurrent()} disabled={busy} style={[styles.savedPlaceCurrent, busy && styles.pressed]}><SymbolView name="location.fill" tintColor="#c7a9ff" size={16} /><Text style={styles.savedPlaceCurrentText}>{busy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
+        <Pressable onPress={() => void saveCurrent()} disabled={busy} style={[styles.savedPlaceCurrent, busy && styles.pressed]}><SymbolView name="location.fill" tintColor={theme.color("#c7a9ff", 'text')} size={16} /><Text style={styles.savedPlaceCurrentText}>{busy ? 'Finding location…' : 'Use my current location'}</Text></Pressable>
         {hasSavedPlace && <Pressable onPress={remove} disabled={busy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove saved place</Text></Pressable>}
       </View>
     </SettingsEditorScaffold>
@@ -2684,6 +2712,9 @@ function ConnectionsScreen({
   onDataHealth: () => void;
   onEditorActiveChange: (active: boolean) => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
@@ -2702,6 +2733,22 @@ function ConnectionsScreen({
   const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
   const closeEditor = () => setDestination({ kind: 'overview' });
 
+  const internalMusicControls = <>{isInternalTestingBuild() && advancedSupportVisible && <>
+          <SectionHeading title="Internal music testing" />
+          <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color={theme.color("#1ed760", 'text')} status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
+          {editingLastFm && <View style={styles.setupCard}>
+            <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
+            <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
+            <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor={theme.color("#6f6877", 'text')} style={styles.setupInput} />
+            <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
+            <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
+            {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
+            {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
+            <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
+          </View>}
+          {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color={theme.color("#1ed760", 'text')} status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
+        </>}</>;
+
   if (destination.kind === 'profile') {
     return <SettingsProfileEditor currentUser={currentUser} appearance={profileAppearance} onSaved={appearance => { setProfileAppearance(appearance); closeEditor(); }} onBack={closeEditor} />;
   }
@@ -2709,9 +2756,22 @@ function ConnectionsScreen({
     return <SettingsSavedPlaceEditor currentUser={currentUser} slot={destination.slot} hasSavedPlace={Boolean(savedPlaces[destination.slot])} onChanged={refreshSavedPlaces} onBack={closeEditor} />;
   }
 
+  if (isIpad()) return <IpadSettingsScreen
+    displayName={profileAppearance.displayName} avatar={profileAppearance.avatarDataUri} initials={profileInitialsFor(profileAppearance.displayName)}
+    appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
+    hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
+    providerName={selected.name} providerDetail={selected.summary}
+    places={SAVED_PLACE_SLOTS.map(slot => ({ ...slot, saved: Boolean(savedPlaces[slot.id]) }))}
+    onEditProfile={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }}
+    onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
+    onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
+    advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
+    advancedContent={internalMusicControls}
+  />;
+
   return (
-      <ScrollView
-        contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 132 }]}
+      <SettingsScrollView
+        contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
         automaticallyAdjustsScrollIndicatorInsets={false}
@@ -2720,11 +2780,13 @@ function ConnectionsScreen({
         <AtmosphericBackdrop variant="settings" />
         <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
 
+        <AppearanceSwitch />
+
         <SectionHeading title="Membership" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: membershipTier === 'paid' ? '#ff795b' : '#6d4a78' }]}>
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
           {membershipTier === 'paid'
-            ? <Image source={require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} />
-            : <LinearGradient colors={['#4a285d', '#26152f']} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
+            ? <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} />
+            : <LinearGradient colors={theme.gradient(['#4a285d', '#26152f'])} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text>
             <Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text>
@@ -2734,28 +2796,30 @@ function ConnectionsScreen({
         </View>
 
         <SectionHeading title="iCloud Backup" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#4598ff' }]}>
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#4598ff', 'border') }]}>
           <View style={styles.icloudMark}><SymbolView name="icloud.fill" tintColor="#1687ff" size={27} /></View>
           <View style={styles.flex}>
             <Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text>
             <Text style={styles.connectionName}>iCloud Backup</Text>
             <Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text>
           </View>
-          <Pressable onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Install 1.7' : 'Sync'}</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Sync iCloud now" onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Update app' : 'Sync'}</Text></Pressable>
         </View>
         <View style={styles.privateCloudCard}>
           <Text style={styles.privateCloudBody}>Your JourneyDeck library stays private in your iCloud account.</Text>
+          {isIpad() && <Text style={styles.privateCloudBody}>Use the same iCloud account on both devices. Under Account, continue with the same Apple Account used in JourneyDeck on your iPhone to link the same driver profile. Sync on your iPhone first, then tap Sync here.</Text>}
           <Pressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></Pressable>
+          <PlaceDataCredits />
         </View>
 
         <SectionHeading title="Account" />
-        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: '#6d4a78' }, pressed && styles.pressed]}>
-          <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: '#3a2446' }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#6d4a78', 'border') }, pressed && styles.pressed]}>
+          <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: theme.color('#3a2446', 'surface') }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
           <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
           <Text style={styles.savedPlaceAction}>Edit</Text>
         </Pressable>
         {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
-        {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color="#a88aff" /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
+        {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color={theme.color("#a88aff", 'text')} /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
         {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
         <View style={styles.accountActions}>
           {Boolean(currentUser.appleSubject) && <Pressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></Pressable>}
@@ -2766,267 +2830,59 @@ function ConnectionsScreen({
         <View style={styles.savedPlacesCard}>
           <Text style={styles.savedPlacesHint}>Name journeys automatically and protect these locations when sharing.</Text>
           {SAVED_PLACE_SLOTS.map((slot, index) => <Pressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => setDestination({ kind: 'saved-place', slot: slot.id })} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
-            <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor="#ff9478" size={20} /></View>
+            <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor={theme.color("#ff9478", 'text')} size={20} /></View>
             <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
             <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
           </Pressable>)}
         </View>
 
         <SectionHeading title="Soundtrack capture" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: selected.color }]}>
+        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(selected.color, 'border') }]}>
           <ProviderMark brand={selected.brand} size={50} />
           <View style={styles.flex}><Text style={styles.connectionKicker}>{selected.id === 'apple-music' ? 'AUTOMATIC SOUNDTRACK · RECOMMENDED' : selected.id === 'shazam' ? 'MANUAL PER SONG · NOT AUTOMATIC' : 'SELECTED MUSIC METHOD'}</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
           <Pressable onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></Pressable>
         </View>
 
-        {isInternalTestingBuild() && advancedSupportVisible && <>
-          <SectionHeading title="Internal music testing" />
-          <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color="#1ed760" status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
-          {editingLastFm && <View style={styles.setupCard}>
-            <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
-            <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
-            <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor="#6f6877" style={styles.setupInput} />
-            <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
-            <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
-            {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
-            {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
-            <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
-          </View>}
-          {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color="#1ed760" status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
-        </>}
+        {internalMusicControls}
 
         <View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View>
 
         <SectionHeading title="Advanced Support" />
         <Pressable accessibilityRole="button" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
-          <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor="#b88cff" size={21} /></View>
+          <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color("#b88cff", 'text')} size={21} /></View>
           <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>TROUBLESHOOTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics are hidden here unless you need help.</Text></View>
           <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
         </Pressable>
         {advancedSupportVisible && <Pressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
-          <View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor="#54e6bc" size={22} /></View>
+          <View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color("#54e6bc", 'text')} size={22} /></View>
           <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View>
           <Text style={styles.settingsDataHealthArrow}>›</Text>
         </Pressable>}
-      </ScrollView>
+      </SettingsScrollView>
   );
 }
 
-function CinematicTabPage({ children, index, progress, reduceMotion }: { children: ReactNode; index: number; progress: SharedValue<number>; reduceMotion: boolean }) {
-  const motionStyle = useAnimatedStyle(() => {
-    const motion = tabPageMotion(progress.value, index, reduceMotion);
-    return {
-      opacity: motion.opacity,
-      // Keep the page's top edge fixed. A centered two-axis scale made tall
-      // screens such as Settings appear to jump downward while departing.
-      transform: [{ scaleX: motion.scale }],
-    };
-  }, [index, reduceMotion]);
-
-  return (
-    <View collapsable={false} style={styles.tabLayer}>
-      <Reanimated.View style={[styles.tabTransitionLayer, motionStyle]}>{children}</Reanimated.View>
-    </View>
-  );
-}
-
-function IntegratedNavigationChrome() {
-  return <Svg pointerEvents="none" viewBox="0 -23 430 87" preserveAspectRatio="none" style={styles.navIntegratedChrome}>
-    <Defs>
-      <SvgLinearGradient id="navChromeFill" x1="0" y1="0" x2="430" y2="98" gradientUnits="userSpaceOnUse">
-        <Stop offset="0" stopColor="#1a0b23" stopOpacity="0.97" />
-        <Stop offset="0.5" stopColor="#2a102c" stopOpacity="0.98" />
-        <Stop offset="1" stopColor="#16091f" stopOpacity="0.97" />
-      </SvgLinearGradient>
-      <SvgLinearGradient id="navChromeStroke" x1="0" y1="0" x2="430" y2="0" gradientUnits="userSpaceOnUse">
-        <Stop offset="0" stopColor="#9055ff" stopOpacity="0.7" />
-        <Stop offset="0.5" stopColor="#ff9b7d" stopOpacity="0.9" />
-        <Stop offset="1" stopColor="#a45dff" stopOpacity="0.72" />
-      </SvgLinearGradient>
-    </Defs>
-    <Path
-      d="M 26 1 H 157 C 179 1 180 -20 215 -20 C 250 -20 251 1 273 1 H 404 C 418 1 429 12 429 26 V 39 C 429 53 418 63 404 63 H 26 C 12 63 1 53 1 39 V 26 C 1 12 12 1 26 1 Z"
-      fill="url(#navChromeFill)"
-      stroke="url(#navChromeStroke)"
-      strokeWidth="1.5"
-    />
-  </Svg>;
-}
-
-function BottomNavigation({ active, onSelect, items, progress, reduceMotion }: { active: Tab; onSelect: (tab: Tab) => void; items: BottomNavigationItem[]; progress: SharedValue<number>; reduceMotion: boolean }) {
-  const navigationPadding = 20;
-  const navigationGap = 2;
-  const navRef = useRef<View>(null);
-  const navX = useRef(0);
-  const navWidth = useRef(0);
-  const indicatorWidthRef = useRef(0);
-  const [indicatorWidth, setIndicatorWidth] = useState(0);
-  const activeRef = useRef(active);
-  const dragging = useRef(false);
-  const lastDraggedTab = useRef<Tab | null>(null);
-  const [reduceTransparency, setReduceTransparency] = useState(false);
-  const onSelectRef = useRef(onSelect);
-  onSelectRef.current = onSelect;
-  activeRef.current = active;
-
-  function tabIndex(tab: Tab) {
-    return Math.max(0, items.findIndex(item => item.id === tab));
-  }
-
-  function snapToTab(tab: Tab) {
-    progress.value = reduceMotion
-      ? tabIndex(tab)
-      : withTiming(tabIndex(tab), { duration: 240, easing: Easing.out(Easing.cubic) });
-  }
-
-  function moveIndicator(locationX: number) {
-    if (navWidth.current <= 0 || indicatorWidthRef.current <= 0) return;
-    progress.value = navigationProgressAtX(locationX, navWidth.current, items.length, navigationPadding, navigationGap);
-  }
-
-  function selectAt(locationX: number) {
-    if (navWidth.current <= 0) return;
-    const index = navigationIndexAtX(locationX, navWidth.current, items.length, navigationPadding, navigationGap);
-    const next = items[index].id;
-    if (lastDraggedTab.current === next) return;
-    lastDraggedTab.current = next;
-  }
-
-  function moveAtScreenX(screenX: number) {
-    const locationX = screenX - navX.current;
-    moveIndicator(locationX);
-    selectAt(locationX);
-  }
-
-  function finishDrag() {
-    const finalTab = lastDraggedTab.current ?? activeRef.current;
-    dragging.current = false;
-    lastDraggedTab.current = null;
-    snapToTab(finalTab);
-    if (finalTab !== activeRef.current) onSelectRef.current(finalTab);
-  }
-
-  const dragResponder = useRef(PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 4 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
-    onPanResponderGrant: (_event, gesture) => { dragging.current = true; moveAtScreenX(gesture.moveX); },
-    onPanResponderMove: (_event, gesture) => moveAtScreenX(gesture.moveX),
-    onPanResponderRelease: (_event, gesture) => { moveAtScreenX(gesture.moveX); finishDrag(); },
-    onPanResponderTerminate: finishDrag,
-  })).current;
-
-  useEffect(() => {
-    if (!dragging.current) snapToTab(active);
-  }, [active, progress, reduceMotion]);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceTransparencyEnabled().then(enabled => {
-      if (mounted) setReduceTransparency(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceTransparencyChanged', setReduceTransparency);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
-
-  function measureNavigation() {
-    navRef.current?.measureInWindow((x, _y, width) => {
-      navX.current = x;
-      navWidth.current = width;
-      const nextWidth = navigationGeometry(width, items.length, navigationPadding, navigationGap).itemWidth;
-      indicatorWidthRef.current = nextWidth;
-      setIndicatorWidth(previous => Math.abs(previous - nextWidth) < 0.5 ? previous : nextWidth);
-      progress.value = tabIndex(activeRef.current);
-    });
-  }
-
-  const indicatorMotionStyle = useAnimatedStyle(() => {
-    const maximumIndex = Math.max(0, items.length - 1);
-    const boundedProgress = Math.max(0, Math.min(maximumIndex, progress.value));
-    return {
-      transform: [{ translateX: navigationPadding + (boundedProgress * (indicatorWidth + navigationGap)) }],
-    };
-  }, [indicatorWidth, items.length]);
-
-  const navigationItems = items.map(item => {
-    const selected = active === item.id;
-    const centeredHome = item.id === 'home';
-    if (centeredHome) return (
-      <Pressable
-        key={item.id}
-        onPress={() => onSelect(item.id)}
-        accessibilityRole="tab"
-        accessibilityLabel={`${item.label} tab`}
-        accessibilityState={{ selected }}
-        hitSlop={{ top: 28, right: 4, bottom: 4, left: 4 }}
-        style={({ pressed }) => [styles.navItem, styles.navCenterItem, pressed && styles.navItemPressed]}
-      >
-        <View style={[styles.navCenterSymbolFrame, selected && styles.navSymbolFrameActive]}>
-          <LinearGradient colors={['rgba(72,25,72,0.99)', 'rgba(25,11,35,0.99)']} style={styles.navCenterMedallionFill} />
-          <View style={styles.navCenterPedestalRing}>
-            <View style={styles.navCenterPedestalCore}>
-              <View pointerEvents="none" style={styles.navCenterPermanentGlow} />
-              <SymbolView name={item.symbol} fallback={<Text style={[styles.navSymbolFallback, styles.navActive]}>{item.fallback}</Text>} size={31} weight="medium" tintColor="#ff9b73" style={styles.navCenterSymbol} />
-            </View>
-          </View>
-        </View>
-      </Pressable>
-    );
-    return (
-      <Pressable
-        key={item.id}
-        onPress={() => onSelect(item.id)}
-        accessibilityRole="tab"
-        accessibilityLabel={`${item.label} tab`}
-        accessibilityState={{ selected }}
-        hitSlop={4}
-        style={({ pressed }) => [styles.navItem, pressed && styles.navItemPressed]}
-      >
-        <View style={[styles.navSymbolFrame, selected && styles.navSymbolFrameActive]}>
-          <SymbolView
-            name={item.symbol}
-            fallback={<Text style={[styles.navSymbolFallback, selected && styles.navActive]}>{item.fallback}</Text>}
-            size={25}
-            weight="medium"
-            tintColor={selected ? '#ff8b4f' : '#a78db8'}
-            style={styles.navSymbol}
-          />
-        </View>
-        <Text style={[styles.navLabel, selected && styles.navActive]}>{item.label}</Text>
-        {selected && <View style={styles.navActiveLine} />}
-      </Pressable>
-    );
-  });
-  const navigationTrack = <View
-    ref={navRef}
-    style={styles.navTrack}
-    onLayout={measureNavigation}
-    {...dragResponder.panHandlers}
-  >
-    <View pointerEvents="none" style={styles.navGlassSheen} />
-    {indicatorWidth > 0 && <Reanimated.View pointerEvents="none" style={[styles.navMotionAnchor, { width: indicatorWidth }, indicatorMotionStyle]} />}
-    {navigationItems}
+function AppearanceSwitch() {
+  const { theme, setMode } = useThemeChoice();
+  const styles = useThemedStyles(darkStyles);
+  return <View style={styles.selectedProvider}>
+    <View style={styles.connectionIcon}><SymbolView name={theme.isLight ? 'sun.max.fill' : 'moon.fill'} tintColor={theme.color('#ff9478')} size={24} /></View>
+    <View style={styles.flex}><Text style={styles.connectionName}>Light Mode</Text><Text style={styles.connectionDetail}>{theme.isLight ? 'Warm ivory' : 'Cinematic dark'}</Text></View>
+    <Switch style={{ alignSelf: 'center' }} accessibilityLabel="Light Mode" accessibilityHint="Switch between warm ivory and cinematic dark" value={theme.isLight} trackColor={{ false: '#594060', true: '#9a456a' }} thumbColor="#fffaf0" onValueChange={enabled => {
+      try { setMode(enabled ? 'light' : 'dark'); }
+      catch { Alert.alert('Appearance not saved', 'Please try switching the theme again.'); }
+    }} />
   </View>;
-  const hasNativeLiquidGlass = !reduceTransparency && isLiquidGlassAvailable() && isGlassEffectAPIAvailable();
-  return (
-    <View style={styles.navDockFrame}>
-      <View pointerEvents="none" style={styles.navDockAura} />
-      <View style={styles.bottomNav}>
-        {hasNativeLiquidGlass && <GlassView pointerEvents="none" glassEffectStyle="clear" colorScheme="dark" tintColor="rgba(46, 18, 58, 0.1)" style={styles.navMaterial} />}
-        <IntegratedNavigationChrome />
-        {navigationTrack}
-      </View>
-    </View>
-  );
 }
 
 function JourneyDeckLogo({ size }: { size: number }) {
-  return <Image source={require('../assets/icon.png')} resizeMode="contain" style={{ width: size, height: size, borderRadius: Math.round(size * 0.24) }} />;
+  const theme = useAppTheme();
+  return <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="contain" style={{ width: size, height: size, borderRadius: Math.round(size * 0.24) }} />;
 }
 
 function JourneyDeckWordmark({ variant }: { variant: 'brand' | 'intro' | 'home' }) {
+  const styles = useThemedStyles(darkStyles);
+
   const style = variant === 'brand'
     ? styles.brandWordmark
     : variant === 'intro'
@@ -3036,10 +2892,15 @@ function JourneyDeckWordmark({ variant }: { variant: 'brand' | 'intro' | 'home' 
 }
 
 function BrandHeader({ compact = false }: { compact?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.brandRow, compact && styles.brandCompact]}><JourneyDeckLogo size={48} /><View><JourneyDeckWordmark variant="brand" /><Text style={styles.brandTitle}>Your drive, remembered.</Text></View></View>;
 }
 
 function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: string; title: string; body: string; variant?: 'standard' | 'memories' | 'settings' }) {
+  const pageSceneStyles = useThemedStyles(darkPageSceneStyles);
+  const styles = useThemedStyles(darkStyles);
+
   if (variant === 'memories') {
     return <><Text accessibilityRole="header" style={styles.cinematicPageTitle}>{title.toUpperCase()}</Text><View style={styles.pageArtHeader}>
       <HeaderArtwork source={require('../assets/memories-header-cinematic-v1.png')} />
@@ -3055,71 +2916,78 @@ function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: s
 }
 
 function AtmosphericBackdrop({ variant }: { variant: 'home' | 'memories' | 'settings' }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const accent = variant === 'home' ? '#ff603f' : variant === 'memories' ? '#a04cff' : '#315f91';
   const secondary = variant === 'settings' ? '#d34378' : '#ff3f85';
   return <Svg pointerEvents="none" viewBox="0 0 430 1400" preserveAspectRatio="none" style={styles.atmosphere}>
     <Defs>
-      <SvgRadialGradient id={`${variant}Top`} cx="52%" cy="3%" rx="62%" ry="32%"><Stop offset="0" stopColor={accent} stopOpacity="0.24" /><Stop offset="0.48" stopColor={accent} stopOpacity="0.09" /><Stop offset="1" stopColor={accent} stopOpacity="0" /></SvgRadialGradient>
-      <SvgRadialGradient id={`${variant}Side`} cx="100%" cy="39%" rx="72%" ry="31%"><Stop offset="0" stopColor={secondary} stopOpacity="0.18" /><Stop offset="0.55" stopColor={secondary} stopOpacity="0.06" /><Stop offset="1" stopColor={secondary} stopOpacity="0" /></SvgRadialGradient>
-      <SvgRadialGradient id={`${variant}Low`} cx="0%" cy="82%" rx="78%" ry="35%"><Stop offset="0" stopColor="#5f52ff" stopOpacity="0.14" /><Stop offset="0.58" stopColor="#5f52ff" stopOpacity="0.04" /><Stop offset="1" stopColor="#5f52ff" stopOpacity="0" /></SvgRadialGradient>
+      <SvgRadialGradient id={`${variant}Top`} cx="52%" cy="3%" rx="62%" ry="32%"><Stop offset="0" stopColor={theme.color(accent, 'accent')} stopOpacity="0.24" /><Stop offset="0.48" stopColor={theme.color(accent, 'accent')} stopOpacity="0.09" /><Stop offset="1" stopColor={theme.color(accent, 'accent')} stopOpacity="0" /></SvgRadialGradient>
+      <SvgRadialGradient id={`${variant}Side`} cx="100%" cy="39%" rx="72%" ry="31%"><Stop offset="0" stopColor={theme.color(secondary, 'accent')} stopOpacity="0.18" /><Stop offset="0.55" stopColor={theme.color(secondary, 'accent')} stopOpacity="0.06" /><Stop offset="1" stopColor={theme.color(secondary, 'accent')} stopOpacity="0" /></SvgRadialGradient>
+      <SvgRadialGradient id={`${variant}Low`} cx="0%" cy="82%" rx="78%" ry="35%"><Stop offset="0" stopColor={theme.color("#5f52ff", 'accent')} stopOpacity="0.14" /><Stop offset="0.58" stopColor={theme.color("#5f52ff", 'accent')} stopOpacity="0.04" /><Stop offset="1" stopColor={theme.color("#5f52ff", 'accent')} stopOpacity="0" /></SvgRadialGradient>
     </Defs>
-    <Rect width="430" height="1400" fill={`url(#${variant}Top)`} /><Rect width="430" height="1400" fill={`url(#${variant}Side)`} /><Rect width="430" height="1400" fill={`url(#${variant}Low)`} />
+    <Rect width="430" height="1400" fill={theme.color(`url(#${variant}Top)`, 'accent')} /><Rect width="430" height="1400" fill={theme.color(`url(#${variant}Side)`, 'accent')} /><Rect width="430" height="1400" fill={theme.color(`url(#${variant}Low)`, 'accent')} />
   </Svg>;
 }
 
 function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'settings' }) {
+  const theme = useAppTheme();
+  const pageSceneStyles = useThemedStyles(darkPageSceneStyles);
+  const styles = useThemedStyles(darkStyles);
+
   if (variant === 'memories') return <>
-    <LinearGradient pointerEvents="none" colors={['#180c26', '#0d091b', '#06030c'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['#180c26', '#0d091b', '#06030c'] as const)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
       <Defs>
         <SvgRadialGradient id="memorySkyGlow" cx="76%" cy="25%" rx="55%" ry="60%">
-          <Stop offset="0" stopColor="#7a4fb2" stopOpacity="0.32" />
-          <Stop offset="50%" stopColor="#ff4d87" stopOpacity="0.08" />
-          <Stop offset="100%" stopColor="#06030c" stopOpacity="0" />
+          <Stop offset="0" stopColor={theme.color("#7a4fb2", 'accent')} stopOpacity="0.32" />
+          <Stop offset="50%" stopColor={theme.color("#ff4d87", 'accent')} stopOpacity="0.08" />
+          <Stop offset="100%" stopColor={theme.color("#06030c", 'accent')} stopOpacity="0" />
         </SvgRadialGradient>
         <SvgRadialGradient id="moonAura" cx="78%" cy="22%" rx="20%" ry="35%">
-          <Stop offset="0" stopColor="#dce8ff" stopOpacity="0.4" />
-          <Stop offset="40%" stopColor="#7a96d4" stopOpacity="0.12" />
-          <Stop offset="100%" stopColor="#7a96d4" stopOpacity="0" />
+          <Stop offset="0" stopColor={theme.color("#dce8ff", 'accent')} stopOpacity="0.4" />
+          <Stop offset="40%" stopColor={theme.color("#7a96d4", 'accent')} stopOpacity="0.12" />
+          <Stop offset="100%" stopColor={theme.color("#7a96d4", 'accent')} stopOpacity="0" />
         </SvgRadialGradient>
         <SvgLinearGradient id="highwayCoral" x1="0" y1="1" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#ff8c6d" />
-          <Stop offset="60%" stopColor="#ff5a43" />
-          <Stop offset="100%" stopColor="#ff9a7a" />
+          <Stop offset="0%" stopColor={theme.color("#ff8c6d", 'accent')} />
+          <Stop offset="60%" stopColor={theme.color("#ff5a43", 'accent')} />
+          <Stop offset="100%" stopColor={theme.color("#ff9a7a", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="highwayMagenta" x1="0" y1="1" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#ff3f82" />
-          <Stop offset="55%" stopColor="#d946ef" />
-          <Stop offset="100%" stopColor="#a855f7" />
+          <Stop offset="0%" stopColor={theme.color("#ff3f82", 'accent')} />
+          <Stop offset="55%" stopColor={theme.color("#d946ef", 'accent')} />
+          <Stop offset="100%" stopColor={theme.color("#a855f7", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="highwayCyan" x1="0" y1="1" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#38bdf8" />
-          <Stop offset="50%" stopColor="#43e6ae" />
-          <Stop offset="100%" stopColor="#818cf8" />
+          <Stop offset="0%" stopColor={theme.color("#38bdf8", 'accent')} />
+          <Stop offset="50%" stopColor={theme.color("#43e6ae", 'accent')} />
+          <Stop offset="100%" stopColor={theme.color("#818cf8", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="memoryHeaderRoad" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%" stopColor="#ff795b" />
-          <Stop offset="45%" stopColor="#ff3f82" />
-          <Stop offset="80%" stopColor="#c57fff" />
-          <Stop offset="100%" stopColor="#43e6ae" />
+          <Stop offset="0%" stopColor={theme.color("#ff795b", 'accent')} />
+          <Stop offset="45%" stopColor={theme.color("#ff3f82", 'accent')} />
+          <Stop offset="80%" stopColor={theme.color("#c57fff", 'accent')} />
+          <Stop offset="100%" stopColor={theme.color("#43e6ae", 'accent')} />
         </SvgLinearGradient>
         <SvgLinearGradient id="topoLines" x1="0" y1="0" x2="1" y2="0">
-          <Stop offset="0%" stopColor="#68478c" stopOpacity="0.08" />
-          <Stop offset="50%" stopColor="#8b5cb8" stopOpacity="0.28" />
-          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.15" />
+          <Stop offset="0%" stopColor={theme.color("#68478c", 'accent')} stopOpacity="0.08" />
+          <Stop offset="50%" stopColor={theme.color("#8b5cb8", 'accent')} stopOpacity="0.28" />
+          <Stop offset="100%" stopColor={theme.color("#ff795b", 'accent')} stopOpacity="0.15" />
         </SvgLinearGradient>
       </Defs>
       <Rect width="360" height="170" fill="url(#memorySkyGlow)" />
       <Rect width="360" height="170" fill="url(#moonAura)" />
 
       {/* Luminous Moon & Stars */}
-      <Circle cx="280" cy="34" r="6" fill="#eaf2ff" />
-      <Circle cx="280" cy="34" r="12" fill="none" stroke="#90b2f0" strokeWidth="1" opacity="0.3" />
-      <Circle cx="230" cy="22" r="1" fill="#ffffff" opacity="0.8" />
-      <Circle cx="250" cy="45" r="1.2" fill="#ffffff" opacity="0.6" />
-      <Circle cx="320" cy="26" r="1" fill="#ffffff" opacity="0.85" />
-      <Circle cx="340" cy="50" r="1.2" fill="#ffd9ea" opacity="0.65" />
-      <Circle cx="215" cy="40" r="0.8" fill="#ffffff" opacity="0.5" />
+      <Circle cx="280" cy="34" r="6" fill={theme.color("#eaf2ff", 'accent')} />
+      <Circle cx="280" cy="34" r="12" fill="none" stroke={theme.color("#90b2f0", 'accent')} strokeWidth="1" opacity="0.3" />
+      <Circle cx="230" cy="22" r="1" fill={theme.color("#ffffff", 'accent')} opacity="0.8" />
+      <Circle cx="250" cy="45" r="1.2" fill={theme.color("#ffffff", 'accent')} opacity="0.6" />
+      <Circle cx="320" cy="26" r="1" fill={theme.color("#ffffff", 'accent')} opacity="0.85" />
+      <Circle cx="340" cy="50" r="1.2" fill={theme.color("#ffd9ea", 'accent')} opacity="0.65" />
+      <Circle cx="215" cy="40" r="0.8" fill={theme.color("#ffffff", 'accent')} opacity="0.5" />
 
       {/* Topographic Mountain Elevation Contours */}
       <Path d="M 140 38 Q 210 60 355 35" fill="none" stroke="url(#topoLines)" strokeWidth="1" strokeDasharray="3 3" />
@@ -3128,11 +2996,11 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
       <Path d="M 110 135 Q 185 152 355 130" fill="none" stroke="url(#topoLines)" strokeWidth="1" opacity="0.25" />
 
       {/* Distant Horizon City Shimmer */}
-      <Path d="M 230 70 Q 285 75 340 68" fill="none" stroke="#ff8bb9" strokeWidth="1.5" opacity="0.3" strokeDasharray="1 3" />
+      <Path d="M 230 70 Q 285 75 340 68" fill="none" stroke={theme.color("#ff8bb9", 'accent')} strokeWidth="1.5" opacity="0.3" strokeDasharray="1 3" />
 
       {/* Multi-Lane Glowing Highway Ribbon */}
       {/* Highway Underglow Bloom */}
-      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke="#ff3f82" strokeWidth="16" opacity="0.18" strokeLinecap="round" />
+      <Path d="M 355 72 C 295 72, 280 102, 235 106 S 185 152, 130 146 S 65 162, 0 156" fill="none" stroke={theme.color("#ff3f82", 'accent')} strokeWidth="16" opacity="0.18" strokeLinecap="round" />
 
       {/* Lane 1: Cyan/Mint Light Trail */}
       <Path d="M 355 69 C 295 69, 280 99, 235 103 S 185 149, 130 143 S 65 159, 0 153" fill="none" stroke="url(#highwayCyan)" strokeWidth="2.5" strokeLinecap="round" />
@@ -3145,75 +3013,79 @@ function PageHeaderScene({ variant }: { variant: 'standard' | 'memories' | 'sett
 
       {/* Waypoint Pin Beacons along the Road without Text */}
       {/* Waypoint 1 (Distant apex) */}
-      <Path d="M 295 64 C 291 64, 291 70, 295 74 C 299 70, 299 64, 295 64 Z" fill="#d946ef" />
-      <Circle cx="295" cy="67" r="1.5" fill="#ffffff" />
-      <Circle cx="295" cy="69" r="7" fill="none" stroke="#d946ef" strokeWidth="0.8" opacity="0.4" />
+      <Path d="M 295 64 C 291 64, 291 70, 295 74 C 299 70, 299 64, 295 64 Z" fill={theme.color("#d946ef", 'accent')} />
+      <Circle cx="295" cy="67" r="1.5" fill={theme.color("#ffffff", 'accent')} />
+      <Circle cx="295" cy="69" r="7" fill="none" stroke={theme.color("#d946ef", 'accent')} strokeWidth="0.8" opacity="0.4" />
 
       {/* Waypoint 2 (Mid curve) */}
-      <Path d="M 235 94 C 230 94, 230 101, 235 106 C 240 101, 240 94, 235 94 Z" fill="#ff795b" />
-      <Circle cx="235" cy="98" r="2" fill="#ffffff" />
-      <Circle cx="235" cy="100" r="10" fill="none" stroke="#ff795b" strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
+      <Path d="M 235 94 C 230 94, 230 101, 235 106 C 240 101, 240 94, 235 94 Z" fill={theme.color("#ff795b", 'accent')} />
+      <Circle cx="235" cy="98" r="2" fill={theme.color("#ffffff", 'accent')} />
+      <Circle cx="235" cy="100" r="10" fill="none" stroke={theme.color("#ff795b", 'accent')} strokeWidth="1" opacity="0.4" strokeDasharray="2 2" />
 
       {/* Waypoint 3 (Near foreground) */}
-      <Path d="M 130 134 C 125 134, 125 141, 130 146 C 135 141, 135 134, 130 134 Z" fill="#38bdf8" />
-      <Circle cx="130" cy="138" r="2" fill="#ffffff" />
-      <Circle cx="130" cy="140" r="10" fill="none" stroke="#38bdf8" strokeWidth="1" opacity="0.45" />
+      <Path d="M 130 134 C 125 134, 125 141, 130 146 C 135 141, 135 134, 130 134 Z" fill={theme.color("#38bdf8", 'accent')} />
+      <Circle cx="130" cy="138" r="2" fill={theme.color("#ffffff", 'accent')} />
+      <Circle cx="130" cy="140" r="10" fill="none" stroke={theme.color("#38bdf8", 'accent')} strokeWidth="1" opacity="0.45" />
 
       {/* Waypoint 4 (Front bend) */}
-      <Path d="M 50 146 C 46 146, 46 152, 50 156 C 54 152, 54 146, 50 146 Z" fill="#c084fc" />
-      <Circle cx="50" cy="149" r="1.5" fill="#ffffff" />
+      <Path d="M 50 146 C 46 146, 46 152, 50 156 C 54 152, 54 146, 50 146 Z" fill={theme.color("#c084fc", 'accent')} />
+      <Circle cx="50" cy="149" r="1.5" fill={theme.color("#ffffff", 'accent')} />
     </Svg>
     <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={pageSceneStyles.sceneRailCore} /></View>
   </>;
   if (variant === 'settings') return <>
-    <LinearGradient pointerEvents="none" colors={['#0e1026', '#160f29', '#0d0918'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['#0e1026', '#160f29', '#0d0918'] as const)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <Svg pointerEvents="none" viewBox="0 0 360 170" style={pageSceneStyles.sceneCanvas}>
       <Defs>
         <SvgLinearGradient id="settingsHeaderLink" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0%" stopColor="#43e6ae" stopOpacity="0.85" />
-          <Stop offset="50%" stopColor="#9b7cff" stopOpacity="0.9" />
-          <Stop offset="100%" stopColor="#ff795b" stopOpacity="0.85" />
+          <Stop offset="0%" stopColor={theme.color("#43e6ae", 'accent')} stopOpacity="0.85" />
+          <Stop offset="50%" stopColor={theme.color("#9b7cff", 'accent')} stopOpacity="0.9" />
+          <Stop offset="100%" stopColor={theme.color("#ff795b", 'accent')} stopOpacity="0.85" />
         </SvgLinearGradient>
         <SvgRadialGradient id="settingsHeaderBloom" cx="80%" cy="35%" rx="60%" ry="70%">
-          <Stop offset="0" stopColor="#5570ff" stopOpacity="0.25" />
-          <Stop offset="45%" stopColor="#7658dd" stopOpacity="0.1" />
-          <Stop offset="100%" stopColor="#9b61ff" stopOpacity="0" />
+          <Stop offset="0" stopColor={theme.color("#5570ff", 'accent')} stopOpacity="0.25" />
+          <Stop offset="45%" stopColor={theme.color("#7658dd", 'accent')} stopOpacity="0.1" />
+          <Stop offset="100%" stopColor={theme.color("#9b61ff", 'accent')} stopOpacity="0" />
         </SvgRadialGradient>
       </Defs>
       <Rect width="360" height="170" fill="url(#settingsHeaderBloom)" />
 
       {/* Orbital Telemetry Sensor Rings */}
-      <Circle cx="280" cy="72" r="48" fill="none" stroke="#3b2b5c" strokeWidth="1" strokeDasharray="5 5" opacity="0.6" />
-      <Circle cx="280" cy="72" r="32" fill="none" stroke="#7658dd" strokeWidth="1.25" opacity="0.4" />
-      <Circle cx="280" cy="72" r="18" fill="none" stroke="#43e6ae" strokeWidth="1" strokeDasharray="3 3" opacity="0.75" />
+      <Circle cx="280" cy="72" r="48" fill="none" stroke={theme.color("#3b2b5c", 'accent')} strokeWidth="1" strokeDasharray="5 5" opacity="0.6" />
+      <Circle cx="280" cy="72" r="32" fill="none" stroke={theme.color("#7658dd", 'accent')} strokeWidth="1.25" opacity="0.4" />
+      <Circle cx="280" cy="72" r="18" fill="none" stroke={theme.color("#43e6ae", 'accent')} strokeWidth="1" strokeDasharray="3 3" opacity="0.75" />
 
       {/* Cybernetic Node Interlinks */}
       <Path d="M 185 45 L 245 72 L 280 72 L 335 38 M 245 72 L 230 132 L 315 125 L 342 90" fill="none" stroke="url(#settingsHeaderLink)" strokeWidth="1.75" strokeDasharray="4 3" opacity="0.7" />
-      <Path d="M 280 72 L 315 125" fill="none" stroke="#ff795b" strokeWidth="1.2" opacity="0.4" />
+      <Path d="M 280 72 L 315 125" fill="none" stroke={theme.color("#ff795b", 'accent')} strokeWidth="1.2" opacity="0.4" />
 
       {/* Telemetry Target Nodes */}
-      <Circle cx="185" cy="45" r="4.5" fill="#43e6ae" stroke="#dffff5" strokeWidth="1.5" />
-      <Circle cx="245" cy="72" r="4" fill="#9b7cff" stroke="#f4ebff" strokeWidth="1.5" />
-      <Circle cx="280" cy="72" r="7" fill="#ff795b" stroke="#fff0ea" strokeWidth="2.5" />
-      <Circle cx="335" cy="38" r="4.5" fill="#54b8ff" stroke="#e6f5ff" strokeWidth="1.5" />
-      <Circle cx="230" cy="132" r="5" fill="#7658dd" stroke="#ebe2ff" strokeWidth="1.5" />
-      <Circle cx="315" cy="125" r="4.5" fill="#ff795b" stroke="#fff1ed" strokeWidth="1.5" />
-      <Circle cx="342" cy="90" r="3.5" fill="#43e6ae" stroke="#e6fff7" strokeWidth="1.5" />
+      <Circle cx="185" cy="45" r="4.5" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#dffff5", 'accent')} strokeWidth="1.5" />
+      <Circle cx="245" cy="72" r="4" fill={theme.color("#9b7cff", 'accent')} stroke={theme.color("#f4ebff", 'accent')} strokeWidth="1.5" />
+      <Circle cx="280" cy="72" r="7" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff0ea", 'accent')} strokeWidth="2.5" />
+      <Circle cx="335" cy="38" r="4.5" fill={theme.color("#54b8ff", 'accent')} stroke={theme.color("#e6f5ff", 'accent')} strokeWidth="1.5" />
+      <Circle cx="230" cy="132" r="5" fill={theme.color("#7658dd", 'accent')} stroke={theme.color("#ebe2ff", 'accent')} strokeWidth="1.5" />
+      <Circle cx="315" cy="125" r="4.5" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff1ed", 'accent')} strokeWidth="1.5" />
+      <Circle cx="342" cy="90" r="3.5" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#e6fff7", 'accent')} strokeWidth="1.5" />
     </Svg>
     <View pointerEvents="none" style={pageSceneStyles.sceneRail}><View style={[pageSceneStyles.sceneRailCore, pageSceneStyles.settingsRailCore]} /></View>
   </>;
-  return <><LinearGradient pointerEvents="none" colors={['#ff6a4d28', '#9b61ff22', '#05030b00']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /><View pointerEvents="none" style={styles.pageHeaderRail}><View style={styles.pageHeaderRailCore} /></View></>;
+  return <><LinearGradient pointerEvents="none" colors={theme.gradient(['#ff6a4d28', '#9b61ff22', '#05030b00'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} /><View pointerEvents="none" style={styles.pageHeaderRail}><View style={styles.pageHeaderRailCore} /></View></>;
 }
 
 function JourneyHeroAtmosphere() {
+  const theme = useAppTheme();
+
   return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-    <ExpoImage source={require('../assets/journey-detail-memory-hero-v1.jpg')} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
-    <LinearGradient colors={['rgba(5,2,8,0.9)', 'rgba(7,3,10,0.45)', 'rgba(7,3,10,0)']} locations={[0, 0.38, 0.66]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
-    <LinearGradient colors={['rgba(7,3,10,0)', 'rgba(7,3,10,0.68)']} locations={[0.28, 1]} style={StyleSheet.absoluteFill} />
+    <ExpoImage source={headerImageSource(require('../assets/journey-detail-memory-hero-v1.jpg'), theme.mode)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.gradient(['rgba(5,2,8,0.9)', 'rgba(7,3,10,0.45)', 'rgba(7,3,10,0)'])} locations={[0, 0.38, 0.66]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.gradient(['rgba(7,3,10,0)', 'rgba(7,3,10,0.68)'])} locations={[0.28, 1]} style={StyleSheet.absoluteFill} />
   </View>;
 }
 
 function JourneyCinematicHero({ journey, title }: { journey: JourneyDetail; title: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   const leadTrack = journey.soundtrack[0] ?? journey.soundtrackPreview[0] ?? null;
   return <View style={styles.journeyHeroCard}>
     <View style={styles.journeyHeroIntro}>
@@ -3243,25 +3115,35 @@ function JourneyCinematicHero({ journey, title }: { journey: JourneyDetail; titl
 }
 
 function JourneyHeroMetric({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.journeyHeroMetric}><Text style={styles.journeyHeroMetricValue} numberOfLines={1}>{value}</Text><Text style={styles.journeyHeroMetricLabel}>{label}</Text></View>;
 }
 
 function SectionHeading({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.sectionHeading}><View style={styles.sectionTitleGroup}><View style={styles.sectionAccent} /><Text style={styles.sectionTitle}>{title}</Text></View>{action && <Pressable onPress={onAction} disabled={!onAction} style={styles.sectionActionButton}><Text style={[styles.sectionAction, !onAction && styles.sectionActionMuted]}>{action}</Text></Pressable>}</View>;
 }
 
 function PrimaryAction({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryAction, (pressed || disabled) && styles.pressed]}><Text style={styles.primaryActionText}>{label}</Text></Pressable>;
 }
 
 function Metric({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
 function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySummary; onPress: () => void; compact?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   const track = journey.soundtrackPreview?.[0];
   if (compact) return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
+    <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
       <View style={styles.journeyCompactTop}>
         <View style={styles.flex}>
           <Text style={styles.journeyDateCompact}>{formatFullDate(journey.startedAt)}</Text>
@@ -3275,37 +3157,56 @@ function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySu
         <Text style={styles.journeySongCompact} numberOfLines={1}>{track ? `${track.track}  ·  ${track.artist}` : (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text>
         {journey.songCount > 0 && <Text style={styles.songCountCompact}>{journey.songCount}</Text>}
       </View>
-    </Pressable>
+    </Pressable></CardDetailLink>
   );
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
+    <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
       <View style={styles.journeyTop}><View><Text style={styles.journeyDate}>{formatFullDate(journey.startedAt)}</Text><Text style={styles.journeyRoute} numberOfLines={2}>{locationPair(journey)}</Text></View><Text style={styles.journeyChevron}>›</Text></View>
       <View style={styles.journeyStats}><Text style={styles.journeyStat}>{formatMiles(journey.miles)}</Text><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{formatDuration(journey.durationMinutes)}</Text>{journey.vehicleName && <><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{journey.vehicleName}</Text></>}</View>
       <View style={styles.journeySoundtrack}>{track ? <Artwork track={track} size={42} /> : <View style={styles.miniArtwork}><Text style={styles.miniArtworkText}>♪</Text></View>}<View style={styles.flex}><Text style={styles.journeySong} numberOfLines={1}>{track?.track ?? (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text><Text style={styles.journeyArtist} numberOfLines={1}>{track?.artist ?? 'Music can be added after the journey'}</Text></View>{journey.songCount > 0 && <Text style={styles.songCount}>{journey.songCount}</Text>}</View>
-    </Pressable>
+    </Pressable></CardDetailLink>
   );
 }
 
 function Artwork({ track, size }: { track: { artworkUrl?: string | null; track: string }; size: number }) {
-  return track.artworkUrl ? <ExpoImage source={{ uri: track.artworkUrl }} accessibilityLabel={`${track.track} artwork`} cachePolicy="memory-disk" contentFit="cover" transition={120} style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), backgroundColor: '#251d31' }} /> : <View style={[styles.artworkFallback, { width: size, height: size, borderRadius: Math.round(size * 0.22) }]}><Text style={[styles.artworkFallbackText, { fontSize: Math.round(size * 0.35) }]}>♪</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return track.artworkUrl ? <ExpoImage source={{ uri: track.artworkUrl }} accessibilityLabel={`${track.track} artwork`} cachePolicy="memory-disk" contentFit="cover" transition={120} style={{ width: size, height: size, borderRadius: Math.round(size * 0.22), backgroundColor: theme.color('#251d31', 'surface') }} /> : <View style={[styles.artworkFallback, { width: size, height: size, borderRadius: Math.round(size * 0.22) }]}><Text style={[styles.artworkFallbackText, { fontSize: Math.round(size * 0.35) }]}>♪</Text></View>;
 }
 
 function TrackRow({ track, index, selected = false, onPress }: { track: { artworkUrl?: string | null; track: string; artist: string }; index: number; selected?: boolean; onPress?: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable accessibilityLabel={`Show ${track.track} on the journey map`} onPress={onPress} style={({ pressed }) => [styles.trackRow, selected && styles.trackRowSelected, pressed && styles.pressed]}><Text style={[styles.trackIndex, selected && styles.trackIndexSelected]}>{String(index).padStart(2, '0')}</Text><Artwork track={track} size={48} /><View style={styles.flex}><Text style={styles.trackTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text></View><Text style={[styles.trackMapLink, selected && styles.trackMapLinkSelected]}>{selected ? 'ON MAP' : 'MAP'}</Text></Pressable>;
 }
 
 function EmptyCard({ title, body }: { title: string; body: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.emptyCard}><NeonWidgetOutline radius={20} /><View style={styles.emptyCircle}><Text style={styles.emptyCircleText}>J</Text></View><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyBody}>{body}</Text></View>;
 }
 
 function InlineNotice({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.inlineNotice}><NeonWidgetOutline radius={15} /><View style={styles.noticeDot} /><Text style={styles.inlineNoticeText}>{message}</Text><Pressable onPress={onRetry}><Text style={styles.retryText}>Retry</Text></Pressable></View>;
 }
 
-function LoadingLine({ label }: { label: string }) { return <View style={styles.loadingLine}><ActivityIndicator color="#9b7cff" /><Text style={styles.loadingLineText}>{label}</Text></View>; }
-function LoadingCard() { return <View style={styles.loadingCard}><ActivityIndicator color="#9b7cff" size="large" /><Text style={styles.loadingLineText}>Loading your journeys…</Text></View>; }
+function LoadingLine({ label }: { label: string }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.loadingLine}><ActivityIndicator color={theme.color("#9b7cff", 'text')} /><Text style={styles.loadingLineText}>{label}</Text></View>; }
+function LoadingCard() {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.loadingCard}><ActivityIndicator color={theme.color("#9b7cff", 'text')} size="large" /><Text style={styles.loadingLineText}>Loading your journeys…</Text></View>; }
 
 function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, endLabel, cinematic = false, expanded = false }: { coordinates: [number, number][]; soundtrack: JourneyDetail['soundtrack']; startedAt: string; endedAt: string; startLabel: string | null; endLabel: string | null; cinematic?: boolean; expanded?: boolean }) {
+  const theme = useAppTheme();
+  const routeVisualStyles = useThemedStyles(darkRouteVisualStyles);
+  const styles = useThemedStyles(darkStyles);
+
   const { width: screenWidth } = useWindowDimensions();
   const plotWidth = Math.max(240, Math.min(480, screenWidth - 72)), plotHeight = 142;
   const valid = coordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
@@ -3348,18 +3249,18 @@ function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, 
   const polyline = points.map(point => `${point.x},${point.y}`).join(' ');
   const start = points[0], end = points.at(-1);
   return <View style={[styles.routeSketch, cinematic && styles.routeSketchHero, expanded && styles.routeSketchExpanded]}>
-    <LinearGradient colors={['#211233', '#101525', '#0a0a13'] as const} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.gradient(['#211233', '#101525', '#0a0a13'] as const)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <View style={routeVisualStyles.routeGridOne} /><View style={routeVisualStyles.routeGridTwo} /><View style={routeVisualStyles.routeGlow} /><View style={routeVisualStyles.routeAurora} />
     {points.length > 1 ? <Reanimated.View entering={FadeIn.duration(420)} style={routeVisualStyles.routeSnapshot}>
       {snapshotTiles.map(tile => <ExpoImage key={tile.key} source={tile.uri} cachePolicy="memory-disk" contentFit="cover" transition={0} style={[routeVisualStyles.routeTile, { left: `${tile.column * 33.333}%`, top: `${tile.row * 33.333}%` }]} />)}
       <View pointerEvents="none" style={routeVisualStyles.routeTileShade} />
       <View pointerEvents="none" style={routeVisualStyles.routeCanvas}><Svg width="100%" height="100%" viewBox={`0 0 ${snapshotSize} ${snapshotSize}`}>
-        <Defs><SvgLinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#45efc0" /><Stop offset="0.5" stopColor="#a681ff" /><Stop offset="1" stopColor="#ff765c" /></SvgLinearGradient></Defs>
-        <Polyline points={mapPolyline || polyline} fill="none" stroke="#8e6dff" strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" opacity="0.38" />
+        <Defs><SvgLinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={theme.color("#45efc0", 'accent')} /><Stop offset="0.5" stopColor={theme.color("#a681ff", 'accent')} /><Stop offset="1" stopColor={theme.color("#ff765c", 'accent')} /></SvgLinearGradient></Defs>
+        <Polyline points={mapPolyline || polyline} fill="none" stroke={theme.color("#8e6dff", 'accent')} strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" opacity="0.38" />
         <Polyline points={mapPolyline || polyline} fill="none" stroke="url(#journeyRoute)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-        {worldPoints[0] && <><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="12" fill="#43e6ae" opacity="0.28" /><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="6" fill="#43e6ae" stroke="#d9fff1" strokeWidth="2" /></>}
-        {worldPoints.at(-1) && <><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="15" fill="#ff795b" opacity="0.3" /><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="7" fill="#ff795b" stroke="#fff0e8" strokeWidth="2" /></>}
-        {fallbackSongPoints.map((moment, index) => <Circle key={`${moment.playedAt}-${index}`} cx={moment.x} cy={moment.y} r="8" fill="#ff69b4" stroke="#fff1fa" strokeWidth="3" />)}
+        {worldPoints[0] && <><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="12" fill={theme.color("#43e6ae", 'accent')} opacity="0.28" /><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="6" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#d9fff1", 'accent')} strokeWidth="2" /></>}
+        {worldPoints.at(-1) && <><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="15" fill={theme.color("#ff795b", 'accent')} opacity="0.3" /><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="7" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff0e8", 'accent')} strokeWidth="2" /></>}
+        {fallbackSongPoints.map((moment, index) => <Circle key={`${moment.playedAt}-${index}`} cx={moment.x} cy={moment.y} r="8" fill={theme.color("#ff69b4", 'accent')} stroke={theme.color("#fff1fa", 'accent')} strokeWidth="3" />)}
       </Svg></View>
     </Reanimated.View> : <View style={routeVisualStyles.routeAwaiting}><Text style={routeVisualStyles.routeAwaitingSymbol}>⌁</Text><Text style={routeVisualStyles.routeAwaitingText}>Route will appear after the journey syncs</Text></View>}
     {!cinematic && <><View style={routeVisualStyles.routeLegend}><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendStart]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{startLabel}</Text></View><View style={routeVisualStyles.routeLegendItem}><View style={[routeVisualStyles.routeLegendDot, routeVisualStyles.routeLegendEnd]} /><Text style={routeVisualStyles.routeLegendText} numberOfLines={1}>{endLabel}</Text></View></View>
@@ -3367,10 +3268,15 @@ function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, 
   </View>;
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) { return <View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>; }
+function InfoRow({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text style={styles.infoValue}>{value}</Text></View>; }
 
 function ConnectionTile({ name, detail, symbol, brand, mark, color, status, action, onPress }: { name: string; detail: string; symbol: string; brand?: ProviderBrand; mark?: ReactNode; color: string; status: string; action: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.connectionTile, styles.staticWidgetGlow, pressed && styles.pressed]}><View pointerEvents="none" style={[styles.connectionEdge, { backgroundColor: color }]} />{mark ?? (brand ? <ProviderMark brand={brand} size={46} /> : <View style={[styles.connectionIcon, { backgroundColor: color, shadowColor: color }]}><Text style={styles.connectionIconText}>{symbol}</Text></View>)}<View style={styles.flex}><Text style={styles.connectionName}>{name}</Text><Text style={styles.connectionDetail}>{detail}</Text><Text style={[styles.connectionStatus, status === 'Connected' || status === 'Enabled' || status.startsWith('Connected through') ? styles.goodStatus : undefined]}>{status}</Text></View><View style={styles.connectionAction}><Text style={styles.connectionActionText}>{action}</Text></View></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={({ pressed }) => [styles.connectionTile, styles.staticWidgetGlow, pressed && styles.pressed]}><View pointerEvents="none" style={[styles.connectionEdge, { backgroundColor: theme.color(color, 'surface') }]} />{mark ?? (brand ? <ProviderMark brand={brand} size={46} /> : <View style={[styles.connectionIcon, { backgroundColor: theme.color(color, 'surface'), shadowColor: theme.color(color, 'shadow') }]}><Text style={styles.connectionIconText}>{symbol}</Text></View>)}<View style={styles.flex}><Text style={styles.connectionName}>{name}</Text><Text style={styles.connectionDetail}>{detail}</Text><Text style={[styles.connectionStatus, status === 'Connected' || status === 'Enabled' || status.startsWith('Connected through') ? styles.goodStatus : undefined]}>{status}</Text></View><View style={styles.connectionAction}><Text style={styles.connectionActionText}>{action}</Text></View></Pressable>;
 }
 
 function formatMiles(miles: number) { return `${miles < 10 && miles % 1 ? miles.toFixed(1) : Math.round(miles)} mi`; }
@@ -3438,7 +3344,7 @@ function nativeShazamStatus(capabilities: JourneyDeckMusicCapabilityStatus | nul
   return capabilities?.microphonePermissionStatus === 'authorized' ? 'Enabled on this iPhone' : capabilities?.microphonePermissionStatus === 'denied' || capabilities?.microphonePermissionStatus === 'restricted' ? 'Needs attention' : statusText(stored);
 }
 
-const routeVisualStyles = StyleSheet.create({
+const darkRouteVisualStyles = StyleSheet.create({
   routeGridOne: { position: 'absolute', left: 0, right: 0, top: '35%', height: 1, backgroundColor: 'rgba(172,132,255,0.12)' },
   routeGridTwo: { position: 'absolute', left: 0, right: 0, top: '65%', height: 1, backgroundColor: 'rgba(255,135,100,0.1)' },
   routeGlow: { position: 'absolute', left: '20%', right: '20%', top: '25%', bottom: '25%', backgroundColor: '#45265f', opacity: 0.25, borderRadius: 30 },
@@ -3458,7 +3364,7 @@ const routeVisualStyles = StyleSheet.create({
   routeLegendText: { flex: 1, color: '#ded3e5', fontSize: 9, fontWeight: '800' },
 });
 
-const pageSceneStyles = StyleSheet.create({
+const darkPageSceneStyles = StyleSheet.create({
   memoryHeader: { minHeight: 166, borderColor: '#583a75', backgroundColor: '#0b0915', shadowColor: '#b16eff', shadowOpacity: 0.32, shadowRadius: 22 },
   settingsHeader: { minHeight: 166, borderColor: '#4b3b73', backgroundColor: '#0e0b17', shadowColor: '#8564ff', shadowOpacity: 0.3, shadowRadius: 22 },
   sceneCanvas: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
@@ -3470,7 +3376,7 @@ const pageSceneStyles = StyleSheet.create({
   settingsRailCore: { backgroundColor: '#6fe8c2', shadowColor: '#6fe8c2' },
 });
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   staticWidgetGlow: { borderColor: '#684184', shadowColor: '#a85cff', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, primaryTabHost: { flex: 1, backgroundColor: '#08070d' }, pager: { flex: 1, backgroundColor: '#08070d' }, settingsTabLayer: { ...StyleSheet.absoluteFill, zIndex: 5, backgroundColor: '#08070d' }, settingsTabLayerHidden: { display: 'none' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
@@ -3616,7 +3522,7 @@ const styles = StyleSheet.create({
   welcomeIntroFootnote: { color: '#777080', fontSize: 11, lineHeight: 16, marginTop: 13, textAlign: 'center', paddingHorizontal: 14 },
   onboardingSafe: { flex: 1, backgroundColor: '#08070d' }, onboardingContent: { paddingHorizontal: 22, paddingTop: 24, paddingBottom: 36 }, onboardingEyebrow: { color: '#ff8a68', fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginTop: 4 }, onboardingTitle: { color: '#f9f5ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.9, marginTop: 7 }, onboardingBody: { color: '#9b92a5', fontSize: 14, lineHeight: 21, marginTop: 9 }, recordingModeTabs: { flexDirection: 'row', gap: 10, marginTop: 18, marginBottom: 14 }, recordingModeTab: { flex: 1, minHeight: 64, borderRadius: 15, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, recordingModeTabTitle: { color: '#eee9f5', fontSize: 14, fontWeight: '900' }, recordingModeTabDetail: { color: '#777080', fontSize: 10, fontWeight: '700', marginTop: 4 }, providerTabs: { flexDirection: 'row', gap: 9, marginTop: 18, marginBottom: 14 }, providerTab: { flex: 1, minHeight: 42, borderRadius: 13, borderWidth: 1, borderColor: '#2c2735', backgroundColor: '#111018', alignItems: 'center', justifyContent: 'center' }, providerTabText: { color: '#777080', fontSize: 14, fontWeight: '900' }, providerCarousel: { gap: 12 }, providerCard: { backgroundColor: '#121019', borderWidth: 1, borderRadius: 24, padding: 18, gap: 15 }, providerRecommendation: { alignSelf: 'flex-start', color: '#ff9b82', backgroundColor: '#2a1519', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6, fontSize: 8, fontWeight: '900', letterSpacing: 1 }, providerCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 }, providerIcon: { width: 50, height: 50, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }, providerIconText: { color: '#fff', fontSize: 19, fontWeight: '900' }, spotifyMarkFrame: { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }, providerKicker: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, providerName: { color: '#fff', fontSize: 21, fontWeight: '900', marginTop: 3 }, providerSummary: { color: '#aaa2b4', fontSize: 13, lineHeight: 20 }, prosCons: { gap: 8 }, prosConsTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, proRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, proBullet: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, proBulletText: { fontSize: 12, fontWeight: '900', lineHeight: 15 }, proText: { color: '#d2cbd9', fontSize: 12, flex: 1 }, privacyNote: { borderRadius: 14, padding: 12 }, privacyTitle: { fontSize: 8, fontWeight: '900', letterSpacing: 1 }, privacyCopy: { color: '#9d94a5', fontSize: 11, lineHeight: 16, marginTop: 4 }, pageDots: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 14 }, pageDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#39313f' }, cancelButton: { alignItems: 'center', padding: 14 }, cancelButtonText: { color: '#9d91ae', fontSize: 12, fontWeight: '800' }, providerFootnote: { color: '#6e6875', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 12, paddingHorizontal: 12 },
   libraryTabs: { flexDirection: 'row', gap: 7, padding: 5, borderRadius: 16, backgroundColor: '#100a18', borderWidth: 1, borderColor: '#342043', marginHorizontal: 20, marginBottom: 12 }, libraryTab: { position: 'relative', flex: 1, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 }, libraryTabActive: { backgroundColor: 'rgba(108, 47, 29, 0.48)', shadowColor: '#ff713e', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }, libraryTabSelectionGlow: { position: 'absolute', top: -2, right: -2, bottom: -2, left: -2, borderRadius: 14, backgroundColor: 'rgba(255,100,56,0.08)' }, libraryTabText: { zIndex: 1, color: '#86788f', fontSize: 11, fontWeight: '800' }, libraryTabTextActive: { color: '#ffc09c' },
-  librarySearchFrame: { height: 48, borderRadius: 15, borderWidth: 1, borderColor: '#3d2850', backgroundColor: '#0e0915', marginHorizontal: 20, marginBottom: 12, position: 'relative', overflow: 'hidden' }, librarySearch: { flex: 1, color: '#f6eff9', paddingHorizontal: 15, fontSize: 14 }, libraryFilterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginHorizontal: 20, marginBottom: 9 }, libraryChip: { position: 'relative', minHeight: 34, justifyContent: 'center', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 16, backgroundColor: '#100b17' }, librarySortChip: { position: 'relative', minHeight: 28, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#100b17' }, libraryChoiceActive: { backgroundColor: 'rgba(108, 47, 29, 0.48)', shadowColor: '#ff713e', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }, libraryChoiceGlow: { position: 'absolute', top: -3, right: -3, bottom: -3, left: -3, backgroundColor: 'rgba(255,100,56,0.08)' }, libraryChoiceRim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(159, 126, 180, 0.4)' }, libraryChoiceRimActive: { borderColor: 'rgba(255, 130, 78, 0.42)' }, libraryChipText: { zIndex: 1, color: '#aa9caf', fontSize: 10, fontWeight: '800' }, libraryChipTextActive: { color: '#ffc09c' }, librarySortText: { zIndex: 1, color: '#b9a7c4', fontSize: 9, fontWeight: '800' },
+  librarySearchFrame: { height: 48, borderRadius: 15, borderWidth: 1, borderColor: '#3d2850', backgroundColor: '#0e0915', marginHorizontal: 20, marginBottom: 12, position: 'relative', overflow: 'hidden' }, librarySearch: { flex: 1, color: '#f6eff9', paddingHorizontal: 15, fontSize: 14 }, libraryFilterRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 20, marginBottom: 9 }, libraryChip: { position: 'relative', minHeight: 34, justifyContent: 'center', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 16, backgroundColor: '#100b17' }, librarySortChip: { position: 'relative', minHeight: 28, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, backgroundColor: '#100b17' }, libraryChoiceActive: { backgroundColor: 'rgba(108, 47, 29, 0.48)', shadowColor: '#ff713e', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } }, libraryChoiceGlow: { position: 'absolute', top: -3, right: -3, bottom: -3, left: -3, backgroundColor: 'rgba(255,100,56,0.08)' }, libraryChoiceRim: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(159, 126, 180, 0.4)' }, libraryChoiceRimActive: { borderColor: 'rgba(255, 130, 78, 0.42)' }, libraryChipText: { zIndex: 1, color: '#aa9caf', fontSize: 10, fontWeight: '800' }, libraryChipTextActive: { color: '#ffc09c' }, librarySortText: { zIndex: 1, color: '#b9a7c4', fontSize: 9, fontWeight: '800' },
   memoryHistoryGate: { minHeight: 58, marginHorizontal: 20, marginBottom: 14, borderRadius: 16, borderWidth: 1, borderColor: '#704052', backgroundColor: '#231018', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, memoryHistoryGateKicker: { color: '#ff9c7f', fontSize: 8, fontWeight: '900', letterSpacing: 1.45 }, memoryHistoryGateText: { color: '#e9dfe9', fontSize: 11, fontWeight: '800', marginTop: 4 }, memoryHistoryGateArrow: { color: '#ff9c7f', fontSize: 25, lineHeight: 26 },
   favoriteRoute: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 17, borderWidth: 1, borderColor: '#4b315f', backgroundColor: '#130c1d', marginBottom: 9 }, favoriteRouteTitle: { color: '#f4edf7', fontSize: 13, fontWeight: '900' }, favoriteRouteMeta: { color: '#8f8398', fontSize: 10, marginTop: 5 }, favoriteRouteCount: { color: '#ff8d70', fontSize: 17, fontWeight: '900' }, libraryJourneyWrap: { position: 'relative' }, libraryAddButton: { position: 'absolute', right: 12, bottom: 11, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 11, backgroundColor: '#281636', borderWidth: 1, borderColor: '#65427a' }, libraryAddText: { color: '#d2adf3', fontSize: 9, fontWeight: '900' },
 

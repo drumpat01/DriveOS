@@ -1,3 +1,4 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Alert, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
@@ -21,6 +22,9 @@ function day(value: string) {
 }
 
 export function VehicleIntelligenceScreen({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [tab, setTab] = useState<IntelligenceTab>('overview');
   const [data, setData] = useState<VehicleIntelligenceData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -105,8 +109,8 @@ export function VehicleIntelligenceScreen({ visible, onClose }: { visible: boole
         <Pressable accessibilityRole="button" accessibilityLabel="Close vehicle intelligence" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable>
       </View>
       <View style={styles.tabs}>{tabs.map(item => <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item && styles.tabActive]}><Text style={[styles.tabText, tab === item && styles.tabTextActive]}>{item === 'efficiency' ? 'Routes' : item[0]!.toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
-      {loading && !data ? <View style={styles.center}><ActivityIndicator color="#ff7547" size="large" /><Text style={styles.muted}>Building your private on-device view…</Text></View> :
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor="#ff7547" />}>
+      {loading && !data ? <View style={styles.center}><ActivityIndicator color={theme.color("#ff7547", 'text')} size="large" /><Text style={styles.muted}>Building your private on-device view…</Text></View> :
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={theme.color("#ff7547", 'text')} />}>
           {!data ? <Empty title="No vehicle data yet" copy="Complete a journey or connect Tessie, then pull down to refresh." /> : <>
             {tab === 'overview' && <>
               {(data.vehicles ?? []).map(vehicle => <View key={vehicle.vehicleKey} style={styles.vehicleStatusCard}>
@@ -165,12 +169,24 @@ export function VehicleIntelligenceScreen({ visible, onClose }: { visible: boole
   </Modal>;
 }
 
-function Section({ title, detail }: { title: string; detail: string }) { return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
-function Metric({ label, value }: { label: string; value: string }) { return <QuietInset radius={15} accent="#a66cff" style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></QuietInset>; }
-function Empty({ title, copy }: { title: string; copy: string }) { return <NeonWidget radius={18} style={styles.empty}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.cardCopy}>{copy}</Text></NeonWidget>; }
-function ChargingLocation({ location, onToggle }: { location: VehicleIntelligenceData['chargingLocations'][number]; onToggle: () => void }) { return <NeonWidget radius={18} style={styles.card}><View style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{location.name}</Text><Text style={styles.cardCopy}>{location.sessions} sessions · {number(location.energyAddedKwh)} kWh · {money(location.cost)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={location.isFavorite ? 'Remove charging favorite' : 'Favorite charging location'} onPress={onToggle} style={[styles.star, location.isFavorite && styles.starActive]}><Text style={[styles.starText, location.isFavorite && styles.starTextActive]}>★</Text></Pressable></View></NeonWidget>; }
-function PlaceCompact({ place, onOpen }: { place: SavedPlaceIntelligence; onOpen: () => void }) { return <Pressable onPress={onOpen} style={styles.card}><NeonWidgetOutline radius={18} /><View style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{place.name}</Text><Text style={styles.cardCopy}>{place.category} · {place.visitCount} visits · last seen {day(place.lastSeenAt)}</Text></View><Text style={styles.chevron}>›</Text></View></Pressable>; }
+function Section({ title, detail }: { title: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
+function Metric({ label, value }: { label: string; value: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <QuietInset radius={15} accent="#a66cff" style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></QuietInset>; }
+function Empty({ title, copy }: { title: string; copy: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <NeonWidget radius={18} style={styles.empty}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.cardCopy}>{copy}</Text></NeonWidget>; }
+function ChargingLocation({ location, onToggle }: { location: VehicleIntelligenceData['chargingLocations'][number]; onToggle: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+ return <NeonWidget radius={18} style={styles.card}><View style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{location.name}</Text><Text style={styles.cardCopy}>{location.sessions} sessions · {number(location.energyAddedKwh)} kWh · {money(location.cost)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={location.isFavorite ? 'Remove charging favorite' : 'Favorite charging location'} onPress={onToggle} style={[styles.star, location.isFavorite && styles.starActive]}><Text style={[styles.starText, location.isFavorite && styles.starTextActive]}>★</Text></Pressable></View></NeonWidget>; }
+function PlaceCompact({ place, onOpen }: { place: SavedPlaceIntelligence; onOpen: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+ return <Pressable onPress={onOpen} style={styles.card}><NeonWidgetOutline radius={18} /><View style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{place.name}</Text><Text style={styles.cardCopy}>{place.category} · {place.visitCount} visits · last seen {day(place.lastSeenAt)}</Text></View><Text style={styles.chevron}>›</Text></View></Pressable>; }
 function PlaceCard({ place, expanded, onToggle, onRename, onCategory, onSuggestion }: { place: SavedPlaceIntelligence; expanded: boolean; onToggle: () => void; onRename: () => void; onCategory: (category: SavedPlaceCategory) => void; onSuggestion: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <NeonWidget radius={18} style={styles.card}><Pressable onPress={onToggle} style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{place.name}</Text><Text style={styles.cardCopy}>{place.visitCount} visits · {place.arrivals} arrivals · {place.departures} departures</Text></View><Text style={styles.chevron}>{expanded ? '⌃' : '⌄'}</Text></Pressable>
     <View style={styles.categoryRow}>{categories.map(category => <Pressable key={category} onPress={() => onCategory(category)} style={[styles.category, place.category === category && styles.categoryActive]}><Text style={[styles.categoryText, place.category === category && styles.categoryTextActive]}>{category}</Text></Pressable>)}</View>
     {expanded && <View style={styles.details}>
@@ -183,7 +199,7 @@ function PlaceCard({ place, expanded, onToggle, onRename, onCategory, onSuggesti
   </NeonWidget>;
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#07060b' }, header: { minHeight: 82, paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#35213d', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, kicker: { color: '#ff835d', fontSize: 9, fontWeight: '900', letterSpacing: 1.6 }, title: { color: '#fff8ff', fontSize: 28, fontWeight: '900', letterSpacing: -0.7, marginTop: 4 }, close: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, borderColor: '#5b3568', backgroundColor: '#1b1021', alignItems: 'center', justifyContent: 'center' }, closeText: { color: '#f7eefe', fontSize: 30, lineHeight: 33, fontWeight: '300' },
   tabs: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 10, gap: 5, backgroundColor: '#0c0910' }, tab: { flex: 1, minHeight: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, tabActive: { backgroundColor: 'rgba(115, 48, 29, 0.62)', shadowColor: '#ff713e', shadowOpacity: 0.26, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } }, tabText: { color: '#968b99', fontSize: 11, fontWeight: '700' }, tabTextActive: { color: '#ffad78' }, scroll: { flex: 1 }, content: { padding: 20, paddingBottom: 50, gap: 12 }, center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }, muted: { color: '#978c9a', fontSize: 13 }, mutedSmall: { color: '#918694', fontSize: 11 },
   hero: { borderRadius: 24, padding: 18, backgroundColor: '#170b1d', borderWidth: 1, borderColor: '#713552', shadowColor: '#ff5635', shadowOpacity: 0.1, shadowRadius: 16 }, heroKicker: { color: '#c6a2d8', fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }, heroTitle: { color: '#fff7fb', fontSize: 24, lineHeight: 29, fontWeight: '800', marginTop: 6 }, metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 16 }, metric: { width: '48.5%', minHeight: 72, padding: 12, justifyContent: 'center' }, metricValue: { color: '#fff', fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] }, metricLabel: { color: '#aa9bab', fontSize: 10, fontWeight: '800', letterSpacing: 0.9, marginTop: 5 },

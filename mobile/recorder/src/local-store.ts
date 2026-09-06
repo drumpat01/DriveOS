@@ -33,6 +33,7 @@ import {
 } from './database-hardening';
 import { findDuplicatePlayback, partitionDuplicatePlaybacks } from './music-playback-dedupe';
 import { getMasterDatabase } from './database-owner';
+import { PRIVATE_PLACE_PREFIX, parsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
@@ -971,6 +972,11 @@ export function replaceJourneyGpsPointsFromCloud(
     }
     db.runSync(`UPDATE local_journeys SET route_synced_to_cloud=1,route_sync_revision=?,route_updated_at=?
       WHERE id=? AND user_id=?;`, Math.max(1, Math.trunc(syncRevision)), updatedAt, journeyId, userId);
+    if (validated.length) {
+      const first = validated[0]!, last = validated[validated.length - 1]!;
+      db.runSync(`UPDATE local_journeys SET start_lat=?,start_lng=?,end_lat=?,end_lng=? WHERE id=? AND user_id=?;`,
+        first.latitude, first.longitude, last.latitude, last.longitude, journeyId, userId);
+    }
   });
 }
 
@@ -1224,24 +1230,28 @@ function linkJourneyEndpointsForPlace(place: LocalPlace): number {
   return changed;
 }
 
-export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>): LocalPlace {
+export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>, options: { fromCloud?: boolean; createdAt?: string; updatedAt?: string } = {}): LocalPlace {
   initializeLocalStore();
   const label = input.label.replace(/\s+/g, ' ').trim().slice(0, 200);
   const lat = guard(input.lat, -90, 90), lng = guard(input.lng, -180, 180);
   const radiusMeters = guard(input.radiusMeters, 1, 50_000);
   if (!label || lat == null || lng == null || radiusMeters == null) throw new Error('Saved place coordinates, label, or radius are invalid.');
-  const aliased = placeByIdInternal(input.userId, input.id);
+  const targetId = options.fromCloud ? savedPlaceLocalId(input.id, input.userId) ?? input.id : input.id;
+  assertRowOwnership('local_places', input.id, input.userId);
+  const aliasOwner = db.getFirstSync<{ user_id: string }>('SELECT user_id FROM local_place_aliases WHERE alias_id=?;', input.id);
+  if (aliasOwner && aliasOwner.user_id !== input.userId) throw new Error('Cannot import a place alias owned by another profile.');
+  const aliased = placeByIdInternal(input.userId, input.id) ?? placeByIdInternal(input.userId, targetId);
   const nearby = input.id.startsWith('saved-place-v1-') ? null : input.kind === 'geocoded'
     ? findCachedPlace(input.userId, lat, lng, Math.min(radiusMeters, 150))
     : findNamedPlace(input.userId, lat, lng, Math.min(radiusMeters, SAVED_PLACE_MATCH_RADIUS_METERS));
   const existing = aliased ?? nearby;
-  const canonicalId = existing?.id ?? input.id;
+  const canonicalId = existing?.id ?? targetId;
   assertRowOwnership('local_places', canonicalId, input.userId);
   const preserveNamed = existing?.kind !== 'geocoded' && input.kind === 'geocoded';
   const preserved = preserveNamed ? existing! : null;
   const canonicalKind = preserved?.kind ?? input.kind;
   const canonicalLabel = preserved?.label ?? label;
-  const t = now();
+  const t = options.updatedAt ?? now();
   db.withTransactionSync(() => {
     db.runSync(`
       INSERT INTO local_places(id,user_id,kind,label,lat,lng,radius_meters,foursquare_id,osm_id,cached_until,created_at,updated_at)
@@ -1251,12 +1261,15 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>):
         osm_id=COALESCE(excluded.osm_id,local_places.osm_id),cached_until=excluded.cached_until,updated_at=excluded.updated_at;
     `, canonicalId, input.userId, canonicalKind, canonicalLabel, preserved?.lat ?? lat, preserved?.lng ?? lng,
     Math.max(radiusMeters, preserved?.radiusMeters ?? 0), input.foursquareId ?? null, input.osmId ?? null,
-    preserved?.cachedUntil ?? input.cachedUntil ?? null, existing?.createdAt ?? t, t);
+    preserved?.cachedUntil ?? input.cachedUntil ?? null, existing?.createdAt ?? options.createdAt ?? t, t);
     db.runSync(`INSERT INTO local_place_aliases(alias_id,user_id,canonical_place_id,created_at) VALUES(?,?,?,?)
       ON CONFLICT(alias_id) DO UPDATE SET canonical_place_id=excluded.canonical_place_id;`, input.id, input.userId, canonicalId, t);
     db.runSync(`INSERT OR IGNORE INTO local_place_aliases(alias_id,user_id,canonical_place_id,created_at) VALUES(?,?,?,?);`,
       canonicalId, input.userId, canonicalId, existing?.createdAt ?? t);
-    linkJourneyEndpointsForPlace(placeByIdInternal(input.userId, canonicalId)!);
+    if (!options.fromCloud) {
+      linkJourneyEndpointsForPlace(placeByIdInternal(input.userId, canonicalId)!);
+      queuePrivatePlace(placeByIdInternal(input.userId, canonicalId)!);
+    }
   });
   return placeByIdInternal(input.userId, canonicalId)!;
 }
@@ -1306,15 +1319,62 @@ export function findNamedPlace(userId: LocalUserId, lat: number, lng: number, ra
     .sort((left, right) => left.distance - right.distance)[0]?.place ?? null;
 }
 
-export function deletePlace(userId: LocalUserId, id: string): void {
+export function deletePlace(userId: LocalUserId, id: string, options: { fromCloud?: boolean } = {}): void {
   initializeLocalStore();
   const canonical = placeByIdInternal(userId, id);
   if (!canonical) return;
   db.withTransactionSync(() => {
+    if (!options.fromCloud) {
+      queuePrivatePlace(canonical);
+      for (const preference of privatePlacePreferences(userId, canonical.id)) {
+        // Keep the identity in a tombstone so other devices can remove the same place.
+        upsertPrivatePreference(userId, preference.key, JSON.parse(preference.valueJson), { deletedAt: now() });
+      }
+    }
     db.runSync('UPDATE local_journeys SET start_place_id=NULL,synced_to_cloud=0,updated_at=? WHERE user_id=? AND start_place_id=?;', now(), userId, canonical.id);
     db.runSync('UPDATE local_journeys SET end_place_id=NULL,synced_to_cloud=0,updated_at=? WHERE user_id=? AND end_place_id=?;', now(), userId, canonical.id);
     db.runSync('DELETE FROM local_places WHERE user_id=? AND id=?;', userId, canonical.id);
   });
+}
+
+function privatePlacePreferences(userId: LocalUserId, canonicalId: string): LocalPrivatePreference[] {
+  return listPrivatePreferences(userId, true).filter(preference => {
+    if (!preference.key.startsWith(PRIVATE_PLACE_PREFIX)) return false;
+    const value = parsePrivatePlace(preference.valueJson);
+    return value.id === canonicalId || savedPlaceLocalId(value.id, userId) === canonicalId
+      || placeByIdInternal(userId, value.id)?.id === canonicalId;
+  });
+}
+
+function queuePrivatePlace(place: LocalPlace): void {
+  const existing = privatePlacePreferences(place.userId, place.id);
+  if (!existing.length) {
+    const savedSlot = /^saved-place-v1-(home|work|school)-/.exec(place.id)?.[1];
+    upsertPrivatePreference(place.userId, `${PRIVATE_PLACE_PREFIX}${savedSlot ?? Crypto.randomUUID()}`, privatePlaceValue(place),
+      { createdAt: place.createdAt, updatedAt: place.updatedAt });
+  }
+  for (const preference of existing) {
+    const value = privatePlaceValue(place, parsePrivatePlace(preference.valueJson).id);
+    if (preference.deletedAt || JSON.stringify(value) !== preference.valueJson) {
+      upsertPrivatePreference(place.userId, preference.key, value, { updatedAt: place.updatedAt });
+    }
+  }
+}
+
+/** Backfill previously uploaded libraries without marking every journey dirty. */
+export function preparePrivatePlaceSync(userId: LocalUserId): void {
+  initializeLocalStore();
+  db.withTransactionSync(() => {
+    for (const place of db.getAllSync<LocalPlace>(`${PLACE_SELECT} WHERE user_id=?;`, userId)) queuePrivatePlace(place);
+  });
+}
+
+export function privateCloudPlaceId(userId: LocalUserId, id: string | null): string | null {
+  if (!id) return null;
+  const place = getPlace(userId, id);
+  if (!place) throw new Error('A journey is waiting for its saved place before it can sync.');
+  const preference = privatePlacePreferences(userId, place.id).find(item => !item.deletedAt);
+  return preference ? parsePrivatePlace(preference.valueJson).id : place.id;
 }
 
 // --- Memories (legacy Collection storage remains dormant) -------------------
@@ -1427,6 +1487,13 @@ export function upsertPhoto(input: LocalPhotoInput, options: CloudUpsertOptions 
 export function getPhotoIncludingDeleted(userId: LocalUserId, id: string): LocalPhoto | null {
   initializeLocalStore();
   return db.getFirstSync<LocalPhoto>('SELECT id,user_id AS userId,source,collection_id AS collectionId,memory_id AS memoryId,file_name AS fileName,content_type AS contentType,byte_length AS byteLength,local_uri AS localUri,synced_to_cloud AS syncedToCloud,deleted_at AS deletedAt,sync_revision AS syncRevision,created_at AS createdAt,updated_at AS updatedAt FROM local_photos WHERE user_id=? AND id=?;', userId, id) ?? null;
+}
+
+/** Device-only path repair: preserve content versions, cloud acknowledgement and deletion state. */
+export function repairPhotoLocalUri(userId: LocalUserId, id: string, previousUri: string, nextUri: string): boolean {
+  initializeLocalStore();
+  return db.runSync(`UPDATE local_photos SET local_uri=? WHERE user_id=? AND id=? AND local_uri=? AND deleted_at IS NULL;`,
+    nextUri, userId, id, previousUri).changes === 1;
 }
 
 export function listPhotos(userId: LocalUserId): LocalPhoto[] {

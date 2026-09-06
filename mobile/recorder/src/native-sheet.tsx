@@ -1,0 +1,60 @@
+import { useEffect, useRef, type ReactNode } from 'react';
+import { Alert, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SymbolView } from 'expo-symbols';
+import { useAppTheme, useThemedStyles } from './app-theme';
+
+export function requestSheetClose(dirty: boolean, busy: boolean, onClose: () => void) {
+  if (busy) return;
+  const close = () => { Keyboard.dismiss(); onClose(); };
+  if (!dirty) return close();
+  Alert.alert('Discard unsaved changes?', 'Your saved information will stay as it is.', [
+    { text: 'Keep editing', style: 'cancel' },
+    { text: 'Discard changes', style: 'destructive', onPress: close },
+  ]);
+}
+
+/** UIKit owns presentation and dismissal; the underlying tab stays mounted. */
+export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty = false, busy = false, children }: {
+  visible: boolean; kicker: string; title: string; onClose: () => void; onDismiss?: () => void;
+  dirty?: boolean; busy?: boolean; children: ReactNode;
+}) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(sheetStyles);
+  const wasVisible = useRef(visible);
+  useEffect(() => {
+    // RN's onDismiss is iOS-only. Keep follow-up actions working on Android.
+    if (Platform.OS !== 'ios' && wasVisible.current && !visible) onDismiss?.();
+    wasVisible.current = visible;
+  }, [visible, onDismiss]);
+  return <Modal visible={visible} presentationStyle="pageSheet" animationType="slide"
+    transparent={false} backdropColor={theme.color('#08070d', 'surface')}
+    allowSwipeDismissal={!dirty && !busy} onRequestClose={() => requestSheetClose(dirty, busy, onClose)} onDismiss={onDismiss}>
+    <View style={styles.root} accessibilityViewIsModal>
+      <View style={styles.header}>
+        <View style={styles.heading}><Text style={styles.kicker}>{kicker}</Text><Text style={styles.title}>{title}</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={Keyboard.dismiss} style={styles.button}><Text style={styles.action}>Done</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close sheet" disabled={busy}
+          onPress={() => requestSheetClose(dirty, busy, onClose)} style={[styles.button, busy && styles.disabled]}><SymbolView name="xmark" tintColor={styles.close.color} style={styles.closeIcon} /></Pressable>
+      </View>
+      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled"
+        contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+        <View pointerEvents={busy ? 'none' : 'auto'} style={styles.body}>{children}</View>
+      </ScrollView>
+    </View>
+  </Modal>;
+}
+
+const sheetStyles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#08070d' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 14, gap: 6 },
+  heading: { flex: 1, minWidth: 0 },
+  kicker: { color: '#b795e5', fontSize: 10, letterSpacing: 1.5, fontWeight: '800', marginBottom: 5 },
+  title: { color: '#fff6ed', fontSize: 23, fontWeight: '800' },
+  button: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  action: { color: '#b795e5', fontSize: 15, fontWeight: '600' },
+  close: { color: '#fff6ed', fontSize: 30 },
+  closeIcon: { width: 20, height: 20 },
+  disabled: { opacity: 0.4 },
+  body: { gap: 16 },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 16 },
+});

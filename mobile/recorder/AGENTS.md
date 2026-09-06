@@ -1,5 +1,9 @@
 # JourneyDeck Mobile Subsystem (iOS / Expo SDK 57)
 
+## User-approved combined native build (September 4, 2026)
+
+The user was alerted that Build 2 omitted automatic iOS Home Screen icon variants and explicitly authorized the next V2 preview build to include BOTH native tab spacing and the selected option 2 light icon with the existing dark icon. The reminder has been fulfilled; no further confirmation is needed. Use native iOS appearance assets, independent of the in-app theme switch. Preserve the isolated v2-preview identity and production App Store update path.
+
 ## Core Architecture Invariants & Rules
 
 1. **Expo SDK 57 Strict Adherence**:

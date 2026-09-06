@@ -4,6 +4,7 @@
   "main": "workers/index.ts",
   "compatibility_date": "2026-08-27",
   "compatibility_flags": ["nodejs_compat"],
+  "r2_buckets": [{ "binding": "PUBLIC_PLACES", "bucket_name": "journeydeck-public-places" }],
   "ratelimits": [
     { "name": "EDGE_RATE_LIMITER", "namespace_id": "17035", "simple": { "limit": 120, "period": 60 } },
     { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17031", "simple": { "limit": 12, "period": 60 } },
@@ -26,6 +27,9 @@
     "SPOTIFY_ENABLED": "true",
     "TESSIE_ENABLED": "true",
     "PLACES_ENABLED": "true",
+    "OVERTURE_ENABLED": "true",
+    "OVERTURE_RELEASE": "2026-08-19.0",
+    "OVERTURE_CACHE_NAMESPACE": "national-v1",
     "UPSTREAM_TIMEOUT_MS": "10000",
     "NOMINATIM_USER_AGENT": "JourneyDeck-Edge/1.7 (contact@journeydeck.app)",
     "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",
@@ -34,6 +38,7 @@
   "env": {
     "preview": {
       "name": "journeydeck-edge-preview",
+      "r2_buckets": [{ "binding": "PUBLIC_PLACES", "bucket_name": "journeydeck-public-places" }],
       "ratelimits": [
         { "name": "EDGE_RATE_LIMITER", "namespace_id": "17036", "simple": { "limit": 120, "period": 60 } },
         { "name": "LASTFM_RATE_LIMITER", "namespace_id": "17032", "simple": { "limit": 12, "period": 60 } },
@@ -47,6 +52,9 @@
         "SPOTIFY_ENABLED": "true",
         "TESSIE_ENABLED": "true",
         "PLACES_ENABLED": "true",
+        "OVERTURE_ENABLED": "true",
+        "OVERTURE_RELEASE": "2026-08-19.0",
+        "OVERTURE_CACHE_NAMESPACE": "national-v1",
         "UPSTREAM_TIMEOUT_MS": "10000",
         "NOMINATIM_USER_AGENT": "JourneyDeck-Edge-Preview/1.7 (contact@journeydeck.app)",
         "ALLOWED_ORIGINS": "https://journeydeck.app,https://www.journeydeck.app",

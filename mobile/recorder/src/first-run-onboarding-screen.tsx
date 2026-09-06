@@ -1,3 +1,4 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AccessibilityInfo, Image, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
@@ -24,6 +25,8 @@ type Props = {
 };
 
 function WelcomeAnimation({ onComplete }: { onComplete: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   const [reduceMotion, setReduceMotion] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const completed = useRef(false);
@@ -53,34 +56,48 @@ function WelcomeAnimation({ onComplete }: { onComplete: () => void }) {
 }
 
 function RoadBackdrop() {
+  const styles = useThemedStyles(darkStyles);
+
   return <><ExpoImage source={ROAD_BACKGROUND} contentFit="cover" style={StyleSheet.absoluteFill} /><View style={styles.backdropShade} /></>;
 }
 
 function ProgressHeader({ step }: { step: '02 / 04' | '03 / 04' | '04 / 04' }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.progressHeader}>
-    <View style={styles.brandLockup}><Image source={APP_ICON} resizeMode="contain" style={styles.brandIcon} /><Text style={styles.brandName}>JOURNEYDECK</Text></View>
+    <View style={styles.brandLockup}><Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : APP_ICON} resizeMode="contain" style={styles.brandIcon} /><Text style={styles.brandName}>JOURNEYDECK</Text></View>
     <Text style={styles.progressText}>{step}</Text>
   </View>;
 }
 
 function ScreenFrame({ children, bottom }: { children: ReactNode; bottom?: ReactNode }) {
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   return <View style={styles.fullScreen}><RoadBackdrop /><View style={[styles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 12) }]}>{children}{bottom}</View></View>;
 }
 
 function GradientAction({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.actionPressable, pressed && styles.pressed]}>
-    <LinearGradient colors={['#ff694f', '#ff386d']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.actionGradient}>
+    <LinearGradient colors={theme.gradient(['#ff694f', '#ff386d'])} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.actionGradient}>
       <Text style={styles.actionLabel}>{label}</Text><Text style={styles.actionArrow}>›</Text>
     </LinearGradient>
   </Pressable>;
 }
 
 function Bullet({ children, warning = false }: { children: ReactNode; warning?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.bulletRow}><View style={[styles.bulletMark, warning ? styles.bulletWarning : styles.bulletGood]}><Text style={styles.bulletMarkText}>{warning ? '!' : '✓'}</Text></View><Text style={styles.bulletText}>{children}</Text></View>;
 }
 
 function SelectionGlyph({ selected }: { selected: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.selectionGlyph, styles.selectionGlyphManual]}>
     <View style={[styles.selectionRing, styles.selectionRingManual]}><View style={[styles.selectionDot, styles.selectionDotManual]} /></View>
     {selected && <View style={styles.selectedCheck}><Text style={styles.selectedCheckText}>✓</Text></View>}
@@ -88,6 +105,8 @@ function SelectionGlyph({ selected }: { selected: boolean }) {
 }
 
 function RecordingChoice({ selected, onPress }: { selected: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable accessibilityRole="button" accessibilityLabel="Manual recording selected" onPress={onPress} style={[styles.choiceCard, selected && styles.choiceSelectedManual]}>
     <View style={styles.choiceHeader}>
       <SelectionGlyph selected={selected} />
@@ -114,6 +133,8 @@ function RecordingChoice({ selected, onPress }: { selected: boolean; onPress: ()
 }
 
 function RecordingScreen({ onContinue }: { onContinue: (mode: RecordingMode) => Promise<void> }) {
+  const styles = useThemedStyles(darkStyles);
+
   const [saving, setSaving] = useState(false);
   const proceed = async () => {
     if (saving) return;
@@ -133,6 +154,8 @@ function RecordingScreen({ onContinue }: { onContinue: (mode: RecordingMode) => 
 }
 
 function AppleMusicScreen({ onConnect, onSkip }: { onConnect: () => Promise<void>; onSkip: () => Promise<void> }) {
+  const styles = useThemedStyles(darkStyles);
+
   const [saving, setSaving] = useState(false);
   const act = async (action: () => Promise<void>) => {
     if (saving) return;
@@ -155,10 +178,14 @@ function AppleMusicScreen({ onConnect, onSkip }: { onConnect: () => Promise<void
 }
 
 function InstructionStep({ number, label, detail, accent = false }: { number: number; label: string; detail: string; accent?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.instructionRow}><View style={[styles.stepNumber, accent && styles.stepNumberAccent]}><Text style={[styles.stepNumberText, accent && styles.stepNumberTextAccent]}>{number}</Text></View><View style={styles.instructionCopy}><Text style={[styles.instructionLabel, accent && styles.instructionLabelAccent]}>{label}</Text><Text style={styles.instructionDetail}>{detail}</Text></View>{label === 'PRESS PLAY' && <Image source={APPLE_MUSIC_ICON} resizeMode="contain" style={styles.inlineMusicIcon} />}</View>;
 }
 
 function FinishScreen({ onFinish }: { onFinish: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <ScreenFrame bottom={<View style={styles.fixedAction}><GradientAction label="Let the Journey Begin" onPress={onFinish} /></View>}>
     <ProgressHeader step="04 / 04" />
     <ScrollView style={styles.scroll} contentContainerStyle={styles.finishScrollContent} showsVerticalScrollIndicator={false}>
@@ -174,6 +201,8 @@ function FinishScreen({ onFinish }: { onFinish: () => void }) {
 }
 
 export function FirstRunOnboardingScreen(props: Props) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.fullScreen}><ExpoStatusBar hidden /><StatusBar hidden animated={false} />
     {props.stage === 'welcome' && <WelcomeAnimation onComplete={props.onWelcomeComplete} />}
     {props.stage === 'recording' && <RecordingScreen onContinue={props.onRecordingContinue} />}
@@ -182,7 +211,7 @@ export function FirstRunOnboardingScreen(props: Props) {
   </View>;
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   fullScreen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#030107' }, backdropShade: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: 'rgba(2,3,12,0.64)' }, safeFrame: { flex: 1, width: '100%', maxWidth: 520, alignSelf: 'center' },
   progressHeader: { minHeight: 38, marginHorizontal: 24, marginBottom: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 10 }, brandIcon: { width: 30, height: 30, borderRadius: 8 }, brandName: { color: '#ddd2e3', fontSize: 9, fontWeight: '900', letterSpacing: 2 }, progressText: { color: '#b49cc6', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
   scroll: { flex: 1 }, scrollContent: { paddingHorizontal: 24, paddingBottom: 112 }, musicScrollContent: { paddingHorizontal: 24, paddingBottom: 28 }, finishScrollContent: { paddingHorizontal: 24, paddingBottom: 112 }, eyebrow: { color: '#ff896d', fontSize: 9, fontWeight: '900', letterSpacing: 2.1, marginTop: 4 }, manualEyebrow: { color: '#c998ff' }, title: { color: '#fbf8ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -0.8, marginTop: 14 }, subtitle: { color: '#b1a7b8', fontSize: 14, lineHeight: 20, marginTop: 8 },

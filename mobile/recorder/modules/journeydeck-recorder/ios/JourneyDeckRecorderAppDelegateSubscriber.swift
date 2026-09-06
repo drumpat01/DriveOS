@@ -7,6 +7,7 @@ public final class JourneyDeckRecorderAppDelegateSubscriber: ExpoAppDelegateSubs
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
     JourneyDeckNativeRecorder.shared.bootstrap()
+    JourneyDeckWatchBridge.shared.activate()
     return true
   }
 }

@@ -1,3 +1,4 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator, Linking, PanResponder, Pressable, StyleSheet, Text, View,
@@ -7,7 +8,7 @@ import {
   Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef,
 } from '@maplibre/maplibre-react-native';
 import type { Feature, LineString } from 'geojson';
-import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
+import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, OPEN_FREE_MAP_LIGHT_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
 import {
   buildReplayRoute, nearbySongMoments, replaySnapshotAt, songAtReplayTime,
   type RouteCoordinate, type SongRouteMoment, type TimedRouteSample,
@@ -47,6 +48,9 @@ export function InteractiveRouteMap({
   onSelectSong,
   fallback,
 }: InteractiveRouteMapProps) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const cameraRef = useRef<CameraRef>(null);
   const mapRef = useRef<MapRef>(null);
   const replayClockRef = useRef<number | null>(null);
@@ -88,11 +92,11 @@ export function InteractiveRouteMap({
 
   useEffect(() => {
     let mounted = true;
-    void loadJourneyDeckMapStyle().then(style => {
+    void loadJourneyDeckMapStyle(fetch, theme.mode).then(style => {
       if (mounted) setMapStyle(style);
     });
     return () => { mounted = false; };
-  }, []);
+  }, [theme.mode]);
 
   useEffect(() => {
     setReplayTimestamp(Number.isFinite(firstReplayTime) ? firstReplayTime : Date.now());
@@ -168,7 +172,7 @@ export function InteractiveRouteMap({
     <View style={styles.mapFrame} accessibilityLabel="Interactive journey map">
       {mapFailed ? fallback : <Map
         ref={mapRef}
-        mapStyle={(mapStyle ?? OPEN_FREE_MAP_DARK_STYLE) as never}
+        mapStyle={(mapStyle ?? (theme.isLight ? OPEN_FREE_MAP_LIGHT_STYLE : OPEN_FREE_MAP_DARK_STYLE)) as never}
         style={StyleSheet.absoluteFill}
         attribution={false}
         logo={false}
@@ -230,7 +234,7 @@ export function InteractiveRouteMap({
         <Pressable accessibilityLabel="Zoom out" onPress={() => void zoomBy(-1)} style={styles.mapControl}><Text style={styles.mapControlText}>−</Text></Pressable>
         <Pressable accessibilityLabel="Show the full route" onPress={fitRoute} style={styles.mapControl}><Text style={styles.mapControlArrow}>⌖</Text></Pressable>
       </View>}
-      {!mapReady && !mapFailed && <View pointerEvents="none" style={styles.loading}><ActivityIndicator color="#a98cff" /><Text style={styles.loadingText}>Styling your route…</Text></View>}
+      {!mapReady && !mapFailed && <View pointerEvents="none" style={styles.loading}><ActivityIndicator color={theme.color("#a98cff", 'text')} /><Text style={styles.loadingText}>Styling your route…</Text></View>}
       {(popupSong || terminalSelection) && <View style={styles.popup}>
         {popupSong ? <>
           {popupSong.artworkUrl ? <Image source={popupSong.artworkUrl} style={styles.popupArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.popupArtwork, styles.popupArtworkFallback]}><Text style={styles.popupArtworkNote}>♪</Text></View>}
@@ -249,10 +253,10 @@ export function InteractiveRouteMap({
       <Text style={styles.attribution}> · © </Text><AttributionLink label="OpenStreetMap" url="https://www.openstreetmap.org/copyright" />
     </View>
     <View style={styles.legend}>
-      <LegendItem color="#ff765c" label="Exact recorded route" line />
-      <LegendItem color="#a565ff" label="Song start" numbered />
-      <LegendItem color="#43e6ae" label="Start" />
-      <LegendItem color="#ff5f67" label="End" />
+      <LegendItem color={theme.color("#ff765c", 'text')} label="Exact recorded route" line />
+      <LegendItem color={theme.color("#a565ff", 'text')} label="Song start" numbered />
+      <LegendItem color={theme.color("#43e6ae", 'text')} label="Start" />
+      <LegendItem color={theme.color("#ff5f67", 'text')} label="End" />
     </View>
     <Text style={styles.mapHint}>Tap anywhere on the map for nearby music</Text>
 
@@ -293,22 +297,33 @@ export function InteractiveRouteMap({
 }
 
 function TerminalMarker({ kind }: { kind: 'start' | 'end' }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.terminalGlow, kind === 'end' && styles.terminalGlowEnd]}><View style={[styles.terminalCore, kind === 'end' && styles.terminalCoreEnd]} /></View>;
 }
 
 function SongMarker({ index, selected }: { index: number; selected: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.songMarkerGlow, selected && styles.songMarkerGlowSelected]}><View style={[styles.songMarker, selected && styles.songMarkerSelected]}><Text style={styles.songMarkerText}>{index}</Text></View></View>;
 }
 
 function AttributionLink({ label, url }: { label: string; url: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable onPress={() => void Linking.openURL(url)}><Text style={styles.attributionLink}>{label}</Text></Pressable>;
 }
 
 function LegendItem({ color, label, line, numbered }: { color: string; label: string; line?: boolean; numbered?: boolean }) {
-  return <View style={styles.legendItem}>{line ? <View style={[styles.legendLine, { backgroundColor: color }]} /> : <View style={[styles.legendDot, { backgroundColor: color }]}>{numbered && <Text style={styles.legendNumber}>1</Text>}</View>}<Text style={styles.legendText}>{label}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.legendItem}>{line ? <View style={[styles.legendLine, { backgroundColor: theme.color(color, 'surface') }]} /> : <View style={[styles.legendDot, { backgroundColor: theme.color(color, 'surface') }]}>{numbered && <Text style={styles.legendNumber}>1</Text>}</View>}<Text style={styles.legendText}>{label}</Text></View>;
 }
 
 function Telemetry({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.telemetry}><Text style={styles.telemetryValue}>{value}</Text><Text style={styles.telemetryLabel}>{label}</Text></View>;
 }
 
@@ -330,7 +345,7 @@ function buildRouteData(coordinates: RouteCoordinate[]) {
   return { line, start: valid[0]!, end: valid.at(-1)!, bounds: [west, south, east, north] as [number, number, number, number] };
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   experience: { gap: 12 },
   mapFrame: { height: 430, borderRadius: 18, overflow: 'hidden', backgroundColor: '#010104', borderWidth: 1, borderColor: '#40204d' },
   mapTint: { position: 'absolute', inset: 0, backgroundColor: 'rgba(15, 2, 18, 0.08)' },

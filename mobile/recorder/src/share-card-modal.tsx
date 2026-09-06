@@ -1,3 +1,4 @@
+import { useThemedStyles } from './app-theme';
 import { forwardRef, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
@@ -77,6 +78,8 @@ const journeyThemes: Record<JourneyShareTheme, { accent: string; accent2: string
 };
 
 export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload | null; onClose: () => void }) {
+  const uiStyles = useThemedStyles(styles);
+
   const cardRef = useRef<View>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
@@ -119,14 +122,14 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
 
   const accent = payload?.accent ?? '#ff7658';
   return <Modal visible={Boolean(payload)} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
-    <SafeAreaView style={styles.modalRoot}>
+    <SafeAreaView style={uiStyles.modalRoot}>
       <Pressable accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
-      <View style={styles.sheet}>
-        <View style={styles.sheetHeader}>
-          <View><Text style={styles.sheetKicker}>PRIVACY-SAFE PREVIEW</Text><Text style={styles.sheetTitle}>Share card</Text></View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={styles.closeButton}><Text style={styles.closeText}>×</Text></Pressable>
+      <View style={uiStyles.sheet}>
+        <View style={uiStyles.sheetHeader}>
+          <View><Text style={uiStyles.sheetKicker}>PRIVACY-SAFE PREVIEW</Text><Text style={uiStyles.sheetTitle}>Share card</Text></View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={uiStyles.closeButton}><Text style={uiStyles.closeText}>×</Text></Pressable>
         </View>
-        <ScrollView contentContainerStyle={styles.previewWrap} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={uiStyles.previewWrap} showsVerticalScrollIndicator={false}>
           {payload?.journey
             ? <JourneySharePreview ref={cardRef} journey={payload.journey} theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onArtworkReady={() => setJourneyArtworkLoading(false)} />
             : payload && <View ref={cardRef} collapsable={false} style={styles.card}>
@@ -142,9 +145,9 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
               </View>
             </View>}
           {payload?.journey && <JourneyShareControls theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />}
-          <View style={styles.privacyNote}><Text style={styles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={styles.privacyNoteText}>{payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.'}</Text></View>
+          <View style={uiStyles.privacyNote}><Text style={uiStyles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={uiStyles.privacyNoteText}>{payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.'}</Text></View>
         </ScrollView>
-        <Pressable accessibilityRole="button" onPress={() => void share()} disabled={sharing || photoLoading || journeyArtworkLoading} style={[styles.shareButton, (sharing || photoLoading || journeyArtworkLoading) && styles.disabled]}>{sharing || photoLoading || journeyArtworkLoading ? <ActivityIndicator color="#1a0907" /> : <Text style={styles.shareText}>Share image</Text>}</Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void share()} disabled={sharing || photoLoading || journeyArtworkLoading} style={[uiStyles.shareButton, (sharing || photoLoading || journeyArtworkLoading) && uiStyles.disabled]}>{sharing || photoLoading || journeyArtworkLoading ? <ActivityIndicator color="#1a0907" /> : <Text style={uiStyles.shareText}>Share image</Text>}</Pressable>
       </View>
     </SafeAreaView>
   </Modal>;
@@ -191,18 +194,22 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
   theme: JourneyShareTheme; mapStyle: JourneyShareMapStyle; artwork: JourneyShareArtwork; stats: JourneyShareStat[];
   onTheme: (value: JourneyShareTheme) => void; onMapStyle: (value: JourneyShareMapStyle) => void; onArtwork: (value: JourneyShareArtwork) => void; onToggleStat: (value: JourneyShareStat) => void;
 }) {
-  return <View style={styles.journeyShareControls}>
-    <Text style={styles.controlsKicker}>BUILD YOUR CARD</Text>
+  const uiStyles = useThemedStyles(styles);
+
+  return <View style={uiStyles.journeyShareControls}>
+    <Text style={uiStyles.controlsKicker}>BUILD YOUR CARD</Text>
     <ShareChoiceRow label="THEME" value={theme} choices={[['cinematic', 'Cinematic'], ['electric', 'Electric'], ['sunset', 'Sunset']]} onSelect={value => onTheme(value as JourneyShareTheme)} />
     <ShareChoiceRow label="MAP" value={mapStyle} choices={[['street', 'Street'], ['dim', 'Dimmed'], ['route', 'Route only']]} onSelect={value => onMapStyle(value as JourneyShareMapStyle)} />
     <ShareChoiceRow label="ARTWORK" value={artwork} choices={[['album', 'Featured album'], ['backdrop', 'Album backdrop'], ['none', 'No artwork']]} onSelect={value => onArtwork(value as JourneyShareArtwork)} />
-    <Text style={[styles.controlsKicker, styles.controlsStatsKicker]}>SHOW ON CARD</Text>
-    <View style={styles.statToggleGrid}>{([['distance', 'Distance'], ['duration', 'Duration'], ['songs', 'Song count'], ['artist', 'Top artist']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[styles.statToggle, stats.includes(value) && styles.statToggleOn]}><Text style={styles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={styles.statToggleText}>{label}</Text></Pressable>)}</View>
+    <Text style={[uiStyles.controlsKicker, uiStyles.controlsStatsKicker]}>SHOW ON CARD</Text>
+    <View style={uiStyles.statToggleGrid}>{([['distance', 'Distance'], ['duration', 'Duration'], ['songs', 'Song count'], ['artist', 'Top artist']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[uiStyles.statToggle, stats.includes(value) && uiStyles.statToggleOn]}><Text style={uiStyles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={uiStyles.statToggleText}>{label}</Text></Pressable>)}</View>
   </View>;
 }
 
 function ShareChoiceRow({ label, value, choices, onSelect }: { label: string; value: string; choices: readonly (readonly [string, string])[]; onSelect: (value: string) => void }) {
-  return <View style={styles.choiceRow}><Text style={styles.choiceLabel}>{label}</Text><View style={styles.choiceChips}>{choices.map(([choice, title]) => <Pressable key={choice} onPress={() => onSelect(choice)} style={[styles.choiceChip, value === choice && styles.choiceChipActive]}><Text style={[styles.choiceChipText, value === choice && styles.choiceChipTextActive]}>{title}</Text></Pressable>)}</View></View>;
+  const uiStyles = useThemedStyles(styles);
+
+  return <View style={uiStyles.choiceRow}><Text style={uiStyles.choiceLabel}>{label}</Text><View style={uiStyles.choiceChips}>{choices.map(([choice, title]) => <Pressable key={choice} onPress={() => onSelect(choice)} style={[uiStyles.choiceChip, value === choice && uiStyles.choiceChipActive]}><Text style={[uiStyles.choiceChipText, value === choice && uiStyles.choiceChipTextActive]}>{title}</Text></Pressable>)}</View></View>;
 }
 
 function JourneyDeckMapTile({ uri, left, top, width, height }: { uri: string; left: number; top: number; width: number; height: number }) {

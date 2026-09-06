@@ -10,7 +10,7 @@ export type NativeRecorderStatus = {
   paused: boolean;
   sessionId: string | null;
   authorization: NativeRecorderAuthorization;
-  lastEvent: 'started' | 'finished' | 'start_failed' | null;
+  lastEvent: 'started' | 'finished' | 'start_failed' | 'manual_started' | 'manual_finished' | 'manual_auto_finished' | null;
   lastEventAt: string | null;
   lastErrorCode: string | null;
 };

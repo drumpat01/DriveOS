@@ -4,6 +4,19 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "v2-preview": {
+      "autoIncrement": true,
+      "distribution": "internal",
+      "channel": "v2-preview",
+      "environment": "preview",
+      "env": {
+        "APP_VARIANT": "v2-preview",
+        "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "0"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",

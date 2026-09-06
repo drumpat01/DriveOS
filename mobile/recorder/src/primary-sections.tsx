@@ -1,3 +1,5 @@
+import { CardDetailLink } from './card-detail-link';
+import { useAppTheme, useThemedStyles } from './app-theme';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator, InteractionManager, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
@@ -5,6 +7,7 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { HeaderArtwork, HeaderEdgeBleed, HeaderEdgeFeather, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { headerImageSource } from './header-image-sources';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,6 +48,9 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
   eyebrow: string; title: string; subtitle: string; headerImage?: number; onRefresh: () => void | Promise<void>; leadingAction?: { label: string; onPress: () => void };
   headerPresentation?: 'default' | 'centered'; pageTone?: 'default' | 'black'; headerTone?: 'default' | 'live' | 'atlas' | 'statistics'; children: ReactNode;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const refreshFromGesture = async () => {
@@ -64,14 +70,14 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
         ? ['rgba(55,13,57,0.27)', 'rgba(11,27,54,0.18)', 'rgba(3,1,5,0)'] as const
         : ['rgba(79,14,91,0.22)', 'rgba(28,8,35,0.12)', 'rgba(3,1,5,0)'] as const;
   return <View style={styles.screen}>
-    <LinearGradient colors={pageTone === 'black' ? ['#060309', '#030106', '#020104'] : ['#19051f', '#07020a', '#020104']} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
-    <LinearGradient colors={headerSpill} locations={[0, 0.54, 1]} style={styles.headerSpill} />
+    <LinearGradient colors={theme.gradient(pageTone === 'black' ? ['#060309', '#030106', '#020104'] : ['#19051f', '#07020a', '#020104'])} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.gradient(headerSpill)} locations={[0, 0.54, 1]} style={styles.headerSpill} />
     <ScrollView
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 17 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 17, paddingBottom: insets.bottom + 28 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
-      refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor="#b889ff" />}
+      refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={theme.color("#b889ff", 'text')} />}
     >
       {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
       {headerImage
@@ -85,7 +91,10 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
 }
 
 function DataNotice({ state }: { state: PrimaryDataState }) {
-  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><NeonWidgetOutline radius={18} /><ActivityIndicator color="#b989ff" /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><NeonWidgetOutline radius={18} /><ActivityIndicator color={theme.color("#b989ff", 'text')} /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
   if (state.status === 'error') return <View style={styles.warningCard}><NeonWidgetOutline radius={18} /><Text style={styles.warningTitle}>USING SAVED DATA</Text><Text style={styles.noticeText}>{state.message || 'Some sources could not refresh. Existing local data remains available.'}</Text></View>;
   return null;
 }
@@ -93,6 +102,8 @@ function DataNotice({ state }: { state: PrimaryDataState }) {
 export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   state: PrimaryDataState; active: boolean; onRefresh: () => void; onRecord: () => void; onJourney: (id: string) => void;
 }) {
+  const styles = useThemedStyles(darkStyles);
+
   const [snapshot, setSnapshot] = useState<LiveRecorderSnapshot>(() => state.data?.live ?? getLiveRecorderSnapshot());
   const [tessieVehicle, setTessieVehicle] = useState<TessieVehicleSnapshot | null>(null);
   const [tessieConnected, setTessieConnected] = useState(false);
@@ -206,6 +217,9 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
 }
 
 export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const data = state.data;
   const [window, setWindow] = useState<AtlasInsightWindow>('30d');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
@@ -220,7 +234,7 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
   return <ScreenScaffold eyebrow="" title="ATLAS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     <View style={styles.atlasCommandHeader}>
-      <View style={styles.atlasPrivacyBadge}><SymbolView name="lock.fill" tintColor="#ff8b70" size={11} /><Text style={styles.atlasPrivacyText}>PRIVATE · ON DEVICE</Text></View>
+      <View style={styles.atlasPrivacyBadge}><SymbolView name="lock.fill" tintColor={theme.color("#ff8b70", 'text')} size={11} /><Text style={styles.atlasPrivacyText}>PRIVATE · ON DEVICE</Text></View>
       <View style={styles.atlasWindowRail} accessibilityRole="tablist">
         {([['30d', '30 DAYS'], ['90d', '90 DAYS'], ['all', 'ALL TIME']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: window === value }} onPress={() => setWindow(value)} style={[styles.atlasWindowChip, window === value && styles.atlasWindowChipActive]}><Text style={[styles.atlasWindowText, window === value && styles.atlasWindowTextActive]}>{label}</Text></Pressable>)}
       </View>
@@ -261,11 +275,14 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
 }
 
 function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const windowLabel = insights.window === '30d' ? 'the last 30 days' : insights.window === '90d' ? 'the last 90 days' : 'your complete history';
   return <View style={styles.atlasPulseCard}>
     <NeonWidgetOutline radius={28} tone="selected" />
-    <Image pointerEvents="none" source={require('../assets/atlas-header-cinematic-v1.png')} style={styles.atlasPulseBackdrop} contentFit="cover" />
-    <LinearGradient pointerEvents="none" colors={['rgba(255,91,78,0.18)', 'rgba(129,49,179,0.1)', 'rgba(7,3,11,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <Image pointerEvents="none" source={headerImageSource(require('../assets/atlas-header-cinematic-v1.png'), theme.mode)} style={styles.atlasPulseBackdrop} contentFit="cover" />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(255,91,78,0.18)', 'rgba(129,49,179,0.1)', 'rgba(7,3,11,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <View style={styles.atlasPulseOrb}>
       <View style={styles.atlasPulseRingOuter}><View style={styles.atlasPulseRingInner}><View style={styles.atlasPulseCore} /></View></View>
     </View>
@@ -285,21 +302,29 @@ function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
 }
 
 function AtlasPulseMetric({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.atlasPulseMetric}><Text style={styles.atlasPulseMetricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text><Text style={styles.atlasPulseMetricLabel}>{label}</Text></View>;
 }
 
 function AtlasInsightShell({ symbol, title, accent = '#ff7967', children }: { symbol: SFSymbol; title: string; accent?: string; children: ReactNode }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.atlasInsightCard}>
     <NeonWidgetOutline radius={20} />
-    <LinearGradient pointerEvents="none" colors={[`${accent}24`, 'rgba(8,4,12,0)']} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.8 }} style={StyleSheet.absoluteFill} />
-    <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: `${accent}99` }]}><SymbolView name={symbol} tintColor={accent} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
+    <LinearGradient pointerEvents="none" colors={theme.gradient([`${accent}24`, 'rgba(8,4,12,0)'])} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.8 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: theme.color(`${accent}99`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(accent, 'text')} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
     {children}
   </View>;
 }
 
 function RouteDnaCard({ insight }: { insight: AtlasInsights['routeDna'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <AtlasInsightShell symbol="point.topleft.down.to.point.bottomright.curvepath.fill" title="Route DNA">
-    <View style={styles.atlasRoutePreview}>{insight.ready && insight.route.length >= 2 ? <TimelineRouteThumbnail coordinates={insight.route} /> : <SymbolView name="road.lanes.curved.right" tintColor="#654164" size={37} />}</View>
+    <View style={styles.atlasRoutePreview}>{insight.ready && insight.route.length >= 2 ? <TimelineRouteThumbnail coordinates={insight.route} /> : <SymbolView name="road.lanes.curved.right" tintColor={theme.color("#654164", 'text')} size={37} />}</View>
     {insight.ready ? <>
       <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} {insight.bidirectional ? '↔' : '→'} {insight.endLabel}</Text>
       <Text style={styles.atlasInsightDetail}>{insight.trips} {insight.trips === 1 ? 'trip' : 'trips'} · {insight.averageMinutes === null ? 'time unavailable' : `${Math.round(insight.averageMinutes)} min avg`}{insight.averageMiles === null ? '' : ` · ${insight.averageMiles.toFixed(1)} mi`}</Text>
@@ -309,26 +334,35 @@ function RouteDnaCard({ insight }: { insight: AtlasInsights['routeDna'] }) {
 }
 
 function DrivingRhythmsCard({ insight }: { insight: AtlasInsights['drivingRhythms'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const maximum = Math.max(1, ...insight.weekdays.map(day => day.journeys));
   return <AtlasInsightShell symbol="chart.bar.xaxis" title="Driving Rhythms" accent="#bd72ff">
-    <View style={styles.atlasRhythmChart}>{insight.weekdays.map(day => <View key={day.label} style={styles.atlasRhythmColumn}><View style={styles.atlasRhythmTrack}><LinearGradient colors={day.journeys ? ['#ff7767', '#ad5eff'] : ['#2d2132', '#211925']} style={[styles.atlasRhythmBar, { height: Math.max(4, Math.round((day.journeys / maximum) * 48)) }]} /></View><Text style={styles.atlasRhythmDay}>{day.label.slice(0, 1)}</Text></View>)}</View>
+    <View style={styles.atlasRhythmChart}>{insight.weekdays.map(day => <View key={day.label} style={styles.atlasRhythmColumn}><View style={styles.atlasRhythmTrack}><LinearGradient colors={theme.gradient(day.journeys ? ['#ff7767', '#ad5eff'] : ['#2d2132', '#211925'])} style={[styles.atlasRhythmBar, { height: Math.max(4, Math.round((day.journeys / maximum) * 48)) }]} /></View><Text style={styles.atlasRhythmDay}>{day.label.slice(0, 1)}</Text></View>)}</View>
     {insight.ready ? <><Text style={styles.atlasInsightValue}>{insight.leadingDay} leads</Text><Text style={styles.atlasInsightDetail}>{insight.leadingDayJourneys} journeys · {insight.leadingTime?.toLocaleLowerCase()} drives are most common</Text></> : <AtlasLearningCopy text="Three journeys unlock your weekly and time-of-day rhythm." />}
   </AtlasInsightShell>;
 }
 
 function ExplorationCard({ insight }: { insight: AtlasInsights['exploration'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const score = insight.score ?? 0;
   const circumference = 175.93;
   return <AtlasInsightShell symbol="safari.fill" title="Exploration Score" accent="#ff5a86">
-    <View style={styles.atlasGaugeWrap}><Svg width="86" height="86" viewBox="0 0 70 70"><Circle cx="35" cy="35" r="28" fill="none" stroke="#2b1b31" strokeWidth="6" /><Circle cx="35" cy="35" r="28" fill="none" stroke="#ff647d" strokeWidth="6" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={circumference * (1 - score / 100)} rotation="-90" origin="35,35" /></Svg><Text style={styles.atlasGaugeValue}>{insight.ready ? `${score}%` : '—'}</Text></View>
+    <View style={styles.atlasGaugeWrap}><Svg width="86" height="86" viewBox="0 0 70 70"><Circle cx="35" cy="35" r="28" fill="none" stroke={theme.color("#2b1b31", 'accent')} strokeWidth="6" /><Circle cx="35" cy="35" r="28" fill="none" stroke={theme.color("#ff647d", 'accent')} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={circumference * (1 - score / 100)} rotation="-90" origin="35,35" /></Svg><Text style={styles.atlasGaugeValue}>{insight.ready ? `${score}%` : '—'}</Text></View>
     {insight.ready ? <><Text style={styles.atlasInsightValue}>{score >= 65 ? 'Explorer' : score >= 35 ? 'Mixing it up' : 'Familiar roads'}</Text><Text style={styles.atlasInsightDetail}>{insight.oneJourneyAreas} of {insight.mappedAreas} mapped areas appeared on one journey.</Text></> : <AtlasLearningCopy text={`${Math.max(0, 2 - insight.mappedJourneys)} more mapped ${Math.max(0, 2 - insight.mappedJourneys) === 1 ? 'journey' : 'journeys'} needed for a reliable score.`} />}
   </AtlasInsightShell>;
 }
 
 function PlaceRelationshipsCard({ insight }: { insight: AtlasInsights['placeRelationships'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <AtlasInsightShell symbol="point.3.connected.trianglepath.dotted" title="Place Relationships" accent="#b66cff">
     {insight.ready ? <>
-      <View style={styles.atlasRelationshipGraph}><Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 150 68"><Path d="M 28 36 C 60 8, 91 60, 122 30" fill="none" stroke="#b767ff" strokeWidth="2" opacity={0.72} /><Path d="M 28 36 C 60 63, 95 6, 122 30" fill="none" stroke="#ff6c70" strokeWidth="1" opacity={0.34} /></Svg><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeLeft]}><View style={styles.atlasPlaceNodeCore} /></View><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeRight]}><View style={styles.atlasPlaceNodeCore} /></View></View>
+      <View style={styles.atlasRelationshipGraph}><Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 150 68"><Path d="M 28 36 C 60 8, 91 60, 122 30" fill="none" stroke={theme.color("#b767ff", 'accent')} strokeWidth="2" opacity={0.72} /><Path d="M 28 36 C 60 63, 95 6, 122 30" fill="none" stroke={theme.color("#ff6c70", 'accent')} strokeWidth="1" opacity={0.34} /></Svg><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeLeft]}><View style={styles.atlasPlaceNodeCore} /></View><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeRight]}><View style={styles.atlasPlaceNodeCore} /></View></View>
       <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} → {insight.endLabel}</Text>
       <Text style={styles.atlasInsightDetail}>{insight.trips} direct {insight.trips === 1 ? 'journey' : 'journeys'} · {insight.connections.length} strongest links mapped</Text>
     </> : <AtlasLearningCopy text="Named starts and destinations reveal how your places connect." />}
@@ -336,27 +370,35 @@ function PlaceRelationshipsCard({ insight }: { insight: AtlasInsights['placeRela
 }
 
 function SoundtrackIntelligenceCard({ insight }: { insight: AtlasInsights['soundtrack'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.atlasSoundtrackCard}>
     <NeonWidgetOutline radius={22} tone="selected" />
-    <LinearGradient pointerEvents="none" colors={['rgba(109,41,159,0.22)', 'rgba(255,77,103,0.12)', 'rgba(8,4,12,0)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
-    <View style={styles.atlasSoundtrackHeading}><View><Text style={styles.atlasSoundtrackEyebrow}>SOUNDTRACK INTELLIGENCE</Text><Text style={styles.atlasSoundtrackTitle}>{insight.ready ? 'The rhythm behind your roads.' : 'Your road sound is forming.'}</Text></View><SymbolView name="waveform" tintColor="#ff6e86" size={28} /></View>
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(109,41,159,0.22)', 'rgba(255,77,103,0.12)', 'rgba(8,4,12,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasSoundtrackHeading}><View><Text style={styles.atlasSoundtrackEyebrow}>SOUNDTRACK INTELLIGENCE</Text><Text style={styles.atlasSoundtrackTitle}>{insight.ready ? 'The rhythm behind your roads.' : 'Your road sound is forming.'}</Text></View><SymbolView name="waveform" tintColor={theme.color("#ff6e86", 'text')} size={28} /></View>
     <View style={styles.atlasSoundtrackBody}>
-      <View style={styles.atlasArtworkStack}>{insight.artworkUrls.length ? insight.artworkUrls.slice(0, 3).map((uri, index) => <Image key={uri} source={{ uri }} style={[styles.atlasSoundtrackArtwork, { marginLeft: index ? -11 : 0, zIndex: 3 - index }]} contentFit="cover" cachePolicy="memory-disk" />) : <View style={styles.atlasSoundtrackPlaceholder}><SymbolView name="music.note" tintColor="#c16fff" size={28} /></View>}</View>
+      <View style={styles.atlasArtworkStack}>{insight.artworkUrls.length ? insight.artworkUrls.slice(0, 3).map((uri, index) => <Image key={uri} source={{ uri }} style={[styles.atlasSoundtrackArtwork, { marginLeft: index ? -11 : 0, zIndex: 3 - index }]} contentFit="cover" cachePolicy="memory-disk" />) : <View style={styles.atlasSoundtrackPlaceholder}><SymbolView name="music.note" tintColor={theme.color("#c16fff", 'text')} size={28} /></View>}</View>
       <View style={styles.atlasSoundtrackCopy}>{insight.ready ? <><Text style={styles.atlasSoundtrackArtist} numberOfLines={1}>{insight.topArtist ?? 'Artist unavailable'}</Text><Text style={styles.atlasInsightDetail}>{insight.topArtist ? `${insight.topArtistPlays} plays` : `${insight.plays} road plays`} · {insight.uniqueSongs} unique songs</Text><Text style={styles.atlasInsightCallout}>{insight.journeyMatchPercent}% of journeys carried music{insight.leadingTime ? ` · ${insight.leadingTime.toLocaleLowerCase()} is most common` : ''}</Text></> : <AtlasLearningCopy text="Two matched songs unlock artists, variety, and listening patterns." />}</View>
     </View>
   </View>;
 }
 
 function AtlasLearningCopy({ text }: { text: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.atlasLearning}><View style={styles.atlasLearningDot} /><Text style={styles.atlasLearningText}>{text}</Text></View>;
 }
 
 function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJourney: (id: string) => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.card}><NeonWidgetOutline radius={22} />
     <Text style={styles.cardEyebrow}>PLACE DETAILS · {place.category.toUpperCase()}</Text><Text style={styles.heroTitle}>{place.name}</Text>
     <Text style={styles.itemDetail}>{place.arrivals} arrivals · {place.departures} departures · last seen {new Date(place.lastSeenAt).toLocaleDateString()}</Text>
     {place.soundtrack[0] && <Text style={styles.placeSoundtrack}>♪ {place.soundtrack[0].track} · {place.soundtrack[0].artist}</Text>}
-    <View style={styles.placeRouteThread}><LinearGradient pointerEvents="none" colors={['#ff7d62', '#b35cff', '#9d6cff'] as const} style={styles.routeThreadRail} />
+    <View style={styles.placeRouteThread}><LinearGradient pointerEvents="none" colors={theme.gradient(['#ff7d62', '#b35cff', '#9d6cff'] as const)} style={styles.routeThreadRail} />
       {place.relatedJourneys.slice(0, 3).map((journey, index) => <Pressable key={journey.id} onPress={() => onJourney(journey.id)} style={[styles.compactRow, index === 0 && styles.compactRowFirst]}>
         <View style={[styles.routeThreadNode, index === 0 && styles.routeThreadNodeStart]} /><Text style={styles.compactTitle} numberOfLines={1}>{journey.startingLocation} → {journey.endingLocation}</Text><Text style={styles.compactValue}>{journey.miles.toFixed(1)} mi</Text>
       </Pressable>)}
@@ -365,10 +407,15 @@ function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJ
 }
 
 function PatternAction({ symbol, label, active = false, onPress }: { symbol: string; label: string; active?: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <Pressable accessibilityLabel={label} onPress={onPress} style={styles.patternAction}><View style={[styles.patternActionIcon, active && styles.patternActionIconActive]}><Text style={[styles.patternActionSymbol, active && styles.patternActionSymbolActive]}>{symbol}</Text></View><Text style={[styles.patternActionText, active && styles.patternActionTextActive]}>{label}</Text></Pressable>;
 }
 
 export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const days = state.data?.timeline ?? [];
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => { if (!selectedKey && days[0]) setSelectedKey(days[0].key); }, [days, selectedKey]);
@@ -380,7 +427,7 @@ export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state:
       <Text style={styles.selectedDay}>{selected?.label}</Text>
       <PrimaryMobilityMap routes={selected?.routes ?? []} height={270} emptyMessage="This day has events but no route geometry cached yet." />
       <View style={styles.timelineList}>{selected?.items.map(item => <Pressable key={item.id} disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.timelineItem}>
-        <View style={[styles.timelineIcon, { backgroundColor: timelineColor(item.kind) }]}><Text style={styles.timelineIconText}>{timelineGlyph(item.kind)}</Text></View>
+        <View style={[styles.timelineIcon, { backgroundColor: theme.color(timelineColor(item.kind), 'surface') }]}><Text style={styles.timelineIconText}>{timelineGlyph(item.kind)}</Text></View>
         <View style={styles.flex}><Text style={styles.timelineTime}>{formatClock(item.occurredAt)} · {item.kind.toUpperCase()}</Text><Text style={styles.itemTitle}>{item.title}</Text><Text style={styles.itemDetail}>{item.detail}</Text></View>
         {item.journeyId && <Text style={styles.chevron}>›</Text>}
       </Pressable>)}</View>
@@ -391,6 +438,9 @@ export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state:
 export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, onAtlas, historyDays = 45 }: {
   state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; onAtlas?: () => void; historyDays?: number | null;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const statistics = state.data?.statistics;
   const [visibleTimelineCount, setVisibleTimelineCount] = useState(10);
   const timelineItems = useMemo(() => {
@@ -411,20 +461,20 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
   return <ScreenScaffold eyebrow="" title="STATISTICS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="statistics" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas private drive intelligence" onPress={onAtlas} style={styles.atlasGateway}>
-      <Image source={require('../assets/atlas-globe-membership-v1.jpg')} style={StyleSheet.absoluteFill} contentFit="cover" />
-      <LinearGradient colors={['rgba(8,3,12,0.18)', 'rgba(10,4,15,0.82)', 'rgba(16,5,17,0.98)']} locations={[0, 0.58, 1]} start={{ x: 1, y: 0.3 }} end={{ x: 0, y: 0.7 }} style={StyleSheet.absoluteFill} />
+      <Image source={headerImageSource(require('../assets/atlas-globe-membership-v1.jpg'), theme.mode)} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <LinearGradient colors={theme.gradient(['rgba(8,3,12,0.18)', 'rgba(10,4,15,0.82)', 'rgba(16,5,17,0.98)'])} locations={[0, 0.58, 1]} start={{ x: 1, y: 0.3 }} end={{ x: 0, y: 0.7 }} style={StyleSheet.absoluteFill} />
       <View style={styles.atlasGatewayCopy}>
         <Text style={styles.atlasGatewayKicker}>ATLAS · PRIVATE DRIVE INTELLIGENCE</Text>
         <Text style={styles.atlasGatewayTitle}>Open your Atlas</Text>
         <Text style={styles.atlasGatewayDetail}>Patterns, favorite places, repeated routes, and music moments.</Text>
       </View>
-      <View style={styles.atlasGatewayAction}><SymbolView name="globe.americas.fill" tintColor="#ff8a70" size={24} /><Text style={styles.atlasGatewayArrow}>›</Text></View>
+      <View style={styles.atlasGatewayAction}><SymbolView name="globe.americas.fill" tintColor={theme.color("#ff8a70", 'text')} size={24} /><Text style={styles.atlasGatewayArrow}>›</Text></View>
     </Pressable>}
     {statistics ? <>
       <View style={styles.storyStatsHero}>
         <HeaderEdgeBleed />
-        <Image source={require('../assets/statistics-story-hero-v1.png')} style={StyleSheet.absoluteFill} contentFit="cover" />
-        <LinearGradient colors={['rgba(4,3,10,0.97)', 'rgba(8,4,15,0.74)', 'rgba(7,2,13,0.05)']} locations={[0, 0.55, 1]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+        <Image source={headerImageSource(require('../assets/statistics-story-hero-v1.png'), theme.mode)} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <LinearGradient colors={theme.gradient(['rgba(4,3,10,0.97)', 'rgba(8,4,15,0.74)', 'rgba(7,2,13,0.05)'])} locations={[0, 0.55, 1]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
         <HeaderEdgeFeather />
         <View style={styles.storyStatsHeroCopy}>
           <Text style={styles.storyStatsKicker}>THE ROAD YOU’VE LIVED</Text>
@@ -433,17 +483,25 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
       </View>
 
       <View style={styles.storyStatsCards}>
+        <View style={styles.storyStatsCell}>
+        <CardDetailLink kind="journey" id={statistics.story.longestDrive?.journeyId}>
         <Pressable disabled={!statistics.story.longestDrive} onPress={() => statistics.story.longestDrive && onJourney(statistics.story.longestDrive.journeyId)} style={styles.storyStatsFeatureCard}>
           <View style={styles.storyStatsInsightIcon}><TimelineRouteThumbnail coordinates={longestRoute ?? []} /></View>
           <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Longest drive</Text><Text style={styles.storyStatsFeatureValue}>{statistics.story.longestDrive ? `${statistics.story.longestDrive.miles.toFixed(1)} mi` : '—'}</Text></View>
         </Pressable>
+        </CardDetailLink>
+        </View>
+        <View style={styles.storyStatsCell}>
         <View style={styles.storyStatsFeatureCard}>
-          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconPurple]}><SymbolView name="music.note" tintColor="#c17aff" size={25} /></View>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconPurple]}><SymbolView name="music.note" tintColor={theme.color("#c17aff", 'text')} size={25} /></View>
           <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Most-played</Text><Text style={styles.storyStatsFeatureValue} numberOfLines={2}>{statistics.story.topArtist?.artist ?? '—'}</Text></View>
         </View>
+        </View>
+        <View style={styles.storyStatsCell}>
         <View style={styles.storyStatsFeatureCard}>
-          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconSun]}><SymbolView name="sun.horizon.fill" tintColor="#ff8065" size={25} /></View>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconSun]}><SymbolView name="sun.horizon.fill" tintColor={theme.color("#ff8065", 'text')} size={25} /></View>
           <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Favorite time</Text><Text style={[styles.storyStatsFeatureValue, styles.storyStatsFeatureValueCompact]} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.78}>{statistics.story.favoriteTime?.label ?? 'Still forming'}</Text></View>
+        </View>
         </View>
       </View>
 
@@ -458,20 +516,23 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
 
       <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
       {visibleTimeline.length ? <View style={styles.storyTimelineList}>{visibleTimeline.map((item, index) => <StoryTimelineRow key={item.id} item={item} onJourney={onJourney} first={index === 0} last={index === visibleTimeline.length - 1} />)}</View> : <EmptyCard text="Journeys and songs will collect here as your story unfolds." />}
-      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={['#ff6b57', '#f14f50']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={styles.storyTimelineMoreText}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
+      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={theme.gradient(['#ff6b57', '#f14f50'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={styles.storyTimelineMoreText}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
     </> : <EmptyCard text="Statistics will be calculated locally from your journey archive." />}
   </ScreenScaffold>;
 }
 
 function StoryTimelineRow({ item, onJourney, first, last }: { item: TimelineItem; onJourney: (id: string) => void; first: boolean; last: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const song = item.kind === 'song';
   return <View style={styles.storyTimelineShell}>
     <View style={styles.storyTimelineRail}>
       {!first && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorTop]} />}
       {!last && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorBottom]} />}
-      <View style={[styles.storyTimelineRailIcon, song && styles.storyTimelineRailIconSong]}><SymbolView name={song ? 'music.note' : item.kind === 'journey' ? 'mappin' : item.kind === 'charging' ? 'bolt.fill' : 'car.fill'} tintColor={song ? '#c17aff' : '#ff8069'} size={17} /></View>
+      <View style={[styles.storyTimelineRailIcon, song && styles.storyTimelineRailIconSong]}><SymbolView name={song ? 'music.note' : item.kind === 'journey' ? 'mappin' : item.kind === 'charging' ? 'bolt.fill' : 'car.fill'} tintColor={theme.color(song ? '#c17aff' : '#ff8069', 'text')} size={17} /></View>
     </View>
-    <Pressable disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.storyTimelineCard}>
+    <CardDetailLink kind="journey" id={item.journeyId}><Pressable disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.storyTimelineCard}>
       {song && item.artworkUrl
         ? <Image source={{ uri: item.artworkUrl }} style={styles.storyTimelineArtwork} contentFit="cover" cachePolicy="memory-disk" />
         : item.kind === 'journey'
@@ -479,15 +540,17 @@ function StoryTimelineRow({ item, onJourney, first, last }: { item: TimelineItem
           : <View style={[styles.storyTimelineArtwork, styles.artworkBlank]}><Text style={styles.artworkNote}>{timelineGlyph(item.kind)}</Text></View>}
       <View style={styles.storyTimelineCopy}><Text style={[styles.storyTimelineKind, song && styles.storyTimelineKindSong]}>{song ? 'Song' : item.kind === 'journey' ? 'Drive' : item.kind === 'charging' ? 'Charging' : 'Vehicle'}</Text><Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{item.detail}</Text></View>
       <Text style={styles.storyTimelineClock}>{formatClock(item.occurredAt)}</Text>
-    </Pressable>
+    </Pressable></CardDetailLink>
   </View>;
 }
 
 function TimelineRouteThumbnail({ coordinates }: { coordinates: [number, number][] }) {
+  const theme = useAppTheme();
+
   const path = compactRoutePath(coordinates);
   return <Svg width="100%" height="100%" viewBox="0 0 92 58">
-    <Defs><SvgGradient id="timelineRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor="#ff8b54" /><Stop offset="0.55" stopColor="#ff5f70" /><Stop offset="1" stopColor="#a66dff" /></SvgGradient></Defs>
-    {path ? <><Path d={path} fill="none" stroke="#ff5f63" strokeWidth={7} opacity={0.16} strokeLinecap="round" strokeLinejoin="round" /><Path d={path} fill="none" stroke="url(#timelineRoute)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></> : <Path d="M 18 45 C 29 38, 36 42, 44 31 S 65 21, 75 11" fill="none" stroke="#5b345f" strokeWidth={3} strokeLinecap="round" />}
+    <Defs><SvgGradient id="timelineRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={theme.color("#ff8b54", 'accent')} /><Stop offset="0.55" stopColor={theme.color("#ff5f70", 'accent')} /><Stop offset="1" stopColor={theme.color("#a66dff", 'accent')} /></SvgGradient></Defs>
+    {path ? <><Path d={path} fill="none" stroke={theme.color("#ff5f63", 'accent')} strokeWidth={7} opacity={0.16} strokeLinecap="round" strokeLinejoin="round" /><Path d={path} fill="none" stroke="url(#timelineRoute)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></> : <Path d="M 18 45 C 29 38, 36 42, 44 31 S 65 21, 75 11" fill="none" stroke={theme.color("#5b345f", 'accent')} strokeWidth={3} strokeLinecap="round" />}
   </Svg>;
 }
 
@@ -509,14 +572,17 @@ function timelineEpoch(value: string) {
 }
 
 export function SearchScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [query, setQuery] = useState('');
   const results = useMemo(() => searchPrimarySections(state.data?.search ?? [], query), [query, state.data?.search]);
   return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search Journeys, Memories, songs, artists, and places from one private index." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
-    <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor="#9b8ba4" size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor="#756d7c" autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
+    <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor={theme.color("#9b8ba4", 'text')} size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor={theme.color("#756d7c", 'text')} autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
     <Text style={styles.resultCount}>{query.trim() ? `${results.length} RESULTS` : 'RECENT + FREQUENT'}</Text>
     {results.length ? results.map(record => <Pressable key={record.id} disabled={!record.journeyId} onPress={() => record.journeyId && onJourney(record.journeyId)} style={styles.searchResult}>
-      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.searchKind, { backgroundColor: accentForKind[record.kind] }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
+      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.searchKind, { backgroundColor: theme.color(accentForKind[record.kind], 'surface') }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
       <View style={styles.flex}><Text style={styles.searchType}>{record.kind.toUpperCase()}</Text><Text style={styles.itemTitle} numberOfLines={1}>{record.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{record.subtitle}</Text></View>{record.journeyId && <Text style={styles.chevron}>›</Text>}
     </Pressable>) : <EmptyCard text="No JourneyDeck items match that search yet." />}
   </ScreenScaffold>;
@@ -537,6 +603,9 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   onSwitchProfile: (userId: string) => void;
   onBack?: () => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const updates = Updates.useUpdates();
   const running = updates.currentlyRunning;
   const configuredRelease = Constants.expoConfig?.extra?.release as { label?: string; sequence?: string } | undefined;
@@ -686,7 +755,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
           style={[styles.retentionChoice, retentionDays === days && styles.retentionChoiceActive]}
         ><Text style={[styles.retentionChoiceText, retentionDays === days && styles.retentionChoiceTextActive]}>Keep {days} days</Text></Pressable>)}
       </View>
-      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color="#bb79ef" /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
+      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color={theme.color("#bb79ef", 'text')} /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
         : retentionPreviewState === 'error' || !retentionPreview ? <View style={styles.warningCard}><Text style={styles.warningTitle}>PREVIEW UNAVAILABLE</Text><Text style={styles.noticeText}>JourneyDeck could not read the local counts. No data was changed.</Text></View>
           : <>
             <View style={styles.retentionHeader}><View style={styles.flex}><Text style={styles.retentionTitle}>{retentionDays}-day detailed history</Text><Text style={styles.retentionCutoff}>Items before {formatRetentionDate(retentionPreview.cutoffAt)} are evaluated</Text></View><Text style={styles.readOnlyBadge}>READ ONLY</Text></View>
@@ -716,18 +785,26 @@ function formatReleaseDate(value: Date) {
 }
 
 function ReleaseMetric({ label, value, detail, wide = false }: { label: string; value: string; detail: string; wide?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.releaseMetric, wide && styles.releaseMetricWide]}><Text style={styles.releaseMetricLabel}>{label}</Text><Text style={styles.releaseMetricValue}>{value}</Text><Text style={styles.releaseMetricDetail} numberOfLines={wide ? 1 : 2}>{detail}</Text></View>;
 }
 
 function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
 }
 
 function ProfileLabMetric({ label, value }: { label: string; value: number }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.profileLabMetric}><Text style={styles.profileLabMetricLabel}>{label}</Text><Text style={styles.profileLabMetricValue}>{Math.max(0, value).toLocaleString()}</Text></View>;
 }
 
 function RetentionRow({ label, count }: { label: string; count: RetentionCount }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.retentionRow}><View style={styles.flex}><Text style={styles.retentionRowTitle}>{label}</Text><Text style={styles.retentionRowTotal}>{formatCount(count.total)} total</Text></View><View style={styles.retentionNumbers}><Text style={styles.retentionKept}>{formatCount(count.kept)}</Text><Text style={styles.retentionRemove}>{formatCount(count.removable)}</Text></View></View>;
 }
 
@@ -740,12 +817,16 @@ function formatRetentionDate(value: string) {
 }
 
 function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
+  const styles = useThemedStyles(darkStyles);
+
   const outcome = event.outcome === 'succeeded' ? 'DONE' : event.outcome === 'active' ? 'ACTIVE' : event.outcome.toUpperCase();
   const source = event.category === 'private_icloud' ? 'Apple private service' : event.category === 'privacy_edge' ? 'JourneyDeck private edge' : event.reason.replaceAll('_', ' ');
   return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{source} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
 }
 
 function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferences | null; capabilities: { lastFmConfigured: boolean; tessieConfigured: boolean } }) {
+  const styles = useThemedStyles(darkStyles);
+
   const rows = [
     ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Manual Song Recognition', provider?.connections.shazam ?? 'not_enabled'],
     ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'],
@@ -764,6 +845,9 @@ export function MoreScreen({
   currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
   onClose: () => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const destination = requested;
   let content: ReactNode;
   if (destination !== 'menu') {
@@ -771,7 +855,7 @@ export function MoreScreen({
   } else {
     content = <ScreenScaffold eyebrow="JOURNEYDECK UTILITIES" title="Tools" subtitle="Data confidence and app controls." onRefresh={onRefresh} leadingAction={{ label: 'Close', onPress: onClose }}>
       <View style={styles.moreGrid}>
-        <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color="#58d5b6" onPress={() => onRequestedChange('health')} />
+        <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color={theme.color("#58d5b6", 'text')} onPress={() => onRequestedChange('health')} />
       </View>
       <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Data Health explains what is saved and safe to retry.</Text></View>
     </ScreenScaffold>;
@@ -780,35 +864,54 @@ export function MoreScreen({
 }
 
 function MoreTile({ symbol, fallback, title, detail, color, onPress }: { symbol: SFSymbol; fallback: string; title: string; detail: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.moreTile}><NeonWidgetOutline radius={23} /><View style={[styles.moreIcon, { backgroundColor: `${color}20`, borderColor: `${color}66` }]}><SymbolView name={symbol} tintColor={color} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={styles.moreTile}><NeonWidgetOutline radius={23} /><View style={[styles.moreIcon, { backgroundColor: theme.color(`${color}20`, 'surface'), borderColor: theme.color(`${color}66`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(color, 'text')} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
 }
 
 function HealthRow({ title, status, detail, healthy }: { title: string; status: string; detail: string; healthy: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.healthRow}><NeonWidgetOutline radius={19} /><View style={[styles.healthDot, healthy && styles.healthDotGood]} /><View style={styles.flex}><View style={styles.rowBetween}><Text style={styles.itemTitle}>{title}</Text><Text style={[styles.healthStatus, healthy && styles.healthStatusGood]}>{status.toUpperCase()}</Text></View><Text style={styles.itemDetail}>{detail}</Text></View></View>;
 }
 
 function MilesChart({ statistics }: { statistics: StatisticsData }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const width = 330, height = 126, max = Math.max(1, ...statistics.dailyMiles.map(day => day.miles));
   const points = statistics.dailyMiles.map((day, index) => [10 + index * ((width - 20) / 29), height - 15 - (day.miles / max) * (height - 35)] as const);
   const line = points.map(([x, y], index) => `${index ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  return <NeonWidget radius={20} style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor="#9e54ff" /><Stop offset="1" stopColor="#ff6b4f" /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill="#8e46de" opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></NeonWidget>;
+  return <NeonWidget radius={20} style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor={theme.color("#9e54ff", 'accent')} /><Stop offset="1" stopColor={theme.color("#ff6b4f", 'accent')} /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill={theme.color("#8e46de", 'accent')} opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></NeonWidget>;
 }
 
 function StatCard({ label, metric: value, format }: { label: string; metric: StatisticsData['current']['miles']; format: (value: number) => string }) {
+  const styles = useThemedStyles(darkStyles);
+
   const change = value.changePercent;
   return <QuietInset radius={17} accent="#a66cff" style={styles.statCard}><Text style={styles.cardEyebrow}>{label}</Text><Text style={styles.statValue}>{format(value.value)}</Text><Text style={[styles.change, change !== null && change < 0 && styles.changeDown]}>{change === null ? 'NEW' : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <Text style={styles.changePeriod}>vs prior 30d</Text></Text></QuietInset>;
 }
 
 function JourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.journeyRow}><NeonWidgetOutline radius={18} /><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable>;
+  const styles = useThemedStyles(darkStyles);
+
+  return <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={styles.journeyRow}><NeonWidgetOutline radius={18} /><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable></CardDetailLink>;
 }
 
 function Metric({ value, unit, label }: { value: string; unit?: string; label: string }) {
-  return <View style={styles.metric}><LinearGradient pointerEvents="none" colors={['#ff7a61', '#bc66ff', '#5ca7ff'] as const} style={styles.metricAccent} /><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.metric}><LinearGradient pointerEvents="none" colors={theme.gradient(['#ff7a61', '#bc66ff', '#5ca7ff'] as const)} style={styles.metricAccent} /><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
-function SectionTitle({ title, detail }: { title: string; detail: string }) { return <View style={styles.sectionTitle}><Text style={styles.sectionHeading}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
-function EmptyCard({ text }: { text: string }) { return <NeonWidget radius={18} style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></NeonWidget>; }
+function SectionTitle({ title, detail }: { title: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.sectionTitle}><Text style={styles.sectionHeading}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
+function EmptyCard({ text }: { text: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <NeonWidget radius={18} style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></NeonWidget>; }
 function timelineGlyph(kind: string) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'charging' ? 'ϟ' : '◉'; }
 function timelineColor(kind: string) { return kind === 'journey' ? '#ff6a54' : kind === 'song' ? '#a85cff' : kind === 'charging' ? '#5bd6b9' : '#678cff'; }
 function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : '✦'; }
@@ -833,7 +936,7 @@ function formatAtlasPatternRoute(start: string, end: string) {
   return `${format(origin)} → ${format(destination)}`;
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
   headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
   content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22 },
@@ -995,8 +1098,11 @@ const styles = StyleSheet.create({
   storyStatsKicker: { color: '#ff8069', fontSize: 8, fontWeight: '900', letterSpacing: 1.7, marginBottom: 8 },
   storyStatsHeadline: { color: '#fff8ff', fontFamily: 'Georgia', fontSize: 22, lineHeight: 25, fontWeight: '700', letterSpacing: -0.75 },
   storyStatsHeroAccent: { color: '#ff7b6c' },
-  storyStatsCards: { flexDirection: 'row', gap: 7, marginBottom: 9 },
-  storyStatsFeatureCard: { flex: 1, minWidth: 0, minHeight: 87, borderRadius: 17, backgroundColor: '#0e0915', borderWidth: 1, borderColor: '#35233e', paddingHorizontal: 8, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 7, overflow: 'hidden' },
+  // Three exact thirds with symmetric inner padding keep every visible gutter at
+  // 10pt, even when the first cell contains a native Link/menu host.
+  storyStatsCards: { flexDirection: 'row', marginHorizontal: -5, marginBottom: 9 },
+  storyStatsCell: { width: '33.333333%', minWidth: 0, paddingHorizontal: 5 },
+  storyStatsFeatureCard: { flex: 1, width: '100%', minWidth: 0, minHeight: 87, borderRadius: 17, backgroundColor: '#0e0915', borderWidth: 1, borderColor: '#35233e', paddingHorizontal: 8, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 7, overflow: 'hidden' },
   storyStatsInsightIcon: { width: 36, height: 36, flexShrink: 0, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1b1021', borderWidth: 1, borderColor: '#ff6e62', padding: 2 },
   storyStatsInsightIconPurple: { borderColor: '#9659d4', backgroundColor: '#20102b' },
   storyStatsInsightIconSun: { borderColor: '#ff7c69', backgroundColor: '#231016' },

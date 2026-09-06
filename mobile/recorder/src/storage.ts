@@ -181,6 +181,7 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
         session.nextSequence,
         Number(importedRoute?.pointCount ?? 0),
         Number(importedRoute?.nextPointSequence ?? 0),
+        session.id.startsWith('native_recording_manual_'),
       );
       if (session.status === 'completed' && session.endedAt && routeIsComplete) {
         const now = new Date().toISOString();
@@ -255,7 +256,7 @@ function insertLocationsForSession(session: SessionRow, locations: LocationObjec
 export function recordLocations(locations: LocationObject[]) {
   initializeDatabase();
   const session = activeSession();
-  if (!session || session.status !== 'recording') return 0;
+  if (!session || session.status !== 'recording' || session.id.startsWith('native_recording_')) return 0;
   return insertLocationsForSession(session, locations);
 }
 

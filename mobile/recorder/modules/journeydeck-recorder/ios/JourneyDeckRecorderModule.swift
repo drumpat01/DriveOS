@@ -16,6 +16,7 @@ private let driveStopSpeedMetersPerSecond = 2.2
 private let driveStopDuration: TimeInterval = 5 * 60
 private let maximumDetectionAccuracy = 100.0
 private let nativeSessionPrefix = "native_recording_"
+private let manualSessionPrefix = "native_recording_manual_"
 
 private enum RecorderDefaults {
   static let enabled = "journeydeck.native-recorder.enabled-v1"
@@ -25,6 +26,9 @@ private enum RecorderDefaults {
   static let lastEvent = "journeydeck.native-recorder.last-event-v1"
   static let lastEventAt = "journeydeck.native-recorder.last-event-at-v1"
   static let lastError = "journeydeck.native-recorder.last-error-v1"
+  static let manualOwner = "journeydeck.native-recorder.manual-owner-v1"
+  static let legacyManualActive = "journeydeck.native-recorder.legacy-manual-v1"
+  static let controlToken = "journeydeck.native-recorder.control-token-v1"
 }
 
 private struct DurableDetectionState: Codable {
@@ -33,6 +37,7 @@ private struct DurableDetectionState: Codable {
   var candidateSamples: Int
   var stoppedSince: TimeInterval?
   var automaticSessionID: String?
+  var manualInactivity: ManualJourneyInactivity?
 
   static let empty = DurableDetectionState(
     candidateStartedAt: nil,
@@ -268,9 +273,79 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   }
 
   func bootstrap() {
-    guard defaults.bool(forKey: RecorderDefaults.enabled), configuredIdentity() != nil else { return }
-    startSignificantMonitoringIfAuthorized()
+    guard configuredIdentity() != nil else { return }
+    if defaults.bool(forKey: RecorderDefaults.enabled) { startSignificantMonitoringIfAuthorized() }
     workQueue.async { [weak self] in self?.reconcilePersistedSession() }
+  }
+
+  // Profile readiness and the legacy-session fence are applied on the same
+  // serial queue as Watch commands and native session creation.
+  func configureManual(ready: Bool, ownerUserID: String, legacyActive: Bool) async -> [String: Any] {
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        guard self.configuredIdentity()?.owner == ownerUserID else { continuation.resume(); return }
+        let wasReady = self.defaults.string(forKey: RecorderDefaults.manualOwner) == ownerUserID
+        if ready && self.configuredIdentity()?.owner == ownerUserID {
+          self.defaults.set(ownerUserID, forKey: RecorderDefaults.manualOwner)
+          if !wasReady || self.defaults.string(forKey: RecorderDefaults.controlToken) == nil {
+            self.defaults.set(UUID().uuidString, forKey: RecorderDefaults.controlToken)
+          }
+        } else {
+          self.defaults.removeObject(forKey: RecorderDefaults.manualOwner)
+        }
+        self.defaults.set(legacyActive, forKey: RecorderDefaults.legacyManualActive)
+        continuation.resume()
+      }
+    }
+    let result = await status()
+    await JourneyDeckWatchBridge.shared.publish()
+    return result
+  }
+
+  func startManual(requestID: String, expectedToken: String? = nil) async -> [String: Any] {
+    let authorized = await MainActor.run {
+      CLLocationManager.locationServicesEnabled() && self.locationManager.authorizationStatus == .authorizedAlways
+    }
+    guard authorized else {
+      setLastError("always_location_required")
+      return await status()
+    }
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        defer { continuation.resume() }
+        do {
+          if let expectedToken, expectedToken != self.defaults.string(forKey: RecorderDefaults.controlToken) {
+            self.setLastError("refresh_required"); return
+          }
+          guard let identity = self.configuredIdentity(),
+                self.defaults.string(forKey: RecorderDefaults.manualOwner) == identity.owner,
+                !self.defaults.bool(forKey: RecorderDefaults.legacyManualActive) else {
+            self.setLastError("open_iphone_required")
+            return
+          }
+          guard UUID(uuidString: requestID) != nil else { self.setLastError("invalid_request"); return }
+          // A repeated start is idempotent even after its journey was completed.
+          let id = manualSessionPrefix + requestID.lowercased()
+          let database = try NativeRecorderDatabase()
+          if try database.scalarInt("SELECT COUNT(*) FROM native_recording_sessions WHERE id=?;", bindings: [id]) > 0 { return }
+          if try self.activeSession(ownerUserID: identity.owner) != nil { return }
+          let session = try self.startSession(identity: identity, locations: [], manualID: id)
+          self.state = .empty
+          self.state.automaticSessionID = session.id
+          self.state.manualInactivity = ManualJourneyInactivity()
+          self.lastLocation = nil
+          self.persistState()
+          self.saveEvent("manual_started", sessionID: session.id)
+          self.setLastError(nil)
+        } catch { self.setLastError(self.safeCode(error)) }
+      }
+    }
+    await withCheckedContinuation { continuation in
+      workQueue.async { self.reconcilePersistedSession(); continuation.resume() }
+    }
+    let result = await status()
+    await JourneyDeckWatchBridge.shared.publish()
+    return result
   }
 
   func configure(enabled: Bool, ownerUserID: String, deviceID: String) async -> [String: Any] {
@@ -280,9 +355,20 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       setLastError(NativeRecorderError.notConfigured.safeCode)
       return await status()
     }
-    defaults.set(enabled, forKey: RecorderDefaults.enabled)
-    defaults.set(cleanOwner, forKey: RecorderDefaults.ownerUserID)
-    defaults.set(cleanDevice, forKey: RecorderDefaults.deviceID)
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        if self.configuredIdentity()?.owner != cleanOwner {
+          self.defaults.removeObject(forKey: RecorderDefaults.manualOwner)
+          self.defaults.removeObject(forKey: RecorderDefaults.controlToken)
+          self.state = .empty
+          self.lastLocation = nil
+        }
+        self.defaults.set(enabled, forKey: RecorderDefaults.enabled)
+        self.defaults.set(cleanOwner, forKey: RecorderDefaults.ownerUserID)
+        self.defaults.set(cleanDevice, forKey: RecorderDefaults.deviceID)
+        continuation.resume()
+      }
+    }
     await MainActor.run {
       if enabled { self.startSignificantMonitoringIfAuthorized() }
       else { self.stopSignificantMonitoring() }
@@ -301,7 +387,12 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       workQueue.async {
         do {
           guard let identity = self.configuredIdentity() else { continuation.resume(returning: (nil, nil)); return }
-          let session = try self.activeSession(ownerUserID: identity.owner)
+          var session = try self.activeSession(ownerUserID: identity.owner)
+          if let active = session, active.id.hasPrefix(manualSessionPrefix),
+             Date().timeIntervalSince(active.startedAt) >= ManualJourneyInactivity.maximumDuration {
+            self.reconcilePersistedSession()
+            session = try self.activeSession(ownerUserID: identity.owner)
+          }
           continuation.resume(returning: (session, nil))
         } catch {
           continuation.resume(returning: (nil, self.safeCode(error)))
@@ -318,6 +409,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let errorValue: Any = (snapshot.1 ?? defaults.string(forKey: RecorderDefaults.lastError)).map { $0 as Any } ?? NSNull()
     return [
       "nativeModuleAvailable": true,
+      "statusReliable": snapshot.1 == nil,
       "configured": configuredIdentity() != nil,
       "enabled": defaults.bool(forKey: RecorderDefaults.enabled),
       "significantMonitoring": locationState.0,
@@ -328,7 +420,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       "authorization": authorization,
       "lastEvent": eventValue,
       "lastEventAt": eventAtValue,
-      "lastErrorCode": errorValue
+      "lastErrorCode": errorValue,
+      "controlToken": defaults.string(forKey: RecorderDefaults.controlToken) ?? "",
+      "manualReady": configuredIdentity() != nil && configuredIdentity()?.owner == defaults.string(forKey: RecorderDefaults.manualOwner)
+        && !defaults.bool(forKey: RecorderDefaults.legacyManualActive),
+      "legacyManualActive": defaults.bool(forKey: RecorderDefaults.legacyManualActive)
     ]
   }
 
@@ -344,27 +440,29 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     return await status()
   }
 
-  func finish() async -> [String: Any] {
+  func finish(expectedSessionID: String? = nil) async -> [String: Any] {
     await withCheckedContinuation { continuation in
       workQueue.async {
         do {
           guard let identity = self.configuredIdentity(),
                 let session = try self.activeSession(ownerUserID: identity.owner),
                 session.id.hasPrefix(nativeSessionPrefix) else { continuation.resume(); return }
+          if let expectedSessionID, session.id != expectedSessionID { continuation.resume(); return }
           try self.finishSession(session, endedAt: Date())
           self.state = .empty
           self.persistState()
-          self.saveEvent("finished", sessionID: session.id)
+          self.saveEvent(session.id.hasPrefix(manualSessionPrefix) ? "manual_finished" : "finished", sessionID: session.id)
           self.setLastError(nil)
         } catch { self.setLastError(self.safeCode(error)) }
         continuation.resume()
       }
     }
-    await MainActor.run {
-      self.stopPreciseTracking()
-      if self.defaults.bool(forKey: RecorderDefaults.enabled) { self.startSignificantMonitoringIfAuthorized() }
+    await withCheckedContinuation { continuation in
+      workQueue.async { self.reconcilePersistedSession(); continuation.resume() }
     }
-    return await status()
+    let result = await status()
+    await JourneyDeckWatchBridge.shared.publish()
+    return result
   }
 
   func exportInbox(afterSequences: [String: Int]) async -> [String: Any] {
@@ -591,6 +689,10 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   }
 
   private func recordAndEvaluate(_ locations: [CLLocation], session: ActiveSession) throws {
+    if session.id.hasPrefix(manualSessionPrefix) {
+      try recordManualAndEvaluate(locations, session: session)
+      return
+    }
     let validLocations = locations.filter { $0.timestamp >= session.startedAt && self.validCoordinate($0) }
     if !validLocations.isEmpty { try insertLocations(validLocations, sessionID: session.id) }
     for location in validLocations where validForDetection(location) {
@@ -622,9 +724,30 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     }
   }
 
-  private func startSession(identity: (owner: String, device: String), locations: [CLLocation]) throws -> ActiveSession {
+  private func recordManualAndEvaluate(_ locations: [CLLocation], session: ActiveSession) throws {
+    var policy = state.manualInactivity ?? ManualJourneyInactivity()
+    let now = Date().timeIntervalSince1970
+    for location in locations where location.timestamp >= session.startedAt && location.timestamp.timeIntervalSince1970 <= now {
+      if validCoordinate(location) { try insertLocations([location], sessionID: session.id) }
+      let stop = policy.observe(.init(timestamp: location.timestamp.timeIntervalSince1970,
+        latitude: location.coordinate.latitude, longitude: location.coordinate.longitude,
+        accuracy: location.horizontalAccuracy, speed: location.speed), now: now)
+      state.manualInactivity = policy
+      persistState()
+      if stop || now - session.startedAt.timeIntervalSince1970 >= ManualJourneyInactivity.maximumDuration {
+        try finishSession(session, endedAt: location.timestamp)
+        state = .empty
+        persistState()
+        saveEvent("manual_auto_finished", sessionID: session.id)
+        DispatchQueue.main.async { self.stopPreciseTracking() }
+        return
+      }
+    }
+  }
+
+  private func startSession(identity: (owner: String, device: String), locations: [CLLocation], manualID: String? = nil) throws -> ActiveSession {
     let database = try NativeRecorderDatabase()
-    let id = nativeSessionPrefix + UUID().uuidString.lowercased()
+    let id = manualID ?? (nativeSessionPrefix + UUID().uuidString.lowercased())
     let startedAt = locations.first?.timestamp ?? Date()
     let now = Date()
     try database.transaction {
@@ -688,6 +811,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
           try database.execute("UPDATE native_recording_sessions SET status=?,updated_at=? WHERE id=? AND status IN ('recording','paused');",
                                bindings: [targetStatus, self.iso(Date()), session.id])
           self.state.automaticSessionID = session.id
+          if session.id.hasPrefix(manualSessionPrefix) { self.state.manualInactivity = ManualJourneyInactivity() }
           self.persistState()
           self.setLastError(nil)
         } catch { self.setLastError(self.safeCode(error)) }
@@ -711,8 +835,17 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
         DispatchQueue.main.async { self.stopPreciseTracking() }
         return
       }
+      if state.automaticSessionID != session.id { state.manualInactivity = nil }
       state.automaticSessionID = session.id
       persistState()
+      if session.id.hasPrefix(manualSessionPrefix), Date().timeIntervalSince(session.startedAt) >= ManualJourneyInactivity.maximumDuration {
+        try finishSession(session, endedAt: Date())
+        state = .empty
+        persistState()
+        saveEvent("manual_auto_finished", sessionID: session.id)
+        DispatchQueue.main.async { self.stopPreciseTracking() }
+        return
+      }
       if session.status == "recording" {
         DispatchQueue.main.async { self.startPreciseTrackingIfAuthorized() }
       } else if session.status == "finishing" {
@@ -738,6 +871,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     defaults.set(kind, forKey: RecorderDefaults.lastEvent)
     defaults.set(occurredAt, forKey: RecorderDefaults.lastEventAt)
     _ = sessionID
+    Task { await JourneyDeckWatchBridge.shared.publish() }
   }
 
   private func startSignificantMonitoringIfAuthorized() {
@@ -770,7 +904,8 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     }
     guard !preciseTracking else { return }
     locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-    locationManager.distanceFilter = 15
+    // Stationary callbacks are required for the manual ten-minute safeguard.
+    locationManager.distanceFilter = kCLDistanceFilterNone
     locationManager.allowsBackgroundLocationUpdates = true
     locationManager.startUpdatingLocation()
     preciseTracking = true
@@ -918,6 +1053,14 @@ public final class JourneyDeckRecorderModule: Module {
       await JourneyDeckNativeRecorder.shared.status()
     }
 
+    AsyncFunction("configureManualAsync") { (ready: Bool, ownerUserID: String, legacyActive: Bool) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.configureManual(ready: ready, ownerUserID: ownerUserID, legacyActive: legacyActive)
+    }
+
+    AsyncFunction("startManualJourneyAsync") { (requestID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.startManual(requestID: requestID)
+    }
+
     AsyncFunction("pauseActiveJourneyAsync") { () async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.pause()
     }
@@ -928,6 +1071,10 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("finishActiveJourneyAsync") { () async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.finish()
+    }
+
+    AsyncFunction("finishJourneyIfMatchingAsync") { (sessionID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.finish(expectedSessionID: sessionID)
     }
 
     AsyncFunction("exportInboxAsync") { (afterSequences: [String: Int]) async -> [String: Any] in

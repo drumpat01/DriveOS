@@ -17,11 +17,13 @@ const point = (minutes: number, latitude: number, speedMps: number | null = null
   recordedAt: new Date(startedAtMs + minutes * 60_000).toISOString(),
   latitude, longitude: -97.3308, accuracyMeters, speedMps,
 });
+const parked = (from: number, to: number, latitude = 32.7555) =>
+  Array.from({ length: Math.round((to - from) * 2) + 1 }, (_, i) => point(from + i / 2, latitude, 0));
 
-test('finishes a forgotten manual journey after fifteen minutes without driving', () => {
+test('finishes a forgotten manual journey at ten minutes of observed inactivity', () => {
   const decision = evaluateManualRecordingFailsafe({
     session: session(),
-    route: [point(0, 32.7555, 0), point(15, 32.7555, 0)],
+    route: parked(0, 10),
     evaluatedAtMs: startedAtMs + MANUAL_RECORDING_INACTIVITY_LIMIT_MS,
   });
   assert.equal(decision.shouldFinish, true);
@@ -31,11 +33,11 @@ test('finishes a forgotten manual journey after fifteen minutes without driving'
 test('meaningful movement resets the inactivity clock', () => {
   const decision = evaluateManualRecordingFailsafe({
     session: session(),
-    route: [point(0, 32.7555, 0), point(10, 32.8055, 8), point(24, 32.8055, 0)],
-    evaluatedAtMs: startedAtMs + 24 * 60_000,
+    route: [...parked(0, 8), point(8.5, 32.8055, 8), ...parked(9, 17.5, 32.8055)],
+    evaluatedAtMs: startedAtMs + 17.5 * 60_000,
   });
   assert.equal(decision.shouldFinish, false);
-  assert.equal(decision.inactiveForMs, 14 * 60_000);
+  assert.equal(decision.inactiveForMs, 9 * 60_000);
 });
 
 test('does not finish a long manual journey that is still moving', () => {
@@ -53,10 +55,9 @@ test('ordinary walking after parking does not restart the driving clock', () => 
     route: [
       point(0, 32.7555, 12),
       point(1, 32.7655, 12),
-      point(10, 32.7715, 1.4),
-      point(16, 32.7755, 1.4),
+      ...Array.from({ length: 31 }, (_, i) => point(1.5 + i / 2, 32.7655 + i * 0.00035, 1.4)),
     ],
-    evaluatedAtMs: startedAtMs + 16 * 60_000,
+    evaluatedAtMs: startedAtMs + 16.5 * 60_000,
   });
   assert.equal(decision.shouldFinish, true);
   assert.equal(decision.reason, 'stationary_timeout');
@@ -95,14 +96,29 @@ test('native and known automatic sessions are never owned by the manual failsafe
   assert.equal(automatic.shouldFinish, false);
 });
 
-test('poor GPS fixes cannot falsely reset the inactivity clock', () => {
+test('poor or missing GPS is unknown, not evidence that the car has stopped', () => {
   const decision = evaluateManualRecordingFailsafe({
     session: session(),
-    route: [point(0, 32.7555, 0), point(29, 33.7555, 30, 500)],
+    route: [...parked(0, 9), point(10, 33.7555, 30, 500)],
     evaluatedAtMs: startedAtMs + MANUAL_RECORDING_INACTIVITY_LIMIT_MS,
   });
-  assert.equal(decision.shouldFinish, true);
-  assert.equal(decision.reason, 'stationary_timeout');
+  assert.equal(decision.shouldFinish, false);
+  assert.equal(evaluateManualRecordingFailsafe({ session: session(), route: [], evaluatedAtMs: startedAtMs + 20 * 60_000 }).shouldFinish, false);
+});
+
+test('a GPS gap resets the observed inactivity interval', () => {
+  assert.equal(evaluateManualRecordingFailsafe({ session: session(), route: [...parked(0, 8), ...parked(12, 20)],
+    evaluatedAtMs: startedAtMs + 20 * 60_000 }).shouldFinish, false);
+});
+
+test('stationary GPS drift and stale positive speed do not keep a journey open', () => {
+  const route = parked(0, 10).map((fix, i) => ({ ...fix, latitude: fix.latitude + (i % 2) * 0.00002, speedMps: 8 }));
+  assert.equal(evaluateManualRecordingFailsafe({ session: session(), route, evaluatedAtMs: startedAtMs + 10 * 60_000 }).shouldFinish, true);
+});
+
+test('dense fixes from a moving car do not look stationary after accuracy subtraction', () => {
+  const route = Array.from({ length: 901 }, (_, i) => point(i / 60, 32.75 + i * 0.00005, 5, 10));
+  assert.equal(evaluateManualRecordingFailsafe({ session: session(), route, evaluatedAtMs: startedAtMs + 15 * 60_000 }).shouldFinish, false);
 });
 
 test('background and foreground paths both enforce the same atomic failsafe', async () => {

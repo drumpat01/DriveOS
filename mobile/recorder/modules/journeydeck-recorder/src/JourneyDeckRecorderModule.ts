@@ -7,9 +7,12 @@ import type {
 declare class JourneyDeckRecorderModule extends NativeModule<{}> {
   configureAsync(enabled: boolean, ownerUserId: string, deviceId: string): Promise<NativeRecorderStatus>;
   getStatusAsync(): Promise<NativeRecorderStatus>;
+  configureManualAsync?(ready: boolean, ownerUserId: string, legacyActive: boolean): Promise<NativeRecorderStatus>;
+  startManualJourneyAsync?(requestId: string): Promise<NativeRecorderStatus>;
   pauseActiveJourneyAsync(): Promise<NativeRecorderStatus>;
   resumeActiveJourneyAsync(): Promise<NativeRecorderStatus>;
   finishActiveJourneyAsync(): Promise<NativeRecorderStatus>;
+  finishJourneyIfMatchingAsync?(sessionId: string): Promise<NativeRecorderStatus>;
   exportInboxAsync(afterSequences: Record<string, number>): Promise<NativeRecorderInboxExport>;
   acknowledgeCompletedSessionsAsync(sessionIds: string[]): Promise<{ acknowledged: number; errorCode: string | null }>;
   nearbyPointsOfInterestAsync(latitude: number, longitude: number, radiusMeters: number): Promise<NativeMapKitPointOfInterest[]>;

@@ -2,7 +2,12 @@ import * as Location from 'expo-location';
 import { AppState } from 'react-native';
 import { lookupNearbyMapKitPointsOfInterest } from '../modules/journeydeck-recorder';
 import { notifyLocalArchiveChanged } from './local-archive-events';
+import { lookupOverturePlace } from './overture-places';
+import { findSensitivePlace } from './privacy-masker';
+import { activeSession } from './storage';
 import {
+  getActiveLocalUserId,
+  getSensitivePlaces,
   findCachedPlace,
   findNamedPlace,
   upsertPlace,
@@ -47,7 +52,12 @@ function candidateKey(coordinate: PlaceCoordinate) {
 async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) {
   // Expo explicitly discourages geocoding in the background. JourneyDeck waits
   // until the archive is visible, then resolves a small sequential batch.
-  if (AppState.currentState && AppState.currentState !== 'active') return 0;
+  const canRun = () => (!AppState.currentState || AppState.currentState === 'active')
+    && getActiveLocalUserId() === userId && !activeSession();
+  if (!canRun()) return 0;
+  const canResolve = (coordinate: PlaceCoordinate) => canRun()
+    && !findSensitivePlace({ lat: coordinate.latitude, lng: coordinate.longitude }, getSensitivePlaces(userId))
+    && !findNamedPlace(userId, coordinate.latitude, coordinate.longitude, SAVED_PLACE_MATCH_RADIUS_METERS);
 
   const seen = new Set<string>();
   const candidates: PlaceCoordinate[] = [];
@@ -57,9 +67,9 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
       const key = candidateKey(coordinate);
       if (seen.has(key)) continue;
       seen.add(key);
-      if (findNamedPlace(userId, coordinate.latitude, coordinate.longitude, SAVED_PLACE_MATCH_RADIUS_METERS)) continue;
+      if (!canResolve(coordinate)) continue;
       if (findCachedPlace(userId, coordinate.latitude, coordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)) continue;
-      if ((recentFailures.get(key) ?? 0) > Date.now() - FAILURE_RETRY_MS) continue;
+      if ((recentFailures.get(`${userId}:${key}`) ?? 0) > Date.now() - FAILURE_RETRY_MS) continue;
       candidates.push(coordinate);
       if (candidates.length >= MAX_LOOKUPS_PER_PASS) break;
     }
@@ -68,24 +78,36 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
 
   let enriched = 0;
   for (const coordinate of candidates) {
+    if (!canRun()) break;
+    if (!canResolve(coordinate)) continue;
     const key = candidateKey(coordinate);
+    const failureKey = `${userId}:${key}`;
     try {
-      const nearby = await lookupNearbyMapKitPointsOfInterest(
+      // Country comes from this stop, never the driver's locale or account.
+      // A failed country lookup safely leaves MapKit in charge everywhere.
+      const [address] = await Location.reverseGeocodeAsync(coordinate).catch(() => []);
+      if (!canResolve(coordinate)) continue;
+      const overture = address?.isoCountryCode?.toUpperCase() === 'US'
+        ? await lookupOverturePlace(coordinate.latitude, coordinate.longitude, () => canResolve(coordinate)) : null;
+      if (!canResolve(coordinate)) continue;
+      const nearby = overture ? [] : await lookupNearbyMapKitPointsOfInterest(
         coordinate.latitude,
         coordinate.longitude,
         MAPKIT_POI_SEARCH_RADIUS_METERS,
-      );
+      ).catch(() => []);
+      if (!canResolve(coordinate)) continue;
       const pointOfInterest = nearby.find(candidate => candidate.distanceMeters <= MAPKIT_POI_MAX_MATCH_DISTANCE_METERS);
-      const [address] = pointOfInterest ? [] : await Location.reverseGeocodeAsync(coordinate);
-      const label = pointOfInterest?.name ?? (address ? bestPlaceLabelFromAddress(address) : null);
+      const label = overture?.[1] ?? pointOfInterest?.name ?? (address ? bestPlaceLabelFromAddress(address) : null);
       if (!label) {
-        recentFailures.set(key, Date.now());
+        recentFailures.set(failureKey, Date.now());
         continue;
       }
       upsertPlace({
         // local_places ids are database-wide, so the profile must be part of a
         // deterministic geocoder cache id even when two drivers share a stop.
-        id: `${pointOfInterest ? 'mapkit-poi' : 'geocoded'}-${userId}-${key}`,
+        // GERS identity travels in the existing private place/alias envelope;
+        // no new native SQLite schema or CloudKit record type is required.
+        id: overture ? `overture-poi-${userId}-${overture[0]}` : `${pointOfInterest ? 'mapkit-poi' : 'geocoded'}-${userId}-${key}`,
         userId,
         kind: 'geocoded',
         label,
@@ -98,15 +120,16 @@ async function runEnrichment(userId: LocalUserId, journeys: JourneyWithRoute[]) 
       });
       enriched += 1;
     } catch {
-      recentFailures.set(key, Date.now());
+      recentFailures.set(failureKey, Date.now());
     }
   }
+  for (const [key, time] of recentFailures) if (time < Date.now() - FAILURE_RETRY_MS) recentFailures.delete(key);
   if (enriched > 0) notifyLocalArchiveChanged();
   return enriched;
 }
 
 /**
- * Resolves a small foreground-only batch through the device geocoder. Results
+ * Resolves a small foreground-only batch using US Overture then native fallback. Results
  * stay in the private local place cache; user-created names always win.
  */
 export function enrichJourneyEndpointPlaces(userId: LocalUserId, journeys: JourneyWithRoute[]) {

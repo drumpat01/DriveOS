@@ -23,6 +23,17 @@ const unavailableStatus = {
 } as const;
 
 export const isJourneyDeckNativeRecorderAvailable = JourneyDeckRecorderModule !== null;
+export const isNativeManualRecorderAvailable = typeof JourneyDeckRecorderModule?.startManualJourneyAsync === 'function';
+let manualProfileTransition = false;
+export function setNativeManualProfileTransition(active: boolean) { manualProfileTransition = active; }
+
+export async function configureNativeManualRecorder(ready: boolean, ownerUserId: string, legacyActive: boolean) {
+  return JourneyDeckRecorderModule?.configureManualAsync?.(ready && !manualProfileTransition, ownerUserId, legacyActive) ?? unavailableStatus;
+}
+
+export async function startNativeManualJourney(requestId: string) {
+  return JourneyDeckRecorderModule?.startManualJourneyAsync?.(requestId) ?? unavailableStatus;
+}
 
 const nativeRecorderConfiguration = createLatestNativeRecorderConfiguration(async target => {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
@@ -47,8 +58,9 @@ export async function resumeNativeAutomaticJourney() {
   return JourneyDeckRecorderModule.resumeActiveJourneyAsync();
 }
 
-export async function finishNativeAutomaticJourney() {
+export async function finishNativeAutomaticJourney(sessionId?: string) {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
+  if (sessionId && JourneyDeckRecorderModule.finishJourneyIfMatchingAsync) return JourneyDeckRecorderModule.finishJourneyIfMatchingAsync(sessionId);
   return JourneyDeckRecorderModule.finishActiveJourneyAsync();
 }
 

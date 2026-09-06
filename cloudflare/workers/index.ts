@@ -8,6 +8,7 @@
 import { handleSpotifyConfig, handleSpotifyTokenExchange } from './oauth-spotify.ts';
 import { handleTessieMedia, handleTessieSync, handleTessieVerification } from './oauth-tessie.ts';
 import { handlePlacesLookup } from './places-lookup.ts';
+import { handleOverturePlaces } from './overture-places.ts';
 import { handleLastFmHistory } from './lastfm-history.ts';
 import { jsonResponse } from './http.ts';
 import { enforceGlobalRateLimit, featureAvailable, type EdgeFeature, unavailableFeature } from './edge-policy.ts';
@@ -44,7 +45,7 @@ function featureForPath(path: string): EdgeFeature | null {
   if (path.startsWith('/api/auth/spotify')) return 'spotify';
   if (path === '/api/music/lastfm/recent') return 'lastfm';
   if (path.startsWith('/api/auth/tessie') || path.startsWith('/api/vehicle/tessie')) return 'tessie';
-  if (path === '/api/places/reverse') return 'places';
+  if (path === '/api/places/reverse' || path === '/api/places/us-tile') return 'places';
   return null;
 }
 
@@ -94,6 +95,8 @@ export default {
         response = await handleTessieMedia(request, env);
       } else if (path === '/api/places/reverse') {
         response = await handlePlacesLookup(request, env, ctx);
+      } else if (path === '/api/places/us-tile') {
+        response = await handleOverturePlaces(request, env, ctx);
       } else {
         response = jsonResponse({ error: 'Not Found', requestId }, 404);
       }
@@ -101,6 +104,9 @@ export default {
       response = jsonResponse({ error: 'Edge request failed', requestId }, 500, { 'Cache-Control': 'no-store' });
     }
     const finalResponse = addCors(response, corsOrigin);
+    // The area lives in the POST body. Only our explicit tile-keyed edge cache
+    // and mobile cache may reuse it; URL-only intermediary caches must not.
+    if (path === '/api/places/us-tile') finalResponse.headers.set('Cache-Control', 'no-store');
     finalResponse.headers.set('X-JourneyDeck-Request-Id', requestId);
     console.log(JSON.stringify({ event: 'edge_request', requestId, method: request.method, path, status: finalResponse.status, durationMs: Date.now() - startedAt }));
     return finalResponse;

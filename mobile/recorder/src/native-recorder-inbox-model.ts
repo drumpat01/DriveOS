@@ -7,9 +7,10 @@ export function nativeRouteImportIsComplete(
   expectedNextSequence: number,
   pointCount: number,
   nextPointSequence: number,
+  allowEmptyManualJourney = false,
 ): boolean {
   return Number.isInteger(expectedNextSequence)
-    && expectedNextSequence > 0
+    && (expectedNextSequence > 0 || (allowEmptyManualJourney && expectedNextSequence === 0 && pointCount === 0 && nextPointSequence === 0))
     && Number.isInteger(pointCount)
     && pointCount >= expectedNextSequence
     && Number.isInteger(nextPointSequence)

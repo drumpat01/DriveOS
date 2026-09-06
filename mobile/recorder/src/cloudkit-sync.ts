@@ -51,7 +51,14 @@ import {
   getRouteArchive,
   replaceJourneyGpsPointsFromCloud,
   quarantineCloudDeletions,
+  preparePrivatePlaceSync,
+  privateCloudPlaceId,
+  getPlace,
+  upsertPlace,
+  deletePlace,
 } from './local-store';
+import { PRIVATE_PLACE_PREFIX, parsePrivatePlace } from './private-place-record';
+import { resolvePrivatePhotoFile } from './private-photo-file';
 import { resolveVersionedPrivateConflict } from './private-content-conflicts';
 import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive } from './route-archive';
 import { isDirectJourneyMemoryId } from './memory-model';
@@ -103,8 +110,8 @@ export function journeyToCKRecord(j: LocalJourney): CloudKitRecord {
       endedAt: j.endedAt,
       durationMinutes: j.durationMinutes,
       miles: j.miles,
-      startPlaceId: j.startPlaceId,
-      endPlaceId: j.endPlaceId,
+      startPlaceId: privateCloudPlaceId(j.userId, j.startPlaceId),
+      endPlaceId: privateCloudPlaceId(j.userId, j.endPlaceId),
       averageSpeedMph: j.averageSpeedMph,
       maxSpeedMph: j.maxSpeedMph,
       songCount: j.songCount,
@@ -139,7 +146,7 @@ export function ckRecordToJourney(record: CloudKitRecord, userId: LocalUserId): 
     provider: f.provider ? String(f.provider) : null,
     syncedToCloud: 1,
     createdAt: f.startedAt ? String(f.startedAt) : new Date().toISOString(),
-    updatedAt: record.modificationDate || String(f.updatedAt || new Date().toISOString()),
+    updatedAt: String(f.updatedAt || record.modificationDate || new Date().toISOString()),
   };
 }
 
@@ -308,6 +315,8 @@ export class CloudKitSyncEngine {
   private privateContentV2: boolean;
   private privateRouteAssets: boolean;
   private preparedRevisions = new Map<string, number>();
+  private preparationFailures = new Set<string>();
+  private issues = new Map<string, string>();
 
   constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean } = {}) {
     this.userId = userId;
@@ -324,6 +333,7 @@ export class CloudKitSyncEngine {
   }
 
   public setSyncInProgress(): void {
+    if (this.privateContentV2) preparePrivatePlaceSync(this.userId);
     syncStates.set(this.userId, { ...stateFor(this.userId), syncInProgress: true, lastError: null, pendingUploadCount: this.pendingCount() });
   }
 
@@ -335,24 +345,40 @@ export class CloudKitSyncEngine {
    * Prepares local records that need to be pushed to CloudKit.
    */
   public async preparePushPayload(limit = 50): Promise<CloudKitRecord[]> {
+    if (this.privateContentV2) preparePrivatePlaceSync(this.userId);
     const pendingJourneyIds = journeysPendingSync(this.userId, limit);
     const pendingMusicIds = musicEntriesPendingSync(this.userId, limit);
     const pendingMemoryIds = memoriesPendingSync(this.userId, limit).filter(isDirectJourneyMemoryId);
-    const pendingPhotoIds = this.privateContentV2 ? photosPendingSync(this.userId, limit) : [];
     const pendingPreferenceKeys = this.privateContentV2 ? preferencesPendingSync(this.userId, limit) : [];
     const pendingRoutes = this.privateRouteAssets ? routeArchivesPendingSync(this.userId, Math.min(10, limit)) : [];
     const pendingJourneys = pendingJourneyIds.map(id => getJourney(this.userId, id)).filter((item): item is LocalJourney => Boolean(item));
     const pendingMusic = pendingMusicIds.map(id => getMusicEntry(this.userId, id)).filter((item): item is LocalMusicEntry => Boolean(item));
     const memories = listMemoriesIncludingDeleted(this.userId).filter(item => pendingMemoryIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
-    const memoryPhotos = listPhotosIncludingDeleted(this.userId).filter(item => item.source === 'memory' && isDirectJourneyMemoryId(item.memoryId) && pendingPhotoIds.includes(item.id));
+    const memoryPhotos = this.privateContentV2 ? listPhotosIncludingDeleted(this.userId).filter(item =>
+      item.source === 'memory' && isDirectJourneyMemoryId(item.memoryId) && !item.syncedToCloud
+      && !this.preparationFailures.has(`photo_${item.id}`)) : [];
+    const memoryPhotoRecords: CloudKitRecord[] = [];
+    for (const photo of memoryPhotos) {
+      if (memoryPhotoRecords.length >= limit) break;
+      if (!photo.deletedAt) {
+        const file = await resolvePrivatePhotoFile(photo);
+        if (file.status !== 'available') {
+          this.preparationFailures.add(`photo_${photo.id}`);
+          this.recordUploadFailure(`photo_${photo.id}`, `local_photo_${file.status}`);
+          continue;
+        }
+        photo.localUri = file.localUri;
+      }
+      memoryPhotoRecords.push(photoToCKRecord(photo));
+    }
     const routeRecords = await Promise.all(pendingRoutes.map(routeArchiveToCKRecord));
     const records = [
+      ...listPrivatePreferences(this.userId, true).filter(item => pendingPreferenceKeys.includes(item.key)).map(preferenceToCKRecord),
       ...pendingJourneys.map(journeyToCKRecord),
       ...routeRecords,
       ...pendingMusic.map(musicEntryToCKRecord),
       ...memories.map(memoryToCKRecord),
-      ...memoryPhotos.map(photoToCKRecord),
-      ...listPrivatePreferences(this.userId, true).filter(item => pendingPreferenceKeys.includes(item.key)).map(preferenceToCKRecord),
+      ...memoryPhotoRecords,
     ].slice(0, Math.max(1, Math.min(200, limit * 4)));
     for (const record of records) {
       const revision = Number(record.fields.syncRevision);
@@ -364,6 +390,62 @@ export class CloudKitSyncEngine {
       }
     }
     return records;
+  }
+
+  public getPreparationFailureCount(): number {
+    return this.preparationFailures.size;
+  }
+
+  /** Local UI only: never include file paths, coordinates, tokens, or raw native errors. */
+  public recordUploadFailure(recordName: string, code: string): void {
+    const reasons: Record<string, string> = {
+      local_photo_missing: 'The saved photo file is missing on this device. Repeated Sync taps cannot upload a missing file.',
+      local_photo_unreadable: 'The saved photo file could not be checked on this device.',
+      local_photo_empty: 'The saved photo file is empty on this device.',
+      network_failure: 'The connection failed during upload.',
+      network_unavailable: 'A network connection is unavailable.',
+      rate_limited: 'iCloud asked JourneyDeck to wait before retrying.',
+      service_unavailable: 'The iCloud service is temporarily unavailable.',
+      zone_busy: 'iCloud is busy processing this library.',
+      account_temporarily_unavailable: 'The iCloud account is temporarily unavailable.',
+      not_authenticated: 'iCloud requires account authentication.',
+      quota_exceeded: 'The iCloud account has insufficient storage.',
+      permission_failure: 'iCloud denied permission to upload this item.',
+      limit_exceeded: 'This item exceeded an iCloud service limit.',
+      asset_missing: 'iCloud could not access the file for this item.',
+      asset_modified: 'The file changed while it was uploading.',
+      server_record_changed: 'Another device changed this item during sync.',
+      missing_dependency: 'A related place, journey, or Memory has not arrived yet. Sync the source device, then try again here.',
+    };
+    const reason = reasons[code] ?? (/^cloudkit_\d{1,4}$/.test(code) ? `iCloud returned error ${code.slice(9)}.` : 'iCloud did not provide a specific reason for this item.');
+    // A stable reference identifies the item without exposing its raw record ID.
+    let hash = 2166136261;
+    for (const character of recordName) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
+    const reference = (hash >>> 0).toString(16).padStart(8, '0');
+    let label = 'Library item';
+    if (recordName.startsWith('photo_')) {
+      const photo = getPhotoIncludingDeleted(this.userId, recordName.slice(6));
+      const memory = photo?.memoryId ? getMemoryIncludingDeleted(this.userId, photo.memoryId) : null;
+      const photos = photo?.memoryId ? listPhotosIncludingDeleted(this.userId).filter(item => item.memoryId === photo.memoryId && !item.deletedAt) : [];
+      const position = photos.findIndex(item => item.id === photo?.id);
+      label = `${photo?.deletedAt ? 'Removed photo' : position >= 0 ? `Photo ${position + 1}` : 'Photo'}${memory ? ` in “${memory.name.replace(/\s+/g, ' ').slice(0, 70)}”` : ''}`;
+    } else if (recordName.startsWith('music_')) {
+      const song = getMusicEntry(this.userId, recordName.slice(6));
+      label = song ? `Song “${song.track.replace(/\s+/g, ' ').slice(0, 70)}”` : 'Song';
+    } else if (recordName.startsWith('journey_')) label = 'Journey';
+    else if (recordName.startsWith('route_')) label = 'Journey route';
+    else if (recordName.startsWith('memory_')) {
+      const memory = getMemoryIncludingDeleted(this.userId, recordName.slice(7));
+      label = memory ? `Memory “${memory.name.replace(/\s+/g, ' ').slice(0, 70)}”` : 'Memory';
+    } else if (recordName.startsWith('preference_library.place.v1.')) label = 'Saved place';
+    else if (recordName.startsWith('preference_')) label = 'Private preference';
+    this.issues.set(recordName, `${label} · Ref ${reference}\n${reason}`);
+  }
+
+  public getIssueDetails(): string[] {
+    const details = [...this.issues.values()].slice(0, 5);
+    if (this.issues.size > 5) details.push(`${this.issues.size - 5} more items need attention.`);
+    return details;
   }
 
   /**
@@ -396,15 +478,25 @@ export class CloudKitSyncEngine {
   /**
    * Processes incoming records downloaded from CloudKit.
    */
-  public async ingestRemoteRecords(remoteRecords: CloudKitRecord[]): Promise<{ updatedCount: number }> {
+  public async ingestRemoteRecords(remoteRecords: CloudKitRecord[]): Promise<{ updatedCount: number; deferredCount: number }> {
     let count = 0;
-    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, MusicEntry: 2, Collection: 3, Memory: 4, Photo: 5, PrivatePreference: 6 };
+    let deferredCount = 0;
+    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, MusicEntry: 2, Collection: 3, Memory: 4, Photo: 5, PrivatePreference: -1 };
     for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType])) {
       if (record.recordType === 'Journey') {
         const remoteJourney = ckRecordToJourney(record, this.userId);
         const localJourney = getJourney(this.userId, remoteJourney.id);
         const winner = localJourney ? resolveConflict(localJourney, remoteJourney) : remoteJourney;
         if (winner === remoteJourney) {
+          const start = remoteJourney.startPlaceId ? getPlace(this.userId, remoteJourney.startPlaceId) : null;
+          const end = remoteJourney.endPlaceId ? getPlace(this.userId, remoteJourney.endPlaceId) : null;
+          if ((remoteJourney.startPlaceId && !start) || (remoteJourney.endPlaceId && !end)) {
+            this.recordUploadFailure(record.recordName, 'missing_dependency');
+            deferredCount++;
+            continue;
+          }
+          remoteJourney.startPlaceId = start?.id ?? null;
+          remoteJourney.endPlaceId = end?.id ?? null;
           upsertJourney(remoteJourney, {
             syncedToCloud: 1,
             createdAt: remoteJourney.createdAt,
@@ -415,7 +507,7 @@ export class CloudKitSyncEngine {
       } else if (record.recordType === 'RouteArchive') {
         const remote = await readRouteArchiveRecord(record);
         const local = getRouteArchive(this.userId, remote.journeyId);
-        if (!local) continue;
+        if (!local) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         const remoteVersion = { updatedAt: remote.updatedAt, syncRevision: remote.syncRevision, deletedAt: null };
         const localVersion = { updatedAt: local.updatedAt, syncRevision: local.syncRevision, deletedAt: null };
         if (local.pointCount > 0 && resolvePrivateConflict(localVersion, remoteVersion) !== remoteVersion) continue;
@@ -423,6 +515,7 @@ export class CloudKitSyncEngine {
         count++;
       } else if (record.recordType === 'MusicEntry') {
         const entry = ckRecordToMusicEntry(record, this.userId);
+        if (entry.journeyId && !getJourney(this.userId, entry.journeyId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });
         count++;
       } else if (record.recordType === 'Memory') {
@@ -436,6 +529,7 @@ export class CloudKitSyncEngine {
       } else if (record.recordType === 'Photo') {
         const remote = ckRecordToPhoto(record, this.userId), local = getPhotoIncludingDeleted(this.userId, remote.id);
         if (remote.source !== 'memory' || !isDirectJourneyMemoryId(remote.memoryId)) continue;
+        if (remote.memoryId && !getMemoryIncludingDeleted(this.userId, remote.memoryId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         if ((!local && !remote.deletedAt && !remote.localUri) || (local && resolvePrivateConflict(local, remote) !== remote)) continue;
         if (!remote.localUri && local) remote.localUri = local.localUri;
         upsertPhoto(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
@@ -446,11 +540,16 @@ export class CloudKitSyncEngine {
         if (local && resolvePrivateConflict(local, remote) !== remote) continue;
         let value: unknown = null;
         try { value = JSON.parse(remote.valueJson); } catch { continue; }
+        if (remote.key.startsWith(PRIVATE_PLACE_PREFIX)) {
+          const place = parsePrivatePlace(remote.valueJson);
+          if (remote.deletedAt) deletePlace(this.userId, place.id, { fromCloud: true });
+          else upsertPlace({ ...place, userId: this.userId }, { fromCloud: true, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        }
         upsertPrivatePreference(this.userId, remote.key, value, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
         count++;
       }
     }
-    return { updatedCount: count };
+    return { updatedCount: count, deferredCount };
   }
 
   public ingestRemoteDeletions(recordNames: string[]): void {

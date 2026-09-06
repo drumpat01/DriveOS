@@ -23,6 +23,7 @@ export type PrivateICloudSyncResult = {
   downloaded: number;
   uploaded: number;
   failedUploads: number;
+  issueDetails: string[];
   retryAfterSeconds: number | null;
   deletedRecordNames: string[];
   privateContentVersion: number;
@@ -59,7 +60,7 @@ export async function syncCurrentUserWithPrivateICloud(options: { force?: boolea
   if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return recent.result;
   const promise = performSync(user)
     .then(result => {
-      if (result.failedUploads === 0) recentSyncs.set(profileKey, { completedAt: Date.now(), result });
+      if (result.failedUploads === 0 && result.state.pendingUploadCount === 0) recentSyncs.set(profileKey, { completedAt: Date.now(), result });
       return result;
     })
     .finally(() => {
@@ -98,24 +99,35 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     await ensureCloudKitPrivateZone(profileScope);
     const pulled = await pullCloudKitChanges(profileScope);
     engine.ingestRemoteDeletions(pulled.deletedRecordNames);
-    let downloaded = (await engine.ingestRemoteRecords(pulled.records)).updatedCount;
-    if (capabilities.privateContentVersion >= 2) await commitCloudKitChangeToken(profileScope);
+    const ingested = await engine.ingestRemoteRecords(pulled.records);
+    let downloaded = ingested.updatedCount;
+    // Keep the old cursor until every dependent record has been restored.
+    // A source device may upload the missing place/journey in its next batch.
+    if (capabilities.privateContentVersion >= 2 && ingested.deferredCount === 0) await commitCloudKitChangeToken(profileScope);
     let uploaded = 0;
-    let failedUploads = 0;
+    let failedUploads = ingested.deferredCount;
     let retryAfterSeconds: number | null = null;
     for (let batch = 0; batch < 5; batch++) {
       const pending = await engine.preparePushPayload(50);
       if (!pending.length) break;
       const pushed = await pushCloudKitRecords(profileScope, pending);
-      if (pushed.remoteRecords.length) downloaded += (await engine.ingestRemoteRecords(pushed.remoteRecords)).updatedCount;
+      if (pushed.remoteRecords.length) {
+        const reconciled = await engine.ingestRemoteRecords(pushed.remoteRecords);
+        downloaded += reconciled.updatedCount;
+        failedUploads += reconciled.deferredCount;
+      }
       engine.acknowledgeSuccessfulPush(pushed.savedRecordNames);
       uploaded += pushed.savedRecordNames.length;
       failedUploads += pushed.failedRecordNames.length;
+      for (const recordName of pushed.failedRecordNames) {
+        engine.recordUploadFailure(recordName, pushed.failedRecords?.find(failure => failure.recordName === recordName)?.code ?? 'cloudkit_unknown');
+      }
       for (const failure of pushed.failedRecords ?? []) {
         if (failure.retryAfterSeconds != null) retryAfterSeconds = Math.max(retryAfterSeconds ?? 0, failure.retryAfterSeconds);
       }
       if (pushed.failedRecordNames.length || !pushed.savedRecordNames.length) break;
     }
+    failedUploads += engine.getPreparationFailureCount();
     if (downloaded) rebuildAtlasSnapshot(user.id);
     if (failedUploads) engine.setSyncError(new Error('private_cloud_partial'));
     else engine.setSyncCompleted();
@@ -139,5 +151,5 @@ function result(
   engine: CloudKitSyncEngine,
   privateContentVersion: number,
 ): PrivateICloudSyncResult {
-  return { available, accountStatus, downloaded, uploaded, failedUploads, retryAfterSeconds, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
+  return { available, accountStatus, downloaded, uploaded, failedUploads, issueDetails: engine.getIssueDetails(), retryAfterSeconds, deletedRecordNames, privateContentVersion, state: engine.getSyncState() };
 }

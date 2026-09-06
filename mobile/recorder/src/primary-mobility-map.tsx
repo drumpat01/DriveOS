@@ -1,9 +1,10 @@
+import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
+import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, OPEN_FREE_MAP_LIGHT_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
 import { NeonWidgetOutline } from './neon-widget-outline';
 
 type RouteLine = { id: string; coordinates: [number, number][] };
@@ -33,6 +34,9 @@ export function PrimaryMobilityMap({
   minimumBoundsSpan?: number;
   emptyMessage?: string;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const camera = useRef<CameraRef>(null), map = useRef<MapRef>(null);
   const [mapStyle, setMapStyle] = useState<JourneyDeckMapStyle | null>(null);
   const [failed, setFailed] = useState(false), [ready, setReady] = useState(false);
@@ -43,9 +47,9 @@ export function PrimaryMobilityMap({
 
   useEffect(() => {
     let mounted = true;
-    void loadJourneyDeckMapStyle().then(style => { if (mounted) setMapStyle(style); });
+    void loadJourneyDeckMapStyle(fetch, theme.mode).then(style => { if (mounted) setMapStyle(style); });
     return () => { mounted = false; };
-  }, []);
+  }, [theme.mode]);
 
   const fit = useCallback(() => {
     if (!geometry.bounds) return;
@@ -65,7 +69,7 @@ export function PrimaryMobilityMap({
   return <View style={[styles.frame, { height }]}><NeonWidgetOutline radius={25} tone="hero" />
     <Map
       ref={map}
-      mapStyle={(mapStyle ?? OPEN_FREE_MAP_DARK_STYLE) as never}
+      mapStyle={(mapStyle ?? (theme.isLight ? OPEN_FREE_MAP_LIGHT_STYLE : OPEN_FREE_MAP_DARK_STYLE)) as never}
       style={StyleSheet.absoluteFill}
       attribution={false}
       logo={false}
@@ -112,7 +116,7 @@ export function PrimaryMobilityMap({
       {selectedSong.artworkUrl ? <Image source={selectedSong.artworkUrl} style={styles.songArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.songArtwork, styles.songArtworkFallback]}><Text style={styles.songArtworkNote}>♪</Text></View>}
       <View style={styles.songCopy}><Text style={styles.songTrack} numberOfLines={1}>{selectedSong.track}</Text><Text style={styles.songArtist} numberOfLines={1}>{selectedSong.artist}</Text></View>
     </View>}
-    {!ready && <View style={styles.loading}><ActivityIndicator color="#b993ff" /><Text style={styles.loadingText}>Opening your map…</Text></View>}
+    {!ready && <View style={styles.loading}><ActivityIndicator color={theme.color("#b993ff", 'text')} /><Text style={styles.loadingText}>Opening your map…</Text></View>}
     <Text style={styles.attribution}>OpenFreeMap · © OpenStreetMap</Text>
   </View>;
 }
@@ -148,7 +152,7 @@ function buildGeometry(routes: RouteLine[], places: MapPlace[], songCoordinates:
   return { lines: collection, points, bounds: [west, south, east, north] as [number, number, number, number] };
 }
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   frame: { overflow: 'hidden', borderRadius: 25, borderWidth: 1, borderColor: '#4b255f', backgroundColor: '#040107' },
   empty: { borderRadius: 25, borderWidth: 1, borderColor: '#392346', backgroundColor: '#09050e', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 },
   emptyTitle: { color: '#bc8cff', fontSize: 11, fontWeight: '900', letterSpacing: 2, textAlign: 'center' },
