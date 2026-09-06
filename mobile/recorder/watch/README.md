@@ -24,7 +24,7 @@ An existing Expo-owned journey from the previous build must finish on the iPhone
 
 ## Native build
 
-`plugins/with-journeydeck-watch.js` creates and embeds `JourneyDeckWatch` during iOS prebuild, copies the Swift source and existing app icon, inherits the host version/build number, and declares its EAS signing target. The target is native SwiftUI without React Native pods.
+`plugins/with-journeydeck-watch.js` creates and embeds `JourneyDeckWatch` during iOS prebuild, copies the Swift source, generates a 1024px opaque icon from the existing artwork using Expo's image pipeline, inherits the host version/build number, and declares its EAS signing target. The target is native SwiftUI without React Native pods. Build16 exposed the former direct copy of a 512px source into a 1024px catalog slot; regression tests now decode the generated icon to check dimensions and opacity.
 
 | Build | iPhone bundle | Watch bundle | Runtime |
 | --- | --- | --- | --- |

@@ -61,16 +61,27 @@ for (const bundleIdentifier of ['com.journeydeck.recorder', 'com.journeydeck.rec
   });
 }
 
-test('generated Watch files identify the paired preview app and contain no phone entitlements', () => {
+test('generated Watch files identify the paired preview app and contain a correctly sized app icon', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'journeydeck-watch-test-'));
   try {
-    plugin.writeWatchFiles(root, directory, { name: 'JourneyDeck V2', ios: { bundleIdentifier: 'com.journeydeck.recorder.v2' } });
+    await plugin.writeWatchFiles(root, directory, { name: 'JourneyDeck V2', ios: { bundleIdentifier: 'com.journeydeck.recorder.v2' } });
     const info = plist.parse(readFileSync(join(directory, 'JourneyDeckWatch/Info.plist'), 'utf8'));
     assert.equal(info.WKApplication, true);
     assert.equal(info.WKRunsIndependentlyOfCompanionApp, false);
     assert.equal(info.WKCompanionAppBundleIdentifier, 'com.journeydeck.recorder.v2');
     assert.equal(info.NSLocationAlwaysAndWhenInUseUsageDescription, undefined);
-    assert.equal(readFileSync(join(directory, 'JourneyDeckWatch/Assets.xcassets/AppIcon.appiconset/AppIcon.png')).compare(readFileSync(join(root, 'assets/icon.png'))), 0);
+    const icons = join(directory, 'JourneyDeckWatch/Assets.xcassets/AppIcon.appiconset');
+    const catalog = JSON.parse(readFileSync(join(icons, 'Contents.json'), 'utf8'));
+    assert.deepEqual(catalog.images, [{ filename: 'AppIcon.png', idiom: 'universal', platform: 'watchos', size: '1024x1024' }]);
+    const icon = readFileSync(join(icons, catalog.images[0].filename));
+    assert.equal(icon.subarray(1, 4).toString(), 'PNG');
+    assert.equal(icon.readUInt32BE(16), 1024, 'actual PNG width must match the catalog slot');
+    assert.equal(icon.readUInt32BE(20), 1024, 'actual PNG height must match the catalog slot');
+    const decoded = await require('@expo/image-utils').getPngInfo(join(icons, catalog.images[0].filename));
+    assert.equal(decoded.data.length, 1024 * 1024 * 4);
+    for (let alpha = 3; alpha < decoded.data.length; alpha += 4) {
+      assert.equal(decoded.data[alpha], 255, 'Watch App Store icon must be opaque');
+    }
     const backgroundPath = 'Assets.xcassets/CinematicRoad.imageset';
     const background = JSON.parse(readFileSync(join(directory, 'JourneyDeckWatch', backgroundPath, 'Contents.json'), 'utf8'));
     assert.equal(background.images[0].filename, 'cinematic-road.png');

@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { withXcodeProject, withDangerousMod } = require('expo/config-plugins');
 const plist = require('@expo/plist');
+const { generateImageAsync } = require('@expo/image-utils');
 
 const targetName = 'JourneyDeckWatch';
 const unquote = value => String(value ?? '').replace(/^"|"$/g, '');
@@ -62,7 +63,7 @@ function addWatchTarget(project, config) {
   return project;
 }
 
-function writeWatchFiles(projectRoot, platformRoot, config) {
+async function writeWatchFiles(projectRoot, platformRoot, config) {
   const destination = path.join(platformRoot, targetName);
   fs.mkdirSync(destination, { recursive: true });
   fs.copyFileSync(path.join(projectRoot, 'watch/JourneyDeckWatchApp.swift'), path.join(destination, 'JourneyDeckWatchApp.swift'));
@@ -78,7 +79,14 @@ function writeWatchFiles(projectRoot, platformRoot, config) {
   }));
   const icons = path.join(destination, 'Assets.xcassets/AppIcon.appiconset');
   fs.mkdirSync(icons, { recursive: true });
-  fs.copyFileSync(path.join(projectRoot, 'assets/icon.png'), path.join(icons, 'AppIcon.png'));
+  // The source artwork is 512px; actool requires an actual 1024px opaque image.
+  // Use the same image pipeline as Expo's iOS icon generator.
+  const { source } = await generateImageAsync({ projectRoot, cacheType: 'journeydeck-watch-icon' }, {
+    src: path.join(projectRoot, 'assets/icon.png'), name: 'AppIcon.png',
+    width: 1024, height: 1024, resizeMode: 'cover',
+    removeTransparency: true, backgroundColor: '#08070d',
+  });
+  fs.writeFileSync(path.join(icons, 'AppIcon.png'), source);
   fs.writeFileSync(path.join(icons, 'Contents.json'), JSON.stringify({
     images: [{ filename: 'AppIcon.png', idiom: 'universal', platform: 'watchos', size: '1024x1024' }],
     info: { author: 'xcode', version: 1 },
@@ -96,7 +104,7 @@ module.exports = config => {
       { targetName, bundleIdentifier: `${config.ios.bundleIdentifier}.watchkitapp`, entitlements: {} }],
   } } } } };
   config = withDangerousMod(config, ['ios', async mod => {
-    writeWatchFiles(mod.modRequest.projectRoot, mod.modRequest.platformProjectRoot, mod);
+    await writeWatchFiles(mod.modRequest.projectRoot, mod.modRequest.platformProjectRoot, mod);
     return mod;
   }]);
   return withXcodeProject(config, mod => { addWatchTarget(mod.modResults, mod); return mod; });
