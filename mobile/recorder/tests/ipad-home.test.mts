@@ -1,3 +1,5 @@
+import { touchFeedbackMock } from './touch-feedback-fixture.mts';
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -18,14 +20,16 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
   const source = readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.startsWith('../assets/') ? id : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id === './touch-feedback' ? touchFeedbackMock : id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id) });
   return module.exports;
 }
 const layout = load('device-layout.ts', { 'react-native': native });
-const theme = () => ({ mode, isLight: mode === 'light' });
+const theme = () => testTheme(mode);
+const phoneTabTitle = load('phone-tab-title.tsx', { 'react-native': native, './app-theme': { useAppTheme: theme } });
 const header = load('ipad-page-header.tsx', {
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
-  './app-theme': { useAppTheme: theme }, './header-image-sources': { headerImageSource: (source: string, appearance: string) => `${appearance}:${source}` },
+  './app-theme': { useAppTheme: theme }, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${mode}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
+  './phone-tab-title': phoneTabTitle,
 });
 const ui = load('ipad-home.tsx', {
   './ipad-page-header': header,
@@ -38,6 +42,39 @@ const ui = load('ipad-home.tsx', {
   './journey-title': { journeyDisplayTitle: (journey: any) => journey.title },
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|');
+
+test('Home opens the selected Memory and journey in every theme', async () => {
+  const calls: string[] = [];
+  let tree: any;
+  try {
+    for (const appearance of ['dark', 'light', 'sakura', 'redline']) {
+      mode = appearance;
+      await act(() => { tree = create(React.createElement(ui.IpadHomeScreen, {
+        memories: [{ id: 'memory-7', name: 'Weekend', photos: [], journeyIds: ['journey-9'] }],
+        journeys: [{ id: 'journey-9', title: 'Park to Museum', miles: 3, durationMinutes: 12 }],
+        music: null, recorder: null, onMemory: (id: string) => calls.push(`memory:${id}`), onJourney: (id: string) => calls.push(`journey:${id}`),
+      })); });
+      const cards = tree.root.findAllByType('Pressable');
+      await act(() => cards.find((card: any) => card.props.accessibilityLabel === 'Open memory Weekend').props.onPress());
+      await act(() => cards.find((card: any) => card.props.accessibilityLabel === 'Open journey Park to Museum').props.onPress());
+      assert.deepEqual(calls.slice(-2), ['memory:memory-7', 'journey:journey-9']);
+      await act(() => tree.unmount()); tree = null;
+    }
+  } finally { mode = 'light'; await act(() => tree?.unmount()); }
+});
+
+test('shared artwork header stacks copy above full-width actions on phones', async () => {
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(header.IpadPageHeader, { title: 'Statistics', artwork: 1, width: 358, compact: true, subtitle: 'Every mile. Every journey. Your numbers.' }, React.createElement('actions'))); });
+    assert.ok(tree.root.findAllByType('View').some((node: any) => [node.props.style].flat(2).some((style: any) => style?.aspectRatio === 1672 / 941 && style?.minHeight === 0)));
+    assert.ok(tree.root.findByProps({ testID: 'page-header-content' }).props.style.flat().some((style: any) => style?.flexDirection === 'column'));
+    assert.ok(tree.root.findByProps({ testID: 'page-header-actions' }).props.style.flat().some((style: any) => style?.width === '100%'));
+    assert.equal(tree.root.findAllByType('Text').find((node: any) => node.props.testID === 'ipad-page-title')?.props.numberOfLines, 1);
+    assert.ok(tree.root.findByProps({ testID: 'phone-tab-title' }));
+    assert.equal(text(tree).includes('Every mile. Every journey. Your numbers.'), true);
+  } finally { await act(() => tree?.unmount()); }
+});
 
 test('iPad identity stays independent of narrow window layout and never matches iPhone or web', () => {
   assert.equal(layout.isIpad(), true);

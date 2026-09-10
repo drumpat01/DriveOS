@@ -1,7 +1,8 @@
+import { TouchPressable as Pressable, SlidingSelection, ExpandingSection } from './touch-feedback';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Modal, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { appDataClient, type SavedPlaceCategory, type SavedPlaceIntelligence, type VehicleIntelligenceData, type VehicleIntelligencePreferences } from './app-data';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
@@ -108,7 +109,7 @@ export function VehicleIntelligenceScreen({ visible, onClose }: { visible: boole
         <View><Text style={styles.kicker}>VEHICLE + PLACE INTELLIGENCE</Text><Text style={styles.title}>Drive intelligence</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Close vehicle intelligence" onPress={onClose} style={styles.close}><Text style={styles.closeText}>×</Text></Pressable>
       </View>
-      <View style={styles.tabs}>{tabs.map(item => <Pressable key={item} onPress={() => setTab(item)} style={[styles.tab, tab === item && styles.tabActive]}><Text style={[styles.tabText, tab === item && styles.tabTextActive]}>{item === 'efficiency' ? 'Routes' : item[0]!.toUpperCase() + item.slice(1)}</Text></Pressable>)}</View>
+      <SlidingSelection selectedIndex={tabs.indexOf(tab)} style={styles.tabs} itemStyle={{ flex: 1 }} highlightStyle={[styles.tabActive, { borderRadius: 12 }]}>{tabs.map(item => <Pressable key={item} onPress={() => setTab(item)} accessibilityRole="button" accessibilityState={{ selected: tab === item }} style={styles.tab}><Text style={[styles.tabText, tab === item && styles.tabTextActive]}>{item === 'efficiency' ? 'Routes' : item[0]!.toUpperCase() + item.slice(1)}</Text></Pressable>)}</SlidingSelection>
       {loading && !data ? <View style={styles.center}><ActivityIndicator color={theme.color("#ff7547", 'text')} size="large" /><Text style={styles.muted}>Building your private on-device view…</Text></View> :
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={theme.color("#ff7547", 'text')} />}>
           {!data ? <Empty title="No vehicle data yet" copy="Complete a journey or connect Tessie, then pull down to refresh." /> : <>
@@ -189,13 +190,13 @@ function PlaceCard({ place, expanded, onToggle, onRename, onCategory, onSuggesti
 
   return <NeonWidget radius={18} style={styles.card}><Pressable onPress={onToggle} style={styles.cardTop}><View style={{ flex: 1 }}><Text style={styles.cardTitle}>{place.name}</Text><Text style={styles.cardCopy}>{place.visitCount} visits · {place.arrivals} arrivals · {place.departures} departures</Text></View><Text style={styles.chevron}>{expanded ? '⌃' : '⌄'}</Text></Pressable>
     <View style={styles.categoryRow}>{categories.map(category => <Pressable key={category} onPress={() => onCategory(category)} style={[styles.category, place.category === category && styles.categoryActive]}><Text style={[styles.categoryText, place.category === category && styles.categoryTextActive]}>{category}</Text></Pressable>)}</View>
-    {expanded && <View style={styles.details}>
+    <ExpandingSection expanded={expanded}><View style={styles.details}>
       <Pressable onPress={onRename} style={styles.outlineAction}><Text style={styles.outlineText}>Rename place</Text></Pressable>
       {place.foursquareSuggestion && <View style={styles.suggestion}><View style={{ flex: 1 }}><Text style={styles.suggestionKicker}>FOURSQUARE SUGGESTION</Text><Text style={styles.cardTitle}>{place.foursquareSuggestion.name}</Text><Text style={styles.cardCopy}>{[place.foursquareSuggestion.category, place.foursquareSuggestion.address].filter(Boolean).join(' · ')}</Text></View><Pressable onPress={onSuggestion} style={styles.mergeButton}><Text style={styles.mergeText}>Use name</Text></Pressable></View>}
       <Text style={styles.detailLabel}>TIME OF DAY</Text><View style={styles.inlineMetrics}>{place.timeOfDay.map(item => <Text key={item.label} style={styles.inlineMetric}>{item.label} {item.visits}</Text>)}</View>
       <Text style={styles.detailLabel}>PLACE SOUNDTRACK</Text>{place.soundtrack.slice(0, 3).map(song => <Text key={`${song.track}:${song.artist}`} style={styles.detailLine}>{song.track} · {song.artist} <Text style={styles.mutedSmall}>×{song.plays}</Text></Text>)}{!place.soundtrack.length && <Text style={styles.cardCopy}>No songs linked yet.</Text>}
       <Text style={styles.detailLabel}>RELATED JOURNEYS</Text>{place.relatedJourneys.slice(0, 4).map(journey => <Text key={journey.id} style={styles.detailLine}>{day(journey.startedAt)} · {journey.startingLocation} → {journey.endingLocation} <Text style={styles.mutedSmall}>· {number(journey.miles)} mi</Text></Text>)}
-    </View>}
+    </View></ExpandingSection>
   </NeonWidget>;
 }
 

@@ -1,10 +1,11 @@
 import CloudKit
+import CryptoKit
 import ExpoModulesCore
 import Foundation
 
 private let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckCloudKitContainer") as? String ?? "iCloud.com.journeydeck.recorder"
-private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
-private let assetRecordTypes: Set<String> = ["Photo", "RouteArchive"]
+private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "JourneyEdit", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
+private let assetRecordTypes: Set<String> = ["Photo", "RouteArchive", "JourneyEdit"]
 private let maximumPhotoAssetBytes: UInt64 = 10 * 1_024 * 1_024
 private let maximumRouteAssetBytes: UInt64 = 20 * 1_024 * 1_024
 
@@ -187,8 +188,14 @@ private final class PrivateCloudKitTransport {
         try await self.database.recordZoneChanges(inZoneWith: zoneID, since: token, desiredKeys: nil, resultsLimit: 200)
       }
       for (_, modificationResult) in result.modificationResultsByID {
-        if case .success(let modification) = modificationResult {
+        switch modificationResult {
+        case .success(let modification):
           records.append(try dictionary(from: modification.record))
+        case .failure(let error):
+          // The page token covers failed records too. Advancing it would make
+          // an undownloaded record disappear from future incremental pulls.
+          // Leave the committed cursor untouched and retry the page next time.
+          throw error
         }
       }
       deletedNames.append(contentsOf: result.deletions.map { $0.recordID.recordName })
@@ -237,7 +244,7 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(7, "A private photo file is missing from this device.")
     }
     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
-    let maximumBytes = recordType == "RouteArchive" ? maximumRouteAssetBytes : maximumPhotoAssetBytes
+    let maximumBytes = recordType == "Photo" ? maximumPhotoAssetBytes : maximumRouteAssetBytes
     guard size > 0 && size <= maximumBytes else {
       throw JourneyDeckCloudKitError.make(8, "A private asset file is empty or too large to sync.")
     }
@@ -249,7 +256,7 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(10, "A downloaded private asset is invalid.")
     }
     let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
-    let maximumBytes = recordType == "RouteArchive" ? maximumRouteAssetBytes : maximumPhotoAssetBytes
+    let maximumBytes = recordType == "Photo" ? maximumPhotoAssetBytes : maximumRouteAssetBytes
     guard size > 0 && size <= maximumBytes else {
       throw JourneyDeckCloudKitError.make(11, "A downloaded private asset is empty or too large.")
     }
@@ -262,16 +269,19 @@ private final class PrivateCloudKitTransport {
     let safeName = String(recordName.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" })
     let photoExtensions: Set<String> = ["heic", "heif", "jpg", "jpeg", "png", "webp"]
     let sourceExtension = source.pathExtension.lowercased()
-    let fileExtension = recordType == "RouteArchive" ? "json" : (photoExtensions.contains(sourceExtension) ? sourceExtension : "jpg")
-    let destination = profileBase.appendingPathComponent(safeName).appendingPathExtension(fileExtension)
+    let fileExtension = recordType == "Photo" ? (photoExtensions.contains(sourceExtension) ? sourceExtension : "jpg") : "json"
+    // Downloading precedes JavaScript revision/conflict checks. A stable
+    // record-name path could overwrite the current winning photo with an older
+    // remote version even when SQLite later rejects that record. Keep each
+    // distinct payload immutable; cursor replay reuses the same content path.
+    let digest = SHA256.hash(data: try Data(contentsOf: source, options: .mappedIfSafe))
+      .map { String(format: "%02x", $0) }.joined()
+    let destination = profileBase.appendingPathComponent("\(safeName)-\(digest)").appendingPathExtension(fileExtension)
+    if FileManager.default.fileExists(atPath: destination.path) { return destination.absoluteString }
     let temporary = profileBase.appendingPathComponent(".\(safeName)-\(UUID().uuidString)").appendingPathExtension(fileExtension)
     defer { try? FileManager.default.removeItem(at: temporary) }
     try FileManager.default.copyItem(at: source, to: temporary)
-    if FileManager.default.fileExists(atPath: destination.path) {
-      _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
-    } else {
-      try FileManager.default.moveItem(at: temporary, to: destination)
-    }
+    try FileManager.default.moveItem(at: temporary, to: destination)
     return destination.absoluteString
   }
 
@@ -440,7 +450,7 @@ public final class JourneyDeckCloudKitModule: Module {
     }
 
     AsyncFunction("getCapabilitiesAsync") { () -> [String: Any] in
-      ["privateContentVersion": 3, "transportVersion": 4, "retryMetadata": true]
+      ["privateContentVersion": 4, "transportVersion": 5, "retryMetadata": true]
     }
 
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in

@@ -1,3 +1,5 @@
+import { touchFeedbackMock } from './touch-feedback-fixture.mts';
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -17,17 +19,21 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
   const source = readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.startsWith('../assets/') ? id : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id === './artist-credit' ? require('../src/artist-credit.ts') : id === './touch-feedback' ? touchFeedbackMock : id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id) });
   return module.exports;
 }
 const dataHelpers = load('ipad-music-data.ts');
 const model = load('library-model.ts');
-const theme = { useAppTheme: () => ({ isLight: light, mode: light ? 'light' : 'dark', color: (value: string) => value }), useThemedStyles: (styles: any) => styles };
+const theme = { useAppTheme: () => testTheme(light), useThemedStyles: (styles: any) => styles };
+const carousel = { AlbumCarousel: ({ tracks, enabled, onTrack }: any) => React.createElement('Carousel', { tracks, enabled },
+  tracks.map((track: any, i: number) => React.createElement('Pressable', { key: i, disabled: !enabled, accessibilityLabel: `Open ${track.track} by ${track.artist}`, onPress: () => onTrack(track) }))) };
 const header = load('ipad-page-header.tsx', {
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
-  './app-theme': theme, './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` },
+  './app-theme': theme, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${light ? 'light' : 'dark'}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
 });
 const ui = load('ipad-music-screen.tsx', {
+  './album-carousel': carousel,
   './ipad-page-header': header,
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
@@ -36,12 +42,14 @@ const ui = load('ipad-music-screen.tsx', {
 });
 const links: string[] = [], journeysOpened: string[] = [];
 const music = load('music-screen.tsx', {
+  './album-carousel': carousel,
   './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './ipad-music-data': dataHelpers,
   'react-native': { ...native, Alert: { alert: () => {} }, Linking: { openURL: async (url: string) => { links.push(url); } } },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') }, 'react-native-svg': {},
   './music-destination': { musicTrackDestination: (track: any) => track.externalUrl }, './library-model': model,
   './neon-widget-outline': {}, './header-artwork': { HEADER_ARTWORK_ASPECT_RATIO: 2 },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
 });
 const track = (i: number) => ({ track: `Song ${i}`, artist: i === 0 ? 'Unique artist' : 'Road artist', album: 'Coast album', playedAt: '2026-09-05T10:00:00Z',
   durationMs: 180000, artworkUrl: null, externalUrl: `https://music.apple.com/song/${i}`, source: 'apple-music', confidence: null });
@@ -74,18 +82,12 @@ test('iPad Music search, paging, source links and Journey links work across resi
       const title = tree.root.findByProps({ testID: 'ipad-page-title' });
       assert.equal(title.props.style[1].fontSize, width >= 600 ? 36 : 28);
       assert.equal(title.props.style[0].fontWeight, '600');
-      const gallery = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-music-gallery');
-      assert.equal(gallery.props.style.flexWrap, 'wrap');
-      assert.equal(gallery.children.length, 6);
-      const mainWidth = width >= 960 ? (width - 16) * .65 : width;
-      const cols = mainWidth >= 500 ? 3 : mainWidth >= 310 ? 2 : 1;
-      const coverWidth = gallery.children[0].props.style({ pressed: false })[0].width;
-      assert.ok(coverWidth * cols + 14 * (cols - 1) <= mainWidth - 38 + .01, 'gallery fits its panel');
+      const gallery = tree.root.findByType('Carousel');
+      assert.equal(gallery.props.tracks.length, 8, 'all recent covers are available through the shared carousel');
 
       assert.equal(tree.root.findAllByType('ScrollView').find((node: any) => node.props.testID === 'ipad-music'), screen);
     }
-    await act(() => press(tree, 'Show more soundtrack songs').props.onPress());
-    assert.equal(tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-music-gallery').children.length, 8);
+    assert.equal(tree.root.findByType('Carousel').children.length, 8);
     await act(() => press(tree, 'Open Song 0 by Unique artist').props.onPress());
     assert.equal(links.at(-1), 'https://music.apple.com/song/0');
     await act(() => press(tree, 'Open journey Coast → Hills').props.onPress());

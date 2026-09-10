@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { testTheme } from './theme-fixture.mts';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import test from 'node:test';
@@ -16,7 +17,7 @@ const mocks: Record<string, unknown> = {
   'react-native': { View: host('view'), Text: host('text'), Pressable: host('button'), StyleSheet: { create: (s: unknown) => s, hairlineWidth: 0.5 } },
   'react-native-safe-area-context': { useSafeAreaInsets: () => React.useContext(SafeArea) },
   'expo-symbols': { SymbolView: host('symbol') },
-  './app-theme': { useAppTheme: () => ({ isLight: light }) },
+  './app-theme': { useAppTheme: () => testTheme(light) },
 };
 const module = { exports: {} as any };
 const code = ts.transpileModule(readFileSync(new URL('../src/detail-screen-frame.tsx', import.meta.url), 'utf8'), {

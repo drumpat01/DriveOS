@@ -1,3 +1,4 @@
+import { revenueCatBilling } from '../../src/revenuecat';
 import JourneyDeckMembershipModule from './src/JourneyDeckMembershipModule';
 
 export type {
@@ -22,7 +23,10 @@ const unavailableStatus = {
 } as const;
 
 export async function getMembershipStatus() {
-  return JourneyDeckMembershipModule?.getMembershipStatusAsync() ?? unavailableStatus;
+  revenueCatBilling.start();
+  const status = await JourneyDeckMembershipModule?.getMembershipStatusAsync() ?? unavailableStatus;
+  if (status.tier === 'paid') void revenueCatBilling.sync();
+  return status;
 }
 
 export async function getMembershipProducts() {
@@ -32,12 +36,18 @@ export async function getMembershipProducts() {
 
 export async function purchaseMembership(productId: string) {
   if (!JourneyDeckMembershipModule) throw new Error('Subscriptions require JourneyDeck Build 10 or newer.');
-  return JourneyDeckMembershipModule.purchaseAsync(productId);
+  revenueCatBilling.start();
+  const result = await JourneyDeckMembershipModule.purchaseAsync(productId);
+  if (result.outcome === 'purchased') void revenueCatBilling.sync(true);
+  return result;
 }
 
 export async function restoreMembershipPurchases() {
   if (!JourneyDeckMembershipModule) throw new Error('Restore Purchases requires JourneyDeck Build 10 or newer.');
-  return JourneyDeckMembershipModule.restorePurchasesAsync();
+  revenueCatBilling.start();
+  const status = await JourneyDeckMembershipModule.restorePurchasesAsync();
+  void revenueCatBilling.sync(true);
+  return status;
 }
 
 export function addMembershipChangeListener(listener: (status: import('./src/JourneyDeckMembership.types').JourneyDeckMembershipStatus) => void) {

@@ -8,9 +8,9 @@ import licenses from '../assets/overture-licenses.json';
 export function PlaceDataCredits() {
   const [visible, setVisible] = useState(false);
   const { theme } = useThemeChoice();
-  const ink = theme.isLight ? '#704582' : '#cda8ea';
-  const text = theme.isLight ? '#2a202b' : '#f8effb';
-  const backgroundColor = theme.isLight ? '#fff9ef' : '#120919';
+  const ink = theme.palette.accent;
+  const text = theme.palette.text;
+  const backgroundColor = theme.palette.page;
   return <>
     <Pressable accessibilityRole="button" onPress={() => setVisible(true)} style={{ minHeight: 44, justifyContent: 'center' }}>
       <Text style={{ color: ink, fontSize: 13, fontWeight: '600' }}>Place data credits</Text>

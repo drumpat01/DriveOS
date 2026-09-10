@@ -24,6 +24,7 @@ import {
 import { processPendingCompletionJobs } from './completion-jobs';
 import { observeJourneyDeckEvent } from './observability';
 import { tessieAutomaticRecordingEligible } from './tessie-direct';
+import { prepareJourneyDeckDatabase } from './database-startup';
 
 function preRollPoint(location: LocationObject): AutomaticDrivePreRollPoint {
   return {
@@ -156,7 +157,10 @@ export async function processAutomaticDriveLocations(locations: LocationObject[]
 
 TaskManager.defineTask<{ locations: LocationObject[] }>(AUTOMATIC_DETECTION_TASK_NAME, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
-  try { await processAutomaticDriveLocations(data.locations); }
+  try {
+    await prepareJourneyDeckDatabase();
+    await processAutomaticDriveLocations(data.locations);
+  }
   catch {
     observeJourneyDeckEvent('recorder.completion_failed', { engine: 'expo', stage: 'background_task' });
     // Automatic detection is additive. A background failure must never damage

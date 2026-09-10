@@ -1,18 +1,25 @@
-import { useAppTheme, useThemedStyles, useThemeChoice } from './app-theme';
+import { loadReplayPhotos } from './journey-replay-photos';
+import { TouchPressable, ExpandingSection } from './touch-feedback';
+import { MemoryJourneyEditor, MemorySaveLabel } from './memory-edit-motion';
+import { useAppTheme, useThemedStyles } from './app-theme';
+import { AppIconPicker } from './app-icon-picker';
+import { appIconCatalog } from './app-icon-catalog';
+import { useAppIconChoice } from './app-icon-preference';
+import { ThemePicker } from './theme-picker';
+import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import { isIpad } from './device-layout';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
+import { PhoneTabTitle } from './phone-tab-title';
 import { IpadMemoriesScreen } from './ipad-memories-screen';
 import { SettingsScrollView } from './settings-scroll-view';
 import { IpadSettingsScreen } from './ipad-settings-screen';
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, Pressable,
-  SafeAreaView, ScrollView, StatusBar, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions,
+  SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
-import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import * as Haptics from 'expo-haptics';
-import * as Updates from 'expo-updates';
+import { useUpdateRestart } from './use-update-restart';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -28,13 +35,20 @@ import { NativeNavigationContext, tabPaths, useJourneyDeckNavigation } from './n
 import { useJourneyDetail } from './use-journey-detail';
 import { NativeSheet, requestSheetClose } from './native-sheet';
 import { CardDetailLink, useCardDetailDismissal } from './card-detail-link';
+import { MemoryFlipImageContext } from './memory-flip';
 import { useJourneyCardAction } from './journey-card-action';
 import { NativeActionMenu } from './native-action-menu';
 import { DetailScreenFrame, useDetailViewportInsets } from './detail-screen-frame';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Reanimated, { Easing, FadeIn, FadeInDown, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import Reanimated, {
+  Extrapolation, FadeIn, FadeInDown, FadeInUp, FadeOut, cancelAnimation, interpolate,
+  useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming,
+} from 'react-native-reanimated';
 import { ObserveInteractiveMarker } from 'expo-observe';
+import { haptics } from './haptics';
+import { MOTION_SPRINGS, motionEasing, useMotionPreferences } from './motion';
+import { JourneyCardEntryTracker } from './core-experience-motion';
 
 import {
   appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyDetail,
@@ -64,6 +78,7 @@ import { PlaceDataCredits } from './place-data-credits';
 import { loadSavedPlaces, removeSavedPlace, saveSavedPlace, SAVED_PLACE_SLOTS, type SavedPlaceSlot } from './saved-places';
 import { observeJourneyDeckEvent } from './observability';
 import { InteractiveRouteMap } from './interactive-route-map';
+import { journeyDeckMapPalette } from './journey-map-theme';
 import { buildSongRouteMoments } from './route-moments';
 import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
 import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type JourneyLibrarySort } from './library-model';
@@ -73,7 +88,7 @@ import { journeyDisplayTitle } from './journey-title';
 import { loadCityLabelForCoordinate } from './music-city-summary';
 import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } from './profile-appearance';
 import { NeonWidgetOutline } from './neon-widget-outline';
-import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { CinematicPhotoGrade, HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { headerImageSource } from './header-image-sources';
 import { isInternalTestingBuild } from './internal-testing';
 import { maskCoordinate, prepareShareCardCoords } from './privacy-masker';
@@ -88,7 +103,7 @@ import { MembershipPaywall } from './membership-paywall';
 import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress } from './first-run-onboarding';
 import { FirstRunOnboardingScreen } from './first-run-onboarding-screen';
 import {
-  AtlasScreen, MoreScreen, StatisticsScreen, type MoreDestination, type PrimaryDataState,
+  AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
 
 type Tab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings';
@@ -166,10 +181,10 @@ const providerBrandImages = {
 } as const;
 
 const homeHeroImages = {
-  morning: require('../assets/home-cinematic-hero-morning-v2.png'),
-  afternoon: require('../assets/home-cinematic-hero-afternoon-v2.png'),
-  evening: require('../assets/home-cinematic-hero-evening-v2.png'),
-  night: require('../assets/home-cinematic-hero-night-v1.png'),
+  morning: require('../assets/cinematic-home-morning-photo-v1.jpg'),
+  afternoon: require('../assets/cinematic-home-afternoon-photo-v1.jpg'),
+  evening: require('../assets/cinematic-home-evening-photo-v1.jpg'),
+  night: require('../assets/cinematic-home-night-photo-v1.jpg'),
 } as const;
 
 type RecordingModeOption = {
@@ -271,10 +286,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  const updateState = Updates.useUpdates();
   const membershipStore = useJourneyDeckMembership();
   const membership = membershipStore.state.entitlements;
-  const announcedUpdate = useRef<string | null>(null);
   const [tab, setTab] = useState<Tab>('home');
   const [homeRecorderActive, setHomeRecorderActive] = useState(false);
   const [settingsEditorActive, setSettingsEditorActive] = useState(false);
@@ -313,22 +326,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const [membershipPaywallVisible, setMembershipPaywallVisible] = useState(false);
   const preferenceSyncAttempt = useRef('');
   const musicRefreshGeneration = useRef(0);
-
-  useEffect(() => {
-    if (!Updates.isEnabled || !updateState.isUpdatePending) return;
-    if (dashboard.data.recorder.state === 'recording' || dashboard.data.recorder.state === 'finishing') return;
-    const updateId = updateState.downloadedUpdate?.updateId ?? 'pending-update';
-    if (announcedUpdate.current === updateId) return;
-    announcedUpdate.current = updateId;
-    Alert.alert(
-      'JourneyDeck update ready',
-      'A new version has finished downloading. Restart JourneyDeck now to use it?',
-      [
-        { text: 'Later', style: 'cancel' },
-        { text: 'Restart now', onPress: () => void Updates.reloadAsync().catch(() => Alert.alert('Restart JourneyDeck', 'Close and reopen JourneyDeck to finish applying the update.')) },
-      ],
-    );
-  }, [dashboard.data.recorder.state, updateState.downloadedUpdate?.updateId, updateState.isUpdatePending]);
 
   useEffect(() => {
     let alive = true;
@@ -802,7 +799,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const openMore = (destination: MoreDestination) => {
     setMoreDestination(destination);
     router.navigate('/tools');
-    void Haptics.selectionAsync().catch(() => undefined);
+    void haptics.selection();
   };
 
   const openAtlas = () => {
@@ -811,7 +808,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       return;
     }
     router.navigate('/atlas');
-    void Haptics.selectionAsync().catch(() => undefined);
+    void haptics.selection();
   };
 
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
@@ -830,6 +827,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     : null;
   const firstRunRecordingMode: RecordingMode = 'manual';
   const appVisible = appReady && !firstRunStage;
+  useUpdateRestart({ ready: appVisible && dashboard.status === 'ready', recorderState: dashboard.data.recorder.state, recorderBusy: homeRecorderActive });
   // Keep the navigator and single recorder mounted while editing a provider.
   const enteredApp = useRef(false);
   if (appVisible) enteredApp.current = true;
@@ -889,19 +887,20 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     tabs: isIpad() ? {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />,
+      statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
       home: <IpadHomeScreen memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
+        onMemory={openMemory} onJourney={openJourney}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
         recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
     } : {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
       home: <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
-      statistics: <StatisticsScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} historyDays={membership.timelineHistoryDays} />,
+      statistics: <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
     },
-    memory: (id: string) => <MemoriesScreen detailId={id} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+    memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
     tools: <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} />,
     membership,
@@ -914,7 +913,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   return (
     <NativeNavigationContext.Provider value={navigationContent}><View style={styles.app}>
       {appVisible && primarySections.status !== 'loading' && <ObserveInteractiveMarker params={{ dataState: primarySections.status }} />}
-      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
         {firstRunStage && <FirstRunOnboardingScreen
@@ -977,7 +975,7 @@ function AppLoading() {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  return <SafeAreaView style={styles.loadingScreen}><ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><ActivityIndicator color={theme.color("#a88aff", 'text')} size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
+  return <SafeAreaView style={styles.loadingScreen}><ActivityIndicator color={theme.color("#a88aff", 'text')} size="large" /><Text style={styles.loadingText}>Opening JourneyDeck…</Text></SafeAreaView>;
 }
 
 function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
@@ -985,16 +983,10 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
   const styles = useThemedStyles(darkStyles);
 
   const routeReveal = useSharedValue(0);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const { reduceMotion } = useMotionPreferences();
 
   useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    routeReveal.value = reduceMotion ? 1 : withDelay(140, withTiming(1, { duration: 1550, easing: Easing.out(Easing.cubic) }));
+    routeReveal.value = reduceMotion ? 1 : withDelay(140, withTiming(1, { duration: 1550, easing: motionEasing.enter }));
   }, [reduceMotion, routeReveal]);
 
   const routeRevealStyle = useAnimatedStyle(() => ({
@@ -1004,7 +996,6 @@ function WelcomeIntro({ onContinue }: { onContinue: () => void }) {
 
   return (
     <SafeAreaView style={styles.welcomeIntroSafe}>
-      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <View style={styles.welcomeIntroContent}>
         <View style={styles.welcomeIntroBrand}><JourneyDeckLogo size={42} /><JourneyDeckWordmark variant="intro" /></View>
         <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={styles.welcomeIntroScene}>
@@ -1044,7 +1035,6 @@ function RecordingModePicker({ initial, onContinue, onCancel }: { initial: Recor
 
   return (
     <SafeAreaView style={styles.onboardingSafe}>
-      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.onboardingEyebrow}>HOW SHOULD JOURNEYS BEGIN</Text>
         <Text style={styles.onboardingTitle}>Choose how JourneyDeck starts recording</Text>
@@ -1114,7 +1104,6 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
 
   return (
     <SafeAreaView style={styles.onboardingSafe}>
-      <ExpoStatusBar style={theme.isLight ? 'dark' : 'light'} /><StatusBar barStyle={theme.isLight ? 'dark-content' : 'light-content'} />
       <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
         <BrandHeader compact />
         <Text style={styles.onboardingEyebrow}>AUTOMATIC SOUNDTRACKS</Text>
@@ -1183,43 +1172,73 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
 function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJourney, recorder }: { primary: PrimaryDataState; recorderActive: boolean; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; recorder: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const { ambientMotionEnabled, reduceMotion } = useMotionPreferences();
 
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const cameraDrift = useSharedValue(0);
+  const recorderFocus = useSharedValue(recorderActive ? 1 : 0);
   const latestSummary = primary.data?.journeys[0] ?? null;
   const latestDetail = latestSummary ? primary.data?.details.find(detail => detail.id === latestSummary.id) ?? null : null;
   const latestJourney = latestDetail ?? latestSummary;
   const latestTitle = latestJourney ? homeHeroTitle(latestJourney) : 'Your first road memory';
   const latestRoute = latestJourney ? homeRouteContext(latestJourney) : 'Your next completed journey will appear here.';
   const latestDate = latestJourney ? new Date(latestJourney.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Ready when you are';
-  const latestImage = headerImageSource(homeHeroImageFor(latestJourney?.startedAt), theme.mode);
+  const latestImage = headerImageSource(homeHeroImageFor(latestJourney?.startedAt), theme.id);
   const latestTrack = primary.data?.music.recentSelections[0] ?? null;
+  const backdropStyle = useAnimatedStyle(() => {
+    const drift = cameraDrift.get();
+    const focus = recorderFocus.get();
+    return {
+      transform: [
+        { translateX: interpolate(drift, [0, 1], [-9, 9], Extrapolation.CLAMP) },
+        { translateY: interpolate(drift, [0, 1], [7, -11], Extrapolation.CLAMP) - focus * 4 },
+        { scale: interpolate(drift, [0, 1], [1.055, 1.105], Extrapolation.CLAMP) + focus * 0.025 },
+      ],
+    };
+  });
+  useEffect(() => {
+    cancelAnimation(cameraDrift);
+    cameraDrift.set(0);
+    if (!ambientMotionEnabled) return;
+    cameraDrift.set(withRepeat(withTiming(1, { duration: 18_000, easing: motionEasing.standard }), -1, true));
+    return () => {
+      cancelAnimation(cameraDrift);
+      cameraDrift.set(0);
+    };
+  }, [ambientMotionEnabled, cameraDrift]);
+  useEffect(() => {
+    cancelAnimation(recorderFocus);
+    recorderFocus.set(reduceMotion ? (recorderActive ? 1 : 0) : withSpring(recorderActive ? 1 : 0, MOTION_SPRINGS.gentle));
+    return () => cancelAnimation(recorderFocus);
+  }, [recorderActive, recorderFocus, reduceMotion]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [recorderActive]);
   return <View style={styles.approvedHomeSafe}>
-    <ExpoImage source={headerImageSource(require('../assets/home-recorder-coast-v1.png'), theme.mode)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
-    <LinearGradient colors={theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
+    <Reanimated.View pointerEvents="none" style={[styles.approvedHomeBackdrop, backdropStyle]}>
+      <ExpoImage source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    </Reanimated.View>
+    <CinematicPhotoGrade />
+    <LinearGradient colors={theme.isCustom ? [`${theme.palette.page}28`, `${theme.palette.page}12`, `${theme.palette.page}b8`, theme.palette.page] : theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
-      <View style={styles.approvedHomeHeader}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></Pressable>
-        <Text accessibilityRole="header" style={styles.approvedHomeTitle}>HOME</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor={theme.color("#d3b5e4", 'text')} size={23} /></Pressable>
-      </View>
+      <PhoneTabTitle title="Home"
+        leading={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></TouchPressable>}
+        trailing={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor={theme.color("#d3b5e4", 'text')} size={23} /></TouchPressable>} />
       <View style={[styles.approvedHomeScenicSpace, recorderActive && styles.approvedHomeScenicSpaceActive]} />
       <View style={styles.approvedHomePanels}>
         {recorder}
         <CardDetailLink kind="journey" id={latestJourney?.id}>
-        <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.approvedLatestMemory, pressed && styles.pressed]}>
+        <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.approvedLatestMemory, pressed && styles.pressed]}>
           <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={theme.color("#c990ff", 'text')} size={15} /><Text style={styles.approvedLatestMemoryKicker}>Latest memory</Text></View>
           <View style={styles.approvedLatestMemoryRow}>
             <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor={theme.color("#fff", 'text')} size={13} /></View>}</View>
             <View style={styles.flex}><Text style={styles.approvedLatestMemoryTitle} numberOfLines={1}>{latestTitle}</Text><View style={styles.approvedLatestMemoryMeta}><SymbolView name="mappin.and.ellipse" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText} numberOfLines={1}>{latestRoute}</Text></View><View style={styles.approvedLatestMemoryMeta}><SymbolView name="calendar" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText}>{latestDate}</Text></View></View>
             <View style={styles.approvedLatestMemoryMore}><Text style={styles.approvedLatestMemoryMoreText}>•••</Text></View>
           </View>
-        </Pressable>
+        </TouchPressable>
         </CardDetailLink>
-        <Pressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} style={({ pressed }) => [styles.approvedLatestSong, pressed && styles.pressed]}>
+        <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} style={({ pressed }) => [styles.approvedLatestSong, pressed && styles.pressed]}>
           {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={styles.approvedLatestSongFallback}><SymbolView name="music.note" tintColor={theme.color("#cf91ff", 'text')} size={25} /></View>}
           <View style={styles.flex}>
             <Text style={styles.approvedLatestSongKicker}>LATEST SONG PLAYED</Text>
@@ -1227,7 +1246,7 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
             <Text style={styles.approvedLatestSongMeta} numberOfLines={1}>{latestTrack ? `${latestTrack.artist}${formatTrackTime(latestTrack.playedAt)}` : 'The most recent song from a journey will appear here.'}</Text>
           </View>
           <View style={styles.approvedLatestSongArrow}><SymbolView name="chevron.right" tintColor={theme.color("#d5a4f3", 'text')} size={15} weight="semibold" /></View>
-        </Pressable>
+        </TouchPressable>
       </View>
     </ScrollView>
   </View>;
@@ -1274,7 +1293,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
     ? `${formatMiles(latestJourney.miles)} · ${formatDuration(latestJourney.durationMinutes)} · ${latestJourney.songCount} ${latestJourney.songCount === 1 ? 'song' : 'songs'}`
     : 'Captured privately on your iPhone';
 
-  const editProfile = () => { setProfileDraft(appearance); setProfileEditorOpen(true); void Haptics.selectionAsync(); };
+  const editProfile = () => { setProfileDraft(appearance); setProfileEditorOpen(true); void haptics.selection(); };
   const pickAvatar = async () => {
     setAvatarBusy(true);
     try {
@@ -1286,7 +1305,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
   const saveProfile = () => {
     const saved = saveProfileAppearance(currentUser, profileDraft);
     setAppearance(saved); setProfileEditorOpen(false);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void haptics.success();
   };
 
   return <View style={styles.safe}>
@@ -1328,6 +1347,7 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
           <View style={styles.cinematicHeroAura}>
             <Pressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.cinematicHero, pressed && styles.cinematicPressed]}>
               <ExpoImage source={heroImage} cachePolicy="memory-disk" contentFit="cover" transition={220} style={StyleSheet.absoluteFill} />
+              <CinematicPhotoGrade />
               <LinearGradient colors={theme.gradient(['rgba(8,3,14,0.34)', 'rgba(8,3,14,0.12)', 'rgba(5,2,10,0.85)', 'rgba(4,1,8,0.97)'])} locations={[0, 0.28, 0.72, 1]} style={StyleSheet.absoluteFill} />
               <LiquidGlassEdges radius={29} />
               {/* Top Bar of Hero */}
@@ -1477,8 +1497,8 @@ function PreviousCinematicHomeScreen({ currentUser, state, primary, onJourneys, 
               <Text style={styles.profileEditorCancelText}>Cancel</Text>
             </Pressable>
             <Pressable onPress={saveProfile} style={styles.profileEditorSave}>
-              <LinearGradient colors={theme.gradient(['#ff795b', '#ff597f'])} style={StyleSheet.absoluteFill} />
-              <Text style={styles.profileEditorSaveText}>Save profile</Text>
+              <LinearGradient colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(['#ff795b', '#ff597f'])} style={StyleSheet.absoluteFill} />
+              <Text style={[styles.profileEditorSaveText, theme.isCustom && { color: theme.palette.onAccent }]}>Save profile</Text>
             </Pressable>
           </View>
         </CinematicGlass>
@@ -1794,7 +1814,7 @@ function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPr
   const styles = useThemedStyles(darkStyles);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}>
+    <TouchPressable onPress={onPress} style={({ pressed }) => [styles.webJourneyRow, pressed && styles.pressed]}>
       <View style={styles.webPlaceIcon}><Text>⌂</Text></View>
       <View style={styles.flex}>
         <Text style={styles.webJourneyOrigin} numberOfLines={2}>{journey.startingLocation ?? 'Journey start'}</Text>
@@ -1808,7 +1828,7 @@ function CompactJourneyRow({ journey, onPress }: { journey: JourneySummary; onPr
           <Circle cx="42" cy="12" r="3" fill={theme.color("#ffc2af", 'accent')} />
         </Svg>
       </View>
-    </Pressable>
+    </TouchPressable>
   );
 }
 
@@ -1897,15 +1917,15 @@ function OpenRoadArtwork() {
   </View>;
 }
 
-type MemoryEditorDraft = { id: string | null; name: string; notes: string; journeyIds: string[]; coverPhotoId: string | null; photos: JourneyPhoto[] };
+type MemoryEditorDraft = { id: string | null; name: string; notes: string; journeyIds: string[]; previousJourneyIds: string[]; coverPhotoId: string | null; photos: JourneyPhoto[] };
 
 function memoryDraftSignature(draft: MemoryEditorDraft) {
   return JSON.stringify({ name: draft.name.trim(), notes: draft.notes.trim(), journeyIds: [...new Set(draft.journeyIds)].sort(), coverPhotoId: draft.coverPhotoId });
 }
 
-function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, detailId, studio = false }: {
+function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, detailId, detailReady, studio = false }: {
   catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; details: JourneyDetail[];
-  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; detailId?: string; studio?: boolean;
+  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; detailId?: string; detailReady?: () => void; studio?: boolean;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -1921,6 +1941,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   const [memoryDraft, setMemoryDraft] = useState<MemoryEditorDraft | null>(null);
   const studioArtworkKey = useRef('road-trips');
   const [memorySavedSignature, setMemorySavedSignature] = useState<string | null>(null);
+  const [memorySaveVersion, setMemorySaveVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [section, setSection] = useState<'library' | 'memories'>('memories');
@@ -1940,8 +1961,9 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
 
   useEffect(() => { if (selectedIndex >= catalog.data.memories.length && catalog.data.memories.length) setSelectedIndex(catalog.data.memories.length - 1); }, [catalog.data.memories.length, selectedIndex]);
   const editMemory = (memory: JourneyMemory | null, preselectedJourneyId?: string | null) => {
+    setMemorySaveVersion(0);
     studioArtworkKey.current = memory?.artworkKey ?? 'road-trips';
-    const draft = { id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', journeyIds: [...(memory?.journeyIds ?? (preselectedJourneyId ? [preselectedJourneyId] : []))], coverPhotoId: memory?.coverPhotoId ?? null, photos: [...(memory?.photos ?? [])] };
+    const draft = { id: memory?.id ?? null, name: memory?.name ?? '', notes: memory?.notes ?? '', journeyIds: [...(memory?.journeyIds ?? (preselectedJourneyId ? [preselectedJourneyId] : []))], previousJourneyIds: [...(memory?.journeyIds ?? [])], coverPhotoId: memory?.coverPhotoId ?? null, photos: [...(memory?.photos ?? [])] };
     setMemoryDraft(draft);
     setMemorySavedSignature(memory ? memoryDraftSignature(draft) : null);
   };
@@ -1950,15 +1972,17 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
     return { ...current, journeyIds: current.journeyIds.includes(id) ? current.journeyIds.filter(value => value !== id) : [...current.journeyIds, id] };
   });
   const saveMemory = async () => {
-    if (!memoryDraft) return;
+    if (!memoryDraft || saving || photoBusy) return;
     if (!memoryDraft.name.trim()) return Alert.alert('Name this memory', 'Give the memory a short name first.');
-    if (!memoryDraft.journeyIds.length) return Alert.alert('Choose a journey', 'A Memory needs at least one journey.');
+    if (!memoryDraft.id && !memoryDraft.journeyIds.length) return Alert.alert('Choose a journey', 'A Memory needs at least one journey.');
     setSaving(true);
     try {
-      const saved = await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, journeyIds: memoryDraft.journeyIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: studio ? studioArtworkKey.current : (memoryOverview ?? selectedMemory)?.artworkKey ?? 'road-trips' });
-      const next = { ...memoryDraft, id: saved.id, name: saved.name, notes: saved.notes, journeyIds: saved.journeyIds, coverPhotoId: saved.coverPhotoId, photos: saved.photos };
+      const saved = await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, journeyIds: memoryDraft.journeyIds, previousJourneyIds: memoryDraft.previousJourneyIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: studio ? studioArtworkKey.current : (memoryOverview ?? selectedMemory)?.artworkKey ?? 'road-trips' });
+      const next = { ...memoryDraft, id: saved.id, name: saved.name, notes: saved.notes, journeyIds: saved.journeyIds, previousJourneyIds: saved.journeyIds, coverPhotoId: saved.coverPhotoId, photos: saved.photos };
       setMemoryDraft(next);
       setMemorySavedSignature(memoryDraftSignature(next));
+      setMemorySaveVersion(version => version + 1);
+      void haptics.success();
       onRefresh();
     } catch (error) { Alert.alert('Memory not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this memory.'); }
     finally { setSaving(false); }
@@ -2011,7 +2035,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
     setSaving(true);
     try {
       const journeyIds = memory.journeyIds.includes(assignJourneyId) ? memory.journeyIds.filter(id => id !== assignJourneyId) : [...memory.journeyIds, assignJourneyId];
-      await appDataClient.saveMemory({ id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, journeyIds });
+      await appDataClient.saveMemory({ id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, journeyIds, previousJourneyIds: memory.journeyIds });
       setAssignJourneyId(null);
       onRefresh();
     } catch (error) { Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Please try again.'); }
@@ -2101,7 +2125,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
     </ScrollView>}
 
-    {detailId && !memoryOverview && <InlineNotice message={catalog.status === 'loading' ? 'Loading Memory…' : 'This Memory is no longer available.'} onRetry={onRefresh} />}
+    {detailId && !memoryOverview && <View onLayout={detailReady}><InlineNotice message={catalog.status === 'loading' ? 'Loading Memory…' : 'This Memory is no longer available.'} onRetry={onRefresh} /></View>}
     <MemoryDetailScreen
       visible={Boolean(memoryOverview)}
       memory={memoryOverview}
@@ -2111,19 +2135,19 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       onOpenJourney={onJourney}
       onShare={() => memoryOverview && openMemoryShare(memoryOverview)}
       onEdit={() => memoryOverview && editMemory(memoryOverview)}
+      onReady={detailReady}
     />
 
     <NativeSheet dirty={memoryDraftDirty} busy={saving || photoBusy} onDismiss={() => { const next = afterEditorDismiss.current; afterEditorDismiss.current = null; next?.(); }} visible={Boolean(memoryDraft)} kicker={memoryDraft?.id ? 'EDIT MEMORY' : 'NEW MEMORY'} title={memoryDraft?.id ? 'Shape this chapter' : 'Create a Memory'} onClose={() => setMemoryDraft(null)}>
       {memoryDraft && <View style={styles.modalEditorBody}>
-        <TextInput value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor={theme.color("#716879", 'text')} maxLength={80} style={styles.editorInput} />
-        <TextInput value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor={theme.color("#716879", 'text')} maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
+        <TextInput editable={!saving} value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor={theme.color("#716879", 'text')} maxLength={80} style={styles.editorInput} />
+        <TextInput editable={!saving} value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor={theme.color("#716879", 'text')} maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
         <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>MEMORY PHOTOS</Text><Text style={styles.photoEditorHelp}>Add a photo and choose one as this Memory’s cover.</Text></View><Pressable onPress={() => void uploadMemoryPhoto()} disabled={photoBusy || !memoryDraft.id} style={[styles.photoAddButton, (!memoryDraft.id || photoBusy) && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add'}</Text></Pressable></View>
         {!memoryDraft.id && <Text style={styles.photoSaveFirst}>Save the Memory once before adding its own photos.</Text>}
         {availableMemoryPhotos.length ? <View style={styles.photoGrid}>{availableMemoryPhotos.map(photo => <PhotoTile key={photo.id} photo={photo} selected={memoryDraft.coverPhotoId === photo.id} label="MEMORY" onPress={() => setMemoryDraft(current => current ? { ...current, coverPhotoId: photo.id } : current)} onRemove={() => removePhoto(photo)} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Add a photo after saving this Memory.</Text></View>}
-        <Text style={styles.editorInstruction}>JOURNEYS IN THIS MEMORY</Text>
-        {journeys.data.map(journey => <MembershipRow key={journey.id} title={locationPair(journey)} detail={`${formatCompactDate(journey.startedAt)}  •  ${formatMiles(journey.miles)}`} selected={memoryDraft.journeyIds.includes(journey.id)} onPress={() => toggleMemoryJourney(journey.id)} />)}
+        <MemoryJourneyEditor journeys={journeys.data.map(journey => ({ id: journey.id, title: locationPair(journey), detail: `${formatCompactDate(journey.startedAt)}  •  ${formatMiles(journey.miles)}` }))} selectedIds={memoryDraft.journeyIds} disabled={saving || photoBusy} onToggle={id => { toggleMemoryJourney(id); void haptics.selection(); }} />
         {memoryDraft.id && <Pressable onPress={deleteMemory} disabled={saving} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Delete Memory</Text></Pressable>}
-        <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(memoryDraftDirty, saving || photoBusy, () => setMemoryDraft(null))} disabled={saving || photoBusy} style={styles.editorCancel}><Text style={styles.editorCancelText}>{memoryDraftDirty ? 'Cancel' : 'Done'}</Text></Pressable><Pressable onPress={() => void saveMemory()} disabled={saving || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><Text style={styles.editorSaveText}>{saving ? 'SAVING…' : memoryDraftDirty ? 'SAVE' : 'SAVED'}</Text></Pressable></View>
+        <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(memoryDraftDirty, saving || photoBusy, () => setMemoryDraft(null))} disabled={saving || photoBusy} style={styles.editorCancel}><Text style={styles.editorCancelText}>{memoryDraftDirty ? 'Cancel' : 'Done'}</Text></Pressable><TouchPressable onPress={() => void saveMemory()} disabled={saving || photoBusy || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><MemorySaveLabel saving={saving} dirty={memoryDraftDirty} successVersion={memorySaveVersion} style={styles.editorSaveText} /></TouchPressable></View>
       </View>}
     </NativeSheet>
 
@@ -2137,7 +2161,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
 }
 
 function MemoryDetailScreen({
-  visible, memory, cover, journeys, onClose, onOpenJourney, onShare, onEdit,
+  visible, memory, cover, journeys, onClose, onOpenJourney, onShare, onEdit, onReady,
 }: {
   visible: boolean;
   memory: JourneyMemory | null;
@@ -2147,31 +2171,54 @@ function MemoryDetailScreen({
   onOpenJourney: (journeyId: string) => void;
   onShare: () => void;
   onEdit: () => void;
+  onReady?: () => void;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const { reduceMotion } = useMotionPreferences();
+  const detailScrollY = useRef(new Animated.Value(0)).current;
+  const photographicDepth = reduceMotion ? undefined : {
+    transform: [
+      { translateY: detailScrollY.interpolate({ inputRange: [0, 180], outputRange: [0, 18], extrapolate: 'clamp' }) },
+      { scale: detailScrollY.interpolate({ inputRange: [0, 180], outputRange: [1.04, 1], extrapolate: 'clamp' }) },
+    ],
+  };
 
   const insets = useDetailViewportInsets();
   if (!visible || !memory) return null;
 
   return <DetailScreenFrame title="Memory" onBack={onClose} actions={<NativeActionMenu compact label="Memory actions" actions={[
     { id: 'edit', title: 'Edit Memory', image: 'pencil', onSelect: onEdit },
+    { id: 'match', title: 'Find matching photos', image: 'photo.badge.magnifyingglass', onSelect: () => router.push({ pathname: '/memory-photos/[id]', params: { id: memory.id } }) },
     { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: onShare },
   ]} />}><View style={styles.safe}>
     <LinearGradient colors={theme.gradient(['#2b172b', '#120d1a', '#08070c'] as const)} locations={[0, 0.36, 1]} style={StyleSheet.absoluteFill} />
-        <ScrollView contentContainerStyle={[styles.memoryDetailContent, { paddingTop: 16, paddingBottom: insets.bottom + 38 }]} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}>
-          <Reanimated.View style={styles.memoryDetailHero}>
-            <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} /> : <MemoryArtwork artworkKey={memory.artworkKey} />}</View>
+        <Animated.ScrollView
+          contentContainerStyle={[styles.memoryDetailContent, { paddingTop: 16, paddingBottom: insets.bottom + 38 }]}
+          showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="never"
+          automaticallyAdjustContentInsets={false}
+          automaticallyAdjustsScrollIndicatorInsets={false}
+          onScroll={reduceMotion ? undefined : Animated.event([{ nativeEvent: { contentOffset: { y: detailScrollY } } }], { useNativeDriver: true })}
+          scrollEventThrottle={16}
+        >
+          <Animated.View style={[styles.memoryDetailHero, photographicDepth]}>
+            <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} onReady={onReady} /> : <MemoryArtwork artworkKey={memory.artworkKey} onReady={onReady} />}</View>
             <LinearGradient colors={theme.gradient(['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const)} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
             <View style={styles.memoryDetailHeroGlowOne} /><View style={styles.memoryDetailHeroGlowTwo} />
             <View style={styles.memoryDetailHeroContent}><Text style={styles.memoryDetailKicker}>MEMORY</Text><Text style={styles.memoryDetailTitle}>{memory.name}</Text><Text style={styles.memoryDetailMeta}>{journeys.length} {journeys.length === 1 ? 'journey' : 'journeys'}  ·  {memory.photos.length} photos</Text></View>
-          </Reanimated.View>
+          </Animated.View>
           <Reanimated.View style={styles.memoryDetailBreadcrumb}><Text style={styles.memoryDetailBreadcrumbActive}>Memory</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbMuted}>Journeys</Text></Reanimated.View>
           {memory.notes ? <Reanimated.Text style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text> : null}
+          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/memory-photos/[id]', params: { id: memory.id } })}
+            style={{ padding: 20, gap: 6, marginVertical: 16, borderRadius: 22, borderWidth: 1, borderColor: theme.palette.line, backgroundColor: theme.palette.card }}>
+            <Text style={{ color: theme.palette.accent, fontSize: 17, fontWeight: '800' }}>Find matching photos ↗</Text>
+            <Text style={{ color: theme.palette.muted, fontSize: 13 }}>Suggestions from your photo dates and locations. Review before adding. Free for everyone.</Text>
+          </Pressable>
           <Reanimated.Text style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
           <View style={styles.memoryJourneyList}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
           {!journeys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
-        </ScrollView>
+        </Animated.ScrollView>
   </View></DetailScreenFrame>;
 }
 
@@ -2182,28 +2229,36 @@ function OverviewMetrics({ items }: { items: { label: string; value: string }[] 
   return <View style={[styles.overviewMetrics, styles.staticWidgetGlow]}>{items.map(item => <View key={item.label} style={styles.overviewMetric}><Text style={styles.overviewMetricValue}>{item.value}</Text><Text style={styles.overviewMetricLabel}>{item.label}</Text></View>)}</View>;
 }
 
-function MemoryArtwork({ photo }: { artworkKey: string; photo?: JourneyPhoto | null }) {
+function MemoryArtwork({ photo, onReady }: { artworkKey: string; photo?: JourneyPhoto | null; onReady?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const flipImage = useContext(MemoryFlipImageContext);
 
-  if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} />;
-  return <ExpoImage
-    accessibilityLabel="Cinematic memory timeline artwork"
-    source={headerImageSource(require('../assets/memory-default-floating-timeline-v1.jpg'), theme.mode)}
-    contentFit="cover"
-    cachePolicy="memory-disk"
-    transition={120}
-    style={styles.memoryArtwork}
-  />;
+  if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} onReady={onReady} />;
+  return <View style={styles.memoryArtwork}>
+    <ExpoImage
+      accessibilityLabel="Cinematic memory timeline artwork"
+      source={headerImageSource(require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), theme.id)}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      transition={flipImage ? 0 : 120}
+      onDisplay={onReady}
+      onError={onReady}
+      style={StyleSheet.absoluteFill}
+    />
+    <CinematicPhotoGrade />
+  </View>;
 }
 
-function JourneyPhotoImage({ photo, style }: { photo: JourneyPhoto; style?: any }) {
+function JourneyPhotoImage({ photo, style, onReady }: { photo: JourneyPhoto; style?: any; onReady?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
   const [uri, setUri] = useState<string | null>(null);
-  useEffect(() => { let active = true; void appDataClient.photoDataUrl(photo).then(value => { if (active) setUri(value); }).catch(() => undefined); return () => { active = false; }; }, [photo.id]);
-  return uri ? <Image source={{ uri }} resizeMode="cover" style={style} /> : <View style={[style, styles.photoLoading]}><ActivityIndicator color={theme.color("#b693ff", 'text')} /></View>;
+  const ready = useRef(onReady);
+  ready.current = onReady;
+  useEffect(() => { let active = true; void appDataClient.photoDataUrl(photo).then(value => { if (active) { setUri(value); if (!value) ready.current?.(); } }).catch(() => { if (active) ready.current?.(); }); return () => { active = false; }; }, [photo.id]);
+  return uri ? <Image source={{ uri }} resizeMode="cover" onLoadEnd={onReady} style={style} /> : <View style={[style, styles.photoLoading]}><ActivityIndicator color={theme.color("#b693ff", 'text')} /></View>;
 }
 
 function PhotoTile({ photo, selected = false, label, onPress, onRemove }: { photo: JourneyPhoto; selected?: boolean; label: string; onPress: () => void; onRemove?: () => void }) {
@@ -2323,6 +2378,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   const styles = useThemedStyles(darkStyles);
 
   const journey = state.data;
+  const replayPhotos = useMemo(() => journey && visible ? loadReplayPhotos(getCurrentUser().id, journey.id) : [], [journey, visible]);
   const rawStartingLocation = journey?.rawStartingLocation || journey?.startingLocation || 'Recorded start';
   const rawEndingLocation = journey?.rawEndingLocation || journey?.endingLocation || 'Recorded destination';
   const startingLocationKey = journey?.startingLocationKey || journey?.rawStartingLocation || journey?.startingLocation || `journey:${journey?.id ?? 'unavailable'}:start`;
@@ -2433,9 +2489,10 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
               <Text style={styles.journeyMapKicker}>JOURNEY MAP</Text>
               <Text style={styles.journeyMapTitle}>ROUTE + SONG LOCATIONS</Text>
             </View>
-            <InteractiveRouteMap
+            <InteractiveRouteMap key={journey.id}
               coordinates={journey.route?.coordinates ?? []}
               routeSamples={journey.route?.points}
+              photos={replayPhotos}
               songMoments={songMoments}
               totalSongCount={Math.max(journey.songCount, journey.soundtrack.length)}
               startedAt={journey.startedAt}
@@ -2461,6 +2518,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
             {!editingLocations && <View style={styles.journeyActions}>
               <Pressable onPress={openJourneyShare} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
               <Pressable onPress={openLocationEditor} style={styles.journeyEditButton}><Text style={styles.journeyEditButtonText}>Edit locations</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } })} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Trim & split · Plus</Text></Pressable>
             </View>}
           </>}
     </ScrollView>
@@ -2480,6 +2538,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
 
 type SettingsDestination =
   | { kind: 'overview' }
+  | { kind: 'category'; category: SettingsCategoryId }
   | { kind: 'profile' }
   | { kind: 'saved-place'; slot: SavedPlaceSlot };
 
@@ -2548,7 +2607,7 @@ function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { c
     Keyboard.dismiss();
     const saved = saveProfileAppearance(currentUser, draft);
     onSaved(saved);
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
+    void haptics.success();
   };
 
   return (
@@ -2719,6 +2778,7 @@ function ConnectionsScreen({
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
   const [destination, setDestination] = useState<SettingsDestination>({ kind: 'overview' });
+  const { appIconId } = useAppIconChoice();
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
   const insets = useSafeAreaInsets();
   useEffect(() => {
@@ -2732,6 +2792,10 @@ function ConnectionsScreen({
   useEffect(() => () => onEditorActiveChange(false), [onEditorActiveChange]);
   const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
   const closeEditor = () => setDestination({ kind: 'overview' });
+  const openCategory = (category: SettingsCategoryId) => {
+    setDestination({ kind: 'category', category });
+    void haptics.selection();
+  };
 
   const internalMusicControls = <>{isInternalTestingBuild() && advancedSupportVisible && <>
           <SectionHeading title="Internal music testing" />
@@ -2743,8 +2807,8 @@ function ConnectionsScreen({
             <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
             <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
             {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
-            {lastFmUsername && connectionCapabilities.lastFmConfigured && <Pressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></Pressable>}
-            <View style={styles.setupActions}><Pressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></Pressable><Pressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></Pressable></View>
+            {lastFmUsername && connectionCapabilities.lastFmConfigured && <TouchPressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></TouchPressable>}
+            <View style={styles.setupActions}><TouchPressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></TouchPressable><TouchPressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></TouchPressable></View>
           </View>}
           {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color={theme.color("#1ed760", 'text')} status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
         </>}</>;
@@ -2762,117 +2826,101 @@ function ConnectionsScreen({
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
     providerName={selected.name} providerDetail={selected.summary}
     places={SAVED_PLACE_SLOTS.map(slot => ({ ...slot, saved: Boolean(savedPlaces[slot.id]) }))}
-    onEditProfile={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }}
+    onEditProfile={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }}
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
   />;
 
-  return (
-      <SettingsScrollView
-        contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
-        contentInsetAdjustmentBehavior="never"
-        automaticallyAdjustContentInsets={false}
-        automaticallyAdjustsScrollIndicatorInsets={false}
-        showsVerticalScrollIndicator={false}
-      >
-        <AtmosphericBackdrop variant="settings" />
-        <PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
-
-        <AppearanceSwitch />
-
-        <SectionHeading title="Membership" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
-          {membershipTier === 'paid'
-            ? <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} />
-            : <LinearGradient colors={theme.gradient(['#4a285d', '#26152f'])} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
-          <View style={styles.flex}>
-            <Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text>
-            <Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text>
-            <Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text>
-          </View>
-          <Pressable accessibilityRole="button" onPress={onMembership} style={styles.changeButton}><Text style={styles.changeButtonText}>{membershipTier === 'paid' ? 'Manage' : 'Unlock'}</Text></Pressable>
-        </View>
-
-        <SectionHeading title="iCloud Backup" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#4598ff', 'border') }]}>
-          <View style={styles.icloudMark}><SymbolView name="icloud.fill" tintColor="#1687ff" size={27} /></View>
-          <View style={styles.flex}>
-            <Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text>
-            <Text style={styles.connectionName}>iCloud Backup</Text>
-            <Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text>
-          </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Sync iCloud now" onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Update app' : 'Sync'}</Text></Pressable>
-        </View>
-        <View style={styles.privateCloudCard}>
-          <Text style={styles.privateCloudBody}>Your JourneyDeck library stays private in your iCloud account.</Text>
-          {isIpad() && <Text style={styles.privateCloudBody}>Use the same iCloud account on both devices. Under Account, continue with the same Apple Account used in JourneyDeck on your iPhone to link the same driver profile. Sync on your iPhone first, then tap Sync here.</Text>}
-          <Pressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></Pressable>
-          <PlaceDataCredits />
-        </View>
-
-        <SectionHeading title="Account" />
-        <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void Haptics.selectionAsync().catch(() => undefined); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#6d4a78', 'border') }, pressed && styles.pressed]}>
-          <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: theme.color('#3a2446', 'surface') }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
-          <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
-          <Text style={styles.savedPlaceAction}>Edit</Text>
-        </Pressable>
-        {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
-        {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color={theme.color("#a88aff", 'text')} /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
-        {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
-        <View style={styles.accountActions}>
-          {Boolean(currentUser.appleSubject) && <Pressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></Pressable>}
-          <Pressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></Pressable>
-        </View>
-
-        <SectionHeading title="Saved Places" />
-        <View style={styles.savedPlacesCard}>
-          <Text style={styles.savedPlacesHint}>Name journeys automatically and protect these locations when sharing.</Text>
-          {SAVED_PLACE_SLOTS.map((slot, index) => <Pressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => setDestination({ kind: 'saved-place', slot: slot.id })} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
-            <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor={theme.color("#ff9478", 'text')} size={20} /></View>
-            <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
-            <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
-          </Pressable>)}
-        </View>
-
-        <SectionHeading title="Soundtrack capture" />
-        <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(selected.color, 'border') }]}>
-          <ProviderMark brand={selected.brand} size={50} />
-          <View style={styles.flex}><Text style={styles.connectionKicker}>{selected.id === 'apple-music' ? 'AUTOMATIC SOUNDTRACK · RECOMMENDED' : selected.id === 'shazam' ? 'MANUAL PER SONG · NOT AUTOMATIC' : 'SELECTED MUSIC METHOD'}</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
-          <Pressable onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></Pressable>
-        </View>
-
-        {internalMusicControls}
-
-        <View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View>
-
-        <SectionHeading title="Advanced Support" />
-        <Pressable accessibilityRole="button" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
-          <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color("#b88cff", 'text')} size={21} /></View>
-          <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>TROUBLESHOOTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics are hidden here unless you need help.</Text></View>
-          <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
-        </Pressable>
-        {advancedSupportVisible && <Pressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
-          <View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color("#54e6bc", 'text')} size={22} /></View>
-          <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View>
-          <Text style={styles.settingsDataHealthArrow}>›</Text>
-        </Pressable>}
-      </SettingsScrollView>
-  );
-}
-
-function AppearanceSwitch() {
-  const { theme, setMode } = useThemeChoice();
-  const styles = useThemedStyles(darkStyles);
-  return <View style={styles.selectedProvider}>
-    <View style={styles.connectionIcon}><SymbolView name={theme.isLight ? 'sun.max.fill' : 'moon.fill'} tintColor={theme.color('#ff9478')} size={24} /></View>
-    <View style={styles.flex}><Text style={styles.connectionName}>Light Mode</Text><Text style={styles.connectionDetail}>{theme.isLight ? 'Warm ivory' : 'Cinematic dark'}</Text></View>
-    <Switch style={{ alignSelf: 'center' }} accessibilityLabel="Light Mode" accessibilityHint="Switch between warm ivory and cinematic dark" value={theme.isLight} trackColor={{ false: '#594060', true: '#9a456a' }} thumbColor="#fffaf0" onValueChange={enabled => {
-      try { setMode(enabled ? 'light' : 'dark'); }
-      catch { Alert.alert('Appearance not saved', 'Please try switching the theme again.'); }
-    }} />
+  const profileCard = <>
+    <SectionHeading title="Account" />
+    <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#6d4a78', 'border') }, pressed && styles.pressed]}>
+      <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: theme.color('#3a2446', 'surface') }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
+      <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
+      <Text style={styles.savedPlaceAction}>Edit</Text>
+    </TouchPressable>
+    {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={theme.isLight ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
+    {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color={theme.color('#a88aff', 'text')} /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
+    {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
+    <View style={styles.accountActions}>
+      {Boolean(currentUser.appleSubject) && <TouchPressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></TouchPressable>}
+      <TouchPressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></TouchPressable>
+    </View>
+  </>;
+  const cloudCard = <>
+    <SectionHeading title="iCloud Backup" />
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#4598ff', 'border') }]}>
+      <View style={styles.icloudMark}><SymbolView name="icloud.fill" tintColor="#1687ff" size={27} /></View>
+      <View style={styles.flex}><Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text><Text style={styles.connectionName}>iCloud Backup</Text><Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text></View>
+      <TouchPressable accessibilityRole="button" accessibilityLabel="Sync iCloud now" onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Update app' : 'Sync'}</Text></TouchPressable>
+    </View>
+    <View style={styles.privateCloudCard}><Text style={styles.privateCloudBody}>Your JourneyDeck library stays private in your iCloud account.</Text><TouchPressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></TouchPressable></View>
+  </>;
+  const membershipCard = <>
+    <SectionHeading title="Membership" />
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
+      {membershipTier === 'paid' ? <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} /> : <LinearGradient colors={theme.gradient(['#4a285d', '#26152f'])} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
+      <View style={styles.flex}><Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text><Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text><Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>
+      <TouchPressable accessibilityRole="button" onPress={onMembership} style={styles.changeButton}><Text style={styles.changeButtonText}>{membershipTier === 'paid' ? 'Manage' : 'Unlock'}</Text></TouchPressable>
+    </View>
+  </>;
+  const providerCard = <>
+    <SectionHeading title="Soundtrack capture" />
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(selected.color, 'border') }]}>
+      <ProviderMark brand={selected.brand} size={50} />
+      <View style={styles.flex}><Text style={styles.connectionKicker}>{selected.id === 'apple-music' ? 'AUTOMATIC SOUNDTRACK · RECOMMENDED' : selected.id === 'shazam' ? 'MANUAL PER SONG · NOT AUTOMATIC' : 'SELECTED MUSIC METHOD'}</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
+      <TouchPressable accessibilityRole="button" accessibilityLabel="Change soundtrack provider" onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></TouchPressable>
+    </View>
+  </>;
+  const placesCard = <View style={styles.savedPlacesCard}>
+    <Text style={styles.savedPlacesHint}>Name journeys automatically and protect these locations when sharing.</Text>
+    {SAVED_PLACE_SLOTS.map((slot, index) => <TouchPressable key={slot.id} accessibilityRole="button" accessibilityLabel={`${savedPlaces[slot.id] ? 'Change' : 'Set'} ${slot.label}`} onPress={() => setDestination({ kind: 'saved-place', slot: slot.id })} style={[styles.savedPlaceRow, index > 0 && styles.savedPlaceRowBorder]}>
+      <View style={styles.savedPlaceIcon}><SymbolView name={slot.symbol as SFSymbol} tintColor={theme.color('#ff9478', 'text')} size={20} /></View>
+      <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
+      <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
+    </TouchPressable>)}
   </View>;
+  const supportCard = <>
+    <SectionHeading title="Advanced Support" />
+    <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
+      <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
+      <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>TROUBLESHOOTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics are hidden here unless you need help.</Text></View>
+      <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
+    </TouchPressable>
+    <ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}><View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color('#54e6bc', 'text')} size={22} /></View><View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View><Text style={styles.settingsDataHealthArrow}>›</Text></TouchPressable></ExpandingSection>
+    <View style={styles.settingsSupportLinks}><TouchPressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Privacy Policy ↗</Text></TouchPressable><TouchPressable accessibilityRole="link" accessibilityLabel="Support Page" onPress={() => void Linking.openURL('https://journeydeck.me/support')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Support Page ↗</Text></TouchPressable></View>
+  </>;
+
+  if (destination.kind === 'category') {
+    const category = settingsCategories.find(item => item.id === destination.category)!;
+    const categoryContent: Record<SettingsCategoryId, ReactNode> = {
+      appearance: <><ThemePicker /><AppIconPicker /></>,
+      recording: <><View style={styles.settingsEditorPanel}><View style={styles.settingsCategoryFeature}><View style={styles.settingsHubIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={22} /></View><View style={styles.flex}><Text style={styles.connectionName}>Manual recording</Text><Text style={styles.connectionDetail}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View><View style={styles.privateCloudCard}><Text style={styles.privateCloudTitle}>LOCATION PRIVACY</Text><Text style={styles.privateCloudBody}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text><PlaceDataCredits /></View></>,
+      music: <>{providerCard}{internalMusicControls}<View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View></>,
+      account: <>{profileCard}{cloudCard}</>,
+      places: <><SectionHeading title="Saved Places" />{placesCard}</>,
+      membership: <>{membershipCard}{supportCard}</>,
+    };
+    return <SettingsEditorScaffold eyebrow="SETTINGS" title={category.title} onBack={closeEditor}><View style={styles.settingsCategoryStack}>{categoryContent[destination.category]}</View></SettingsEditorScaffold>;
+  }
+
+  const savedPlaceCount = SAVED_PLACE_SLOTS.filter(slot => Boolean(savedPlaces[slot.id])).length;
+  const categorySummary: Record<SettingsCategoryId, string> = {
+    appearance: `${theme.name} · ${appIconCatalog[appIconId].name} icon`, recording: 'Manual recording', music: selected.name,
+    account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} of ${SAVED_PLACE_SLOTS.length} saved`,
+    membership: membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Help and privacy',
+  };
+  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+    <AtmosphericBackdrop variant="settings" /><PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
+    <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.settingsHubProfile, pressed && styles.pressed]}>
+      <View style={[styles.settingsHubAvatar, { backgroundColor: theme.palette.inset }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
+      <View style={styles.flex}><Text style={styles.settingsHubProfileName}>{profileAppearance.displayName}</Text><Text style={styles.settingsHubProfileDetail}>Primary driver · Edit profile</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+    </TouchPressable>
+    <View style={styles.settingsHubList}>{settingsCategories.map((category, index) => <TouchPressable key={category.id} accessibilityRole="button" accessibilityLabel={`Open ${category.title} settings`} onPress={() => openCategory(category.id)} style={({ pressed }) => [styles.settingsHubRow, index > 0 && styles.settingsHubRowBorder, pressed && styles.pressed]}>
+      <View style={styles.settingsHubIcon}><SymbolView name={category.symbol as SFSymbol} tintColor={theme.palette.accent} size={21} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>{category.title}</Text><Text numberOfLines={2} style={styles.settingsHubSummary}>{categorySummary[category.id]}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+    </TouchPressable>)}</View>
+  </SettingsScrollView>;
 }
 
 function JourneyDeckLogo({ size }: { size: number }) {
@@ -2902,11 +2950,11 @@ function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: s
   const styles = useThemedStyles(darkStyles);
 
   if (variant === 'memories') {
-    return <><Text accessibilityRole="header" style={styles.cinematicPageTitle}>{title.toUpperCase()}</Text><View style={styles.pageArtHeader}>
-      <HeaderArtwork source={require('../assets/memories-header-cinematic-v1.png')} />
+    return <><PhoneTabTitle title={title} /><View style={styles.pageArtHeader}>
+      <HeaderArtwork source={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} />
     </View></>;
   }
-  if (variant === 'settings') return <><Text accessibilityRole="header" style={styles.cinematicPageTitle}>{title.toUpperCase()}</Text><View style={styles.pageArtHeader}><HeaderArtwork source={require('../assets/settings-header-cinematic-v1.png')} /></View></>;
+  if (variant === 'settings') return <><PhoneTabTitle title={title} /><View style={styles.pageArtHeader}><HeaderArtwork source={require('../assets/cinematic-settings-photo-v1.jpg')} /></View></>;
   return <View style={styles.pageHeader}>
     <PageHeaderScene variant={variant} />
     <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
@@ -3077,7 +3125,7 @@ function JourneyHeroAtmosphere() {
   const theme = useAppTheme();
 
   return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-    <ExpoImage source={headerImageSource(require('../assets/journey-detail-memory-hero-v1.jpg'), theme.mode)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    <ExpoImage source={headerImageSource(require('../assets/cinematic-journey-photo-v1.jpg'), theme.id)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
     <LinearGradient colors={theme.gradient(['rgba(5,2,8,0.9)', 'rgba(7,3,10,0.45)', 'rgba(7,3,10,0)'])} locations={[0, 0.38, 0.66]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
     <LinearGradient colors={theme.gradient(['rgba(7,3,10,0)', 'rgba(7,3,10,0.68)'])} locations={[0.28, 1]} style={StyleSheet.absoluteFill} />
   </View>;
@@ -3129,7 +3177,7 @@ function SectionHeading({ title, action, onAction }: { title: string; action?: s
 function PrimaryAction({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
   const styles = useThemedStyles(darkStyles);
 
-  return <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryAction, (pressed || disabled) && styles.pressed]}><Text style={styles.primaryActionText}>{label}</Text></Pressable>;
+  return <TouchPressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.primaryAction, (pressed || disabled) && styles.pressed]}><Text style={styles.primaryActionText}>{label}</Text></TouchPressable>;
 }
 
 function Metric({ value, label }: { value: string; label: string }) {
@@ -3138,12 +3186,22 @@ function Metric({ value, label }: { value: string; label: string }) {
   return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
+const journeyCardEntryTracker = new JourneyCardEntryTracker();
+
 function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySummary; onPress: () => void; compact?: boolean }) {
   const styles = useThemedStyles(darkStyles);
+  const { isAppActive, reduceMotion } = useMotionPreferences();
+  const [firstPresentation] = useState(() => journeyCardEntryTracker.shouldAnimate(journey.id));
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const settle = (pressed: boolean) => {
+    scale.value = reduceMotion ? 1 : withSpring(pressed ? 0.985 : 1, MOTION_SPRINGS.responsive);
+  };
+  const entering = firstPresentation && isAppActive && !reduceMotion ? FadeInDown.duration(220) : undefined;
 
   const track = journey.soundtrackPreview?.[0];
   if (compact) return (
-    <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
+    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
       <View style={styles.journeyCompactTop}>
         <View style={styles.flex}>
           <Text style={styles.journeyDateCompact}>{formatFullDate(journey.startedAt)}</Text>
@@ -3157,14 +3215,14 @@ function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySu
         <Text style={styles.journeySongCompact} numberOfLines={1}>{track ? `${track.track}  ·  ${track.artist}` : (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text>
         {journey.songCount > 0 && <Text style={styles.songCountCompact}>{journey.songCount}</Text>}
       </View>
-    </Pressable></CardDetailLink>
+    </Pressable></CardDetailLink></Reanimated.View>
   );
   return (
-    <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
+    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
       <View style={styles.journeyTop}><View><Text style={styles.journeyDate}>{formatFullDate(journey.startedAt)}</Text><Text style={styles.journeyRoute} numberOfLines={2}>{locationPair(journey)}</Text></View><Text style={styles.journeyChevron}>›</Text></View>
       <View style={styles.journeyStats}><Text style={styles.journeyStat}>{formatMiles(journey.miles)}</Text><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{formatDuration(journey.durationMinutes)}</Text>{journey.vehicleName && <><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{journey.vehicleName}</Text></>}</View>
       <View style={styles.journeySoundtrack}>{track ? <Artwork track={track} size={42} /> : <View style={styles.miniArtwork}><Text style={styles.miniArtworkText}>♪</Text></View>}<View style={styles.flex}><Text style={styles.journeySong} numberOfLines={1}>{track?.track ?? (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text><Text style={styles.journeyArtist} numberOfLines={1}>{track?.artist ?? 'Music can be added after the journey'}</Text></View>{journey.songCount > 0 && <Text style={styles.songCount}>{journey.songCount}</Text>}</View>
-    </Pressable></CardDetailLink>
+    </Pressable></CardDetailLink></Reanimated.View>
   );
 }
 
@@ -3204,6 +3262,7 @@ function LoadingCard() {
 
 function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, endLabel, cinematic = false, expanded = false }: { coordinates: [number, number][]; soundtrack: JourneyDetail['soundtrack']; startedAt: string; endedAt: string; startLabel: string | null; endLabel: string | null; cinematic?: boolean; expanded?: boolean }) {
   const theme = useAppTheme();
+  const mapPalette = journeyDeckMapPalette(theme.id);
   const routeVisualStyles = useThemedStyles(darkRouteVisualStyles);
   const styles = useThemedStyles(darkStyles);
 
@@ -3255,8 +3314,8 @@ function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, 
       {snapshotTiles.map(tile => <ExpoImage key={tile.key} source={tile.uri} cachePolicy="memory-disk" contentFit="cover" transition={0} style={[routeVisualStyles.routeTile, { left: `${tile.column * 33.333}%`, top: `${tile.row * 33.333}%` }]} />)}
       <View pointerEvents="none" style={routeVisualStyles.routeTileShade} />
       <View pointerEvents="none" style={routeVisualStyles.routeCanvas}><Svg width="100%" height="100%" viewBox={`0 0 ${snapshotSize} ${snapshotSize}`}>
-        <Defs><SvgLinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={theme.color("#45efc0", 'accent')} /><Stop offset="0.5" stopColor={theme.color("#a681ff", 'accent')} /><Stop offset="1" stopColor={theme.color("#ff765c", 'accent')} /></SvgLinearGradient></Defs>
-        <Polyline points={mapPolyline || polyline} fill="none" stroke={theme.color("#8e6dff", 'accent')} strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" opacity="0.38" />
+        <Defs><SvgLinearGradient id="journeyRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={theme.id === 'redline' ? mapPalette.routeLine : theme.color("#45efc0", 'accent')} /><Stop offset="0.5" stopColor={theme.id === 'redline' ? mapPalette.routeLine : theme.color("#a681ff", 'accent')} /><Stop offset="1" stopColor={theme.id === 'redline' ? mapPalette.routeLine : theme.color("#ff765c", 'accent')} /></SvgLinearGradient></Defs>
+        <Polyline points={mapPolyline || polyline} fill="none" stroke={theme.id === 'redline' ? mapPalette.routeGlow : theme.color("#8e6dff", 'accent')} strokeWidth="18" strokeLinecap="round" strokeLinejoin="round" opacity="0.38" />
         <Polyline points={mapPolyline || polyline} fill="none" stroke="url(#journeyRoute)" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
         {worldPoints[0] && <><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="12" fill={theme.color("#43e6ae", 'accent')} opacity="0.28" /><Circle cx={worldPoints[0].x - tileOriginX * tileSize} cy={worldPoints[0].y - tileOriginY * tileSize} r="6" fill={theme.color("#43e6ae", 'accent')} stroke={theme.color("#d9fff1", 'accent')} strokeWidth="2" /></>}
         {worldPoints.at(-1) && <><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="15" fill={theme.color("#ff795b", 'accent')} opacity="0.3" /><Circle cx={worldPoints.at(-1)!.x - tileOriginX * tileSize} cy={worldPoints.at(-1)!.y - tileOriginY * tileSize} r="7" fill={theme.color("#ff795b", 'accent')} stroke={theme.color("#fff0e8", 'accent')} strokeWidth="2" /></>}
@@ -3381,7 +3440,7 @@ const darkStyles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, primaryTabHost: { flex: 1, backgroundColor: '#08070d' }, pager: { flex: 1, backgroundColor: '#08070d' }, settingsTabLayer: { ...StyleSheet.absoluteFill, zIndex: 5, backgroundColor: '#08070d' }, settingsTabLayerHidden: { display: 'none' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
-  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, cinematicPageTitle: { position: 'relative', zIndex: 10, elevation: 10, color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 1, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
+  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, settingsRootContent: { paddingHorizontal: 16 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
   webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#56357a', backgroundColor: '#05040e', shadowColor: '#9d58ff', shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 9 }, overflow: 'hidden' },
   webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
@@ -3527,10 +3586,9 @@ const darkStyles = StyleSheet.create({
   favoriteRoute: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 17, borderWidth: 1, borderColor: '#4b315f', backgroundColor: '#130c1d', marginBottom: 9 }, favoriteRouteTitle: { color: '#f4edf7', fontSize: 13, fontWeight: '900' }, favoriteRouteMeta: { color: '#8f8398', fontSize: 10, marginTop: 5 }, favoriteRouteCount: { color: '#ff8d70', fontSize: 17, fontWeight: '900' }, libraryJourneyWrap: { position: 'relative' }, libraryAddButton: { position: 'absolute', right: 12, bottom: 11, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 11, backgroundColor: '#281636', borderWidth: 1, borderColor: '#65427a' }, libraryAddText: { color: '#d2adf3', fontSize: 9, fontWeight: '900' },
 
   approvedHomeSafe: { flex: 1, backgroundColor: '#05030b' },
+  approvedHomeBackdrop: { position: 'absolute', top: -24, right: -24, bottom: -24, left: -24 },
   approvedHomeContent: { minHeight: '100%', paddingHorizontal: 24 },
-  approvedHomeHeader: { height: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   approvedHomeHeaderButton: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(24,15,35,0.52)', borderWidth: 1, borderColor: 'rgba(191,149,218,0.24)' },
-  approvedHomeTitle: { color: '#f8f2fa', fontSize: 17, fontWeight: '500', letterSpacing: 7.5, marginLeft: 8 },
   approvedHomeScenicSpace: { height: 70 },
   approvedHomeScenicSpaceActive: { height: 85 },
   approvedHomePanels: { gap: 14 },
@@ -3575,6 +3633,21 @@ const darkStyles = StyleSheet.create({
   settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
   settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 16 },
   settingsEditorTitle: { color: '#fff8ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, marginTop: 6 },
+  settingsCategoryStack: { gap: 16, marginTop: 20 },
+  settingsCategoryFeature: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingsHubProfile: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 21, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#15101e', padding: 13 },
+  settingsHubAvatar: { width: 50, height: 50, borderRadius: 17, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  settingsHubProfileName: { color: '#fff8ff', fontSize: 16, fontWeight: '900' },
+  settingsHubProfileDetail: { color: '#9f92a7', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  settingsHubList: { overflow: 'hidden', borderRadius: 23, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#141018' },
+  settingsHubRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  settingsHubRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#3d2d46' },
+  settingsHubIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#291735', borderWidth: 1, borderColor: '#49304f' },
+  settingsHubTitle: { color: '#fff8ff', fontSize: 15, fontWeight: '900' },
+  settingsHubSummary: { color: '#9f92a7', fontSize: 11, lineHeight: 15, marginTop: 3 },
+  settingsHubChevron: { color: '#c7a9ff', fontSize: 28, lineHeight: 30 },
+  settingsSupportLinks: { flexDirection: 'row', gap: 10 },
+  settingsSupportLink: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#49304f', backgroundColor: '#17121f' },
   settingsEditorPanel: { width: '100%', overflow: 'hidden', gap: 14, borderRadius: 24, borderWidth: 1, borderColor: '#5b3a69', backgroundColor: '#130d19', padding: 20, marginTop: 22, shadowColor: '#8d51aa', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   settingsEditorBody: { color: '#aa9ead', fontSize: 13, lineHeight: 20 },
   settingsDataHealth: { minHeight: 86, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(83,210,177,0.34)', backgroundColor: 'rgba(10,22,24,0.82)', paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#43e6ae', shadowOpacity: 0.13, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },

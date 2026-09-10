@@ -10,9 +10,15 @@ import { isNativeAutomaticSession } from '../modules/journeydeck-recorder';
 import { syncNativeRecorderInbox } from './native-recorder-inbox';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { observeJourneyDeckEvent } from './observability';
+import { prepareJourneyDeckDatabase } from './database-startup';
 
 TaskManager.defineTask<{ locations: LocationObject[] }>(LOCATION_TASK_NAME, async ({ data, error }) => {
   if (error || !data?.locations?.length) return;
+  try { await prepareJourneyDeckDatabase(); }
+  catch {
+    observeJourneyDeckEvent('recorder.completion_failed', { engine: 'manual', stage: 'database_startup' });
+    return;
+  }
   if (isNativeAutomaticSession(activeSession()?.id)) {
     await syncNativeRecorderInbox();
     if (!activeSession()) { await stopLocationTracking(); return; }

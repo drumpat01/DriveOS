@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { appDataClient, type JourneyDetail } from './app-data';
+import { subscribeLocalArchiveChanges } from './local-archive-events';
 
 type DetailState = { id: string; status: 'loading' | 'ready' | 'error'; data: JourneyDetail | null; message?: string };
 
@@ -9,6 +10,7 @@ export function useJourneyDetail(id: string) {
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<DetailState>({ id, status: 'loading', data: null });
   const refresh = useCallback(() => setRevision(value => value + 1), []);
+  useEffect(() => subscribeLocalArchiveChanges(refresh), [refresh]);
   useEffect(() => {
     let alive = true;
     setState(current => ({ id, status: 'loading', data: current.id === id ? current.data : null }));

@@ -24,12 +24,12 @@ export function DetailScreenFrame({ title, onBack, actions, children }: {
 }) {
   const insets = useDetailViewportInsets();
   const theme = useAppTheme();
-  const backgroundColor = theme.isLight ? '#fffaf0' : '#08070d';
-  const color = theme.isLight ? '#59316d' : '#eee4f6';
+  const backgroundColor = theme.palette.page;
+  const color = theme.isCustom ? theme.palette.text : theme.isLight ? '#59316d' : '#eee4f6';
   return <View style={[styles.screen, { backgroundColor, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <View style={styles.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={onBack}
-        style={({ pressed }) => [styles.control, { backgroundColor: theme.isLight ? '#fffaf0' : '#211829', borderColor: theme.isLight ? '#d5c9be' : '#52405f', opacity: pressed ? 0.65 : 1 }]}>
+        style={({ pressed }) => [styles.control, { backgroundColor: theme.palette.card, borderColor: theme.palette.line, opacity: pressed ? 0.65 : 1 }]}>
         <SymbolView name="chevron.left" tintColor={color} style={styles.backIcon} />
       </Pressable>
       <Text accessibilityRole="header" numberOfLines={1} style={[styles.title, { color }]}>{title}</Text>

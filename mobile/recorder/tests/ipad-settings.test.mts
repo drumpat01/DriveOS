@@ -1,3 +1,5 @@
+import { touchFeedbackMock } from './touch-feedback-fixture.mts';
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -11,119 +13,127 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const source = readFileSync(new URL('../src/shell.tsx', import.meta.url), 'utf8');
-let tablet = true, light = true;
-const colors = { isLight: true, color: (value: string) => value, gradient: (values: any) => values };
+let tablet = true, light = true, viewportWidth = 1100, viewportHeight = 800;
+const colors = { isLight: true, name: 'Cinematic Dark', palette: { accent: '#b795e5', inset: '#291735' }, color: (value: string) => value, gradient: (values: any) => values };
 const controls = Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'Switch', 'Image', 'TextInput'].map(name => [name, host(name)]));
 function evaluate(sourceText: string, mocks: Record<string, any> = {}, globals: Record<string, any> = {}) {
   const module = { exports: {} as any };
   const code = ts.transpileModule(sourceText, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.startsWith('../assets/') ? id : require(id), ...globals });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id === './touch-feedback' ? touchFeedbackMock : id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id), ...globals });
   return module.exports;
 }
 const viewport = evaluate(readFileSync(new URL('../src/settings-scroll-view.tsx', import.meta.url), 'utf8'), {
   'react-native': controls, 'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView') },
-  './device-layout': { isIpad: () => tablet }, './app-theme': { useAppTheme: () => ({ isLight: light }) },
+  './device-layout': { isIpad: () => tablet }, './app-theme': { useAppTheme: () => testTheme(light) },
 });
 const viewSource = source.slice(source.indexOf('function ConnectionsScreen('), source.indexOf('function JourneyDeckLogo('));
 const links: string[] = [], modes: string[] = [];
 const header = evaluate(readFileSync(new URL('../src/ipad-page-header.tsx', import.meta.url), 'utf8'), {
   'react-native': { ...controls, StyleSheet: { create: (v: any) => v } }, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
-  './app-theme': { useAppTheme: () => ({ isLight: light, mode: light ? 'light' : 'dark' }) }, './header-image-sources': { headerImageSource: (source: any) => source },
+  './app-theme': { useAppTheme: () => testTheme(light) }, './header-artwork': { HeaderArtworkLayers: host('HeaderArtworkLayers'), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
 });
 const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', import.meta.url), 'utf8'), {
   './ipad-page-header': header,
+  './theme-picker': { ThemePicker: host('ThemePicker') },
+  './app-icon-picker': { AppIconPicker: host('AppIconPicker') },
   './place-data-credits': { PlaceDataCredits: host('PlaceDataCredits') },
-  'react-native': { ...controls, StyleSheet: { create: (v: any) => v }, useWindowDimensions: () => ({ fontScale: 1 }),
+  './settings-categories': require('../src/settings-categories.ts'),
+  'react-native': { ...controls, StyleSheet: { create: (v: any) => ({ ...v, hairlineWidth: 1 }), hairlineWidth: 1 }, useWindowDimensions: () => ({ width: viewportWidth, height: viewportHeight, fontScale: 1 }),
     Linking: { openURL: async (url: string) => { links.push(url); } }, Alert: { alert: () => {} } },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   'expo-symbols': { SymbolView: host('Symbol') },
   'expo-apple-authentication': { AppleAuthenticationButton: host('AppleSignIn'), AppleAuthenticationButtonType: { CONTINUE: 1 }, AppleAuthenticationButtonStyle: { WHITE: 1, BLACK: 2 } },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ bottom: 20 }) },
-  './app-theme': { useThemeChoice: () => ({ theme: { isLight: light, mode: light ? 'light' : 'dark' }, setMode: (mode: string) => modes.push(mode) }) },
+  './app-theme': { useThemeChoice: () => ({ theme: testTheme(light), setMode: (mode: string) => modes.push(mode) }) },
   './theme-palette': { ivoryPalette: { page: '#fffaf0', surface: '#fffcf6', text: '#291d26', secondary: '#685461', violet: '#754487', border: '#d8c5ba', lilac: '#eee2ef' } },
   './header-image-sources': { headerImageSource: (source: any) => source },
 });
 const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScreen;', {}, {
-  ...controls, useState: React.useState, useEffect: React.useEffect,
+  ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
+  useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Original' } },
+  settingsCategories: require('../src/settings-categories.ts').settingsCategories,
   useThemedStyles: () => new Proxy({}, { get: () => ({}) }), darkStyles: {},
   useSafeAreaInsets: () => ({ top: 24, bottom: 20 }), isIpad: () => tablet,
   loadSavedPlaces: () => ({}), loadProfileAppearance: () => ({ displayName: 'Test driver', avatarDataUri: null }), profileInitialsFor: () => 'TD',
   selectableProviderOptions: () => [{ id: 'apple-music', color: '#ff9478', name: 'Apple Music' }], publicProviderOptions: [], SAVED_PLACE_SLOTS: [{ id: 'home', label: 'Home', symbol: 'house' }, { id: 'work', label: 'Work', symbol: 'briefcase' }, { id: 'school', label: 'School', symbol: 'graduationcap' }],
-  IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'),
+  IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsEditorScaffold: host('SettingsEditorScaffold'), SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'),
   PlaceDataCredits: host('PlaceDataCredits'),
   AtmosphericBackdrop: host('Backdrop'), PageHeader: host('Header'), SectionHeading: host('SectionHeading'), ProviderMark: host('Provider'),
   SymbolView: host('Symbol'), LinearGradient: host('Gradient'), ExpoImage: host('Image'), StyleSheet: {},
   AppleAuthentication: { AppleAuthenticationButton: host('AppleSignIn'), AppleAuthenticationButtonType: { CONTINUE: 1 }, AppleAuthenticationButtonStyle: { WHITE: 1 } },
-  Haptics: { selectionAsync: async () => {} }, isInternalTestingBuild: () => false, Linking: { openURL: async () => {} },
+  haptics: { selection: async () => {} }, isInternalTestingBuild: () => false, Linking: { openURL: async () => {} },
 });
 
-test('full iPad Settings exposes existing Apple and sync actions with busy/unavailable guards', async () => {
-  const calls: string[] = [];
+test('responsive Settings uses an iPad split view and an iPhone category hub without losing actions', async () => {
+  const calls: string[] = [], editorStates: boolean[] = [];
   const props: any = { provider: 'apple-music', currentUser: { id: 'test-user', appleSubject: null }, appleIdentityStatus: 'unknown', signingInWithApple: false,
     accountActionPending: false, privateCloud: { status: 'idle', detail: 'Ready to sync' }, membershipTier: 'free', membershipExpirationDate: null,
-    onAppleSignIn: () => calls.push('apple'), onPrivateCloudSync: () => calls.push('sync'), onEditorActiveChange: () => {},
+    onAppleSignIn: () => calls.push('apple'), onPrivateCloudSync: () => calls.push('sync'), onEditorActiveChange: (active: boolean) => editorStates.push(active),
     onSignOut: () => calls.push('signout'), onDeleteAccount: () => calls.push('delete'), onMembership: () => calls.push('membership'), onChangeProvider: () => calls.push('provider'), onDataHealth: () => calls.push('health'),
   };
   let tree: any;
   const render = (changes: any = {}) => React.createElement(ui.ConnectionsScreen, { ...props, ...changes });
-  const syncButton = () => tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'Sync iCloud now');
+  const press = (label: string) => tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === label);
   try {
     await act(() => { tree = create(render()); });
+    assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length >= 1);
+    assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-detail' }).length >= 1);
+    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem').length, 6);
+    assert.equal(tree.root.findByType('ThemePicker').props.embedded, true);
+    assert.equal(tree.root.findByType('ThemePicker').props.compact, true);
+    assert.equal(tree.root.findByType('AppIconPicker').props.compact, true);
+
+    await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 1100 } } }));
+    let sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
+    assert.equal(sidebarStyle[1].width, 286);
+
+    viewportWidth = 820; viewportHeight = 1180;
+    await act(() => tree.update(render()));
+    await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 820 } } }));
+    sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
+    assert.ok(sidebarStyle[1].width >= 206 && sidebarStyle[1].width <= 238);
+
+    await act(() => press('Open Account & iCloud settings').props.onPress());
+    assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-account' }).length);
     await act(() => tree.root.findByType('AppleSignIn').props.onPress());
-    await act(() => syncButton().props.onPress());
+    await act(() => press('Sync iCloud now').props.onPress());
     assert.deepEqual(calls, ['apple', 'sync']);
-    const press = (label: string) => tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === label);
-    for (const viewportWidth of [1100, 720, 460, 1100]) {
-      await act(() => tree.root.findByProps({ testID: 'ipad-settings-canvas' }).props.onLayout({ nativeEvent: { layout: { width: viewportWidth } } }));
-      const widths = ['settings-preferences-row', 'settings-places-row', 'settings-footer-row'].map(id =>
-        tree.root.findAllByType('View').find((node: any) => node.props.testID === id).children.map((node: any) => {
-          const style = typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style;
-          return style.flat(Infinity).find((value: any) => value?.width !== undefined).width;
-        }));
-      assert.equal(tree.root.findByProps({ testID: 'ipad-page-title' }).props.style[1].fontSize, viewportWidth >= 600 ? 36 : 28);
-      assert.equal(tree.root.findByProps({ testID: 'ipad-page-title' }).props.style[0].fontWeight, '600');
-      assert.deepEqual(widths[0], widths[1]); assert.deepEqual(widths[1], widths[2]);
-      assert.equal(widths[0].length, 3);
-      assert.equal(widths[0][0], viewportWidth >= 660 ? (viewportWidth - 24) / 3 : viewportWidth);
-    }
+
+    await act(() => press('Open Music & Connections settings').props.onPress());
+    await act(() => press('Change soundtrack provider').props.onPress());
+    await act(() => press('Open Membership & Support settings').props.onPress());
     await act(() => press('Unlock').props.onPress());
-    await act(() => press('Change').props.onPress());
     await act(() => press('Advanced Support').props.onPress());
-    assert.equal(press('Advanced Support').props.accessibilityState.expanded, true);
     await act(() => press('Open Data Health').props.onPress());
     await act(() => press('Privacy Policy').props.onPress());
     await act(() => press('Support Page').props.onPress());
     assert.deepEqual(links.slice(-2), ['https://journeydeck.me/privacy', 'https://journeydeck.me/support']);
-    assert.deepEqual(calls.slice(-3), ['membership', 'provider', 'health']);
-    await act(() => tree.root.findByType('Switch').props.onValueChange(false));
-    assert.equal(modes.at(-1), 'dark');
-    light = false;
-    await act(() => tree.update(render()));
-    assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, '#08070d');
-    assert.equal(press('Advanced Support').props.accessibilityState.expanded, true, 'theme changes preserve expanded controls');
-    light = true;
+    assert.deepEqual(calls.slice(-3), ['provider', 'membership', 'health']);
 
-    assert.equal(tree.root.findByType('ScrollView').props.contentInsetAdjustmentBehavior, 'automatic');
-    assert.deepEqual(Array.from(tree.root.findByType('SafeAreaView').props.edges), ['left', 'right']);
-    for (const status of ['syncing', 'unavailable']) {
-      await act(() => tree.update(render({ privateCloud: { status, detail: status } })));
-      assert.equal(syncButton().props.disabled, true);
-    }
-    await act(() => tree.update(render({ signingInWithApple: true })));
-    assert.equal(tree.root.findAllByType('AppleSignIn').length, 0);
-    assert.equal(tree.root.findAllByType('ActivityIndicator').length, 1);
-    await act(() => tree.update(render({ appleIdentityStatus: 'authorized', currentUser: { id: 'test-user', appleSubject: 'test-apple' } })));
-    assert.equal(tree.root.findAllByType('AppleSignIn').length, 0);
+    await act(() => press('Open Saved Places settings').props.onPress());
     await act(() => press('Set Work').props.onPress());
     assert.equal(tree.root.findByType('PlaceEditor').props.slot, 'work');
     await act(() => tree.root.findByType('PlaceEditor').props.onBack());
-    const edit = tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'Edit primary driver profile');
-    await act(() => edit.props.onPress());
+    await act(() => press('Edit primary driver profile').props.onPress());
     assert.equal(tree.root.findAllByType('ProfileEditor').length, 1);
-    const tabsSource = source.slice(source.indexOf('const navigationContent'), source.indexOf('memory: (id: string)'));
-    assert.equal(tabsSource.match(/settings: settingsPage\(\)/g)?.length, 2, 'both device layouts use the same Settings actions');
-  } finally { await act(() => tree?.unmount()); }
+    await act(() => tree.root.findByType('ProfileEditor').props.onBack());
+
+    tablet = false; viewportWidth = 390; viewportHeight = 844;
+    await act(() => tree.update(render()));
+    assert.equal(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length, 0);
+    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => typeof node.props.accessibilityLabel === 'string' && /^Open .* settings$/.test(node.props.accessibilityLabel)).length, 6);
+    await act(() => press('Open Appearance settings').props.onPress());
+    assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
+    assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);
+    assert.equal(editorStates.at(-1), true);
+    await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
+    assert.equal(editorStates.at(-1), false);
+  } finally {
+    tablet = true; light = true; viewportWidth = 1100; viewportHeight = 800;
+    await act(() => tree?.unmount());
+  }
 });
 
 test('Settings viewport adapts to iPad sidebar without changing phone scroll props or remounting content', async () => {

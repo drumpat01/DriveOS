@@ -17,12 +17,20 @@ function profileKey(base: string) {
 }
 
 /** A local recorder identity exists even when no legacy JourneyDeck server is configured. */
-export async function loadOrCreateDeviceId(): Promise<string> {
-  const savedDeviceId = await SecureStore.getItemAsync(DEVICE_KEY, secureOptions);
-  if (savedDeviceId) return savedDeviceId;
-  const deviceId = `iphone_${Crypto.randomUUID()}`;
-  await SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions);
-  return deviceId;
+let deviceIdLoad: Promise<string> | null = null;
+export function loadOrCreateDeviceId(): Promise<string> {
+  if (deviceIdLoad) return deviceIdLoad;
+  const pending = (async () => {
+    const savedDeviceId = await SecureStore.getItemAsync(DEVICE_KEY, secureOptions);
+    if (savedDeviceId) return savedDeviceId;
+    const deviceId = `iphone_${Crypto.randomUUID()}`;
+    await SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions);
+    return deviceId;
+  })();
+  deviceIdLoad = pending;
+  const clear = () => { if (deviceIdLoad === pending) deviceIdLoad = null; };
+  void pending.then(clear, clear);
+  return pending;
 }
 
 export async function loadConnection(): Promise<Connection | null> {

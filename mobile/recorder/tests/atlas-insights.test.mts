@@ -76,6 +76,14 @@ test('Atlas derives all five insights from the selected local journey window', (
   assert.equal(result.drivingRhythms.leadingDay, 'Thu');
   assert.equal(result.drivingRhythms.leadingDayJourneys, 2);
   assert.equal(result.drivingRhythms.leadingTime, 'Evening');
+  assert.equal(result.drivingRhythms.journeyCount, 3);
+  assert.equal(result.drivingRhythms.miles, 26);
+  assert.equal(result.drivingRhythms.averageMinutes, 86 / 3);
+  assert.equal(result.drivingRhythms.mostActiveHour, 16);
+  assert.equal(result.drivingRhythms.twoHourBuckets[4], 1);
+  assert.equal(result.drivingRhythms.twoHourBuckets[8], 2);
+  assert.equal(result.drivingRhythms.weekdayTwoHourBuckets[4][4], 1);
+  assert.equal(result.drivingRhythms.weekdayTwoHourBuckets[4][8], 1);
 
   assert.equal(result.exploration.ready, true);
   assert.equal(result.exploration.mappedAreas, 20);

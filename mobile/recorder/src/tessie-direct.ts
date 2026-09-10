@@ -81,7 +81,7 @@ export async function tessieDirectStatus() {
 }
 
 export async function connectTessieDirect(accessToken: string) {
-  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
+  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is planned for JourneyDeck V3 and is not available in V2.');
   if (!(await paidTessieAccess())) throw new Error('An active JourneyDeck membership is required to connect Tessie.');
   const clean = accessToken.trim();
   if (!validToken(clean)) throw new Error('Enter the Tessie access token from Tessie developer settings.');
@@ -117,7 +117,7 @@ export async function deleteCurrentProfileTessieSecrets(): Promise<void> {
 }
 
 export async function syncTessieDirect(): Promise<TessieSnapshot> {
-  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is not available in JourneyDeck version 1.');
+  if (!TESSIE_INTEGRATION_ENABLED) throw new Error('Tessie is planned for JourneyDeck V3 and is not available in V2.');
   if (!(await tessieAutomaticRecordingEligible())) throw new Error('Connect a verified Tesla with an active JourneyDeck membership first.');
   const accessToken = await storedToken();
   if (!accessToken) throw new Error('Connect Tessie in Settings first.');

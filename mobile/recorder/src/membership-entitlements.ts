@@ -22,6 +22,17 @@ export function entitlementsForVerifiedMembership(status: VerifiedMembershipStat
   return entitlementsForMembershipTier(status.nativeModuleAvailable && status.tier === 'paid' ? 'paid' : 'free');
 }
 
+/**
+ * The side-by-side V2 EAS app may expose Atlas for design acceptance without
+ * manufacturing a paid StoreKit tier or unlocking any other paid capability.
+ */
+export function withPreviewAtlasAccess(
+  entitlements: JourneyDeckMembershipEntitlements,
+  enabled: boolean,
+): JourneyDeckMembershipEntitlements {
+  return enabled && !entitlements.atlasAccess ? { ...entitlements, atlasAccess: true } : entitlements;
+}
+
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
   return entitlements.timelineHistoryDays === null
     ? Number.NEGATIVE_INFINITY
@@ -34,9 +45,9 @@ export function membershipCanAccessDate(entitlements: JourneyDeckMembershipEntit
 }
 
 /**
- * Version 1 has no verified StoreKit subscription receipt yet. Fail closed to
- * the free tier instead of treating a locally editable preference as payment.
- * Replace only this boundary when the native subscription provider is added.
+ * Synchronous fallback for callers that have not supplied the native StoreKit
+ * verifier's result. Never infer payment from an editable local preference.
+ * The app shell supplies useJourneyDeckMembership's verified entitlements.
  */
 export function currentMembershipEntitlements(): JourneyDeckMembershipEntitlements {
   return entitlementsForMembershipTier('free');

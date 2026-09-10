@@ -7,7 +7,7 @@ import { useAppTheme } from './app-theme';
 export function SettingsScrollView(props: ScrollViewProps) {
   const theme = useAppTheme();
   if (!isIpad()) return <ScrollView {...props} />;
-  return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: theme.isLight ? '#fffaf0' : '#08070d' }}>
+  return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: theme.palette.page }}>
     <ScrollView {...props} style={[{ flex: 1 }, props.style]} contentInsetAdjustmentBehavior="automatic"
       automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets
       contentContainerStyle={[props.contentContainerStyle, { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 24, paddingTop: 18 }]} />

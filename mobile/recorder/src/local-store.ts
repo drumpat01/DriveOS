@@ -26,20 +26,23 @@ import {
   MASTER_DATABASE_APPLICATION_ID,
   MASTER_DATABASE_HARDENING_SQL,
   MASTER_DATABASE_SCHEMA_VERSION,
-  SQLITE_CONNECTION_HARDENING_SQL,
   UNIFIED_DATABASE_HARDENING_SQL,
   UNIFIED_DATABASE_SCHEMA_SQL,
   RECORDER_DATABASE_HARDENING_SQL,
+  prepareSQLiteConnectionForStartup,
 } from './database-hardening';
 import { findDuplicatePlayback, partitionDuplicatePlaybacks } from './music-playback-dedupe';
-import { getMasterDatabase } from './database-owner';
+import { getMasterDatabase, openMasterDatabase } from './database-owner';
 import { PRIVATE_PLACE_PREFIX, parsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
+import { JOURNEY_EDITOR_SCHEMA_SQL } from './journey-editor-schema';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
-const db = getMasterDatabase();
+let db: ReturnType<typeof getMasterDatabase>;
 let schemaVersion = 0;
 let initialized = false;
+let initialization: Promise<void> | null = null;
+let initializationError: Error | null = null;
 
 // --- Public types ------------------------------------------------------------
 
@@ -473,6 +476,8 @@ const MIGRATIONS: Array<() => void> = [
     backfillCanonicalMusicRecords();
     backfillJourneyPlaceLinks();
   },
+  // Migration 7 -- immutable editing operations and current journey projections.
+  () => { db.execSync(JOURNEY_EDITOR_SCHEMA_SQL); },
 ];
 
 const PLAYBACK_DEDUPE_REPAIR_KEY = 'repair.music-playback-dedupe.v1';
@@ -549,10 +554,10 @@ function repairDuplicateMusicPlaybacksOnce() {
 
 // --- Initialisation ----------------------------------------------------------
 
-export function initializeLocalStore(): void {
+function initializeOpenedLocalStore(openedDatabase: ReturnType<typeof getMasterDatabase>): void {
   if (initialized) return;
-  db.execSync('PRAGMA journal_mode = WAL;');
-  db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
+  db = openedDatabase;
+  prepareSQLiteConnectionForStartup(db);
   const applicationId = Number(db.getFirstSync<{ application_id: number }>('PRAGMA application_id;')?.application_id ?? 0);
   if (applicationId === 0) db.execSync(`PRAGMA application_id = ${MASTER_DATABASE_APPLICATION_ID};`);
   else if (applicationId !== MASTER_DATABASE_APPLICATION_ID) throw new Error('JourneyDeck local archive has an unexpected SQLite application id.');
@@ -574,6 +579,49 @@ export function initializeLocalStore(): void {
     throw new Error('JourneyDeck local archive failed SQLite quick_check.');
   }
   initialized = true;
+}
+
+/**
+ * Single asynchronous gate for opening, migrating, hardening and checking the
+ * on-device archive. Every app screen and Expo background task awaits this same
+ * promise before any synchronous store API can run.
+ */
+export function prepareLocalStore(): Promise<void> {
+  if (initialized) return Promise.resolve();
+  initialization ??= openMasterDatabase()
+    .then(openedDatabase => {
+      initializeOpenedLocalStore(openedDatabase);
+      initializationError = null;
+    })
+    .catch(error => {
+      initializationError = error instanceof Error ? error : new Error('JourneyDeck could not open local storage.');
+      initialization = null;
+      throw initializationError;
+    });
+  return initialization;
+}
+
+/** Synchronous store methods are intentionally unavailable before the gate. */
+export function requireLocalStoreReady(): void {
+  if (initialized) return;
+  if (initializationError) throw initializationError;
+  throw new Error('JourneyDeck local storage has not finished starting.');
+}
+
+/**
+ * Synchronous data APIs may finish preparation only when the controlled handle
+ * is already open. In production that handle is created exclusively by the
+ * asynchronous gate; this path also keeps isolated in-memory test adapters
+ * faithful to the same migration code.
+ */
+export function initializeLocalStore(): void {
+  if (!initialized) initializeOpenedLocalStore(getMasterDatabase());
+}
+
+export function localStoreStartupState(): 'idle' | 'starting' | 'ready' | 'failed' {
+  if (initialized) return 'ready';
+  if (initializationError) return 'failed';
+  return initialization ? 'starting' : 'idle';
 }
 
 // --- Helpers -----------------------------------------------------------------
@@ -762,7 +810,23 @@ export function deleteLocalUserData(userId: LocalUserId): void {
   db.withTransactionSync(() => {
     db.runSync('DELETE FROM local_users WHERE id=?;', userId);
     db.runSync("DELETE FROM local_preferences WHERE key='active_user_id' AND value=?;", userId);
+    db.runSync('DELETE FROM local_preferences WHERE key=?;', `private_cloud_deletion:${userId}`);
   });
+}
+
+/** Device-only deletion barrier; never synchronized to iCloud. */
+export function isPrivateCloudDeletionPending(userId: LocalUserId): boolean {
+  initializeLocalStore();
+  return db.getFirstSync<{ value: string }>('SELECT value FROM local_preferences WHERE key=?;',
+    `private_cloud_deletion:${userId}`)?.value === 'pending';
+}
+
+export function setPrivateCloudDeletionPending(userId: LocalUserId, pending: boolean): void {
+  initializeLocalStore();
+  const key = `private_cloud_deletion:${userId}`;
+  if (!pending) { db.runSync('DELETE FROM local_preferences WHERE key=?;', key); return; }
+  db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES(?,'pending',?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, key, now());
 }
 
 export function linkLocalUserToAppleIdentity(userId: LocalUserId, input: { appleSubject: string; displayName?: string; email?: string }): LocalUser {
@@ -818,11 +882,14 @@ export type UpsertJourneyOptions = {
   syncedToCloud?: 0 | 1;
   createdAt?: string;
   updatedAt?: string;
+  /** Only the transactional editor may replace its materialized projection. */
+  editorMutation?: boolean;
 };
 
 export function upsertJourney(input: UpsertJourneyInput, options: UpsertJourneyOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_journeys', input.id, input.userId);
+  if (!options.editorMutation && isEditorManagedJourney(input.userId, input.id)) return;
   const t = now();
   const createdAt = options.createdAt ?? t;
   const updatedAt = options.updatedAt ?? t;
@@ -897,8 +964,41 @@ export function getJourneyByLegacyDriveId(userId: LocalUserId, legacyDriveId: st
 
 // --- GPS points --------------------------------------------------------------
 
+export function isEditorManagedJourney(userId: LocalUserId, journeyId: string): boolean {
+  initializeLocalStore();
+  return Boolean(db.getFirstSync('SELECT journey_id FROM local_journey_edit_members WHERE user_id=? AND journey_id=?;', userId, journeyId));
+}
+
+export function isEditorManagedMusic(userId: LocalUserId, musicId: string): boolean {
+  initializeLocalStore();
+  return Boolean(db.getFirstSync('SELECT music_id FROM local_journey_edit_music WHERE user_id=? AND music_id=?;', userId, musicId));
+}
+
+function editorJourneyForPlayback(userId: LocalUserId, journeyId: string, playedAt: string): string | null {
+  const row = db.getFirstSync<{ payload: string }>(`SELECT o.payload_json AS payload FROM local_journey_edit_members m
+    JOIN local_journey_edit_heads h ON h.user_id=m.user_id AND h.root_id=m.root_id
+    JOIN local_journey_edit_operations o ON o.id=h.operation_id WHERE m.user_id=? AND m.journey_id=?;`, userId, journeyId);
+  if (!row) return journeyId;
+  const { segments } = JSON.parse(row.payload) as { segments: Array<{ id: string; startMs: number; endMs: number }> };
+  const time = Date.parse(playedAt);
+  return segments.find((segment, index) => time >= segment.startMs &&
+    (time < segment.endMs || (index === segments.length - 1 && time === segment.endMs)))?.id ?? null;
+}
+
+/** Retired split parts remain tombstoned in the editor registry. */
+function normalizeEditorJourneyLinks(userId: LocalUserId, value: string): string {
+  let ids: unknown;
+  try { ids = JSON.parse(value); } catch { return value; }
+  if (!Array.isArray(ids)) return value;
+  return JSON.stringify([...new Set(ids.map(id => {
+    if (typeof id !== 'string') return id;
+    return db.getFirstSync<{ root_id: string }>('SELECT root_id FROM local_journey_edit_members WHERE user_id=? AND journey_id=? AND active=0;', userId, id)?.root_id ?? id;
+  }))]);
+}
+
 export function insertGpsPoints(userId: LocalUserId, journeyId: string, points: Omit<LocalGpsPoint, 'journeyId'>[]): void {
   initializeLocalStore();
+  if (isEditorManagedJourney(userId, journeyId)) return;
   const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
   if (!owned || !points.length) return;
   let inserted = 0;
@@ -934,6 +1034,7 @@ export function routeArchivesPendingSync(userId: LocalUserId, limit = 10): Local
     j.route_synced_to_cloud AS syncedToCloud,COALESCE(j.route_updated_at,j.updated_at) AS updatedAt,
     (SELECT COUNT(*) FROM local_gps_points p WHERE p.journey_id=j.id) AS pointCount
     FROM local_journeys j WHERE j.user_id=? AND j.route_synced_to_cloud=0
+      AND NOT EXISTS(SELECT 1 FROM local_journey_edit_members e WHERE e.user_id=j.user_id AND e.journey_id=j.id)
       AND EXISTS(SELECT 1 FROM local_gps_points p WHERE p.journey_id=j.id)
     ORDER BY COALESCE(j.route_updated_at,j.updated_at) DESC LIMIT ?;`, userId, Math.max(1, Math.min(25, Math.trunc(limit))));
 }
@@ -954,6 +1055,7 @@ export function replaceJourneyGpsPointsFromCloud(
   updatedAt: string,
 ): void {
   initializeLocalStore();
+  if (isEditorManagedJourney(userId, journeyId)) return;
   const owned = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', journeyId, userId);
   if (!owned) throw new Error('Cannot restore a route without its local journey summary.');
   const validated = points.map(point => {
@@ -1012,6 +1114,8 @@ export type UpsertMusicEntryOptions = { syncedToCloud?: 0 | 1; createdAt?: strin
 export function upsertMusicEntry(input: UpsertMusicEntryInput, options: UpsertMusicEntryOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_music_entries', input.id, input.userId);
+  if (isEditorManagedMusic(input.userId, input.id)) return;
+  if (input.journeyId) input = { ...input, journeyId: editorJourneyForPlayback(input.userId, input.journeyId, input.playedAt) };
   if (input.journeyId) {
     const ownedJourney = db.getFirstSync<{ id: string }>('SELECT id FROM local_journeys WHERE id=? AND user_id=?;', input.journeyId, input.userId);
     if (!ownedJourney) throw new Error('Cannot attach music to another local user\'s journey.');
@@ -1400,6 +1504,7 @@ function nextSyncRevision(table: 'local_collections' | 'local_memories' | 'local
 export function upsertCollection(input: LocalCollectionInput, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_collections', input.id, input.userId);
+  input = { ...input, journeyIds: normalizeEditorJourneyLinks(input.userId, input.journeyIds) };
   const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
   const revision = nextSyncRevision('local_collections', input.id, options);
   db.runSync(
@@ -1441,6 +1546,7 @@ export function softDeleteCollection(userId: LocalUserId, id: string, deletedAt 
 export function upsertMemory(input: LocalMemoryInput, options: CloudUpsertOptions = {}): void {
   initializeLocalStore();
   assertRowOwnership('local_memories', input.id, input.userId);
+  input = { ...input, journeyIds: normalizeEditorJourneyLinks(input.userId, input.journeyIds) };
   const t = now(), createdAt = options.createdAt ?? t, updatedAt = options.updatedAt ?? t;
   const revision = nextSyncRevision('local_memories', input.id, options);
   db.runSync(
@@ -1581,12 +1687,16 @@ export function readAtlasSnapshot(userId: LocalUserId): LocalAtlasSnapshot | nul
 
 export function journeysPendingSync(userId: LocalUserId, limit = 50): string[] {
   initializeLocalStore();
-  return db.getAllSync<{ id: string }>('SELECT id FROM local_journeys WHERE user_id=? AND synced_to_cloud=0 ORDER BY started_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+  return db.getAllSync<{ id: string }>(`SELECT j.id FROM local_journeys j WHERE j.user_id=? AND j.synced_to_cloud=0
+    AND NOT EXISTS(SELECT 1 FROM local_journey_edit_members e WHERE e.user_id=j.user_id AND e.journey_id=j.id)
+    ORDER BY j.started_at DESC LIMIT ?;`, userId, limit).map(r => r.id);
 }
 
 export function musicEntriesPendingSync(userId: LocalUserId, limit = 50): string[] {
   initializeLocalStore();
-  return db.getAllSync<{ id: string }>('SELECT id FROM local_music_entries WHERE user_id=? AND synced_to_cloud=0 ORDER BY played_at DESC LIMIT ?;', userId, limit).map(r => r.id);
+  return db.getAllSync<{ id: string }>(`SELECT m.id FROM local_music_entries m WHERE m.user_id=? AND m.synced_to_cloud=0
+    AND NOT EXISTS(SELECT 1 FROM local_journey_edit_music e WHERE e.user_id=m.user_id AND e.music_id=m.id)
+    ORDER BY m.played_at DESC LIMIT ?;`, userId, limit).map(r => r.id);
 }
 
 export function collectionsPendingSync(userId: LocalUserId, limit = 50): string[] {

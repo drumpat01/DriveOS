@@ -1,5 +1,6 @@
+import { TouchPressable as Pressable } from './touch-feedback';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,11 +11,13 @@ import type { MusicDashboardState } from './music-screen';
 import type { MusicDashboardData, SoundtrackTrack } from './app-data';
 import type { MusicArchiveEntry } from './library-model';
 import type { MusicProvider } from './music-preferences';
+import { AlbumCarousel } from './album-carousel';
 
 function useColors() {
-  return useAppTheme().isLight
+  const theme = useAppTheme();
+  return theme.resolvePalette(theme.isLight
     ? { page: ivoryPalette.page, card: ivoryPalette.surface, text: ivoryPalette.text, muted: ivoryPalette.secondary, accent: ivoryPalette.violet, line: ivoryPalette.border, inset: ivoryPalette.lilac }
-    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#b795e5', line: '#49304f', inset: '#291735' };
+    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#b795e5', line: '#49304f', inset: '#291735' });
 }
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
@@ -68,15 +71,11 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
   const insets = useSafeAreaInsets();
   const [width, setWidth] = useState(0);
   const [historyCount, setHistoryCount] = useState(6);
-  const [galleryCount, setGalleryCount] = useState(6);
   useEffect(() => setHistoryCount(6), [query]);
   const data = state.data;
   const wide = width >= 960;
   const table = wide || width >= 640;
   const metricColumns = width >= 420 ? 2 : 1;
-  const mainWidth = wide ? (width - 16) * 0.65 : width;
-  const albumColumns = mainWidth >= 500 ? 3 : mainWidth >= 310 ? 2 : 1;
-  const albumSize = Math.max(60, (mainWidth - 38 - (albumColumns - 1) * 14) / albumColumns);
   const providerName = provider === 'apple-music' ? 'Apple Music' : provider === 'lastfm' ? 'Spotify via Last.fm' : provider === 'shazam' ? 'Song Recognition' : 'Music archive';
   const metrics: { title: string; value: number | undefined; icon: SFSymbol; unit: string; digits: number }[] = [
     { title: 'Miles with music', value: data?.metrics.milesWithMusic, icon: 'road.lanes', unit: 'mi', digits: 1 },
@@ -89,19 +88,13 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
       contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: insets.bottom + 28 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
       <View testID="ipad-music-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
-        <IpadPageHeader title="Soundtracks" width={width} artwork={require('../assets/soundtracks-header-cinematic-v2.png')} subtitle={`${providerName} · Your journey soundtrack`} />
+        <IpadPageHeader title="Soundtracks" width={width} artwork={require('../assets/cinematic-soundtracks-photo-v1.jpg')} subtitle={`${providerName} · Your journey soundtrack`} />
         {state.status === 'loading' && !data ? <ActivityIndicator accessibilityLabel="Loading your music archive" color={c.accent} /> : null}
         {state.status === 'error' ? <View accessibilityRole="alert" style={styles.notice}><Text style={[styles.body, { color: c.muted }]}>{state.message || 'Your music archive is temporarily unavailable.'}</Text>
           <Pressable accessibilityRole="button" onPress={onRefresh} disabled={refreshing} style={styles.action}><Text style={{ color: c.accent }}>Try again</Text></Pressable></View> : null}
         <View testID="ipad-music-artists-row" style={[styles.row, { flexDirection: wide ? 'row' : 'column' }]}>
           <View style={wide ? styles.main : undefined}><Panel title="Today's soundtrack" subtitle={data?.recentSelections.length ? `${data.recentSelections.length} recent selections` : undefined}>
-            {data?.recentSelections.length ? <View testID="ipad-music-gallery" style={styles.albums}>
-              {data.recentSelections.slice(0, galleryCount).map((track, i) => <Pressable key={`${track.playedAt}-${track.track}-${i}`} accessibilityRole="button" accessibilityLabel={`Open ${track.track} by ${track.artist}`}
-                disabled={!canOpenTracks} onPress={() => onTrack(track)} style={({ pressed }) => [{ width: albumSize, gap: 7, opacity: pressed ? 0.65 : 1 }]}>
-                <Artwork uri={track.artworkUrl} size={albumSize} /><Text numberOfLines={2} style={[styles.songTitle, { color: c.text }]}>{track.track}</Text><Text numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{track.artist}</Text>
-              </Pressable>)}
-            </View> : <Empty>Your latest songs will appear here after JourneyDeck receives listening history.</Empty>}
-            {(data?.recentSelections.length ?? 0) > galleryCount ? <Pressable accessibilityRole="button" accessibilityLabel="Show more soundtrack songs" onPress={() => setGalleryCount(count => count + 6)} style={styles.action}><Text style={[styles.songTitle, { color: c.accent }]}>Show more soundtrack songs</Text></Pressable> : null}
+            {data?.recentSelections.length ? <AlbumCarousel tracks={data.recentSelections} enabled={canOpenTracks} onTrack={onTrack} /> : <Empty>Your latest songs will appear here after JourneyDeck receives listening history.</Empty>}
           </Panel></View>
           <View testID="ipad-music-summary" style={[wide ? styles.side : undefined, styles.summary]}>
             <View style={styles.metrics}>{metrics.map(metric => <View key={metric.title} style={{ width: `${100 / metricColumns}%`, padding: 6 }}>

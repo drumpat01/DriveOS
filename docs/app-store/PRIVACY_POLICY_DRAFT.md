@@ -40,6 +40,10 @@ Sign in with Apple is optional. When used, JourneyDeck may keep the Apple subjec
 
 JourneyDeck uses Expo EAS Observe to understand production reliability. Expo may process a random identifier unique to one app installation, app/build/update identifiers, device and operating-system characteristics, startup and rendering timings, update-download performance, memory-pressure warnings, JavaScript error information, and privacy-safe recorder lifecycle events such as whether a user-started recording began or completed. JourneyDeck does not attach route coordinates, addresses, place names, journey titles, photos, music names, Apple identity, or account identifiers to these diagnostic events. The installation identifier is not derived from your identity and resets if you uninstall and reinstall JourneyDeck.
 
+### Subscription processing
+
+In versions configured with RevenueCat, Apple processes subscription purchases and RevenueCat receives purchase/transaction information and a randomly assigned customer identifier to reconcile subscriptions and report billing activity. JourneyDeck does not send its journey archive, routes, photos, music history, profile name or Sign in with Apple identifier to RevenueCat. RevenueCat processing is separate from your private iCloud archive. Contact us for subscription-data privacy requests.
+
 ### Optional legacy owner backup
 
 An existing JourneyDeck owner may choose to connect a private legacy backup endpoint by entering its HTTPS address and a private key. This path is optional and is not needed for public use of JourneyDeck. Before using it, make sure you understand the privacy policy and retention practices of the endpoint’s operator.

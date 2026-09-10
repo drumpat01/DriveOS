@@ -1,3 +1,4 @@
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -6,7 +7,7 @@ import vm from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
-import { memoryStudioDrop, containsStudioPoint, phoneStudioLayout, studioEdgeVelocity } from '../src/memory-studio-model.ts';
+import { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity } from '../src/memory-studio-model.ts';
 
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -14,12 +15,31 @@ const host = (name: string) => React.forwardRef(({ children, ...props }: any, re
 const frames = new Set<Function>();
 const bounds = new Map<string, any>();
 const scrolls: { id: string; y: number }[] = [];
-let light = true, focused = true, reduced = false, appState: (state: string) => void = () => {};
+let light: boolean | string = true;
+let focused = true, reduced = false, appState: (state: string) => void = () => {};
 let dimensions = { width: 1200, height: 900, fontScale: 1 };
 const alerts: any[] = [];
 const journeyActions: any[] = [];
+let deferAnimations = false;
+const animationCompletions: (() => void)[] = [];
+class AnimatedValue {
+  value: number;
+  constructor(value: number) { this.value = value; }
+  setValue(value: number) { this.value = value; }
+  stopAnimation(callback?: (value: number) => void) { callback?.(this.value); }
+  __getValue() { return this.value; }
+}
+const nativeAnimated = { Value: AnimatedValue, View: host('NativeAnimatedView'), spring: (value: AnimatedValue, config: any) => ({ start() { value.setValue(config.toValue); } }) };
+const panResponder = { create: (handlers: any) => ({ panHandlers: {
+  onStartShouldSetResponder: handlers.onStartShouldSetPanResponder,
+  onMoveShouldSetResponderCapture: handlers.onMoveShouldSetPanResponderCapture,
+  onResponderGrant: handlers.onPanResponderGrant,
+  onResponderMove: handlers.onPanResponderMove,
+  onResponderRelease: handlers.onPanResponderRelease,
+  onResponderTerminate: handlers.onPanResponderTerminate,
+} }) };
 const native = { StyleSheet: { create: (x: any) => x, absoluteFill: {} }, useWindowDimensions: () => dimensions,
-  Keyboard: { dismiss() {} }, KeyboardAvoidingView: host('KeyboardAvoidingView'),
+  Animated: nativeAnimated, PanResponder: panResponder, Keyboard: { dismiss() {} }, KeyboardAvoidingView: host('KeyboardAvoidingView'),
   AccessibilityInfo: { isReduceMotionEnabled: async () => reduced, addEventListener: () => ({ remove() {} }), announceForAccessibility() {} },
   AppState: { addEventListener: (_: string, callback: any) => { appState = callback; return { remove() {} }; } }, Alert: { alert: (...args: any[]) => alerts.push(args) },
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'TextInput'].map(n => [n, host(n)])) };
@@ -36,13 +56,13 @@ const reanimated = {
   useAnimatedStyle: (fn: any) => fn(), useAnimatedScrollHandler: (fn: any) => fn,
   measure: (ref: any) => bounds.get(ref.current?.id) ?? { pageX: 0, pageY: 0, width: 1200, height: 1200 },
   useFrameCallback: (fn: any) => { const latest = React.useRef(fn); latest.current = fn; const stable = React.useRef((...args: any[]) => latest.current(...args)); return { setActive: (active: boolean) => active ? frames.add(stable.current) : frames.delete(stable.current) }; },
-  withTiming: (value: any, _config: any, cb: any) => { cb?.(true); return value; }, withSpring: (value: any) => value,
+  withTiming: (value: any, _config: any, cb: any) => { if (cb) { if (deferAnimations) animationCompletions.push(() => cb(true)); else cb(true); } return value; }, withSpring: (value: any) => value,
   runOnJS: (fn: any) => fn, scrollTo(ref: any, _x: number, y: number) { scrolls.push({ id: ref.current?.id, y }); }, LinearTransition: { springify: () => ({ damping: () => ({}) }) },
 };
 function load(name: string, mocks: Record<string, any> = {}) {
   const module = { exports: {} as any };
   const code = ts.transpileModule(readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.startsWith('../assets/') ? id : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id) });
   return module.exports;
 }
 const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
@@ -51,10 +71,13 @@ const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   'react-native-gesture-handler': { Gesture: { Pan: gesture }, GestureDetector: host('GestureDetector') },
   'react-native-reanimated': reanimated, 'expo-linear-gradient': { LinearGradient: host('Gradient') }, 'expo-symbols': { SymbolView: host('Symbol') },
   'expo-image': { Image: host('Image') }, './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` },
-  './app-theme': { useAppTheme: () => ({ isLight: light, mode: light ? 'light' : 'dark' }) }, './ipad-page-header': { IpadPageHeader: host('Header') },
+  './header-artwork': { HeaderArtwork: ({ source }: any) => React.createElement('Image', { source: `${testTheme(light).id}:${source}` }) },
+  './theme-material': { ThemeMaterial: host('ThemeMaterial') },
+  './app-theme': { useAppTheme: () => testTheme(light) }, './ipad-page-header': { IpadPageHeader: host('Header') },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
   './card-detail-link': { CardDetailLink: host('CardDetailLink') }, './library-model': load('library-model.ts'),
   './native-action-menu': { NativeActionMenu: host('Menu') }, './journey-card-action': { openJourneyCardAction: (...args: any[]) => journeyActions.push(args) },
-  './memory-studio-model': { memoryStudioDrop, containsStudioPoint, phoneStudioLayout, studioEdgeVelocity },
+  './memory-studio-model': { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity },
 });
 const journeys = [1, 2, 3].map(i => ({ id: `j${i}`, startingLocation: `Start ${i}`, endingLocation: 'Coast', startedAt: '2026-09-05T10:00:00Z', miles: 12, durationMinutes: 30, songCount: 2, soundtrackPreview: [] }));
 const memories = [{ id: 'm1', name: 'Coast days', notes: '', journeyIds: ['j1'], photos: [] }];
@@ -73,6 +96,13 @@ test('drop intent validates live IDs, avoids self drops and distinguishes append
   assert.ok(studioEdgeVelocity(rect, 400, 110) < 0);
   assert.ok(studioEdgeVelocity(rect, 400, 690) > 0);
   assert.equal(studioEdgeVelocity(rect, 299, 690), 0);
+  assert.equal(clampStudioTrayHeight(40, 68, 300), 68);
+  assert.equal(clampStudioTrayHeight(180, 68, 300), 180);
+  assert.equal(clampStudioTrayHeight(500, 68, 300), 300);
+  assert.equal(settleStudioTrayExpanded(90, 68, 300, -0.6), true, 'an upward flick expands');
+  assert.equal(settleStudioTrayExpanded(280, 68, 300, 0.6), false, 'a downward flick collapses');
+  assert.equal(settleStudioTrayExpanded(200, 68, 300, 0), true, 'a slow release uses the midpoint');
+  assert.equal(settleStudioTrayExpanded(120, 68, 300, 0), false, 'a slow low release collapses');
 });
 
 test('Memory studio retains selection/search through resizing and themes, with accessible create/add and failure recovery', async () => {
@@ -92,7 +122,13 @@ test('Memory studio retains selection/search through resizing and themes, with a
     assert.equal(search.props.value, 'Start 2');
     assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
   }
-  for (const mode of [false, true]) { light = mode; await act(() => tree.update(render())); assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, mode ? '#fffaf0' : '#08070d'); }
+  for (const mode of [false, true, 'sakura', 'redline']) {
+    light = mode; await act(() => tree.update(render()));
+    assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, testTheme(mode).palette.page);
+    assert.equal(search.props.value, 'Start 2');
+    assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+  }
+  light = true;
   await act(() => tree.root.findAllByType('Pressable').find((n: any) => n.findAllByType('Text').some((t: any) => t.children.join('') === 'Create with 1 selected')).props.onPress());
   assert.deepEqual(Array.from(created[0]), ['j2']);
   await act(() => { press(tree, 'Add selected journeys to Coast days').props.onPress(); });
@@ -119,7 +155,7 @@ test('actual gesture handlers create/add and cancel safely on background, self d
   bounds.set('studio-drop-memory:m1', rect(0, 0)); bounds.set('studio-drop-new', rect(0, 200));
   for (let i = 1; i <= 3; i++) { bounds.set(`studio-drop-journey:j${i}`, rect(500, i * 200)); bounds.set(`studio-source-j${i}`, rect(500, i * 200)); }
   await act(() => { tree = create(render(), { createNodeMock: el => ({ id: el.props.testID }) }); });
-  const pan = () => tree.root.findAllByType('GestureDetector')[0].props.gesture;
+  const pan = () => tree.root.findAllByType('GestureDetector').find((node: any) => node.findAllByProps({ testID: 'studio-source-j1' }).length)?.props.gesture;
   const drag = async (x: number, y: number, cancel?: () => void) => {
     await act(() => pan().Start({ absoluteX: 550, absoluteY: 250 }));
     await act(() => { pan().Update({ absoluteX: x, absoluteY: y }); tick(); });
@@ -166,8 +202,21 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     await act(() => input.props.onChangeText('Start 2'));
     await act(() => press(tree, 'Collapse journey library').props.onPress());
     assert.equal(tree.root.findByProps({ testID: 'iphone-journey-tray-body' }).props.pointerEvents, 'none');
-    assert.equal(tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height, phoneStudioLayout(369, 680).collapsedTray);
+    assert.equal(tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue(), phoneStudioLayout(369, 680).collapsedTray);
     await act(() => press(tree, 'Expand journey library').props.onPress());
+    const grabber = tree.root.findByProps({ testID: 'iphone-journey-tray-grabber' });
+    const layout = phoneStudioLayout(369, 680);
+    assert.equal(grabber.props.onMoveShouldSetResponderCapture({}, { dx: 1, dy: 8 }), true);
+    await act(() => grabber.props.onResponderGrant());
+    await act(() => grabber.props.onResponderMove({}, { dx: 0, dy: 70 }));
+    const followingHeight = tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue();
+    assert.equal(followingHeight, layout.expandedTray - 70, 'the tray follows the finger between detents');
+    await act(() => grabber.props.onResponderRelease({}, { vy: 0.7 }));
+    assert.equal(press(tree, 'Expand journey library').props.accessibilityState.expanded, false, 'a downward flick collapses');
+    await act(() => grabber.props.onResponderGrant());
+    await act(() => grabber.props.onResponderMove({}, { dx: 0, dy: -80 }));
+    await act(() => grabber.props.onResponderRelease({}, { vy: -0.7 }));
+    assert.equal(press(tree, 'Collapse journey library').props.accessibilityState.expanded, true, 'an upward flick expands');
     assert.equal(input.props.value, 'Start 2');
     assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
     for (const [width, height, fontScale] of [[369, 680, 1], [296, 450, 1], [750, 250, 1], [369, 680, 1.6], [369, 680, 1]]) {
@@ -176,12 +225,17 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
       await act(() => root.props.onLayout({ nativeEvent: { layout: { width, height } } }));
       const grid = tree.root.findAllByType('View').find((n: any) => n.props.testID === 'iphone-memory-grid');
       assert.equal(grid.children[0].props.style.width, phoneStudioLayout(width, height, fontScale).columns === 2 ? '50%' : '100%');
-      const trayHeight = tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height;
+      const trayHeight = tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue();
       assert.ok(trayHeight <= height * .52, 'gallery retains room even in landscape or large text');
       assert.equal(tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Memory gallery'), gallery);
       assert.equal(tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Journey library'), library);
     }
-    for (const value of [false, true]) { light = value; await act(() => tree.update(render())); assert.ok(tree.root.findByType('Image').props.source.startsWith(value ? 'light:' : 'dark:')); }
+    for (const value of [false, true, 'sakura', 'redline']) {
+      light = value; await act(() => tree.update(render()));
+      assert.ok(tree.root.findByType('Image').props.source.startsWith(`${testTheme(value).id}:`));
+      assert.equal(input.props.value, 'Start 2');
+      assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+    }
     await act(() => press(tree, 'New Memory').props.onPress());
     assert.deepEqual(Array.from(created[0]), ['j2']);
     await act(() => press(tree, 'Add selected journeys to Coast days').props.onPress());
@@ -194,7 +248,7 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     assert.deepEqual(journeyActions.at(-1), ['j2', 'edit']);
     await act(() => tree.root.findByType('Menu').props.actions[1].onSelect());
     assert.deepEqual(journeyActions.at(-1), ['j2', 'share']);
-  } finally { await act(() => tree?.unmount()); dimensions = { width: 1200, height: 900, fontScale: 1 }; }
+  } finally { light = true; await act(() => tree?.unmount()); dimensions = { width: 1200, height: 900, fontScale: 1 }; }
 });
 
 test('iPhone uses real shared drag handlers for create and add, with tray collapse blocked during a drag', async () => {
@@ -208,7 +262,7 @@ test('iPhone uses real shared drag handlers for create and add, with tray collap
     bounds.set('studio-drop-new', { pageX: 10, pageY: 320, width: 350, height: 64 });
     for (let i = 1; i <= 3; i++) { const rect = { pageX: 10, pageY: 390 + i * 100, width: 350, height: 95 }; bounds.set(`studio-drop-journey:j${i}`, rect); bounds.set(`studio-source-j${i}`, rect); }
     await act(async () => { tree = create(React.createElement(IpadMemoriesScreen, props), { createNodeMock: el => ({ id: el.props.testID }) }); });
-    const pan = () => tree.root.findAllByType('GestureDetector')[0].props.gesture;
+    const pan = () => tree.root.findAllByType('GestureDetector').find((node: any) => node.findAllByProps({ testID: 'studio-source-j1' }).length)?.props.gesture;
     const drag = async (x: number, y: number) => {
       await act(() => pan().Start({ absoluteX: 100, absoluteY: 520 }));
       assert.equal(press(tree, 'Collapse journey library').props.disabled, true);
@@ -222,5 +276,58 @@ test('iPhone uses real shared drag handlers for create and add, with tray collap
     await act(() => { pan().Update({ absoluteX: 80, absoluteY: 180 }); tick(); appState('background'); });
     await act(() => pan().End({ absoluteX: 80, absoluteY: 180 }));
     assert.equal(adds.length, 1, 'backgrounding cancels the pending iPhone drop');
+  } finally { await act(() => tree?.unmount()); dimensions = { width: 1200, height: 900, fontScale: 1 }; }
+});
+
+test('leaving Memory Studio while a drop animation finishes never saves through the old workspace', async () => {
+  let tree: any;
+  const adds: any[] = [], creates: any[] = [];
+  const props = { memories, journeys, renderArtwork: () => null, onCreate: (ids: any) => creates.push(ids), onAdd: async (...args: any[]) => { adds.push(args); },
+    onEdit() {}, onShare() {}, onMemory() {}, onJourney() {}, onRefresh() {}, loading: false, historyLimited: false, onUpgrade() {} };
+  deferAnimations = true;
+  try {
+    bounds.set('studio-drop-memory:m1', { pageX: 10, pageY: 100, width: 160, height: 210 });
+    bounds.set('studio-drop-new', { pageX: 10, pageY: 320, width: 350, height: 64 });
+    for (const [x, y] of [[80, 180], [80, 350]]) {
+      await act(async () => { tree = create(React.createElement(IpadMemoriesScreen, props), { createNodeMock: el => ({ id: el.props.testID }) }); });
+      const pan = () => tree.root.findAllByType('GestureDetector').find((node: any) => node.findAllByProps({ testID: 'studio-source-j1' }).length)?.props.gesture;
+      await act(() => pan().Start({ absoluteX: 550, absoluteY: 520 }));
+      await act(() => { pan().Update({ absoluteX: x, absoluteY: y }); tick(); });
+      await act(() => pan().End({ absoluteX: x, absoluteY: y }));
+      assert.equal(animationCompletions.length, 1);
+      await act(() => tree.unmount()); tree = null;
+      await act(() => { for (const complete of animationCompletions.splice(0)) complete(); });
+    }
+    assert.equal(adds.length, 0, 'a delayed drop must not append after its profile/workspace unmounts');
+    assert.equal(creates.length, 0, 'a delayed drop must not open a new editor after unmount');
+  } finally { deferAnimations = false; animationCompletions.length = 0; await act(() => tree?.unmount()); }
+});
+
+test('an old phone tray responder cannot restore portrait dimensions after rotation', async () => {
+  dimensions = { width: 393, height: 852, fontScale: 1 };
+  let tree: any;
+  const props = { presentation: 'iphone', memories, journeys, renderArtwork: () => null, onCreate() {}, onAdd: async () => {},
+    onEdit() {}, onShare() {}, onMemory() {}, onJourney() {}, onRefresh() {}, loading: false, historyLimited: false, onUpgrade() {} };
+  const render = () => React.createElement(IpadMemoriesScreen, props);
+  try {
+    await act(async () => { tree = create(render(), { createNodeMock: el => ({ id: el.props.testID }) }); });
+    await act(() => tree.root.findByProps({ testID: 'studio-drag-root' }).props.onLayout({ nativeEvent: { layout: { width: 369, height: 680 } } }));
+    const oldResponder = tree.root.findByProps({ testID: 'iphone-journey-tray-grabber' }).props;
+    await act(() => oldResponder.onResponderGrant());
+    await act(() => oldResponder.onResponderMove({}, { dy: 30 }));
+    dimensions = { width: 852, height: 393, fontScale: 1 };
+    await act(() => tree.update(render()));
+    await act(() => tree.root.findByProps({ testID: 'studio-drag-root' }).props.onLayout({ nativeEvent: { layout: { width: 820, height: 250 } } }));
+    const expected = phoneStudioLayout(820, 250).expandedTray;
+    const height = () => tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue();
+    assert.equal(height(), expected);
+    await act(() => { oldResponder.onResponderMove({}, { dy: -30 }); oldResponder.onResponderRelease({}, { vy: -0.7 }); });
+    assert.equal(height(), expected, 'rotation cancellation must ignore obsolete gesture callbacks');
+    const currentResponder = tree.root.findByProps({ testID: 'iphone-journey-tray-grabber' }).props;
+    await act(() => { currentResponder.onResponderGrant(); currentResponder.onResponderMove({}, { dy: 25 }); });
+    await act(() => appState('background'));
+    assert.equal(height(), expected, 'backgrounding settles the partially pulled tray');
+    await act(() => { currentResponder.onResponderMove({}, { dy: 60 }); currentResponder.onResponderRelease({}, { vy: 0.7 }); });
+    assert.equal(height(), expected, 'a queued release cannot change the backgrounded tray');
   } finally { await act(() => tree?.unmount()); dimensions = { width: 1200, height: 900, fontScale: 1 }; }
 });

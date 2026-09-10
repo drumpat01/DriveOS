@@ -9,6 +9,7 @@ export type {
 
 const unavailableStatus = {
   nativeModuleAvailable: false,
+  statusReliable: false,
   configured: false,
   enabled: false,
   significantMonitoring: false,
@@ -48,13 +49,31 @@ export async function getNativeAutomaticRecorderStatus() {
   return JourneyDeckRecorderModule?.getStatusAsync() ?? unavailableStatus;
 }
 
-export async function pauseNativeAutomaticJourney() {
+export async function pauseNativeAutomaticJourney(sessionId?: string) {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
+  if (sessionId && JourneyDeckRecorderModule.pauseJourneyIfMatchingAsync) {
+    return JourneyDeckRecorderModule.pauseJourneyIfMatchingAsync(sessionId);
+  }
+  if (sessionId) {
+    const status = await JourneyDeckRecorderModule.getStatusAsync();
+    if (status.statusReliable === false || status.sessionId !== sessionId) {
+      return { ...status, lastErrorCode: status.lastErrorCode ?? 'session_changed' };
+    }
+  }
   return JourneyDeckRecorderModule.pauseActiveJourneyAsync();
 }
 
-export async function resumeNativeAutomaticJourney() {
+export async function resumeNativeAutomaticJourney(sessionId?: string) {
   if (!JourneyDeckRecorderModule) return unavailableStatus;
+  if (sessionId && JourneyDeckRecorderModule.resumeJourneyIfMatchingAsync) {
+    return JourneyDeckRecorderModule.resumeJourneyIfMatchingAsync(sessionId);
+  }
+  if (sessionId) {
+    const status = await JourneyDeckRecorderModule.getStatusAsync();
+    if (status.statusReliable === false || status.sessionId !== sessionId || status.authorization !== 'always') {
+      return { ...status, lastErrorCode: status.lastErrorCode ?? (status.authorization !== 'always' ? 'always_location_required' : 'session_changed') };
+    }
+  }
   return JourneyDeckRecorderModule.resumeActiveJourneyAsync();
 }
 
@@ -64,8 +83,11 @@ export async function finishNativeAutomaticJourney(sessionId?: string) {
   return JourneyDeckRecorderModule.finishActiveJourneyAsync();
 }
 
-export async function exportNativeRecorderInbox(afterSequences: Record<string, number>): Promise<NativeRecorderInboxExport> {
+export async function exportNativeRecorderInbox(afterSequences: Record<string, number>, preferredSessionId?: string): Promise<NativeRecorderInboxExport> {
   if (!JourneyDeckRecorderModule) return { sessions: [], errorCode: 'native_module_unavailable' };
+  if (preferredSessionId && JourneyDeckRecorderModule.exportInboxForSessionAsync) {
+    return JourneyDeckRecorderModule.exportInboxForSessionAsync(afterSequences, preferredSessionId);
+  }
   return JourneyDeckRecorderModule.exportInboxAsync(afterSequences);
 }
 

@@ -1,20 +1,51 @@
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { Camera, GeoJSONSource, Layer, Map, Marker, type CameraRef, type MapRef } from '@maplibre/maplibre-react-native';
+import {
+  Animated as MapLibreAnimated, Camera, GeoJSONSource, Layer, LayerAnnotation, Map, Marker,
+  type CameraRef, type MapRef,
+} from '@maplibre/maplibre-react-native';
 import type { Feature, FeatureCollection, LineString, Point } from 'geojson';
-import { loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, OPEN_FREE_MAP_LIGHT_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
+import { journeyDeckMapPalette, loadJourneyDeckMapStyle, OPEN_FREE_MAP_DARK_STYLE, OPEN_FREE_MAP_LIGHT_STYLE, type JourneyDeckMapStyle } from './journey-map-theme';
 import { NeonWidgetOutline } from './neon-widget-outline';
 
 type RouteLine = { id: string; coordinates: [number, number][] };
 type MapPlace = { id: string; name: string; coordinate: [number, number]; count?: number };
 type MapSongMoment = { index: number; coordinate: [number, number]; track: string; artist: string; artworkUrl: string | null };
 
+function AnimatedLiveRoute({ route, palette }: { route: RouteLine; palette: ReturnType<typeof journeyDeckMapPalette> }) {
+  const animation = useMemo(() => {
+    const first = route.coordinates[0] ?? [0, 0] as [number, number];
+    const coordinates = new MapLibreAnimated.CoordinatesArray([first, first]);
+    return {
+      coordinates,
+      data: new MapLibreAnimated.GeoJSON({ type: 'LineString', coordinates }),
+    };
+  }, [route.id]);
+
+  useEffect(() => {
+    const transition = animation.coordinates.timing({
+      toValue: route.coordinates,
+      duration: 900,
+      easing: Easing.out(Easing.cubic),
+    });
+    transition.start();
+    return () => transition.stop();
+  }, [animation, route.coordinates]);
+
+  return <MapLibreAnimated.GeoJSONSource id="primary-live-route" data={animation.data}>
+    <Layer id="primary-live-route-glow" type="line" paint={{ 'line-color': palette.routeGlow, 'line-width': 16, 'line-opacity': 0.5, 'line-blur': 9 }} />
+    <Layer id="primary-live-route-shadow" type="line" paint={{ 'line-color': palette.routeShadow, 'line-width': 8, 'line-opacity': 0.84 }} />
+    <Layer id="primary-live-route-line" type="line" paint={{ 'line-color': palette.routeLine, 'line-width': 4.8, 'line-opacity': 1 }} />
+  </MapLibreAnimated.GeoJSONSource>;
+}
+
 export function PrimaryMobilityMap({
   routes,
   places = [],
   songMoments = [],
+  animateLiveRoute = false,
   currentCoordinate,
   currentHeading = 0,
   height = 300,
@@ -26,6 +57,7 @@ export function PrimaryMobilityMap({
   routes: RouteLine[];
   places?: MapPlace[];
   songMoments?: MapSongMoment[];
+  animateLiveRoute?: boolean;
   currentCoordinate?: [number, number] | null;
   currentHeading?: number | null;
   height?: number;
@@ -36,6 +68,7 @@ export function PrimaryMobilityMap({
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const mapPalette = journeyDeckMapPalette(theme.id);
 
   const camera = useRef<CameraRef>(null), map = useRef<MapRef>(null);
   const [mapStyle, setMapStyle] = useState<JourneyDeckMapStyle | null>(null);
@@ -43,13 +76,19 @@ export function PrimaryMobilityMap({
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
   const validSongMoments = useMemo(() => songMoments.filter(moment => validCoordinate(moment.coordinate)), [songMoments]);
   const selectedSong = validSongMoments.find(moment => moment.index === selectedSongIndex) ?? null;
-  const geometry = useMemo(() => buildGeometry(routes, places, validSongMoments.map(moment => moment.coordinate), currentCoordinate, minimumBoundsSpan), [currentCoordinate, minimumBoundsSpan, places, routes, validSongMoments]);
+  const liveRoute = animateLiveRoute && routes[0]?.coordinates.length > 1 ? routes[0] : null;
+  const staticRoutes = liveRoute ? routes.slice(1) : routes;
+  const viewportGeometry = useMemo(() => buildGeometry(routes, places, validSongMoments.map(moment => moment.coordinate), currentCoordinate, minimumBoundsSpan), [currentCoordinate, minimumBoundsSpan, places, routes, validSongMoments]);
+  const geometry = useMemo(() => {
+    const visible = buildGeometry(staticRoutes, places, validSongMoments.map(moment => moment.coordinate), currentCoordinate, minimumBoundsSpan);
+    return { ...visible, bounds: viewportGeometry.bounds };
+  }, [currentCoordinate, minimumBoundsSpan, places, staticRoutes, validSongMoments, viewportGeometry.bounds]);
 
   useEffect(() => {
     let mounted = true;
-    void loadJourneyDeckMapStyle(fetch, theme.mode).then(style => { if (mounted) setMapStyle(style); });
+    void loadJourneyDeckMapStyle(fetch, theme.id).then(style => { if (mounted) setMapStyle(style); });
     return () => { mounted = false; };
-  }, [theme.mode]);
+  }, [theme.id]);
 
   const fit = useCallback(() => {
     if (!geometry.bounds) return;
@@ -83,10 +122,11 @@ export function PrimaryMobilityMap({
     >
       <Camera ref={camera} initialViewState={{ bounds: geometry.bounds, pitch: cameraPitch, padding: { top: cameraPadding, right: cameraPadding, bottom: cameraPadding, left: cameraPadding } }} />
       {geometry.lines.features.length > 0 && <GeoJSONSource id="primary-mobility-routes" data={geometry.lines}>
-        <Layer id="primary-route-glow" type="line" paint={{ 'line-color': '#a43fff', 'line-width': 14, 'line-opacity': 0.4, 'line-blur': 8 }} />
-        <Layer id="primary-route-shadow" type="line" paint={{ 'line-color': '#5d236f', 'line-width': 8, 'line-opacity': 0.8 }} />
-        <Layer id="primary-route-line" type="line" paint={{ 'line-color': '#ff6750', 'line-width': 4.5, 'line-opacity': 0.96 }} />
+        <Layer id="primary-route-glow" type="line" paint={{ 'line-color': mapPalette.routeGlow, 'line-width': 14, 'line-opacity': 0.46, 'line-blur': 8 }} />
+        <Layer id="primary-route-shadow" type="line" paint={{ 'line-color': mapPalette.routeShadow, 'line-width': 8, 'line-opacity': 0.8 }} />
+        <Layer id="primary-route-line" type="line" paint={{ 'line-color': mapPalette.routeLine, 'line-width': 4.5, 'line-opacity': 0.98 }} />
       </GeoJSONSource>}
+      {liveRoute && <AnimatedLiveRoute key={liveRoute.id} route={liveRoute} palette={mapPalette} />}
       {geometry.points.features.length > 0 && <GeoJSONSource id="primary-mobility-places" data={geometry.points} cluster clusterRadius={44} clusterMaxZoom={13}>
         <Layer id="primary-place-cluster-glow" type="circle" filter={['has', 'point_count']} paint={{ 'circle-color': '#a653ff', 'circle-radius': ['step', ['get', 'point_count'], 25, 10, 31, 50, 38, 250, 46], 'circle-blur': 0.72, 'circle-opacity': 0.62 }} />
         <Layer id="primary-place-cluster" type="circle" filter={['has', 'point_count']} paint={{ 'circle-color': '#8f45e8', 'circle-radius': ['step', ['get', 'point_count'], 17, 10, 21, 50, 26, 250, 31], 'circle-stroke-color': '#d2a3ff', 'circle-stroke-width': 2, 'circle-opacity': 0.94 }} />
@@ -94,9 +134,11 @@ export function PrimaryMobilityMap({
         <Layer id="primary-place-dot" type="circle" filter={['!', ['has', 'point_count']]} paint={{ 'circle-color': '#8f45e8', 'circle-radius': 13, 'circle-stroke-color': '#d2a3ff', 'circle-stroke-width': 2, 'circle-opacity': 0.94 }} />
         <Layer id="primary-place-count" type="symbol" filter={['!', ['has', 'point_count']]} layout={{ 'text-field': ['to-string', ['get', 'count']], 'text-size': 10, 'text-font': ['Noto Sans Regular'] }} paint={{ 'text-color': '#ffffff' }} />
       </GeoJSONSource>}
-      {currentCoordinate && <Marker id="live-position" lngLat={currentCoordinate} anchor="center">
-        <View style={[styles.currentMarker, { transform: [{ rotate: `${currentHeading ?? 0}deg` }] }]}><Text style={styles.currentArrow}>▲</Text></View>
-      </Marker>}
+      {currentCoordinate && <LayerAnnotation id="live-position" lngLat={currentCoordinate} animated={animateLiveRoute} animationDuration={900} animationEasingFunction={Easing.out(Easing.cubic)}>
+        <Layer id="live-position-glow" type="circle" paint={{ 'circle-color': '#ff334f', 'circle-radius': 23, 'circle-blur': 0.68, 'circle-opacity': 0.76 }} />
+        <Layer id="live-position-body" type="circle" paint={{ 'circle-color': '#ff4d57', 'circle-radius': 17, 'circle-stroke-color': '#ffd6d7', 'circle-stroke-width': 3, 'circle-opacity': 1 }} />
+        <Layer id="live-position-arrow" type="symbol" layout={{ 'text-field': '▲', 'text-size': 17, 'text-rotate': currentHeading ?? 0, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }} paint={{ 'text-color': '#ffffff' }} />
+      </LayerAnnotation>}
       {validSongMoments.map(moment => <Marker
         id={`live-song-${moment.index}`}
         key={`${moment.index}-${moment.coordinate.join(',')}`}

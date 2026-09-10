@@ -7,6 +7,8 @@ test('native recorder inbox is acknowledged only after every route point is pres
   assert.equal(nativeRouteImportIsComplete(3, 3, 3), true);
   assert.equal(nativeRouteImportIsComplete(3, 2, 2), false, 'a partial export stays in the native inbox');
   assert.equal(nativeRouteImportIsComplete(3, 2, 3), false, 'a gap cannot be mistaken for a complete route');
+  assert.equal(nativeRouteImportIsComplete(3, 3, 4), false, 'an extra out-of-range point cannot replace a missing point');
+  assert.equal(nativeRouteImportIsComplete(3, 4, 4), false, 'a route beyond the native snapshot remains unacknowledged');
   assert.equal(nativeRouteImportIsComplete(0, 0, 0), false, 'an empty completed route is retained for diagnosis');
 });
 

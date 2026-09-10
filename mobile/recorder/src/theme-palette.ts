@@ -1,3 +1,4 @@
+import { themeCatalog, isCustomTheme, type ThemeId } from './theme-catalog.ts';
 export type ThemeMode = 'dark' | 'light';
 export type ColorRole = 'text' | 'surface' | 'border' | 'accent' | 'shadow';
 
@@ -28,11 +29,25 @@ function alpha(color: string, opacity: number) {
 }
 
 /** Translate existing presentation colors by role; dark values remain byte-for-byte intact. */
-export function themedColor(value: string, mode: ThemeMode, role: ColorRole = 'accent'): string {
+export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'accent'): string {
   if (mode === 'dark') return value;
   const channels = rgba(value);
   if (!channels) return value; // transparent, SVG paint references, provider URLs, etc.
   const [r, g, b, a] = channels;
+  if (isCustomTheme(mode)) {
+    const p = themeCatalog[mode].palette, light = themeCatalog[mode].mode === 'light';
+    const hi = Math.max(r, g, b), lo = Math.min(r, g, b), chroma = hi - lo;
+    const colored = chroma > 45;
+    const ink = r > g * 1.18 && r > b * 1.12 ? (g > b * 1.35 && g > r * 0.52 ? p.amber : p.coral)
+      : g > r * 1.15 ? (b > g * 1.12 ? p.blue : p.teal)
+      : b > r * 1.15 && g > r * 1.05 ? p.blue
+      : r > g * 1.25 && b > g * 1.2 && r > b * 1.12 ? p.rose : p.accent;
+    if (role === 'shadow') return alpha(light ? '#635275' : (colored ? ink : p.chrome), a * (light ? 0.18 : 1));
+    if (role === 'surface') return alpha(hi < 32 ? p.page : hi < 90 ? p.card : p.inset, a);
+    if (role === 'border') return alpha(colored && hi > 140 ? ink : p.line, a);
+    if (role === 'text') return alpha(colored && hi > 100 ? ink : hi > 210 || hi < 75 ? p.text : p.muted, a);
+    return alpha(hi < 70 ? p.page : colored ? ink : hi > 210 ? p.chrome : p.muted, a);
+  }
   const brightness = Math.max(r, g, b);
   const spread = brightness - Math.min(r, g, b);
   const green = g > r * 1.16 && g > b * 0.95;
@@ -56,11 +71,11 @@ export function themedColor(value: string, mode: ThemeMode, role: ColorRole = 'a
 }
 
 /** Surface fades keep their original alpha and geometry; vivid action gradients keep color. */
-export function themedGradient<T extends readonly string[]>(colors: T, mode: ThemeMode): T {
+export function themedGradient<T extends readonly string[]>(colors: T, mode: ThemeId): T {
   return colors.map(color => themedColor(color, mode, 'accent')) as unknown as T;
 }
 
-export function themedStyleSheet<T extends Record<string, any>>(styles: T, mode: ThemeMode, preserve: readonly string[] = []): T {
+export function themedStyleSheet<T extends Record<string, any>>(styles: T, mode: ThemeId, preserve: readonly string[] = []): T {
   if (mode === 'dark') return styles;
   return Object.fromEntries(Object.entries(styles).map(([name, style]) => {
     if (preserve.includes(name)) return [name, style];

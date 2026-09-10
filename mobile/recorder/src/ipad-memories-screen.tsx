@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, AppState, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Alert, Animated as NativeAnimated, AppState, Keyboard, KeyboardAvoidingView, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useIsFocused } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -8,13 +8,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useAppTheme } from './app-theme';
+import { ThemeMaterial } from './theme-material';
 import { IpadPageHeader } from './ipad-page-header';
-import { headerImageSource } from './header-image-sources';
+import { PhoneTabTitle } from './phone-tab-title';
+import { HeaderArtwork } from './header-artwork';
 import { CardDetailLink } from './card-detail-link';
 import { NativeActionMenu } from './native-action-menu';
 import { openJourneyCardAction } from './journey-card-action';
 import { filterJourneyLibrary, journeyRouteLabel } from './library-model';
-import { containsStudioPoint, memoryStudioDrop, phoneStudioLayout, studioEdgeVelocity, type StudioRect } from './memory-studio-model';
+import { clampStudioTrayHeight, containsStudioPoint, memoryStudioDrop, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity, type StudioRect } from './memory-studio-model';
 import type { JourneyMemory, JourneySummary } from './app-data';
 
 type DragState = {
@@ -33,7 +35,7 @@ function DropZone({ id, children, style }: { id: string; children: ReactNode; st
   const d = useContext(DragContext), viewport = useContext(ViewportContext);
   const ref = useAnimatedRef<View>();
   const theme = useAppTheme();
-  const accent = theme.isLight ? '#754487' : '#c5a0f4';
+  const accent = theme.palette.accent;
   const frame = useFrameCallback(() => {
     if (!d.active.value) return;
     const rect = measure(ref);
@@ -51,7 +53,7 @@ function DropZone({ id, children, style }: { id: string; children: ReactNode; st
   return <Animated.View testID={`studio-drop-${id}`} ref={ref} collapsable={false} style={[style, lift]}>
     {children}
     <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.dropOutline, { borderColor: accent }, highlight]}>
-      <View style={[styles.dropLabel, { backgroundColor: accent }]}><Text style={[styles.dropLabelText, { color: theme.isLight ? '#fff' : '#201428' }]}>{id.startsWith('memory:') ? 'Release to add' : 'Release to create Memory'}</Text></View>
+      <View style={[styles.dropLabel, { backgroundColor: accent }]}><Text style={[styles.dropLabelText, { color: theme.palette.onAccent }]}>{id.startsWith('memory:') ? 'Release to add' : 'Release to create Memory'}</Text></View>
     </Animated.View>
   </Animated.View>;
 }
@@ -79,13 +81,14 @@ function StudioScroll({ children, label }: { children: ReactNode; label: string 
 }
 
 function JourneyFace({ journey, floating = false, compact = false }: { journey: JourneySummary; floating?: boolean; compact?: boolean }) {
-  const light = useAppTheme().isLight;
-  return <View style={[styles.journeyFace, compact && styles.phoneJourneyFace, { backgroundColor: light ? '#fffcf6' : '#201428', borderColor: light ? '#d8c5ba' : '#60416c' }, floating && styles.floatingFace]}>
-    <View style={styles.row}><SymbolView name="road.lanes" tintColor={light ? '#754487' : '#c5a0f4'} style={styles.icon} />
-      <Text style={[styles.eyebrow, { color: light ? '#754487' : '#c5a0f4' }]}>{new Date(journey.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
-      <View style={{ flex: 1 }} /><SymbolView name="line.3.horizontal" tintColor={light ? '#685461' : '#b6a6c1'} style={styles.smallIcon} /></View>
-    <Text numberOfLines={2} style={[styles.journeyTitle, compact && { fontSize: 15, lineHeight: 20 }, { color: light ? '#291d26' : '#fff6ed' }]}>{journeyRouteLabel(journey)}</Text>
-    <Text style={[styles.meta, { color: light ? '#685461' : '#b6a6c1' }]}>{journey.miles.toFixed(1)} mi  ·  {Math.round(journey.durationMinutes)} min  ·  {journey.songCount} songs</Text>
+  const theme = useAppTheme();
+  return <View style={[styles.journeyFace, compact && styles.phoneJourneyFace, { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, floating && styles.floatingFace]}>
+    <ThemeMaterial radius={18} />
+    <View style={styles.row}><SymbolView name="road.lanes" tintColor={theme.palette.accent} style={styles.icon} />
+      <Text style={[styles.eyebrow, { color: theme.palette.accent }]}>{new Date(journey.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
+      <View style={{ flex: 1 }} /><SymbolView name="line.3.horizontal" tintColor={theme.palette.muted} style={styles.smallIcon} /></View>
+    <Text numberOfLines={2} style={[styles.journeyTitle, compact && { fontSize: 15, lineHeight: 20 }, { color: theme.palette.text }]}>{journeyRouteLabel(journey)}</Text>
+    <Text style={[styles.meta, { color: theme.palette.muted }]}>{journey.miles.toFixed(1)} mi  ·  {Math.round(journey.durationMinutes)} min  ·  {journey.songCount} songs</Text>
   </View>;
 }
 
@@ -125,12 +128,12 @@ function DraggableJourney({ journey, selected, onSelect, onOpen }: { journey: Jo
     <GestureDetector gesture={pan}><Animated.View testID={`studio-source-${journey.id}`} ref={ref} collapsable={false} style={fade}>
       <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Select ${journeyRouteLabel(journey)}`}
         accessibilityHint="Select journeys to organize, or hold and drag this card onto a Memory or another journey."
-        onPress={onSelect} style={selected ? { borderRadius: 18, borderWidth: 2, borderColor: theme.isLight ? '#754487' : '#c5a0f4' } : undefined}>
+        onPress={onSelect} style={selected ? { borderRadius: 18, borderWidth: 2, borderColor: theme.palette.accent } : undefined}>
         <JourneyFace journey={journey} compact={d.compact} />
       </Pressable>
     </Animated.View></GestureDetector>
     <View style={styles.row}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${journeyRouteLabel(journey)}`} onPress={onOpen} style={[styles.openJourney, { flex: 1 }]}>
-      <Text style={{ color: theme.isLight ? '#754487' : '#c5a0f4', fontWeight: '600' }}>{selected ? '✓ Selected' : 'View journey'}  ›</Text>
+      <Text style={{ color: theme.palette.accent, fontWeight: '600' }}>{selected ? '✓ Selected' : 'View journey'}  ›</Text>
     </Pressable>
       {d.compact && <NativeActionMenu compact label={`Actions for ${journeyRouteLabel(journey)}`} actions={[
         { id: 'edit', title: 'Edit locations', image: 'pencil', attributes: { disabled: !d.enabled }, onSelect: () => { if (d.enabled && !d.source.value) openJourneyCardAction(journey.id, 'edit'); } },
@@ -150,14 +153,18 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
   const theme = useAppTheme(), focused = useIsFocused(), window = useWindowDimensions();
   const phone = presentation === 'iphone';
   const [phoneHeight, setPhoneHeight] = useState(window.height - 150), [trayExpanded, setTrayExpanded] = useState(true);
-  const c = theme.isLight ? { page: '#fffaf0', card: '#fffcf6', text: '#291d26', muted: '#685461', accent: '#754487', line: '#d8c5ba', inset: '#eee2ef' }
-    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#c5a0f4', line: '#49304f', inset: '#291735' };
+  const c = theme.resolvePalette(theme.isLight ? { page: '#fffaf0', card: '#fffcf6', text: '#291d26', muted: '#685461', accent: '#754487', line: '#d8c5ba', inset: '#eee2ef' }
+    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#c5a0f4', line: '#49304f', inset: '#291735' });
   const [width, setWidth] = useState(0), [query, setQuery] = useState(''), [memoryQuery, setMemoryQuery] = useState('');
   const [selected, setSelected] = useState<string[]>([]), [dragged, setDragged] = useState<JourneySummary | null>(null);
   const [saving, setSaving] = useState(false), [message, setMessage] = useState('Hold a journey and drag it onto a Memory, or another journey.');
   const [reduceMotion, setReduceMotion] = useState(true);
   const [journeyLimit, setJourneyLimit] = useState(30), [memoryLimit, setMemoryLimit] = useState(20);
   const locked = useRef(false), mounted = useRef(true);
+  const phoneLayout = phoneStudioLayout(width, phoneHeight, window.fontScale ?? 1);
+  const trayHeight = useRef(new NativeAnimated.Value(phoneLayout.expandedTray)).current;
+  const trayLiveHeight = useRef(phoneLayout.expandedTray), trayStartHeight = useRef(phoneLayout.expandedTray);
+  const trayDragging = useRef(false), settleTray = useRef<() => void>(() => {});
   const source = useSharedValue(''), target = useSharedValue(''), active = useSharedValue(false);
   const x = useSharedValue(0), y = useSharedValue(0), originX = useSharedValue(0), originY = useSharedValue(0);
   const rootX = useSharedValue(0), rootY = useSharedValue(0), scale = useSharedValue(1), opacity = useSharedValue(0);
@@ -174,16 +181,23 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
     scrollTo(pageScroll, 0, next, false);
   }, false);
   useEffect(() => { pageFrame.setActive(!phone && width < 700 && Boolean(dragged) && focused && !busy); return () => pageFrame.setActive(false); }, [phone, width, dragged, focused, busy]);
-  const cancel = () => { active.value = false; source.value = ''; target.value = ''; opacity.value = 0; setDragged(null); };
+  const cancel = () => { active.value = false; source.value = ''; target.value = ''; destination.value = null; opacity.value = 0; setDragged(null); };
   useEffect(() => {
     mounted.current = true;
     let valid = true;
     void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (valid) setReduceMotion(value); }).catch(() => {});
     const motion = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    const state = AppState.addEventListener('change', value => { if (value !== 'active') cancel(); });
-    return () => { valid = false; mounted.current = false; motion.remove(); state.remove(); };
+    const state = AppState.addEventListener('change', value => { if (value !== 'active') { cancel(); trayDragging.current = false; settleTray.current(); } });
+    return () => {
+      valid = false; mounted.current = false;
+      // An animation may already have queued its JS completion. Invalidate the
+      // source before leaving so it cannot save through an old profile/workspace.
+      active.value = false; source.value = ''; target.value = ''; destination.value = null; opacity.value = 0;
+      trayDragging.current = false; trayHeight.stopAnimation();
+      motion.remove(); state.remove();
+    };
   }, []);
-  useEffect(() => { cancel(); }, [focused, width, window.height, busy]);
+  useEffect(() => { cancel(); }, [focused, width, window.height, phoneHeight, busy]);
   useEffect(() => {
     setSelected(ids => ids.filter(id => journeys.some(j => j.id === id)));
     if (source.value && !journeys.some(j => j.id === source.value)) cancel();
@@ -192,19 +206,19 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
   const visibleMemories = memories.filter(m => `${m.name} ${m.notes}`.toLowerCase().includes(memoryQuery.trim().toLowerCase()));
   const selectedLive = selected.filter(id => journeys.some(j => j.id === id));
   const add = async (memoryId: string, ids: string[]) => {
-    if (locked.current || busy || !ids.length) return;
+    if (!mounted.current || locked.current || busy || !ids.length) return;
     locked.current = true; setSaving(true);
     try {
       await onAdd(memoryId, ids);
       if (!mounted.current) return;
       setSelected([]); setMessage(`Journeys added. Saved on this ${phone ? 'iPhone' : 'iPad'}.`);
       AccessibilityInfo.announceForAccessibility('Journeys added to Memory');
-    } catch (error) { Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Your journeys remain saved. Please try again.'); }
+    } catch (error) { if (mounted.current) Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Your journeys remain saved. Please try again.'); }
     finally { locked.current = false; if (mounted.current) setSaving(false); }
   };
   const finish = (id: string, dropTarget: string) => {
     // A cancelled/rotated/backgrounded drag must never become a late write.
-    if (source.value !== id) return;
+    if (!mounted.current || source.value !== id) return;
     cancel();
     if (locked.current || busy || !focused) return;
     const drop = memoryStudioDrop(id, dropTarget, journeys.map(j => j.id), memories.map(m => m.id));
@@ -212,28 +226,59 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
     if (drop?.kind === 'add') void add(drop.memoryId, drop.journeyIds);
   };
   const d: DragState = { compact: phone, source, target, active, x, y, originX, originY, rootX, rootY, scale, opacity, destination, root, reduceMotion,
-    enabled: focused && !saving && !busy, dragging: Boolean(dragged), begin: id => setDragged(journeys.find(j => j.id === id) ?? null), finish };
+    enabled: focused && !saving && !busy, dragging: Boolean(dragged), begin: id => { if (mounted.current && focused && !busy && source.value === id) setDragged(journeys.find(j => j.id === id) ?? null); }, finish };
   const floating = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateX: x.value - rootX.value - 145 }, { translateY: y.value - rootY.value - 62 }, { scale: scale.value }] }));
   const wide = width >= 700, galleryColumns = width >= 1050 ? 2 : 1;
   const panelHeight = Math.max(420, window.height - 330);
   const disabled = saving || busy;
-  const phoneLayout = phoneStudioLayout(width, phoneHeight, window.fontScale ?? 1);
-  const trayStyle = useAnimatedStyle(() => ({ height: reduceMotion
-    ? trayExpanded ? phoneLayout.expandedTray : phoneLayout.collapsedTray
-    : withSpring(trayExpanded ? phoneLayout.expandedTray : phoneLayout.collapsedTray, spring) }));
+  const animateTray = useCallback((expand: boolean) => {
+    const next = expand ? phoneLayout.expandedTray : phoneLayout.collapsedTray;
+    trayLiveHeight.current = next;
+    trayHeight.stopAnimation();
+    if (reduceMotion) trayHeight.setValue(next);
+    else NativeAnimated.spring(trayHeight, { toValue: next, damping: 23, stiffness: 240, mass: 0.8, useNativeDriver: false }).start();
+  }, [phoneLayout.expandedTray, phoneLayout.collapsedTray, reduceMotion, trayHeight]);
+  useEffect(() => {
+    settleTray.current = () => animateTray(trayExpanded);
+    trayDragging.current = false;
+    animateTray(trayExpanded);
+  }, [animateTray, trayExpanded, focused, disabled, width, window.height, phoneHeight]);
+  const trayResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (_event, gesture) => phone && focused && !disabled && !dragged
+      && Math.abs(gesture.dy) > 4 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+    onPanResponderGrant: () => {
+      if (!mounted.current || !phone || !focused || disabled || dragged) return;
+      trayDragging.current = true;
+      Keyboard.dismiss(); cancel();
+      trayHeight.stopAnimation(value => { trayStartHeight.current = value; trayLiveHeight.current = value; });
+    },
+    onPanResponderMove: (_event, gesture) => {
+      if (!mounted.current || !trayDragging.current) return;
+      const next = clampStudioTrayHeight(trayStartHeight.current - gesture.dy, phoneLayout.collapsedTray, phoneLayout.expandedTray);
+      trayLiveHeight.current = next; trayHeight.setValue(next);
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      if (!mounted.current || !trayDragging.current) return;
+      trayDragging.current = false;
+      const expand = settleStudioTrayExpanded(trayLiveHeight.current, phoneLayout.collapsedTray, phoneLayout.expandedTray, gesture.vy);
+      animateTray(expand); setTrayExpanded(expand);
+    },
+    onPanResponderTerminate: () => { if (!mounted.current || !trayDragging.current) return; trayDragging.current = false; animateTray(trayExpanded); },
+    onPanResponderTerminationRequest: () => true,
+  }), [animateTray, disabled, dragged, focused, phone, phoneLayout.collapsedTray, phoneLayout.expandedTray, trayExpanded, trayHeight]);
   if (phone) return <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1, backgroundColor: c.page }}>
     <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}><DragContext.Provider value={d}><Animated.View testID="studio-drag-root" ref={root} collapsable={false}
       onLayout={event => { setWidth(event.nativeEvent.layout.width); setPhoneHeight(event.nativeEvent.layout.height); }} style={styles.phoneRoot}>
       <View testID="iphone-memory-gallery" style={{ flex: 1, minHeight: 0 }}><StudioScroll label="Memory gallery">
+        <PhoneTabTitle title="Memories" />
         <View style={styles.phoneHeader}>
-          <Image source={headerImageSource(require('../assets/memories-header-cinematic-v1.png'), theme.mode)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
-          <LinearGradient pointerEvents="none" colors={[`${c.page}00`, c.page]} locations={[0.1, 1]} style={StyleSheet.absoluteFill} />
-          <Text accessibilityRole="header" style={[styles.phoneTitle, { color: c.text }]}>MEMORIES</Text>
+          <HeaderArtwork source={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} />
         </View>
         <View style={styles.phoneSearchRow}>
           <TextInput accessibilityLabel="Search Memories" value={memoryQuery} onChangeText={setMemoryQuery} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} placeholder="Search Memories" placeholderTextColor={c.muted} style={[styles.phoneSearch, { color: c.text, borderColor: c.line }]} />
           <Pressable accessibilityRole="button" accessibilityLabel="New Memory" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.phonePlus, { backgroundColor: c.accent }]}>
-            <SymbolView name="plus" tintColor={theme.isLight ? '#fff' : '#201428'} style={styles.icon} />
+            <SymbolView name="plus" tintColor={theme.palette.onAccent} style={styles.icon} />
           </Pressable>
         </View>
         <View style={styles.phoneSectionHeading}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Your Memories</Text>
@@ -247,9 +292,9 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
             { id: 'edit', title: 'Edit Memory', icon: 'pencil', onPress: () => onEdit(memory) },
             { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up', onPress: () => onShare(memory) },
           ]}><Pressable accessibilityRole="button" accessibilityLabel={`Open Memory ${memory.name}`} disabled={disabled} onPress={() => onMemory(memory.id)} style={[styles.memoryCard, { height: phoneLayout.cardHeight, backgroundColor: c.inset }]}>
-            {renderArtwork(memory)}<LinearGradient pointerEvents="none" colors={['#10091800', '#100918e8']} style={StyleSheet.absoluteFill} />
-            <View style={styles.phoneMemoryCopy}><Text numberOfLines={2} style={styles.phoneMemoryTitle}>{memory.name}</Text>
-              <Text style={styles.memoryMeta}>{memory.journeyIds.length} {memory.journeyIds.length === 1 ? 'journey' : 'journeys'}</Text>
+            {renderArtwork(memory)}<LinearGradient pointerEvents="none" colors={theme.isCustom ? [`${c.card}00`, `${c.card}f5`] : ['#10091800', '#100918e8']} style={StyleSheet.absoluteFill} />
+            <View style={styles.phoneMemoryCopy}><Text numberOfLines={2} style={[styles.phoneMemoryTitle, theme.isCustom && { color: c.text }]}>{memory.name}</Text>
+              <Text style={[styles.memoryMeta, theme.isCustom && { color: c.muted }]}>{memory.journeyIds.length} {memory.journeyIds.length === 1 ? 'journey' : 'journeys'}</Text>
             </View>
           </Pressable></CardDetailLink></DropZone>
           {selectedLive.length > 0 && <Pressable accessibilityRole="button" accessibilityLabel={`Add selected journeys to ${memory.name}`} disabled={disabled} onPress={() => void add(memory.id, selectedLive)} style={[styles.addSelected, { backgroundColor: c.inset }]}><Text style={{ color: c.accent, fontWeight: '600' }}>+ Add {selectedLive.length} selected</Text></Pressable>}
@@ -262,14 +307,17 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
         {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset, margin: 5 }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock complete history  ›</Text></Pressable>}
         {message.startsWith('Journeys added') && <Text accessibilityLiveRegion="polite" style={[styles.phoneNotice, { color: c.accent }]}>{message}</Text>}
       </StudioScroll></View>
-      <Animated.View testID="iphone-journey-tray" style={[styles.phoneTray, { backgroundColor: c.card, borderColor: c.line }, trayStyle]}>
+      <NativeAnimated.View testID="iphone-journey-tray" style={[styles.phoneTray, { backgroundColor: c.card, borderColor: c.line }, { height: trayHeight }]}>
+        <View testID="iphone-journey-tray-grabber" {...trayResponder.panHandlers}>
         <Pressable accessibilityRole="button" accessibilityLabel={trayExpanded ? 'Collapse journey library' : 'Expand journey library'} accessibilityState={{ expanded: trayExpanded }} disabled={Boolean(dragged)}
-          onPress={() => { Keyboard.dismiss(); cancel(); setTrayExpanded(value => !value); }} style={styles.phoneTrayHeader}>
+          accessibilityHint="Tap or pull the handle to move the Journey library."
+          onPress={() => { Keyboard.dismiss(); cancel(); const expand = !trayExpanded; animateTray(expand); setTrayExpanded(expand); }} style={styles.phoneTrayHeader}>
           <View style={[styles.trayHandle, { backgroundColor: c.line }]} />
-          <View style={styles.row}><View style={{ flex: 1 }}><Text style={[styles.phoneTrayTitle, { color: c.text }]}>Journey library</Text><Text style={[styles.phoneTrayHint, { color: c.muted }]}>{saving ? 'Saving…' : trayExpanded ? 'Hold and drag to build your story' : `${visibleJourneys.length} journeys · Tap to expand`}</Text></View>
+          <View style={styles.row}><View style={{ flex: 1 }}><Text style={[styles.phoneTrayTitle, { color: c.text }]}>Journey library</Text><Text style={[styles.phoneTrayHint, { color: c.muted }]}>{saving ? 'Saving…' : trayExpanded ? 'Hold and drag to build your story' : `${visibleJourneys.length} journeys · Tap or pull up`}</Text></View>
             <SymbolView name={trayExpanded ? 'chevron.down' : 'chevron.up'} tintColor={c.accent} style={styles.smallIcon} />
           </View>
         </Pressable>
+        </View>
         <View testID="iphone-journey-tray-body" accessibilityElementsHidden={!trayExpanded} importantForAccessibility={trayExpanded ? 'auto' : 'no-hide-descendants'} pointerEvents={trayExpanded ? 'auto' : 'none'} style={{ flex: 1, minHeight: 0 }}>
           <StudioScroll label="Journey library">
             <TextInput accessibilityLabel="Search journeys" value={query} onChangeText={setQuery} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} placeholder="Search journeys" placeholderTextColor={c.muted} style={[styles.phoneSearch, { color: c.text, borderColor: c.line, marginHorizontal: 6, marginBottom: 5 }]} />
@@ -280,7 +328,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
             {visibleJourneys.length > journeyLimit && <Pressable accessibilityRole="button" onPress={() => setJourneyLimit(n => n + 30)} style={styles.action}><Text style={{ color: c.accent }}>Show more journeys</Text></Pressable>}
           </StudioScroll>
         </View>
-      </Animated.View>
+      </NativeAnimated.View>
       <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.floating, floating]}>{dragged && <JourneyFace journey={dragged} floating compact />}</Animated.View>
     </Animated.View></DragContext.Provider></KeyboardAvoidingView>
   </SafeAreaView>;
@@ -289,8 +337,8 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
       <Animated.ScrollView ref={pageScroll} onScroll={pageOnScroll} scrollEventThrottle={16} onContentSizeChange={(_w, h) => { pageContentHeight.value = h; }}
         testID="ipad-memories" contentInsetAdjustmentBehavior="automatic" scrollEnabled={!dragged} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
         <View testID="ipad-memories-canvas" onLayout={e => setWidth(e.nativeEvent.layout.width)} style={styles.canvas}>
-          <IpadPageHeader title="Memories" width={width} artwork={require('../assets/memories-header-cinematic-v1.png')} subtitle="Your journeys. Your stories. Brought together.">
-            <Pressable accessibilityRole="button" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.button, { backgroundColor: c.accent }]}><Text style={[styles.buttonText, { color: theme.isLight ? '#fff' : '#201428' }]}>+ New Memory</Text></Pressable>
+          <IpadPageHeader title="Memories" width={width} artwork={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} subtitle="Your journeys. Your stories. Brought together.">
+            <Pressable accessibilityRole="button" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.button, { backgroundColor: c.accent }]}><Text style={[styles.buttonText, { color: theme.palette.onAccent }]}>+ New Memory</Text></Pressable>
           </IpadPageHeader>
           <View style={styles.toolbar}><Text accessibilityLiveRegion="polite" style={[styles.hint, { color: c.muted }]}>{saving ? 'Saving your Memory…' : message}</Text>
             <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onRefresh} style={styles.action}><Text style={{ color: c.accent }}>Refresh</Text></Pressable></View>
@@ -350,8 +398,7 @@ const styles = StyleSheet.create({
   // NativeTabs provides per-screen safe-area insets, including its bottom bar.
   // SafeAreaView above consumes that inset; only add a small visual gutter here.
   phoneRoot: { flex: 1, minHeight: 0, marginHorizontal: 12, marginBottom: 8, gap: 8 },
-  phoneHeader: { height: 120, marginHorizontal: -8, overflow: 'hidden', justifyContent: 'flex-end', paddingHorizontal: 8, paddingBottom: 8 },
-  phoneTitle: { fontSize: 30, fontWeight: '800', letterSpacing: 3 },
+  phoneHeader: { marginHorizontal: -4 },
   phoneSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 5, marginTop: 5 },
   phoneSearch: { flexGrow: 1, flexShrink: 1, minHeight: 44, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 10, fontSize: 15 },
   phonePlus: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },

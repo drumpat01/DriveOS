@@ -61,6 +61,25 @@ RECORD TYPE MusicEntry (
     GRANT READ TO "_world"
 );
 
+RECORD TYPE JourneyEdit (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    asset ASSET,
+    formatVersion INT64,
+    id STRING,
+    parentId STRING,
+    rootJourneyId STRING,
+    sha256 STRING,
+    syncRevision INT64,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
 RECORD TYPE RouteArchive (
     "___createTime" TIMESTAMP,
     "___createdBy" REFERENCE,

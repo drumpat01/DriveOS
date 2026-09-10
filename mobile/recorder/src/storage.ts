@@ -19,7 +19,7 @@ import { migrateLegacyRecorderIntoUnifiedDatabase } from './unified-data-migrati
 import { nativeRouteImportIsComplete } from './native-recorder-inbox-model';
 import type { NativeRecorderInboxExport, NativeRecorderInboxSession } from '../modules/journeydeck-recorder';
 
-const db = getRecorderDatabase();
+let db: ReturnType<typeof getRecorderDatabase>;
 let initialized = false;
 export type LocalSessionStatus = 'recording' | 'paused' | 'finishing' | 'completed';
 export type SessionRow = { id: string; owner_user_id: string; device_id: string; status: LocalSessionStatus; started_at: string; ended_at: string | null; next_sequence: number; remote_created: number; remote_completed: number; drive_id: string | null };
@@ -73,6 +73,7 @@ export function initializeDatabase() {
   // Existing journeydeck-recorder.db rows are copied into this database once;
   // the source file remains untouched so a failed/interrupted upgrade retries.
   initializeLocalStore();
+  db = getRecorderDatabase();
   db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
   migrateLegacyRecorderIntoUnifiedDatabase();
   retireBuild11SharedDatabaseSessions();
@@ -144,11 +145,30 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
   if (!sessions.length) return [];
   const completed: string[] = [];
   db.withTransactionSync(() => {
-    for (const session of sessions) {
+    // Native exports put the newest active journey first. A Watch can finish
+    // one journey and start another before JS runs again, so retire the prior
+    // active mirror before attempting to insert the next one. The database's
+    // single-active-session guard remains authoritative throughout the import.
+    const mirroredActiveId = activeSession()?.id;
+    const ordered = [...sessions].sort((left, right) => {
+      const priority = (session: NativeRecorderInboxSession) => session.id === mirroredActiveId
+        ? 0 : session.status === 'completed' ? 1 : 2;
+      return priority(left) - priority(right);
+    });
+    for (const session of ordered) {
+      const existing = getSession(session.id);
+      const currentActive = activeSession();
+      if (currentActive && currentActive.id !== session.id && existing?.status !== 'completed') {
+        // A partial route or an ongoing journey owns the finishing/recording
+        // fence. Leave other sessions intact in native storage until it clears;
+        // they must not roll back this session's newly captured points.
+        continue;
+      }
       // A completed native route may be exported in more than one batch. Keep
       // its master row behind the finishing fence until every numbered point
       // is present; only then may completion jobs run or Swift delete it.
-      const importedStatus = session.status === 'completed' ? 'finishing' : session.status;
+      const importedStatus = existing?.status === 'completed' ? 'completed'
+        : session.status === 'completed' ? 'finishing' : session.status;
       db.runSync(`INSERT INTO recording_sessions(
           id,owner_user_id,device_id,status,started_at,ended_at,next_sequence,
           remote_created,remote_completed,drive_id,created_at,updated_at
@@ -161,7 +181,7 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
       session.id, session.ownerUserId, session.deviceId, importedStatus, session.startedAt,
       session.endedAt, session.nextSequence, session.createdAt, session.updatedAt);
       for (const point of session.points.slice(0, 100_000)) {
-        if (!Number.isInteger(point.sequence) || point.sequence < 0
+        if (!Number.isInteger(point.sequence) || point.sequence < 0 || point.sequence >= session.nextSequence
           || !Number.isFinite(Date.parse(point.recordedAt))
           || !Number.isFinite(point.latitude) || point.latitude < -90 || point.latitude > 90
           || !Number.isFinite(point.longitude) || point.longitude < -180 || point.longitude > 180) continue;
@@ -202,7 +222,8 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
 export function nativeRecorderInboxCursors(): Record<string, number> {
   initializeDatabase();
   return Object.fromEntries(db.getAllSync<{ id: string; nextSequence: number }>(`
-    SELECT s.id,COALESCE(MAX(p.sequence)+1,0) AS nextSequence
+    SELECT s.id,CASE WHEN COUNT(p.sequence)=COALESCE(MAX(p.sequence)+1,0)
+      THEN COALESCE(MAX(p.sequence)+1,0) ELSE 0 END AS nextSequence
     FROM recording_sessions s LEFT JOIN recording_points p ON p.session_id=s.id
     WHERE s.owner_user_id=? AND s.id LIKE 'native_recording_%'
     GROUP BY s.id;
@@ -530,12 +551,7 @@ function enqueueCompletionJobInTransaction(
       id,owner_user_id,session_id,kind,status,attempt_count,next_attempt_at,
       lease_expires_at,last_error_code,created_at,updated_at,completed_at
     ) VALUES(?,?,?,?, 'pending',0,?,NULL,NULL,?,?,NULL)
-    ON CONFLICT(owner_user_id,session_id,kind) DO UPDATE SET
-      status=CASE WHEN recording_jobs.status='completed' THEN 'completed' ELSE 'pending' END,
-      next_attempt_at=CASE WHEN recording_jobs.status='completed' THEN recording_jobs.next_attempt_at ELSE excluded.next_attempt_at END,
-      lease_expires_at=NULL,
-      last_error_code=CASE WHEN recording_jobs.status='completed' THEN recording_jobs.last_error_code ELSE NULL END,
-      updated_at=excluded.updated_at;`,
+    ON CONFLICT(owner_user_id,session_id,kind) DO NOTHING;`,
   completionJobId(sessionId, kind), ownerUserId, sessionId, kind, now, now, now);
 }
 
@@ -606,23 +622,29 @@ export function claimNextCompletionJob(options: { sessionId?: string; leaseMs?: 
   return claimed;
 }
 
-export function markCompletionJobSucceeded(jobId: string): void {
+type CompletionJobLease = Pick<CompletionJob, 'attemptCount' | 'leaseExpiresAt'>;
+
+export function markCompletionJobSucceeded(jobId: string, expectedLease?: CompletionJobLease): void {
   initializeDatabase();
   const now = new Date().toISOString();
+  const leaseClause = expectedLease ? " AND status='running' AND attempt_count=? AND lease_expires_at=?" : '';
+  const leaseParameters = expectedLease ? [expectedLease.attemptCount, expectedLease.leaseExpiresAt] : [];
   db.runSync(`UPDATE recording_jobs SET status='completed',lease_expires_at=NULL,last_error_code=NULL,
-    completed_at=?,next_attempt_at=?,updated_at=? WHERE id=? AND owner_user_id=?;`,
-  now, now, now, jobId, getCurrentUser().id);
+    completed_at=?,next_attempt_at=?,updated_at=? WHERE id=? AND owner_user_id=?${leaseClause};`,
+  now, now, now, jobId, getCurrentUser().id, ...leaseParameters);
 }
 
-export function markCompletionJobForRetry(jobId: string, errorCode: string, attemptCount: number, minimumDelayMs = 0): void {
+export function markCompletionJobForRetry(jobId: string, errorCode: string, attemptCount: number, minimumDelayMs = 0, expectedLease?: CompletionJobLease): void {
   initializeDatabase();
   const nowDate = new Date();
   const exponent = Math.max(0, Math.min(10, Math.trunc(attemptCount) - 1));
   const delayMs = Math.min(24 * 60 * 60_000, Math.max(15_000 * (2 ** exponent), Math.max(0, minimumDelayMs)));
   const code = /^[a-z0-9_]{1,64}$/.test(errorCode) ? errorCode : 'completion_job_failed';
+  const leaseClause = expectedLease ? " AND status='running' AND attempt_count=? AND lease_expires_at=?" : '';
+  const leaseParameters = expectedLease ? [expectedLease.attemptCount, expectedLease.leaseExpiresAt] : [];
   db.runSync(`UPDATE recording_jobs SET status='retry',lease_expires_at=NULL,last_error_code=?,
-    completed_at=NULL,next_attempt_at=?,updated_at=? WHERE id=? AND owner_user_id=?;`,
-  code, new Date(nowDate.getTime() + delayMs).toISOString(), nowDate.toISOString(), jobId, getCurrentUser().id);
+    completed_at=NULL,next_attempt_at=?,updated_at=? WHERE id=? AND owner_user_id=?${leaseClause};`,
+  code, new Date(nowDate.getTime() + delayMs).toISOString(), nowDate.toISOString(), jobId, getCurrentUser().id, ...leaseParameters);
 }
 
 export function pendingCompletionJobCount(): number {
@@ -750,7 +772,8 @@ function mirrorCompletedSessionToLocalStore(sessionId: string): void {
   const durationMinutes = Math.max(0, (Date.parse(session.ended_at) - Date.parse(session.started_at)) / 60_000);
   const meters = points.slice(1).reduce((total, point, index) => total + distanceMeters(points[index]!, point), 0);
   const miles = meters / 1609.344;
-  const speedMph = points.map(point => point.speedMps == null ? 0 : point.speedMps * 2.2369362921);
+  const maxSpeedMph = points.reduce((maximum, point) => Math.max(maximum,
+    point.speedMps == null ? 0 : point.speedMps * 2.2369362921), 0);
   const journeyId = archivedJourneyIdForSession(session.id);
 
   upsertJourney({
@@ -768,7 +791,7 @@ function mirrorCompletedSessionToLocalStore(sessionId: string): void {
     startPlaceId: null,
     endPlaceId: null,
     averageSpeedMph: durationMinutes > 0 ? miles / (durationMinutes / 60) : null,
-    maxSpeedMph: speedMph.length ? Math.max(...speedMph) : null,
+    maxSpeedMph: points.length ? maxSpeedMph : null,
     songCount: music.length,
     vehicleName: null,
     provider: 'native_recorder',

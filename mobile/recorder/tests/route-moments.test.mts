@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildReplayRoute, buildSongRouteMoments, coordinateAtRecordedTime, nearbySongMoments,
-  replaySnapshotAt, songAtReplayTime,
+  replaySnapshotAt, songAtReplayTime, travelledReplayCoordinates,
 } from '../src/route-moments.ts';
 
 test('song moments use the closest timestamped GPS breadcrumb when one is available', () => {
@@ -48,6 +48,23 @@ test('journey replay preserves telemetry and interpolates a smooth snapshot', ()
   assert.equal(snapshot?.headingDegrees, 0);
   assert.equal(snapshot?.batteryPercent, 79);
   assert.equal(snapshot?.progress, 0.5);
+  assert.deepEqual(travelledReplayCoordinates(route, Date.parse('2026-08-26T12:05:00.000Z')), [
+    [-97.4, 32.8],
+    [-97.35, 32.849999999999994],
+  ]);
+});
+
+test('travelled replay route clamps cleanly to its first and last positions', () => {
+  const route = buildReplayRoute(
+    [[-97.4, 32.8], [-97.3, 32.9], [-97.2, 33]],
+    undefined,
+    '2026-08-26T12:00:00.000Z',
+    '2026-08-26T12:10:00.000Z',
+    null,
+    null,
+  );
+  assert.deepEqual(travelledReplayCoordinates(route, 0), [[-97.4, 32.8]]);
+  assert.deepEqual(travelledReplayCoordinates(route, Number.MAX_SAFE_INTEGER), route.map(point => point.coordinate));
 });
 
 test('coordinate-only cached routes receive a usable estimated replay timeline', () => {

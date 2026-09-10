@@ -59,7 +59,7 @@ function device(overrides: Record<string, any> = {}) {
   const user = store.ensureLocalUser({ appleSubject: 'fixture-apple-account' });
   const sync = load(resolve(src, 'cloudkit-sync.ts'));
   const engine = new sync.CloudKitSyncEngine(user.id, { privateContentV2: true, privateRouteAssets: true });
-  return { db, store, user, engine, sync, load };
+  return { db, store, user, engine, sync, load, reload: (path: string) => { cache.delete(path); return load(path); } };
 }
 
 function seed(d: ReturnType<typeof device>) {
@@ -357,4 +357,323 @@ test('a photo removed while recovery checks the filesystem is never resurrected'
   const after = phone.store.getPhotoIncludingDeleted(phone.user.id, photoId);
   assert.ok(after.deletedAt);
   assert.equal(after.localUri, oldUri);
+});
+
+test('upload acknowledgement cannot mark a journey or song edited in flight as backed up', async () => {
+  const phone = device(); seed(phone);
+  const pending = await phone.engine.preparePushPayload();
+  const before = phone.store.getJourney(phone.user.id, 'fixture-journey');
+  phone.store.upsertJourney({ ...before, vehicleName: 'Changed during upload' }, { updatedAt: before.updatedAt });
+  const song = phone.store.getMusicEntry(phone.user.id, 'fixture-play');
+  phone.store.upsertMusicEntry({ ...song, artworkUrl: 'https://example.com/new-cover.jpg' });
+  phone.engine.acknowledgeSuccessfulPush(pending.map((record: any) => record.recordName));
+  assert.equal(phone.store.getJourney(phone.user.id, before.id).syncedToCloud, 0,
+    'even a same-timestamp local edit must remain queued');
+  assert.equal(phone.store.getMusicEntry(phone.user.id, song.id).syncedToCloud, 0);
+  const retry = await phone.engine.preparePushPayload();
+  assert.equal(retry.find((record: any) => record.recordName === 'journey_fixture-journey').fields.vehicleName, 'Changed during upload');
+  assert.equal(retry.find((record: any) => record.recordName === 'music_fixture-play').fields.artworkUrl, 'https://example.com/new-cover.jpg');
+  phone.engine.acknowledgeSuccessfulPush(retry.map((record: any) => record.recordName));
+  assert.equal(phone.store.getJourney(phone.user.id, before.id).syncedToCloud, 1);
+  assert.equal(phone.store.getMusicEntry(phone.user.id, song.id).syncedToCloud, 1);
+});
+
+test('unsolicited or repeated acknowledgements never mark unrelated pending rows as backed up', async () => {
+  const phone = device(); seed(phone);
+  phone.engine.acknowledgeSuccessfulPush(['journey_fixture-journey', 'music_fixture-play']);
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+  assert.equal(phone.store.getMusicEntry(phone.user.id, 'fixture-play').syncedToCloud, 0);
+  const records = await phone.engine.preparePushPayload();
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  phone.store.upsertJourney({ ...phone.store.getJourney(phone.user.id, 'fixture-journey'), vehicleName: 'Later edit' });
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+});
+
+test('replaying old cloud music cannot erase a local edit awaiting upload', async () => {
+  const phone = device(); seed(phone);
+  const records = await phone.engine.preparePushPayload();
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  phone.store.upsertMusicEntry({ ...phone.store.getMusicEntry(phone.user.id, 'fixture-play'),
+    artworkUrl: 'https://example.com/repaired-cover.jpg' });
+  const result = await phone.engine.ingestRemoteRecords(records.filter((record: any) => record.recordType === 'MusicEntry'));
+  const after = phone.store.getMusicEntry(phone.user.id, 'fixture-play');
+  assert.equal(after.artworkUrl, 'https://example.com/repaired-cover.jpg');
+  assert.equal(after.syncedToCloud, 0);
+  assert.equal(result.deferredCount, 1, 'do not claim synchronization while conflicting unversioned data remains');
+  assert.match(phone.engine.getIssueDetails()[0], /kept safely on this device/);
+});
+
+test('same-timestamp remote journey conflicts preserve a pending local edit', async () => {
+  const phone = device(); seed(phone);
+  const records = await phone.engine.preparePushPayload();
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  const journey = phone.store.getJourney(phone.user.id, 'fixture-journey');
+  phone.store.upsertJourney({ ...journey, vehicleName: 'Local pending vehicle' }, { updatedAt: journey.updatedAt });
+  const result = await phone.engine.ingestRemoteRecords(records.filter((record: any) => record.recordType === 'Journey'));
+  assert.equal(phone.store.getJourney(phone.user.id, journey.id).vehicleName, 'Local pending vehicle');
+  assert.equal(phone.store.getJourney(phone.user.id, journey.id).syncedToCloud, 0);
+  assert.equal(result.deferredCount, 1);
+});
+
+test('a same-timestamp journey with a missing remote place defers without aborting unrelated records', async () => {
+  const phone = device(); seed(phone);
+  const records = await phone.engine.preparePushPayload();
+  const journeyRecord = records.find((record: any) => record.recordType === 'Journey');
+  journeyRecord.fields.startPlaceId = 'place-arriving-in-a-later-batch';
+  const result = await phone.engine.ingestRemoteRecords([
+    journeyRecord, ...records.filter((record: any) => record.recordType === 'MusicEntry'),
+  ]);
+  assert.equal(result.deferredCount, 1);
+  assert.equal(result.updatedCount, 1, 'an unrelated valid song still imports');
+  assert.match(phone.engine.getIssueDetails()[0], /missing|not arrived/i);
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+  assert.notEqual(phone.store.getJourney(phone.user.id, 'fixture-journey').startPlaceId, journeyRecord.fields.startPlaceId);
+});
+
+test('automatic iCloud sync retries immediately after account availability recovers', async () => {
+  let accountStatus = 'no_account', pulls = 0;
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => accountStatus,
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => { pulls++; return { records: [], deletedRecordNames: [] }; },
+      commitCloudKitChangeToken: async () => {},
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  assert.equal((await coordinator.syncCurrentUserWithPrivateICloud()).accountStatus, 'no_account');
+  accountStatus = 'available';
+  assert.equal((await coordinator.syncCurrentUserWithPrivateICloud()).accountStatus, 'available');
+  assert.equal(pulls, 1);
+});
+
+test('queued requests recheck the active sync after a profile switch and do not overlap', async () => {
+  let pulls = 0, releaseFirst!: () => void, notifyStarted!: () => void;
+  const started = new Promise<void>(resolve => { notifyStarted = resolve; });
+  const blocked = new Promise<void>(resolve => { releaseFirst = resolve; });
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available', ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => {
+        pulls++;
+        if (pulls === 1) { notifyStarted(); await blocked; }
+        return { records: [], deletedRecordNames: [] };
+      },
+      commitCloudKitChangeToken: async () => {},
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides);
+  let currentUser = phone.user;
+  overrides['./auth'] = { getCurrentUser: () => currentUser };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  const first = coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  await started;
+  currentUser = phone.store.ensureLocalUser({ appleSubject: 'second-account' });
+  const second = coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  const third = coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  releaseFirst();
+  const results = await Promise.allSettled([first, second, third]);
+  assert.equal(results[0].status, 'rejected', 'the old profile does not ingest or acknowledge after switching');
+  assert.equal(results[1].status, 'fulfilled');
+  assert.equal(results[2].status, 'fulfilled');
+  assert.equal(pulls, 2, 'one physical sync per active profile, even when two callers waited');
+});
+
+test('cloud account deletion drains an in-flight upload and keeps sync paused across coordinator restarts', async () => {
+  let releaseUpload!: () => void, notifyUpload!: () => void, deletes = 0, cloudPresent = true;
+  const events: string[] = [];
+  const started = new Promise<void>(resolve => { notifyUpload = resolve; });
+  const blocked = new Promise<void>(resolve => { releaseUpload = resolve; });
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available', ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => ({ records: [], deletedRecordNames: [] }),
+      commitCloudKitChangeToken: async () => {},
+      pushCloudKitRecords: async (_scope: string, records: any[]) => {
+        notifyUpload(); await blocked;
+        events.push('upload'); cloudPresent = true;
+        return { savedRecordNames: records.map(r => r.recordName), remoteRecords: [], failedRecordNames: [] };
+      },
+      deleteCloudKitPrivateZone: async () => { events.push('delete'); deletes++; cloudPresent = false; },
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  const syncing = coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  const settledSync = syncing.then(() => 'finished', () => 'cancelled');
+  await started;
+  const deleting = coordinator.deletePrivateCloudDataForUser(phone.user);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
+  assert.equal(deletes, 0, 'the zone must not be deleted while native upload can recreate it');
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud({ force: true }), /paused/);
+  releaseUpload();
+  await deleting;
+  assert.equal(await settledSync, 'cancelled');
+  assert.deepEqual(events, ['upload', 'delete']);
+  assert.equal(cloudPresent, false);
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+  const restartedCoordinator = phone.reload(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(restartedCoordinator.syncCurrentUserWithPrivateICloud({ force: true }), /paused/,
+    'failed later file cleanup cannot repopulate the deleted backup after restart');
+  await restartedCoordinator.deletePrivateCloudDataForUser(phone.user);
+  assert.equal(deletes, 2, 'account deletion remains explicitly retryable');
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
+  phone.store.deleteLocalUserData(phone.user.id);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), false);
+});
+
+test('an unavailable account leaves local data intact and removes only a new deletion pause', async () => {
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitAccountStatus: async () => 'no_account',
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /must be available/);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), false);
+  assert.ok(phone.store.getJourney(phone.user.id, 'fixture-journey'));
+  phone.store.setPrivateCloudDeletionPending(phone.user.id, true);
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /must be available/);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true,
+    'a previous completed cloud deletion stays paused when retry cleanup cannot reach iCloud');
+});
+
+test('an uncertain cloud deletion response keeps backup paused across restart until deletion is retried', async () => {
+  let cloudPresent = true, attempts = 0;
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available',
+      deleteCloudKitPrivateZone: async () => {
+        cloudPresent = false;
+        if (++attempts === 1) throw new Error('Connection lost before deletion response');
+      },
+    },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /Connection lost/);
+  assert.equal(cloudPresent, false);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true,
+    'native rejection cannot prove the server kept the zone');
+  assert.ok(phone.store.getJourney(phone.user.id, 'fixture-journey'));
+  const restarted = phone.reload(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(restarted.syncCurrentUserWithPrivateICloud({ force: true }), /paused/);
+  await restarted.deletePrivateCloudDataForUser(phone.user);
+  assert.equal(attempts, 2);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
+  phone.store.deleteLocalUserData(phone.user.id);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), false);
+});
+
+test('a profile handoff during route-asset validation stops before replacing local GPS', async () => {
+  const phone = device(); seed(phone);
+  const route = (await phone.engine.preparePushPayload()).find((record: any) => record.recordType === 'RouteArchive');
+  const before = phone.store.listJourneyGpsPoints(phone.user.id, 'fixture-journey');
+  let validations = 0;
+  await assert.rejects(phone.engine.ingestRemoteRecords([route], () => {
+    if (++validations === 2) throw new Error('Profile changed while asset was being read');
+  }), /Profile changed/);
+  assert.equal(validations, 2, 'profile must be checked again after asynchronous asset validation');
+  assert.deepEqual(phone.store.listJourneyGpsPoints(phone.user.id, 'fixture-journey'), before);
+  assert.equal(phone.store.getRouteArchive(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+});
+
+test('schema-7 edits use a separate private zone and account deletion removes both zones', async () => {
+  const pushes: Array<{ scope: string; records: any[] }> = [], pulls: string[] = [], deleted: string[] = [];
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
+    '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ nativeModuleAvailable: true, statusReliable: true, recording: false, paused: false, sessionId: null }) },
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 4 }),
+      getCloudKitAccountStatus: async () => 'available',
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async (scope: string) => { pulls.push(scope); return { records: [], deletedRecordNames: [] }; },
+      commitCloudKitChangeToken: async () => {},
+      pushCloudKitRecords: async (scope: string, records: any[]) => { pushes.push({ scope, records }); return { savedRecordNames: records.map(r => r.recordName), remoteRecords: [], failedRecordNames: [] }; },
+      deleteCloudKitPrivateZone: async (scope: string) => { deleted.push(scope); },
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone); phone.store.setActiveLocalUserId(phone.user.id);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const editor = phone.load(resolve(src, 'journey-editor-store.ts'));
+  const snapshot = editor.loadJourneyEditor(phone.user.id, 'fixture-journey');
+  await editor.commitJourneyEdit(snapshot, { kind: 'split', atMs: Date.parse('2026-09-01T12:15:00Z') });
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  const base = await coordinator.privateCloudProfileScope(phone.user), edits = await coordinator.privateCloudEditorScope(phone.user);
+  assert.notEqual(base, edits);
+  const synced = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  assert.equal(synced.failedUploads, 0);
+  assert.deepEqual(pulls, [base, edits]);
+  assert.ok(pushes.some(batch => batch.scope === edits && batch.records.some(record => record.recordType === 'JourneyEdit')));
+  assert.ok(pushes.every(batch => batch.records.every(record => (record.recordType === 'JourneyEdit') === (batch.scope === edits))));
+  assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 0);
+  await coordinator.deletePrivateCloudDataForUser(phone.user);
+  assert.deepEqual(deleted, [base, edits]);
+});
+
+test('immutable edit assets round-trip out of order and physical deletion requeues the recovery copy', async () => {
+  const overrides = {
+    '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
+    '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ nativeModuleAvailable: false }) },
+  };
+  const phone = device(overrides), ipad = device(); seed(phone); phone.store.setActiveLocalUserId(phone.user.id);
+  const editor = phone.load(resolve(src, 'journey-editor-store.ts'));
+  await editor.commitJourneyEdit(editor.loadJourneyEditor(phone.user.id, 'fixture-journey'), { kind: 'split', atMs: Date.parse('2026-09-01T12:15:00Z') });
+  await editor.commitJourneyEdit(editor.loadJourneyEditor(phone.user.id, 'fixture-journey'), { kind: 'restore' });
+  const engine = new phone.sync.CloudKitSyncEngine(phone.user.id, { privateContentV2: true, privateRouteAssets: true, privateJourneyEdits: true });
+  const records = (await engine.preparePushPayload()).filter((record: any) => record.recordType === 'JourneyEdit');
+  assert.equal(records.length, 2);
+  const result = await ipad.engine.ingestRemoteRecords([...records].reverse());
+  assert.equal(result.deferredCount, 0, 'in-batch ancestry orders a split before its restore');
+  assert.equal(ipad.store.getJourney(ipad.user.id, 'fixture-journey').durationMinutes, 30);
+  assert.equal(ipad.store.listJourneyGpsPoints(ipad.user.id, 'fixture-journey').length, 2);
+  engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 0);
+  engine.ingestRemoteDeletions([records[0].recordName]);
+  assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 1);
+  const corrupt = { ...records[0], fields: { ...records[0].fields, sha256: '0'.repeat(64) } };
+  await assert.rejects(ipad.engine.ingestRemoteRecords([corrupt]), /integrity/);
+  assert.equal(ipad.store.getJourney(ipad.user.id, 'fixture-journey').durationMinutes, 30);
+});
+
+test('an edit committed while an ordinary route asset is preparing takes ownership before push', async () => {
+  let duringDigest: (() => Promise<void>) | null = null;
+  const phone = device({
+    'expo-crypto': { randomUUID, CryptoDigestAlgorithm: { SHA256: 'sha256' }, digestStringAsync: async (_algorithm: string, value: string) => {
+      if (duringDigest && value.startsWith('{"version":1,"journeyId"')) { const run = duringDigest; duringDigest = null; await run(); }
+      return createHash('sha256').update(value).digest('hex');
+    } },
+    '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
+    '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ nativeModuleAvailable: false }) },
+  });
+  seed(phone); phone.store.setActiveLocalUserId(phone.user.id);
+  const editor = phone.load(resolve(src, 'journey-editor-store.ts'));
+  const snapshot = editor.loadJourneyEditor(phone.user.id, 'fixture-journey');
+  duringDigest = () => editor.commitJourneyEdit(snapshot, { kind: 'trim', startMs: Date.parse('2026-09-01T12:05:00Z'), endMs: Date.parse('2026-09-01T12:25:00Z') });
+  const payload = await phone.engine.preparePushPayload();
+  assert.ok(payload.every((record: any) => !['Journey', 'RouteArchive', 'MusicEntry'].includes(record.recordType)), 'no pre-edit summary can be mixed with a post-edit route');
+  assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 1);
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').durationMinutes, 20);
 });

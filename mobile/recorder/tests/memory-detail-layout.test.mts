@@ -14,24 +14,32 @@ const detail = shell.slice(shell.indexOf('function MemoryDetailScreen('), shell.
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const styles = new Proxy({}, { get: (_target, key) => String(key) });
 const module = { exports: {} as any };
+const navigations: any[] = [];
 const code = ts.transpileModule(detail + '\nexports.MemoryDetailScreen = MemoryDetailScreen;', {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 vm.runInNewContext(code, {
   module, exports: module.exports, require,
-  View: host('view'), Text: host('text'), ScrollView: host('scroll'),
+  View: host('view'), Text: host('text'), ScrollView: host('scroll'), Pressable: host('button'),
+  router: { push: (value: unknown) => navigations.push(value) },
   Reanimated: { View: host('view'), Text: host('text') },
+  Animated: {
+    Value: class { interpolate() { return 1; } },
+    View: host('view'), ScrollView: host('scroll'), event: () => () => {},
+  },
   DetailScreenFrame: ({ actions, children, ...props }: any) => React.createElement('frame', props, actions, children),
   NativeActionMenu: host('menu'), LinearGradient: host('gradient'),
   StyleSheet: { absoluteFill: 'fill' }, darkStyles: styles,
-  useThemedStyles: () => styles, useAppTheme: () => ({ gradient: (colors: unknown) => colors }),
+  useThemedStyles: () => styles, useAppTheme: () => ({ palette: { card: '#111', line: '#555', accent: '#fc0', muted: '#aaa' }, gradient: (colors: unknown) => colors }),
   useDetailViewportInsets: () => ({ bottom: 24 }),
+  useMotionPreferences: () => ({ reduceMotion: true }),
+  useRef: React.useRef,
   JourneyPhotoImage: host('photo'), MemoryArtwork: host('artwork'), EmptyCard: host('empty'),
 });
 
 test('Memory actions share the fixed detail header and retain back/edit/share callbacks', async () => {
   let tree: any, edited = 0, shared = 0, backed = 0;
-  const props = { visible: true, memory: { name: 'A chapter', notes: 'Notes', photos: [], artworkKey: 'road-trips' },
+  const props = { visible: true, memory: { id: 'memory-1', name: 'A chapter', notes: 'Notes', photos: [], artworkKey: 'road-trips' },
     cover: null, journeys: [], onEdit: () => edited++, onShare: () => shared++, onClose: () => backed++ };
   await act(() => { tree = create(React.createElement(module.exports.MemoryDetailScreen, props)); });
   const frame = tree.root.findByType('frame');
@@ -39,7 +47,10 @@ test('Memory actions share the fixed detail header and retain back/edit/share ca
   frame.props.onBack();
   assert.equal(tree.root.findByType('menu').props.compact, true);
   const actions = tree.root.findByType('menu').props.actions;
-  actions[0].onSelect(); actions[1].onSelect();
+  actions.find((a: any) => a.id === 'edit').onSelect(); actions.find((a: any) => a.id === 'share').onSelect();
+  actions.find((a: any) => a.id === 'match').onSelect();
+  assert.equal(navigations.at(-1).pathname, '/memory-photos/[id]');
+  assert.equal(navigations.at(-1).params.id, 'memory-1');
   assert.equal(edited, 1); assert.equal(shared, 1); assert.equal(backed, 1);
   const before = tree.root.findByType('scroll').props;
   assert.equal(before.contentInsetAdjustmentBehavior, 'never');

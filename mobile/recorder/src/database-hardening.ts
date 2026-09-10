@@ -7,18 +7,38 @@
  */
 
 export const MASTER_DATABASE_APPLICATION_ID = 0x4a444c31; // "JDL1"
-export const MASTER_DATABASE_SCHEMA_VERSION = 6;
+export const MASTER_DATABASE_SCHEMA_VERSION = 7;
 export const RECORDER_DATABASE_APPLICATION_ID = 0x4a445231; // "JDR1"
 export const RECORDER_DATABASE_SCHEMA_VERSION = 2;
+export const SQLITE_STARTUP_BUSY_TIMEOUT_MS = 15_000;
 
 export const SQLITE_CONNECTION_HARDENING_SQL = `
-  PRAGMA busy_timeout = 5000;
+  PRAGMA busy_timeout = ${SQLITE_STARTUP_BUSY_TIMEOUT_MS};
   PRAGMA synchronous = NORMAL;
   PRAGMA foreign_keys = ON;
   PRAGMA secure_delete = FAST;
   PRAGMA journal_size_limit = 8388608;
   PRAGMA wal_autocheckpoint = 1000;
 `;
+
+type StartupSQLiteConnection = {
+  execSync(sql: string): void;
+  getFirstSync<T>(sql: string): T | null;
+};
+
+/**
+ * Configure lock waiting before any pragma that can acquire a write lock.
+ * OTA reloads can briefly overlap the outgoing JS/native connection. Most
+ * JourneyDeck databases are already WAL, so avoid requesting that transition
+ * again on every launch.
+ */
+export function prepareSQLiteConnectionForStartup(db: StartupSQLiteConnection): void {
+  db.execSync(`PRAGMA busy_timeout = ${SQLITE_STARTUP_BUSY_TIMEOUT_MS};`);
+  const journal = db.getFirstSync<Record<string, unknown>>('PRAGMA journal_mode;');
+  const mode = String(Object.values(journal ?? {})[0] ?? '').toLowerCase();
+  if (mode !== 'wal') db.execSync('PRAGMA journal_mode = WAL;');
+  db.execSync(SQLITE_CONNECTION_HARDENING_SQL);
+}
 
 /**
  * Phase 2 moves every active runtime table into journeydeck-local.db. The

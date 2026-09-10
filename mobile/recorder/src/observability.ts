@@ -53,7 +53,7 @@ export function configureJourneyDeckObservability() {
       sampleRate: 1,
     });
     Observe.setGlobalAttributes({
-      'journeydeck.release': 'N1.9-B13',
+      'journeydeck.release': 'V2-BUNDLE2',
       'journeydeck.runtime': Updates.runtimeVersion ?? 'embedded',
       'journeydeck.embedded': Updates.isEmbeddedLaunch,
       ...(Updates.updateId ? { 'journeydeck.update': Updates.updateId } : {}),

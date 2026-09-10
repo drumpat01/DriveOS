@@ -2,7 +2,7 @@ import {
   acknowledgeNativeRecorderSessions,
   exportNativeRecorderInbox,
 } from '../modules/journeydeck-recorder';
-import { importNativeRecorderInbox, nativeRecorderInboxCursors } from './storage';
+import { activeSession, importNativeRecorderInbox, nativeRecorderInboxCursors } from './storage';
 
 let pending: Promise<{ imported: number; acknowledged: number }> | null = null;
 
@@ -14,7 +14,7 @@ let pending: Promise<{ imported: number; acknowledged: number }> | null = null;
 export function syncNativeRecorderInbox() {
   if (pending) return pending;
   const operation = (async () => {
-    const snapshot = await exportNativeRecorderInbox(nativeRecorderInboxCursors());
+    const snapshot = await exportNativeRecorderInbox(nativeRecorderInboxCursors(), activeSession()?.id);
     if (snapshot.errorCode && snapshot.errorCode !== 'native_module_unavailable') {
       throw new Error(snapshot.errorCode);
     }

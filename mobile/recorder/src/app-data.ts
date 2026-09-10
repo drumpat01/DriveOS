@@ -18,7 +18,7 @@ import {
   SAVED_PLACE_MATCH_RADIUS_METERS,
 } from './place-matching';
 import { notifyLocalArchiveChanged } from './local-archive-events';
-import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId } from './memory-model';
+import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId, mergeMemoryJourneySelection } from './memory-model';
 import { loadSavedPlaces } from './saved-places';
 import { resolvePrivatePhotoFile } from './private-photo-file';
 import { isVisibleJourney, visibleJourneys } from './journey-visibility';
@@ -249,6 +249,7 @@ function mergeLocalJourneyPage(
     const remote = cachedByIdentity.get(journey.id) ?? (journey.legacyDriveId ? cachedByIdentity.get(journey.legacyDriveId) : undefined);
     if (!remote) return journey;
     represented.add(remote.id);
+    if (isEditorManagedJourney(getCurrentUser().id, journey.id)) return journey;
     return {
       ...remote,
       ...journey,
@@ -261,7 +262,7 @@ function mergeLocalJourneyPage(
       soundtrackPreview: journey.soundtrackPreview.length ? journey.soundtrackPreview : remote.soundtrackPreview,
     };
   });
-  for (const journey of cached.items) if (!represented.has(journey.id)) merged.push(journey);
+  for (const journey of cached.items) if (!represented.has(journey.id) && !isEditorManagedJourney(getCurrentUser().id, journey.id)) merged.push(journey);
   merged.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
   return { items: merged.slice(0, limit), nextCursor: local.nextCursor ?? cached.nextCursor };
 }
@@ -354,15 +355,22 @@ const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
 async function savePrivateMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
   const userId = getCurrentUser().id, base = FileSystem.documentDirectory;
+  const assertPhotoOwner = () => {
+    const memory = getMemoryIncludingDeleted(userId, memoryId);
+    if (getCurrentUser().id !== userId || !memory || memory.deletedAt) throw new Error('The profile or Memory changed. Reopen the Memory before adding photos.');
+  };
+  assertPhotoOwner();
   if (!base) throw new Error('JourneyDeck cannot access its private photo folder on this device.');
   const byteLength = Math.ceil(input.dataBase64.length * 0.75);
   if (!byteLength || byteLength > 1_572_864) throw new Error('Choose a photo smaller than 1.5 MB after compression.');
   const id = `local_${Crypto.randomUUID()}`, directory = `${base}journeydeck-private-photos/${encodeURIComponent(userId)}/`;
   const extension = input.contentType === 'image/png' ? 'png' : input.contentType === 'image/webp' ? 'webp' : 'jpg';
   const localUri = `${directory}${id}.${extension}`, createdAtUtc = new Date().toISOString();
-  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-  await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
   try {
+    await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+    assertPhotoOwner();
+    await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
+    assertPhotoOwner();
     upsertPhoto({
       id, userId, source: 'memory', collectionId: null, memoryId,
       fileName: input.fileName, contentType: input.contentType, byteLength, localUri,
@@ -605,6 +613,10 @@ export const appDataClient = {
   async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {
     loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
+    if (isEditorManagedJourney(getCurrentUser().id, local?.id ?? id)) {
+      if (!local) throw new Error('This journey part was restored or replaced. Open the original journey.');
+      return applyLocalPlaceAliases(local);
+    }
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     if (local && cached) return applyLocalPlaceAliases(mergeJourneyWithLocalDetail(cached, local));
     if (local) return applyLocalPlaceAliases(local);
@@ -615,6 +627,7 @@ export const appDataClient = {
   localOrCachedJourney(id: string): JourneyDetail | null {
     loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
+    if (isEditorManagedJourney(getCurrentUser().id, local?.id ?? id)) return local ? applyLocalPlaceAliases(local) : null;
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     const detail = local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);
     return detail ? applyLocalPlaceAliases(detail) : null;
@@ -680,13 +693,17 @@ export const appDataClient = {
     return data;
   },
 
-  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; journeyIds: string[] }): Promise<JourneyMemory> {
+  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; journeyIds: string[]; previousJourneyIds?: string[] }): Promise<JourneyMemory> {
     const userId = getCurrentUser().id;
     const id = input.id ?? `${DIRECT_JOURNEY_MEMORY_ID_PREFIX}${Crypto.randomUUID()}`;
     const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.memories.find(item => item.id === id);
     const localExisting = getMemoryIncludingDeleted(userId, id);
+    if (input.id && (!localExisting || localExisting.deletedAt)) throw new Error('This Memory is no longer available.');
+    const journeyIds = localExisting && input.previousJourneyIds
+      ? mergeMemoryJourneySelection(JSON.parse(localExisting.journeyIds), input.previousJourneyIds, input.journeyIds)
+      : [...new Set(input.journeyIds)];
     const timestamp = new Date().toISOString();
-    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], journeyIds: [...new Set(input.journeyIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
+    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], journeyIds, createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
     // `collection_ids` is retained as an additive-schema compatibility column,
     // but from V1 forward it stores the Memory's direct journey membership.
     upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, journeyIds: JSON.stringify(local.journeyIds) });
@@ -784,6 +801,7 @@ import {
   ensureLocalUser,
   listJourneys,
   getJourney,
+  isEditorManagedJourney,
   getJourneyByLegacyDriveId,
   getJourneyRoute,
   getJourneyRouteSamples,

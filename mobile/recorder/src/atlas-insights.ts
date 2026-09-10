@@ -19,6 +19,12 @@ export type AtlasRouteDna = {
 export type AtlasDrivingRhythms = {
   ready: boolean;
   weekdays: { label: string; journeys: number; miles: number }[];
+  twoHourBuckets: number[];
+  weekdayTwoHourBuckets: number[][];
+  journeyCount: number;
+  miles: number;
+  averageMinutes: number | null;
+  mostActiveHour: number | null;
   leadingDay: string | null;
   leadingDayJourneys: number;
   leadingTime: string | null;
@@ -172,20 +178,40 @@ function buildRouteDna(journeys: JourneySummary[], detailById: Map<string, Journ
 
 function buildDrivingRhythms(journeys: JourneySummary[]): AtlasDrivingRhythms {
   const weekdays = DAY_LABELS.map(label => ({ label, journeys: 0, miles: 0 }));
+  const twoHourBuckets = Array.from({ length: 12 }, () => 0);
+  const weekdayTwoHourBuckets = DAY_LABELS.map(() => Array.from({ length: 12 }, () => 0));
   const timeCounts = new Map<string, number>();
+  let miles = 0;
+  let durationMinutes = 0;
+  let durationCount = 0;
   for (const journey of journeys) {
     const date = new Date(journey.startedAt);
     if (!Number.isFinite(date.getTime())) continue;
     weekdays[date.getDay()].journeys += 1;
     weekdays[date.getDay()].miles += Number.isFinite(journey.miles) ? journey.miles : 0;
+    const bucketIndex = Math.floor(date.getHours() / 2);
+    twoHourBuckets[bucketIndex] += 1;
+    weekdayTwoHourBuckets[date.getDay()][bucketIndex] += 1;
+    if (Number.isFinite(journey.miles)) miles += journey.miles;
+    if (Number.isFinite(journey.durationMinutes) && journey.durationMinutes > 0) {
+      durationMinutes += journey.durationMinutes;
+      durationCount += 1;
+    }
     const bucket = timeBucket(journey.startedAt);
     if (bucket) timeCounts.set(bucket, (timeCounts.get(bucket) ?? 0) + 1);
   }
   const leading = [...weekdays].sort((a, b) => b.journeys - a.journeys || b.miles - a.miles)[0];
   const leadingTime = [...timeCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const mostActiveBucket = twoHourBuckets.reduce((best, count, index) => count > twoHourBuckets[best] ? index : best, 0);
   return {
     ready: journeys.length >= 3,
     weekdays,
+    twoHourBuckets,
+    weekdayTwoHourBuckets,
+    journeyCount: journeys.length,
+    miles,
+    averageMinutes: durationCount ? durationMinutes / durationCount : null,
+    mostActiveHour: journeys.length ? mostActiveBucket * 2 : null,
     leadingDay: leading?.journeys ? leading.label : null,
     leadingDayJourneys: leading?.journeys ?? 0,
     leadingTime,

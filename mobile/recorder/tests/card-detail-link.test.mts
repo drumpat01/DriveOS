@@ -13,6 +13,24 @@ const platform = { OS: 'ios', Version: '26.0' };
 let change: (value: boolean) => void, resolvePreference: (value: boolean) => void;
 let subscriptions = 0, removals = 0, navigation: any[] = [], bounds: any;
 const journeyActions: any[] = [];
+function useMotionPreferences() {
+  const [preference, setPreference] = React.useState({ reduceMotion: true, resolved: false });
+  React.useEffect(() => {
+    let mounted = true;
+    let observedChange = false;
+    subscriptions++;
+    change = value => {
+      observedChange = true;
+      setPreference({ reduceMotion: value, resolved: true });
+    };
+    const pending = new Promise<boolean>(resolve => { resolvePreference = resolve; });
+    void pending.then(value => {
+      if (mounted && !observedChange) setPreference({ reduceMotion: value, resolved: true });
+    });
+    return () => { mounted = false; removals++; };
+  }, []);
+  return { reduceMotion: preference.resolved ? preference.reduceMotion : true, isAppActive: true };
+}
 // Use the installed Slot merge that Expo wraps. A plain clone misses its
 // object-spread of style callbacks, which caused card padding to disappear.
 const { Slot } = require('@radix-ui/react-slot');
@@ -37,6 +55,8 @@ vm.runInNewContext(code, { module, exports: module.exports, require: (id: string
   } };
   if (id === 'expo-router') return { Link, usePreventZoomTransitionDismissal: (options: any) => { bounds = options; } };
   if (id === './journey-card-action') return { openJourneyCardAction: (id: string, action: string) => journeyActions.push({ id, action }) };
+  if (id === './motion') return { useMotionPreferences };
+  if (id === './memory-flip') return { useMemoryFlip: () => null };
   return require(id);
 } });
 const { CardMotionProvider, CardDetailLink, useCardDetailDismissal } = module.exports;

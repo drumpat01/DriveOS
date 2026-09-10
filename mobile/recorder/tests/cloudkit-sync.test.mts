@@ -78,7 +78,7 @@ assert.doesNotMatch(src, /coverPhotoLocalPath: memory\.coverPhotoLocalPath/, 'Cl
 assert.match(src, /resolveConflict\(localJourney, remoteJourney\)/, 'remote ingestion applies LWW conflict resolution');
 assert.match(src, /getJourney\(this\.userId, remoteJourney\.id\)/, 'conflicts are resolved only inside the active local profile');
 assert.match(src, /syncedToCloud: 1/, 'downloaded winners remain acknowledged instead of being immediately re-queued');
-assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0, RouteArchive: 1, MusicEntry: 2/, 'ingests journey summaries before route and music records that reference them');
+assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3/, 'ingests journey summaries and complete edit operations before music records that reference them');
 
 // ============================================================
 // 4. Real private CloudKit transport
@@ -95,7 +95,11 @@ assert.match(nativeModule, /savePolicy: \.ifServerRecordUnchanged/, 'prevents a 
 assert.match(nativeModule, /changeTokenExpired/, 'recovers from expired CloudKit tokens');
 assert.match(nativeModule, /allowedRecordTypes/, 'restricts native record types');
 const deployedTypes = [...productionSchema.matchAll(/RECORD TYPE (\w+)/g)].map(match => match[1]).filter(type => type !== 'Users').sort();
-assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference', 'RouteArchive'], 'checked-in schema contains every JourneyDeck private record type');
+assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'JourneyEdit', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference', 'RouteArchive'], 'checked-in schema contains every JourneyDeck private record type');
+const editorSchema = productionSchema.match(/RECORD TYPE JourneyEdit \(([\s\S]*?)\);/)?.[1] ?? '';
+for (const field of ['asset ASSET', 'formatVersion INT64', 'id STRING', 'parentId STRING', 'rootJourneyId STRING', 'sha256 STRING', 'syncRevision INT64', 'updatedAt STRING']) {
+  assert.ok(editorSchema.includes(field), `editor recovery schema contains ${field}`);
+}
 assert.match(productionSchema, /RECORD TYPE Journey[\s\S]*durationMinutes DOUBLE[\s\S]*songCount INT64/, 'Journey numeric fields retain their CloudKit production types');
 assert.match(productionSchema, /RECORD TYPE MusicEntry[\s\S]*confidence DOUBLE[\s\S]*durationMs INT64/, 'Music numeric fields retain their CloudKit production types');
 assert.match(productionSchema, /RECORD TYPE Photo[\s\S]*asset ASSET[\s\S]*syncRevision INT64/, 'private photos use CloudKit assets and versioned metadata');

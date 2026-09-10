@@ -78,7 +78,7 @@ test('normal archive navigation stays local even when the user refreshes', () =>
 });
 
 test('clean profiles can record manually without JourneyDeck credentials', () => {
-  assert.match(credentials, /export async function loadOrCreateDeviceId\(\)/);
+  assert.match(credentials, /export (?:async )?function loadOrCreateDeviceId\(\)/);
   assert.match(app, /beginLocalSession\(deviceId\)/);
   assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
   assert.match(nativeRecorder, /private func startSession\(identity:/);

@@ -166,7 +166,7 @@ export function appleCurrentTrackObservation(sample: AppleCurrentTrackSample, se
     album: cleanText(sample.album) || null,
     durationMs: boundedDurationMilliseconds(sample.durationSeconds),
     artworkUrl: cleanHttpsUrl(sample.artworkUrl),
-    externalUrl: cleanHttpsUrl(sample.appleMusicUrl),
+    externalUrl: cleanHttpsUrl(sample.appleMusicUrl) || (/^[1-9][0-9]{0,19}$/.test(sample.appleMusicId ?? '') ? `https://music.apple.com/song/${sample.appleMusicId}` : null),
     confidence: null,
   });
 }

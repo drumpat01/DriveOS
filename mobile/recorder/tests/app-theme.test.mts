@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { ivoryPalette, themedColor, themedGradient, themedStyleSheet } from '../src/theme-palette.ts';
-import { themeJourneyDeckMapStyle } from '../src/journey-map-theme.ts';
+import { journeyDeckMapPalette, themeJourneyDeckMapStyle } from '../src/journey-map-theme.ts';
 
 test('dark mode preserves existing colors and style objects without mutation', () => {
   const styles = { card: { backgroundColor: '#08070d', color: '#fff', padding: 20, borderRadius: 24, shadowColor: '#a85cff', transform: [{ scale: 0.98 }] } };
@@ -65,6 +65,23 @@ test('light map palette preserves sources, geometry definitions and filters', ()
   assert.equal(themeJourneyDeckMapStyle(input)?.layers[0].paint?.['background-color'], '#010104');
 });
 
+test('Grand Touring maps use a navy basemap, white roads and one glowing champagne route palette', () => {
+  const input = { version: 8, layers: [
+    { id: 'background', type: 'background', paint: {} },
+    { id: 'road-primary', type: 'line', paint: {} },
+    { id: 'road-secondary', type: 'line', paint: {} },
+    { id: 'water', type: 'fill', paint: {} },
+  ] };
+  const result = themeJourneyDeckMapStyle(input, 'redline')!;
+  assert.equal(result.layers[0].paint?.['background-color'], '#081832');
+  assert.equal(result.layers[1].paint?.['line-color'], '#f6f0e2');
+  assert.equal(result.layers[2].paint?.['line-color'], '#b6bfcc');
+  assert.equal(result.layers[3].paint?.['fill-color'], '#07152c');
+  assert.deepEqual(journeyDeckMapPalette('redline'), {
+    routeGlow: '#f4c94f', routeShadow: '#6e5518', routeLine: '#e5bd4f',
+  });
+});
+
 test('public V2 remains an ordinary App Store update; only internal preview changes identity', () => {
   const require = createRequire(import.meta.url);
   const config = require('../app.json').expo;
@@ -78,13 +95,17 @@ test('public V2 remains an ordinary App Store update; only internal preview chan
     assert.equal(production.ios.bundleIdentifier, config.ios.bundleIdentifier);
     assert.equal(production.scheme, config.scheme);
     assert.deepEqual(production.ios.entitlements, config.ios.entitlements);
+    assert.equal(production.ios.infoPlist.UIViewControllerBasedStatusBarAppearance, true);
+    assert.ok(production.plugins.includes('./plugins/with-alternate-app-icons'));
     process.env.EAS_BUILD_PROFILE = 'v2-preview';
     process.env.APP_VARIANT = 'v2-preview';
     const preview = resolve({ config });
+    assert.equal(preview.extra.features.atlasUnlocked, true);
     assert.notEqual(preview.ios.bundleIdentifier, production.ios.bundleIdentifier);
     assert.notEqual(preview.scheme, production.scheme);
     assert.notEqual(preview.runtimeVersion, production.runtimeVersion);
     assert.notDeepEqual(preview.ios.entitlements['com.apple.developer.icloud-container-identifiers'], production.ios.entitlements['com.apple.developer.icloud-container-identifiers']);
+    assert.equal(production.extra.features.atlasUnlocked, false);
   } finally {
     if (previousVariant === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = previousVariant;
     if (previousProfile === undefined) delete process.env.EAS_BUILD_PROFILE; else process.env.EAS_BUILD_PROFILE = previousProfile;
@@ -95,9 +116,9 @@ test('theme switching does not remount the recorder or change exported card styl
   const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
   const theme = readFileSync(new URL('../src/app-theme.tsx', import.meta.url), 'utf8');
   const share = readFileSync(new URL('../src/share-card-modal.tsx', import.meta.url), 'utf8');
-  assert.match(app, /<AppThemeProvider><CardMotionProvider><JourneyDeckShell recorder=\{RecorderScreen\}><JourneyDeckNativeStack \/><\/JourneyDeckShell><\/CardMotionProvider><\/AppThemeProvider>/);
+  assert.match(app, /<AppThemeProvider><AppIconProvider><CardMotionProvider><JourneyDeckShell recorder=\{RecorderScreen\}><JourneyDeckNativeStack \/><\/JourneyDeckShell><\/CardMotionProvider><\/AppIconProvider><\/AppThemeProvider>/);
   assert.doesNotMatch(theme, /key=\{|delete.*Database|clear.*Cache/);
-  assert.match(theme, /useState<ThemeMode>\(readTheme\)/);
+  assert.match(theme, /useState<ThemeId>\(readTheme\)/);
   assert.match(theme, /SecureStore\.setItem\(THEME_KEY, next\);\s*setState\(next\)/);
   assert.match(share, /const uiStyles = useThemedStyles\(styles\)/);
   const preview = share.slice(share.indexOf('const JourneySharePreview'), share.indexOf('function JourneyShareControls'));

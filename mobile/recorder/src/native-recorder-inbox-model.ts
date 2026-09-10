@@ -12,7 +12,7 @@ export function nativeRouteImportIsComplete(
   return Number.isInteger(expectedNextSequence)
     && (expectedNextSequence > 0 || (allowEmptyManualJourney && expectedNextSequence === 0 && pointCount === 0 && nextPointSequence === 0))
     && Number.isInteger(pointCount)
-    && pointCount >= expectedNextSequence
+    && pointCount === expectedNextSequence
     && Number.isInteger(nextPointSequence)
-    && nextPointSequence >= expectedNextSequence;
+    && nextPointSequence === expectedNextSequence;
 }

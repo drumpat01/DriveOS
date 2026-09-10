@@ -1,8 +1,10 @@
-import { cloneElement, createContext, forwardRef, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
-import { AccessibilityInfo, Platform, type PressableProps, type View } from 'react-native';
+import { cloneElement, createContext, forwardRef, useContext, type ReactElement, type ReactNode } from 'react';
+import { Platform, type PressableProps, type View } from 'react-native';
 import { Link, usePreventZoomTransitionDismissal } from 'expo-router';
 import type { SFSymbol } from 'expo-symbols';
 import { openJourneyCardAction } from './journey-card-action';
+import { useMotionPreferences } from './motion';
+import { MemoryFlipPressable, useMemoryFlip } from './memory-flip';
 
 export type CardContextAction = { id: string; title: string; icon: SFSymbol; onPress: () => void };
 
@@ -16,19 +18,7 @@ export function useCardDetailDismissal() {
 
 /** One accessibility subscription for the entire retained navigation tree. */
 export function CardMotionProvider({ children }: { children: ReactNode }) {
-  const [reduceMotion, setReduceMotion] = useState(true);
-  useEffect(() => {
-    let active = true;
-    let changed = false;
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', value => {
-      changed = true;
-      setReduceMotion(value);
-    });
-    void AccessibilityInfo.isReduceMotionEnabled().then(value => {
-      if (active && !changed) setReduceMotion(value);
-    }).catch(() => { /* Keep the quieter transition when the preference is unavailable. */ });
-    return () => { active = false; subscription.remove(); };
-  }, []);
+  const { reduceMotion } = useMotionPreferences();
   const enabled = Platform.OS === 'ios' && Number.parseInt(String(Platform.Version), 10) >= 18 && !reduceMotion;
   return <CardZoomContext.Provider value={enabled}>{children}</CardZoomContext.Provider>;
 }
@@ -39,15 +29,18 @@ export function CardDetailLink({ kind, id, children, onSelect, actions }: {
   children: ReactElement<PressableProps>; onSelect?: () => void; actions?: CardContextAction[];
 }) {
   const enabled = useContext(CardZoomContext);
+  const memoryFlip = useMemoryFlip();
   if (!id || children.props.disabled) return children;
   const menuActions = actions ?? (kind === 'journey' ? [
     { id: 'edit', title: 'Edit locations', icon: 'pencil' as const, onPress: () => openJourneyCardAction(id, 'edit') },
     { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up' as const, onPress: () => openJourneyCardAction(id, 'share') },
   ] : []);
   const hasMenu = Platform.OS === 'ios' && menuActions.length > 0;
-  if (!enabled && !hasMenu) return children;
-  const card = <ZoomCardPressable card={children} onSelect={onSelect} useOriginalPress={!enabled} hasMenu={hasMenu} />;
-  const trigger = enabled ? <Link.AppleZoom>{card}</Link.AppleZoom> : card;
+  const flipMemory = kind === 'memory' && memoryFlip !== null;
+  if (!enabled && !hasMenu && !flipMemory) return children;
+  const card = flipMemory ? <MemoryFlipPressable card={children} memoryId={id} onSelect={onSelect} />
+    : <ZoomCardPressable card={children} onSelect={onSelect} useOriginalPress={!enabled} hasMenu={hasMenu} />;
+  const trigger = enabled && !flipMemory ? <Link.AppleZoom>{card}</Link.AppleZoom> : card;
   return <Link href={{ pathname: kind === 'journey' ? '/journey/[id]' : '/memory/[id]', params: { id } }} asChild>
     {hasMenu ? <Link.Trigger>{trigger}</Link.Trigger> : trigger}
     {hasMenu && <Link.Menu>{menuActions.map(action => <Link.MenuAction key={action.id} icon={action.icon} onPress={action.onPress}>{action.title}</Link.MenuAction>)}</Link.Menu>}

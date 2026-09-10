@@ -10,6 +10,17 @@ export function phoneStudioLayout(width: number, height: number, fontScale = 1) 
   };
 }
 
+export function clampStudioTrayHeight(height: number, collapsed: number, expanded: number): number {
+  return Math.max(collapsed, Math.min(expanded, height));
+}
+
+/** PanResponder reports vertical velocity in points per millisecond. */
+export function settleStudioTrayExpanded(height: number, collapsed: number, expanded: number, velocityY: number): boolean {
+  if (velocityY <= -0.45) return true;
+  if (velocityY >= 0.45) return false;
+  return clampStudioTrayHeight(height, collapsed, expanded) >= (collapsed + expanded) / 2;
+}
+
 /** Only live, visible IDs can participate. Dropping onto itself is a cancellation. */
 export function memoryStudioDrop(source: string, target: string, journeys: readonly string[], memories: readonly string[]): StudioDrop | null {
   if (!journeys.includes(source)) return null;

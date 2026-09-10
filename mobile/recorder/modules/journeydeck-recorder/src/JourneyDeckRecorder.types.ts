@@ -2,6 +2,8 @@ export type NativeRecorderAuthorization = 'always' | 'when_in_use' | 'denied' | 
 
 export type NativeRecorderStatus = {
   nativeModuleAvailable: boolean;
+  /** Absent only in older native implementations; false means the inbox could not be read. */
+  statusReliable?: boolean;
   configured: boolean;
   enabled: boolean;
   significantMonitoring: boolean;

@@ -1,5 +1,6 @@
+import { TouchPressable as Pressable } from './touch-feedback';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,9 +13,9 @@ import { appDataClient, type JourneyMemory, type JourneyPhoto, type JourneySumma
 import { journeyDisplayTitle } from './journey-title';
 
 function useColors() {
-  const { isLight } = useAppTheme();
-  return isLight ? { page: ivoryPalette.page, card: ivoryPalette.surface, text: ivoryPalette.text, muted: ivoryPalette.secondary, accent: ivoryPalette.violet, line: ivoryPalette.border, inset: ivoryPalette.lilac }
-    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#b795e5', line: '#49304f', inset: '#291735' };
+  const theme = useAppTheme();
+  return theme.resolvePalette(theme.isLight ? { page: ivoryPalette.page, card: ivoryPalette.surface, text: ivoryPalette.text, muted: ivoryPalette.secondary, accent: ivoryPalette.violet, line: ivoryPalette.border, inset: ivoryPalette.lilac }
+    : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#b795e5', line: '#49304f', inset: '#291735' });
 }
 
 export function IpadBlankScreen() {
@@ -59,13 +60,14 @@ function MemoryPhoto({ photo }: { photo: JourneyPhoto | null }) {
     if (photo) void appDataClient.photoDataUrl(photo).then(uri => { if (alive && uri) setLoaded({ id: photo.id, uri }); }).catch(() => undefined);
     return () => { alive = false; };
   }, [photo?.id]);
-  const source = photo && loaded?.id === photo.id ? { uri: loaded.uri } : headerImageSource(require('../assets/memory-default-floating-timeline-v1.jpg'), theme.mode);
+  const source = photo && loaded?.id === photo.id ? { uri: loaded.uri } : headerImageSource(require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), theme.id);
   return <Image source={source} contentFit="cover" style={styles.memoryPhoto} />;
 }
 
-export function IpadHomeScreen({ memories, journeys, music, recorder, loading, error }: {
+export function IpadHomeScreen({ memories, journeys, music, recorder, loading, error, onMemory, onJourney }: {
   memories: JourneyMemory[]; journeys: JourneySummary[]; music: MusicDashboardData | null;
   recorder: ReactNode; loading?: boolean; error?: string;
+  onMemory: (id: string) => void; onJourney: (id: string) => void;
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
@@ -83,7 +85,7 @@ export function IpadHomeScreen({ memories, journeys, music, recorder, loading, e
   return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: c.page }}><ScrollView testID="ipad-home" style={{ flex: 1, backgroundColor: c.page }} contentInsetAdjustmentBehavior="automatic"
     contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: insets.bottom + 28 }}>
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
-      <IpadPageHeader title="Home" width={width} artwork={require('../assets/home-recorder-coast-v1.png')} subtitle="Your roads. Your memories. Your music.">
+      <IpadPageHeader title="Home" width={width} artwork={require('../assets/cinematic-home-main-photo-v1.jpg')} subtitle="Your roads. Your memories. Your music.">
         {recorder}
       </IpadPageHeader>
       {error ? <Text accessibilityRole="alert" style={{ color: c.muted }}>{error}</Text> : null}
@@ -96,17 +98,17 @@ export function IpadHomeScreen({ memories, journeys, music, recorder, loading, e
       </View>)}</View>
       <View style={styles.grid}>
         <View style={{ width: `${100 / columns.widgets}%`, padding: 6 }}><Widget title="Recent memories" icon="photo.on.rectangle">
-          {memories.length ? <View style={styles.memoryRow}>{memories.slice(0, 2).map(memory => <View key={memory.id} style={styles.memory}>
+          {memories.length ? <View style={styles.memoryRow}>{memories.slice(0, 2).map(memory => <Pressable key={memory.id} accessibilityRole="button" accessibilityLabel={`Open memory ${memory.name}`} onPress={() => onMemory(memory.id)} style={({ pressed }) => [styles.memory, pressed && { opacity: 0.7 }]}>
             <MemoryPhoto photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />
             <Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{memory.name}</Text>
             <Text style={[styles.meta, { color: c.muted }]}>{memory.journeyIds.length} journeys · {memory.photos.length} photos</Text>
-          </View>)}</View> : <Empty>Your memories will appear here as your library grows.</Empty>}
+          </Pressable>)}</View> : <Empty>Your memories will appear here as your library grows.</Empty>}
         </Widget></View>
         <View style={{ width: `${100 / columns.widgets}%`, padding: 6 }}><Widget title="Recent journeys" icon="road.lanes">
-          {journeys.length ? journeys.slice(0, 3).map(journey => <View key={journey.id} style={[styles.journey, { borderColor: c.line }]}>
+          {journeys.length ? journeys.slice(0, 3).map(journey => <Pressable key={journey.id} accessibilityRole="button" accessibilityLabel={`Open journey ${journeyDisplayTitle(journey)}`} onPress={() => onJourney(journey.id)} style={({ pressed }) => [styles.journey, { borderColor: c.line }, pressed && { opacity: 0.7 }]}>
             <View style={[styles.journeyIcon, { backgroundColor: c.inset }]}><SymbolView name="road.lanes" tintColor={c.accent} style={styles.icon} /></View>
             <View style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{journeyDisplayTitle(journey)}</Text><Text style={[styles.meta, { color: c.muted }]}>{journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min</Text></View>
-          </View>) : <Empty>Finish your first journey to see it here.</Empty>}
+          </Pressable>) : <Empty>Finish your first journey to see it here.</Empty>}
         </Widget></View>
       </View>
       <Widget title="Today's soundtrack" icon="music.note">

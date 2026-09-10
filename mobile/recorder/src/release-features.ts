@@ -1,9 +1,11 @@
+import Constants from 'expo-constants';
+
 /**
  * Public version-1 release gates.
  *
- * Version 1 is deliberately manual-recording only. The Tessie implementation
- * stays dormant for a possible version-2 return, but no version-1 runtime,
- * entitlement, onboarding step, or setting may expose it.
+ * V2 is deliberately manual-recording only. The Tessie implementation stays
+ * dormant for possible V3 work, but no V2 runtime, entitlement, onboarding
+ * step, setting, or screen may expose it.
  */
 export const TESSIE_INTEGRATION_ENABLED: boolean = false;
 
@@ -18,3 +20,6 @@ export const TESSIE_INTEGRATION_ENABLED: boolean = false;
  * controlled TestFlight drive and disabled again through OTA if necessary.
  */
 export const NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false;
+
+/** Atlas design testing is unlocked only in the side-by-side V2 EAS identity. */
+export const V2_PREVIEW_ATLAS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.atlasUnlocked === true;

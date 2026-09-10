@@ -41,16 +41,11 @@ private struct CinematicJourneyScreen: View {
 
   var body: some View {
     ScrollView {
-      VStack(spacing: 9) {
-        Text("JourneyDeck")
-          .font(.system(.headline, design: .serif))
-          .shadow(color: .black, radius: 3, y: 1)
-          .accessibilityAddTraits(.isHeader)
-
+      VStack(spacing: 6) {
         Image(systemName: recorder.active ? "car" : "steeringwheel")
           .font(.system(size: symbolSize, weight: .light))
           .foregroundStyle(WatchPalette.amber)
-          .padding(13)
+          .padding(9)
           .background(WatchPalette.night.opacity(reduceTransparency ? 1 : 0.82), in: Circle())
           .overlay(Circle().strokeBorder(WatchPalette.amber.opacity(0.5), lineWidth: 1))
           .accessibilityHidden(true)
@@ -65,7 +60,7 @@ private struct CinematicJourneyScreen: View {
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+        .padding(.horizontal, 6).padding(.vertical, 2)
         .background(WatchPalette.night.opacity(reduceTransparency ? 1 : 0.78), in: RoundedRectangle(cornerRadius: 10))
 
         Button(action: recorder.tap) {
@@ -80,21 +75,21 @@ private struct CinematicJourneyScreen: View {
               .multilineTextAlignment(.center)
               .fixedSize(horizontal: false, vertical: true)
           }
-          .frame(maxWidth: .infinity, minHeight: 64)
-          .padding(.horizontal, 8).padding(.vertical, 6)
+          .frame(maxWidth: .infinity, minHeight: 58)
+          .padding(.horizontal, 8).padding(.vertical, 2)
         }
         .buttonStyle(CinematicJourneyButtonStyle(active: recorder.active))
         .disabled(recorder.busy)
         .accessibilityHint(recorder.active ? "Stops and saves the journey on your iPhone" : "Starts recording with your iPhone GPS")
 
-        Text("Auto-stop after 10 minutes without driving.")
+        Text("Journey auto-stops after 10min without driving")
           .font(.system(.footnote, design: .serif))
           .foregroundStyle(WatchPalette.cream.opacity(0.8))
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
           .padding(.horizontal, 4)
       }
-      .padding(.horizontal, 8).padding(.top, 2).padding(.bottom, 12)
+      .padding(.horizontal, 8).padding(.top, 0).padding(.bottom, 8)
     }
     .foregroundStyle(WatchPalette.cream)
     .background {

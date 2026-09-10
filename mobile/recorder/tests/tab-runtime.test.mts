@@ -14,11 +14,16 @@ const shareRoutePrivacy = await readFile(new URL('share-route-privacy.ts', sourc
 const interactiveRouteMap = await readFile(new URL('interactive-route-map.tsx', sourceRoot), 'utf8');
 const primarySections = await readFile(new URL('primary-sections.tsx', sourceRoot), 'utf8');
 const primaryData = await readFile(new URL('primary-sections-data.ts', sourceRoot), 'utf8');
+const statisticsScreen = await readFile(new URL('ipad-statistics-screen.tsx', sourceRoot), 'utf8');
+const memoriesScreen = await readFile(new URL('ipad-memories-screen.tsx', sourceRoot), 'utf8');
+const ipadPageHeader = await readFile(new URL('ipad-page-header.tsx', sourceRoot), 'utf8');
+const phoneTabTitle = await readFile(new URL('phone-tab-title.tsx', sourceRoot), 'utf8');
 const primaryMap = await readFile(new URL('primary-mobility-map.tsx', sourceRoot), 'utf8');
 const homeSummary = await readFile(new URL('home-summary.ts', sourceRoot), 'utf8');
 const profileAppearance = await readFile(new URL('profile-appearance.ts', sourceRoot), 'utf8');
 const neonWidget = await readFile(new URL('neon-widget-outline.tsx', sourceRoot), 'utf8');
 const headerArtwork = await readFile(new URL('header-artwork.tsx', sourceRoot), 'utf8');
+const headerImageSources = await readFile(new URL('header-image-sources.ts', sourceRoot), 'utf8');
 const storage = await readFile(new URL('storage.ts', sourceRoot), 'utf8');
 const welcomeIntro = await readFile(new URL('welcome-intro.ts', sourceRoot), 'utf8');
 const firstRun = await readFile(new URL('first-run-onboarding.ts', sourceRoot), 'utf8');
@@ -48,32 +53,29 @@ test('the local-first model still builds Live, Atlas, the merged Statistics time
   assert.match(primarySections, /export function DataHealthScreen/);
   assert.match(primarySections, /export type MoreDestination = 'menu' \| 'health'/);
   assert.match(primaryData, /getLiveRecorderSnapshot/);
-  assert.match(primaryData, /primary\.sections\.\$\{userId\}\.v1/);
+  assert.doesNotMatch(primaryData, /primarySectionsCacheKey/);
   assert.match(primaryData, /buildTimeline/);
   assert.match(primaryData, /buildStatistics/);
   assert.match(primaryData, /buildSearchRecords/);
   assert.match(storage, /including points already uploaded/);
 });
 
-test('the fixed Statistics tab merges live Statistics with the recent Timeline and retains paid Atlas access', () => {
+test('iPhone and iPad share the data-rich Statistics dashboard and retain paid Atlas access', () => {
   assert.match(nativeNavigation, /name="statistics"/);
-  assert.match(shell, /statistics: <StatisticsScreen/);
+  assert.equal(shell.match(/statistics: <IpadStatisticsScreen/g)?.length, 2);
+  assert.equal(shell.match(/<IpadStatisticsScreen key=\{currentUser\.id\} compact/g)?.length, 1, 'only the iPhone branch requests compact safe-area spacing');
   assert.match(shell, /onAtlas=\{membership\.atlasAccess \? openAtlas : undefined\}/);
   assert.match(shell, /atlas: membership\.atlasAccess \? <AtlasScreen/);
-  assert.match(primarySections, /statistics\.current\.miles\.value\.toFixed\(1\)/);
-  assert.match(primarySections, /Math\.round\(statistics\.current\.songs\.value\)/);
-  assert.match(primarySections, /timelineItems\.slice\(0, visibleTimelineCount\)/);
-  assert.match(primarySections, /Math\.min\(count \+ 10, timelineItems\.length\)/);
-  assert.match(primarySections, /historyDays \* 86_400_000/);
-  assert.match(primarySections, /song && item\.artworkUrl/);
-  assert.match(primarySections, /TimelineRouteThumbnail coordinates=\{item\.route \?\? \[\]\}/);
+  assert.match(statisticsScreen, /buildIpadStatistics\(state\.data\?\.journeys/);
+  assert.match(statisticsScreen, /statistics-bottom-widgets/);
+  assert.match(statisticsScreen, /Journey averages/);
+  assert.match(statisticsScreen, /Record book/);
+  assert.match(statisticsScreen, /Activity split/);
+  assert.match(statisticsScreen, /historyDays !== null && \(range === 'all' \|\| range > historyDays\)/);
   assert.match(primaryData, /accessibleJourneys = journeys\.filter/);
   assert.match(primaryData, /membershipCanAccessDate\(membership, journey\.startedAt\)/);
   assert.match(primaryData, /membership\.atlasAccess \? buildAtlasPatterns/);
-  assert.match(primarySections, /UNLOCK ATLAS \+ COMPLETE HISTORY/);
-  assert.match(primarySections, /historyDays === null && onAtlas[\s\S]*?Open your Atlas/);
-  assert.match(primarySections, /atlasGateway[\s\S]*?atlas-globe-membership-v1\.jpg/);
-  assert.doesNotMatch(primarySections, /accessibilityLabel="Open Atlas"[\s\S]*?storyStatsUnlock/);
+  assert.match(statisticsScreen, /accessibilityLabel="Open Atlas"/);
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
 });
@@ -87,6 +89,19 @@ test('Atlas uses the selected premium command-center layout without changing the
   assert.match(primarySections, /SOUNDTRACK INTELLIGENCE/);
   assert.match(primarySections, /PRIVATE · ON DEVICE/);
   assert.match(primarySections, /buildAtlasInsights\(data\?\.journeys \?\? \[\], data\?\.details \?\? \[\], window\)/);
+  assert.match(primarySections, /function DrivingRhythmsExpanded/);
+  assert.match(primarySections, /perspective: 900/);
+  assert.match(primarySections, /rotateY/);
+  assert.match(primarySections, /weekdayTwoHourBuckets/);
+  assert.match(primarySections, /theme\.id === 'sakura' \? '#79566F'/);
+  assert.match(primarySections, /reduceMotion \? 180 : 650/);
+  assert.match(primarySections, /reduceMotion \? 150 : 520/);
+  assert.match(primarySections, /function DrivingRhythmsCompactFace/);
+  assert.match(primarySections, /showNeonOutline=\{!moving\}/);
+  assert.match(primarySections, /<DrivingRhythmsCompactFace insight=\{insight\} moving \/>/);
+  assert.match(primarySections, /backfaceVisibility: 'hidden'/);
+  assert.match(primarySections, /targetWidth \/ sourceFrame\.width/);
+  assert.match(primarySections, /sourceFrame\.height \/ targetHeight/);
   assert.match(primarySections, /\[\['30d', '30 DAYS'\], \['90d', '90 DAYS'\], \['all', 'ALL TIME'\]\]/);
   assert.match(nativeNavigation, /name="music"/);
   assert.match(nativeNavigation, /name="journeys"/);
@@ -95,25 +110,18 @@ test('Atlas uses the selected premium command-center layout without changing the
   assert.match(nativeNavigation, /name="settings"/);
 });
 
-test('Statistics reproduces the selected cinematic option-3 composition with live data', () => {
-  assert.match(primarySections, /title="STATISTICS"[\s\S]*?headerPresentation="centered"[\s\S]*?pageTone="black"[\s\S]*?headerTone="statistics"/);
-  assert.match(primarySections, /statistics-story-hero-v1\.png/);
-  assert.match(primarySections, /THE ROAD YOU’VE LIVED/);
-  assert.match(primarySections, /A month worth[\s\S]*?remembering\./);
-  assert.match(primarySections, /Longest drive/);
-  assert.match(primarySections, /Most-played/);
-  assert.match(primarySections, /Favorite time/);
-  assert.match(primarySections, /FREE HISTORY[\s\S]*?statistics\.windowDays/);
-  assert.match(primarySections, /RECENT TIMELINE/);
-  assert.match(primarySections, /first=\{index === 0\}[\s\S]*?last=\{index === visibleTimeline\.length - 1\}/);
-  assert.match(primarySections, /storyTimelineMoreFill/);
-  assert.match(primarySections, /storyStatsHero: \{ width: '100%', alignSelf: 'center', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
-  assert.match(primarySections, /<HeaderEdgeBleed \/>/);
-  assert.doesNotMatch(primarySections, /storyStatsHero: \{[^}]*borderWidth|storyStatsHero: \{[^}]*borderColor/);
-  assert.equal((primarySections.match(/<View style=\{styles\.storyStatsCell\}>/g) ?? []).length, 3);
-  assert.match(primarySections, /storyStatsCards: \{ flexDirection: 'row', marginHorizontal: -5, marginBottom: 9 \}/);
-  assert.match(primarySections, /storyStatsCell: \{ width: '33\.333333%', minWidth: 0, paddingHorizontal: 5 \}/);
-  assert.doesNotMatch(primarySections, /storyStatsCards: \{[^}]*gap:/);
+test('shared Statistics keeps the cinematic hero, raw metrics, calendar and responsive phone layout', () => {
+  assert.match(statisticsScreen, /title="Statistics"[\s\S]*?cinematic-statistics-photo-v1\.jpg/);
+  assert.match(statisticsScreen, /Total miles/);
+  assert.match(statisticsScreen, /Total journeys/);
+  assert.match(statisticsScreen, /Driving time/);
+  assert.match(statisticsScreen, /Song plays/);
+  assert.match(statisticsScreen, /Listening time/);
+  assert.match(statisticsScreen, /Active days/);
+  assert.match(statisticsScreen, /Your days, in detail/);
+  assert.match(statisticsScreen, /columns = width \/ fontScale >= 1000 \? 6[\s\S]*?>= 330 \? 2 : 1/);
+  assert.match(statisticsScreen, /flexDirection: wide \? 'row' : 'column'/);
+  assert.match(statisticsScreen, /const neonGlow[\s\S]*?shadowOpacity: 0\.48/);
 });
 
 test('Data Health can force a visible Apple Music artwork retry', () => {
@@ -183,7 +191,7 @@ test('Settings is the fifth primary tab and keeps Data Health under Advanced Sup
   assert.match(shell, /accessibilityLabel="Open Data Health"/);
   assert.match(shell, /onDataHealth=\{\(\) => openMore\('health'\)\}/);
   assert.match(shell, /accessibilityState=\{\{ expanded: advancedSupportVisible \}\}/);
-  assert.match(shell, /advancedSupportVisible && <Pressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /<ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
   assert.match(shell, /tools: <MoreScreen active=\{utilityVisible\}/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
@@ -206,6 +214,8 @@ test('Soundtracks refresh keeps complete journey music and rejects stale replace
 
 test('Phase 2 maps use recorded geometry and the same themed OpenFreeMap basemap', () => {
   assert.match(primaryMap, /loadJourneyDeckMapStyle/);
+  assert.match(primaryMap, /loadJourneyDeckMapStyle\(fetch, theme\.id\)/);
+  assert.match(primaryMap, /journeyDeckMapPalette\(theme\.id\)/);
   assert.match(primaryMap, /OPEN_FREE_MAP_DARK_STYLE/);
   assert.match(primaryMap, /primary-route-line/);
   assert.match(primaryMap, /primary-mobility-places/);
@@ -216,6 +226,8 @@ test('Phase 2 maps use recorded geometry and the same themed OpenFreeMap basemap
   assert.match(primarySections, /snapshot\.route\.map/);
   assert.match(primarySections, /<Text style=\{styles\.routeGlyph\}>⌁<\/Text>/);
   assert.doesNotMatch(primarySections, /<View style=\{styles\.routeGlyph\}>⌁<\/View>/);
+  assert.match(primarySections, /selectedPlace && <View style=\{styles\.placeDetailsWrap\}><PlaceDetails/);
+  assert.match(primarySections, /placeDetailsWrap: \{ marginTop: 14 \}/);
 });
 
 test('Phase 6 Home summarizes every completed local-first section and routes into it', () => {
@@ -280,10 +292,10 @@ test('first run uses the approved animation and manual-only version-1 recording 
 });
 
 test('Home and navigation reproduce the approved manual-recorder composition', () => {
-  assert.match(shell, /home-recorder-coast-v1\.png/);
-  assert.match(shell, /style=\{styles\.approvedHomeHeader\}/);
+  assert.match(shell, /cinematic-home-main-photo-v1\.jpg/);
+  assert.match(shell, /<PhoneTabTitle title="Home"/);
   assert.match(shell, /style=\{\[styles\.approvedHomeScenicSpace, recorderActive && styles\.approvedHomeScenicSpaceActive\]\}/);
-  assert.match(shell, /<Text accessibilityRole="header" style=\{styles\.approvedHomeTitle\}>HOME<\/Text>/);
+  assert.match(phoneTabTitle, /fontSize: 24[\s\S]*?fontWeight: '900'[\s\S]*?letterSpacing: 5\.2/);
   assert.match(shell, /recorder=\{<Recorder presentation="home"/);
   assert.match(shell, /Latest memory/);
   assert.match(shell, /LATEST SONG PLAYED/);
@@ -297,20 +309,23 @@ test('Home and navigation reproduce the approved manual-recorder composition', (
   assert.match(app, /Your journey is being remembered\./);
   assert.match(app, /const startupPending = !deviceId \|\| !recorderInitialized/);
   assert.match(app, /const showStartPortal = !active && !automaticMode && \(startupPending \|\| permissionsReady\)/);
-  assert.match(app, /showStartPortal \? \(\s*<HomeRecorderStartPortal onPress=\{start\} disabled=\{busy \|\| startupPending\} showProgress=\{busy\} \/>/);
+  assert.match(app, /showStartPortal \? \([\s\S]*?<HomeRecorderStartPortal onPress=\{start\} disabled=\{busy \|\| startupPending\} showProgress=\{busy\} \/>/);
+  assert.match(app, /LinearTransition\.springify\(\)[\s\S]*?key="start-portal"[\s\S]*?key="live-recorder"[\s\S]*?FadeInDown/);
   assert.match(app, /refresh\(\)\.catch\(\(\) => \{\}\)\.finally\(\(\) => \{ if \(mounted\) setRecorderInitialized\(true\); \}\)/);
   assert.doesNotMatch(app, /Preparing your private recorder|homeRecorderPreparing/);
   assert.match(app, /function HomeRecorderStartPortal/);
   assert.match(app, /testID="home-start-journey-portal"[\s\S]*?accessibilityRole="button"[\s\S]*?accessibilityLabel="Start Journey"[\s\S]*?onPress=\{onPress\}/);
   assert.match(app, /homeRecorderStartPortalCanvas[\s\S]*?HomeRecorderStartPortalAtmosphere[\s\S]*?homeRecorderStartPortalPulseCore[\s\S]*?>READY<[\s\S]*?>Start Journey<[\s\S]*?name="arrow\.right"/);
   assert.match(app, /function HomeRecorderStartPortalAtmosphere[\s\S]*?startPortalGlass[\s\S]*?startPortalCoral[\s\S]*?stopOpacity="0"/);
-  assert.match(app, /id="startPortalCoral" cx="50%" cy="54%" rx="82%" ry="78%" fx="50%" fy="70%"[\s\S]*?offset="1" stopColor=\{theme\.isLight \? '#b995d1' : theme\.color\("#ff7654", 'accent'\)\} stopOpacity="0\.10"/);
+  assert.match(app, /id="startPortalCoral" cx="50%" cy="54%" rx="82%" ry="78%" fx="50%" fy="70%"[\s\S]*?offset="1" stopColor=\{[^}]+\} stopOpacity="0\.10"/);
   assert.match(app, /<Rect width="360" height="360" rx="30" ry="30" fill="url\(#startPortalCoral\)" \/>/);
   assert.doesNotMatch(app, /homeRecorderStartPortalAtmosphere: \{[^}]*borderRadius|homeRecorderStartPortalAtmosphere: \{[^}]*overflow/);
+  assert.match(app, /style=\{styles\.homeRecorderStartPortalLightClip\}[\s\S]*?styles\.homeRecorderStartPortalLight, lightStyle/);
+  assert.match(app, /homeRecorderStartPortalLightClip: \{[^}]*borderRadius: 30[^}]*overflow: 'hidden'/);
   assert.match(app, /homeRecorderStartPortal: \{ minHeight: 360 \}/);
   assert.match(app, /homeRecorderStartPortalPressed: \{ transform: \[\{ scale: 0\.992 \}\] \}/);
   assert.doesNotMatch(app, /homeRecorderStartPortalBorder|homeRecorderStartPortalGlass:|homeRecorderStartPortalBloom|homeRecorderStartPortalDisabled|homeRecorderStartPortalPressed: \{ opacity/);
-  assert.match(app, /pointerEvents="none" style=\{\[styles\.homeRecorderStartPortalOutline, theme\.isLight && \{ borderColor: '#694079', shadowColor: '#8e58b0' \}\]\}/);
+  assert.match(app, /pointerEvents="none" style=\{\[styles\.homeRecorderStartPortalOutline,[^\n]*borderColor: '#694079', shadowColor: '#8e58b0'[^\n]*\]\}/);
   assert.match(app, /homeRecorderStartPortalOutline: \{[\s\S]*?borderRadius: 30[\s\S]*?borderWidth: 1[\s\S]*?borderColor: 'rgba\(255,126,88,0\.92\)'[\s\S]*?shadowColor: '#ff704f'/);
   assert.doesNotMatch(shell, /approvedHomeMusicDot|const hasMusic = Boolean\(latestTrack\)/);
   assert.doesNotMatch(app, /HomeRecorderPrimaryAction label="Start Journey"/);
@@ -332,16 +347,18 @@ test('Music background loading cannot activate the native refresh inset', () => 
   assert.doesNotMatch(musicScreen, /refreshing=\{state\.status/);
 });
 
-test('every major destination has a distinct cinematic header scene', () => {
+test('every active major destination has a distinct cinematic header scene', () => {
   assert.match(shell, /<PageHeader variant="memories"/);
-  assert.match(shell, /memories-header-cinematic-v1\.png/);
+  assert.match(shell, /cinematic-memories-polaroids-photo-v1\.jpg/);
   assert.match(shell, /<PageHeader variant="settings"/);
   assert.match(shell, /function PageHeaderScene/);
   assert.match(shell, /settingsHeaderLink/);
-  assert.match(musicScreen, /soundtracks-header-cinematic-v2\.png/);
-  assert.match(primarySections, /live-header-cinematic-v1\.png/);
-  assert.match(primarySections, /atlas-header-cinematic-v1\.png/);
-  assert.match(shell, /settings-header-cinematic-v1\.png/);
+  assert.match(musicScreen, /cinematic-soundtracks-photo-v1\.jpg/);
+  assert.match(primarySections, /cinematic-atlas-photo-v1\.jpg/);
+  assert.match(shell, /cinematic-settings-photo-v1\.jpg/);
+  assert.doesNotMatch(headerImageSources, /cinematic-(?:live|recorder|timeline)-photo-v1/);
+  assert.doesNotMatch(app, /cinematic-recorder-photo-v1/);
+  assert.doesNotMatch(primarySections, /cinematic-(?:live|timeline)-photo-v1/);
 });
 
 test('Shared tab background loading cannot activate the native refresh inset', () => {
@@ -352,20 +369,34 @@ test('Shared tab background loading cannot activate the native refresh inset', (
 });
 
 test('every destination artwork header shares one frameless, feathered frame', () => {
-  assert.match(headerArtwork, /HEADER_ARTWORK_ASPECT_RATIO = 1672 \/ 941/);
+  assert.match(headerArtwork, /HEADER_ARTWORK_ASPECT_RATIO = 2\.65/);
   assert.match(headerArtwork, /aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
   assert.match(headerArtwork, /contentFit="cover"/);
   assert.match(headerArtwork, /function HeaderEdgeFeather/);
   assert.match(headerArtwork, /function HeaderEdgeBleed/);
+  assert.match(headerArtwork, /export function CinematicPhotoGrade/);
+  assert.match(headerArtwork, /theme\.id !== 'dark'/);
+  assert.match(headerArtwork, /rgba\(18,3,29,0\.14\)/);
+  assert.match(headerArtwork, /blurRadius=\{18\}/);
+  assert.match(headerArtwork, /const page = theme\.palette\.page/);
   assert.match(headerArtwork, /bleedLeft[\s\S]*?bleedRight[\s\S]*?bleedTop[\s\S]*?bleedBottom/);
   assert.match(musicScreen, /heroCardHeader: \{ width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
-  assert.match(musicScreen, /HeaderArtwork source=\{require\('\.\.\/assets\/soundtracks-header-cinematic-v2\.png'\)\}/);
+  assert.match(musicScreen, /HeaderArtwork source=\{require\('\.\.\/assets\/cinematic-soundtracks-photo-v1\.jpg'\)\}/);
+  assert.match(shell, /cinematic-home-main-photo-v1\.jpg[\s\S]*?<CinematicPhotoGrade \/>/);
   assert.doesNotMatch(musicScreen, /heroVinylMotionFrame|soundtracksSpinningVinyl|Animated\.loop/);
-  assert.match(shell, /HeaderArtwork[\s\S]*?memories-header-cinematic-v1\.png/);
+  assert.match(shell, /HeaderArtwork[\s\S]*?cinematic-memories-polaroids-photo-v1\.jpg/);
   assert.match(primarySections, /artHeader: \{ position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22/);
   assert.match(shell, /pageArtHeader: \{ position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14/);
   assert.match(primarySections, /statsPageTitle: \{ position: 'relative', zIndex: 10, elevation: 10/);
-  assert.match(shell, /cinematicPageTitle: \{ position: 'relative', zIndex: 10, elevation: 10/);
+  assert.equal(shell.match(/<PhoneTabTitle title=/g)?.length, 3, 'Home, Memories, and Settings use the shared phone title');
+  assert.match(musicScreen, /<PhoneTabTitle title="Soundtracks"/);
+  assert.match(memoriesScreen, /presentation === 'iphone'[\s\S]*?<PhoneTabTitle title="Memories"[\s\S]*?styles\.phoneHeader/);
+  assert.match(memoriesScreen, /styles\.phoneHeader[\s\S]*?<HeaderArtwork source=\{require\('\.\.\/assets\/cinematic-memories-polaroids-photo-v1\.jpg'\)\}/);
+  assert.doesNotMatch(memoriesScreen, /phoneHeader: \{ height:/);
+  assert.match(ipadPageHeader, /if \(compact\)[\s\S]*?<PhoneTabTitle title=\{title\}/);
+  assert.match(ipadPageHeader, /compactHero: \{ minHeight: 0, aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
+  assert.equal((ipadPageHeader.match(/<HeaderArtworkLayers source=\{artwork\}/g) ?? []).length, 2);
+  assert.match(shell, /settingsRootContent: \{ paddingHorizontal: 16 \}/);
   assert.doesNotMatch(primarySections, /artHeader: \{[^}]*marginHorizontal: -4/);
   assert.doesNotMatch(shell, /pageArtHeader: \{[^}]*marginHorizontal: -4/);
   assert.match(app, /recorderArtHeader: \{ alignSelf: 'stretch', marginHorizontal: -4/);
@@ -382,7 +413,7 @@ test('Soundtracks uses a frameless static header and Memories filters align with
 
 test('Memory photo cards keep their photos visible and omit generic sequence labels', () => {
   assert.doesNotMatch(shell, /memoryHeroKicker}>MEMORY \{String\(index \+ 1\)/);
-  assert.match(shell, /memory-default-floating-timeline-v1\.jpg/);
+  assert.match(shell, /cinematic-memory-polaroids-photo-v1\.jpg/);
   assert.doesNotMatch(shell, /memoryArtRoad/);
   assert.match(shell, /style=\{styles\.memoryCardShade\}/);
   assert.match(shell, /memoryCardShade: \{[^}]*bottom: 0, height: 92/);
@@ -421,14 +452,13 @@ test('native dashboards use static cinematic lighting and Music has intentional 
   assert.doesNotMatch(musicScreen, /routeLineOne|routeLineTwo/);
   assert.match(musicScreen, /function SoundtracksHeroHeader/);
   assert.match(musicScreen, /heroCardHeader: \{ width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO/);
-  assert.match(musicScreen, /soundtracks-header-cinematic-v2\.png/);
+  assert.match(musicScreen, /cinematic-soundtracks-photo-v1\.jpg/);
   assert.doesNotMatch(musicScreen, /Animated\.loop|heroVinylMotionFrame|soundtracksSpinningVinyl|heroVinylDisc/);
   assert.doesNotMatch(musicScreen, /M100 100L26 26|M100 100L174 174/);
-  assert.match(musicScreen, /\{data \? <>\s*<View style=\{styles\.metricGrid\}>/);
+  assert.match(musicScreen, /\{data \? <>\s*<Panel title="Today's soundtrack"[\s\S]*?<View style=\{styles\.metricGrid\}>[\s\S]*?<Panel title="Top artists"/);
   assert.doesNotMatch(musicScreen, /YOUR LIFE HAS A|function VinylHeroRecord|styles\.hero\}/);
-  assert.match(musicScreen, /<View style=\{styles\.albumCaption\}>[\s\S]*?styles\.albumTitle[\s\S]*?styles\.albumArtist/);
-  assert.match(musicScreen, /albumCard: \{ width: 112, height: 158/);
-  assert.match(musicScreen, /albumCaption: \{ height: 46,[\s\S]*?paddingLeft: 7[\s\S]*?paddingBottom: 3/);
+  // The shared carousel's measured geometry, captions and interactions are exercised by album-carousel.test.mts.
+  assert.match(musicScreen, /<AlbumCarousel tracks=\{data\.recentSelections\} enabled=\{canOpenTracks\}/);
   assert.match(musicScreen, /return <QuietInset radius=\{19\} accent=\{accent\} style=\{styles\.metric\}>/);
   assert.match(neonWidget, /function QuietInset/);
   assert.match(shell, /staticWidgetGlow/);
@@ -482,7 +512,9 @@ test('Memory detail directly groups Journeys with the approved cinematic present
   assert.match(shell, /from 'react-native-reanimated'/);
   assert.doesNotMatch(shell.slice(shell.indexOf('function MemoryDetailScreen'), shell.indexOf('function PhotoTile')), /entering=|withDelay/);
   assert.match(shell, /memoryDetailBreadcrumbActive}>Memory<[\s\S]*?memoryDetailBreadcrumbMuted}>Journeys</);
-  assert.match(shell, /JOURNEYS IN THIS MEMORY/);
+  const membershipEditor = shell.slice(shell.indexOf('<MemoryJourneyEditor'), shell.indexOf('/>', shell.indexOf('<MemoryJourneyEditor')));
+  assert.match(membershipEditor, /selectedIds=\{memoryDraft.journeyIds\}/);
+  assert.match(membershipEditor, /disabled=\{saving \|\| photoBusy\}/);
   assert.match(shell, /journeys\.map\(\(journey\) => <Reanimated\.View/);
   assert.doesNotMatch(shell, /function MemoryRoadThread|function MemoryCollectionChapter|function CollectionPlaceholderArtwork/);
   assert.doesNotMatch(shell, /closeMemoryThen|memoryTransitionTimer/);
@@ -494,7 +526,9 @@ test('Native Memory sheet keeps keyboard handling inside its own presentation', 
   assert.match(sheet, /presentationStyle="pageSheet"/);
   assert.match(sheet, /automaticallyAdjustKeyboardInsets/);
   assert.match(sheet, /keyboardDismissMode="interactive"/);
-  assert.match(sheet, /accessibilityLabel="Dismiss keyboard"/);
+  assert.match(sheet, /allowSwipeDismissal=\{false\}/);
+  assert.match(sheet, /bounces=\{false\}/);
+  assert.doesNotMatch(sheet, /accessibilityLabel="Dismiss keyboard"|>Done</);
   assert.doesNotMatch(sheet, /KeyboardAvoidingView|keyboardWillChangeFrame|paddingBottom: keyboardHeight/);
 });
 
@@ -505,8 +539,11 @@ test('Memory editor stages direct Journey membership before first save and expos
   assert.match(shell, /A Memory needs at least one journey/);
   assert.match(shell, /JOURNEYS IN THIS MEMORY/);
   assert.match(shell, /setMemorySavedSignature\(memoryDraftSignature\(next\)\)/);
-  assert.equal(shell.match(/DraftDirty \? 'SAVE' : 'SAVED'/g)?.length, 1);
-  assert.equal(shell.match(/disabled=\{saving \|\| ![a-zA-Z]+DraftDirty\}/g)?.length, 1);
+  assert.match(shell, /<MemorySaveLabel saving=\{saving\} dirty=\{memoryDraftDirty\} successVersion=\{memorySaveVersion\}/);
+  assert.match(shell, /onPress=\{\(\) => void saveMemory\(\)\} disabled=\{saving \|\| photoBusy \|\| !memoryDraftDirty\}/);
+  const save = shell.slice(shell.indexOf('  const saveMemory = async'), shell.indexOf('  const uploadMemoryPhoto = async'));
+  assert.ok(save.indexOf('await appDataClient.saveMemory') < save.indexOf('setMemorySaveVersion'));
+  assert.match(save, /finally \{ setSaving\(false\); \}/);
   assert.match(shell, /editorSaveSaved: \{ backgroundColor: '#43e6ae' \}/);
 });
 
@@ -517,7 +554,7 @@ test('Journey details keep one dark route map beneath a map-free summary hero', 
   assert.match(shell, /<JourneyCinematicHero journey=\{journey\} title=\{displayTitle\} \/>/);
   assert.match(nativeNavigation, /Stack.Screen name="journey\/\[id\]" options=\{\{ title: 'Journey'/);
   assert.match(shell, /loadCityLabelForCoordinate/);
-  assert.match(journeyAtmosphere, /journey-detail-memory-hero-v1\.jpg/);
+  assert.match(journeyAtmosphere, /cinematic-journey-photo-v1\.jpg/);
   assert.match(journeyAtmosphere, /<ExpoImage/);
   assert.match(journeyAtmosphere, /contentFit="cover"/);
   assert.match(journeyAtmosphere, /cachePolicy="memory-disk"/);
@@ -547,12 +584,27 @@ test('Journey details enable an interactive MapLibre route with a cached static 
   assert.match(shell, /ROUTE \+ SONG LOCATIONS/);
   assert.match(shell, /selected=\{selectedSongIndex === index \+ 1\}/);
   assert.match(interactiveRouteMap, /OPEN_FREE_MAP_DARK_STYLE/);
+  assert.match(interactiveRouteMap, /loadJourneyDeckMapStyle\(fetch, theme\.id\)/);
+  assert.match(interactiveRouteMap, /journeyDeckMapPalette\(theme\.id\)/);
   assert.match(interactiveRouteMap, /journey-route-bloom/);
   assert.match(interactiveRouteMap, /<SongMarker index=\{moment\.index\}/);
   assert.match(interactiveRouteMap, /Tap anywhere on the map for nearby music/);
   assert.match(interactiveRouteMap, /nearbyRadii = \[0\.5, 1, 2, 5\]/);
-  assert.match(interactiveRouteMap, /JOURNEY REPLAY/);
-  assert.match(interactiveRouteMap, /Replay uses recorded vehicle telemetry/);
+  assert.match(interactiveRouteMap, /JourneyReplayStage/);
+  assert.match(interactiveRouteMap, /Watch journey story/);
+  assert.match(interactiveRouteMap, /REPLAY_CHASE_PITCH = 52/);
+  assert.match(interactiveRouteMap, /bearing: replaySnapshot\.headingDegrees \?\? 0/);
+  assert.match(interactiveRouteMap, /replayZoomRef\.current = Math\.max\(2, Math\.min\(19, zoom\)\)/);
+  assert.match(interactiveRouteMap, /journey-route-travelled-line/);
+  assert.match(interactiveRouteMap, />JOURNEY PROGRESS</);
+  assert.match(interactiveRouteMap, /journeyTimelineRail/);
+  assert.doesNotMatch(interactiveRouteMap, /RouteTraceMoment/);
+  assert.match(interactiveRouteMap, /REPLAY SPEED/);
+  assert.match(interactiveRouteMap, /accessibilityState=\{\{ selected \}\}/);
+  assert.match(interactiveRouteMap, /theme\.color\(kind === 'start' \? '#43e6ae' : '#ff5f67', 'accent'\)/);
+  assert.match(interactiveRouteMap, /backgroundColor: color/);
+  assert.doesNotMatch(interactiveRouteMap, /label="BATTERY"/);
+  assert.match(interactiveRouteMap, /Replay uses recorded journey location and speed/);
   assert.match(interactiveRouteMap, /OpenFreeMap supplies only the basemap/);
 });
 

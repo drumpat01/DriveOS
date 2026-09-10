@@ -5,7 +5,7 @@ export type JourneyDeckTab = 'music' | 'journeys' | 'home' | 'statistics' | 'set
 export const tabPaths = { music: '/(tabs)/music', journeys: '/(tabs)/journeys', home: '/(tabs)', statistics: '/(tabs)/statistics', settings: '/(tabs)/settings' } as const;
 type NativeNavigationContent = {
   tabs: Record<JourneyDeckTab, ReactNode>;
-  memory: (id: string) => ReactNode;
+  memory: (id: string, onReady?: () => void) => ReactNode;
   atlas: ReactNode;
   tools: ReactNode;
   membership: JourneyDeckMembershipEntitlements;

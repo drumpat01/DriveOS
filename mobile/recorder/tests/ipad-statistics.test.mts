@@ -1,3 +1,5 @@
+import { touchFeedbackMock } from './touch-feedback-fixture.mts';
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -13,7 +15,7 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
   const source = readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.startsWith('../assets/') ? id : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id === './touch-feedback' ? touchFeedbackMock : id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id) });
   return module.exports;
 }
 const model = load('ipad-statistics-model.ts');
@@ -57,35 +59,81 @@ test('Monday-first calendar and local day iteration work across month and DST bo
 });
 
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
-let light = false, fontScale = 1;
+let light: boolean | 'sakura' | 'redline' = false, fontScale = 1;
 const native = { StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, useWindowDimensions: () => ({ fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])) };
 const ui = load('ipad-statistics-screen.tsx', {
+  './statistics-motion': {
+    StatisticsMotionProvider: ({ children }: any) => children,
+    StatisticsMotionFrame: host('View'), StatisticsDayJourneys: host('View'),
+    StatisticsRollingValue: ({ value, style }: any) => React.createElement('Text', { style }, value),
+    StatisticsBar: host('Bar'), StatisticsSparkline: host('Sparkline'),
+  },
+  './haptics': { haptics: { selection: () => {} } },
   'react-native': native, 'react-native-svg': { __esModule: true, default: host('Svg'), Circle: host('Circle'), Line: host('Line'), Polyline: host('Polyline') },
   'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ bottom: 20 }) },
-  './app-theme': { useAppTheme: () => ({ isLight: light }) }, './theme-palette': load('theme-palette.ts'),
+  './theme-material': { ThemeMaterial: host('ThemeMaterial') },
+  './app-theme': { useAppTheme: () => testTheme(light) }, './theme-palette': load('theme-palette.ts'),
   './ipad-page-header': { IpadPageHeader: host('Header') }, './card-detail-link': { CardDetailLink: host('DetailLink') },
   './journey-title': load('journey-title.ts'), './ipad-statistics-model': model,
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((n: any) => n.children.join('')).join('|');
 const button = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
+
+test('Atlas takes the top feature position and Year on the Road follows the statistics in every theme and form factor', async () => {
+  let tree: any, atlas = 0, year = 0, upgrades = 0;
+  try {
+    for (const theme of [false, true, 'sakura', 'redline'] as const) for (const compact of [false, true]) {
+      light = theme;
+      const render = (onAtlas?: () => void) => React.createElement(ui.IpadStatisticsScreen, {
+        state: { status: 'ready', data: { journeys: [], details: [] } }, historyDays: null, compact,
+        onRefresh() {}, onJourney() {}, onAtlas, onYearOnRoad: () => year++, onUpgrade: () => upgrades++,
+      });
+      await act(() => { if (tree) tree.update(render(() => atlas++)); else tree = create(render(() => atlas++)); });
+      const content = text(tree);
+      assert.ok(content.indexOf('Atlas ↗') < content.indexOf('Total miles'));
+      assert.ok(content.indexOf('Your Year on the Road ↗') > content.indexOf('Activity split'));
+      const top = button(tree, 'Open Atlas'), bottom = button(tree, 'Your Year on the Road. JourneyDeck Plus');
+      assert.deepEqual(top.props.style({ pressed: false }), bottom.props.style({ pressed: false }));
+      top.props.onPress(); bottom.props.onPress();
+      await act(() => tree.update(render()));
+      button(tree, 'Open Atlas').props.onPress();
+    }
+    assert.equal(atlas, 8); assert.equal(year, 8); assert.equal(upgrades, 8);
+  } finally { light = false; await act(() => tree?.unmount()); }
+});
 test('widgets precede calendar; date selection, paging, ranges, links, refresh and themes work', async () => {
   let tree: any, upgrades = 0, refreshes = 0, opened = '', atlas = 0;
   const today = new Date(), todayKey = model.dayKey(today);
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0).toISOString();
   const rows = Array.from({ length: 12 }, (_, i) => journey(`j${i}`, start));
   const state = { status: 'ready', data: { journeys: rows, details: rows.map(j => ({ ...j, soundtrack: [song()] })) } };
-  const render = (historyDays: number | null = 45, dataState: any = state) => React.createElement(ui.IpadStatisticsScreen, { state: dataState, historyDays, onUpgrade: () => upgrades++, onRefresh: () => refreshes++, onJourney: (id: string) => { opened = id; }, onAtlas: () => atlas++ });
+  const render = (historyDays: number | null = 45, dataState: any = state, compact = false) => React.createElement(ui.IpadStatisticsScreen, { state: dataState, historyDays, compact, onUpgrade: () => upgrades++, onRefresh: () => refreshes++, onJourney: (id: string) => { opened = id; }, onAtlas: () => atlas++ });
   try {
     await act(async () => { tree = create(render()); });
     const canvas = tree.root.findByProps({ testID: 'ipad-statistics-canvas' });
     const widgets = canvas.findByProps({ testID: 'statistics-widgets' });
-    assert.equal(widgets.findAllByType('Symbol').length, 6);
+    const metricSymbols = widgets.findAllByType('Symbol');
+    assert.equal(metricSymbols.length, 6);
+    assert.equal(new Set(metricSymbols.map((node: any) => node.props.tintColor)).size, 6, 'headline metrics use distinct cinematic accents');
+    const metricCards = widgets.findAllByType('View').filter((node: any) => Array.isArray(node.props.style) && node.props.style.flat().some((style: any) => style?.height === 200));
+    assert.equal(metricCards.length, 6);
+    assert.ok(metricCards.every((node: any) => node.props.style.flat().some((style: any) => style?.shadowOpacity > 0)), 'dark metric cards have neon glows');
+    assert.match(text(tree), /Journey averages/); assert.match(text(tree), /Record book/); assert.match(text(tree), /Activity split/);
+    assert.ok(tree.root.findByProps({ testID: 'statistics-bottom-widgets' }));
     assert.ok(text(tree).indexOf('Active days') < text(tree).indexOf('Your days, in detail'));
     await act(async () => button(tree, '90D · Plus').props.onPress()); assert.equal(upgrades, 1);
     await act(async () => tree.root.findByProps({ testID: `day-${todayKey}` }).props.onPress());
-    assert.equal(tree.root.findByProps({ testID: `day-${todayKey}` }).props.accessibilityState.selected, true);
+    const selectedDate = tree.root.findByProps({ testID: `day-${todayKey}` });
+    assert.equal(selectedDate.props.accessibilityState.selected, true);
+    assert.ok(selectedDate.props.style.flat().some((style: any) => style?.shadowOpacity > 0), 'selected dark date glows');
+    const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    if (tomorrow.getMonth() === today.getMonth()) {
+      const futureDate = tree.root.findByProps({ testID: `day-${model.dayKey(tomorrow)}` });
+      assert.equal(futureDate.props.accessibilityState.disabled, true);
+      assert.equal(futureDate.props.style.flat().find((style: any) => style?.opacity !== undefined).opacity, 1, 'all dates in the displayed month remain fully visible');
+    }
     await act(async () => button(tree, 'More journeys this day').props.onPress());
     assert.equal(button(tree, 'More journeys this day'), undefined);
     await act(async () => button(tree, 'Show more journeys').props.onPress());
@@ -96,13 +144,46 @@ test('widgets precede calendar; date selection, paging, ranges, links, refresh a
       fontScale = scale;
       await act(async () => canvas.props.onLayout({ nativeEvent: { layout: { width } } }));
       assert.equal(tree.root.findByProps({ testID: 'statistics-calendar-layout' }).props.style.flexDirection, direction);
+      assert.equal(tree.root.findByProps({ testID: 'statistics-analysis-row' }).props.style.flexDirection, direction);
+      assert.equal(tree.root.findByProps({ testID: 'statistics-bottom-layout' }).props.style.flexDirection, direction);
       assert.equal(tree.root.findByProps({ testID: `day-${todayKey}` }).props.accessibilityState.selected, true);
+    }
+    for (const id of ['statistics-hourly-panel', 'statistics-scatter-panel', 'statistics-music-panel']) {
+      const panel = tree.root.findAllByType('View').find((node: any) => node.props.testID === id);
+      assert.ok(panel.props.style.flat().some((style: any) => style?.flex === 1), `${id} fills its row`);
+    }
+    fontScale = 1;
+    await act(async () => canvas.props.onLayout({ nativeEvent: { layout: { width: 390 } } }));
+    const phoneMetric = tree.root.findByProps({ testID: 'statistics-widgets' }).findAllByType('View').find((node: any) => Array.isArray(node.props.style) && node.props.style.flat().some((style: any) => style?.height === 200));
+    assert.equal(phoneMetric.props.style.flat().find((style: any) => style?.width !== undefined).width, 189, 'phone uses two equal metric columns');
+    assert.equal(tree.root.findByProps({ testID: 'statistics-bottom-layout' }).props.style.flexDirection, 'column');
+    await act(async () => tree.update(render(45, state, true)));
+    assert.equal(tree.root.findByType('Header').props.compact, true);
+    assert.equal(tree.root.findByType('SafeAreaView').props.edges.join(','), 'top,left,right');
+    assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentInsetAdjustmentBehavior, 'never');
+    assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentContainerStyle.padding, 16);
+    for (const label of ['7D', '30D', '90D · Plus', 'All · Plus']) {
+      const item = tree.root.findAllByProps({ testID: 'selection-item' }).find((node: any) => node.findAllByProps({ accessibilityLabel: label }).length);
+      assert.equal(item?.props.style.flexBasis, '45%', `${label} fills the phone range grid`);
     }
     light = true;
     await act(async () => tree.update(render(null)));
     assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, '#fffaf0');
+    assert.equal(tree.root.findByProps({ testID: `day-${todayKey}` }).props.style.flat().some((style: any) => style?.shadowOpacity > 0), false, 'light mode keeps the pastel treatment without neon shadows');
     await act(async () => button(tree, 'All').props.onPress());
     assert.equal(button(tree, 'All').props.accessibilityState.selected, true);
+    const beforeThemeChange = text(tree);
+    for (const id of ['sakura', 'redline'] as const) {
+      light = id;
+      await act(async () => tree.update(render(null)));
+      const theme = testTheme(id);
+      assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, theme.palette.page);
+      assert.equal(text(tree), beforeThemeChange, 'changing theme preserves raw statistics and selected range');
+      const accents = tree.root.findByProps({ testID: 'statistics-widgets' }).findAllByType('Symbol').map((n: any) => n.props.tintColor);
+      assert.equal(new Set(accents).size, 6);
+      assert.ok(accents.includes(theme.palette.blue) && accents.includes(theme.palette.teal));
+      assert.equal(button(tree, 'All').props.accessibilityState.selected, true);
+    }
     await act(async () => tree.update(render(null, { ...state, status: 'error', message: 'Refresh failed' })));
     assert.match(text(tree), /Refresh failed/);
     await act(async () => button(tree, 'Try again').props.onPress()); assert.equal(refreshes, 1);

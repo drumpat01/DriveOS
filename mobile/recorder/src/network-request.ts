@@ -165,7 +165,7 @@ export async function requestExternalProviderJson<T>(
 }
 
 export async function requestAppleCatalogJson<T>(url: string, options: EdgeRequestOptions = {}): Promise<T> {
-  if (!/^https:\/\/itunes\.apple\.com\/search\?/.test(url)) throw new Error('Unapproved Apple catalog URL.');
+  if (!/^https:\/\/itunes\.apple\.com\/(?:search|lookup)\?/.test(url)) throw new Error('Unapproved Apple catalog URL.');
   const activity = beginNetworkActivity({
     category: 'privacy_edge', reason: 'external_import', operation: options.operation ?? 'Apple artwork lookup', method: 'GET', uploadBytes: 0,
   });

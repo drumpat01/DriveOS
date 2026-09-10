@@ -9,9 +9,39 @@ import {
   RECORDER_DATABASE_APPLICATION_ID,
   RECORDER_DATABASE_HARDENING_SQL,
   RECORDER_DATABASE_SCHEMA_VERSION,
+  SQLITE_STARTUP_BUSY_TIMEOUT_MS,
+  prepareSQLiteConnectionForStartup,
   UNIFIED_DATABASE_HARDENING_SQL,
   UNIFIED_DATABASE_SCHEMA_SQL,
 } from '../src/database-hardening.ts';
+
+test('startup installs a lock wait before WAL and avoids rewriting an existing WAL journal', () => {
+  const commands: string[] = [];
+  const existingWal = {
+    execSync(sql: string) { commands.push(sql); },
+    getFirstSync<T>(sql: string) { commands.push(sql); return { journal_mode: 'wal' } as T; },
+  };
+  prepareSQLiteConnectionForStartup(existingWal);
+  assert.match(commands[0]!, new RegExp(`busy_timeout\\s*=\\s*${SQLITE_STARTUP_BUSY_TIMEOUT_MS}`));
+  assert.equal(commands[1], 'PRAGMA journal_mode;');
+  assert.equal(commands.filter(command => /journal_mode\s*=\s*WAL/i.test(command)).length, 0);
+});
+
+test('a new database requests WAL only after the startup lock wait is active', () => {
+  let waiting = false;
+  const commands: string[] = [];
+  prepareSQLiteConnectionForStartup({
+    execSync(sql: string) {
+      commands.push(sql);
+      if (/busy_timeout/i.test(sql)) waiting = true;
+      if (/journal_mode\s*=\s*WAL/i.test(sql) && !waiting) throw new Error('database is locked');
+    },
+    getFirstSync<T>(sql: string) { commands.push(sql); return { journal_mode: 'delete' } as T; },
+  });
+  const busyIndex = commands.findIndex(command => /busy_timeout/i.test(command));
+  const walIndex = commands.findIndex(command => /journal_mode\s*=\s*WAL/i.test(command));
+  assert.ok(busyIndex >= 0 && walIndex > busyIndex);
+});
 
 function masterDatabase() {
   const db = new DatabaseSync(':memory:');
@@ -46,7 +76,7 @@ function insertJourney(db: DatabaseSync, id: string, userId: string, placeId: st
 }
 
 test('the unified database advances while the legacy recorder identity remains explicit for import', () => {
-  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 6);
+  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 7);
   assert.equal(RECORDER_DATABASE_SCHEMA_VERSION, 2);
   assert.notEqual(MASTER_DATABASE_APPLICATION_ID, RECORDER_DATABASE_APPLICATION_ID);
 });

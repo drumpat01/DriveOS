@@ -219,7 +219,7 @@ export function buildReplayRoute(
   });
 }
 
-/** Interpolates location, heading, speed, and battery for the replay scrubber. */
+/** Interpolates the stored replay snapshot; presentation decides which fields to show. */
 export function replaySnapshotAt(points: ReplayRoutePoint[], timestampMs: number): ReplaySnapshot | null {
   if (!points.length) return null;
   const first = points[0]!, last = points.at(-1)!;
@@ -243,6 +243,18 @@ export function replaySnapshotAt(points: ReplayRoutePoint[], timestampMs: number
     batteryPercent: interpolateNumber(left.batteryPercent, right.batteryPercent, fraction),
     progress: (target - first.recordedAtEpochMs) / Math.max(1, last.recordedAtEpochMs - first.recordedAtEpochMs),
   };
+}
+
+/** Returns the portion of a replay route already travelled, including the interpolated vehicle position. */
+export function travelledReplayCoordinates(points: ReplayRoutePoint[], timestampMs: number): RouteCoordinate[] {
+  const snapshot = replaySnapshotAt(points, timestampMs);
+  if (!snapshot) return [];
+  const travelled = points
+    .filter(point => point.recordedAtEpochMs <= snapshot.recordedAtEpochMs)
+    .map(point => point.coordinate);
+  const last = travelled.at(-1);
+  if (!last || last[0] !== snapshot.coordinate[0] || last[1] !== snapshot.coordinate[1]) travelled.push(snapshot.coordinate);
+  return travelled;
 }
 
 export function songAtReplayTime(moments: SongRouteMoment[], timestampMs: number) {

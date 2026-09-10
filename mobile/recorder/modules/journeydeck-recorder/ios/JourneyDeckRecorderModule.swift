@@ -428,16 +428,25 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     ]
   }
 
-  func pause() async -> [String: Any] {
-    await mutateActiveNativeSession(targetStatus: "paused")
-    await MainActor.run { self.stopPreciseTracking() }
-    return await status()
+  func pause(expectedSessionID: String? = nil) async -> [String: Any] {
+    await mutateActiveNativeSession(targetStatus: "paused", expectedSessionID: expectedSessionID)
+    let result = await status()
+    await JourneyDeckWatchBridge.shared.publish()
+    return result
   }
 
-  func resume() async -> [String: Any] {
-    await mutateActiveNativeSession(targetStatus: "recording")
-    await MainActor.run { self.startPreciseTrackingIfAuthorized() }
-    return await status()
+  func resume(expectedSessionID: String? = nil) async -> [String: Any] {
+    let authorized = await MainActor.run {
+      CLLocationManager.locationServicesEnabled() && self.locationManager.authorizationStatus == .authorizedAlways
+    }
+    guard authorized else {
+      setLastError("always_location_required")
+      return await status()
+    }
+    await mutateActiveNativeSession(targetStatus: "recording", expectedSessionID: expectedSessionID)
+    let result = await status()
+    await JourneyDeckWatchBridge.shared.publish()
+    return result
   }
 
   func finish(expectedSessionID: String? = nil) async -> [String: Any] {
@@ -465,7 +474,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     return result
   }
 
-  func exportInbox(afterSequences: [String: Int]) async -> [String: Any] {
+  func exportInbox(afterSequences: [String: Int], preferredSessionID: String? = nil) async -> [String: Any] {
     await withCheckedContinuation { continuation in
       workQueue.async {
         do {
@@ -478,9 +487,9 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
             """
             SELECT id,owner_user_id,device_id,status,started_at,ended_at,next_sequence,created_at,updated_at
             FROM native_recording_sessions WHERE owner_user_id=?
-            ORDER BY CASE WHEN status='completed' THEN 1 ELSE 0 END,created_at LIMIT 20;
+            ORDER BY CASE WHEN id=? THEN 0 WHEN status<>'completed' THEN 1 ELSE 2 END,created_at LIMIT 20;
             """,
-            bindings: [identity.owner]
+            bindings: [identity.owner, preferredSessionID]
           )
           let sessions: [[String: Any]] = try rows.compactMap { row in
             guard row.count == 9,
@@ -801,12 +810,22 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     }
   }
 
-  private func mutateActiveNativeSession(targetStatus: String) async {
-    await withCheckedContinuation { continuation in
+  private func mutateActiveNativeSession(targetStatus: String, expectedSessionID: String? = nil) async {
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
       workQueue.async {
+        defer {
+          // GPS follows the committed session state, even when a mutation
+          // failed or a newer Watch journey replaced the requested journey.
+          self.reconcilePersistedSession()
+          continuation.resume()
+        }
         do {
           guard let identity = self.configuredIdentity(), let session = try self.activeSession(ownerUserID: identity.owner),
-                session.id.hasPrefix(nativeSessionPrefix) else { continuation.resume(); return }
+                session.id.hasPrefix(nativeSessionPrefix) else { return }
+          if let expectedSessionID, session.id != expectedSessionID {
+            self.setLastError("session_changed")
+            return
+          }
           let database = try NativeRecorderDatabase()
           try database.execute("UPDATE native_recording_sessions SET status=?,updated_at=? WHERE id=? AND status IN ('recording','paused');",
                                bindings: [targetStatus, self.iso(Date()), session.id])
@@ -815,7 +834,6 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
           self.persistState()
           self.setLastError(nil)
         } catch { self.setLastError(self.safeCode(error)) }
-        continuation.resume()
       }
     }
   }
@@ -848,6 +866,8 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       }
       if session.status == "recording" {
         DispatchQueue.main.async { self.startPreciseTrackingIfAuthorized() }
+      } else if session.status == "paused" {
+        DispatchQueue.main.async { self.stopPreciseTracking() }
       } else if session.status == "finishing" {
         try finishSession(session, endedAt: Date())
         state = .empty
@@ -1069,6 +1089,14 @@ public final class JourneyDeckRecorderModule: Module {
       await JourneyDeckNativeRecorder.shared.resume()
     }
 
+    AsyncFunction("pauseJourneyIfMatchingAsync") { (sessionID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.pause(expectedSessionID: sessionID)
+    }
+
+    AsyncFunction("resumeJourneyIfMatchingAsync") { (sessionID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.resume(expectedSessionID: sessionID)
+    }
+
     AsyncFunction("finishActiveJourneyAsync") { () async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.finish()
     }
@@ -1079,6 +1107,10 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("exportInboxAsync") { (afterSequences: [String: Int]) async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.exportInbox(afterSequences: afterSequences)
+    }
+
+    AsyncFunction("exportInboxForSessionAsync") { (afterSequences: [String: Int], sessionID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.exportInbox(afterSequences: afterSequences, preferredSessionID: sessionID)
     }
 
     AsyncFunction("acknowledgeCompletedSessionsAsync") { (sessionIDs: [String]) async -> [String: Any] in

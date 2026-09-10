@@ -1,6 +1,8 @@
+import { testTheme } from './theme-fixture.mts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
 import React from 'react';
@@ -13,27 +15,60 @@ const src = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta
 function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
   const code = ts.transpileModule(src(name), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : require(id) }, { filename: name });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : require(id) }, { filename: name });
   return module.exports;
 }
 const navigationContext = load('native-navigation-context.tsx');
 let light = false;
 let ipad = false;
 let windowSize = { width: 820, height: 1180 };
+let memoryParams: any = { id: 'memory-a' };
+let memoryFlip: any = null;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const Tabs = Object.assign(host('tabs'), { Trigger: Object.assign(host('trigger'), { Icon: host('icon'), Label: host('label') }) });
 const Stack = Object.assign(host('stack'), { Screen: host('route') });
 const navigation = load('native-navigation.tsx', {
-  'react-native': { useWindowDimensions: () => { throw new Error('Tab labels must not depend on global rotation metrics'); } },
+  'react-native': { View: host('view'), useWindowDimensions: () => { throw new Error('Tab labels must not depend on global rotation metrics'); } },
   'react-native-safe-area-context': { useSafeAreaFrame: () => ({ x: 0, y: 0, ...windowSize }) },
   './device-layout': { isIpad: () => ipad },
   './detail-screen-frame': { DetailViewportProvider: host('viewport') },
   './card-detail-link': { useCardDetailDismissal: () => {} },
+  './memory-flip': { MemoryFlipProvider: host('memory-flip'), MemoryFlipImageContext: React.createContext(false), useMemoryFlip: () => memoryFlip },
   './native-navigation-context': navigationContext,
-  './app-theme': { useAppTheme: () => ({ isLight: light }) },
-  'expo-router': { Stack, ThemeProvider: host('theme'), DarkTheme: { dark: true, colors: {} }, DefaultTheme: { dark: false, colors: {} }, useFocusEffect: () => {}, useLocalSearchParams: () => ({ id: 'memory-a' }) },
+  './app-theme': { useAppTheme: () => testTheme(light) },
+  'expo-router': { Stack, ThemeProvider: host('theme'), DarkTheme: { dark: true, colors: {} }, DefaultTheme: { dark: false, colors: {} }, useFocusEffect: () => {}, useLocalSearchParams: () => memoryParams },
   'expo-router/unstable-native-tabs': { NativeTabs: Tabs },
   '../assets/home-tab-orange.png': 42,
+});
+
+test('Memory native handoff waits for layout plus the correct hero; ordinary back navigation regains its native animation', async () => {
+  const ready: string[] = [];
+  memoryParams = { id: 'memory-a', memoryFlip: 'token-a' };
+  memoryFlip = { activeToken: 'token-a', destinationReady: (token: string) => ready.push(token) };
+  let tree: any, stack: any;
+  const render = () => React.createElement(navigationContext.NativeNavigationContext.Provider, { value: { memory: (id: string, onReady: () => void) => React.createElement('detail', { id, onReady }) } }, React.createElement(navigation.NativeMemoryScreen));
+  try {
+    await act(() => { tree = create(render()); stack = create(React.createElement(navigation.JourneyDeckNativeStack)); });
+    const memoryOptions = () => stack.root.findAllByType('route').find((node: any) => node.props.name === 'memory/[id]').props.options;
+    assert.equal(memoryOptions().animation, 'none');
+    assert.equal(ready.length, 0);
+    await act(() => tree.root.findByType('view').props.onLayout());
+    assert.equal(ready.length, 0, 'layout alone cannot expose an unloaded photo');
+    await act(() => tree.root.findByType('detail').props.onReady());
+    assert.deepEqual(ready, ['token-a']);
+    memoryParams = { id: 'memory-b', memoryFlip: 'token-b' };
+    await act(() => tree.update(render()));
+    assert.equal(ready.length, 1, 'an earlier hero cannot mark a different memory ready');
+    await act(() => tree.root.findByType('detail').props.onReady());
+    assert.deepEqual(ready, ['token-a', 'token-b']);
+    memoryFlip = null;
+    await act(() => stack.update(React.createElement(navigation.JourneyDeckNativeStack)));
+    assert.equal(memoryOptions().animation, 'default');
+    assert.equal(stack.root.findByType('stack').props.screenOptions.gestureEnabled, true);
+  } finally {
+    memoryFlip = null; memoryParams = { id: 'memory-a' };
+    await act(() => { tree?.unmount(); stack?.unmount(); });
+  }
 });
 
 test('zoom detail routes omit UIKit headers while retaining native stack gestures', async () => {
@@ -163,7 +198,8 @@ test('Expo stack retains Memory and tab keys when opening a Journey and going ba
 
 test('route-local loads ignore old responses and retain data while refreshing', async () => {
   const requests: { id: string; resolve: (value: any) => void; reject: (reason: Error) => void }[] = [];
-  const { useJourneyDetail } = load('use-journey-detail.ts', { './app-data': { appDataClient: { journey: (id: string) => new Promise((resolve, reject) => requests.push({ id, resolve, reject })) } } });
+  let archiveChanged: (() => void) | null = null;
+  const { useJourneyDetail } = load('use-journey-detail.ts', { './local-archive-events': { subscribeLocalArchiveChanges: (listener: () => void) => { archiveChanged = listener; return () => { archiveChanged = null; }; } }, './app-data': { appDataClient: { journey: (id: string) => new Promise((resolve, reject) => requests.push({ id, resolve, reject })) } } });
   let result: any;
   function Detail({ id }: { id: string }) { result = useJourneyDetail(id); return null; }
   let tree: any;
@@ -173,7 +209,7 @@ test('route-local loads ignore old responses and retain data while refreshing', 
   assert.equal(result.state.data, null);
   await act(async () => { requests[1].resolve({ id: 'new', title: 'Original' }); await Promise.resolve(); });
   assert.equal(result.state.data.id, 'new');
-  await act(() => result.refresh());
+  await act(() => archiveChanged?.());
   assert.equal(result.state.status, 'loading');
   assert.equal(result.state.data.title, 'Original');
   await act(async () => { requests[2].resolve({ id: 'new', title: 'Saved place' }); await Promise.resolve(); });
@@ -184,18 +220,19 @@ test('route-local loads ignore old responses and retain data while refreshing', 
   assert.equal(result.state.data.id, 'new');
   await act(() => result.refresh());
   await act(() => tree.unmount());
+  assert.equal(archiveChanged, null);
   await act(async () => { requests[4].resolve({ id: 'new', title: 'Late response' }); await Promise.resolve(); });
   assert.notEqual(result.state.data.title, 'Late response');
 });
 
-test('preview navigation runtime stays isolated from V1 and the installed preview OTA runtime', () => {
+test('preview navigation runtime stays isolated from V1 and the installed preview OTA runtime', async () => {
   const app = JSON.parse(readFileSync(new URL('../app.json', import.meta.url), 'utf8')).expo;
   const config = require('../app.config.js');
   const previous = process.env.APP_VARIANT;
   try {
     process.env.APP_VARIANT = 'v2-preview';
     const preview = config({ config: app });
-    assert.equal(preview.runtimeVersion, '2.0.0-preview.6');
+    assert.equal(preview.runtimeVersion, '2.0.0-preview.9');
     assert.ok(preview.plugins.includes('./plugins/with-journeydeck-watch'));
     assert.equal(preview.ios.supportsTablet, true);
     assert.equal(preview.ios.requireFullScreen, false);
@@ -204,12 +241,26 @@ test('preview navigation runtime stays isolated from V1 and the installed previe
     assert.equal(preview.ios.bundleIdentifier, 'com.journeydeck.recorder.v2');
     assert.ok(preview.plugins.includes('expo-router'));
     assert.ok(preview.plugins.includes('./plugins/with-even-native-tabs'));
-    assert.deepEqual(preview.ios.icon, { light: './assets/icon-light-plum-v1.png', dark: './assets/icon.png' });
+    assert.deepEqual(preview.ios.icon, {
+      light: './assets/icon-light-plum-v1.png',
+      dark: './assets/icon.png',
+      tinted: './assets/icon-tinted-clear-v1.png',
+    });
     for (const file of Object.values(preview.ios.icon) as string[]) {
       const png = readFileSync(new URL('../' + file, import.meta.url));
       assert.equal(png.subarray(1, 4).toString(), 'PNG');
       assert.equal(png.readUInt32BE(16), png.readUInt32BE(20), 'Home Screen icons must be square');
     }
+    const tinted = await require('@expo/image-utils').getPngInfo(fileURLToPath(new URL('../assets/icon-tinted-clear-v1.png', import.meta.url)));
+    assert.equal(tinted.width, 1024);
+    assert.equal(tinted.height, 1024);
+    let validMonochrome = true;
+    for (let offset = 0; offset < tinted.data.length; offset += 4) {
+      if (tinted.data[offset] !== tinted.data[offset + 1] || tinted.data[offset + 1] !== tinted.data[offset + 2] || tinted.data[offset + 3] !== 255) {
+        validMonochrome = false; break;
+      }
+    }
+    assert.equal(validMonochrome, true, 'tinted icon must be opaque grayscale');
     delete process.env.APP_VARIANT;
     const publicRelease = config({ config: app });
     assert.equal(publicRelease.ios.bundleIdentifier, app.ios.bundleIdentifier);

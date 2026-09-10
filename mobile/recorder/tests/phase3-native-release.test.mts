@@ -90,7 +90,17 @@ test('CloudKit transport stages tokens, preserves assets atomically, and reports
   assert.match(swift, /changeTokenExpired/);
   assert.match(swift, /retrying<T>/);
   assert.match(swift, /CKErrorRetryAfterKey/);
-  assert.match(swift, /replaceItemAt/);
+  const assetPersistence = swift.slice(swift.indexOf('private func persistentAssetPath'), swift.indexOf('private func removePersistedAssets'));
+  assert.match(assetPersistence, /SHA256\.hash/);
+  assert.match(assetPersistence, /appendingPathComponent\("\\\(safeName\)-\\\(digest\)"\)/,
+    'downloaded versions have separate immutable paths before JavaScript conflict resolution');
+  assert.match(assetPersistence, /copyItem\(at: source, to: temporary\)/);
+  assert.match(assetPersistence, /moveItem\(at: temporary, to: destination\)/);
+  assert.doesNotMatch(assetPersistence, /replaceItemAt/,
+    'pulling an older cloud asset must never replace a file currently referenced by SQLite');
+  const pullPage = swift.slice(swift.indexOf('private func pull(zoneID:'), swift.indexOf('private struct ParsedInput'));
+  assert.match(pullPage, /case \.failure\(let error\):[\s\S]*throw error[\s\S]*savePendingToken/,
+    'per-record download failures abort before staging the page cursor');
   assert.match(swift, /failedRecords/);
   assert.match(orchestration, /retryAfterSeconds/);
   assert.match(orchestration, /engine\.setSyncCompleted\(\)/);

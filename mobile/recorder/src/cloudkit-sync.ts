@@ -56,14 +56,18 @@ import {
   getPlace,
   upsertPlace,
   deletePlace,
+  isEditorManagedJourney,
+  isEditorManagedMusic,
 } from './local-store';
 import { PRIVATE_PLACE_PREFIX, parsePrivatePlace } from './private-place-record';
 import { resolvePrivatePhotoFile } from './private-photo-file';
 import { resolveVersionedPrivateConflict } from './private-content-conflicts';
 import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive } from './route-archive';
 import { isDirectJourneyMemoryId } from './memory-model';
+import { acknowledgeJourneyEdits, ingestJourneyEdit, journeyEditsPendingSync, listJourneyEditConflicts, requeueDeletedJourneyEdits,
+  MAX_JOURNEY_EDIT_ASSET_BYTES, parseJourneyEditPayload, type StoredJourneyEdit } from './journey-editor-store';
 
-export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
+export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
 
 export interface CloudKitRecord {
   recordName: string;
@@ -91,6 +95,35 @@ async function routeStagingDirectory(userId: LocalUserId): Promise<string> {
 
 export async function deletePrivateRouteStagingAssets(userId: LocalUserId): Promise<void> {
   await FileSystem.deleteAsync(await routeStagingDirectory(userId), { idempotent: true });
+}
+
+export async function journeyEditToCKRecord(userId: LocalUserId, edit: StoredJourneyEdit): Promise<CloudKitRecord> {
+  const checksum = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, edit.payload);
+  const directory = await routeStagingDirectory(userId);
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  // Operations and asset names are immutable, including while a push awaits.
+  const assetFilePath = `${directory}edit-${checksum}.json`;
+  await FileSystem.writeAsStringAsync(assetFilePath, edit.payload, { encoding: FileSystem.EncodingType.UTF8 });
+  return { recordName: `edit_${edit.id}`, recordType: 'JourneyEdit', assetFilePath,
+    fields: { id: edit.id, rootJourneyId: edit.rootJourneyId, parentId: edit.parentId, formatVersion: 1, sha256: checksum, syncRevision: 1, updatedAt: edit.createdAt },
+    modificationDate: edit.createdAt };
+}
+
+async function readJourneyEditRecord(record: CloudKitRecord, userId: LocalUserId): Promise<string> {
+  if (Number(record.fields.formatVersion) !== 1 || !record.assetFilePath || !/^[a-f0-9]{64}$/.test(String(record.fields.sha256))) {
+    throw new Error('A private journey edit is missing its recovery asset.');
+  }
+  const info = await FileSystem.getInfoAsync(record.assetFilePath);
+  if (!info.exists || !('size' in info) || info.size <= 0 || info.size > MAX_JOURNEY_EDIT_ASSET_BYTES) throw new Error('The private journey edit file is missing or too large.');
+  const raw = await FileSystem.readAsStringAsync(record.assetFilePath, { encoding: FileSystem.EncodingType.UTF8 });
+  const checksum = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, raw);
+  if (checksum !== record.fields.sha256) throw new Error('The private journey edit failed its integrity check.');
+  const operation = parseJourneyEditPayload(raw, userId);
+  if (operation.id !== record.fields.id || `edit_${operation.id}` !== record.recordName || operation.rootJourneyId !== record.fields.rootJourneyId
+    || operation.parentId !== (record.fields.parentId ?? null)) {
+    throw new Error('The private journey edit identity does not match its recovery asset.');
+  }
+  return raw;
 }
 
 function stateFor(userId: LocalUserId): SyncState {
@@ -314,14 +347,17 @@ export class CloudKitSyncEngine {
   private userId: LocalUserId;
   private privateContentV2: boolean;
   private privateRouteAssets: boolean;
+  private privateJourneyEdits: boolean;
   private preparedRevisions = new Map<string, number>();
+  private preparedSnapshots = new Map<string, string>();
   private preparationFailures = new Set<string>();
   private issues = new Map<string, string>();
 
-  constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean } = {}) {
+  constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean; privateJourneyEdits?: boolean } = {}) {
     this.userId = userId;
     this.privateContentV2 = options.privateContentV2 === true;
     this.privateRouteAssets = options.privateRouteAssets === true;
+    this.privateJourneyEdits = options.privateJourneyEdits === true;
   }
 
   public getSyncState(): SyncState {
@@ -372,15 +408,30 @@ export class CloudKitSyncEngine {
       memoryPhotoRecords.push(photoToCKRecord(photo));
     }
     const routeRecords = await Promise.all(pendingRoutes.map(routeArchiveToCKRecord));
+    const editRecords = this.privateJourneyEdits ? await Promise.all(journeyEditsPendingSync(this.userId, 4).map(edit => journeyEditToCKRecord(this.userId, edit))) : [];
     const records = [
+      ...editRecords,
       ...listPrivatePreferences(this.userId, true).filter(item => pendingPreferenceKeys.includes(item.key)).map(preferenceToCKRecord),
       ...pendingJourneys.map(journeyToCKRecord),
       ...routeRecords,
       ...pendingMusic.map(musicEntryToCKRecord),
       ...memories.map(memoryToCKRecord),
       ...memoryPhotoRecords,
-    ].slice(0, Math.max(1, Math.min(200, limit * 4)));
+    ].filter(record => {
+      // Preparing assets yields to JavaScript. An edit committed during that
+      // wait takes ownership of the whole projection before these rows leave.
+      if (record.recordType === 'Journey') return !isEditorManagedJourney(this.userId, String(record.fields.id));
+      if (record.recordType === 'RouteArchive') return !isEditorManagedJourney(this.userId, String(record.fields.journeyId));
+      if (record.recordType === 'MusicEntry') return !isEditorManagedMusic(this.userId, String(record.fields.id));
+      return true;
+    }).slice(0, Math.max(1, Math.min(200, limit * 4)));
     for (const record of records) {
+      // Journey/music have no application revision in the deployed schema.
+      // Retain the exact wire content, not just an ID or timestamp: enrichment
+      // can update a row while the native upload is awaiting the network.
+      if (record.recordType === 'Journey' || record.recordType === 'MusicEntry') {
+        this.preparedSnapshots.set(record.recordName, JSON.stringify(record.fields));
+      }
       const revision = Number(record.fields.syncRevision);
       if (Number.isFinite(revision)) this.preparedRevisions.set(record.recordName, revision);
       if (!this.privateContentV2 && record.recordType === 'Memory') {
@@ -415,6 +466,8 @@ export class CloudKitSyncEngine {
       asset_missing: 'iCloud could not access the file for this item.',
       asset_modified: 'The file changed while it was uploading.',
       server_record_changed: 'Another device changed this item during sync.',
+      unversioned_local_conflict: 'A local edit is kept safely on this device. iCloud has different data without a newer reliable version; this item needs a sync-conflict review.',
+      journey_edit_conflict: 'Two devices edited the same original. Both edits are preserved; open Journey Editing Studio to review the conflict before making further changes.',
       missing_dependency: 'A related place, journey, or Memory has not arrived yet. Sync the source device, then try again here.',
     };
     const reason = reasons[code] ?? (/^cloudkit_\d{1,4}$/.test(code) ? `iCloud returned error ${code.slice(9)}.` : 'iCloud did not provide a specific reason for this item.');
@@ -443,6 +496,7 @@ export class CloudKitSyncEngine {
   }
 
   public getIssueDetails(): string[] {
+    for (const conflict of listJourneyEditConflicts(this.userId)) this.recordUploadFailure(`edit_${conflict.id}`, 'journey_edit_conflict');
     const details = [...this.issues.values()].slice(0, 5);
     if (this.issues.size > 5) details.push(`${this.issues.size - 5} more items need attention.`);
     return details;
@@ -454,17 +508,31 @@ export class CloudKitSyncEngine {
   public acknowledgeSuccessfulPush(pushedRecordNames: string[]): void {
     const journeyIds = pushedRecordNames
       .filter(name => name.startsWith('journey_'))
-      .map(name => name.replace('journey_', ''));
+      .filter(name => {
+        const current = getJourney(this.userId, name.slice(8));
+        return current && this.preparedSnapshots.get(name) === JSON.stringify(journeyToCKRecord(current).fields);
+      })
+      .map(name => name.slice(8));
 
     if (journeyIds.length) {
       markJourneysSynced(this.userId, journeyIds);
     }
-    markMusicEntriesSynced(this.userId, recordIds(pushedRecordNames, 'music_'));
+    const musicIds = pushedRecordNames.filter(name => name.startsWith('music_')).filter(name => {
+      const current = getMusicEntry(this.userId, name.slice(6));
+      return current && this.preparedSnapshots.get(name) === JSON.stringify(musicEntryToCKRecord(current).fields);
+    }).map(name => name.slice(6));
+    // These reads and acknowledgements are synchronous on the one master
+    // SQLite owner, so a JavaScript edit cannot interleave between them.
+    markMusicEntriesSynced(this.userId, musicIds);
     markMemoryRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'memory_', this.preparedRevisions));
     markPhotoRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'photo_', this.preparedRevisions));
     markPreferenceRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'preference_', this.preparedRevisions, true));
     markRouteArchiveRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'route_', this.preparedRevisions));
-    for (const name of pushedRecordNames) this.preparedRevisions.delete(name);
+    acknowledgeJourneyEdits(this.userId, revisionAcks(pushedRecordNames, 'edit_', this.preparedRevisions).map(ack => ack.id));
+    for (const name of pushedRecordNames) {
+      this.preparedRevisions.delete(name);
+      this.preparedSnapshots.delete(name);
+    }
 
     syncStates.set(this.userId, {
       ...stateFor(this.userId),
@@ -478,13 +546,23 @@ export class CloudKitSyncEngine {
   /**
    * Processes incoming records downloaded from CloudKit.
    */
-  public async ingestRemoteRecords(remoteRecords: CloudKitRecord[]): Promise<{ updatedCount: number; deferredCount: number }> {
+  public async ingestRemoteRecords(remoteRecords: CloudKitRecord[], assertProfileCurrent: () => void = () => {}): Promise<{ updatedCount: number; deferredCount: number }> {
     let count = 0;
     let deferredCount = 0;
-    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, MusicEntry: 2, Collection: 3, Memory: 4, Photo: 5, PrivatePreference: -1 };
-    for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType])) {
+    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3, Collection: 4, Memory: 5, Photo: 6, PrivatePreference: -1 };
+    const editsById = new Map(remoteRecords.filter(record => record.recordType === 'JourneyEdit').map(record => [String(record.fields.id), record]));
+    const editDepth = (record: CloudKitRecord, seen = new Set<string>()): number => {
+      const parentId = String(record.fields.parentId ?? '');
+      if (!parentId || seen.has(parentId) || seen.size >= 256 || !editsById.has(parentId)) return 0;
+      seen.add(parentId);
+      return 1 + editDepth(editsById.get(parentId)!, seen);
+    };
+    for (const record of [...remoteRecords].sort((left, right) => priority[left.recordType] - priority[right.recordType]
+      || (left.recordType === 'JourneyEdit' ? editDepth(left) - editDepth(right) : 0))) {
+      assertProfileCurrent();
       if (record.recordType === 'Journey') {
         const remoteJourney = ckRecordToJourney(record, this.userId);
+        if (isEditorManagedJourney(this.userId, remoteJourney.id)) continue;
         const localJourney = getJourney(this.userId, remoteJourney.id);
         const winner = localJourney ? resolveConflict(localJourney, remoteJourney) : remoteJourney;
         if (winner === remoteJourney) {
@@ -497,6 +575,15 @@ export class CloudKitSyncEngine {
           }
           remoteJourney.startPlaceId = start?.id ?? null;
           remoteJourney.endPlaceId = end?.id ?? null;
+          // Resolve incoming place identities before comparing wire content:
+          // an out-of-order dependency must defer this record, not abort the batch.
+          if (localJourney && !localJourney.syncedToCloud
+            && Date.parse(localJourney.updatedAt) === Date.parse(remoteJourney.updatedAt)
+            && JSON.stringify(journeyToCKRecord(localJourney).fields) !== JSON.stringify(journeyToCKRecord(remoteJourney).fields)) {
+            this.recordUploadFailure(record.recordName, 'unversioned_local_conflict');
+            deferredCount++;
+            continue;
+          }
           upsertJourney(remoteJourney, {
             syncedToCloud: 1,
             createdAt: remoteJourney.createdAt,
@@ -505,7 +592,9 @@ export class CloudKitSyncEngine {
           count++;
         }
       } else if (record.recordType === 'RouteArchive') {
+        if (isEditorManagedJourney(this.userId, String(record.fields.journeyId))) continue;
         const remote = await readRouteArchiveRecord(record);
+        assertProfileCurrent();
         const local = getRouteArchive(this.userId, remote.journeyId);
         if (!local) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         const remoteVersion = { updatedAt: remote.updatedAt, syncRevision: remote.syncRevision, deletedAt: null };
@@ -513,8 +602,26 @@ export class CloudKitSyncEngine {
         if (local.pointCount > 0 && resolvePrivateConflict(localVersion, remoteVersion) !== remoteVersion) continue;
         replaceJourneyGpsPointsFromCloud(this.userId, remote.journeyId, remote.points, remote.syncRevision, remote.updatedAt);
         count++;
+      } else if (record.recordType === 'JourneyEdit') {
+        const raw = await readJourneyEditRecord(record, this.userId);
+        assertProfileCurrent();
+        const result = ingestJourneyEdit(this.userId, raw);
+        if (result === 'deferred') { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; }
+        else if (result === 'conflict') this.recordUploadFailure(record.recordName, 'journey_edit_conflict');
+        else if (result === 'applied') count++;
       } else if (record.recordType === 'MusicEntry') {
         const entry = ckRecordToMusicEntry(record, this.userId);
+        if (isEditorManagedMusic(this.userId, entry.id)) continue;
+        const local = getMusicEntry(this.userId, entry.id);
+        // The deployed MusicEntry schema uses createdAt as updatedAt. It cannot
+        // order later artwork/enrichment edits. Preserve dirty local content
+        // and report the conflict rather than silently replacing the only copy.
+        if (local && !local.syncedToCloud
+          && JSON.stringify(musicEntryToCKRecord(local).fields) !== JSON.stringify(musicEntryToCKRecord(entry).fields)) {
+          this.recordUploadFailure(record.recordName, 'unversioned_local_conflict');
+          deferredCount++;
+          continue;
+        }
         if (entry.journeyId && !getJourney(this.userId, entry.journeyId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });
         count++;
@@ -557,6 +664,7 @@ export class CloudKitSyncEngine {
     // CloudKit deletion has no application revision, so quarantine it and
     // re-queue any surviving local row instead of erasing the only copy.
     quarantineCloudDeletions(this.userId, recordNames);
+    requeueDeletedJourneyEdits(this.userId, recordNames);
   }
 
   private pendingCount(): number {
@@ -566,7 +674,7 @@ export class CloudKitSyncEngine {
     const pendingDirectMemoryCount = memoriesPendingSync(this.userId, 500).filter(isDirectJourneyMemoryId).length;
     return journeysPendingSync(this.userId, 500).length + musicEntriesPendingSync(this.userId, 500).length +
       pendingDirectMemoryCount + pendingMemoryPhotoCount + preferencesPendingSync(this.userId, 500).length +
-      (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0);
+      (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0) + journeyEditsPendingSync(this.userId, 500).length;
   }
 
   public setSyncCompleted(): void {
@@ -578,10 +686,6 @@ export class CloudKitSyncEngine {
       pendingUploadCount: this.pendingCount(),
     });
   }
-}
-
-function recordIds(names: string[], prefix: string): string[] {
-  return names.filter(name => name.startsWith(prefix)).map(name => name.slice(prefix.length));
 }
 
 function revisionAcks(names: string[], prefix: string, revisions: Map<string, number>, decode = false): Array<{ id: string; syncRevision: number }> {

@@ -76,7 +76,6 @@ export type PrimarySectionsData = {
 };
 
 const patternReviewKey = (userId: string) => `primary.atlas-pattern-reviews.${userId}.v1`;
-const primarySectionsCacheKey = (userId: string) => `primary.sections.${userId}.v1`;
 
 function safeEpoch(value: string) {
   const epoch = Date.parse(value);
@@ -420,7 +419,6 @@ export async function loadPrimarySectionsData(
   forceRefresh = false,
   membership: JourneyDeckMembershipEntitlements = currentMembershipEntitlements(),
 ): Promise<PrimarySectionsData> {
-  const cacheKey = primarySectionsCacheKey(getCurrentUser().id);
   const [dashboard, journeys, memories, music, vehicle] = await Promise.all([
     appDataClient.dashboard(forceRefresh).catch(() => appDataClient.localDashboard()),
     loadJourneyArchive(membership, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(false), appDataClient.vehicleIntelligence(false),
@@ -469,7 +467,8 @@ export async function loadPrimarySectionsData(
     search: buildSearchRecords(accessibleJourneys, details, accessibleMemories, vehicle.places),
     atlasPatterns: membership.atlasAccess ? buildAtlasPatterns(accessibleJourneys, vehicle) : [],
   };
-  writeAppCache(cacheKey, data);
+  // This view is rebuilt from the local archive; no consumer reads a cached
+  // copy. Duplicating full routes here can exceed the recorder cache limit.
   void enrichJourneyEndpointPlaces(getCurrentUser().id, details).catch(() => undefined);
   return data;
 }

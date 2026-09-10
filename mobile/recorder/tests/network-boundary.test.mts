@@ -108,13 +108,15 @@ test('all JavaScript JourneyDeck traffic crosses one auditable request boundary'
   assert.deepEqual(rawFetchFiles, ['network-request.ts']);
 });
 
-test('Apple artwork fallback is allowlisted to the public iTunes search endpoint', async () => {
+test('Apple artwork fallback is allowlisted to the public iTunes search and lookup endpoints', async () => {
   const requestSource = await readFile(new URL('../src/network-request.ts', import.meta.url), 'utf8');
   const lookupSource = await readFile(new URL('../src/apple-artwork-lookup.ts', import.meta.url), 'utf8');
   assert.match(requestSource, /requestAppleCatalogJson/);
-  assert.match(requestSource, /https:\\\/\\\/itunes\\\.apple\\\.com\\\/search/);
+  assert.ok(requestSource.includes('(?:search|lookup)'));
   assert.match(lookupSource, /MAX_LOOKUPS_PER_REFRESH = 15/);
-  assert.match(lookupSource, /exactITunesArtworkMatch/);
+  assert.match(lookupSource, /resolveAppleArtwork/);
+  const resolverSource = await readFile(new URL('../src/apple-artwork-resolver.ts', import.meta.url), 'utf8');
+  assert.match(resolverSource, /exactITunesArtworkMatch/);
   assert.doesNotMatch(lookupSource, /\bfetch\s*\(/);
 });
 

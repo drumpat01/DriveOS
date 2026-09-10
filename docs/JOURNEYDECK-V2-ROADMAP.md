@@ -1,18 +1,26 @@
 # JourneyDeck V2 product roadmap
 
-Updated: September 4, 2026
+Updated: September 9, 2026
 
-September 5 implementation update: iPad Statistics now implements the approved six-widget overview with the calendar immediately below, selected-day detail, raw journey/music charts and paged native journey links in both themes. Home, Soundtracks, Memory Studio, Statistics and Settings have tablet source implementations; older Home-only/blank-tab milestone descriptions below are historical. Remaining tablet work includes Home card navigation and physical device acceptance. Statistics typecheck and 294 mobile tests pass; no build/OTA/submission is authorized until iPad, Watch and POI are ready and the user approves release.
+September 6 implementation update: the approved data-rich Statistics dashboard now powers both iPhone and iPad, with six widgets, the calendar immediately below, selected-day detail, raw journey/music charts, paged native journey links, averages, record highs and activity split in both themes. iPhone uses compact safe-area spacing, two equal metric columns and stacked panels; iPad retains wide dashboard rows. Home, Soundtracks, Memory Studio, Statistics and Settings have tablet source implementations; older Home-only/blank-tab milestone descriptions below are historical. Statistics typecheck and all 294 mobile tests pass; physical layout/VoiceOver acceptance remains pending for the newest source.
 
 ## Purpose and scope
 
-Build on JourneyDeck 1.9.0 (Build 14) with more personal presentation, richer place and vehicle intelligence, automatic recording, broader music support, and interactive sharing. The user confirmed all seven features below for the V2 roadmap on September 4, 2026.
+Build on JourneyDeck 1.9.0 (Build 14) with more personal presentation, richer place intelligence, vehicle intelligence, broader music support, native Apple Watch control, and dedicated iPad layouts. The original feature list was approved September 4, 2026 and revised by the user September 6.
 
-Later on September 4, the user also approved the native-navigation Phase 1 described below. It is an additional foundation milestone; the original seven features remain in scope.
+Later on September 4, the user also approved the native-navigation Phase 1 described below. It is an additional foundation milestone.
 
 This is the product roadmap for the iOS app and its required supporting services. It is separate from the completed desktop modular-monolith migration roadmap. Desktop redesign, Android, and unrelated architecture rewrites are outside this scope.
 
-The feature list is confirmed. Delivery order, individual feature boundaries, and unresolved product choices below are proposed planning defaults, not previously approved designs or release dates. All seven features remain in V2 scope; an external blocker does not silently remove a feature or move it to another release.
+September 9 scope decision: Tessie connection, vehicle telemetry, charging history, and vehicle intelligence are deferred in full to JourneyDeck V3. V2 has no Tessie integration or Tessie-derived UI; the preserved implementation remains hard-disabled compatibility/reference code only. Live Activities with explicit Dynamic Island support, a safety-constrained CarPlay companion, one new red theme, and one new green theme are confirmed for V3. iPhone Duo support is an emergency JourneyDeck V2.5 compatibility release. Automatic journey recording and interactive shared-journey web pages remain outside V2. Spotify through Last.fm remains blocked and must not advance until the Last.fm partners team responds.
+
+September 6 paid-membership direction: keep the focused Atlas value set to cinematic journey playback and recaps, premium Home widgets and Watch complications, Atlas intelligence, and premium themes and app icons. Themes and icons are a distinct benefit rather than being buried under widgets. Basic recording, route viewing, POI labels, and ordinary iCloud backup remain core functionality. Tessie access is no longer part of the V2 membership or core-feature scope.
+
+Approved premium theme directions (September 6): **Sakura Chrome** and **Riviera Porcelain** are the new light themes; **Redline Noir** and **Aurora Passage** are the new dark themes. Preserve each concept's distinct palette and atmosphere during implementation rather than reducing them to accent-color swaps.
+
+Latest September 6 decision supersedes the names above: **Rosewater** replaces Sakura Chrome, and **Carbon Blue** with ice-white accents replaces Redline Noir. Carbon Voltage/cognac were rejected. Both replacements now include separate matching headers, Memory covers and journey placeholders. Existing stored selections are retained, original Cinematic Dark/Warm Ivory stay available, and testing remains free. User authorized OTA publication; see the latest handoff for the verified release ID.
+
+September 6 implementation: Sakura Chrome and the revised multicolor Redline Noir are prepared in the mobile working tree with bundled artwork/materials and a persistent four-theme Settings picker on iPhone/iPad. **No paywall during testing.** Full mobile299/299, typecheck and iOS export pass; physical visual acceptance and OTA publication remain pending. Riviera Porcelain and Aurora Passage remain planned; Home Screen icon changes remain separate native work.
 
 ## Starting point
 
@@ -29,15 +37,15 @@ The feature list is confirmed. Delivery order, individual feature boundaries, an
 | M0 — Safe V2 foundation | Isolated V2 distribution, feature inventory, provider feasibility | Baseline reconciled; isolated signed preview delivered; provider assessment pending | V2 test updates cannot reach V1 installs; dormant code and external dependencies have been assessed |
 | M1 — Light mode | Complete light theme with theme selection | Implemented; 211/211 tests and iOS export pass; signed preview built; physical review pending | All primary screens and important flows work in both themes |
 | M1a — Native navigation, Phase 1 | Expo native tabs, native detail navigation, preserved screen state | Implemented; 220/220 tests and iOS export pass; Build 5 spacing and Music-label OTA confirmed working by user on iPhone; broader Phase 1 acceptance pending | Fast tab changes, even spacing, correct back gestures, retained state, and uninterrupted recording pass on iPhone in both themes |
-| M2 — Place intelligence | Foursquare enrichment | Deferred concept; assess reusable implementation | Real place matches improve labels while saved names and offline behavior remain reliable |
-| M3 — Vehicle intelligence | Tessie connection and useful vehicle/charging insights | Dormant implementation; requires review | A real connected vehicle supplies correctly scoped, useful data without affecting manual recording |
-| M4 — Automatic recording | Dependable automatic start and finish | Dormant implementation; requires physical validation | Agreed real-drive acceptance matrix passes, including false-start and recovery cases |
-| M5 — Broader soundtracks | Spotify listening matched through Last.fm | Internal implementation; public-release gate unresolved | Authorized public flow matches real listening to journeys and handles missing data honestly |
-| M6 — Interactive sharing | Revocable, privacy-safe journey web pages | Concept only | A recipient can explore an intentionally published journey and the owner can revoke access |
-| M7 — iPad support | App availability on iPad with a dedicated tablet layout | Option 2 widget Home implemented in both themes; signed universal Build 6 delivered; physical review pending; remaining pages deferred | Primary flows work in an iPad-specific layout, with physical iPad validation |
-| M8 — V2 release candidate | Integrated verification, upgrade acceptance, release material | Not started | All seven features and native-navigation Phase 1 meet their criteria and the release gates below pass |
+| M2 — Place intelligence | U.S. Overture POI with MapKit fallback | Implemented and deployed; physical destination acceptance pending | Real place matches improve labels while saved names and offline behavior remain reliable |
+| M3 — Vehicle intelligence | Moved to JourneyDeck V3 | Tessie remains hard-disabled compatibility/reference code in V2 | No V2 runtime, entitlement, onboarding step, setting, replay, or screen exposes Tessie |
+| M4 — Automatic recording | Removed from V2 | Superseded by intentional Apple Watch Start/Stop | No V2 implementation required |
+| M5 — Broader soundtracks | Spotify listening matched through Last.fm | Blocked pending a response from the Last.fm partners team | Resume only after written partner clearance |
+| M6 — Interactive sharing | Removed from V2 | Hosted journey website is no longer needed | No V2 implementation required |
+| M7 — iPad support | App availability on iPad with a dedicated tablet layout | All five tablet tabs implemented in Build 18; physical acceptance pending | Primary flows work in an iPad-specific layout, with physical iPad validation |
+| M8 — V2 release candidate | Integrated verification, upgrade acceptance, release material | Build 18 delivered to TestFlight; physical acceptance and public review remain | Active in-scope features and release gates pass |
 
-Start provider permission, pricing, coverage, and hosting feasibility checks during M0 so external dependencies are understood before implementation reaches them. M3 precedes M4 because the earlier automatic-recording design depended on Tessie; that dependency must be explicitly retained or removed. The sequence is not a calendar estimate.
+Provider permission, pricing, and coverage checks remain required before any V3 Tessie work and before resuming Last.fm. Last.fm work is paused pending its partners team. The sequence is not a calendar estimate.
 
 ### Native interaction polish — Phase 2 (approved September 4)
 
@@ -75,7 +83,7 @@ Approved scope (September 4):
 - Cover Home, Soundtracks, Memories, Statistics, Atlas, Settings, onboarding, Journey Details, editors, paywall, dialogs, navigation, charts, maps, and empty/error/loading states.
 - Adapt artwork contrast and map presentation deliberately; keep existing photos, layouts, navigation, and exported share-card styling unchanged.
 
-**Done when:** No unreadable labels, dark-only sheets, or theme flashes remain in the covered flows; small screens and large text are usable; the Light/Dark choice persists and responds correctly; both themes receive visual review on a physical iPhone. Shared web pages also receive an intentional readable theme treatment in V2-06.
+**Done when:** No unreadable labels, dark-only sheets, or theme flashes remain in the covered flows; small screens and large text are usable; the Light/Dark choice persists and responds correctly; both themes receive visual review on a physical iPhone.
 
 ### V2-02 — Foursquare place enrichment
 
@@ -89,7 +97,11 @@ Proposed scope:
 
 **Done when:** Representative real destinations resolve usefully; ambiguous/no-result/provider-failure cases remain usable; saved names survive refreshes; offline journeys still finish immediately; required provider access, cost limits, attribution, and privacy disclosures have been verified before release.
 
-### V2-03 — Tessie and vehicle intelligence
+### V2-03 — Tessie and vehicle intelligence — moved to V3
+
+**September 9 decision:** Do not implement or release Tessie in JourneyDeck V2. Replay, Settings, onboarding, entitlements, and ordinary V2 dashboards must not imply that live vehicle data is available. Preserve the gated code only to inform a fresh V3 design review; do not enable it by changing the release flag.
+
+<details><summary>V3 backlog context</summary>
 
 **Outcome:** A connected Tesla adds useful vehicle context to JourneyDeck.
 
@@ -101,7 +113,13 @@ Proposed scope:
 
 **Done when:** A real vehicle connection, refresh, token expiry, disconnect, and profile change work safely; vehicle/charging data is attributed correctly; cost calculations explain their inputs; missing Tessie access cannot block ordinary JourneyDeck use. Free/paid access and multi-vehicle scope are explicitly settled.
 
-### V2-04 — Automatic journey recording
+</details>
+
+### V2-04 — Automatic journey recording — removed from V2
+
+**September 6 decision:** Do not implement or release automatic journey recording in V2. The Apple Watch companion now provides convenient, intentional Start/Stop control and removes the product need for this feature. Dormant automatic-recording code remains disabled and is not a release requirement.
+
+<details><summary>Historical proposal</summary>
 
 **Outcome:** Eligible users can capture real drives without remembering to tap Start or End.
 
@@ -113,7 +131,11 @@ Proposed scope:
 
 **Done when:** Physical tests cover ordinary drives, short drives, traffic lights, walking, parking, poor GPS, locked/background operation, denied/revoked permissions, offline completion, restart recovery, and switching modes. Measure departure/arrival accuracy and battery impact against agreed acceptance targets. Unsupported force-quit or platform behavior must be explained honestly. Test entitlement/vehicle loss if those gates are retained.
 
+</details>
+
 ### V2-05 — Spotify soundtracks through Last.fm
+
+**Status:** Blocked. Do not advance public implementation or release work until the Last.fm partners team responds and provides the necessary clearance.
 
 **Outcome:** Spotify listeners can attach their listening history to journeys through the planned Last.fm path.
 
@@ -125,7 +147,11 @@ Proposed scope:
 
 **Done when:** Real Spotify-to-Last.fm history produces correctly timed journey songs; retries do not duplicate plays; empty/late/unavailable history has clear states; route geometry and JourneyDeck records are not sent to the privacy edge. Obtain the written permission and presentation clearance required by the recorded release gate, and verify current provider terms before public distribution. Do not contact providers automatically from this roadmap.
 
-### V2-06 — Interactive shared-journey web pages
+### V2-06 — Interactive shared-journey web pages — removed from V2
+
+**September 6 decision:** Do not build the hosted interactive journey website. It is no longer considered realistic or necessary for V2. Existing local sharing and privacy-safe share cards remain.
+
+<details><summary>Historical proposal</summary>
 
 **Outcome:** A recipient can explore a selected journey through a link without installing JourneyDeck.
 
@@ -139,6 +165,8 @@ Design candidates within this feature: MapKit JS as the map renderer and optiona
 
 **Done when:** Sensitive endpoints, photo metadata, and unselected content cannot leak through the published payload; a recipient can explore the page; revocation and expiry stop subsequent access with a defined cache policy. Explain that previously downloaded or captured content cannot be recalled. Verify account deletion, share deletion, accessibility, readable themes, and hosting limits. Hosted sharing stays optional and never becomes a dependency for local recording or viewing.
 
+</details>
+
 ### V2-07 — iPad app support and new layout
 
 **Outcome:** JourneyDeck is available on iPad with a new layout designed for the larger screen.
@@ -151,18 +179,68 @@ Build 6 completed and signed IPA verified: [install universal V2 preview](https:
 
 **Done when:** The app installs and runs on supported iPads; primary screens and flows use the new tablet layout; Light/Dark themes and accessibility are validated on a physical iPad; existing iPhone behavior is preserved.
 
+## Emergency JourneyDeck V2.5 scope
+
+V2.5 is a focused compatibility release for urgent hardware support. It must preserve V2 behavior and data, and it must not pull unrelated V3 features forward.
+
+### V2.5-01 — iPhone Duo support
+
+- Adapt navigation, dashboards, maps, replay, editors, Memories, media and recording controls for iPhone Duo while preserving ordinary iPhone and iPad layouts.
+- Base the implementation on shipping hardware and public Apple SDK capabilities. Do not hardcode speculative screen dimensions, hinge geometry, safe areas, multitasking behavior or continuity rules.
+- Preserve active recording, local state, map camera state, unsaved edits and media playback through supported fold/unfold and size-class transitions.
+- Treat all themes, accessibility sizes, orientations, background recording, battery use and physical-device acceptance as emergency release gates.
+
+## Confirmed JourneyDeck V3 scope
+
+These items are approved for V3 planning and are not V2 release requirements. Their implementation details, native baselines, entitlements, pricing, and acceptance plans remain to be designed before work begins.
+
+### V3-01 — Tessie and vehicle intelligence
+
+- Deliberate Tessie connection and disconnection, live vehicle context, charging history, energy use, cost, and journey-linked efficiency.
+- Keep V2's preserved Tessie code hard-disabled until it has been reviewed against the V3 architecture and current provider requirements.
+
+### V3-02 — Live Activities and Dynamic Island
+
+- Present glanceable active-journey status such as recording state, elapsed time, distance, and GPS health on the Lock Screen and Dynamic Island.
+- Design the Dynamic Island's compact, minimal, and expanded presentations deliberately instead of treating it as an incidental Live Activity surface.
+- Limit controls to safe recording actions, integrate them with the single recorder owner, and require a compatible native extension/build plus physical lifecycle testing.
+
+### V3-03 — CarPlay companion
+
+- Provide a deliberately limited, driver-safe companion for journey status and essential recording controls rather than reproducing the full JourneyDeck dashboard.
+- Treat Apple entitlement, supported template, distraction, background lifecycle, and real-vehicle validation as gates before implementation or release.
+
+### V3-04 — New red theme
+
+- Add a distinct red-led visual system with its own palette, materials, map treatment, artwork, icon option, accessibility contrast, and Reduce Transparency behavior.
+- Assign a new stable theme ID; do not repurpose an existing stored theme selection or reduce the concept to an accent-color swap.
+
+### V3-05 — New green theme
+
+- Add a distinct green-led visual system with its own palette, materials, map treatment, artwork, icon option, accessibility contrast, and Reduce Transparency behavior.
+- Assign a new stable theme ID; do not repurpose an existing stored theme selection or collapse it into Grand Touring's current Racing Green accent.
+
+### V3-06 — Badges
+
+- Add collectible, private badges for meaningful JourneyDeck milestones across journeys, distance, exploration, Memories and music.
+- Derive awards from authoritative local JourneyDeck data, preserve earned state through backup and restore, and provide clear progress and unlock explanations without exposing precise locations.
+- Keep badge criteria focused on reflection and discovery. Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior.
+
 ## Decisions to settle before the relevant implementation
 
 | Decision | Proposed approach / question | Needed by |
 | --- | --- | --- |
 | V2 distribution | Confirmed: separate side-by-side preview with isolated EAS OTA delivery; public V2 updates the existing App Store app. Shared edge changes still require explicit control | M0 |
 | Theme behavior | Confirmed: saved Light Mode switch, dark by default, option-two warm ivory palette, original exported cards | M1 |
-| Provider access and operating cost | Check current Foursquare/Tessie/Last.fm access and hosting needs; no paid provisioning implied | M0 feasibility, relevant feature release |
-| Vehicle and automation entitlement | Keep existing V1 benefits; explicitly choose pricing/access for the new features and whether Tessie is required | M3/M4 |
-| Automatic-recording acceptance | Agree measurable timing, false-start, and battery targets from physical baseline tests | M4 |
-| Sharing privacy and retention | Choose link-only versus additional access controls, default expiry, retention, and map provider | M6 |
+| Provider access and operating cost | Keep Last.fm blocked pending partner clearance; reassess Tessie access and cost only during V3 planning | M5/V3 |
+| Vehicle entitlement | Deferred: define Tessie pricing/access from first principles in JourneyDeck V3 | V3 |
+| Live Activities and Dynamic Island | Define the native extension, shared recorder state, update budget, stale-state recovery, and compact/minimal/expanded Dynamic Island presentations | V3 |
+| CarPlay | Confirm entitlement eligibility and select only Apple-approved, driver-safe templates and controls | V3 |
+| V3 red and green themes | Name and art-direct both as independent systems; allocate new stable IDs and validate contrast across every primary surface | V3 |
+| iPhone Duo emergency compatibility | Confirm shipping hardware and public SDK behavior, then define adaptive layouts, posture continuity, safe areas and physical-device acceptance without expanding V2.5 scope | V2.5 |
+| Badges | Define the initial badge catalog, progress rules, retroactive awards, presentation surfaces, accessibility and private backup behavior | V3 |
 | iPad experience | Define tablet navigation, screen layouts, supported orientations, and device-specific capabilities | M7 |
-| Release packaging | All seven remain planned for V2; any staged public release or deferral requires an explicit roadmap update with the user | M8 |
+| Release packaging | Ship only the active V2 scope; automatic recording and hosted interactive sharing are explicitly removed, while Last.fm remains blocked | M8 |
 
 ## Release gates
 
@@ -176,7 +254,11 @@ Build 6 completed and signed IPA verified: [install universal V2 preview](https:
 
 ## Source record
 
-- User confirmation in this task: include interactive sharing, Foursquare, Tessie, automatic recording, Spotify through Last.fm, and a light mode color theme.
+- Original September 4 scope included interactive sharing, Foursquare, Tessie, automatic recording, Spotify through Last.fm, and a light mode color theme.
+- September 6 user revision: remove automatic recording because the Watch companion covers intentional Start/Stop; remove the interactive sharing website; keep Last.fm blocked pending a partners-team response.
+- September 9 user revision: remove Tessie and all Tessie-derived replay UI from V2; reconsider the integration in JourneyDeck V3.
+- September 9 V3 additions: Live Activities with explicit Dynamic Island support, a limited CarPlay companion, a new red theme, a separate new green theme, and private data-backed badges.
+- September 9 emergency addition: move foldable-device compatibility forward into a focused JourneyDeck V2.5 release as iPhone Duo support.
 - Additional user confirmation: include iPad app availability with a new tablet layout; roadmap addition only, with implementation deferred.
 - [Shared handoff](../.ai/HANDOFF.md): explicit version-2 sharing deferral, Foursquare 2.0 exclusion, Tessie deferral, and earlier recording/music implementation history.
 - [Mobile release checklist](../mobile/recorder/APP_STORE_RELEASE.md): current V1 boundaries and music release gates.

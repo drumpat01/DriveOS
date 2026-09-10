@@ -1,9 +1,8 @@
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Image, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { FirstRunStage } from './first-run-onboarding';
@@ -203,7 +202,7 @@ function FinishScreen({ onFinish }: { onFinish: () => void }) {
 export function FirstRunOnboardingScreen(props: Props) {
   const styles = useThemedStyles(darkStyles);
 
-  return <View style={styles.fullScreen}><ExpoStatusBar hidden /><StatusBar hidden animated={false} />
+  return <View style={styles.fullScreen}>
     {props.stage === 'welcome' && <WelcomeAnimation onComplete={props.onWelcomeComplete} />}
     {props.stage === 'recording' && <RecordingScreen onContinue={props.onRecordingContinue} />}
     {props.stage === 'music' && <AppleMusicScreen onConnect={props.onConnectAppleMusic} onSkip={props.onSkipAppleMusic} />}

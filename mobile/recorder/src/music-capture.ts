@@ -29,7 +29,7 @@ let appleSampleInFlight: Promise<MusicCaptureResult> | null = null;
 let tessieSampleInFlight: Promise<MusicCaptureResult> | null = null;
 let shazamInFlight: Promise<MusicCaptureResult> | null = null;
 let recentAppleSongsCache: { loadedAt: number; songs: AppleMusicRecentSong[] } | null = null;
-const FORCED_ARTWORK_REFRESH_KEY = 'apple-music.artwork-refresh.2026-08-30.v3';
+const FORCED_ARTWORK_REFRESH_KEY = 'apple-music.artwork-refresh.2026-09-10.v4';
 
 export type MusicCaptureResult = {
   status: 'queued' | 'duplicate' | 'no_match' | 'skipped' | 'unavailable';

@@ -1,10 +1,32 @@
 # JourneyDeck Recorder
 
+## Stories & Studio — TestFlight Build 22, September 7, 2026
+
+Journey detail now opens the Plus trim/split editor with live themed route feedback and a smoke dissolve. Memory detail offers free, reviewed Photo Matching from permitted Photos timestamps and locations. Statistics opens the Plus Year on the Road recap with eight animated chapters, optional original music and an independent recap theme chooser. Original journey recovery and existing work are preserved. [Native Build 22](https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/d2bec584-7978-41a0-93e2-c80deeda53a4), version 2.0.0/runtime `2.0.0-watch.3`, is accepted and available for internal TestFlight on iPhone/iPad with the paired Watch app. The new JourneyEdit CloudKit schema is deployed to production. Signed package checks pass; physical feature/upgrade/sync acceptance remains pending. Update both devices before testing edited-journey sync. Production OTA `01a07ef8-a1db-7929-84c6-433ee6e0eb4c` adds the explicit asynchronous SQLite startup gate and non-destructive recovery screen for this runtime. No public App Store release was published. See [implementation, permissions and release acceptance](docs/stories-studio-2026-09-07.md) and [SQLite startup architecture](docs/sqlite-startup-architecture-2026-09-07.md).
+
+## September 7 TestFlight release — 2.0.0 (19)
+
+Apple reports Build 19 as valid and available for internal TestFlight testing. The Themes & Icons release uses public runtime `2.0.0-watch.2` and preview runtime `2.0.0-preview.7`, preserving the existing public bundle identifier, private iCloud container and on-device store. Build 18 remains on `2.0.0-watch.1`. This build contains all device-proven UI/gesture fixes, five approved Grand Touring tab images, four independent app-icon choices, the compact Watch layout and DIAG-10 local JavaScript failure capture. Physical icon switching and installation acceptance remain for testing on installed devices.
+
+## Independent app icon picker — source implementation, September 7, 2026
+
+Settings on iPhone and iPad now has a separate **App Icon** picker with Original, Warm Ivory, Rosewater and Grand Touring. Icon selection is persisted under its own key and never follows or changes the in-app theme. The three alternate icons are generated as opaque 1024px iOS asset-catalog entries during prebuild, and a local UIKit module reads and changes the icon that iOS actually applied. Warm Ivory reuses the current production light icon asset. The existing binary does not contain that native module or the alternate icon sets, so this feature becomes functional only after the next native build.
+
+## Rosewater and Grand Touring — September 6, 2026
+
+These replace Sakura Chrome and Redline Noir while retaining saved preference IDs. Settings offers Cinematic Dark, Grand Touring, Warm Ivory and Rosewater, all free for testing. Rosewater uses blush surfaces, raspberry and botanical accents; Grand Touring uses midnight navy, steel blue, champagne, ivory and chrome. Each replacement includes dedicated header, default Memory-cover and journey-placeholder artwork. Real photos and album covers remain intact. See [current theme notes and artwork prompts](docs/premium-themes.md). Earlier theme entries below are historical.
+
+## Theme picker — source implementation, September 6, 2026
+
+Published to iOS production for Build18 (`2.0.0-watch.1`), OTA group `3dbc40c7-f561-4547-911d-bf4d3a54c4ba`, September 6. Channel readback verified; physical review remains pending. This supersedes the publication-pending statement below.
+
+Settings on iPhone and iPad now offers Cinematic Dark, Warm Ivory, Sakura Chrome and Redline Noir, all free for testing. The selection persists locally and updates shared screen palettes, decorative artwork, materials and native navigation appearance. Sakura uses pearl/blossom surfaces; Redline uses carbon/chrome with a red signature and varied metric colors. No native dependency or runtime change is required. Physical review and OTA publication are pending. See [theme implementation and acceptance notes](docs/premium-themes.md).
+
 ## iPad Statistics — source implementation, September 5, 2026
 
-The approved calendar-under-widgets design is implemented in `src/ipad-statistics-screen.tsx`: six summary cards, local-date calendar and selected-day journeys, daily mileage, distance bands, departure hours, distance/duration scatter, distinct music totals and paged recent journeys. Uses the existing profile-owned archive, both themes, native journey links and membership/Atlas gates; iPhone Statistics is unchanged. Listening time sums known saved song durations and marks incomplete music data. Comparisons require a complete accessible prior period. The pure model and six interaction/calculation tests are in `ipad-statistics-model.ts` and `tests/ipad-statistics.test.mts`.
+The approved calendar-under-widgets dashboard in `src/ipad-statistics-screen.tsx` now powers both iPad and iPhone: six summary cards, local-date calendar and selected-day journeys, daily mileage, distance bands, departure hours, distance/duration scatter, distinct music totals, paged recent journeys, averages, record highs and activity split. iPhone uses compact safe-area spacing, two equal headline columns and stacked detail panels; iPad retains its wide rows. The shared screen uses the existing profile-owned archive, neon dark and pastel light themes, native journey links and membership/Atlas gates. Listening time sums known saved song durations and marks incomplete music data. Comparisons require a complete accessible prior period. The pure model and interaction/calculation tests are in `ipad-statistics-model.ts` and `tests/ipad-statistics.test.mts`.
 
-Typecheck, the full 294-test mobile suite and all 14 individual subsystem test commands passed. Physical iPad layout/VoiceOver acceptance and bundler/native validation remain pending. No export, build, OTA or submission was run: the combined iPad/Watch/POI release hold remains active. Older blank-Statistics notes below are historical.
+Typecheck and the full 294-test mobile suite pass with shared iPhone/iPad Statistics coverage. Physical iPhone/iPad layout and VoiceOver acceptance remain pending for the newest source. No build or submission was run for this follow-up; see `.ai/HANDOFF.md` for the latest production OTA state. Older blank-Statistics notes below are historical.
 
 ## Apple Watch companion — source implementation, September 5, 2026
 
@@ -118,7 +140,7 @@ npx expo start --dev-client --tunnel
 
 Before a production build, complete every item in [APP_STORE_RELEASE.md](./APP_STORE_RELEASE.md). In particular, publish a real privacy-policy URL and support contact, finish the production CloudKit schema deployment, and validate the build in TestFlight.
 
-Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 13 retains the isolated native recorder inbox and native MapKit POI enrichment, adds EAS Observe diagnostics, and keeps the canonical schema at version 6. Automatic recording and Tessie remain disabled for version 1.
+Retain the exact App Store Connect product setup in [SUBSCRIPTION_SETUP.md](./SUBSCRIPTION_SETUP.md). StoreKit pricing is loaded from Apple at runtime; never hardcode or simulate paid entitlement in production. Build 13 retains the isolated native recorder inbox and native MapKit POI enrichment, adds EAS Observe diagnostics, and keeps the canonical schema at version 6. Automatic recording remains disabled, and Tessie is deferred to JourneyDeck V3 with no V2 UI or runtime access.
 
 Then create a production build and submit it through the App Store workflow:
 

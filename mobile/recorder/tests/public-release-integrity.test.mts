@@ -21,6 +21,7 @@ const publicPreflight = await readFile(new URL('../scripts/public-release-prefli
 const membershipPaywall = await readFile(new URL('../src/membership-paywall.tsx', import.meta.url), 'utf8');
 const membershipStore = await readFile(new URL('../src/membership-store.ts', import.meta.url), 'utf8');
 const membershipNative = await readFile(new URL('../modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift', import.meta.url), 'utf8');
+const v2Roadmap = await readFile(new URL('../../../docs/JOURNEYDECK-V2-ROADMAP.md', import.meta.url), 'utf8');
 
 test('production uses the production privacy edge and keeps internal testing disabled', () => {
   assert.equal(app.expo.extra.edge.url, 'https://journeydeck-edge.patrickbstewart.workers.dev');
@@ -67,8 +68,22 @@ test('public recording defaults to manual while Apple Music continues during an 
   assert.match(recorder, /!active && !automaticMode && <PrimaryButton label="Start recording"/);
 });
 
-test('version 1 disables Tessie and automatic recording for every membership tier', () => {
+test('V2 disables Tessie and defers its product scope to V3', () => {
   assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+  assert.match(releaseFeatures, /dormant for possible V3 work/);
+  assert.match(tessie, /Tessie is planned for JourneyDeck V3 and is not available in V2/);
+  assert.match(v2Roadmap, /M3 — Vehicle intelligence \| Moved to JourneyDeck V3/);
+  assert.match(v2Roadmap, /No V2 runtime, entitlement, onboarding step, setting, replay, or screen exposes Tessie/);
+  assert.match(v2Roadmap, /V3-02 — Live Activities and Dynamic Island/);
+  assert.match(v2Roadmap, /V3-03 — CarPlay companion/);
+  assert.match(v2Roadmap, /V3-04 — New red theme/);
+  assert.match(v2Roadmap, /V3-05 — New green theme/);
+  assert.match(v2Roadmap, /Emergency JourneyDeck V2\.5 scope/);
+  assert.match(v2Roadmap, /V2\.5-01 — iPhone Duo support/);
+  assert.match(v2Roadmap, /must not pull unrelated V3 features forward/);
+  assert.match(v2Roadmap, /V3-06 — Badges/);
+  assert.match(v2Roadmap, /Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior/);
+  assert.match(v2Roadmap, /Do not hardcode speculative screen dimensions, hinge geometry, safe areas/);
   assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
   assert.match(tessie, /storedVerifiedVehicleCount/);
   assert.match(tessie, /if \(vehicleCount < 1\)/);
@@ -95,7 +110,7 @@ test('public membership uses verified StoreKit products without hardcoded pricin
 
 test('membership sells Atlas intelligence and complete history in one full-screen composition', () => {
   assert.match(membershipPaywall, /presentationStyle="fullScreen"/);
-  assert.match(membershipPaywall, /atlas-globe-membership-v1\.jpg/);
+  assert.match(membershipPaywall, /cinematic-membership-photo-v1\.jpg/);
   assert.match(membershipPaywall, /atlas-header-orbit-v1\.png/);
   assert.match(membershipPaywall, /ambientGlow: \{[\s\S]*?width: 320,[\s\S]*?height: 320,/);
   assert.doesNotMatch(membershipPaywall, /rgba\(170,36,157,0\.18\)/);
@@ -103,8 +118,8 @@ test('membership sells Atlas intelligence and complete history in one full-scree
   assert.match(membershipPaywall, /YOUR PRIVATE ATLAS/);
   assert.match(membershipPaywall, /Pattern Intelligence/);
   assert.match(membershipPaywall, /Favorite Places/);
-  assert.match(membershipPaywall, /Repeated Routes/);
-  assert.match(membershipPaywall, /Music Moments/);
+  assert.match(membershipPaywall, /Journey Studio/);
+  assert.match(membershipPaywall, /Your Year on the Road/);
   assert.match(membershipPaywall, /Every journey beyond the latest 45 days/);
   assert.match(membershipPaywall, /BEST VALUE/);
   assert.match(membershipPaywall, /accessibilityRole="radio"/);

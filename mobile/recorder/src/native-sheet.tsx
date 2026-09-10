@@ -28,15 +28,14 @@ export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty 
   }, [visible, onDismiss]);
   return <Modal visible={visible} presentationStyle="pageSheet" animationType="slide"
     transparent={false} backdropColor={theme.color('#08070d', 'surface')}
-    allowSwipeDismissal={!dirty && !busy} onRequestClose={() => requestSheetClose(dirty, busy, onClose)} onDismiss={onDismiss}>
+    allowSwipeDismissal={false} onRequestClose={() => requestSheetClose(dirty, busy, onClose)} onDismiss={onDismiss}>
     <View style={styles.root} accessibilityViewIsModal>
       <View style={styles.header}>
         <View style={styles.heading}><Text style={styles.kicker}>{kicker}</Text><Text style={styles.title}>{title}</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss keyboard" onPress={Keyboard.dismiss} style={styles.button}><Text style={styles.action}>Done</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Close sheet" disabled={busy}
           onPress={() => requestSheetClose(dirty, busy, onClose)} style={[styles.button, busy && styles.disabled]}><SymbolView name="xmark" tintColor={styles.close.color} style={styles.closeIcon} /></Pressable>
       </View>
-      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled"
+      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" bounces={false}
         contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
         <View pointerEvents={busy ? 'none' : 'auto'} style={styles.body}>{children}</View>
       </ScrollView>
@@ -51,7 +50,6 @@ const sheetStyles = StyleSheet.create({
   kicker: { color: '#b795e5', fontSize: 10, letterSpacing: 1.5, fontWeight: '800', marginBottom: 5 },
   title: { color: '#fff6ed', fontSize: 23, fontWeight: '800' },
   button: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  action: { color: '#b795e5', fontSize: 15, fontWeight: '600' },
   close: { color: '#fff6ed', fontSize: 30 },
   closeIcon: { width: 20, height: 20 },
   disabled: { opacity: 0.4 },

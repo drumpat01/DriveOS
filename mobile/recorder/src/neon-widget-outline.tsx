@@ -16,7 +16,7 @@ export function NeonWidgetOutline({ radius, tone = 'standard' }: { radius: numbe
   const [size, setSize] = useState({ width: 0, height: 0 });
   const isHero = tone === 'hero';
   const isSelected = tone === 'selected';
-  const colors = isSelected ? selectedStops : neonStops;
+  const colors = theme.isCustom ? (isSelected ? [theme.palette.accent, theme.palette.rose, theme.palette.accent] : [theme.palette.chrome, theme.palette.line, theme.palette.rose, theme.palette.chrome, theme.palette.line]) : isSelected ? selectedStops : neonStops;
   const positions = isSelected ? [0, 0.54, 1] : [0, 0.27, 0.54, 0.78, 1];
   const glowOpacity = isHero ? 0.46 : isSelected ? 0.4 : 0.14;
   const rimOpacity = isHero ? 0.94 : isSelected ? 0.92 : 0.54;
@@ -28,7 +28,7 @@ export function NeonWidgetOutline({ radius, tone = 'standard' }: { radius: numbe
   }} style={[StyleSheet.absoluteFill, styles.outline]}>
     {size.width > 0 && size.height > 0 && <Canvas style={StyleSheet.absoluteFill}>
       <RoundedRect x={3} y={3} width={size.width - 6} height={size.height - 6} r={Math.max(radius - 3, 0)} style="stroke" strokeWidth={glowWidth} opacity={glowOpacity}>
-        <LinearGradient start={vec(0, 0)} end={vec(size.width, size.height)} colors={theme.gradient(colors)} positions={positions} />
+        <LinearGradient start={vec(0, 0)} end={vec(size.width, size.height)} colors={theme.isCustom ? colors : theme.gradient(colors)} positions={positions} />
         <BlurMask blur={isHero ? 8 : isSelected ? 7 : 4} style="normal" />
       </RoundedRect>
       <RoundedRect x={3} y={3} width={size.width - 6} height={size.height - 6} r={Math.max(radius - 3, 0)} style="stroke" strokeWidth={rimWidth} opacity={rimOpacity}>

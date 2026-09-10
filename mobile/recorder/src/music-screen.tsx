@@ -1,3 +1,5 @@
+import { compactArtistCredit } from './artist-credit';
+import { TouchPressable as Pressable } from './touch-feedback';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { isIpad } from './device-layout';
 import { IpadMusicScreen } from './ipad-music-screen';
@@ -6,7 +8,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-  ActivityIndicator, Alert, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
@@ -15,8 +17,10 @@ import type { JourneyDetail, JourneySummary, MusicDashboardData, SoundtrackTrack
 import type { MusicProvider } from './music-preferences';
 import { musicTrackDestination } from './music-destination';
 import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
-import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
+import { NeonWidget, QuietInset } from './neon-widget-outline';
 import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { PhoneTabTitle } from './phone-tab-title';
+import { AlbumCarousel } from './album-carousel';
 
 export type MusicDashboardState = {
   status: 'loading' | 'ready' | 'error';
@@ -83,18 +87,16 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
       {state.status === 'error' ? <View style={styles.notice}><Text style={styles.noticeTitle}>Music archive unavailable</Text><Text style={styles.noticeBody}>{state.message}</Text><Pressable onPress={() => void onRefresh()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
 
       {data ? <>
+        <Panel title="Today's soundtrack" kicker={data.recentSelections.length ? `${data.recentSelections.length} RECENT SELECTIONS` : 'WAITING FOR MUSIC'}>
+          {data.recentSelections.length ? <AlbumCarousel tracks={data.recentSelections} enabled={canOpenTracks} onTrack={track => void openTrack(track, provider)} /> : <Empty text="Your latest songs will appear here after JourneyDeck receives listening history." />}
+        </Panel>
+
         <View style={styles.metricGrid}>
           <Metric symbol="♜" label="Miles with music" value={number(data.metrics.milesWithMusic)} detail="all time" accent={colors.coral} />
           <Metric symbol="Ω" label="Listening hours" value={number(data.metrics.listeningHours)} detail="from archived plays" accent={colors.pink} />
           <Metric symbol="♫" label="Songs on the road" value={number(data.metrics.songsOnRoad, 0)} detail="matched to journeys" accent={colors.blue} />
           <Metric symbol="♨" label="Current streak" value={number(data.metrics.currentStreak, 0)} detail="days with music" accent="#ff4560" />
         </View>
-
-        <Panel title="Today's soundtrack" kicker={data.recentSelections.length ? `${data.recentSelections.length} RECENT SELECTIONS` : 'WAITING FOR MUSIC'}>
-          {data.recentSelections.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumStrip}>
-            {data.recentSelections.map((track, index) => <AlbumCard key={`${track.playedAt}-${track.track}-${index}`} track={track} enabled={canOpenTracks} onPress={() => void openTrack(track, provider)} />)}
-          </ScrollView> : <Empty text="Your latest songs will appear here after JourneyDeck receives listening history." />}
-        </Panel>
 
         <Panel title="Top artists" kicker="ALL-TIME ARCHIVE">
           {data.topArtists.length ? <View style={styles.artistList}>{data.topArtists.map((artist, index) => <View key={artist.artist} style={styles.artistRow}>
@@ -118,7 +120,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
         </Panel>
 
         <Panel title="Top tracks" kicker="CALCULATED ON THIS IPHONE">
-          {topTracks.map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text style={styles.archiveTitle}>{track.track}</Text><Text style={styles.archiveArtist}>{track.artist}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>)}
+          {topTracks.map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text style={styles.archiveTitle}>{track.track}</Text><Text accessibilityLabel={track.artist} numberOfLines={1} style={styles.archiveArtist}>{compactArtistCredit(track.artist)}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>)}
           {!topTracks.length && <Empty text="Your most-played road songs will appear here." />}
         </Panel>
 
@@ -169,9 +171,9 @@ function SoundtracksHeroHeader() {
   const musicHeaderStyles = useThemedStyles(darkMusicHeaderStyles);
 
   return <>
-    <Text accessibilityRole="header" style={musicHeaderStyles.pageTitle}>SOUNDTRACKS</Text>
+    <PhoneTabTitle title="Soundtracks" />
     <View style={musicHeaderStyles.heroCardHeader}>
-      <HeaderArtwork source={require('../assets/soundtracks-header-cinematic-v2.png')} />
+      <HeaderArtwork source={require('../assets/cinematic-soundtracks-photo-v1.jpg')} />
     </View>
   </>;
 }
@@ -186,19 +188,6 @@ function CardHeader({ title, kicker }: { title: string; kicker: string }) {
   const styles = useThemedStyles(darkStyles);
 
   return <View style={styles.cardHeader}><View style={styles.cardTitleGroup}><View style={styles.cardAccent} /><Text style={styles.cardTitle}>{title}</Text></View><Text style={styles.cardKicker}>{kicker}</Text></View>;
-}
-
-function AlbumCard({ track, enabled, onPress }: { track: SoundtrackTrack; enabled: boolean; onPress: () => void }) {
-  const styles = useThemedStyles(darkStyles);
-
-  return <Pressable disabled={!enabled} onPress={onPress} style={({ pressed }) => [styles.albumCard, pressed && enabled && styles.albumPressed]}>
-    <NeonWidgetOutline radius={18} />
-    {track.artworkUrl ? <Image source={{ uri: track.artworkUrl }} style={styles.albumArtwork} contentFit="cover" cachePolicy="memory-disk" transition={120} /> : <View style={styles.albumFallback}><Text style={styles.albumNote}>♪</Text></View>}
-    <View style={styles.albumCaption}>
-      <Text style={styles.albumTitle} numberOfLines={1}>{track.track}</Text>
-      <Text style={styles.albumArtist} numberOfLines={1}>{track.artist}</Text>
-    </View>
-  </Pressable>;
 }
 
 function Empty({ text }: { text: string }) {
@@ -351,7 +340,6 @@ function MusicHeaderScene() {
 }
 
 const darkMusicHeaderStyles = StyleSheet.create({
-  pageTitle: { color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 4, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
   heroCardHeader: { width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO },
   header: { minHeight: 166, borderColor: '#652d70', backgroundColor: '#0d0818', shadowColor: '#ff4594', shadowOpacity: 0.3, shadowRadius: 24 },
   eyebrow: { color: '#ff9fc4', maxWidth: 208 },
@@ -377,7 +365,7 @@ const darkStyles = StyleSheet.create({
   sourceGuidance: { borderRadius: 17, borderWidth: 1, borderColor: '#493359', backgroundColor: '#120d19', paddingHorizontal: 15, paddingVertical: 13, gap: 5 }, sourceGuidanceKicker: { color: '#ff8f78', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, sourceGuidanceText: { color: '#a79dad', fontSize: 11, lineHeight: 17 },
   metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, metricIcon: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 10 }, metricSymbol: { fontSize: 18, fontWeight: '800' }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 10, lineHeight: 13, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 9, lineHeight: 12, marginTop: 2 },
   panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 9, fontWeight: '800', letterSpacing: 0.65 },
-  albumStrip: { gap: 11, paddingRight: 4, paddingBottom: 2 }, albumCard: { width: 112, height: 158, shadowColor: '#ff4d91', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } }, albumPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] }, albumArtwork: { width: 112, height: 112, borderRadius: 13, borderWidth: 1, borderColor: '#75416c' }, albumFallback: { width: 112, height: 112, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#27142c', borderWidth: 1, borderColor: '#75416c' }, albumNote: { color: colors.pink, fontSize: 35, fontWeight: '900' }, albumCaption: { height: 46, justifyContent: 'center', paddingLeft: 7, paddingRight: 2, paddingTop: 2, paddingBottom: 3 }, albumTitle: { width: '100%', color: colors.text, fontSize: 11, lineHeight: 14, fontWeight: '900', textAlign: 'left' }, albumArtist: { width: '100%', color: '#8d8295', fontSize: 9, lineHeight: 12, marginTop: 1, textAlign: 'left' }, empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
+  empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },
   insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 175, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 7, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
   moodBlock: { flex: 1, justifyContent: 'space-between', paddingTop: 8 }, moodBar: { height: 17, borderRadius: 9, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 10, fontWeight: '900' }, moodLabel: { color: '#817589', fontSize: 7, marginTop: 3 }, moodFootnote: { color: '#ff765a', fontSize: 6.5, marginTop: 15 },

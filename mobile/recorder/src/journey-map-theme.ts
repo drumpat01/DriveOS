@@ -1,4 +1,5 @@
 import type { ThemeMode } from './theme-palette';
+import type { ThemeId } from './theme-catalog';
 const OPEN_FREE_MAP_DARK_STYLE = 'https://tiles.openfreemap.org/styles/dark';
 export const OPEN_FREE_MAP_LIGHT_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
@@ -16,20 +17,84 @@ export type JourneyDeckMapStyle = {
   [key: string]: unknown;
 };
 
-const cachedStyles: Partial<Record<ThemeMode, JourneyDeckMapStyle>> = {};
-const styleRequests: Partial<Record<ThemeMode, Promise<JourneyDeckMapStyle | null>>> = {};
+type MapTheme = ThemeId | ThemeMode;
 
-function themedPaint(layer: MapStyleLayer, mode: ThemeMode) {
+export type JourneyDeckMapPalette = {
+  routeGlow: string;
+  routeShadow: string;
+  routeLine: string;
+};
+
+const cachedStyles: Partial<Record<ThemeId, JourneyDeckMapStyle>> = {};
+const styleRequests: Partial<Record<ThemeId, Promise<JourneyDeckMapStyle | null>>> = {};
+
+function normalizedTheme(theme: MapTheme): ThemeId {
+  return theme === 'light' ? 'light' : theme === 'sakura' ? 'sakura' : theme === 'redline' ? 'redline' : 'dark';
+}
+
+export function journeyDeckMapPalette(theme: MapTheme): JourneyDeckMapPalette {
+  if (normalizedTheme(theme) === 'redline') return {
+    routeGlow: '#f4c94f',
+    routeShadow: '#6e5518',
+    routeLine: '#e5bd4f',
+  };
+  return { routeGlow: '#a43fff', routeShadow: '#5d236f', routeLine: '#ff6750' };
+}
+
+function themedPaint(layer: MapStyleLayer, theme: MapTheme) {
   const paint = { ...(layer.paint ?? {}) };
   const name = String(layer.id ?? '').toLocaleLowerCase();
+  const id = normalizedTheme(theme);
 
-  if (mode === 'light') {
+  if (id === 'light' || id === 'sakura') {
     if (layer.type === 'background') return { ...paint, 'background-color': '#fffaf0', 'background-opacity': 1 };
     if (layer.type === 'fill') return { ...paint, 'fill-color': /water|ocean|river|lake/.test(name) ? '#c8dce2' : /park|grass|wood|forest|landcover|landuse/.test(name) ? '#e5e9d6' : '#f3e8d9', 'fill-outline-color': '#d9cbbc', 'fill-opacity': 0.96 };
     if (layer.type === 'fill-extrusion') return { ...paint, 'fill-extrusion-color': '#dfcfbf', 'fill-extrusion-opacity': 0.82 };
     if (layer.type === 'line') return { ...paint, 'line-color': /motorway|trunk|primary|highway/.test(name) ? '#c79a83' : /water|river/.test(name) ? '#8aafc0' : '#d1bdae', 'line-opacity': 0.9 };
     if (layer.type === 'symbol') return { ...paint, 'text-color': '#685461', 'text-halo-color': '#fffaf0', 'text-halo-width': 1.2, 'icon-opacity': 0.8 };
     if (layer.type === 'raster') return { ...paint, 'raster-brightness-min': 0, 'raster-brightness-max': 1, 'raster-saturation': -0.25, 'raster-contrast': 0 };
+    return paint;
+  }
+
+  if (id === 'redline') {
+    if (layer.type === 'background') return { ...paint, 'background-color': '#081832', 'background-opacity': 1 };
+    if (layer.type === 'fill') {
+      const water = /water|ocean|river|lake/.test(name);
+      const park = /park|grass|wood|forest|landcover|landuse/.test(name);
+      return {
+        ...paint,
+        'fill-color': water ? '#07152c' : park ? '#0c2342' : '#081832',
+        'fill-outline-color': water ? '#203a63' : '#29466d',
+        'fill-opacity': 0.97,
+      };
+    }
+    if (layer.type === 'fill-extrusion') return { ...paint, 'fill-extrusion-color': '#132d55', 'fill-extrusion-opacity': 0.82 };
+    if (layer.type === 'line') {
+      const road = /road|street|motorway|trunk|primary|highway|secondary|tertiary|transportation/.test(name);
+      const major = /motorway|trunk|primary|highway/.test(name);
+      const water = /water|river/.test(name);
+      const boundary = /boundary|admin/.test(name);
+      return {
+        ...paint,
+        'line-color': road ? (major ? '#f6f0e2' : '#b6bfcc') : water ? '#31527c' : boundary ? '#55749a' : '#29466d',
+        'line-opacity': road ? (major ? 0.9 : 0.68) : 0.62,
+      };
+    }
+    if (layer.type === 'symbol') return {
+      ...paint,
+      'text-color': '#f6f0e2',
+      'text-halo-color': '#081832',
+      'text-halo-width': 1.35,
+      'icon-opacity': 0.8,
+    };
+    if (layer.type === 'raster') return {
+      ...paint,
+      'raster-brightness-min': 0.05,
+      'raster-brightness-max': 0.42,
+      'raster-saturation': -0.72,
+      'raster-contrast': 0.34,
+      'raster-hue-rotate': 195,
+    };
     return paint;
   }
 
@@ -79,31 +144,32 @@ function themedPaint(layer: MapStyleLayer, mode: ThemeMode) {
 }
 
 /** Applies the same dark-violet layer palette used by the JourneyDeck web map. */
-export function themeJourneyDeckMapStyle(input: unknown, mode: ThemeMode = 'dark'): JourneyDeckMapStyle | null {
+export function themeJourneyDeckMapStyle(input: unknown, theme: MapTheme = 'dark'): JourneyDeckMapStyle | null {
   if (!input || typeof input !== 'object') return null;
   const style = input as Partial<JourneyDeckMapStyle>;
   if (style.version !== 8 || !Array.isArray(style.layers)) return null;
   return {
     ...style,
     version: 8,
-    layers: style.layers.map(layer => ({ ...layer, paint: themedPaint(layer, mode) })),
+    layers: style.layers.map(layer => ({ ...layer, paint: themedPaint(layer, theme) })),
   } as JourneyDeckMapStyle;
 }
 
 /** Fetches once per app process; MapLibre still falls back to OpenFreeMap's dark URL if this fails. */
-export async function loadJourneyDeckMapStyle(fetchImpl: typeof fetch = fetch, mode: ThemeMode = 'dark'): Promise<JourneyDeckMapStyle | null> {
-  if (cachedStyles[mode]) return cachedStyles[mode]!;
-  if (!styleRequests[mode]) {
-    styleRequests[mode] = fetchImpl(OPEN_FREE_MAP_DARK_STYLE, { headers: { accept: 'application/json' } })
-      .then(async response => response.ok ? themeJourneyDeckMapStyle(await response.json(), mode) : null)
+export async function loadJourneyDeckMapStyle(fetchImpl: typeof fetch = fetch, theme: MapTheme = 'dark'): Promise<JourneyDeckMapStyle | null> {
+  const id = normalizedTheme(theme);
+  if (cachedStyles[id]) return cachedStyles[id]!;
+  if (!styleRequests[id]) {
+    styleRequests[id] = fetchImpl(OPEN_FREE_MAP_DARK_STYLE, { headers: { accept: 'application/json' } })
+      .then(async response => response.ok ? themeJourneyDeckMapStyle(await response.json(), id) : null)
       .then(style => {
-        if (style) cachedStyles[mode] = style;
+        if (style) cachedStyles[id] = style;
         return style;
       })
       .catch(() => null)
-      .finally(() => { delete styleRequests[mode]; });
+      .finally(() => { delete styleRequests[id]; });
   }
-  return styleRequests[mode]!;
+  return styleRequests[id]!;
 }
 
 export { OPEN_FREE_MAP_DARK_STYLE };

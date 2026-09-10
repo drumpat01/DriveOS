@@ -1,8 +1,8 @@
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, InteractionManager, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, InteractionManager, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,6 +13,9 @@ import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
+import { UpdateDiagnostics } from './update-diagnostics';
+import Reanimated, { Easing, Extrapolation, cancelAnimation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
 import { getLiveRecorderSnapshot, recorderDatabaseIntegrityReport, type LiveRecorderSnapshot } from './storage';
@@ -29,6 +32,9 @@ import { getCurrentUser, isIsolationTestProfile } from './auth';
 import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
+import { statisticsPresentationKey, shouldAnimateStatistics } from './delight-policy';
+import { MOTION_DURATIONS, motionEasing, useMotionPreferences } from './motion';
+import { useCoreMotion } from './use-core-motion';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
 import { loadRecordingModePreferences } from './recording-mode';
 import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
@@ -36,6 +42,8 @@ import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 import { buildSongRouteMoments } from './route-moments';
 import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
+import { deriveLiveMotionMetrics } from './core-experience-motion';
+import { haptics } from './haptics';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'health';
@@ -43,6 +51,7 @@ export type MoreDestination = 'menu' | 'health';
 const accentForKind: Record<SearchRecord['kind'], string> = {
   journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', memory: '#8ba6ff',
 };
+const ATLAS_RHYTHM_MORPH_EASING = Easing.bezier(0.77, 0, 0.175, 1);
 
 function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, leadingAction, headerPresentation = 'default', pageTone = 'default', headerTone = 'default', children }: {
   eyebrow: string; title: string; subtitle: string; headerImage?: number; onRefresh: () => void | Promise<void>; leadingAction?: { label: string; onPress: () => void };
@@ -103,6 +112,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   state: PrimaryDataState; active: boolean; onRefresh: () => void; onRecord: () => void; onJourney: (id: string) => void;
 }) {
   const styles = useThemedStyles(darkStyles);
+  const motion = useCoreMotion(active);
 
   const [snapshot, setSnapshot] = useState<LiveRecorderSnapshot>(() => state.data?.live ?? getLiveRecorderSnapshot());
   const [tessieVehicle, setTessieVehicle] = useState<TessieVehicleSnapshot | null>(null);
@@ -113,12 +123,12 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   useEffect(() => { if (state.data) setSnapshot(state.data.live); }, [state.data]);
   useEffect(() => {
-    if (!active) return;
+    if (!motion.active) return;
     const refresh = () => setSnapshot(getLiveRecorderSnapshot());
     refresh();
     const timer = setInterval(refresh, 4_000);
     return () => clearInterval(timer);
-  }, [active]);
+  }, [motion.active]);
   useEffect(() => {
     let cancelled = false;
     if (!active || !TESSIE_INTEGRATION_ENABLED) return;
@@ -142,11 +152,14 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
     return () => { cancelled = true; };
   }, [active, vehicleName]);
   const lastPoint = snapshot.lastPoint;
-  const speed = Math.max(0, (lastPoint?.speedMps ?? 0) * 2.23694);
+  const liveMetrics = deriveLiveMotionMetrics({ startedAt: snapshot.session?.startedAt, points: snapshot.route, now: Date.now() });
+  const speed = liveMetrics.speedMph;
   const driving = Boolean(snapshot.session && snapshot.session.status === 'recording' && speed >= 3);
   const latestDetail = data?.details.find(detail => detail.id === data.dashboard.latestJourney?.id) ?? data?.details[0];
   const parkedRoute = latestDetail?.route?.coordinates ?? [];
-  const visibleRoute = snapshot.route.length > 1 ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number]) : parkedRoute;
+  const visibleRoute = useMemo(() => snapshot.route.length > 1
+    ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number])
+    : parkedRoute, [parkedRoute, snapshot.route]);
   const visibleCoordinate = lastPoint ? [lastPoint.longitude, lastPoint.latitude] as [number, number] : parkedRoute.at(-1) ?? null;
   const visibleSoundtrack = snapshot.session ? snapshot.music : latestDetail?.soundtrack ?? [];
   const visibleSongMoments = buildSongRouteMoments(
@@ -162,8 +175,8 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
     : tessieState === 'loading' ? 'Refreshing Tessie live vehicle data…'
       : tessieState === 'error' ? 'Tessie could not refresh right now. Your iPhone recorder is unaffected.'
         : 'Tessie is connected. Vehicle data will appear after the next successful refresh.';
-  const elapsedMinutes = snapshot.session ? Math.max(0, (Date.now() - Date.parse(snapshot.session.startedAt)) / 60_000) : 0;
-  const miles = routeMiles(snapshot.route.map(point => [point.longitude, point.latitude]));
+  const elapsedMinutes = liveMetrics.elapsedSeconds / 60;
+  const miles = liveMetrics.distanceMiles;
   const liveTrack = snapshot.music.at(-1) ?? data?.music.recentSelections[0];
   const liveKicker = driving ? 'DRIVING · IPHONE RECORDER' : snapshot.session ? `${snapshot.session.status.toUpperCase()} · IPHONE RECORDER` : automaticMode ? 'WATCHING · ON THIS IPHONE' : 'READY · ON THIS IPHONE';
   const liveTitle = driving ? 'Your journey is live' : snapshot.session ? 'Journey in progress' : automaticMode ? 'Ready for your next drive' : 'Your next journey starts here';
@@ -172,20 +185,21 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
     : automaticMode
       ? 'JourneyDeck is ready to recognize driving. Apple Music builds soundtracks automatically after each journey.'
       : 'Start a journey to capture its route and time. Apple Music adds the automatic soundtrack.';
-  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle={automaticMode ? 'Tessie-powered automatic routes and Apple Music soundtracks, captured privately.' : 'Start and finish each route yourself. Apple Music builds the soundtrack while you record.'} headerImage={require('../assets/live-header-cinematic-v1.png')} headerPresentation="centered" pageTone="black" headerTone="live" onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle={automaticMode ? 'Tessie-powered automatic routes and Apple Music soundtracks, captured privately.' : 'Start and finish each route yourself. Apple Music builds the soundtrack while you record.'} headerImage={require('../assets/cinematic-home-main-photo-v1.jpg')} headerPresentation="centered" pageTone="black" headerTone="live" onRefresh={onRefresh}>
     <DataNotice state={state} />
     {(snapshot.session || !automaticMode) && <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>{liveKicker}</Text><Text style={styles.heroTitle}>{liveTitle}</Text></View><View style={[styles.liveDot, snapshot.session && styles.liveDotActive]} /></View>
       <Text style={styles.liveStateCopy}>{liveCopy}</Text>
       {snapshot.session && <View style={styles.metricRow}>
-        <Metric value={`${Math.round(speed)}`} unit="mph" label="SPEED" />
-        <Metric value={miles.toFixed(1)} unit="mi" label="DISTANCE" />
-        <Metric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" />
+        <LiveMotionMetric value={`${Math.round(speed)}`} unit="mph" label="SPEED" animate={motion.animate} />
+        <LiveMotionMetric value={miles.toFixed(1)} unit="mi" label="DISTANCE" animate={motion.animate} />
+        <LiveMotionMetric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" animate={motion.animate} />
       </View>}
       <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
     </View>}
     <PrimaryMobilityMap
       routes={visibleRoute.length > 1 ? [{ id: snapshot.session?.id ?? latestDetail?.id ?? 'last-known', coordinates: visibleRoute }] : []}
+      animateLiveRoute={Boolean(snapshot.session) && motion.animate}
       currentCoordinate={visibleCoordinate}
       currentHeading={lastPoint?.headingDegrees}
       height={310}
@@ -216,6 +230,46 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   </ScreenScaffold>;
 }
 
+function LiveMotionMetric({ value, unit, label, animate }: { value: string; unit?: string; label: string; animate: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+  const progress = useSharedValue(1);
+  const previousValue = useRef(value);
+  const [transition, setTransition] = useState({ from: value, to: value, direction: 1 });
+  useEffect(() => {
+    const from = previousValue.current;
+    previousValue.current = value;
+    cancelAnimation(progress);
+    if (!animate || from === value) {
+      setTransition({ from: value, to: value, direction: 1 });
+      progress.set(1);
+      return;
+    }
+    const previousNumber = Number.parseFloat(from);
+    const nextNumber = Number.parseFloat(value);
+    setTransition({ from, to: value, direction: Number.isFinite(previousNumber) && Number.isFinite(nextNumber) && nextNumber < previousNumber ? -1 : 1 });
+    progress.set(0);
+    progress.set(withTiming(1, { duration: MOTION_DURATIONS.settle, easing: motionEasing.enter }));
+    return () => cancelAnimation(progress);
+  }, [animate, progress, value]);
+  const outgoingStyle = useAnimatedStyle(() => ({
+    opacity: 1 - progress.get(),
+    transform: [{ translateY: -transition.direction * progress.get() * 18 }],
+  }));
+  const incomingStyle = useAnimatedStyle(() => ({
+    opacity: progress.get(),
+    transform: [{ translateY: transition.direction * (1 - progress.get()) * 18 }],
+  }));
+  const renderValue = (displayValue: string) => <>{displayValue}{unit ? <Text style={styles.metricUnit}> {unit}</Text> : null}</>;
+  return <View style={styles.metric} accessible accessibilityLabel={`${label}, ${value}${unit ? ` ${unit}` : ''}`}>
+    <View style={styles.liveMetricViewport}>
+      <Text aria-hidden style={[styles.metricValue, styles.liveMetricMeasure]}>{renderValue(transition.to)}</Text>
+      {transition.from !== transition.to && <Reanimated.Text style={[styles.metricValue, styles.liveMetricLayer, outgoingStyle]}>{renderValue(transition.from)}</Reanimated.Text>}
+      <Reanimated.Text style={[styles.metricValue, styles.liveMetricLayer, incomingStyle]}>{renderValue(transition.to)}</Reanimated.Text>
+    </View>
+    <Text style={styles.metricLabel}>{label}</Text>
+  </View>;
+}
+
 export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -241,14 +295,7 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
     </View>
     <AtlasPulseCard insights={insights} />
     <Text style={styles.atlasSectionLabel}>YOUR PRIVATE INTELLIGENCE</Text>
-    <View style={styles.atlasInsightRow}>
-      <RouteDnaCard insight={insights.routeDna} />
-      <DrivingRhythmsCard insight={insights.drivingRhythms} />
-    </View>
-    <View style={styles.atlasInsightRow}>
-      <ExplorationCard insight={insights.exploration} />
-      <PlaceRelationshipsCard insight={insights.placeRelationships} />
-    </View>
+    <AtlasInsightGrid insights={insights} />
     <SoundtrackIntelligenceCard insight={insights.soundtrack} />
     <SectionTitle title="Your Atlas map" detail={`${routes.length} mapped journeys`} />
     <View style={styles.atlasMapFrame}><NeonWidgetOutline radius={24} /><PrimaryMobilityMap routes={routes} places={mapPlaces} height={330} emptyMessage="Recorded route geometry will build your long-term Atlas." /></View>
@@ -259,7 +306,7 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
         <Text style={styles.placeCategory}>{place.category.toUpperCase()}</Text><Text style={styles.placeName} numberOfLines={1}>{place.name}</Text><Text style={styles.placeVisits}>{place.visitCount} visits</Text>
       </Pressable>)}
     </ScrollView> : <EmptyCard text="Place relationships form from the named starts and destinations in your journeys." />}
-    {selectedPlace && <PlaceDetails place={selectedPlace} onJourney={onJourney} />}
+    {selectedPlace && <View style={styles.placeDetailsWrap}><PlaceDetails place={selectedPlace} onJourney={onJourney} /></View>}
     <SectionTitle title="Route DNA review" detail="Confirm what feels meaningful" />
     {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}><NeonWidgetOutline radius={18} /><View style={styles.patternContent}>
       <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{formatAtlasPatternRoute(pattern.startLabel, pattern.endLabel)}</Text>
@@ -281,7 +328,7 @@ function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
   const windowLabel = insights.window === '30d' ? 'the last 30 days' : insights.window === '90d' ? 'the last 90 days' : 'your complete history';
   return <View style={styles.atlasPulseCard}>
     <NeonWidgetOutline radius={28} tone="selected" />
-    <Image pointerEvents="none" source={headerImageSource(require('../assets/atlas-header-cinematic-v1.png'), theme.mode)} style={styles.atlasPulseBackdrop} contentFit="cover" />
+    <Image pointerEvents="none" source={headerImageSource(require('../assets/cinematic-atlas-photo-v1.jpg'), theme.id)} style={styles.atlasPulseBackdrop} contentFit="cover" />
     <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(255,91,78,0.18)', 'rgba(129,49,179,0.1)', 'rgba(7,3,11,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
     <View style={styles.atlasPulseOrb}>
       <View style={styles.atlasPulseRingOuter}><View style={styles.atlasPulseRingInner}><View style={styles.atlasPulseCore} /></View></View>
@@ -307,15 +354,42 @@ function AtlasPulseMetric({ value, label }: { value: string; label: string }) {
   return <View style={styles.atlasPulseMetric}><Text style={styles.atlasPulseMetricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text><Text style={styles.atlasPulseMetricLabel}>{label}</Text></View>;
 }
 
-function AtlasInsightShell({ symbol, title, accent = '#ff7967', children }: { symbol: SFSymbol; title: string; accent?: string; children: ReactNode }) {
+const AtlasInsightMeasurement = createContext<((height: number) => void) | null>(null);
+
+function AtlasInsightGrid({ insights }: { insights: AtlasInsights }) {
+  const styles = useThemedStyles(darkStyles);
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const height = Math.max(230, ...Object.values(heights));
+  const cards = [
+    { id: 'route', content: <RouteDnaCard insight={insights.routeDna} /> },
+    { id: 'rhythm', content: <DrivingRhythmsCard insight={insights.drivingRhythms} /> },
+    { id: 'exploration', content: <ExplorationCard insight={insights.exploration} /> },
+    { id: 'places', content: <PlaceRelationshipsCard insight={insights.placeRelationships} /> },
+  ];
+  return <View testID="atlas-insight-grid">{[0, 2].map(start => <View key={start} style={styles.atlasInsightRow}>
+    {cards.slice(start, start + 2).map(card => <View key={card.id} testID={`atlas-cell-${card.id}`} style={[styles.atlasInsightCell, { minHeight: height }]}>
+      <AtlasInsightMeasurement.Provider value={measured => {
+        if (Number.isFinite(measured) && measured > 0) setHeights(current => current[card.id] === measured ? current : { ...current, [card.id]: measured });
+      }}>{card.content}</AtlasInsightMeasurement.Provider>
+    </View>)}
+  </View>)}</View>;
+}
+
+function AtlasInsightShell({ symbol, title, accent = '#ff7967', showNeonOutline = true, children, footer }: { symbol: SFSymbol; title: string; accent?: string; showNeonOutline?: boolean; children: ReactNode; footer?: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const measureContent = useContext(AtlasInsightMeasurement);
 
   return <View style={styles.atlasInsightCard}>
-    <NeonWidgetOutline radius={20} />
+    {showNeonOutline && <NeonWidgetOutline radius={20} />}
     <LinearGradient pointerEvents="none" colors={theme.gradient([`${accent}24`, 'rgba(8,4,12,0)'])} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.8 }} style={StyleSheet.absoluteFill} />
-    <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: theme.color(`${accent}99`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(accent, 'text')} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
-    {children}
+    {/* Measure intrinsic content, not the stretched cell. This also lets the
+        whole grid shrink again after rotation or a Dynamic Type change. */}
+    <View style={[styles.atlasInsightContent, Boolean(footer) && styles.atlasInsightWithFooter]} onLayout={showNeonOutline && measureContent ? event => measureContent(Math.ceil(event.nativeEvent.layout.height + StyleSheet.hairlineWidth * 2)) : undefined}>
+      <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: theme.color(`${accent}99`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(accent, 'text')} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
+      {children}
+    </View>
+    {Boolean(footer) && <View style={styles.atlasInsightFooter}>{footer}</View>}
   </View>;
 }
 
@@ -333,15 +407,172 @@ function RouteDnaCard({ insight }: { insight: AtlasInsights['routeDna'] }) {
   </AtlasInsightShell>;
 }
 
-function DrivingRhythmsCard({ insight }: { insight: AtlasInsights['drivingRhythms'] }) {
+function DrivingRhythmsCompactFace({ insight, moving = false }: { insight: AtlasInsights['drivingRhythms']; moving?: boolean }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
-
   const maximum = Math.max(1, ...insight.weekdays.map(day => day.journeys));
-  return <AtlasInsightShell symbol="chart.bar.xaxis" title="Driving Rhythms" accent="#bd72ff">
+
+  return <AtlasInsightShell symbol="chart.bar.xaxis" title="Driving Rhythms" accent="#bd72ff" showNeonOutline={!moving} footer={<Text style={styles.atlasRhythmOpenHint}>TAP FOR DETAILS ↗</Text>}>
     <View style={styles.atlasRhythmChart}>{insight.weekdays.map(day => <View key={day.label} style={styles.atlasRhythmColumn}><View style={styles.atlasRhythmTrack}><LinearGradient colors={theme.gradient(day.journeys ? ['#ff7767', '#ad5eff'] : ['#2d2132', '#211925'])} style={[styles.atlasRhythmBar, { height: Math.max(4, Math.round((day.journeys / maximum) * 48)) }]} /></View><Text style={styles.atlasRhythmDay}>{day.label.slice(0, 1)}</Text></View>)}</View>
     {insight.ready ? <><Text style={styles.atlasInsightValue}>{insight.leadingDay} leads</Text><Text style={styles.atlasInsightDetail}>{insight.leadingDayJourneys} journeys · {insight.leadingTime?.toLocaleLowerCase()} drives are most common</Text></> : <AtlasLearningCopy text="Three journeys unlock your weekly and time-of-day rhythm." />}
   </AtlasInsightShell>;
+}
+
+function DrivingRhythmsCard({ insight }: { insight: AtlasInsights['drivingRhythms'] }) {
+  const styles = useThemedStyles(darkStyles);
+  const cardRef = useRef<View>(null);
+  const openingRef = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const [presented, setPresented] = useState(false);
+  const [sourceFrame, setSourceFrame] = useState({ x: 20, y: 220, width: 170, height: 230 });
+
+  const open = () => {
+    if (openingRef.current || !cardRef.current) return;
+    openingRef.current = true;
+    cardRef.current.measureInWindow((x, y, width, height) => {
+      if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+        openingRef.current = false;
+        return;
+      }
+      setSourceFrame({ x, y, width, height });
+      setExpanded(true);
+    });
+  };
+  return <>
+    <Pressable ref={cardRef} collapsable={false} accessibilityRole="button" accessibilityLabel="Driving Rhythms. Open expanded details." onPress={open} style={[styles.atlasRhythmPressable, presented && styles.atlasRhythmSourceHidden]}>
+      <DrivingRhythmsCompactFace insight={insight} />
+    </Pressable>
+  {expanded && <DrivingRhythmsExpanded insight={insight} sourceFrame={sourceFrame} onPresented={() => setPresented(true)} onClosed={() => {
+    setPresented(false);
+    setExpanded(false);
+    openingRef.current = false;
+  }} />}
+  </>;
+}
+
+function DrivingRhythmsExpanded({ insight, sourceFrame, onPresented, onClosed }: {
+  insight: AtlasInsights['drivingRhythms']; sourceFrame: { x: number; y: number; width: number; height: number }; onPresented: () => void; onClosed: () => void;
+}) {
+  const styles = useThemedStyles(darkStyles);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { reduceMotion } = useMotionPreferences();
+  const progress = useSharedValue(0);
+  const startedRef = useRef(false);
+  const closingRef = useRef(false);
+  const targetWidth = Math.min(width - 24, 620);
+  const targetHeight = Math.min(height - insets.top - insets.bottom - 28, 720);
+  const targetX = (width - targetWidth) / 2;
+  const targetY = insets.top + Math.max(10, (height - insets.top - insets.bottom - targetHeight) / 2);
+  const sourceCenterX = sourceFrame.x + sourceFrame.width / 2;
+  const sourceCenterY = sourceFrame.y + sourceFrame.height / 2;
+  const targetCenterX = targetX + targetWidth / 2;
+  const targetCenterY = targetY + targetHeight / 2;
+  useEffect(() => () => cancelAnimation(progress), [progress]);
+  const start = () => {
+    if (startedRef.current || closingRef.current) return;
+    startedRef.current = true;
+    // Keep the source visible until UIKit has actually presented its duplicate.
+    // Starting in a mount effect hid the card during the modal's presentation gap.
+    onPresented();
+    progress.set(withTiming(1, { duration: reduceMotion ? 180 : 650, easing: ATLAS_RHYTHM_MORPH_EASING }));
+    void haptics.softImpact();
+  };
+  const dismiss = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    progress.set(withTiming(0, { duration: reduceMotion ? 150 : 520, easing: ATLAS_RHYTHM_MORPH_EASING }, finished => {
+      'worklet';
+      if (finished) scheduleOnRN(onClosed);
+    }));
+  };
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, 0.35, 1], [0, 0.7, 0.78]) }));
+  const frontStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : interpolate(progress.get(), [0, 0.46, 0.54], [1, 1, 0], Extrapolation.CLAMP),
+    transform: [
+      { perspective: 900 },
+      { translateX: interpolate(progress.get(), [0, 1], [0, targetCenterX - sourceCenterX]) },
+      { translateY: interpolate(progress.get(), [0, 1], [0, targetCenterY - sourceCenterY]) },
+      { rotateY: `${interpolate(progress.get(), [0, 1], [0, 180])}deg` },
+      { scaleX: interpolate(progress.get(), [0, 1], [1, targetWidth / sourceFrame.width]) },
+      { scaleY: interpolate(progress.get(), [0, 1], [1, targetHeight / sourceFrame.height]) },
+    ],
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? progress.get() : interpolate(progress.get(), [0, 0.46, 0.54, 1], [0, 0, 1, 1], Extrapolation.CLAMP),
+    transform: [
+      { perspective: 900 },
+      { translateX: reduceMotion ? 0 : interpolate(progress.get(), [0, 1], [sourceCenterX - targetCenterX, 0]) },
+      { translateY: reduceMotion ? 0 : interpolate(progress.get(), [0, 1], [sourceCenterY - targetCenterY, 0]) },
+      { rotateY: reduceMotion ? '0deg' : `${interpolate(progress.get(), [0, 1], [-180, 0])}deg` },
+      { scaleX: reduceMotion ? interpolate(progress.get(), [0, 1], [0.96, 1]) : interpolate(progress.get(), [0, 1], [sourceFrame.width / targetWidth, 1]) },
+      { scaleY: reduceMotion ? interpolate(progress.get(), [0, 1], [0.96, 1]) : interpolate(progress.get(), [0, 1], [sourceFrame.height / targetHeight, 1]) },
+    ],
+  }));
+  return <Modal visible transparent statusBarTranslucent animationType="none" onShow={start} onRequestClose={dismiss}>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+      <Reanimated.View pointerEvents="none" style={[styles.atlasRhythmBackdrop, backdropStyle]} />
+      {/* A real, untransformed native parent flattens the card scene above the
+          backdrop. Direct 3D siblings let their receding halves cross behind it.
+          collapsable=false is essential: Fabric otherwise removes this boundary. */}
+      <View collapsable={false} pointerEvents="box-none" style={styles.atlasRhythmForeground}>
+        {!reduceMotion && <Reanimated.View pointerEvents="none" style={[styles.atlasRhythmFlipFront, { left: sourceFrame.x, top: sourceFrame.y, width: sourceFrame.width, height: sourceFrame.height }, frontStyle]}>
+          <DrivingRhythmsCompactFace insight={insight} moving />
+        </Reanimated.View>}
+        <Reanimated.View style={[styles.atlasRhythmExpandedCard, { left: targetX, top: targetY, width: targetWidth, height: targetHeight }, backStyle]}>
+          <DrivingRhythmsDetails insight={insight} onClose={dismiss} />
+        </Reanimated.View>
+      </View>
+    </View>
+  </Modal>;
+}
+
+function formatRhythmHour(hour: number | null) {
+  if (hour === null) return '—';
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const display = hour % 12 || 12;
+  return `${display}:00 ${suffix}`;
+}
+
+function DrivingRhythmsDetails({ insight, onClose }: { insight: AtlasInsights['drivingRhythms']; onClose: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const plum = theme.id === 'sakura' ? '#79566F' : theme.palette.accent;
+  const hot = theme.palette.coral;
+  const hourlyMaximum = Math.max(1, ...insight.twoHourBuckets);
+  const heatMaximum = Math.max(1, ...insight.weekdayTwoHourBuckets.flat());
+  const orderedHeatmapDays = [1, 2, 3, 4, 5, 6, 0];
+  return <View style={styles.atlasRhythmExpandedInner}>
+    <View style={styles.atlasRhythmExpandedHeader}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close Driving Rhythms details" hitSlop={8} onPress={onClose} style={styles.atlasRhythmClose}><Text style={styles.atlasRhythmCloseText}>×</Text></Pressable>
+      <View style={styles.atlasRhythmExpandedHeading}><Text style={styles.atlasRhythmExpandedEyebrow}>DRIVING RHYTHMS</Text><Text style={styles.atlasRhythmExpandedTitle}>Your road has a rhythm</Text></View>
+      <SymbolView name="rectangle.on.rectangle.angled" tintColor={theme.palette.accent} size={20} />
+    </View>
+    <View style={styles.atlasRhythmHeroRow}>
+      <View style={styles.atlasRhythmClock}>
+        <Svg width="100%" height="100%" viewBox="0 0 180 180">
+          <Circle cx="90" cy="90" r="70" fill="none" stroke={theme.palette.line} strokeWidth="18" opacity={0.22} />
+          {insight.twoHourBuckets.map((count, index) => <Circle key={index} cx="90" cy="90" r="70" fill="none" stroke={index >= 8 && index <= 10 ? hot : plum} strokeWidth="15" strokeLinecap="butt" strokeDasharray="29 411" rotation={-90 + index * 30} origin="90,90" opacity={count ? 0.25 + 0.75 * count / hourlyMaximum : 0.06} />)}
+        </Svg>
+        <View style={styles.atlasRhythmClockCopy}><Text style={styles.atlasRhythmClockValue}>{formatRhythmHour(insight.mostActiveHour)}</Text><Text style={styles.atlasRhythmClockLabel}>MOST ACTIVE</Text></View>
+      </View>
+      <View style={styles.atlasRhythmStats}>
+        <RhythmStat value={String(insight.journeyCount)} label="JOURNEYS" />
+        <RhythmStat value={String(Math.round(insight.miles))} label="MILES" />
+        <RhythmStat value={insight.averageMinutes === null ? '—' : String(Math.round(insight.averageMinutes))} label="MIN AVG" />
+      </View>
+    </View>
+    <View style={styles.atlasHeatmap}>
+      {orderedHeatmapDays.map(day => <View key={day} style={styles.atlasHeatmapRow}><Text style={styles.atlasHeatmapDay}>{['SUN','MON','TUE','WED','THU','FRI','SAT'][day]}</Text>{insight.weekdayTwoHourBuckets[day].map((count, bucket) => <View key={bucket} style={[styles.atlasHeatmapCell, { backgroundColor: bucket >= 8 && bucket <= 10 ? hot : plum, opacity: count ? 0.28 + 0.72 * count / heatMaximum : 0.08 }]} />)}</View>)}
+      <View style={styles.atlasHeatmapAxis}><Text style={styles.atlasHeatmapAxisText}>12 AM</Text><Text style={styles.atlasHeatmapAxisText}>6 AM</Text><Text style={styles.atlasHeatmapAxisText}>12 PM</Text><Text style={styles.atlasHeatmapAxisText}>6 PM</Text><Text style={styles.atlasHeatmapAxisText}>12 AM</Text></View>
+    </View>
+    <View style={styles.atlasRhythmInsight}><SymbolView name="chart.bar.fill" tintColor={theme.palette.accent} size={22} /><View style={{ flex: 1 }}><Text style={styles.atlasRhythmInsightTitle}>{insight.ready ? `${insight.leadingDay} is your strongest driving day` : 'Your driving rhythm is still forming'}</Text><Text style={styles.atlasRhythmInsightDetail}>{insight.ready ? `${insight.leadingDayJourneys} journeys · ${insight.leadingTime?.toLocaleLowerCase()} drives are most common` : 'Complete three journeys to unlock a reliable pattern.'}</Text></View></View>
+  </View>;
+}
+
+function RhythmStat({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+  return <View style={styles.atlasRhythmStat}><Text style={styles.atlasRhythmStatValue}>{value}</Text><Text style={styles.atlasRhythmStatLabel}>{label}</Text></View>;
 }
 
 function ExplorationCard({ insight }: { insight: AtlasInsights['exploration'] }) {
@@ -420,7 +651,7 @@ export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state:
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => { if (!selectedKey && days[0]) setSelectedKey(days[0].key); }, [days, selectedKey]);
   const selected = days.find(day => day.key === selectedKey) ?? days[0];
-  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/timeline-header-hero-v2.jpg')} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
+  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/cinematic-statistics-photo-v1.jpg')} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {days.length ? <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRail}>{days.slice(0, 30).map(day => <Pressable key={day.key} onPress={() => setSelectedKey(day.key)} style={[styles.dayChip, selected?.key === day.key && styles.dayChipActive]}><Text style={styles.dayNumber}>{new Date(`${day.key}T12:00:00`).getDate()}</Text><Text style={styles.dayLabel}>{new Date(`${day.key}T12:00:00`).toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text></Pressable>)}</ScrollView>
@@ -435,13 +666,23 @@ export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state:
   </ScreenScaffold>;
 }
 
+const presentedStatisticsKeys = new Set<string>();
+
 export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, onAtlas, historyDays = 45 }: {
   state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; onAtlas?: () => void; historyDays?: number | null;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const motion = useCoreMotion(true);
 
   const statistics = state.data?.statistics;
+  const [statisticsAnimation, setStatisticsAnimation] = useState(0);
+  const statisticsKey = useMemo(() => statistics ? statisticsPresentationKey(statistics) : '', [statistics]);
+  useEffect(() => {
+    if (!shouldAnimateStatistics({ active: motion.active, reduceMotion: motion.reduceMotion, dataKey: statisticsKey, presentedKeys: presentedStatisticsKeys })) return;
+    presentedStatisticsKeys.add(statisticsKey);
+    setStatisticsAnimation(value => value + 1);
+  }, [motion.active, motion.reduceMotion, statisticsKey]);
   const [visibleTimelineCount, setVisibleTimelineCount] = useState(10);
   const timelineItems = useMemo(() => {
     const cutoff = historyDays === null ? Number.NEGATIVE_INFINITY : Date.now() - historyDays * 86_400_000;
@@ -461,7 +702,7 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
   return <ScreenScaffold eyebrow="" title="STATISTICS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="statistics" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas private drive intelligence" onPress={onAtlas} style={styles.atlasGateway}>
-      <Image source={headerImageSource(require('../assets/atlas-globe-membership-v1.jpg'), theme.mode)} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <Image source={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)} style={StyleSheet.absoluteFill} contentFit="cover" />
       <LinearGradient colors={theme.gradient(['rgba(8,3,12,0.18)', 'rgba(10,4,15,0.82)', 'rgba(16,5,17,0.98)'])} locations={[0, 0.58, 1]} start={{ x: 1, y: 0.3 }} end={{ x: 0, y: 0.7 }} style={StyleSheet.absoluteFill} />
       <View style={styles.atlasGatewayCopy}>
         <Text style={styles.atlasGatewayKicker}>ATLAS · PRIVATE DRIVE INTELLIGENCE</Text>
@@ -473,7 +714,7 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
     {statistics ? <>
       <View style={styles.storyStatsHero}>
         <HeaderEdgeBleed />
-        <Image source={headerImageSource(require('../assets/statistics-story-hero-v1.png'), theme.mode)} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <Image source={headerImageSource(require('../assets/cinematic-statistics-photo-v1.jpg'), theme.id)} style={StyleSheet.absoluteFill} contentFit="cover" />
         <LinearGradient colors={theme.gradient(['rgba(4,3,10,0.97)', 'rgba(8,4,15,0.74)', 'rgba(7,2,13,0.05)'])} locations={[0, 0.55, 1]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
         <HeaderEdgeFeather />
         <View style={styles.storyStatsHeroCopy}>
@@ -508,7 +749,7 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
       <View style={styles.storyStatsRhythmCard}>
         <Text style={styles.storyStatsRhythmLabel}>{historyDays === null ? 'COMPLETE HISTORY' : `FREE HISTORY  ·  ${statistics.windowDays} DAYS`}</Text>
         <View style={styles.storyStatsHistoryRow}>
-          <View style={styles.storyStatsRhythmBars}>{statistics.dailyMiles.map(day => <View key={day.date} style={[styles.storyStatsRhythmBar, (day.miles > 0 || day.songs > 0) && styles.storyStatsRhythmBarActive]} />)}</View>
+          <View style={styles.storyStatsRhythmBars}>{statistics.dailyMiles.map((day, index) => <AnimatedStatisticsBar key={day.date} index={index} animation={statisticsAnimation} active={day.miles > 0 || day.songs > 0} reduceMotion={motion.reduceMotion} />)}</View>
           <Text style={styles.storyStatsHistoryDay}>{historyDays === null ? `${timelineItems.length} MOMENTS` : `DAY ${historyDay} OF ${statistics.windowDays}`}</Text>
         </View>
         {historyDays !== null && onUpgrade && <Pressable accessibilityRole="button" accessibilityLabel="Unlock Atlas and complete history" onPress={onUpgrade} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>UNLOCK ATLAS + COMPLETE HISTORY</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
@@ -516,9 +757,26 @@ export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrad
 
       <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
       {visibleTimeline.length ? <View style={styles.storyTimelineList}>{visibleTimeline.map((item, index) => <StoryTimelineRow key={item.id} item={item} onJourney={onJourney} first={index === 0} last={index === visibleTimeline.length - 1} />)}</View> : <EmptyCard text="Journeys and songs will collect here as your story unfolds." />}
-      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={theme.gradient(['#ff6b57', '#f14f50'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={styles.storyTimelineMoreText}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
+      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(['#ff6b57', '#f14f50'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={[styles.storyTimelineMoreText, theme.isCustom && { color: theme.palette.onAccent }]}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
     </> : <EmptyCard text="Statistics will be calculated locally from your journey archive." />}
   </ScreenScaffold>;
+}
+
+function AnimatedStatisticsBar({ index, animation, active, reduceMotion }: { index: number; animation: number; active: boolean; reduceMotion: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+  const reveal = useSharedValue(1);
+  useEffect(() => {
+    cancelAnimation(reveal);
+    if (!animation || reduceMotion) {
+      reveal.value = 1;
+      return;
+    }
+    reveal.value = 0.18;
+    reveal.value = withDelay(Math.min(index * 8, 180), withTiming(1, { duration: MOTION_DURATIONS.standard }));
+    return () => cancelAnimation(reveal);
+  }, [animation, index, reduceMotion, reveal]);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: 0.42 + reveal.value * 0.58, transform: [{ scaleY: reveal.value }] }));
+  return <Reanimated.View style={[styles.storyStatsRhythmBar, active && styles.storyStatsRhythmBarActive, animatedStyle]} />;
 }
 
 function StoryTimelineRow({ item, onJourney, first, last }: { item: TimelineItem; onJourney: (id: string) => void; first: boolean; last: boolean }) {
@@ -668,6 +926,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     }
   };
   return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
+    <UpdateDiagnostics />
     <SectionTitle title="Version & update" detail="What is running now" />
     <View style={styles.releaseCard}><NeonWidgetOutline radius={24} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
@@ -958,6 +1217,9 @@ const darkStyles = StyleSheet.create({
   liveDotActive: { backgroundColor: '#5be0ba', borderColor: '#244c42', shadowColor: '#5be0ba', shadowOpacity: 1, shadowRadius: 10 },
   metricRow: { flexDirection: 'row', gap: 8, marginTop: 19 },
   metric: { flex: 1, minHeight: 70, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingTop: 13, paddingBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#3a3043', backgroundColor: 'rgba(255,255,255,0.025)' },
+  liveMetricViewport: { width: '100%', height: 26, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  liveMetricLayer: { position: 'absolute', top: 0, right: 0, left: 0 },
+  liveMetricMeasure: { opacity: 0 },
   metricAccent: { position: 'absolute', top: 0, left: 16, right: 16, height: 1.5, borderRadius: 2, opacity: 0.8 },
   metricValue: { color: '#fff', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.4, textAlign: 'center', fontVariant: ['tabular-nums'] },
   metricUnit: { color: '#b5a6bc', fontSize: 10, fontWeight: '800' },
@@ -1010,7 +1272,12 @@ const darkStyles = StyleSheet.create({
   atlasPulseDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: '#4b304d' },
   atlasSectionLabel: { color: '#bfa9c2', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.55, marginLeft: 3, marginBottom: 10 },
   atlasInsightRow: { flexDirection: 'row', gap: 9, alignItems: 'stretch', marginBottom: 9 },
-  atlasInsightCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 230, borderRadius: 20, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4a294f', backgroundColor: '#0b0610', paddingHorizontal: 13, paddingVertical: 13, shadowColor: '#a747b8', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
+  atlasInsightCell: { flex: 1, flexBasis: 0, minWidth: 0 },
+  atlasInsightCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 230, borderRadius: 20, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4a294f', backgroundColor: '#0b0610', shadowColor: '#a747b8', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
+  atlasInsightContent: { minHeight: 229, paddingHorizontal: 13, paddingVertical: 13 },
+  atlasInsightWithFooter: { paddingBottom: 36 },
+  atlasInsightFooter: { position: 'absolute', left: 13, right: 13, bottom: 13 },
+  atlasRhythmPressable: { flex: 1, minWidth: 0 },
   atlasInsightHeading: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 9 },
   atlasInsightIcon: { width: 32, height: 32, borderRadius: 11, borderWidth: 1, backgroundColor: 'rgba(31,12,31,0.84)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   atlasInsightTitle: { color: '#f7edf8', fontSize: 11, lineHeight: 14, fontWeight: '900', flex: 1 },
@@ -1023,6 +1290,37 @@ const darkStyles = StyleSheet.create({
   atlasRhythmTrack: { height: 50, width: '100%', maxWidth: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(46,31,52,0.6)', justifyContent: 'flex-end' },
   atlasRhythmBar: { width: '100%', borderRadius: 6 },
   atlasRhythmDay: { color: '#7e7184', fontSize: 7, lineHeight: 9, fontWeight: '800', marginTop: 4 },
+  atlasRhythmOpenHint: { color: '#8f7b98', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.8, marginTop: 'auto', textAlign: 'right' },
+  atlasRhythmSourceHidden: { opacity: 0 },
+  atlasRhythmBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#08050dcc' },
+  atlasRhythmForeground: { ...StyleSheet.absoluteFill, zIndex: 1 },
+  atlasRhythmFlipFront: { position: 'absolute', backfaceVisibility: 'hidden' },
+  atlasRhythmExpandedCard: { position: 'absolute', backfaceVisibility: 'hidden', borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#6e3b74', backgroundColor: '#100916', shadowColor: '#dc69ea', shadowOpacity: 0.42, shadowRadius: 28, shadowOffset: { width: 0, height: 12 } },
+  atlasRhythmExpandedInner: { flex: 1, padding: 16, gap: 13 },
+  atlasRhythmExpandedHeader: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  atlasRhythmClose: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: '#49334f', backgroundColor: '#1d1224', alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmCloseText: { color: '#fff', fontSize: 29, lineHeight: 31, fontWeight: '300', marginTop: -2 },
+  atlasRhythmExpandedHeading: { flex: 1, alignItems: 'center' },
+  atlasRhythmExpandedEyebrow: { color: '#bd72ff', fontSize: 9, fontWeight: '900', letterSpacing: 2.4 },
+  atlasRhythmExpandedTitle: { color: '#fff7ff', fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 4, letterSpacing: -0.45 },
+  atlasRhythmHeroRow: { flexDirection: 'row', alignItems: 'stretch', gap: 12, minHeight: 190 },
+  atlasRhythmClock: { flex: 1, minWidth: 0, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmClockCopy: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmClockValue: { color: '#fff9ff', fontSize: 24, lineHeight: 29, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  atlasRhythmClockLabel: { color: '#a893af', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.7, marginTop: 4 },
+  atlasRhythmStats: { width: '34%', gap: 8, justifyContent: 'center' },
+  atlasRhythmStat: { flex: 1, minHeight: 54, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#4b344f', backgroundColor: '#1a1020', alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmStatValue: { color: '#fff7ff', fontSize: 25, lineHeight: 29, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  atlasRhythmStatLabel: { color: '#a48fa9', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 1.1 },
+  atlasHeatmap: { borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#49334f', backgroundColor: '#160d1c', padding: 10, gap: 4 },
+  atlasHeatmapRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  atlasHeatmapDay: { width: 31, color: '#9d899f', fontSize: 7, lineHeight: 10, fontWeight: '900' },
+  atlasHeatmapCell: { flex: 1, height: 13, borderRadius: 3 },
+  atlasHeatmapAxis: { marginLeft: 34, paddingTop: 2, flexDirection: 'row', justifyContent: 'space-between' },
+  atlasHeatmapAxisText: { color: '#8f7d95', fontSize: 6, lineHeight: 8, fontWeight: '800' },
+  atlasRhythmInsight: { minHeight: 74, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#58365f', backgroundColor: '#211226', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  atlasRhythmInsightTitle: { color: '#fff7ff', fontSize: 15, lineHeight: 20, fontWeight: '900' },
+  atlasRhythmInsightDetail: { color: '#a895ae', fontSize: 10, lineHeight: 14, fontWeight: '700', marginTop: 3 },
   atlasGaugeWrap: { height: 91, alignItems: 'center', justifyContent: 'center' },
   atlasGaugeValue: { position: 'absolute', color: '#fff8fd', fontSize: 22, lineHeight: 25, fontWeight: '900', fontVariant: ['tabular-nums'] },
   atlasRelationshipGraph: { height: 77, position: 'relative', alignItems: 'center', justifyContent: 'center' },
@@ -1048,6 +1346,7 @@ const darkStyles = StyleSheet.create({
   legendLine: { color: '#ff755f', fontSize: 9, fontWeight: '700' },
   legendPlace: { color: '#ad6df4', fontSize: 9, fontWeight: '700' },
   horizontalCards: { gap: 10, paddingRight: 20 },
+  placeDetailsWrap: { marginTop: 14 },
   placeChip: { width: 145, minHeight: 101, borderRadius: 19, padding: 14, overflow: 'hidden', backgroundColor: '#0c0710', borderWidth: StyleSheet.hairlineWidth, borderColor: '#382340' },
   placeChipActive: { backgroundColor: 'rgba(104, 41, 27, 0.62)', borderWidth: 0, shadowColor: '#ff713e', shadowOpacity: 0.38, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   placeCategory: { color: '#b79aca', fontSize: 9, fontWeight: '800', letterSpacing: 1.05 },

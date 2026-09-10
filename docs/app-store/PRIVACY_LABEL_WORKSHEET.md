@@ -35,3 +35,8 @@ Apple requires disclosure of data handled by the app and third-party partners. D
 4. Is every optional integration and account flow described accurately in the public policy?
 5. Does the privacy policy explain consent, retention, deletion, and a working contact method?
 6. Does the App Store Connect label answer for the most inclusive production behavior, not only the simplest no-account path?
+
+
+## Pending RevenueCat native release
+
+The September 10 integration adds purchase/transaction processing and a pseudonymous RevenueCat customer identifier when an Apple SDK key is configured. Before shipping that build, reassess Purchases and Identifiers disclosures against RevenueCat's current Apple privacy guidance and actual dashboard retention configuration. No advertising/attribution identifiers or JourneyDeck journal/profile data are supplied by the integration. This is a release worksheet, not confirmation that App Store Connect labels have been updated.

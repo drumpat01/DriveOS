@@ -54,13 +54,16 @@ test('native sheet swipe and button dismissal share draft/busy protection', asyn
     const modal = tree.root.findByType('modal');
     assert.equal(modal.props.presentationStyle, 'pageSheet');
     assert.equal(modal.props.transparent, false);
-    assert.equal(modal.props.allowSwipeDismissal, !dirty && !busy);
+    assert.equal(modal.props.allowSwipeDismissal, false, 'fast content scrolling must never begin native sheet dismissal');
     const before = closed;
     modal.props.onRequestClose();
     assert.equal(closed, before + (!dirty && !busy ? 1 : 0));
     const close = tree.root.findAllByType('button').find((button: any) => button.props.accessibilityLabel === 'Close sheet');
     assert.equal(close.props.disabled, busy);
+    assert.equal(tree.root.findAllByType('button').filter((button: any) => button.props.accessibilityLabel === 'Dismiss keyboard').length, 0);
+    assert.equal(tree.root.findAllByType('text').filter((text: any) => text.children.includes('Done')).length, 0);
     assert.equal(tree.root.findByType('scroll').props.automaticallyAdjustKeyboardInsets, true);
+    assert.equal(tree.root.findByType('scroll').props.bounces, false);
   }
   await act(() => tree.unmount());
 });

@@ -70,11 +70,11 @@ export async function processPendingCompletionJobs(options: {
     report.attempted += 1;
     try {
       await performCompletionJob(job, options.connection ?? null);
-      markCompletionJobSucceeded(job.id);
+      markCompletionJobSucceeded(job.id, job);
       report.completed += 1;
     } catch (error) {
       markCompletionJobForRetry(job.id, failureCode(job, error), job.attemptCount,
-        error instanceof DeferredCompletionError ? error.minimumDelayMs : 0);
+        error instanceof DeferredCompletionError ? error.minimumDelayMs : 0, job);
       report.deferred += 1;
       observeJourneyDeckEvent(job.kind === 'private_cloud_sync' ? 'cloudkit.sync_failed' : 'recorder.completion_failed', {
         stage: job.kind,

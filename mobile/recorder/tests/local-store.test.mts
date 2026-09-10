@@ -36,7 +36,8 @@ assert.match(src, /export type LocalAtlasSnapshot\s*=/, 'exports LocalAtlasSnaps
 // 2. Database initialisation
 // ============================================================
 
-assert.match(src, /PRAGMA journal_mode = WAL/, 'enables WAL mode');
+assert.match(src, /prepareSQLiteConnectionForStartup\(db\)/, 'installs a busy timeout before requesting WAL mode');
+assert.match(hardeningSrc, /PRAGMA journal_mode = WAL/, 'enables WAL mode when the database still needs it');
 assert.match(hardeningSrc, /PRAGMA foreign_keys = ON/, 'enables foreign keys on every writable connection');
 assert.match(src, /PRAGMA user_version/, 'uses additive migration via user_version');
 assert.match(src, /MIGRATIONS/, 'migration array exists');

@@ -156,7 +156,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
         <View style={[styles.hero, { height: 156 + (44 * expansion), marginTop: 11 + (5 * expansion) }]}>
           <ImageBackground
             accessible={false}
-            source={headerImageSource(require('../assets/atlas-globe-membership-v1.jpg'), theme.mode)}
+            source={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
             resizeMode="cover"
             style={styles.heroImage}
             imageStyle={styles.heroImageCorners}
@@ -195,15 +195,15 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
               expansion={expansion}
               stacked={stackedLayout}
               kind="routes"
-              title="Repeated Routes"
-              description="Spot roads that keep returning."
+              title="Journey Studio"
+              description="Trim, split, and restore your drives."
             />
             <IntelligenceFeature
               expansion={expansion}
               stacked={stackedLayout}
               kind="music"
-              title="Music Moments"
-              description="Match songs to places and drives."
+              title="Your Year on the Road"
+              description="Relive your year with music and motion."
             />
           </View>
         </View>
@@ -280,14 +280,14 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
           style={({ pressed }) => [styles.ctaShell, { minHeight: 52 + (6 * expansion) }, purchaseDisabled && styles.ctaDisabled, pressed && styles.pressed]}
         >
           <LinearGradient
-            colors={theme.gradient(purchaseDisabled ? ['#5b3e4e', '#523149'] : ['#ff8a4d', '#ff3f72'])}
+            colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(purchaseDisabled ? ['#5b3e4e', '#523149'] : ['#ff8a4d', '#ff3f72'])}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.cta, { minHeight: 52 + (6 * expansion) }]}
           >
             {state.purchasePending
               ? <ActivityIndicator color={theme.color("#24060c", 'text')} />
-              : <Text style={styles.ctaText}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
+              : <Text style={[styles.ctaText, theme.isCustom && { color: theme.palette.onAccent }]}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
           </LinearGradient>
         </Pressable>
 
