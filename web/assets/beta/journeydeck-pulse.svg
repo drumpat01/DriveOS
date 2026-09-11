@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 360" role="img" aria-labelledby="title desc">
+  <title id="title">JourneyDeck pulse logo</title><desc id="desc">The JourneyDeck circular pulse mark without a surrounding tile.</desc>
+  <defs><linearGradient id="signal" x1="55" y1="48" x2="304" y2="314" gradientUnits="userSpaceOnUse"><stop stop-color="#f6f0e2"/><stop offset=".5" stop-color="#d4b15a"/><stop offset="1" stop-color="#b6bfcc"/></linearGradient><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+  <circle cx="180" cy="180" r="118" fill="none" stroke="#203a63" stroke-width="45" opacity=".65" transform="translate(0 5)"/><circle cx="180" cy="180" r="118" fill="none" stroke="url(#signal)" stroke-width="40" filter="url(#glow)"/>
+  <path d="M82 180h61l22-55 40 119 24-64h49" fill="none" stroke="#203a63" stroke-width="45" stroke-linejoin="round" opacity=".7" transform="translate(0 5)"/><path d="M82 180h61l22-55 40 119 24-64h49" fill="none" stroke="url(#signal)" stroke-width="40" stroke-linejoin="round" filter="url(#glow)"/><path d="M88 161a118 118 0 0 1 181-63" fill="none" stroke="#f6f0e2" stroke-opacity=".36" stroke-width="3" stroke-linecap="round"/>
+</svg>
