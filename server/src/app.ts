@@ -17,7 +17,7 @@ import { loadTessieRouteCoordinates } from "./tessie-route.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/support", "/support.html", "/manifest.webmanifest", "/favicon.ico"]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico"]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
@@ -65,6 +65,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     const requestPath = req.url.split("?")[0];
     if (["/", "/beta", "/beta/"].includes(requestPath) && cfg.mode === "web") return;
     if (publicPaths.has(requestPath) || req.url.startsWith("/assets/") || /\.(?:css|js|png|jpg|jpeg|svg|ico|woff2?|webmanifest)(?:\?|$)/i.test(req.url)) return;
+    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/") && !["/app", "/wife", "/spotify-callback"].includes(requestPath)) return;
     if (requestPath === scheduledSyncPath) {
       if (!authenticateScheduledSync(req, cfg.scheduledSyncSecret)) return reply.code(401).send({ error: "Scheduled sync authentication failed." });
       return;
@@ -202,8 +203,12 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
     app.get("/beta", async (_req, reply) => reply.header("x-robots-tag", "noindex, nofollow").sendFile("beta.html"));
     app.get("/beta/", async (_req, reply) => reply.redirect("/beta"));
   }
-  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "landing.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
-  app.setNotFoundHandler(async (_req, reply) => reply.code(404).send({ error: "Not found." }));
+  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "landing.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.setNotFoundHandler(async (req, reply) => {
+    const requestPath = req.url.split("?")[0];
+    if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/")) return reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html");
+    return reply.code(404).send({ error: "Not found." });
+  });
   app.addHook("onClose", async () => { await store.close(); database.close(); });
   return { app, database, store, recorder, recorderMobile, config: cfg };
 }

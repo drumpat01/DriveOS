@@ -130,6 +130,18 @@ body{background:#eeefea;color:#222820}.concept-bar{background:#263eea;color:#fff
   .editorial .note-stamp em { font-size: 20px; }
   .editorial .journey-mark { width: 58px; height: 34px; }
 }
+
+.editorial .hero-actions { display: flex; align-items: center; gap: 12px; }
+.editorial .hero-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; padding: 0 22px; border: 1px solid #ff795b85; border-radius: 17px; color: #19051f; background: linear-gradient(115deg, var(--app-coral), var(--app-pink)); font-size: 14px; font-weight: 800; white-space: nowrap; transition: transform .2s, filter .2s; }
+.editorial .hero-cta:hover { transform: translateY(-2px); filter: brightness(1.08); }
+@media (max-width: 760px) {
+  .editorial .editor-bottom { align-items: flex-end; }
+  .editorial .hero-actions { gap: 8px; }
+  .editorial .hero-cta { min-height: 46px; padding: 0 14px; border-radius: 14px; font-size: 12px; }
+}
+@media (max-width: 410px) {
+  .editorial .editor-bottom { align-items: flex-start; flex-direction: column; }
+}
 .editorial .launch-strip { border-bottom-color: var(--app-border); }
 .editorial .launch-strip .status-dot,
 .editorial .launch .status-dot { background: var(--app-coral); }
