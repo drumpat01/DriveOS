@@ -27,5 +27,10 @@ li + li { margin-top: 8px; }
 .contact { display: inline-flex; align-items: center; min-height: 50px; margin-top: 7px; padding: 11px 17px; border: 1px solid rgba(255, 164, 136, .62); border-radius: 15px; background: rgba(113, 45, 43, .22); color: #fff3ee; font-weight: 750; text-decoration: none; box-shadow: 0 0 28px rgba(255, 101, 74, .11); }
 .meta { display: grid; gap: 7px; margin-top: 20px; padding-top: 18px; border-top: 1px solid rgba(219, 190, 242, .16); color: #a99aac; font-size: .9rem; }
 .footer { padding: 24px 3px 0; color: #93859e; font-size: .83rem; text-align: center; }
+.page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 24px; }
+.page-actions .contact { margin-top: 0; }
+.secondary-action { display: inline-flex; align-items: center; min-height: 50px; padding: 11px 17px; border: 1px solid rgba(219, 190, 242, .28); border-radius: 15px; color: #d7c8e4; font-weight: 750; text-decoration: none; }
+.error-page { display: grid; align-content: center; min-height: 100svh; }
+.error-hero { min-height: 430px; display: flex; flex-direction: column; justify-content: center; }
 @media (max-width: 520px) { .page { width: min(100% - 28px, 860px); } .top { padding-bottom: 20px; } .top nav { gap: 12px; } .hero, .card { border-radius: 23px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
