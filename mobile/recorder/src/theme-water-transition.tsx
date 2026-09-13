@@ -10,6 +10,8 @@ import { recordThemeAnimationEvent } from './theme-animation-diagnostics';
 import { createWaterThemeSession, type WaterThemeFrame } from './theme-water-session';
 import {
   WATER_RIPPLE_DURATION,
+  WATER_RIPPLE_PREPARE_TIMEOUT,
+  waterCaptureSize,
   waterRippleGeometry,
   type ThemeSnapshotFrame,
   type ThemeTransitionOrigin,
@@ -64,7 +66,7 @@ export function useWaterThemeTransition(
       } catch {
         recordThemeAnimationEvent('temporary_release_failed', retained.attempt);
       }
-    }, 250);
+    }, 0);
   }, []);
 
   const [session] = useState(() => createWaterThemeSession<ThemeId, Snapshot>({
@@ -105,8 +107,19 @@ export function useWaterThemeTransition(
       if (!mounted.current || bounds.width <= 0 || bounds.height <= 0) throw new Error('Theme surface unavailable');
       recordThemeAnimationEvent('capture_start', attempt);
       try {
-        const captureUri = await captureScreen({ format: 'png', quality: 1, result: 'tmpfile' });
-        recordThemeAnimationEvent('capture_complete', attempt);
+        const captureSize = waterCaptureSize({ width: bounds.width, height: bounds.height });
+        const captureStartedAt = Date.now();
+        const captureUri = await captureScreen({
+          format: 'png',
+          result: 'tmpfile',
+          width: captureSize.width,
+          height: captureSize.height,
+        });
+        recordThemeAnimationEvent('capture_complete', attempt, {
+          duration_ms: Date.now() - captureStartedAt,
+          image_width: captureSize.width,
+          image_height: captureSize.height,
+        });
         if (!mounted.current || activeAttempt.current !== attempt) {
           try { releaseCapture(captureUri); } catch {}
           recordThemeAnimationEvent('capture_abandoned', attempt);
@@ -233,11 +246,23 @@ export function WaterThemeOverlay({ frame, reduceTransparency }: {
   useEffect(() => {
     readiness.current.mounted = true;
     recordThemeAnimationEvent('modal_mounted', before.serial);
+    const timeout = setTimeout(() => {
+      if (!readiness.current.mounted || readiness.current.scheduled) return;
+      readiness.current.scheduled = true;
+      recordThemeAnimationEvent('overlay_prepare_timeout', before.serial, {
+        modal_ready: readiness.current.modal,
+        image_ready: readiness.current.image,
+      });
+      // A missing native image must never leave a transparent modal above the
+      // settings controls. The session still applies the selected theme.
+      onFinished();
+    }, WATER_RIPPLE_PREPARE_TIMEOUT);
     return () => {
+      clearTimeout(timeout);
       readiness.current.mounted = false;
       recordThemeAnimationEvent('modal_unmounted', before.serial);
     };
-  }, [before.serial]);
+  }, [before.serial, onFinished]);
 
   useEffect(() => {
     if (!oldScene || readiness.current.image) return;
@@ -265,7 +290,7 @@ export function WaterThemeOverlay({ frame, reduceTransparency }: {
       if (complete) scheduleOnRN(finish);
     }));
     return () => cancelAnimation(progress);
-  }, [before.serial, finish, playing, progress, reduceTransparency]);
+  }, [before.serial, finish, playing, progress]);
 
   return <Modal
     visible

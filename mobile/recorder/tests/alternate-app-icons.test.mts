@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { appIconCatalog, appIconIdForNativeName, parseAppIconId } from '../src/app-icon-catalog.ts';
+import { APP_ICON_GRID_ORDER, FREE_APP_ICON_IDS, PLUS_APP_ICON_IDS, appIconCatalog, appIconIdForNativeName, appIconRequiresPlus, parseAppIconId } from '../src/app-icon-catalog.ts';
 
 const require = createRequire(import.meta.url);
 const xcode = require('xcode');
@@ -13,6 +13,7 @@ const plugin = require('../plugins/with-alternate-app-icons.js');
 const root = fileURLToPath(new URL('../', import.meta.url));
 
 test('app icon choices keep stable persisted IDs and distinct native names', () => {
+  assert.equal(appIconCatalog.original.name, 'Cinematic');
   assert.equal(parseAppIconId('rosewater'), 'rosewater');
   assert.equal(parseAppIconId('grand-touring'), 'grand-touring');
   assert.equal(parseAppIconId('warm-ivory'), 'warm-ivory');
@@ -22,6 +23,11 @@ test('app icon choices keep stable persisted IDs and distinct native names', () 
   assert.equal(appIconIdForNativeName('JourneyDeckRosewater'), 'rosewater');
   assert.equal(appIconIdForNativeName('JourneyDeckGrandTouring'), 'grand-touring');
   assert.equal(new Set(Object.values(appIconCatalog).map(icon => icon.nativeName)).size, 4);
+  assert.deepEqual(FREE_APP_ICON_IDS, ['grand-touring', 'warm-ivory']);
+  assert.deepEqual(PLUS_APP_ICON_IDS, ['original', 'rosewater']);
+  assert.deepEqual(APP_ICON_GRID_ORDER, ['grand-touring', 'warm-ivory', 'original', 'rosewater']);
+  assert.equal(appIconRequiresPlus('rosewater'), true);
+  assert.equal(appIconRequiresPlus('grand-touring'), false);
 });
 
 test('iOS host target declares every alternate app icon set', () => {

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { createCloudKitRequestGate } from '../modules/journeydeck-cloudkit/src/CloudKitRequestGate.ts';
 
 const src = fileURLToPath(new URL('../src/', import.meta.url));
 const files = new Map<string, string>();
@@ -205,6 +206,26 @@ test('removing and setting Home again on iPad keeps one versioned identity and s
   assert.equal(phone.store.listPrivatePreferences(phone.user.id, true).filter((p: any) => p.key === 'library.place.v1.home').length, 1);
 });
 
+test('custom safe places remain distinct, private, removable, and sync across devices', async () => {
+  const phone = device(), ipad = device();
+  const saved = phone.load(resolve(src, 'saved-places.ts'));
+  const gym = saved.saveCustomSavedPlace(phone.user.id, 'Neighborhood Gym', 43.5, -83.9);
+  const cabin = saved.saveCustomSavedPlace(phone.user.id, 'Family Cabin', 44.1, -84.2);
+  assert.notEqual(gym.id, cabin.id);
+  assert.deepEqual(saved.loadCustomSavedPlaces(phone.user.id).map((place: any) => place.label), ['Family Cabin', 'Neighborhood Gym']);
+  assert.deepEqual(phone.store.getSensitivePlaces(phone.user.id).map((place: any) => place.label), ['Family Cabin', 'Neighborhood Gym']);
+
+  const upload = await phone.engine.preparePushPayload();
+  await ipad.engine.ingestRemoteRecords(upload);
+  const ipadSaved = ipad.load(resolve(src, 'saved-places.ts'));
+  assert.deepEqual(ipadSaved.loadCustomSavedPlaces(ipad.user.id).map((place: any) => place.label), ['Family Cabin', 'Neighborhood Gym']);
+
+  ipadSaved.removeCustomSavedPlace(ipad.user.id, gym.id);
+  const removal = await ipad.engine.preparePushPayload();
+  await phone.engine.ingestRemoteRecords(removal);
+  assert.deepEqual(saved.loadCustomSavedPlaces(phone.user.id).map((place: any) => place.label), ['Family Cabin']);
+});
+
 test('the real sync coordinator retains the change token for incomplete dependencies, then commits on successful retry', async () => {
   const phone = device(); seed(phone);
   const records = await phone.engine.preparePushPayload();
@@ -390,17 +411,33 @@ test('unsolicited or repeated acknowledgements never mark unrelated pending rows
   assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
 });
 
-test('replaying old cloud music cannot erase a local edit awaiting upload', async () => {
+test('newer artwork enrichment replaces an older cloud copy without a false sync conflict', async () => {
   const phone = device(); seed(phone);
   const records = await phone.engine.preparePushPayload();
   phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
   phone.store.upsertMusicEntry({ ...phone.store.getMusicEntry(phone.user.id, 'fixture-play'),
     artworkUrl: 'https://example.com/repaired-cover.jpg' });
+  phone.db.prepare("UPDATE local_songs SET updated_at='2099-09-10T12:00:00.000Z' WHERE user_id=?").run(phone.user.id);
   const result = await phone.engine.ingestRemoteRecords(records.filter((record: any) => record.recordType === 'MusicEntry'));
   const after = phone.store.getMusicEntry(phone.user.id, 'fixture-play');
   assert.equal(after.artworkUrl, 'https://example.com/repaired-cover.jpg');
   assert.equal(after.syncedToCloud, 0);
-  assert.equal(result.deferredCount, 1, 'do not claim synchronization while conflicting unversioned data remains');
+  assert.equal(result.deferredCount, 0, 'a newer identity-preserving catalog repair is safe to upload');
+  assert.deepEqual(phone.engine.getIssueDetails(), []);
+  const retry = (await phone.engine.preparePushPayload()).find((record: any) => record.recordName === 'music_fixture-play');
+  assert.equal(retry.fields.artworkUrl, 'https://example.com/repaired-cover.jpg');
+  assert.equal(retry.fields.updatedAt, '2099-09-10T12:00:00.000Z');
+});
+
+test('a changed playback identity still remains quarantined even with a newer local timestamp', async () => {
+  const phone = device(); seed(phone);
+  const records = await phone.engine.preparePushPayload();
+  phone.engine.acknowledgeSuccessfulPush(records.map((record: any) => record.recordName));
+  phone.store.upsertMusicEntry({ ...phone.store.getMusicEntry(phone.user.id, 'fixture-play'), track: 'Different song' });
+  phone.db.prepare("UPDATE local_songs SET updated_at='2099-09-10T12:00:00.000Z' WHERE user_id=?").run(phone.user.id);
+  const result = await phone.engine.ingestRemoteRecords(records.filter((record: any) => record.recordType === 'MusicEntry'));
+  assert.equal(result.deferredCount, 1);
+  assert.equal(phone.store.getMusicEntry(phone.user.id, 'fixture-play').track, 'Different song');
   assert.match(phone.engine.getIssueDetails()[0], /kept safely on this device/);
 });
 
@@ -451,6 +488,64 @@ test('automatic iCloud sync retries immediately after account availability recov
   accountStatus = 'available';
   assert.equal((await coordinator.syncCurrentUserWithPrivateICloud()).accountStatus, 'available');
   assert.equal(pulls, 1);
+});
+
+test('timed-out cloud deletion remains paused across coordinator restart and can be retried after native settles', async () => {
+  const gate = createCloudKitRequestGate(5);
+  let release!: () => void, deletes = 0;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: () => gate(async () => ({ privateContentVersion: 3 })),
+      getCloudKitAccountStatus: () => gate(async () => 'available'),
+      deleteCloudKitPrivateZone: () => gate(async () => { if (++deletes === 1) await blocked; }),
+    }, './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  let coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /timed out/);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
+  coordinator = phone.reload(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), /paused/);
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /recovering/);
+  assert.equal(deletes, 1);
+  release(); await blocked; await new Promise(resolve => setImmediate(resolve));
+  await coordinator.deletePrivateCloudDataForUser(phone.user);
+  assert.equal(deletes, 2);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true, 'barrier stays until local account cleanup');
+  assert.ok(phone.store.getJourney(phone.user.id, 'fixture-journey'));
+});
+
+test('hung CloudKit upload releases sync state without acknowledging its late success', async () => {
+  const gate = createCloudKitRequestGate(5);
+  let release!: () => void, sent: any[] = [], first = true;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: () => gate(async () => ({ privateContentVersion: 3 })),
+      getCloudKitAccountStatus: () => gate(async () => 'available'),
+      ensureCloudKitPrivateZone: () => gate(async () => {}),
+      pullCloudKitChanges: () => gate(async () => ({ records: [], deletedRecordNames: [] })),
+      commitCloudKitChangeToken: () => gate(async () => {}),
+      pushCloudKitRecords: (_scope: string, records: any[]) => gate(async () => {
+        sent = records; if (first) { first = false; await blocked; }
+        return { savedRecordNames: records.map(r => r.recordName), remoteRecords: [], failedRecordNames: [] };
+      }),
+    }, './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud({ force: true }), /timed out/);
+  assert.ok(sent.length);
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud({ force: true }), /recovering/);
+  release(); await blocked; await new Promise(resolve => setImmediate(resolve));
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
+  await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 1);
 });
 
 test('queued requests recheck the active sync after a profile switch and do not overlap', async () => {

@@ -1,15 +1,14 @@
 import { useAppTheme, useThemedStyles } from './app-theme';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AccessibilityInfo, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState, type ReactNode } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { FirstRunStage } from './first-run-onboarding';
 import type { RecordingMode } from './recording-mode';
+import { FirstRunWelcomeScreen } from './first-run-welcome-screen';
 
-const WELCOME_ANIMATION = require('../assets/onboarding-welcome-approved.webp');
-const WELCOME_POSTER = require('../assets/onboarding-welcome-approved-poster.png');
 const ROAD_BACKGROUND = require('../assets/onboarding-road-background.png');
 const APP_ICON = require('../assets/icon.png');
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
@@ -22,37 +21,6 @@ type Props = {
   onSkipAppleMusic: () => Promise<void>;
   onFinish: () => void;
 };
-
-function WelcomeAnimation({ onComplete }: { onComplete: () => void }) {
-  const styles = useThemedStyles(darkStyles);
-
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const completed = useRef(false);
-  const onCompleteRef = useRef(onComplete);
-
-  useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => undefined);
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => subscription.remove();
-  }, []);
-  useEffect(() => {
-    if (!loaded) return undefined;
-    const timer = setTimeout(() => {
-      if (completed.current) return;
-      completed.current = true;
-      onCompleteRef.current();
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [loaded]);
-
-  return <View style={styles.fullScreen}><ExpoImage
-    accessibilityLabel="Welcome to JourneyDeck. Your drive, remembered. Private, personal, yours."
-    autoplay={!reduceMotion} contentFit="cover" onLoad={() => setLoaded(true)}
-    source={reduceMotion ? WELCOME_POSTER : WELCOME_ANIMATION} style={StyleSheet.absoluteFill}
-  /></View>;
-}
 
 function RoadBackdrop() {
   const styles = useThemedStyles(darkStyles);
@@ -203,7 +171,7 @@ export function FirstRunOnboardingScreen(props: Props) {
   const styles = useThemedStyles(darkStyles);
 
   return <View style={styles.fullScreen}>
-    {props.stage === 'welcome' && <WelcomeAnimation onComplete={props.onWelcomeComplete} />}
+    {props.stage === 'welcome' && <FirstRunWelcomeScreen onStart={props.onWelcomeComplete} />}
     {props.stage === 'recording' && <RecordingScreen onContinue={props.onRecordingContinue} />}
     {props.stage === 'music' && <AppleMusicScreen onConnect={props.onConnectAppleMusic} onSkip={props.onSkipAppleMusic} />}
     {props.stage === 'instructions' && <FinishScreen onFinish={props.onFinish} />}

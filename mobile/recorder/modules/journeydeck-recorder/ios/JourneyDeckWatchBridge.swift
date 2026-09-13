@@ -72,7 +72,7 @@ final class JourneyDeckWatchBridge: NSObject, WCSessionDelegate {
       // never start a journey hours later or stop a different journey.
       if command == "start" {
         guard current["ready"] as? Bool == true else { replyHandler(["error": "open_iphone_required"]); return }
-        let status = await JourneyDeckNativeRecorder.shared.startManual(requestID: requestID, expectedToken: token)
+        let status = await JourneyDeckNativeRecorder.shared.executeCommand(operationID: requestID, action: "start", sessionID: "", expectedToken: token, expiresAt: issuedAt + 30)
         guard status["recording"] as? Bool == true || status["paused"] as? Bool == true else {
           replyHandler(["error": "start_failed"]); return
         }
@@ -80,7 +80,7 @@ final class JourneyDeckWatchBridge: NSObject, WCSessionDelegate {
         guard let expected = message["sessionID"] as? String, !expected.isEmpty else {
           replyHandler(["error": "refresh_required"]); return
         }
-        let status = await JourneyDeckNativeRecorder.shared.finish(expectedSessionID: expected)
+        let status = await JourneyDeckNativeRecorder.shared.executeCommand(operationID: requestID, action: "finish", sessionID: expected, expectedToken: token, expiresAt: issuedAt + 30)
         if status["sessionId"] as? String == expected || status["lastErrorCode"] is String || status["statusReliable"] as? Bool != true {
           replyHandler(["error": "stop_failed"]); return
         }

@@ -28,6 +28,29 @@ struct ManualJourneyInactivityTests {
     }
     precondition(stopped)
 
+    for speed in [0.0, 1.4] {
+      var uncertain = ManualJourneyInactivity()
+      var didStop = false
+      for second in 0...720 {
+        didStop = observe(&uncertain, fix(Double(second), speed: speed,
+          latitude: Double(second) * speed / 111_195, accuracy: 50)) || didStop
+      }
+      precondition(didStop)
+    }
+
+    var foreground = ManualJourneyInactivity()
+    for second in stride(from: 0.0, through: 585, by: 15) { _ = observe(&foreground, fix(second)) }
+    precondition(!foreground.shouldFinish(now: fix(599).timestamp))
+    precondition(foreground.shouldFinish(now: fix(600).timestamp))
+    precondition(!foreground.shouldFinish(now: fix(700).timestamp))
+
+    var departure = ManualJourneyInactivity()
+    for second in 0...600 {
+      precondition(!observe(&departure, fix(Double(second), speed: second > 590 ? 15 : 0,
+        latitude: Double(max(0, second - 590)) * 15 / 111_195, accuracy: 50)))
+    }
+    precondition(!departure.shouldFinish(now: fix(600).timestamp))
+
     var gap = ManualJourneyInactivity()
     for second in stride(from: 0.0, through: 480, by: 15) { _ = observe(&gap, fix(second)) }
     for second in stride(from: 720.0, through: 1200, by: 15) { precondition(!observe(&gap, fix(second))) }

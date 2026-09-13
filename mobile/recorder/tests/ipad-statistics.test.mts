@@ -60,8 +60,9 @@ test('Monday-first calendar and local day iteration work across month and DST bo
 
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 let light: boolean | 'sakura' | 'redline' = false, fontScale = 1;
-const native = { StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, useWindowDimensions: () => ({ fontScale }),
+const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, useWindowDimensions: () => ({ fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])) };
+const gridLayout = load('device-layout.ts', { 'react-native': native });
 const ui = load('ipad-statistics-screen.tsx', {
   './statistics-motion': {
     StatisticsMotionProvider: ({ children }: any) => children,
@@ -76,7 +77,7 @@ const ui = load('ipad-statistics-screen.tsx', {
   './theme-material': { ThemeMaterial: host('ThemeMaterial') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './theme-palette': load('theme-palette.ts'),
   './ipad-page-header': { IpadPageHeader: host('Header') }, './card-detail-link': { CardDetailLink: host('DetailLink') },
-  './journey-title': load('journey-title.ts'), './ipad-statistics-model': model,
+  './journey-title': load('journey-title.ts'), './ipad-statistics-model': model, './device-layout': gridLayout,
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((n: any) => n.children.join('')).join('|');
 const button = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
@@ -123,6 +124,10 @@ test('widgets precede calendar; date selection, paging, ranges, links, refresh a
     assert.match(text(tree), /Journey averages/); assert.match(text(tree), /Record book/); assert.match(text(tree), /Activity split/);
     assert.ok(tree.root.findByProps({ testID: 'statistics-bottom-widgets' }));
     assert.ok(text(tree).indexOf('Active days') < text(tree).indexOf('Your days, in detail'));
+    const selectedThirtyDayBorder = button(tree, '30D').props.style.flat().find((style: any) => style?.opacity !== undefined).borderColor;
+    await act(async () => button(tree, '7D').props.onPress());
+    assert.equal(button(tree, '7D').props.style.flat().find((style: any) => style?.opacity !== undefined).borderColor, selectedThirtyDayBorder, '7D and 30D share the same selected filter accent');
+    await act(async () => button(tree, '30D').props.onPress());
     await act(async () => button(tree, '90D · Plus').props.onPress()); assert.equal(upgrades, 1);
     await act(async () => tree.root.findByProps({ testID: `day-${todayKey}` }).props.onPress());
     const selectedDate = tree.root.findByProps({ testID: `day-${todayKey}` });
@@ -153,19 +158,40 @@ test('widgets precede calendar; date selection, paging, ranges, links, refresh a
       assert.ok(panel.props.style.flat().some((style: any) => style?.flex === 1), `${id} fills its row`);
     }
     fontScale = 1;
+    await act(async () => tree.update(render()));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-distance-panel' }).props.style.width, gridLayout.ipadGridSpan(1200, 4));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-breakdown-panel' }).props.style.width, gridLayout.ipadGridSpan(1200, 2));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-calendar-panel' }).props.style.width, gridLayout.ipadGridSpan(1162, 4));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-day-panel' }).props.style.width, gridLayout.ipadGridSpan(1162, 2));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-recent-panel' }).props.style.width, gridLayout.ipadGridSpan(1200, 4));
+    assert.equal(tree.root.findByProps({ testID: 'statistics-bottom-widgets' }).props.style.width, gridLayout.ipadGridSpan(1200, 2));
     await act(async () => canvas.props.onLayout({ nativeEvent: { layout: { width: 390 } } }));
     const phoneMetric = tree.root.findByProps({ testID: 'statistics-widgets' }).findAllByType('View').find((node: any) => Array.isArray(node.props.style) && node.props.style.flat().some((style: any) => style?.height === 200));
     assert.equal(phoneMetric.props.style.flat().find((style: any) => style?.width !== undefined).width, 189, 'phone uses two equal metric columns');
     assert.equal(tree.root.findByProps({ testID: 'statistics-bottom-layout' }).props.style.flexDirection, 'column');
     await act(async () => tree.update(render(45, state, true)));
-    assert.equal(tree.root.findByType('Header').props.compact, true);
+    const header = tree.root.findByType('Header');
+    assert.equal(header.props.compact, true);
+    assert.equal(header.props.subtitle, undefined, 'Statistics omits the sentence beneath its artwork');
+    assert.equal(header.props.artworkTreatment, 'bright', 'Statistics requests the brighter center treatment');
+    assert.equal(header.findAllByProps({ accessibilityLabel: '7D' }).length, 0, 'range filters render below rather than inside the artwork header');
     assert.equal(tree.root.findByType('SafeAreaView').props.edges.join(','), 'top,left,right');
     assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentInsetAdjustmentBehavior, 'never');
     assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentContainerStyle.padding, 16);
     for (const label of ['7D', '30D', '90D · Plus', 'All · Plus']) {
       const item = tree.root.findAllByProps({ testID: 'selection-item' }).find((node: any) => node.findAllByProps({ accessibilityLabel: label }).length);
-      assert.equal(item?.props.style.flexBasis, '45%', `${label} fills the phone range grid`);
+      assert.equal(item?.props.style.flex, 1, `${label} shares one equal-width phone range row`);
+      assert.equal(item?.props.style.minWidth, 0, `${label} can contract on narrow phones`);
+      const labelNode = item?.findByProps({ accessibilityLabel: label }).findByType('Text');
+      assert.equal(labelNode?.props.adjustsFontSizeToFit, true, `${label} remains legible in the compact row`);
     }
+    fontScale = 1.3;
+    await act(async () => tree.update(render(45, state, true)));
+    for (const label of ['7D', '30D', '90D · Plus', 'All · Plus']) {
+      const item = tree.root.findAllByProps({ testID: 'selection-item' }).find((node: any) => node.findAllByProps({ accessibilityLabel: label }).length);
+      assert.equal(item?.props.style.flexBasis, '45%', `${label} wraps at larger accessibility text sizes`);
+    }
+    fontScale = 1;
     light = true;
     await act(async () => tree.update(render(null)));
     assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, '#fffaf0');

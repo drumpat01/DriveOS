@@ -24,7 +24,7 @@ export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): I
   if (typeof source === 'number' && customArtwork.has(source)) {
     // Keep replacement registration conditional, matching the device-proven OTA.
     if (mode === 'redline') {
-      if (source === require('../assets/cinematic-home-main-photo-v1.jpg')) return require('../assets/theme-grand-touring-home-v1.png');
+      if (source === require('../assets/cinematic-home-main-photo-v1.jpg')) return require('../assets/theme-grand-touring-home-v2.png');
       if (source === require('../assets/cinematic-soundtracks-photo-v1.jpg')) return require('../assets/theme-grand-touring-soundtracks-v1.png');
       if (source === require('../assets/cinematic-memories-polaroids-photo-v1.jpg')) return require('../assets/theme-grand-touring-memories-v1.png');
       if (source === require('../assets/cinematic-statistics-photo-v1.jpg')) return require('../assets/theme-grand-touring-statistics-v1.png');

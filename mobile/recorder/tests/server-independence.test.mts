@@ -25,6 +25,7 @@ const releaseFeatures = await readFile(new URL('../src/release-features.ts', imp
 const credentials = await readFile(new URL('../src/credentials.ts', import.meta.url), 'utf8');
 const profileSecrets = await readFile(new URL('../src/profile-secure-store.ts', import.meta.url), 'utf8');
 const nativeRecorder = await readFile(new URL('../modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift', import.meta.url), 'utf8');
+const nativeTransitions = await readFile(new URL('../modules/journeydeck-recorder/ios/RecorderStateMachine.swift', import.meta.url), 'utf8');
 
 test('manual finish commits to the on-device archive before optional remote sync', () => {
   const finish = app.slice(app.indexOf('const finishSession'), app.indexOf('const finish =', app.indexOf('const finishSession')));
@@ -82,8 +83,8 @@ test('clean profiles can record manually without JourneyDeck credentials', () =>
   assert.match(app, /beginLocalSession\(deviceId\)/);
   assert.doesNotMatch(app, /Connect this recorder to JourneyDeck first/);
   assert.match(nativeRecorder, /private func startSession\(identity:/);
-  assert.match(nativeRecorder, /INSERT INTO native_recording_sessions\(id,owner_user_id,device_id,status/);
-  assert.doesNotMatch(nativeRecorder, /loadConnection|JourneyDeck credentials/);
+  assert.match(nativeTransitions, /INSERT INTO native_recording_sessions\(id,owner_user_id,device_id,status/);
+  assert.doesNotMatch(nativeRecorder + nativeTransitions, /loadConnection|JourneyDeck credentials|URLSession/);
 });
 
 test('Build 12 automatic journeys use the Expo safety fallback without sharing Swift SQLite', () => {

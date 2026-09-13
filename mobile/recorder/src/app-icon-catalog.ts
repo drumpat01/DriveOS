@@ -6,7 +6,7 @@ export const appIconCatalog: Record<AppIconId, {
   nativeName: string | null;
 }> = {
   original: {
-    name: 'Original',
+    name: 'Cinematic',
     description: 'JourneyDeck pulse',
     nativeName: null,
   },
@@ -26,6 +26,14 @@ export const appIconCatalog: Record<AppIconId, {
     nativeName: 'JourneyDeckGrandTouring',
   },
 };
+
+export const FREE_APP_ICON_IDS: readonly AppIconId[] = ['grand-touring', 'warm-ivory'];
+export const PLUS_APP_ICON_IDS: readonly AppIconId[] = ['original', 'rosewater'];
+export const APP_ICON_GRID_ORDER: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...PLUS_APP_ICON_IDS];
+
+export function appIconRequiresPlus(id: AppIconId) {
+  return PLUS_APP_ICON_IDS.includes(id);
+}
 
 export function parseAppIconId(value: unknown): AppIconId {
   return typeof value === 'string' && Object.hasOwn(appIconCatalog, value) ? value as AppIconId : 'original';

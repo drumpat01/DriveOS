@@ -108,6 +108,8 @@ export type LocalMusicEntry = {
   confidence: number | null;
   syncedToCloud: number;
   createdAt: string;
+  /** Latest canonical metadata enrichment; derived without changing the deployed row schema. */
+  updatedAt?: string;
 };
 
 export type LocalArtwork = {
@@ -1186,7 +1188,8 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
       COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
       COALESCE(sa.remote_url,aa.remote_url,e.artwork_url) AS artworkUrl,
       COALESCE(s.external_url,a.external_url,e.external_url) AS externalUrl,
-      e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt
+      e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt,
+      CASE WHEN s.updated_at>e.created_at THEN s.updated_at ELSE e.created_at END AS updatedAt
       FROM local_music_entries e
       LEFT JOIN local_songs s ON s.id=e.song_id AND s.user_id=e.user_id
       LEFT JOIN local_albums a ON a.id=s.album_id AND a.user_id=e.user_id
@@ -1259,7 +1262,8 @@ export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: strin
       COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
       COALESCE(sa.remote_url,aa.remote_url,e.artwork_url) AS artworkUrl,
       COALESCE(s.external_url,a.external_url,e.external_url) AS externalUrl,
-      e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt
+      e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt,
+      CASE WHEN s.updated_at>e.created_at THEN s.updated_at ELSE e.created_at END AS updatedAt
       FROM local_music_entries e
       LEFT JOIN local_songs s ON s.id=e.song_id AND s.user_id=e.user_id
       LEFT JOIN local_albums a ON a.id=s.album_id AND a.user_id=e.user_id
@@ -1345,7 +1349,7 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>, 
   const aliasOwner = db.getFirstSync<{ user_id: string }>('SELECT user_id FROM local_place_aliases WHERE alias_id=?;', input.id);
   if (aliasOwner && aliasOwner.user_id !== input.userId) throw new Error('Cannot import a place alias owned by another profile.');
   const aliased = placeByIdInternal(input.userId, input.id) ?? placeByIdInternal(input.userId, targetId);
-  const nearby = input.id.startsWith('saved-place-v1-') ? null : input.kind === 'geocoded'
+  const nearby = /^(saved-place-v1-|saved-custom-place-v1-)/.test(input.id) ? null : input.kind === 'geocoded'
     ? findCachedPlace(input.userId, lat, lng, Math.min(radiusMeters, 150))
     : findNamedPlace(input.userId, lat, lng, Math.min(radiusMeters, SAVED_PLACE_MATCH_RADIUS_METERS));
   const existing = aliased ?? nearby;
@@ -1381,7 +1385,15 @@ export function upsertPlace(input: Omit<LocalPlace, 'createdAt' | 'updatedAt'>, 
 export function getSensitivePlaces(userId: LocalUserId): LocalPlace[] {
   initializeLocalStore();
   return db.getAllSync<LocalPlace>(
-    "SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE user_id=? AND (kind IN ('home','work') OR (kind='custom' AND LOWER(label)='school')) ORDER BY kind,label;",
+    "SELECT id,user_id AS userId,kind,label,lat,lng,radius_meters AS radiusMeters,foursquare_id AS foursquareId,osm_id AS osmId,cached_until AS cachedUntil,created_at AS createdAt,updated_at AS updatedAt FROM local_places WHERE user_id=? AND (kind IN ('home','work') OR (kind='custom' AND (LOWER(label)='school' OR id LIKE 'saved-custom-place-v1-%'))) ORDER BY kind,label;",
+    userId,
+  );
+}
+
+export function listCustomSavedPlaces(userId: LocalUserId): LocalPlace[] {
+  initializeLocalStore();
+  return db.getAllSync<LocalPlace>(
+    `${PLACE_SELECT} WHERE user_id=? AND kind='custom' AND id LIKE 'saved-custom-place-v1-%' ORDER BY label COLLATE NOCASE,id;`,
     userId,
   );
 }
@@ -1721,10 +1733,12 @@ export function preferencesPendingSync(userId: LocalUserId, limit = 50): string[
 
 export function getMusicEntry(userId: LocalUserId, id: string): LocalMusicEntry | null {
   initializeLocalStore();
-  return db.getFirstSync<LocalMusicEntry>(`SELECT id,user_id AS userId,journey_id AS journeyId,source,played_at AS playedAt,
-    track,artist,album,duration_ms AS durationMs,artwork_url AS artworkUrl,external_url AS externalUrl,
-    confidence,synced_to_cloud AS syncedToCloud,created_at AS createdAt
-    FROM local_music_entries WHERE id=? AND user_id=?;`, id, userId);
+  return db.getFirstSync<LocalMusicEntry>(`SELECT e.id,e.user_id AS userId,e.journey_id AS journeyId,e.source,e.played_at AS playedAt,
+    e.track,e.artist,e.album,e.duration_ms AS durationMs,e.artwork_url AS artworkUrl,e.external_url AS externalUrl,
+    e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt,
+    CASE WHEN s.updated_at>e.created_at THEN s.updated_at ELSE e.created_at END AS updatedAt
+    FROM local_music_entries e LEFT JOIN local_songs s ON s.id=e.song_id AND s.user_id=e.user_id
+    WHERE e.id=? AND e.user_id=?;`, id, userId);
 }
 
 export function markRouteArchiveRevisionsSynced(userId: LocalUserId, acknowledgements: SyncRevisionAck[]): void {

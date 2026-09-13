@@ -33,9 +33,10 @@ private func iso8601(_ date: Date) -> String {
 private final class PrivateCloudKitTransport {
   private let container = CKContainer(identifier: containerIdentifier)
   private var database: CKDatabase { container.privateCloudDatabase }
+  private var requests: CloudKitRequests { CloudKitRequests(database) }
 
   func accountStatus() async throws -> String {
-    accountStatusName(try await container.accountStatus())
+    accountStatusName(try await CloudKitRequests.accountStatus(container))
   }
 
   func zoneID(profileScope: String) throws -> CKRecordZone.ID {
@@ -45,14 +46,15 @@ private final class PrivateCloudKitTransport {
   }
 
   func ensureZone(profileScope: String) async throws -> CKRecordZone.ID {
-    let status = try await container.accountStatus()
+    let status = try await CloudKitRequests.accountStatus(container)
     guard status == .available else {
       throw JourneyDeckCloudKitError.make(2, "Private iCloud is unavailable: \(accountStatusName(status)).")
     }
     let id = try zoneID(profileScope: profileScope)
-    let zones = try await retrying { try await self.database.recordZones(for: [id]) }
+    let zones = try await retrying { try await self.requests.zones([id]) }
     if case .success? = zones[id] { return id }
-    let result = try await retrying { try await self.database.modifyRecordZones(saving: [CKRecordZone(zoneID: id)], deleting: []) }
+    if case .failure(let error)? = zones[id], !isUnknownItem(error), (error as? CKError)?.code != .zoneNotFound { throw error }
+    let result = try await retrying { try await self.requests.modifyZones(saving: [CKRecordZone(zoneID: id)], deleting: []) }
     guard case .success? = result.saveResults[id] else {
       if case .failure(let error)? = result.saveResults[id] { throw error }
       throw JourneyDeckCloudKitError.make(3, "CloudKit did not create the private record zone.")
@@ -61,13 +63,14 @@ private final class PrivateCloudKitTransport {
   }
 
   func deleteZone(profileScope: String) async throws {
-    let status = try await container.accountStatus()
+    let status = try await CloudKitRequests.accountStatus(container)
     guard status == .available else {
       throw JourneyDeckCloudKitError.make(2, "Private iCloud is unavailable: \(accountStatusName(status)).")
     }
     let id = try zoneID(profileScope: profileScope)
-    let result = try await retrying { try await self.database.modifyRecordZones(saving: [], deleting: [id]) }
-    if case .failure(let error)? = result.deleteResults[id], !isUnknownItem(error) { throw error }
+    let result = try await retrying { try await self.requests.modifyZones(saving: [], deleting: [id]) }
+    guard let deletion = result.deleteResults[id] else { throw JourneyDeckCloudKitError.make(14, "CloudKit deletion was not confirmed.") }
+    if case .failure(let error) = deletion, !isUnknownItem(error), (error as? CKError)?.code != .zoneNotFound { throw error }
     clearToken(zoneID: id)
     removePersistedAssets(zoneID: id)
   }
@@ -78,7 +81,7 @@ private final class PrivateCloudKitTransport {
     if parsed.isEmpty { return ["savedRecordNames": [], "remoteRecords": [], "failedRecordNames": [], "failedRecords": []] }
 
     let ids = parsed.map { $0.recordID }
-    let fetched = try await retrying { try await self.database.records(for: ids, desiredKeys: nil) }
+    let fetched = try await retrying { try await self.requests.records(ids) }
     var recordsToSave: [CKRecord] = []
     var remoteWinners: [[String: Any]] = []
     var failedNames: [String] = []
@@ -134,13 +137,13 @@ private final class PrivateCloudKitTransport {
     }
 
     let result = try await retrying {
-      try await self.database.modifyRecords(saving: recordsToSave, deleting: [], savePolicy: .ifServerRecordUnchanged, atomically: false)
+      try await self.requests.save(recordsToSave)
     }
     var savedNames: [String] = []
     for record in recordsToSave {
-      if case .success? = result.saveResults[record.recordID] {
+      if case .success? = result[record.recordID] {
         savedNames.append(record.recordID.recordName)
-      } else if case .failure(let error)? = result.saveResults[record.recordID] {
+      } else if case .failure(let error)? = result[record.recordID] {
         if let serverRecord = serverRecordChangedWinner(error) {
           remoteWinners.append(try dictionary(from: serverRecord))
           continue
@@ -185,12 +188,18 @@ private final class PrivateCloudKitTransport {
     var moreComing = true
     while moreComing {
       let result = try await retrying {
-        try await self.database.recordZoneChanges(inZoneWith: zoneID, since: token, desiredKeys: nil, resultsLimit: 200)
+        try await self.requests.changes(zone: zoneID, token: token)
       }
-      for (_, modificationResult) in result.modificationResultsByID {
+      guard let nextToken = result.changeToken else {
+        throw JourneyDeckCloudKitError.make(15, "CloudKit returned an incomplete change page; the previous cursor was retained.")
+      }
+      if result.moreComing, let previous = token, nextToken.isEqual(previous) {
+        throw JourneyDeckCloudKitError.make(15, "CloudKit change cursor did not advance. Retry sync shortly.")
+      }
+      for (_, modificationResult) in result.records {
         switch modificationResult {
         case .success(let modification):
-          records.append(try dictionary(from: modification.record))
+          records.append(try dictionary(from: modification))
         case .failure(let error):
           // The page token covers failed records too. Advancing it would make
           // an undownloaded record disappear from future incremental pulls.
@@ -198,8 +207,8 @@ private final class PrivateCloudKitTransport {
           throw error
         }
       }
-      deletedNames.append(contentsOf: result.deletions.map { $0.recordID.recordName })
-      token = result.changeToken
+      deletedNames.append(contentsOf: result.deletions.map { $0.recordName })
+      token = nextToken
       moreComing = result.moreComing
     }
     if let token { savePendingToken(token, zoneID: zoneID) }
@@ -339,6 +348,7 @@ private final class PrivateCloudKitTransport {
       catch {
         guard attempt < 2, isRetryable(error) else { throw error }
         let serverDelay = retryAfterSeconds(error) ?? 0
+        guard serverDelay.isFinite, serverDelay <= 30 else { throw error }
         let exponential = min(8, pow(2, Double(attempt)))
         let delay = max(serverDelay, exponential)
         attempt += 1
@@ -439,6 +449,22 @@ private final class PrivateCloudKitTransport {
   }
 }
 
+private enum CloudTransportGate {
+  private static let lock = NSLock()
+  private static var active = false
+  static func acquire() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !active else { throw JourneyDeckCloudKitError.make(16, "Private iCloud is recovering an earlier request. Retry shortly.") }
+    active = true
+  }
+  static func release() {
+    lock.lock()
+    active = false
+    lock.unlock()
+  }
+}
+
 public final class JourneyDeckCloudKitModule: Module {
   private let transport = PrivateCloudKitTransport()
 
@@ -446,36 +472,50 @@ public final class JourneyDeckCloudKitModule: Module {
     Name("JourneyDeckCloudKit")
 
     AsyncFunction("getAccountStatusAsync") { () async throws -> String in
-      try await self.transport.accountStatus()
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
+      return try await self.transport.accountStatus()
     }
 
     AsyncFunction("getCapabilitiesAsync") { () -> [String: Any] in
-      ["privateContentVersion": 4, "transportVersion": 5, "retryMetadata": true]
+      ["privateContentVersion": 4, "transportVersion": 6, "retryMetadata": true]
     }
 
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
       _ = try await self.transport.ensureZone(profileScope: profileScope)
       return ["ready": true]
     }
 
     AsyncFunction("deletePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
       try await self.transport.deleteZone(profileScope: profileScope)
       return ["deleted": true]
     }
 
     AsyncFunction("pushRecordsAsync") { (profileScope: String, records: [[String: Any]]) async throws -> [String: Any] in
-      try await self.transport.push(profileScope: profileScope, inputs: records)
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
+      return try await self.transport.push(profileScope: profileScope, inputs: records)
     }
 
     AsyncFunction("pullChangesAsync") { (profileScope: String) async throws -> [String: Any] in
-      try await self.transport.pull(profileScope: profileScope)
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
+      return try await self.transport.pull(profileScope: profileScope)
     }
 
     AsyncFunction("commitChangeTokenAsync") { (profileScope: String) throws in
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
       try self.transport.commitPendingToken(profileScope: profileScope)
     }
 
     AsyncFunction("resetChangeTokenAsync") { (profileScope: String) throws in
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
       try self.transport.resetToken(profileScope: profileScope)
     }
   }

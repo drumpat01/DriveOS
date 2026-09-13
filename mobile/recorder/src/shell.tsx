@@ -14,6 +14,7 @@ import { PhoneTabTitle } from './phone-tab-title';
 import { IpadMemoriesScreen } from './ipad-memories-screen';
 import { SettingsScrollView } from './settings-scroll-view';
 import { IpadSettingsScreen } from './ipad-settings-screen';
+import { JourneyImage } from './journey-image';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, Pressable,
@@ -75,7 +76,10 @@ import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isI
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
 import { getSensitivePlaces, type LocalPlace, type LocalUser } from './local-store';
 import { PlaceDataCredits } from './place-data-credits';
-import { loadSavedPlaces, removeSavedPlace, saveSavedPlace, SAVED_PLACE_SLOTS, type SavedPlaceSlot } from './saved-places';
+import {
+  loadCustomSavedPlaces, loadSavedPlaces, removeCustomSavedPlace, removeSavedPlace, saveCustomSavedPlace, saveSavedPlace,
+  SAVED_PLACE_SLOTS, type CustomSavedPlace, type SavedPlaceSlot,
+} from './saved-places';
 import { observeJourneyDeckEvent } from './observability';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { journeyDeckMapPalette } from './journey-map-theme';
@@ -1217,18 +1221,20 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
   }, [recorderActive]);
   return <View style={styles.approvedHomeSafe}>
     <Reanimated.View pointerEvents="none" style={[styles.approvedHomeBackdrop, backdropStyle]}>
-      <ExpoImage source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+      <JourneyImage key={`home-header-${theme.id}`} imageIdentity={`home-header-${theme.id}`} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Reanimated.View>
     <CinematicPhotoGrade />
     <LinearGradient colors={theme.isCustom ? [`${theme.palette.page}28`, `${theme.palette.page}12`, `${theme.palette.page}b8`, theme.palette.page] : theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
-    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
       <PhoneTabTitle title="Home"
         leading={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></TouchPressable>}
         trailing={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor={theme.color("#d3b5e4", 'text')} size={23} /></TouchPressable>} />
       <View style={[styles.approvedHomeScenicSpace, recorderActive && styles.approvedHomeScenicSpaceActive]} />
       <View style={styles.approvedHomePanels}>
         {recorder}
-        <CardDetailLink kind="journey" id={latestJourney?.id}>
+        {/* Keep the Home stack geometry stable when the journey finishes loading.
+            The compound context-menu host adds native layout space after an ID appears. */}
+        <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
         <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.approvedLatestMemory, pressed && styles.pressed]}>
           <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={theme.color("#c990ff", 'text')} size={15} /><Text style={styles.approvedLatestMemoryKicker}>Latest memory</Text></View>
           <View style={styles.approvedLatestMemoryRow}>
@@ -2236,12 +2242,12 @@ function MemoryArtwork({ photo, onReady }: { artworkKey: string; photo?: Journey
 
   if (photo) return <JourneyPhotoImage photo={photo} style={styles.memoryArtwork} onReady={onReady} />;
   return <View style={styles.memoryArtwork}>
-    <ExpoImage
+    <JourneyImage
+      key={`default-memory-${theme.id}`}
+      imageIdentity={`default-memory-${theme.id}`}
       accessibilityLabel="Cinematic memory timeline artwork"
       source={headerImageSource(require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), theme.id)}
       contentFit="cover"
-      cachePolicy="memory-disk"
-      transition={flipImage ? 0 : 120}
       onDisplay={onReady}
       onError={onReady}
       style={StyleSheet.absoluteFill}
@@ -2540,7 +2546,8 @@ type SettingsDestination =
   | { kind: 'overview' }
   | { kind: 'category'; category: SettingsCategoryId }
   | { kind: 'profile' }
-  | { kind: 'saved-place'; slot: SavedPlaceSlot };
+  | { kind: 'saved-place'; slot: SavedPlaceSlot }
+  | { kind: 'custom-place'; placeId?: string };
 
 function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
   eyebrow: string;
@@ -2731,6 +2738,60 @@ function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged,
   );
 }
 
+function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { currentUser: LocalUser; place?: CustomSavedPlace; onChanged: () => void; onBack: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const [name, setName] = useState(place?.label ?? '');
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const operationGeneration = useRef(0);
+  useEffect(() => () => { operationGeneration.current += 1; }, []);
+  const save = async () => {
+    const trimmedName = name.trim(), trimmedAddress = address.trim();
+    if (!trimmedName || !trimmedAddress) return;
+    const operation = ++operationGeneration.current;
+    setBusy(true);
+    try {
+      const matches = await Location.geocodeAsync(trimmedAddress);
+      if (operation !== operationGeneration.current) return;
+      const match = matches[0];
+      if (!match) {
+        setBusy(false);
+        Alert.alert('Location not found', 'Try a complete street address.');
+        return;
+      }
+      saveCustomSavedPlace(currentUser.id, trimmedName, match.latitude, match.longitude, place?.id);
+      setBusy(false);
+      Keyboard.dismiss();
+      onChanged();
+      onBack();
+    } catch (error) {
+      if (operation !== operationGeneration.current) return;
+      setBusy(false);
+      Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not save that place.');
+    }
+  };
+  const remove = () => {
+    if (!place) return;
+    removeCustomSavedPlace(currentUser.id, place.id);
+    Keyboard.dismiss();
+    onChanged();
+    onBack();
+  };
+  const disabled = busy || !name.trim() || !address.trim();
+  return <SettingsEditorScaffold eyebrow="CUSTOM SAFE PLACE" title={place ? `Edit ${place.label}` : 'Add a safe place'} onBack={onBack} backDisabled={busy}>
+    <View style={styles.settingsEditorPanel}>
+      <Text style={styles.settingsEditorBody}>Give this place a name and address. JourneyDeck will use the name for journeys and protect the location when you share.</Text>
+      <Text style={styles.profileEditorLabel}>NAME</Text>
+      <TextInput value={name} onChangeText={setName} editable={!busy} autoCapitalize="words" maxLength={64} returnKeyType="next" placeholder="Gym, family, cabin…" placeholderTextColor={theme.color('#716879', 'text')} selectionColor="#ff795b" style={styles.editorInput} />
+      <Text style={styles.profileEditorLabel}>ADDRESS</Text>
+      <TextInput value={address} onChangeText={setAddress} editable={!busy} autoCapitalize="words" autoCorrect={false} maxLength={240} returnKeyType="done" onSubmitEditing={() => void save()} placeholder="Street address" placeholderTextColor={theme.color('#716879', 'text')} selectionColor="#ff795b" style={styles.editorInput} />
+      <Pressable accessibilityRole="button" accessibilityLabel={place ? 'Save custom place' : 'Add custom place'} onPress={() => void save()} disabled={disabled} style={[styles.savedPlacePrimary, disabled && styles.pressed]}><Text style={styles.savedPlacePrimaryText}>{busy ? 'Saving…' : 'Save place'}</Text></Pressable>
+      {place && <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${place.label}`} onPress={remove} disabled={busy} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Remove custom place</Text></Pressable>}
+    </View>
+  </SettingsEditorScaffold>;
+}
+
 function ConnectionsScreen({
   provider, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
@@ -2776,6 +2837,7 @@ function ConnectionsScreen({
 
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
+  const [customSavedPlaces, setCustomSavedPlaces] = useState(() => loadCustomSavedPlaces(currentUser.id));
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
   const [destination, setDestination] = useState<SettingsDestination>({ kind: 'overview' });
   const { appIconId } = useAppIconChoice();
@@ -2783,6 +2845,7 @@ function ConnectionsScreen({
   const insets = useSafeAreaInsets();
   useEffect(() => {
     setSavedPlaces(loadSavedPlaces(currentUser.id));
+    setCustomSavedPlaces(loadCustomSavedPlaces(currentUser.id));
     setProfileAppearance(loadProfileAppearance(currentUser));
     setDestination({ kind: 'overview' });
   }, [currentUser.id]);
@@ -2790,7 +2853,10 @@ function ConnectionsScreen({
     onEditorActiveChange(destination.kind !== 'overview');
   }, [destination.kind, onEditorActiveChange]);
   useEffect(() => () => onEditorActiveChange(false), [onEditorActiveChange]);
-  const refreshSavedPlaces = () => setSavedPlaces(loadSavedPlaces(currentUser.id));
+  const refreshSavedPlaces = () => {
+    setSavedPlaces(loadSavedPlaces(currentUser.id));
+    setCustomSavedPlaces(loadCustomSavedPlaces(currentUser.id));
+  };
   const closeEditor = () => setDestination({ kind: 'overview' });
   const openCategory = (category: SettingsCategoryId) => {
     setDestination({ kind: 'category', category });
@@ -2819,6 +2885,9 @@ function ConnectionsScreen({
   if (destination.kind === 'saved-place') {
     return <SettingsSavedPlaceEditor currentUser={currentUser} slot={destination.slot} hasSavedPlace={Boolean(savedPlaces[destination.slot])} onChanged={refreshSavedPlaces} onBack={closeEditor} />;
   }
+  if (destination.kind === 'custom-place') {
+    return <SettingsCustomPlaceEditor currentUser={currentUser} place={customSavedPlaces.find(place => place.id === destination.placeId)} onChanged={refreshSavedPlaces} onBack={closeEditor} />;
+  }
 
   if (isIpad()) return <IpadSettingsScreen
     displayName={profileAppearance.displayName} avatar={profileAppearance.avatarDataUri} initials={profileInitialsFor(profileAppearance.displayName)}
@@ -2826,9 +2895,11 @@ function ConnectionsScreen({
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
     providerName={selected.name} providerDetail={selected.summary}
     places={SAVED_PLACE_SLOTS.map(slot => ({ ...slot, saved: Boolean(savedPlaces[slot.id]) }))}
+    customPlaces={customSavedPlaces.map(place => ({ id: place.id, label: place.label }))}
     onEditProfile={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }}
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
+    onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
   />;
@@ -2880,6 +2951,16 @@ function ConnectionsScreen({
       <View style={styles.flex}><Text style={styles.savedPlaceName}>{slot.label}</Text><Text style={styles.savedPlaceStatus}>{savedPlaces[slot.id] ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
       <Text style={styles.savedPlaceAction}>{savedPlaces[slot.id] ? 'Change' : 'Set'}</Text>
     </TouchPressable>)}
+    {customSavedPlaces.map(place => <TouchPressable key={place.id} accessibilityRole="button" accessibilityLabel={`Edit custom place ${place.label}`} onPress={() => setDestination({ kind: 'custom-place', placeId: place.id })} style={[styles.savedPlaceRow, styles.savedPlaceRowBorder]}>
+      <View style={styles.savedPlaceIcon}><SymbolView name="mappin.and.ellipse" tintColor={theme.color('#ff9478', 'text')} size={20} /></View>
+      <View style={styles.flex}><Text style={styles.savedPlaceName}>{place.label}</Text><Text style={styles.savedPlaceStatus}>Saved · protected when sharing</Text></View>
+      <Text style={styles.savedPlaceAction}>Change</Text>
+    </TouchPressable>)}
+    <TouchPressable accessibilityRole="button" accessibilityLabel={customSavedPlaces.length ? 'Add another custom place' : 'Add custom place'} onPress={() => setDestination({ kind: 'custom-place' })} style={[styles.savedPlaceRow, styles.savedPlaceRowBorder]}>
+      <View style={styles.savedPlaceIcon}><SymbolView name="plus" tintColor={theme.color('#ff9478', 'text')} size={20} /></View>
+      <View style={styles.flex}><Text style={styles.savedPlaceName}>Custom</Text><Text style={styles.savedPlaceStatus}>{customSavedPlaces.length ? 'Add another safe place' : 'Add a named safe place'}</Text></View>
+      <Text style={styles.savedPlaceAction}>Add</Text>
+    </TouchPressable>
   </View>;
   const supportCard = <>
     <SectionHeading title="Advanced Support" />
@@ -2895,7 +2976,7 @@ function ConnectionsScreen({
   if (destination.kind === 'category') {
     const category = settingsCategories.find(item => item.id === destination.category)!;
     const categoryContent: Record<SettingsCategoryId, ReactNode> = {
-      appearance: <><ThemePicker /><AppIconPicker /></>,
+      appearance: <><ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} /><AppIconPicker membershipTier={membershipTier} onUpgrade={onMembership} /></>,
       recording: <><View style={styles.settingsEditorPanel}><View style={styles.settingsCategoryFeature}><View style={styles.settingsHubIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={22} /></View><View style={styles.flex}><Text style={styles.connectionName}>Manual recording</Text><Text style={styles.connectionDetail}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View><View style={styles.privateCloudCard}><Text style={styles.privateCloudTitle}>LOCATION PRIVACY</Text><Text style={styles.privateCloudBody}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text><PlaceDataCredits /></View></>,
       music: <>{providerCard}{internalMusicControls}<View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View></>,
       account: <>{profileCard}{cloudCard}</>,
@@ -2905,10 +2986,10 @@ function ConnectionsScreen({
     return <SettingsEditorScaffold eyebrow="SETTINGS" title={category.title} onBack={closeEditor}><View style={styles.settingsCategoryStack}>{categoryContent[destination.category]}</View></SettingsEditorScaffold>;
   }
 
-  const savedPlaceCount = SAVED_PLACE_SLOTS.filter(slot => Boolean(savedPlaces[slot.id])).length;
+  const savedPlaceCount = SAVED_PLACE_SLOTS.filter(slot => Boolean(savedPlaces[slot.id])).length + customSavedPlaces.length;
   const categorySummary: Record<SettingsCategoryId, string> = {
     appearance: `${theme.name} · ${appIconCatalog[appIconId].name} icon`, recording: 'Manual recording', music: selected.name,
-    account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} of ${SAVED_PLACE_SLOTS.length} saved`,
+    account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} saved`,
     membership: membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Help and privacy',
   };
   return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
@@ -3125,7 +3206,7 @@ function JourneyHeroAtmosphere() {
   const theme = useAppTheme();
 
   return <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-    <ExpoImage source={headerImageSource(require('../assets/cinematic-journey-photo-v1.jpg'), theme.id)} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />
+    <JourneyImage key={`journey-header-${theme.id}`} imageIdentity={`journey-header-${theme.id}`} source={headerImageSource(require('../assets/cinematic-journey-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     <LinearGradient colors={theme.gradient(['rgba(5,2,8,0.9)', 'rgba(7,3,10,0.45)', 'rgba(7,3,10,0)'])} locations={[0, 0.38, 0.66]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
     <LinearGradient colors={theme.gradient(['rgba(7,3,10,0)', 'rgba(7,3,10,0.68)'])} locations={[0.28, 1]} style={StyleSheet.absoluteFill} />
   </View>;
@@ -3587,15 +3668,15 @@ const darkStyles = StyleSheet.create({
 
   approvedHomeSafe: { flex: 1, backgroundColor: '#05030b' },
   approvedHomeBackdrop: { position: 'absolute', top: -24, right: -24, bottom: -24, left: -24 },
-  approvedHomeContent: { minHeight: '100%', paddingHorizontal: 24 },
+  approvedHomeContent: { minHeight: '100%', paddingHorizontal: 16 },
   approvedHomeHeaderButton: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(24,15,35,0.52)', borderWidth: 1, borderColor: 'rgba(191,149,218,0.24)' },
   approvedHomeScenicSpace: { height: 70 },
   approvedHomeScenicSpaceActive: { height: 85 },
-  approvedHomePanels: { gap: 14 },
+  approvedHomePanels: { gap: 16 },
   approvedLatestMemory: { minHeight: 145, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(165,132,180,0.34)', backgroundColor: 'rgba(9,8,14,0.88)', padding: 15, shadowColor: '#bc6aff', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   approvedLatestMemoryHeader: { height: 24, flexDirection: 'row', alignItems: 'center', gap: 7 },
   approvedLatestMemoryKicker: { color: '#bf8aeb', fontSize: 12, fontWeight: '600' },
-  approvedLatestMemoryRow: { flexDirection: 'row', alignItems: 'center', gap: 13, marginTop: 5 },
+  approvedLatestMemoryRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 5 },
   approvedLatestMemoryArtwork: { width: 86, height: 78, borderRadius: 13, overflow: 'hidden', backgroundColor: '#1a1120' },
   approvedLatestMemoryPlay: { position: 'absolute', left: 8, bottom: 8, width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: 'rgba(255,255,255,0.58)', backgroundColor: 'rgba(12,8,18,0.66)', alignItems: 'center', justifyContent: 'center' },
   approvedLatestMemoryTitle: { color: '#f6eef8', fontSize: 15, fontWeight: '700' },
@@ -3603,7 +3684,7 @@ const darkStyles = StyleSheet.create({
   approvedLatestMemoryMetaText: { flex: 1, color: '#9e92a4', fontSize: 10.5 },
   approvedLatestMemoryMore: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(166,142,177,0.36)', backgroundColor: 'rgba(27,20,34,0.72)', alignItems: 'center', justifyContent: 'center' },
   approvedLatestMemoryMoreText: { color: '#d0c3d6', fontSize: 13, letterSpacing: 1 },
-  approvedLatestSong: { minHeight: 90, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(139,83,181,0.38)', backgroundColor: 'rgba(11,7,18,0.92)', paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 13, shadowColor: '#9f52e8', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 7 } },
+  approvedLatestSong: { minHeight: 90, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(139,83,181,0.38)', backgroundColor: 'rgba(11,7,18,0.92)', paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 16, shadowColor: '#9f52e8', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 7 } },
   approvedLatestSongFallback: { width: 58, height: 58, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(173,105,221,0.34)', backgroundColor: 'rgba(69,31,91,0.58)', alignItems: 'center', justifyContent: 'center' },
   approvedLatestSongKicker: { color: '#c98cff', fontSize: 8, fontWeight: '900', letterSpacing: 1.25 },
   approvedLatestSongTitle: { color: '#fbf5ff', fontSize: 16, lineHeight: 20, fontWeight: '800', marginTop: 5 },

@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import { RECORDER_DATABASE_HARDENING_SQL, SQLITE_CONNECTION_HARDENING_SQL, UNIFIED_DATABASE_SCHEMA_SQL } from '../src/database-hardening.ts';
 import * as inboxModel from '../src/native-recorder-inbox-model.ts';
+import { evaluateManualRecordingFailsafe } from '../src/manual-recording-failsafe.ts';
 import type { NativeRecorderInboxSession } from '../modules/journeydeck-recorder/src/JourneyDeckRecorder.types.ts';
 
 const require = createRequire(import.meta.url);
@@ -61,6 +62,26 @@ function nativeSession(id: string, status: NativeRecorderInboxSession['status'] 
     points: sequences.map(sequence => ({ sequence, recordedAt: `2026-09-07T12:00:0${sequence}.000Z`,
       latitude: 0, longitude: 0, accuracyMeters: 5, altitudeMeters: null, headingDegrees: null, speedMps: 0 })) };
 }
+
+test('failsafe reads ten minutes of dense GPS even when the UI tail is only 500 points', () => {
+  const { storage, database } = fixture();
+  try {
+    const session = storage.beginLocalSession('phone');
+    const start = Date.parse(session.started_at);
+    const insert = database.prepare(`INSERT INTO recording_points(session_id,sequence,recorded_at,latitude,longitude,accuracy_meters,speed_mps)
+      VALUES(?,?,?,0,0,5,0)`);
+    for (let i = 0; i <= 1200; i++) insert.run(session.id, i, new Date(start + i * 1000).toISOString());
+    const evaluatedAtMs = start + 1200_000;
+    assert.equal(evaluateManualRecordingFailsafe({ ...storage.getLiveRecorderSnapshot(), evaluatedAtMs }).shouldFinish, false);
+    const snapshot = storage.getManualRecordingFailsafeSnapshot(evaluatedAtMs);
+    assert.equal(snapshot.route.length, 901);
+    assert.equal(evaluateManualRecordingFailsafe({ ...snapshot, evaluatedAtMs }).shouldFinish, true);
+    assert.equal(storage.claimManualSessionForFailsafeFinish(session.id), true);
+    assert.equal(storage.claimManualSessionForFailsafeFinish(session.id), false);
+    storage.completeSessionLocally(session.id, false);
+    assert.equal(storage.activeSession(), null);
+  } finally { database.close(); }
+});
 
 test('Watch stop A then start B imports the completed route before the new active mirror', () => {
   const { storage, database } = fixture();

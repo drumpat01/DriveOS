@@ -38,7 +38,7 @@ const panResponder = { create: (handlers: any) => ({ panHandlers: {
   onResponderRelease: handlers.onPanResponderRelease,
   onResponderTerminate: handlers.onPanResponderTerminate,
 } }) };
-const native = { StyleSheet: { create: (x: any) => x, absoluteFill: {} }, useWindowDimensions: () => dimensions,
+const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (x: any) => x, absoluteFill: {} }, useWindowDimensions: () => dimensions,
   Animated: nativeAnimated, PanResponder: panResponder, Keyboard: { dismiss() {} }, KeyboardAvoidingView: host('KeyboardAvoidingView'),
   AccessibilityInfo: { isReduceMotionEnabled: async () => reduced, addEventListener: () => ({ remove() {} }), announceForAccessibility() {} },
   AppState: { addEventListener: (_: string, callback: any) => { appState = callback; return { remove() {} }; } }, Alert: { alert: (...args: any[]) => alerts.push(args) },
@@ -65,6 +65,7 @@ function load(name: string, mocks: Record<string, any> = {}) {
   vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id === './theme-catalog.ts' ? require('../src/theme-catalog.ts') : id.startsWith('../assets/') ? id : require(id) });
   return module.exports;
 }
+const gridLayout = load('device-layout.ts', { 'react-native': native });
 const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   'react-native': native, 'expo-router': { useIsFocused: () => focused },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView') },
@@ -77,7 +78,7 @@ const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
   './card-detail-link': { CardDetailLink: host('CardDetailLink') }, './library-model': load('library-model.ts'),
   './native-action-menu': { NativeActionMenu: host('Menu') }, './journey-card-action': { openJourneyCardAction: (...args: any[]) => journeyActions.push(args) },
-  './memory-studio-model': { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity },
+  './memory-studio-model': { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity }, './device-layout': gridLayout,
 });
 const journeys = [1, 2, 3].map(i => ({ id: `j${i}`, startingLocation: `Start ${i}`, endingLocation: 'Coast', startedAt: '2026-09-05T10:00:00Z', miles: 12, durationMinutes: 30, songCount: 2, soundtrackPreview: [] }));
 const memories = [{ id: 'm1', name: 'Coast days', notes: '', journeyIds: ['j1'], photos: [] }];
@@ -118,10 +119,21 @@ test('Memory studio retains selection/search through resizing and themes, with a
   await act(() => search.props.onChangeText('Start 2'));
   for (const width of [1150, 760, 400, 1150]) {
     await act(() => tree.root.findByProps({ testID: 'ipad-memories-canvas' }).props.onLayout({ nativeEvent: { layout: { width } } }));
-    assert.equal(tree.root.findByProps({ testID: 'ipad-memory-studio' }).props.style[1].flexDirection, width >= 700 ? 'row' : 'column');
+    const wide = gridLayout.ipadGridColumns(width, dimensions.fontScale) === 6;
+    assert.equal(tree.root.findByProps({ testID: 'ipad-memory-studio' }).props.style[1].flexDirection, wide ? 'row' : 'column');
+    if (wide) {
+      assert.equal(tree.root.findByProps({ testID: 'ipad-memory-gallery-panel' }).props.style[2].width, gridLayout.ipadGridSpan(width, 4));
+      assert.equal(tree.root.findByProps({ testID: 'ipad-memory-library-panel' }).props.style[2].width, gridLayout.ipadGridSpan(width, 2));
+    }
     assert.equal(search.props.value, 'Start 2');
     assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
   }
+  dimensions = { width: 1200, height: 900, fontScale: 2 };
+  await act(() => tree.update(render()));
+  await act(() => tree.root.findByProps({ testID: 'ipad-memories-canvas' }).props.onLayout({ nativeEvent: { layout: { width: 1150 } } }));
+  assert.equal(tree.root.findByProps({ testID: 'ipad-memory-studio' }).props.style[1].flexDirection, 'column', 'larger text keeps both studio panels readable in landscape');
+  dimensions = { width: 1200, height: 900, fontScale: 1 };
+  await act(() => tree.update(render()));
   for (const mode of [false, true, 'sakura', 'redline']) {
     light = mode; await act(() => tree.update(render()));
     assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, testTheme(mode).palette.page);
@@ -197,6 +209,9 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     assert.ok(root.props.style.marginBottom <= 12, 'native safe area owns bar clearance without a second fixed tab-bar spacer');
     const gallery = tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Memory gallery');
     const library = tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Journey library');
+    const newMemoryButton = press(tree, 'New Memory');
+    const refreshButton = press(tree, 'Refresh Memories');
+    assert.equal(refreshButton.parent.props.style.paddingHorizontal, newMemoryButton.parent.props.style.paddingHorizontal, 'refresh and plus centers share the same horizontal inset');
     await act(() => press(tree, 'Select Start 2 → Coast').props.onPress());
     const input = tree.root.findAllByType('TextInput').find((n: any) => n.props.accessibilityLabel === 'Search journeys');
     await act(() => input.props.onChangeText('Start 2'));

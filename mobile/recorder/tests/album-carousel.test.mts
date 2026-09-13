@@ -28,6 +28,7 @@ function harness() {
     'expo-image': { Image: 'Image' }, 'expo-router': { useIsFocused: () => state.focused },
     './motion': { MOTION_DURATIONS: { feedback: 120 }, useMotionPreferences: () => state },
     './app-theme': { useAppTheme: () => testTheme(state.theme) },
+    './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
     './album-carousel-model': { albumCarouselDepth, albumCarouselItems, albumCarouselLayout },
     './album-artwork': { highQualityAlbumArtwork },
     'react-native-reanimated': {
@@ -173,6 +174,7 @@ test('larger covers use disk caching and the saved thumbnail as placeholder/fall
     assert.equal(image().props.cachePolicy, 'memory-disk');
     await act(() => image().props.onError());
     assert.equal(image().props.source.uri, original, 'offline/unsupported HQ falls back to the previously saved thumbnail');
+    assert.equal(image().props.placeholder.uri, original, 'the proven thumbnail remains painted while fallback settles');
     await act(() => image().props.onError());
     assert.equal(tree.root.findAllByType('Image').length, 0);
     await act(() => tree.update(h.render([{ ...items[0], artworkUrl: original.replace('test.jpg', 'new.jpg') }])));

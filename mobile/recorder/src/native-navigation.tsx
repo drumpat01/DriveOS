@@ -48,7 +48,7 @@ export function JourneyDeckNativeTabs() {
   const selected = theme.isCustom ? theme.palette.accent : tablet ? neutral : theme.isLight ? '#ad492e' : '#ff9470';
   const homeLabelStyle = theme.isCustom ? { color: selected } : tablet ? { color: '#ff8956' } : undefined;
   const homeTrigger = <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop disableAutomaticContentInsets>{theme.isCustom ? <NativeTabs.Trigger.Icon sf="house.fill" /> : <NativeTabs.Trigger.Icon src={require('../assets/home-tab-orange.png')} renderingMode="original" />}<NativeTabs.Trigger.Label selectedStyle={homeLabelStyle}>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>;
-  return <NativeTabs sidebarAdaptable={isIpad() ? true : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
+  return <NativeTabs sidebarAdaptable={tablet ? true : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge={!tablet} tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
     {isIpad() && homeTrigger}
     <NativeTabs.Trigger name="music" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="music.note" /><NativeTabs.Trigger.Label>Music</NativeTabs.Trigger.Label></NativeTabs.Trigger>
     <NativeTabs.Trigger name="journeys" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="photo.on.rectangle" /><NativeTabs.Trigger.Label>Memories</NativeTabs.Trigger.Label></NativeTabs.Trigger>

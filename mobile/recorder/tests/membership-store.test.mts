@@ -13,14 +13,9 @@ const require = createRequire(import.meta.url);
 const free = { nativeModuleAvailable: true, tier: 'free', activeProductId: null, expirationDate: null, environment: null };
 const paid = { ...free, tier: 'paid', activeProductId: 'com.journeydeck.recorder.pro.monthly', expirationDate: '2099-10-01T00:00:00Z', environment: 'sandbox' };
 
-test('the V2 preview Atlas override changes only Atlas access', () => {
-  const ordinaryFree = entitlements.entitlementsForMembershipTier('free');
-  const previewFree = entitlements.withPreviewAtlasAccess(ordinaryFree, true);
-  assert.deepEqual(previewFree, { ...ordinaryFree, atlasAccess: true });
-  assert.equal(previewFree.tier, 'free');
-  assert.equal(previewFree.timelineHistoryDays, 45);
-  assert.equal(previewFree.tessieAccess, false);
-  assert.strictEqual(entitlements.withPreviewAtlasAccess(ordinaryFree, false), ordinaryFree);
+test('free membership keeps Atlas locked in every build identity', () => {
+  assert.equal(entitlements.entitlementsForMembershipTier('free').atlasAccess, false);
+  assert.equal(entitlements.entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'free' }).atlasAccess, false);
 });
 
 function deferred<T>() {
@@ -37,7 +32,6 @@ async function harness(overrides: Record<string, any> = {}) {
   const mocks = {
     'react-native': { AppState: { addEventListener: (_event: string, handler: any) => { appStateListener = handler; return { remove() { appStateListener = null; } }; } } },
     './membership-entitlements': entitlements,
-    './release-features': { V2_PREVIEW_ATLAS_UNLOCKED: false },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
       getMembershipStatus: async () => free,

@@ -17,7 +17,7 @@ module.exports = ({ config }) => {
     name: preview ? 'JourneyDeck V2' : config.name,
     version: '2.0.0',
     // RevenueCat adds native code; keep older installed runtimes isolated.
-    runtimeVersion: preview ? '2.0.0-preview.9' : '2.0.0-watch.4',
+    runtimeVersion: preview ? '2.0.0-preview.10' : '2.0.0-watch.5',
     plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
       microphonePermission: config.ios.infoPlist.NSMicrophoneUsageDescription,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
@@ -46,8 +46,8 @@ module.exports = ({ config }) => {
     extra: {
       ...config.extra,
       revenueCat: { appleApiKey: revenueCatAppleKey },
-      features: { ...config.extra?.features, atlasUnlocked: preview },
-      release: preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P8-STUDIO' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE3' },
+      features: { ...config.extra?.features, atlasUnlocked: false },
+      release: preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };
 };

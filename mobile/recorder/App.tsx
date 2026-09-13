@@ -1,7 +1,7 @@
 import { IpadRecorderControls } from './src/ipad-home';
 import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
 import { AppIconProvider } from './src/app-icon-preference';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Text, TextInput, View,
@@ -51,6 +51,7 @@ import {
   configureNativeAutomaticRecorder, finishNativeAutomaticJourney, getNativeAutomaticRecorderStatus,
   isNativeAutomaticSession, pauseNativeAutomaticJourney, resumeNativeAutomaticJourney,
   configureNativeManualRecorder, isNativeManualRecorderAvailable, startNativeManualJourney,
+  subscribeNativeRecorderStatus,
 } from './modules/journeydeck-recorder';
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
@@ -59,6 +60,9 @@ import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED } from '.
 import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
 import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
 import { manualRecordingFailsafeNotice } from './src/manual-recording-failsafe';
+import { recorderClockRunning, recorderDurationLabel, updateRecorderClock, type RecorderClock } from './src/recorder-clock';
+import { acceptRecorderStatusEvent, recorderEventStopTime, recorderRefreshMayPublish, recorderStatusEventNeedsRefresh, recorderStatusEventStopsClock, type RecorderStatusEventState } from './src/recorder-status-events';
+import { waitForRecorderResponse } from './src/recorder-response';
 import { DatabaseStartupGate } from './src/database-startup-gate';
 import { haptics } from './src/haptics';
 import { MOTION_SPRINGS, motionDuration, useMotionPreferences } from './src/motion';
@@ -155,11 +159,16 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [backgroundPermission, setBackgroundPermission] = useState(false);
   const [taskAvailable, setTaskAvailable] = useState(false);
   const [trackingActive, setTrackingActive] = useState(false);
+  const [recorderClock, setRecorderClock] = useState<RecorderClock | null>(null);
   const [automaticDetectionActive, setAutomaticDetectionActive] = useState(false);
   const [recorderInitialized, setRecorderInitialized] = useState(false);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences>(() => loadRecordingModePreferences());
   const operation = useRef<Promise<void>>(Promise.resolve());
   const refreshPending = useRef<Promise<void> | null>(null);
+  const statusEventEpoch = useRef(0);
+  const statusEventState = useRef<RecorderStatusEventState | null>(null);
+  const eventRefreshQueued = useRef(false);
+  const eventRefreshRequested = useRef(false);
   const busyRef = useRef(false);
   const announcedAutomaticEvent = useRef('');
   const [busy, setBusy] = useState(false);
@@ -167,7 +176,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [syncStage, setSyncStage] = useState<SyncStage>('idle');
   const [notice, setNotice] = useState('');
   const [completionMoment, setCompletionMoment] = useState<JourneyCompletionMoment | null>(null);
-  const [, setClock] = useState(0);
+  const [clockNow, setClock] = useState(Date.now);
 
   const runExclusive = useCallback(async (work: () => Promise<void>) => {
     const next = operation.current.then(work, work);
@@ -177,7 +186,12 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 
   const refresh = useCallback(() => {
     if (refreshPending.current) return refreshPending.current;
+    const refreshEpoch = statusEventEpoch.current;
+    const refreshProfileId = getCurrentUser().id;
     const pending = runExclusive(async () => {
+    const stillCurrent = () => recorderRefreshMayPublish(refreshEpoch, statusEventEpoch.current,
+      refreshProfileId, getCurrentUser().id);
+    if (!stillCurrent()) return;
     initializeDatabase();
     const foreground = await Location.getForegroundPermissionsAsync();
     const background = await Location.getBackgroundPermissionsAsync();
@@ -192,19 +206,44 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       try { expoAutomaticDetectorRunning = await isAutomaticDetectionActive(); } catch { expoAutomaticDetectorRunning = false; }
     }
     await syncNativeRecorderInbox().catch(() => undefined);
-    let nativeRecorder = await getNativeAutomaticRecorderStatus().catch(() => null);
+    let nativeRecorder = await waitForRecorderResponse(getNativeAutomaticRecorderStatus(), 'native_recorder_status_timeout').catch(() => null);
+    if (!stillCurrent()) return;
+    if (recorderRefreshMayPublish(refreshEpoch, statusEventEpoch.current, refreshProfileId, getCurrentUser().id)
+      && nativeRecorder?.eventStreamId && Number.isSafeInteger(nativeRecorder.eventSequence)) {
+      const eventIdentity = { profileId: getCurrentUser().id, sessionId: nativeRecorder.sessionId };
+      const known = statusEventState.current;
+      if (!known || known.profileId !== eventIdentity.profileId || known.sessionId !== eventIdentity.sessionId
+        || known.streamId !== nativeRecorder.eventStreamId || nativeRecorder.eventSequence! > known.sequence) {
+        statusEventState.current = { ...eventIdentity, streamId: nativeRecorder.eventStreamId,
+          sequence: nativeRecorder.eventSequence! };
+      }
+    }
     const automaticTaskRunning = NATIVE_AUTOMATIC_RECORDER_ENABLED
       ? Boolean(nativeRecorder?.significantMonitoring || nativeRecorder?.preciseTracking)
       : expoAutomaticDetectorRunning || Boolean(nativeRecorder?.recording);
     let current = activeSession();
     let currentIsNative = isNativeAutomaticSession(current?.id);
+    // Publish transport truth before recovery/enrichment can wait or fail.
+    // A completed native recorder may still have an unfinished inbox mirror.
+    const initialSnapshot = getLiveRecorderSnapshot();
+    const initialTracking = currentIsNative
+      ? Boolean(nativeRecorder?.statusReliable !== false && nativeRecorder?.sessionId === current?.id
+        && nativeRecorder?.recording && nativeRecorder?.preciseTracking) : taskRunning;
+    if (recorderRefreshMayPublish(refreshEpoch, statusEventEpoch.current, refreshProfileId, getCurrentUser().id)) {
+      setSummary(initialSnapshot.session);
+      setTrackingActive(initialTracking);
+      setRecorderClock(previous => updateRecorderClock(previous, initialSnapshot.session,
+        initialTracking, Date.now(), initialSnapshot.lastPoint?.recordedAt));
+    }
     await configureNativeManualRecorder(locationPermissionsReady, getCurrentUser().id, Boolean(current && !currentIsNative));
+    if (!stillCurrent()) return;
     if (current?.id.startsWith('native_recording_manual_') && nativeRecorder?.recording && !taskRunning && available) {
       // Keep the existing Expo background music sampling cadence; GPS sequence
       // ownership remains exclusively in the native inbox for these sessions.
       taskRunning = await startLocationTracking().catch(() => false);
     }
     if (!current && taskRunning) { await stopLocationTracking().catch(() => undefined); taskRunning = false; }
+    if (!stillCurrent()) return;
     const manualFailsafe = evaluateCurrentManualRecordingFailsafe();
     if (manualFailsafe.decision.shouldFinish && manualFailsafe.decision.reason
       && await finishManualRecordingForFailsafe(manualFailsafe.sessionId, manualFailsafe.decision, connection ?? undefined)) {
@@ -214,12 +253,19 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       current = activeSession();
       currentIsNative = isNativeAutomaticSession(current?.id);
     }
+    if (!stillCurrent()) return;
     const nativeSessionCurrent = nativeRecorder?.statusReliable !== false && nativeRecorder?.sessionId === current?.id;
     const recordingTransportRunning = currentIsNative
       ? Boolean(nativeSessionCurrent && nativeRecorder?.recording && nativeRecorder?.preciseTracking) : taskRunning;
     // A stale/unreadable mirror must not pause or resume a different Watch journey.
-    const action = currentIsNative && !nativeSessionCurrent ? 'none'
-      : decideRecovery(current?.status ?? null, recordingTransportRunning, locationPermissionsReady && (currentIsNative || available));
+    const recoveryStatus = currentIsNative && nativeSessionCurrent && nativeRecorder?.paused
+      ? 'paused' : current?.status ?? null;
+    const proposedAction = currentIsNative && !nativeSessionCurrent ? 'none'
+      : decideRecovery(recoveryStatus, recordingTransportRunning, locationPermissionsReady && (currentIsNative || available));
+    // The consolidated native engine reconciles its committed state on status.
+    // A stale inbox mirror must not synthesize Resume over a newer Watch Pause.
+    const action = currentIsNative && nativeRecorder?.eventStreamId && proposedAction === 'restart-recording'
+      ? 'none' : proposedAction;
     if (action === 'stop-orphaned-task' || action === 'stop-paused-task' || action === 'stop-and-finish') {
       if (!currentIsNative && taskRunning) await stopLocationTracking();
       taskRunning = false;
@@ -270,27 +316,37 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     }
     if (currentIsNative && action !== 'none' && action !== 'continue-recording' && action !== 'remain-paused') {
       await syncNativeRecorderInbox();
-      nativeRecorder = await getNativeAutomaticRecorderStatus().catch(() => null);
+      nativeRecorder = await waitForRecorderResponse(getNativeAutomaticRecorderStatus(), 'native_recorder_status_timeout').catch(() => null);
     }
     const reconciled = activeSession();
     const liveSnapshot = getLiveRecorderSnapshot();
-    setSummary(reconciled ? getSessionSummary(reconciled.id) : null);
-    setDistanceMiles(liveSnapshot.session ? routeDistanceMiles(liveSnapshot.route) : 0);
-    setForegroundPermission(foreground.status === 'granted');
-    setBackgroundPermission(background.status === 'granted');
-    setTaskAvailable(available);
-    setTrackingActive(isNativeAutomaticSession(reconciled?.id)
-      ? Boolean(nativeRecorder?.statusReliable !== false && nativeRecorder?.sessionId === reconciled?.id && nativeRecorder?.recording && nativeRecorder?.preciseTracking) : taskRunning);
-    setAutomaticDetectionActive(automaticTaskRunning);
+    const confirmedTracking = isNativeAutomaticSession(reconciled?.id)
+      ? Boolean(nativeRecorder?.statusReliable !== false && nativeRecorder?.sessionId === reconciled?.id
+        && nativeRecorder?.recording && nativeRecorder?.preciseTracking) : taskRunning;
+    const refreshMayPublish = recorderRefreshMayPublish(refreshEpoch, statusEventEpoch.current,
+      refreshProfileId, getCurrentUser().id);
+    if (refreshMayPublish) {
+      setRecorderClock(previous => updateRecorderClock(previous, liveSnapshot.session,
+        confirmedTracking, Date.now(), liveSnapshot.lastPoint?.recordedAt));
+      setSummary(reconciled ? getSessionSummary(reconciled.id) : null);
+      setTrackingActive(confirmedTracking);
+    }
+    if (refreshMayPublish) {
+      setDistanceMiles(liveSnapshot.session ? routeDistanceMiles(liveSnapshot.route) : 0);
+      setForegroundPermission(foreground.status === 'granted');
+      setBackgroundPermission(background.status === 'granted');
+      setTaskAvailable(available);
+      setAutomaticDetectionActive(automaticTaskRunning);
+    }
     const automaticEvent = NATIVE_AUTOMATIC_RECORDER_ENABLED && nativeRecorder?.lastEvent && nativeRecorder.lastEventAt
       ? { kind: nativeRecorder.lastEvent, occurredAt: nativeRecorder.lastEventAt }
       : loadAutomaticDriveEvent();
-    if (nativeRecorder?.lastEvent === 'manual_auto_finished' && nativeRecorder.lastEventAt
+    if (refreshMayPublish && nativeRecorder?.lastEvent === 'manual_auto_finished' && nativeRecorder.lastEventAt
       && announcedAutomaticEvent.current !== nativeRecorder.lastEventAt) {
       announcedAutomaticEvent.current = nativeRecorder.lastEventAt;
       setNotice('Journey finished automatically and is saved on this iPhone.');
     }
-    if (automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
+    if (refreshMayPublish && automaticEvent && Date.now() - Date.parse(automaticEvent.occurredAt) <= 30 * 60_000
       && announcedAutomaticEvent.current !== automaticEvent.occurredAt) {
       announcedAutomaticEvent.current = automaticEvent.occurredAt;
       setNotice(automaticEvent.kind === 'started'
@@ -310,6 +366,38 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   }, [connection, runExclusive]);
 
   useEffect(() => subscribeRecordingMode(setRecordingPreferences), []);
+
+  useEffect(() => subscribeNativeRecorderStatus(event => {
+    const current = activeSession();
+    const identity = { profileId: getCurrentUser().id, sessionId: current?.id ?? null };
+    const prior = statusEventState.current?.profileId === identity.profileId
+      && statusEventState.current.sessionId === identity.sessionId
+      ? statusEventState.current : { ...identity, streamId: null, sequence: -1 };
+    if (!recorderStatusEventNeedsRefresh(prior, event)) return;
+    const accepted = acceptRecorderStatusEvent(prior, event);
+    statusEventEpoch.current += 1;
+    if (accepted) statusEventState.current = accepted;
+    if (accepted?.streamId !== null && accepted && recorderStatusEventStopsClock(event) && current) {
+      const snapshot = getLiveRecorderSnapshot();
+      setTrackingActive(false);
+      setRecorderClock(previous => updateRecorderClock(previous, snapshot.session, false,
+        recorderEventStopTime(event, Date.now()), snapshot.lastPoint?.recordedAt));
+    }
+    eventRefreshRequested.current = true;
+    if (eventRefreshQueued.current) return;
+    eventRefreshQueued.current = true;
+    void (async () => {
+      try {
+        while (eventRefreshRequested.current) {
+          eventRefreshRequested.current = false;
+          await Promise.resolve(refreshPending.current).catch(() => undefined);
+          await refresh().catch(() => undefined);
+        }
+      } finally {
+        eventRefreshQueued.current = false;
+      }
+    })();
+  }), [refresh]);
 
   const reconcileAutomaticRecorder = useCallback(async () => {
     if (!deviceId) return false;
@@ -389,7 +477,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     void syncPendingLastFmBestEffort();
     let ticks = 0;
     const timer = setInterval(() => {
-      setClock(value => value + 1);
+      setClock(Date.now());
       ticks += 1;
       if (ticks % 5 === 0 && !busyRef.current) void refresh().catch(() => {});
       if (ticks % 30 === 0) void processPendingCompletionJobs({ connection, limit: 12 }).catch(() => {});
@@ -419,7 +507,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 
   const active = Boolean(summary && summary.status !== 'completed');
   const permissionsReady = foregroundPermission && backgroundPermission && taskAvailable;
-  const accent = summary?.status === 'recording' && trackingActive ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
+  const clockTracking = trackingActive && recorderClockRunning(recorderClock, Math.max(clockNow, recorderClock?.confirmedAtMs ?? 0));
+  const accent = summary?.status === 'recording' && clockTracking ? '#43e6ae' : summary?.status === 'paused' ? '#ffb45c' : '#9b7cff';
 
   useEffect(() => {
     if (!completionMoment || !isAppActive) return;
@@ -612,9 +701,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     }
   }, 'Syncing to JourneyDeck…');
 
-  const metrics = useMemo(() => [
-    ['TIME', durationLabel(summary?.startedAt)], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
-  ], [connection, summary]);
+  const elapsedLabel = recorderDurationLabel(summary, recorderClock, Math.max(clockNow, recorderClock?.confirmedAtMs ?? 0));
+  const metrics = [
+    ['TIME', elapsedLabel], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
+  ];
   const automaticMode = TESSIE_INTEGRATION_ENABLED && recordingPreferences.onboardingCompleted && recordingPreferences.mode === 'automatic';
 
   if (presentation === 'ipad-home') {
@@ -622,6 +712,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const tabletStatus = startupPending ? 'loading' : summary?.status === 'finishing' ? 'finishing'
       : summary?.status === 'recording' ? 'recording' : summary?.status === 'paused' ? 'paused'
       : !permissionsReady ? 'permission' : automaticMode ? 'automatic' : 'ready';
+    if (tabletStatus === 'ready' || tabletStatus === 'loading') {
+      return <HomeRecorderStartPortal presentation="ipad-header" onPress={start} disabled={busy || startupPending}
+        showProgress={busy || startupPending} body={notice || undefined} />;
+    }
     return <IpadRecorderControls status={tabletStatus} busy={busy} onStart={start} onEnable={enablePermissions}
       onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />;
   }
@@ -645,14 +739,14 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
             <View style={styles.homeRecorderStatusRow}>
               <View style={styles.homeRecorderPulseOuter}><View style={[styles.homeRecorderPulseMiddle, paused && styles.homeRecorderPulsePaused]}><View style={[styles.homeRecorderPulseCore, paused && styles.homeRecorderPulseCorePaused]} /></View></View>
               <View style={styles.homeRecorderStatusCopy}>
-                <Text style={[styles.homeRecorderEyebrow, paused && styles.homeRecorderEyebrowPaused]}>{active ? paused ? 'PAUSED' : 'RECORDING' : automaticMode ? 'TESLA AUTOMATION' : 'READY'}</Text>
-                <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : 'Your journey is being remembered.' : automaticMode ? 'Waiting for Tessie to confirm your drive.' : 'Ready to remember your next drive.'}</Text>
+                <Text style={[styles.homeRecorderEyebrow, paused && styles.homeRecorderEyebrowPaused]}>{active ? paused ? 'PAUSED' : summary?.status === 'finishing' ? 'FINISHING' : clockTracking ? 'RECORDING' : 'CHECKING RECORDING' : automaticMode ? 'TESLA AUTOMATION' : 'READY'}</Text>
+                <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : summary?.status === 'finishing' ? 'Recording has stopped. Your journey is being saved.' : clockTracking ? 'Your journey is being remembered.' : 'Confirming recorder status. Saved GPS points are safe.' : automaticMode ? 'Waiting for Tessie to confirm your drive.' : 'Ready to remember your next drive.'}</Text>
               </View>
               {busy && <ActivityIndicator color={theme.color("#ff795b", 'text')} size="small" />}
             </View>
 
             {active && <View style={styles.homeRecorderMetrics}>
-              <View style={styles.homeRecorderMetric}><SymbolView name="clock" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricValue}>{durationLabel(summary?.startedAt)}</Text></View>
+              <View style={styles.homeRecorderMetric}><SymbolView name="clock" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricValue}>{elapsedLabel}</Text></View>
               <View style={styles.homeRecorderMetricDivider} />
               <View style={styles.homeRecorderMetric}><SymbolView name="road.lanes" tintColor={theme.color("#a49baa", 'text')} size={22} /><Text style={styles.homeRecorderMetricValue}>{distanceMiles.toFixed(1)} <Text style={styles.homeRecorderMetricUnit}>MI</Text></Text></View>
               <View style={styles.homeRecorderMetricDivider} />
@@ -709,7 +803,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
             </NeonWidget>
           ) : (
             <>
-              <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: theme.color(accent, 'border') }]}><View style={[styles.statusDot, { backgroundColor: theme.color(accent, 'surface') }]} /><Text style={[styles.statusText, { color: theme.color(accent, 'text') }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, trackingActive)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (trackingActive ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
+              <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: theme.color(accent, 'border') }]}><View style={[styles.statusDot, { backgroundColor: theme.color(accent, 'surface') }]} /><Text style={[styles.statusText, { color: theme.color(accent, 'text') }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, clockTracking)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (clockTracking ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
               <View style={styles.metrics}>{metrics.map(([label, value], index) => <QuietInset radius={16} accent={index === 0 ? '#ff795b' : index === 1 ? '#ff4d87' : index === 2 ? '#a66cff' : '#5aa7ff'} style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue} numberOfLines={1}>{value}</Text></QuietInset>)}</View>
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
@@ -799,10 +893,14 @@ function JourneySavedMoment({ moment, active, reduceMotion, onDismiss }: { momen
     <Pressable accessibilityRole="button" accessibilityLabel="Dismiss saved journey confirmation" onPress={onDismiss} style={({ pressed }) => [styles.journeySavedDismiss, pressed && styles.homeRecorderPressed]}><Text style={styles.journeySavedDismissText}>Done</Text></Pressable>
   </Reanimated.View>;
 }
-function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { onPress: () => void; disabled?: boolean; showProgress?: boolean }) {
+function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, presentation = 'phone', body }: {
+  onPress: () => void; disabled?: boolean; showProgress?: boolean; presentation?: 'phone' | 'ipad-header'; body?: string;
+}) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const { reduceMotion, ambientMotionEnabled } = useMotionPreferences();
+  const ipadHeader = presentation === 'ipad-header';
+  const portalBody = body ?? (ipadHeader ? null : 'Ready to remember your next drive.');
   const pressedScale = useSharedValue(1);
   const breathe = useSharedValue(0);
   const lightSweep = useSharedValue(0);
@@ -850,19 +948,19 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { 
     pressedScale.set(reduceMotion ? 1 : withSpring(1, MOTION_SPRINGS.responsive));
   };
 
-  return <Reanimated.View style={motionStyle}><Pressable
+  return <Reanimated.View style={[motionStyle, ipadHeader && styles.homeRecorderStartPortalIpadFrame]}><Pressable
     testID="home-start-journey-portal"
     accessibilityRole="button"
     accessibilityLabel="Start Journey"
-    accessibilityHint="Begins recording your route on this iPhone."
+    accessibilityHint={`Begins recording your route on this ${ipadHeader ? 'iPad' : 'iPhone'}.`}
     accessibilityState={{ disabled: Boolean(disabled) }}
     disabled={disabled}
     onPress={onPress}
     onPressIn={pressIn}
     onPressOut={pressOut}
-    style={({ pressed }) => [styles.homeRecorderStartPortal, pressed && styles.homeRecorderStartPortalPressed]}
+    style={({ pressed }) => [styles.homeRecorderStartPortal, ipadHeader && styles.homeRecorderStartPortalIpad, pressed && styles.homeRecorderStartPortalPressed]}
   >
-    <View style={[styles.homeRecorderStartPortalCanvas, theme.isLight && !theme.isCustom && { backgroundColor: 'rgba(250,244,255,0.78)', borderRadius: 30 }, theme.isCustom && { backgroundColor: `${theme.palette.card}e0`, borderRadius: 30 }]}>
+    <View style={[styles.homeRecorderStartPortalCanvas, ipadHeader && styles.homeRecorderStartPortalCanvasIpad, theme.isLight && !theme.isCustom && { backgroundColor: 'rgba(250,244,255,0.78)', borderRadius: 30 }, theme.isCustom && { backgroundColor: `${theme.palette.card}e0`, borderRadius: 30 }]}>
       <HomeRecorderStartPortalAtmosphere />
       <View pointerEvents="none" style={styles.homeRecorderStartPortalLightClip}>
         <Reanimated.View style={[styles.homeRecorderStartPortalLight, lightStyle]}>
@@ -871,17 +969,17 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false }: { 
       </View>
       <View pointerEvents="none" style={[styles.homeRecorderStartPortalOutline, theme.isLight && !theme.isCustom && { borderColor: '#694079', shadowColor: '#8e58b0' }, theme.isCustom && { borderColor: theme.isLight ? theme.palette.accent : theme.palette.chrome, shadowColor: theme.palette.accent }]} />
       <View pointerEvents="none" style={styles.homeRecorderStartPortalStatus}>
-        <Reanimated.View style={[styles.homeRecorderStartPortalPulseOuter, theme.isLight && !theme.isCustom && { borderColor: 'rgba(105,64,121,0.30)', backgroundColor: 'rgba(150,100,183,0.06)' }, outerRingStyle]}>
-          <Reanimated.View style={[styles.homeRecorderStartPortalPulseMiddle, theme.isLight && !theme.isCustom && { borderColor: 'rgba(105,64,121,0.55)', backgroundColor: 'rgba(150,100,183,0.12)' }, middleRingStyle]}>
-            <Reanimated.View style={[styles.homeRecorderStartPortalPulseCore, theme.isLight && !theme.isCustom && { backgroundColor: '#75448e', shadowColor: '#985ac0' }, theme.isCustom && { backgroundColor: theme.palette.accent, shadowColor: theme.palette.accent }, coreStyle]} />
+        <Reanimated.View style={[styles.homeRecorderStartPortalPulseOuter, ipadHeader && styles.homeRecorderStartPortalPulseOuterIpad, theme.isLight && !theme.isCustom && { borderColor: 'rgba(105,64,121,0.30)', backgroundColor: 'rgba(150,100,183,0.06)' }, outerRingStyle]}>
+          <Reanimated.View style={[styles.homeRecorderStartPortalPulseMiddle, ipadHeader && styles.homeRecorderStartPortalPulseMiddleIpad, theme.isLight && !theme.isCustom && { borderColor: 'rgba(105,64,121,0.55)', backgroundColor: 'rgba(150,100,183,0.12)' }, middleRingStyle]}>
+            <Reanimated.View style={[styles.homeRecorderStartPortalPulseCore, ipadHeader && styles.homeRecorderStartPortalPulseCoreIpad, theme.isLight && !theme.isCustom && { backgroundColor: '#75448e', shadowColor: '#985ac0' }, theme.isCustom && { backgroundColor: theme.palette.accent, shadowColor: theme.palette.accent }, coreStyle]} />
           </Reanimated.View>
         </Reanimated.View>
-        <Text style={[styles.homeRecorderStartPortalEyebrow, theme.isLight && !theme.isCustom && { color: '#59316d' }]}>READY</Text>
-        <Text style={[styles.homeRecorderStartPortalBody, theme.isLight && !theme.isCustom && { color: '#49354f' }]}>Ready to remember your next drive.</Text>
+        <Text style={[styles.homeRecorderStartPortalEyebrow, ipadHeader && styles.homeRecorderStartPortalEyebrowIpad, theme.isLight && !theme.isCustom && { color: '#59316d' }]}>READY</Text>
+        {portalBody ? <Text numberOfLines={ipadHeader ? 2 : undefined} style={[styles.homeRecorderStartPortalBody, ipadHeader && styles.homeRecorderStartPortalBodyIpad, theme.isLight && !theme.isCustom && { color: '#49354f' }]}>{portalBody}</Text> : null}
       </View>
-      <View pointerEvents="none" style={styles.homeRecorderStartPortalAction}>
-        <Text style={[styles.homeRecorderStartPortalTitle, theme.isLight && !theme.isCustom && { color: '#3f2052', textShadowColor: 'transparent', textShadowRadius: 0 }]}>Start Journey</Text>
-        {showProgress ? <ActivityIndicator color={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size="small" /> : <SymbolView name="arrow.right" tintColor={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size={31} />}
+      <View pointerEvents="none" style={[styles.homeRecorderStartPortalAction, ipadHeader && styles.homeRecorderStartPortalActionIpad]}>
+        <Text style={[styles.homeRecorderStartPortalTitle, ipadHeader && styles.homeRecorderStartPortalTitleIpad, theme.isLight && !theme.isCustom && { color: '#3f2052', textShadowColor: 'transparent', textShadowRadius: 0 }]}>Start Journey</Text>
+        {showProgress ? <ActivityIndicator color={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size="small" /> : <SymbolView name="arrow.right" tintColor={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size={ipadHeader ? 25 : 31} />}
       </View>
     </View>
   </Pressable></Reanimated.View>;
@@ -941,7 +1039,7 @@ function SyncStatus({ stage }: { stage: Exclude<SyncStage, 'idle'> }) {
 const darkStyles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
-  homeRecorderStack: { gap: 12 },
+  homeRecorderStack: { gap: 16 },
   homeRecorderCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1, borderColor: 'rgba(190,168,194,0.44)', backgroundColor: 'rgba(9,8,14,0.86)', paddingHorizontal: 18, paddingVertical: 20, shadowColor: '#bc6aff', shadowOpacity: 0.15, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } },
   journeySavedMoment: { minHeight: 330, overflow: 'hidden', borderRadius: 26, padding: 18, gap: 15, shadowColor: '#bc6aff', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } },
   journeySavedHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -975,20 +1073,30 @@ const darkStyles = StyleSheet.create({
   homeRecorderPrimaryText: { flex: 1, color: '#fff8f5', fontSize: 22, fontWeight: '500', marginLeft: 14 },
   homeRecorderPrimaryArrow: { color: '#fff8f5', fontSize: 31, lineHeight: 32 },
   homeRecorderStartPortal: { minHeight: 360 },
+  homeRecorderStartPortalIpadFrame: { width: '100%', maxWidth: '100%', height: 190 },
+  homeRecorderStartPortalIpad: { width: '100%', minHeight: 190, flex: 1 },
   homeRecorderStartPortalPressed: { transform: [{ scale: 0.992 }] },
   homeRecorderStartPortalCanvas: { flex: 1, alignItems: 'center', paddingHorizontal: 20, paddingTop: 32, paddingBottom: 24 },
+  homeRecorderStartPortalCanvasIpad: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10, justifyContent: 'space-between' },
   homeRecorderStartPortalAtmosphere: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   homeRecorderStartPortalLightClip: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 30, overflow: 'hidden' },
   homeRecorderStartPortalLight: { position: 'absolute', top: -70, bottom: -70, left: '50%', width: 130 },
   homeRecorderStartPortalOutline: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: 30, borderWidth: 1, borderColor: 'rgba(255,126,88,0.92)', shadowColor: '#ff704f', shadowOpacity: 0.72, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } },
   homeRecorderStartPortalStatus: { alignItems: 'center' },
   homeRecorderStartPortalPulseOuter: { width: 116, height: 116, borderRadius: 58, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,123,91,0.30)', backgroundColor: 'rgba(255,102,79,0.035)' },
+  homeRecorderStartPortalPulseOuterIpad: { width: 70, height: 70, borderRadius: 35 },
   homeRecorderStartPortalPulseMiddle: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,123,91,0.55)', backgroundColor: 'rgba(255,102,79,0.055)' },
+  homeRecorderStartPortalPulseMiddleIpad: { width: 48, height: 48, borderRadius: 24 },
   homeRecorderStartPortalPulseCore: { width: 37, height: 37, borderRadius: 19, backgroundColor: '#ff8060', shadowColor: '#ff654f', shadowOpacity: 1, shadowRadius: 19 },
+  homeRecorderStartPortalPulseCoreIpad: { width: 23, height: 23, borderRadius: 12, shadowRadius: 13 },
   homeRecorderStartPortalEyebrow: { color: '#ff8b69', fontSize: 14, fontWeight: '800', letterSpacing: 3.2, marginTop: 20 },
+  homeRecorderStartPortalEyebrowIpad: { fontSize: 10, letterSpacing: 2.4, marginTop: 5 },
   homeRecorderStartPortalBody: { color: '#c4b7c4', fontSize: 14, lineHeight: 20, marginTop: 7, textAlign: 'center' },
+  homeRecorderStartPortalBodyIpad: { fontSize: 11, lineHeight: 14, marginTop: 2 },
   homeRecorderStartPortalAction: { flex: 1, minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 13, paddingTop: 19 },
+  homeRecorderStartPortalActionIpad: { minHeight: 42, flex: 0, flexDirection: 'row', gap: 9, paddingTop: 3 },
   homeRecorderStartPortalTitle: { color: '#fff8f5', fontSize: 26, fontWeight: '500', textAlign: 'center', textShadowColor: 'rgba(255,90,79,0.45)', textShadowRadius: 12 },
+  homeRecorderStartPortalTitleIpad: { fontSize: 20 },
   homeRecorderIdentify: { minHeight: 92, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(174,119,207,0.42)', backgroundColor: 'rgba(13,9,21,0.88)', flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 17 },
   homeRecorderIdentifyIcon: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(182,126,255,0.3)' },
   homeRecorderIdentifyCopy: { flex: 1 },

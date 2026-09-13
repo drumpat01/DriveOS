@@ -13,7 +13,7 @@ const host = (name: string) => ({ children, ...props }: any) => React.createElem
 let prompt: any[] = [], keyboardDismissals = 0;
 const platform = { OS: 'ios' };
 const mocks: Record<string, unknown> = {
-  'react-native': { Modal: host('modal'), View: host('view'), Text: host('text'), Pressable: host('button'), ScrollView: host('scroll'),
+  'react-native': { Modal: host('modal'), View: host('view'), Text: host('text'), Pressable: host('button'), ScrollView: host('scroll'), KeyboardAvoidingView: host('keyboard-view'),
     StyleSheet: { create: (styles: unknown) => styles }, Platform: platform,
     Alert: { alert: (...args: any[]) => { prompt = args; } }, Keyboard: { dismiss: () => keyboardDismissals++ } },
   './app-theme': { useAppTheme: () => ({ color: (value: string) => value }), useThemedStyles: (styles: unknown) => styles },
@@ -63,8 +63,28 @@ test('native sheet swipe and button dismissal share draft/busy protection', asyn
     assert.equal(tree.root.findAllByType('button').filter((button: any) => button.props.accessibilityLabel === 'Dismiss keyboard').length, 0);
     assert.equal(tree.root.findAllByType('text').filter((text: any) => text.children.includes('Done')).length, 0);
     assert.equal(tree.root.findByType('scroll').props.automaticallyAdjustKeyboardInsets, true);
+    assert.equal(tree.root.findByType('scroll').props.contentInsetAdjustmentBehavior, 'automatic');
     assert.equal(tree.root.findByType('scroll').props.bounces, false);
+    assert.equal(tree.root.findByType('scroll').props.alwaysBounceVertical, false);
+    assert.equal(tree.root.findByType('scroll').props.overScrollMode, 'never');
   }
+  await act(() => tree.unmount());
+});
+
+test('sheet footer stays outside the bounded form scroller and follows the iOS keyboard', async () => {
+  const footer = React.createElement('footer-action', { accessibilityLabel: 'Save Memory' });
+  let tree: any;
+  platform.OS = 'ios';
+  await act(() => { tree = create(React.createElement(NativeSheet, {
+    visible: true, title: 'Edit Memory', kicker: 'MEMORY', onClose: () => {}, footer,
+  }, React.createElement('form-content'))); });
+  const keyboardView = tree.root.findByType('keyboard-view');
+  const scroll = tree.root.findByType('scroll');
+  assert.equal(keyboardView.props.behavior, 'padding');
+  assert.equal(scroll.props.automaticallyAdjustKeyboardInsets, false, 'one keyboard adjustment owns the bounded editor');
+  assert.equal(scroll.props.contentInsetAdjustmentBehavior, 'never');
+  assert.equal(scroll.findAllByType('footer-action').length, 0, 'the Save controls cannot scroll off with form content');
+  assert.equal(keyboardView.findAllByType('footer-action').length, 1);
   await act(() => tree.unmount());
 });
 

@@ -1,5 +1,15 @@
 # JourneyDeck Mobile Subsystem (iOS / Expo SDK 57)
 
+## V2 feature freeze — September 10, 2026
+
+The user has declared V2 feature complete. Limit V2 work to minor bug fixes and small polish/UI tweaks. Preserve the established feature set and behavior; do not add features, undertake broad redesigns, or expand scope unless the user explicitly changes this direction. Feature-complete status does not imply all device acceptance checks are finished.
+
+## V2 iPad release acceptance priority — September 10, 2026
+
+Treat iPad portrait, landscape with Apple's native sidebar, rotation, and narrow Split View as release-blocking acceptance surfaces for V2. Base responsive choices on the measured content canvas left after native navigation insets, preserve the system-managed sidebar, and check Dynamic Type before publishing UI changes.
+
+At normal iPad landscape widths, major tab content follows a shared six-column grid with 12pt gutters. Cards and panels must occupy whole-column spans (for example 2+4, 3+3, or 2+2+2); do not introduce fractional panel widths between those tracks. Collapse the grid at narrower effective widths so Split View and Dynamic Type remain readable.
+
 ## Approved reusable Atlas Flip animation
 
 Before implementing or modifying a widget flip/expanded-details interaction, read [the Atlas Flip baseline in docs/motion.md](docs/motion.md#atlas-flip--approved-reusable-card-expansion). The user approved the Driving Rhythms implementation on September 9, 2026 and asked that it be reused. Preserve its exact timing, complete card faces, native foreground layer boundary, and modal/source handoff. Reuse that implementation for requested widgets rather than redesigning the animation; do not automatically enable it on other widgets.
@@ -11,7 +21,7 @@ The user was alerted that Build 2 omitted automatic iOS Home Screen icon variant
 ## Core Architecture Invariants & Rules
 
 1. **Expo SDK 57 Strict Adherence**:
-   - Current source targets unreleased `2.0.0-watch.4` (internal preview `2.0.0-preview.9`) for RevenueCat plus PhotoKit, recap audio and reversible editor schema 7. The last preview OTA is `2.0.0-preview.8`; RevenueCat source requires a new native build. The installed Build 19 runtime is `2.0.0-watch.2`; Build 18 uses `2.0.0-watch.1`. Keep those OTA packages isolated. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical. Do not publish the new source to an older runtime.
+   - Current source targets `2.0.0-watch.5` (internal preview `2.0.0-preview.10`) for native recorder schema 3, the consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio and reversible editor schema 7. Build 23 uses `2.0.0-watch.4`. Keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical. Do not publish the new source to an older runtime.
    - Read versioned docs at https://docs.expo.dev/versions/v57.0.0/ before changing native modules.
 
 2. **Local-First & Multi-User Architecture**:

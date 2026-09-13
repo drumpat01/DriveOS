@@ -1,10 +1,16 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
 import type {
-  NativeMapKitPointOfInterest, NativeRecorderInboxExport, NativeRecorderStatus,
+  NativeMapKitPointOfInterest, NativeRecorderInboxExport, NativeRecorderStatus, NativeRecorderStatusEvent, RecorderCommandOutcome,
 } from './JourneyDeckRecorder.types';
 
-declare class JourneyDeckRecorderModule extends NativeModule<{}> {
+type JourneyDeckRecorderEvents = {
+  recorderStatusChanged: (event: NativeRecorderStatusEvent) => void;
+};
+
+declare class JourneyDeckRecorderModule extends NativeModule<JourneyDeckRecorderEvents> {
+  executeCommandAsync?(id: string, action: 'start' | 'pause' | 'resume' | 'finish', sessionId: string, token: string, expiresAt: number): Promise<NativeRecorderStatus>;
+  getCommandOutcomeAsync?(id: string): Promise<RecorderCommandOutcome>;
   configureAsync(enabled: boolean, ownerUserId: string, deviceId: string): Promise<NativeRecorderStatus>;
   getStatusAsync(): Promise<NativeRecorderStatus>;
   configureManualAsync?(ready: boolean, ownerUserId: string, legacyActive: boolean): Promise<NativeRecorderStatus>;

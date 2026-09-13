@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Alert, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
 import { useAppTheme, useThemedStyles } from './app-theme';
 
@@ -14,9 +14,9 @@ export function requestSheetClose(dirty: boolean, busy: boolean, onClose: () => 
 }
 
 /** UIKit owns presentation and dismissal; the underlying tab stays mounted. */
-export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty = false, busy = false, children }: {
+export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty = false, busy = false, footer, children }: {
   visible: boolean; kicker: string; title: string; onClose: () => void; onDismiss?: () => void;
-  dirty?: boolean; busy?: boolean; children: ReactNode;
+  dirty?: boolean; busy?: boolean; footer?: ReactNode; children: ReactNode;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(sheetStyles);
@@ -29,17 +29,18 @@ export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty 
   return <Modal visible={visible} presentationStyle="pageSheet" animationType="slide"
     transparent={false} backdropColor={theme.color('#08070d', 'surface')}
     allowSwipeDismissal={false} onRequestClose={() => requestSheetClose(dirty, busy, onClose)} onDismiss={onDismiss}>
-    <View style={styles.root} accessibilityViewIsModal>
+    <KeyboardAvoidingView style={styles.root} behavior={footer && Platform.OS === 'ios' ? 'padding' : undefined} accessibilityViewIsModal>
       <View style={styles.header}>
         <View style={styles.heading}><Text style={styles.kicker}>{kicker}</Text><Text style={styles.title}>{title}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="Close sheet" disabled={busy}
           onPress={() => requestSheetClose(dirty, busy, onClose)} style={[styles.button, busy && styles.disabled]}><SymbolView name="xmark" tintColor={styles.close.color} style={styles.closeIcon} /></Pressable>
       </View>
-      <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" bounces={false}
-        contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
+      <ScrollView automaticallyAdjustKeyboardInsets={!footer} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" bounces={false}
+        alwaysBounceVertical={false} overScrollMode="never" contentInsetAdjustmentBehavior={footer ? 'never' : 'automatic'} contentContainerStyle={styles.content}>
         <View pointerEvents={busy ? 'none' : 'auto'} style={styles.body}>{children}</View>
       </ScrollView>
-    </View>
+      {footer ? <View pointerEvents={busy ? 'none' : 'auto'} style={styles.footer}>{footer}</View> : null}
+    </KeyboardAvoidingView>
   </Modal>;
 }
 
@@ -55,4 +56,5 @@ const sheetStyles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   body: { gap: 16 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, gap: 16 },
+  footer: { flexShrink: 0, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#30283a', backgroundColor: '#08070d' },
 });

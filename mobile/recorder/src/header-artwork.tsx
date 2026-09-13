@@ -1,8 +1,8 @@
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { StyleSheet, View, type ImageSourcePropType } from 'react-native';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { headerImageSource } from './header-image-sources';
+import { JourneyImage } from './journey-image';
 
 type HeaderArtworkProps = {
   source: ImageSourcePropType;
@@ -24,8 +24,8 @@ export function HeaderArtworkLayers({ source }: HeaderArtworkProps) {
   const themedSource = headerImageSource(source, theme.id);
 
   return <>
-    <Image source={themedSource} contentFit="cover" style={StyleSheet.absoluteFill} />
-    <Image source={themedSource} contentFit="cover" blurRadius={18} style={[StyleSheet.absoluteFill, styles.blurredArtwork]} />
+    <JourneyImage imageIdentity={`header-${theme.id}-sharp`} source={themedSource} contentFit="cover" style={StyleSheet.absoluteFill} />
+    <JourneyImage imageIdentity={`header-${theme.id}-blur`} source={themedSource} contentFit="cover" blurRadius={18} style={[StyleSheet.absoluteFill, styles.blurredArtwork]} />
     <CinematicPhotoGrade />
     <HeaderEdgeFeather />
   </>;

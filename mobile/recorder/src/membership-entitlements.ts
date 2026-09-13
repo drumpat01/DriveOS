@@ -22,17 +22,6 @@ export function entitlementsForVerifiedMembership(status: VerifiedMembershipStat
   return entitlementsForMembershipTier(status.nativeModuleAvailable && status.tier === 'paid' ? 'paid' : 'free');
 }
 
-/**
- * The side-by-side V2 EAS app may expose Atlas for design acceptance without
- * manufacturing a paid StoreKit tier or unlocking any other paid capability.
- */
-export function withPreviewAtlasAccess(
-  entitlements: JourneyDeckMembershipEntitlements,
-  enabled: boolean,
-): JourneyDeckMembershipEntitlements {
-  return enabled && !entitlements.atlasAccess ? { ...entitlements, atlasAccess: true } : entitlements;
-}
-
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
   return entitlements.timelineHistoryDays === null
     ? Number.NEGATIVE_INFINITY

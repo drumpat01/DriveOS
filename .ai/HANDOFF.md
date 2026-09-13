@@ -1,5 +1,441 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Combined native + OTA TestFlight authorization — September 12, 2026
+
+- The user explicitly lifted the earlier hold and authorized commit, push, a new
+  production TestFlight build, and submission with all current native changes
+  and bundled OTA advancements. Source runtime advances from Build 23's
+  `2.0.0-watch.4` to `2.0.0-watch.5`; preview source advances to preview.10.
+- Release verification/build/submission is in progress. Do not publish a separate
+  OTA to watch.4 from this source; the production native build must carry the
+  bundle and establish the new runtime first.
+
+## Native recording consolidation — September 12, 2026 (local only)
+
+- User explicitly requested one native recording state machine, SQLite movement
+  checkpoints, and native status events. Implemented using directed Sol/Luna
+  subagents with root integration/review. **No build, Expo export, OTA,
+  TestFlight, staging, commit or push.** Branch `codex/journeydeck-v2`, HEAD
+  `6aad3b4`; broad preexisting dirty work remains intact.
+- `mobile/recorder/modules/journeydeck-recorder/ios/RecorderStateMachine.swift`
+  now owns lifecycle/checkpoint transactions. Journal commands, automatic
+  start/stop, inactivity and recovery share owner/session/terminal fences.
+  Native inbox schema **3** adds owner-scoped checkpoints (nullable session for
+  idle candidates); point+checkpoint and final-point+completion writes are
+  atomic. Legacy UserDefaults is migration input only, with matching-session
+  and applied-command sequence checks before inactivity decisions.
+- Profile handoff fences outgoing and incoming old sessions; database failure
+  stops GPS and clears configuration so old-owner bootstrap cannot rearm.
+  Native status snapshots revalidate identity, config, event sequence and
+  tracking generation. Token-scoped module observers emit ordered, sanitized
+  lifecycle/failure events. Failed status reconciliation is marked unreliable.
+- TS event wrapper/helper and `App.tsx` freeze matching Pause/Finish clocks,
+  reject stale event streams, cancel stale refresh recovery mutations and queue
+  a fresh read. New native engines own transport recovery; a stale JS mirror
+  cannot send Resume over a Watch Pause. Older-binary fallback and the disabled
+  native automatic-recorder rollout flag remain.
+- Verification: **632/632 mobile tests**, TypeScript, Swift runner JS syntax,
+  and diff whitespace check passed. Log:
+  `mobile/recorder/.cache/native-consolidation-full.log`. Includes 13 actual
+  SQLite transaction/process-death checks plus actual App refresh code with
+  controlled bridge responses. Both Swift harnesses are wired into
+  `node scripts/test-native-command-journal.mjs`, but were **not compiled/run**;
+  `swiftc` is unavailable. No real phone, Watch, or CloudKit execution.
+- Updated `mobile/recorder/docs/next-native-build-checklist.md` with NB-005,
+  NB-006, NB-007 (source implemented, device acceptance pending). Details and
+  evidence: `mobile/recorder/docs/native-recorder-consolidation-2026-09-12.md`.
+  Next authorized build must use a new runtime; inbox schema 3 cannot roll back
+  to schema-1/2 binaries. Compile recorder/Watch, run Swift tests, execute legacy
+  migration and locked-phone/Watch/profile/storage-failure acceptance. Master
+  archive and CloudKit production schemas were not changed in this milestone.
+- Test processes exited. Cleanup was policy-blocked for five disposable folders
+  under `C:/Users/patri/AppData/Local/Temp`: `journeydeck-checkpoint-rRmyFg`,
+  `journeydeck-checkpoint-OnUNRq`, `journeydeck-checkpoint-njl9JE`,
+  `journeydeck-checkpoint-YXTsl5`, `journeydeck-native-journal-ZxL0w5`. They contain
+  only synthetic test databases; subsequent tests cleaned their own folders.
+
+## Durable recorder commands and CloudKit recovery — September 12, 2026 (local only)
+
+- User explicitly requested implementation of Start/Pause/Resume/Finish operation
+  IDs and CloudKit stuck-operation recovery, with **no build yet**. Implemented
+  both; no native build, Expo export, OTA, staging, commit, push or publication.
+  Branch remains `codex/journeydeck-v2`; unrelated dirty work is preserved.
+- Recorder: new `RecorderCommandJournal.swift` adds native inbox schema 2 with
+  committed intent and atomic session/receipt writes. Phone, Watch and legacy
+  bridge controls use it; owner/session checks, replay receipts after inbox ack,
+  expired/unknown response fencing, restart rejection of stale Start/Resume,
+  recoverable Pause/Finish and matching GPS shutdown are included. Configure
+  retains its existing serialized path. Source lives under
+  `mobile/recorder/modules/journeydeck-recorder/`.
+- CloudKit: new `CloudKitRequests.swift` uses explicit cancellable operations,
+  one-shot completion, native request/resource/watchdog deadlines and a native
+  process-wide request guard. `CloudKitRequestGate.ts` bounds JS callers while
+  holding unresolved native work. Late results cannot acknowledge uploads;
+  missing deletion results and nonadvancing tokens fail safely; existing durable
+  deletion pause, cursor ingestion rules and optimistic conflict checks remain.
+- Verification: **609/609 mobile tests**, TypeScript, JS syntax for the new Swift
+  runner, and diff whitespace checks passed. Added controlled bridge/coordinator
+  tests, real journal SQL write-failure tests, and killed a child during native
+  Finish SQL before reopening its disposable database. Log:
+  `mobile/recorder/.cache/native-hardening-full.log`. No actual Swift/CloudKit/GPS
+  execution: `swiftc` is unavailable. Native unit runner for a Mac:
+  `node scripts/test-native-command-journal.mjs` from `mobile/recorder`.
+- Updated `mobile/recorder/docs/next-native-build-checklist.md`: NB-003 implemented;
+  NC-001 promoted to implemented NB-004. Detailed behavior/limits in
+  `mobile/recorder/docs/native-operation-hardening-2026-09-12.md`. Next authorized
+  build must choose a new runtime, compile both modules, and validate on devices.
+  Inbox schema 2 cannot be opened by Build 23's schema-1 recorder after upgrade;
+  master archive and CloudKit production schemas were not changed.
+
+## Next native build ledger — September 12, 2026
+
+- Created `mobile/recorder/docs/next-native-build-checklist.md` as the living
+  source of truth for changes to include in the next native build after Build 23.
+  It now records the implemented-but-uncompiled recorder changes, durable recorder
+  command journal, CloudKit recovery, candidate native diagnostics, and the
+  combined build/device gates. See the implementation milestone above.
+- The user's TestFlight hold remains active. Creating this ledger did not build,
+  submit, publish, stage, commit, or push anything.
+
+## Automated crash/write/stuck-operation hardening — September 12, 2026 (local only)
+
+- User authorized all feasible testing/fixes without their real phone. The explicit TestFlight/OTA HOLD remains active; no build, publication, staging, commit or push. Branch `codex/journeydeck-v2`; unrelated dirty changes preserved.
+- Reproduced and fixed: hung native inbox responses retaining the shared pending lock; completion-write failure skipping GPS shutdown after a durable finish claim; NaN GPS timestamps rolling back valid batch points; the earlier long accuracy baseline hiding driving resumed ten seconds before timeout; older-binary Finish failing to check the requested journey ID. Added read/committed-ack deadlines with late-export suppression, profile-change rejection, and App status-read timeouts. Mutating native calls are deliberately not blindly retried after a timeout.
+- Added disposable SQLite write-failure enumeration, real SQLITE_FULL/competing-writer tests, and actual child-process termination/reopen tests around every exercised GPS/Finish/import write. Added 60 generated GPS combinations, native response/late-response cases, App refresh recovery and Finish identity regressions. Swift departure detection and matching harness updated but remain uncompiled here.
+- Verification passed: full mobile suite **595/595**, TypeScript, iOS local export (2,504 modules/77 assets/8.5MB Hermes at `.cache/recording-recovery-export`), and `git diff --check` (existing CRLF notices). Test child processes exited and temporary databases were cleaned up. No phone or actual user/cloud data used.
+- Evidence boundaries and commands: `mobile/recorder/docs/recording-failure-tests-2026-09-12.md`. Recorder SQL/schema are real; archive enrichment and device edges are stubbed. Full-library restore, Swift compilation and hardware validation remain pending. Old binary read-before-Finish reduces stale commands but retains a read-to-mutation race; atomic native methods are required for full protection.
+
+## Recording failsafe audit — September 12, 2026 (local only; publication HOLD)
+
+- User explicitly said **do not push a new TestFlight yet** during this audit. No native build, OTA, staging, commit or Git push was performed. This hold supersedes the default publication preference below for this work.
+- On `codex/journeydeck-v2`, preserved existing dirty work. Fixed manual inactivity accuracy/anchor starvation in JS and Swift, replaced the legacy 500-point safety input with a 15-minute storage query, added native status/recovery evaluation of fresh confirmed inactivity, and removed Keychain/enrichment waits from local failsafe completion.
+- Added `src/recorder-clock.ts` and wired the phone Home/detailed recorder to confirmed transport state, persisted end times and an explicit one-second tick. Paused/finishing/unconfirmed clocks freeze; a hung refresh can extrapolate only ten seconds. A native-completed session with a stale local mirror no longer keeps the UI clock running or triggers a resume.
+- Verification: full mobile suite 570/570; TypeScript and local iOS export passed; diff whitespace check passed with existing CRLF notices. Added behavioral policy/runtime/clock/App-refresh tests and an actual SQLite dense-route regression. Swift harness expanded but unavailable here (`Swift compiler unavailable`); native source remains uncompiled and needs the next authorized native build plus locked-phone/Watch acceptance.
+- Detailed findings, remaining callback/GPS limitations and exact next checks: `mobile/recorder/docs/recording-failsafe-2026-09-12.md`. The rule is still ten minutes of observed inactivity, with a 24-hour ceiling, not a hard ten-minute journey cap. Do not claim a 100% wall-clock guarantee or that the installed TestFlight app contains these changes.
+- Follow-up hardening discussion: inspected current startup preservation, completion leases, native inbox serialization and diagnostics. Recommended next work is bounded recovery for hung native calls (without duplicate late mutations), injected write/crash failures, real native/device acceptance, restore drills and local reason-coded recorder diagnostics. These are recommendations, not implemented fixes or confirmed failures on the user's device; publication remains on hold.
+
+## V2 OTA handoff runbook (EAS / TestFlight production flow)
+
+This section is the authoritative V2 JavaScript/TypeScript/asset release procedure from this workspace.
+
+Scope:
+- Only use for **Expo OTA** updates to the existing V2 binary in TestFlight.
+- Do not use for native build changes, app icon/bundle changes, permission additions, native module/plugin changes, or App Store metadata work.
+- If native changes are needed, stop after Step 7 and hand off to a native-build path.
+
+Preflight (must complete before every OTA attempt):
+1. Confirm workspace and branch
+   - `git status`
+   - `git log -5 --oneline`
+   - `Set-Location C:\Users\patri\JourneyDeckv2`
+2. Read repo handoff constraints (already required):
+   - `Get-Content .ai/HANDOFF.md`
+   - `Get-Content GEMINI.md`
+   - `Get-Content mobile/recorder/AGENTS.md`
+3. Confirm EAS CLI and login:
+   - `npx eas --version`
+   - `npx eas whoami`
+   - `npx eas project:info --json`
+4. Confirm EAS targets:
+   - `npx eas build:list --limit 5 --platform ios`
+   - `npx eas update:list --platform ios --branch production --limit 20`
+
+Publish steps (default V2 production OTA):
+5. Run production iOS export from the current dirty-but-authorized worktree only after validation:
+   - `npx eas update --platform ios --branch production --message "<short release summary>" --non-interactive`
+   - If a profile is required in this session, use `--profile production`.
+6. Save the returned group/update IDs immediately in `.ai/HANDOFF.md`:
+   - group UUID
+   - iOS update UUID
+   - runtime version
+   - message
+
+Post-publish verification:
+7. Verify publication landed to the active production channel:
+   - `npx eas update:list --platform ios --branch production --limit 5`
+   - `npx eas update:view --platform ios --branch production --id <update-id>`
+   - Confirm:
+     - branch = `production`
+     - runtime matches expected TestFlight runtime (currently `2.0.0-watch.4` unless updated)
+     - status is published and visible as latest
+8. Confirm app-level runtime in TestFlight:
+   - ensure TestFlight app is currently on runtime `2.0.0-watch.4`
+   - cold-launch once; reopen twice if needed for propagation
+9. Device sanity checks before handoff:
+   - open Home, Soundtracks, Memories, Statistics, Settings
+   - test iPad landscape and portrait, native sidebar both sides, 1/2 Split View, and largest Dynamic Type
+   - validate theme transition and theme access flows
+   - validate plus/content gating that was in scope for the update
+
+Risk controls:
+- Do not call OTA for any native-required work.
+- Do not push partial or mixed branches.
+- If app behavior is unstable after publish, stop at the last-known-good published update and reopen from that same branch state with the next run.
+- Keep `.ai/HANDOFF.md` as the source of truth for current group/update IDs and pending review items.
+
+One-time handoff note:
+- The V2 production app is expected on `runtime 2.0.0-watch.4`.
+- User preference remains: if the source change is JS/TS/styling/asset and verified, publish by default.
+
+Troubleshooting appendix (handoff-safe recovery):
+1. `npx eas whoami` fails or returns the wrong account
+   - Confirm local credentials:
+     - `npx eas logout`
+     - `npx eas login`
+   - Re-run:
+     - `npx eas whoami`
+     - `npx eas project:info --json`
+   - If the project info does not show `JourneyDeckV2` (or equivalent expected slug), stop and confirm the active workspace/project mapping before continuing.
+
+2. OTA publish command succeeds but update is not visible
+   - Verify branch readback:
+     - `npx eas update:list --platform ios --branch production --limit 20`
+   - Re-run the same list command after ~60–120s.
+   - If still missing, confirm network and account project access, then confirm there is no pending interactive prompt by re-running publish with `--non-interactive`.
+
+3. App shows old runtime after publication
+   - Confirm expected runtime in EAS:
+     - `npx eas update:list --platform ios --branch production --limit 5`
+   - Confirm TestFlight version/runtime in use:
+     - verify TestFlight app version is still `2.0.0-watch.4` unless intentionally moved
+   - Cold-launch app twice and reopen.
+   - If mismatch continues, perform a controlled reinstall from TestFlight for propagation before escalating.
+
+4. `eas update` succeeds but Data Health/test update marker is absent
+   - Confirm manifest path and branch:
+     - `npx eas update:view --platform ios --branch production --id <latest-update-id>`
+   - Confirm app launched after publish and after restart.
+   - If still absent, temporarily review previous known-good update in `.ai/HANDOFF.md` and confirm whether runtime changed unexpectedly.
+
+5. Native behavior changed by mistake after publish
+   - Immediately stop the lane and document in handoff:
+     - “possible regression: native-required behavior changed”
+   - Capture reproduction notes and revert to previous published OTA only for same-source class fixes.
+   - For true native code/module changes, request explicit native-build lane before any new publish attempt.
+
+6. Access/permissions errors while uploading
+   - Do not retry in a tight loop.
+   - Validate project/session once:
+     - `npx eas whoami`
+     - `npx eas project:info --json`
+   - If still blocked, confirm App Store Connect credentials (if needed), then try again after clearing local CLI cache/session context.
+
+7. Conflicting or stale handoff metadata
+   - If the handoff file has stale IDs, update it immediately from verified readback.
+   - Add a short note:
+     - “earlier IDs stale due handoff, do not re-run older update IDs”
+   - Keep only latest published `group`, latest iOS `update`, and runtime for the active lane.
+
+If any step is unclear or blocked:
+- Stop OTA progression.
+- Make the smallest possible handoff note with current branch, branch list, last known-good update ID, and exact command output errors.
+- Resume only after explicit confirmation of required lane (OTA vs native build).
+
+## User delivery preference — September 11, 2026
+
+- After a verified V2 JavaScript, TypeScript, styling, or bundled-asset change, publish an iOS OTA to the current TestFlight app by default. Skip publication only when the user explicitly says not to publish or when the change requires a new native build; in the latter case, explain that boundary instead of publishing an incompatible update.
+
+## Equalize Home screen card gaps and margins OTA — September 11, 2026
+
+- Published the verified Home screen card spacing equalization to the current V2 TestFlight app on iOS `production`, runtime `2.0.0-watch.4`, with message `Equalize Home screen card gaps and margins`.
+- EAS group `4ac2dafd-6991-49ad-8f12-8340bee36245`; iOS update `01a09354-ca71-7c4c-8913-fb90d5cdce77`. Production branch readback via `eas update:list` and `eas update:view` confirmed this group is the newest active production update.
+- Cold-launch the app once or twice in TestFlight to ensure update propagation and verify spacing on an iPhone.
+- No native build, staging, commit, or Git push was performed.
+
+## Equalize Home screen card gaps and margins — September 11, 2026 (implementation)
+
+- User requested that all circled gaps on the iPhone Home screen match the exact same distance:
+  1. Card left screen margin: `paddingHorizontal: 16` (reduced from `24` in `approvedHomeContent`).
+  2. Card right screen margin: `paddingHorizontal: 16` (reduced from `24` in `approvedHomeContent`).
+  3. Vertical gap between Start Journey portal card and Latest memory card: `gap: 16` (standardized from `12` in `homeRecorderStack` and `14` in `approvedHomePanels`).
+  4. Vertical gap between Latest memory card and Latest song played card: `gap: 16` (in `approvedHomePanels`).
+  5. Bottom gap between the bottom card and the native bottom tab bar: `paddingBottom: insets.bottom + 16` (adjusted from `insets.bottom + 28` in `approvedHomeContent` ScrollView).
+- Consolidated Home and Journey header and default memory artwork with `<JourneyImage>` per shared image hardening.
+- Reconciled `tests/tab-runtime.test.mts` assertions to match the current implementation.
+- Files changed:
+  - `mobile/recorder/src/shell.tsx`: Home card padding, vertical panel gap, scrollview bottom inset, and header image hardening.
+  - `mobile/recorder/App.tsx`: Standardized `homeRecorderStack` gap to 16pt.
+  - `mobile/recorder/tests/tab-runtime.test.mts`: Synchronized header image and first-run/navigation test assertions.
+- Verification passed:
+  - TypeScript (`tsc --noEmit`): 0 errors.
+  - Complete test suite: 555/555 passing (`npm test` in `mobile/recorder`).
+  - Standalone Expo iOS export: 2,503 modules, 77 assets (`.cache/gap-export`).
+- Next steps / physical review:
+  - Cold-launch the TestFlight app on iPhone to verify that all 5 circled spacing dimensions match at 16pt.
+  - Validate scroll-to-bottom resting gap above the native tab bar.
+
+## Shared image loading polish — September 11, 2026 (source only)
+
+- Added a focused `JourneyImage` surface over the existing Expo Image dependency. Every migrated bitmap keeps a theme-colored painted frame while loading, uses a source-specific recycling identity and memory/disk caching, checks the persistent disk cache before choosing whether to animate, and crossfades only a newly loaded remote image. Bundled/local and already displayed or disk-cached images appear immediately; Reduce Motion disables the fade. Stale cache checks cannot replace a newer source.
+- Migrated shared phone/iPad header layers, the Home and journey-detail header imagery, Soundtracks album carousel, phone/iPad Music artwork, iPad Home soundtrack covers, and default Memory artwork including the iPad Home fallback. The carousel retains its saved lower-resolution thumbnail while an upgraded Apple CDN cover loads or falls back; existing failure recovery, card depth/press motion, user photos, accessibility labels, responsive dimensions, theme resolution, and Memory flip readiness remain intact.
+- Added focused rendering/structural regression coverage for cache identity and disk hits, one-time fades, Reduce Motion, failed images, interrupted source changes, all-theme Memory identity, narrow/resized dimensions, header layers, album thumbnail fallback, and each migrated surface. Verification passed: focused image/layout/theme tests 69/69; TypeScript; complete mobile suite 554/554; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/shared-image-export`; `git diff --check` (line-ending notices only).
+- Native review remains cold/warm image loading and rapid theme switching on iPhone/iPad, especially offline HQ album fallback, Memories defaults, Dynamic Type, rotation, and narrow Split View. No dependency, OTA, native build, stage, commit, or Git push was performed.
+- Published the combined shared-image and ripple-resilience source to the iOS `production` channel for runtime `2.0.0-watch.4`: group `1e35a170-f2e8-4309-8930-d90754e4ed86`, update `01a091f6-5295-7d98-ac74-f830f9c75558`, message `Harden ripple and image loading`. Server readback confirmed the branch, runtime, platform, and update ID. No native build, stage, commit, or Git push was performed.
+
+## Theme water-ripple resilience — September 11, 2026 (source only)
+
+- Preserved the approved Skia water shader and 1,180 ms UI-thread timing while reducing capture pressure. Each transition still takes exactly one whole-window snapshot, now rendered at logical window size and proportionally capped at 1.2 megapixels instead of decoding a Retina-resolution PNG. Capture duration and bounded image dimensions are recorded with the existing privacy-safe diagnostic vocabulary.
+- Existing same-theme/duplicate rejection, stable overlay identity, persistence ordering, background/rotation settlement, stale-callback protection, 4.2-second failsafe and Reduce Motion direct path remain intact. Reduce Transparency now changes refraction without cancelling and restarting an in-progress ripple. Temporary capture files are queued for release immediately after overlay teardown rather than held for an extra quarter-second.
+- Theme diagnostic events are buffered in memory and written once when the overlay clears (or after a quiet two-second fallback), removing repeated synchronous cache reads/writes from transition startup and playback. Opening Data Health explicitly flushes pending events; event sanitization, 24-hour retention and 80-entry cap are unchanged.
+- Added focused coverage for logical/bounded capture sizing, capture options, Reduce Transparency interruption, and batched privacy-safe diagnostics. Verification passed: ripple/diagnostic focused tests 32/32; TypeScript; complete mobile suite 547/547; iOS Expo export with 2,501 modules and 77 assets at `mobile/recorder/.cache/ripple-resilience-export`; `git diff --check` (line-ending notices only). Native review remains repeated paid-theme switching after long Music/Memories sessions on iPhone/iPad, including rapid taps, rotation, background/return, Reduce Motion and Reduce Transparency. No OTA, native build, stage, commit, or Git push was performed.
+
+## Static first-run welcome — September 11, 2026 (source only)
+
+- User selected welcome mockup option 1 and rejected the duplicated-logo treatment in option 5. Replaced the unfinished timed/Reanimated opening with a static first-run welcome: one tintable JourneyDeck emblem, `Welcome to JourneyDeck`, `Every mile has a story.`, one `Start` button, and a small `JOURNEYDECK` wordmark.
+- The shared layout uses the active theme palette and theme-specific existing road artwork for Cinematic Dark, Grand Touring, Warm Ivory and Rosewater. It advances only through direct Start activation; there is no timer, autoplay or entrance animation. Safe-area sizing and a bounded 560pt canvas support iPhone and iPad.
+- Removed `src/journey-opening.tsx`, its focused animation test, and the obsolete `onboarding-welcome-approved.webp` / poster assets. Added `src/first-run-welcome-screen.tsx` and a focused four-theme activation test; updated the first-run integration and runtime assertions.
+- Verification passed: focused welcome 1/1, tab runtime 31/31, TypeScript, complete mobile suite 541/541, iOS Expo export with 2,501 modules and 77 assets at `.cache/static-welcome-export`, and `git diff --check` (line-ending notices only). No OTA, native build, stage, commit, or Git push was performed.
+
+## Wide iPad Today’s Soundtrack OTA — September 11, 2026
+
+- Published the verified wide Soundtrack layout to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Widen iPad Today's Soundtrack`.
+- EAS group `bd05e796-ed8b-4bcd-820a-bc1a00809283`; iOS update `01a09074-7be3-73a5-99f6-7a4935109ffa`. Production branch readback confirmed this group is the newest update.
+- Published from detached baseline `6aad3b4` with the already-live production fixes plus the wide Soundtrack source. The unfinished opening animation was excluded. Isolated TypeScript and EAS iOS export passed; EAS bundled 2,501 modules and uploaded no new assets. Main focused tests passed 3/3 and the complete suite passed 541/541 before isolation.
+- No native build, TestFlight binary upload, staging, commit, or Git push was performed. Cold-launch up to twice, then inspect Soundtracks in normal iPad landscape/sidebar and narrow Split View.
+
+## Wide iPad Today’s Soundtrack layout — September 11, 2026 (source only)
+
+- Removed the tall two-column Today’s Soundtrack rail from normal iPad landscape. The album carousel now fills a shallow six-column panel, followed by one six-column metric row using exact `2+2+1+1` spans and an analysis row using `3+3` for Top Artists and Listening Time. Listening History remains six columns.
+- Narrow Split View and large Dynamic Type retain the existing stacked layout. The carousel component, artwork depth motion, selection/open behavior, data, provider wording and persistence are unchanged.
+- Changed `src/ipad-music-screen.tsx` and `tests/ipad-music.test.mts`. Verification passed: focused Music tests 3/3, TypeScript, complete mobile suite 541/541, iOS Expo export with 2,500 modules and 76 assets at `.cache/ipad-music-wide-soundtrack-export`, and `git diff --check` (line-ending notices only). No OTA, native build, stage, commit, or Git push was performed.
+
+## Six-column iPad grid and album-history OTA — September 10, 2026
+
+- Published the shared six-column iPad landscape layout and Soundtracks listening-history Album column to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Align iPad layouts and add album history`.
+- EAS group `22d654f4-05d9-45dc-9eb4-a93c1afc87fd`; iOS update `01a08e04-7b83-752a-b5c2-61f14d2744f3`. Independent production branch readback confirmed this exact group is the newest production update.
+- Published from detached baseline `6aad3b4` with the already-live production fixes plus the verified six-column and album-history source. The unfinished opening animation was excluded. Isolated TypeScript and iOS Expo export passed; EAS bundled 2,501 modules and found no new assets to upload. The main complete suite passed 541/541 before isolation.
+- No native build, TestFlight binary upload, staging, commit, or Git push was performed. Cold-launch up to twice, then review Home, Soundtracks, Memories, Statistics and Settings in iPad landscape/sidebar and narrow Split View. Listening History should show a dedicated Album column at table widths and album text beneath the artist when compact.
+
+## Listening-history album column — September 10, 2026 (source only)
+
+- Soundtracks listening history now uses its landscape width for a dedicated Album column between Song / Artist and Journey. Missing album metadata is labeled `Album unavailable`.
+- Compact and large-Dynamic-Type rows keep the album directly beneath the artist when the table collapses, and the existing search continues to match album names.
+- Changed `src/ipad-music-screen.tsx` and `tests/ipad-music.test.mts`. Verification passed: TypeScript, focused Music tests 3/3, and complete mobile suite 541/541. No OTA, native build, stage, commit, or Git push was performed.
+
+## Shared six-column iPad landscape grid — September 10, 2026 (source only)
+
+- Added one responsive iPad grid model in `src/device-layout.ts`: normal landscape uses six equal tracks with 12pt gutters; narrower effective widths collapse to three, two, or one track for Split View and Dynamic Type.
+- Applied whole-track spans across the five primary iPad tabs. Home uses exact metric/widget/song spans and a two-track Start Journey portal; Soundtracks is 2+4 with its four KPIs aligned as 2+2 inside the summary; Memories is 4+2; Settings is 2+4; Statistics now uses exact 4+2 and 2+2+2 compositions instead of fractional flex ratios. The native Apple sidebar remains untouched.
+- Added layout IDs and focused assertions for column arithmetic, normal landscape, sidebar-width resizing, large text collapse, and mounted-state preservation. Updated `mobile/recorder/AGENTS.md` so future iPad work preserves the six-column rule.
+- Verification passed: TypeScript; focused iPad/Statistics/runtime tests 61/61; complete mobile suite 541/541; final Statistics check 7/7; iOS Expo export at `.cache/ipad-six-column-export-final` (2,500 modules, 76 assets); `git diff --check` reports no whitespace errors beyond existing line-ending notices.
+- Physical review remains pending on iPad landscape with the expanded native sidebar, portrait, narrow Split View, rotation, and largest Dynamic Type. No OTA, native build, stage, commit, or Git push was performed for this pass.
+
+## V2 iPad landscape release polish OTA — September 10, 2026
+
+- Published the verified iPad layout pass to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Improve iPad landscape layouts`.
+- EAS group `7c9f81e9-fe6e-4660-8200-ba68b06c1f16`; iOS update `01a08d8b-37af-7ab6-ab05-523794f00b04`. Independent `update:view` and `update:list` readback confirmed this exact group is the production head.
+- Published from detached baseline `6aad3b4` with the already-live theme carousel, iPad header/sidebar/Home changes and iCloud artwork reconciliation plus the new responsive iPad layout files. The unfinished opening animation was excluded. Isolated TypeScript and 78 focused release tests passed; EAS bundled 2,501 modules and uploaded no new assets. The main complete suite passed 541/541 before isolation.
+- Temporary release worktree was removed. No native build, TestFlight upload, stage, commit, or Git push was performed. Cold-launch up to twice, then review ordinary landscape/sidebar plus narrow Split View; Settings should keep the three-column layout at normal width and use its horizontal category strip only when the content canvas is narrow.
+
+## V2 iPad landscape release polish — September 10, 2026 (implementation)
+
+- iPad layout acceptance is now an explicit V2 release priority in `mobile/recorder/AGENTS.md`: verify portrait, landscape with Apple's native sidebar, rotation, narrow Split View, and Dynamic Type while preserving the native sidebar.
+- Home, Soundtracks, and Memories now choose responsive card/table/panel density from the measured content canvas adjusted for Dynamic Type. Normal landscape retains its richer multi-column layouts; large accessibility text steps down before cards or table content become cramped. Statistics already followed this model and remains unchanged.
+- Settings retains the approved three-column allocation at ordinary portrait and landscape widths. Below 680 effective points, including narrow Split View or large accessibility text, its internal category rail becomes an accessible horizontal strip and the selected detail uses the full canvas. The same mounted detail tree and category selection survive resizing.
+- Changed `src/device-layout.ts`, `src/ipad-home.tsx`, `src/ipad-music-screen.tsx`, `src/ipad-memories-screen.tsx`, `src/ipad-settings-screen.tsx`, their focused iPad tests, and the mobile subsystem instructions. Verification passed: TypeScript; focused iPad suite 30/30; complete mobile suite 541/541; iOS Expo export at `.cache/ipad-layout-release-audit-20260910` (2,500 modules, 76 assets); `git diff --check` found no whitespace errors beyond existing line-ending notices.
+- Physical iPad review remains pending for normal landscape/sidebar, portrait, 1/2 and 1/3 Split View, rotation with a selected Settings category or active search/selection, and largest Dynamic Type. Publication is recorded above; no native build, stage, commit, or Git push was performed.
+
+## Apple artwork/iCloud false-conflict OTA — September 10, 2026
+
+- Published the verified music-metadata reconciliation fix to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Resolve iCloud artwork sync conflicts`.
+- EAS group `b659acf0-1bc0-40d9-985e-11cc6e775751`; iOS update `01a08d63-425a-70b1-a319-dd2db6100069`. Independent `update:view` and `update:list` readback confirmed this exact group is the production head.
+- Published from detached baseline `6aad3b4` with all already-live carousel/iPad changes plus `cloudkit-sync.ts` and `local-store.ts`. Unfinished opening-animation and unrelated dirty work were excluded. Isolated TypeScript and iOS export passed; EAS bundled 2,501 modules and uploaded no new assets. Main complete suite passed 540/540.
+- Temporary release worktree was removed. No native build, TestFlight upload, database migration, stage, commit or Git push was performed. Cold-launch up to twice, then tap Sync now on the iPad; the six artwork-only notices should upload and clear. Confirm iPhone sync afterward.
+
+## Apple artwork/iCloud false-conflict fix — September 10, 2026 (source only)
+
+- User's iPad showed six `unversioned_local_conflict` items after artwork recovery, primarily separate “Loser, Baby” playbacks. Cause: the repair correctly marked each playback dirty but `MusicEntry.updatedAt` was always serialized as its original `createdAt`, so CloudKit could not recognize the metadata repair as newer.
+- `local-store.ts` now derives a music entry's effective update time from its shared canonical song metadata timestamp without a database migration. `cloudkit-sync.ts` carries that timestamp over the existing deployed `updatedAt` field and automatically keeps a newer local metadata repair queued only when the playback identity is unchanged. Track/artist, journey, source, play time, creation-time or ID differences still use the existing quarantine path.
+- After the OTA is published, a normal Sync now pass should replace the older cloud copies, acknowledge the local rows and clear these six notices. No data deletion, CloudKit schema change, native change or database-version change is involved.
+- Added focused coverage for the screenshot's newer-artwork case and retained protection for a newer true identity conflict. Verification passed: TypeScript; focused CloudKit/private-library tests 29/29; complete mobile suite 540/540; iOS Expo export at `.cache/cloud-music-reconcile-ios`; `git diff --check` clean apart from existing line-ending notices. No OTA, native build, stage, commit or Git push was performed.
+
+## Large animated iPad Start Journey portal OTA — September 10, 2026
+
+- Published the verified iPad Home portal to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Enlarge iPad Start Journey portal`.
+- EAS group `2f8fa6b0-b59c-4805-a99e-97a14216e9cb`; iOS update `01a08d4f-e3ae-7035-bb25-1ece2c8255de`. Independent `update:view` and `update:list` readback confirmed this exact group is the production head.
+- Published from detached baseline `6aad3b4` with the already-live theme carousel, landscape/sidebar and Settings-column fixes plus the new `App.tsx` and iPad Home/header changes. The unfinished native opening animation and unrelated dirty work were excluded. Isolated TypeScript and iOS export passed; EAS bundled 2,501 modules and uploaded no new assets. The main complete suite passed 539/539 before isolation.
+- Temporary release worktree was removed. No native build, TestFlight upload, stage, commit or Git push was performed. Cold-launch up to twice, then review the idle/loading portal in portrait, landscape/sidebar and Split View, along with the transition into recording.
+
+## Large animated iPad Start Journey portal — September 10, 2026 (source only)
+
+- Home on iPad now reuses the existing iPhone `HomeRecorderStartPortal` for idle and startup-loading states. The iPad presentation keeps the existing 236pt width but grows to the 190pt artwork-header height, with the same breathing rings, radial atmosphere/haze, moving light sweep, themed glow, press compression and haptic response.
+- The shared iPad header can opt into full-height actions. At widths of 520pt and above the portal reaches the artwork's top and bottom edges; narrow Split View removes that edge extension and stacks safely. The compact portal omits the default helper sentence to protect Dynamic Type space, while real recorder notices can still appear on two lines.
+- Existing permission, automatic-recording, active recording, paused and finishing controls are unchanged. The shared motion lifecycle still honors Reduce Motion and backgrounding, and accessibility exposes the same direct Start Journey button with an iPad-specific hint.
+- Changed `mobile/recorder/App.tsx`, `src/ipad-home.tsx`, `src/ipad-page-header.tsx`, `tests/ipad-home.test.mts` and `tests/tab-runtime.test.mts`. Verification passed: TypeScript; focused motion/iPad tests 46/46; complete mobile suite 539/539; iOS Expo export at `.cache/ipad-home-start-portal-export`; `git diff --check` found no errors beyond existing line-ending notices. No OTA, native build, stage, commit or Git push was performed.
+- Physical iPad review remains pending across all four themes, portrait and landscape with the sidebar, narrow Split View, largest Dynamic Type, Reduce Motion, startup/loading and the transition into active recording.
+
+## iPad Settings column rebalance OTA — September 10, 2026
+
+- Published the verified column rebalance to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`, with message `Rebalance iPad Settings columns`.
+- EAS group `1e8d2a90-4162-43a6-8e40-4d94d5b52dd6`; iOS update `01a08d38-1c14-7451-ba12-ca534da3c0b2`. Independent `update:view` and `update:list` readback confirmed this exact group is the production head.
+- Published from detached baseline `6aad3b4` with the already-live carousel, landscape-title and native-sidebar fixes plus the new Settings sizing only. Isolated TypeScript and diff checks passed; EAS bundled 2,501 modules and uploaded no new assets. No native build, TestFlight upload, stage, commit, or Git push was performed. Cold-launch up to twice, then physically review the three-column balance in landscape, portrait and Split View.
+
+## iPad Settings column rebalance — September 10, 2026 (source only)
+
+- Reviewed the annotated 1280×890 landscape screenshot. The far-left region is UIKit's native adaptive tab sidebar; Expo Native Tabs provides no supported way to insert JourneyDeck content into its trailing whitespace or change its internal row alignment. It remains untouched for future Duo-style adaptation.
+- Rebalanced JourneyDeck's two Settings panes instead: the landscape category rail now uses 33% of its available canvas up to 326pt, versus 26%/286pt previously. At the screenshot's approximate 976pt post-system-sidebar canvas it grows from about 254pt to 322pt, while the Appearance/detail pane gives up the same 68pt. Portrait retains its existing 28%/238pt cap and narrow landscape retains a 206pt floor.
+- The wider rail gives category names and account/iCloud summaries more room; the responsive theme carousel continues to size from the remaining detail viewport. Renamed local layout variables to distinguish the app category rail from UIKit's sidebar and kept the corrected padded header width.
+- Verification passed: TypeScript; focused iPad and carousel tests 22/22; complete mobile suite 538/538; iOS Expo export with 2,500 modules and 76 assets at `mobile/recorder/.cache/ipad-settings-columns-export`; `git diff --check` found no errors beyond existing line-ending notices. Physical iPad review remains pending. No OTA, native build, stage, commit, or Git push was performed.
+
+## iPad landscape and native sidebar OTA — September 10, 2026
+
+- Published the verified Settings landscape-title correction and iPad-only native translucent scroll-edge policy to the current V2 TestFlight app on iOS `production` / production environment, runtime `2.0.0-watch.4`. Message: `Fix iPad landscape layout and soften native sidebar`.
+- EAS group `08494e82-bbbd-4dd8-ad66-6500bd910c8d`; iOS update `01a08d2f-582c-7318-b958-c8ddc16a5fcc`. Independent `update:list` and `update:view` readback confirmed this exact group is the production head.
+- Published from a detached baseline `6aad3b4` containing the already-live card carousel plus only `ipad-page-header.tsx`, `ipad-settings-screen.tsx`, and `native-navigation.tsx`, excluding unfinished opening-animation and unrelated dirty work. Isolated TypeScript passed; the main complete mobile suite previously passed 538/538; EAS bundled 2,501 modules and uploaded no new assets. No native build, TestFlight upload, stage, commit, or Git push was performed.
+- Physical iPad review remains required because UIKit controls the exact sidebar opacity. Cold-launch up to twice, then verify the Settings title, sidebar leading/trailing positions, light/dark themes, scroll edge versus scrolled content, rotation, Split View, and Duo-style layouts.
+
+## Native iPad sidebar width decision — September 10, 2026
+
+- User asked to make the expanded left native tab sidebar narrower. Apple documents `UITabBarController.Sidebar` width as system-managed and exposes no supported width property; Expo Native Tabs likewise exposes sidebar enablement, not width.
+- User explicitly rejected replacing it with a custom rail because that could create future iPhone Duo layout problems. Preserve the native adaptive sidebar and its system-managed width. No sidebar code changed. The separate Settings title fix remains appropriate because it adapts only content beside the native sidebar.
+
+## iPad landscape Settings title fix — September 10, 2026 (source only)
+
+- User screenshot showed the artwork title in the middle Settings column rendering as `SETTING` / `S` when the iPad navigation sidebar was visible in landscape. The Settings column passed its outer width into `IpadPageHeader` even though its ScrollView padding made the actual header narrower.
+- `ipad-settings-screen.tsx` now passes the true padded content width. The shared `ipad-page-header.tsx` uses slightly tighter 24pt typography and 16pt horizontal hero padding below 300pt, keeps the decorative uppercase title to one line, and allows bounded iOS fit so larger text cannot orphan the last letter. Normal and wide iPad headers retain their existing 28pt/36pt sizing.
+- Added focused coverage in `ipad-home.test.mts`, updated responsive expectations in `ipad-settings.test.mts` and `ipad-music.test.mts`. TypeScript passed; focused iPad tests 11/11; complete mobile suite 538/538; iOS Expo export passed at `.cache/ipad-settings-header-fix`, bundle `index-c1d4c594bdb2fb465d93433ddbbbe384.hbc`. No OTA, native build, stage, commit or push. Landscape device confirmation remains pending.
+
+## Card theme carousel OTA — September 10, 2026
+
+- User explicitly requested delivery to the current V2 TestFlight app. Published iOS to the `production` channel / `production` environment for runtime `2.0.0-watch.4` with message `Add card-based theme carousel`.
+- EAS group `799af2c3-187e-4187-9c7c-1201e37b185d`; update `01a08d13-ce7f-7a52-99e7-9a102b07f66b`. `update:view` confirms branch `production`, platform iOS and the expected runtime.
+- Publication used a temporary detached worktree at baseline `6aad3b4` containing only `src/theme-picker.tsx` and new `src/theme-picker-model.ts`, preventing unfinished opening-animation changes and test/docs edits from entering the OTA. Production RevenueCat environment loaded successfully. Isolated TypeScript passed and EAS bundled 2,501 modules; no new assets were uploaded. Temporary worktree removed after verification.
+- Main V2 working tree remains dirty as recorded below; no staging, commit, Git push, native build or App Store submission. TestFlight users may need up to two cold launches for the update to download and apply.
+
+## Card theme carousel — September 10, 2026 (source only)
+
+- Replaced the Settings theme grid with a horizontally scrolling, center-snapping React Native/Reanimated card carousel based on the licensed `CardsThemeSwitch.swift` interaction reference. The existing TypeScript catalog remains authoritative with stable IDs/order `dark`, `redline`, `light`, `sakura`; existing artwork, palette swatches, names, appearance modes and descriptions populate the cards.
+- Scroll position drives only temporary card depth and the animated four-page indicator. A settled snap commits once through the existing `transitionTheme` flow; taps and VoiceOver adjustments commit immediately and center the card. Secure-persistence failure returns to the committed theme and reports the failure. Interrupted drags cancel stale delayed commits.
+- Added responsive card geometry for narrow iPhones, iPad and Split View. Center card is full scale/opacity; neighbors remain visible at reduced scale/opacity. Reduce Motion removes scale/lift and animated centering while retaining snapping and selection. Cards are individually accessible radios, plus a coordinate-free adjustable control with complete theme/position/appearance/description announcements. Text is not line-clamped for Dynamic Type.
+- Changed `mobile/recorder/src/theme-picker.tsx`, added `src/theme-picker-model.ts`, expanded `tests/premium-themes.test.mts`, and added `tests/theme-picker-carousel.test.mts`. No theme catalog, persistence, recorder ownership, recording state, dependency or native configuration changes.
+- Verification: TypeScript passed; focused picker/water tests 20/20; complete mobile suite 537/537; final iOS Expo export succeeded to `.cache/theme-carousel-ios-export-final` with bundle `index-5b8cc57fbd3e7af9905f25da03fcd432.hbc`; `git diff --check` passed (line-ending warnings only). Branch `codex/journeydeck-v2`, HEAD `6aad3b4`. No stage, commit, push, OTA or native build. Native review remains for snap feel, card sizing at largest accessibility text, VoiceOver rotor/adjustment, Reduce Motion, rotation/Split View and water-transition origin.
+
+## Theme decision saved, implementation on hold — September 10, 2026
+
+- User approved Grand Touring as the future default. Free themes: Grand Touring and Warm Ivory. Plus themes: Cinematic Dark and Rosewater.
+- User explicitly said to remember this but not change anything yet. Do not implement default or paywall changes until requested. Only this decision note was added; app behavior remains unchanged.
+
+## Selected horizon revision — September 10, 2026
+
+- User chose option 4, requested larger elements and a spinning vinyl sun rising. Created revised mockup .cache/opening-preview/concepts/04-vinyl-horizon.gif (110 frames, 360x680). Enlarged road, record, title and tagline; groove highlights and label rotate during rise. Preview only; native implementation still awaiting design acceptance.
+
+## Five revised opening concepts — September 10, 2026
+
+- User rejected first preview as cluttered; requested five simple GIF layout/motion mockups. Created route, deck, frame, horizon and wordmark concepts in .cache/opening-preview/concepts, each 360x680 with navy/ivory/gold palette. These are design mockups, not application recordings or implemented changes. Await user direction before replacing native opening.
+
+## Opening GIF preview — September 10, 2026
+
+- Created .cache/opening-preview/journeydeck-opening.gif (390x844, 25fps) as a rendered approximation of native opening composition/timings, with extra final hold for looping. Not an iPhone capture; system font/rendering differs. No application changes or deployment.
+
+## Native welcome opening — September 10, 2026 (source only)
+
+- User explicitly requested a new React Native/Expo opening replacing video. Added journey-opening.tsx: native Reanimated CSS route segments/destination dots, memory illustration and music card enter, wordmark/tagline, theme colors, safe areas and Continue. No media dependency or new package/native change. Replaces animated WebP WelcomeAnimation in first-run-onboarding-screen.tsx; other onboarding stages and completion flags unchanged (existing users are not forced through onboarding again).
+- Motion pauses in background, completion timer clears/restarts on foreground, latest callback + once guard, Reduce Motion static with manual Continue. 3.2s normal auto handoff. Tests cover lifecycle/skip/latest callback; full529 tests/typecheck pass. Obsolete WebP wiring assertions updated; original assets preserved. Device visual acceptance pending. No OTA/build/Git action.
+
+## V2 scope confirmed — September 10, 2026
+
+- User: V2 is feature complete; only minor fixes and tweaks from now on. Recorded persistent scope in mobile/recorder/AGENTS.md. No application code or deployment changes in this turn. Preserve other ongoing V3/baseline work recorded below.
+
 ## V2 feature-complete baseline / V3 worktree — September 10, 2026
 
 - User declared V2 feature complete aside from minor UI tweaks and authorized committing the full current tree as the V3 baseline, then creating `codex/journeydeck-v3` at `C:\Users\patri\JourneyDeckv3`.
@@ -3563,3 +3999,198 @@ This scope supersedes older handoff or App Store documentation that says the pub
 - Fixed the Home Start Journey portal's diagonal light sweep escaping above and below the rounded portal. The oversized rotated beam now renders inside a dedicated absolute rounded clipping layer, while the portal atmosphere, content, and exterior outline glow remain unchanged.
 - Added structural regression coverage in `tests/tab-runtime.test.mts`. Verification passed: targeted tab-runtime suite 31/31; TypeScript; complete mobile suite 475/475; `git diff --check` found no whitespace errors beyond existing CRLF notices.
 - This fix is source-only. No OTA, native/TestFlight build, App Store action, staging, commit, push, CloudKit change, or production mutation was performed.
+
+## Native iPad sidebar translucency — September 10, 2026 (source only)
+
+- Kept JourneyDeck's native adaptive iPad tab sidebar and its system-managed width. On iPad only, the Native Tabs host no longer disables UIKit's transparent scroll-edge appearance, allowing Apple to use its native translucent sidebar material where supported. iPhone keeps the existing stable opaque-edge behavior.
+- Added navigation coverage for both platform policies. Verification passed: TypeScript; native-navigation tests 8/8; complete mobile suite 538/538; iOS Expo export with 2,500 modules and 76 assets at `mobile/recorder/.cache/ipad-sidebar-translucency-export`; `git diff --check` found no whitespace errors beyond existing CRLF notices.
+- UIKit still controls the exact sidebar material and opacity, so physical iPad review is required in landscape, including sidebar leading/trailing placement, scrolling at and away from the edge, light/dark themes, Split View, and Duo-style layouts. This change and the preceding landscape Settings title fix remain source-only. No OTA, native/TestFlight build, staging, commit, or push was performed.
+
+## Plus theme and Atlas gates — September 11, 2026 (source only)
+
+- Cinematic Dark (`dark`) and Rosewater (`sakura`) now require a verified JourneyDeck Plus membership. Grand Touring (`redline`) and Warm Ivory (`light`) remain free. The existing TypeScript catalog remains the single source of truth, and invalid/new theme state now falls back to Grand Touring.
+- Free users see a Plus badge and an explicit VoiceOver requirement on locked cards. Direct taps, settled swipes, and VoiceOver adjustable actions open the existing membership paywall without invoking the water transition or persisting the locked theme. A previously selected paid theme normalizes securely to Grand Touring when the free user opens Appearance; paid selection still uses the existing secure persistence and water transition.
+- Removed the internal-preview Atlas entitlement bypass. Atlas now requires a verified paid entitlement in every V2 build identity; its Statistics hero and direct route continue through the existing paywall guard for free users.
+- Verification passed: focused access/theme/Settings/Statistics tests 78/78; complete mobile suite 542/542; TypeScript; iOS Expo export with 2,501 modules and 77 assets at `mobile/recorder/.cache/plus-theme-paywall-export`; `git diff --check` found no whitespace errors beyond CRLF notices.
+- Pending device review: verify free and paid RevenueCat accounts on iPhone and iPad, locked-card tap and swipe behavior, purchase/restore returning to Appearance, Atlas hero/direct-route gating, VoiceOver, and the paid-theme water ripple. No OTA, native/TestFlight build, staging, commit, or Git push was performed.
+- Published the verified source to the iOS `production` channel for the current TestFlight runtime `2.0.0-watch.4`: group `6722e042-aba5-4f5c-84b1-e6c4d9f7c36e`, update `01a090bd-ed61-704a-a8db-ddf163c6bcf8`, message `Gate Plus themes and Atlas`. Server readback confirmed the branch, runtime, platform, and update IDs. No native build, staging, commit, or Git push was performed.
+
+## Cinematic default Memory artwork refresh — September 11, 2026 (source only)
+
+- The bundled default Memory artwork now receives a theme-specific React key and Expo Image recycling key. Switching back to Cinematic Dark therefore creates the correct bundled-photo image identity instead of allowing a mounted/recycled image to retain another theme's fallback bitmap.
+- Applied the same source identity policy to the iPad Home Memory preview. User-selected photos retain photo-specific identities and are otherwise unchanged.
+- Verification passed: focused Memory/theme tests 15/15; TypeScript; complete mobile suite 543/543. Native check remains switching repeatedly among all four themes on Memories and iPad Home. No OTA, native build, staging, commit, or Git push was performed.
+- Published and verified the artwork refresh on the iOS `production` channel for runtime `2.0.0-watch.4`: group `4be71a39-11b3-4f08-925d-ec2b79968589`, update `01a090d1-9288-79ce-a68b-a74edda70ab6`, message `Refresh Cinematic Memory artwork`. No native build, staging, commit, or Git push was performed.
+
+## Grand Touring Home artwork V2 — September 11, 2026 (source only)
+
+- The Grand Touring Home artwork was too dark and kept the car on the right beneath the Start Journey control. Added `assets/theme-grand-touring-home-v2.png`, a brighter 1536×1024 rainy-night composition with the touring car larger and centered.
+- Updated the shared theme artwork resolver, theme carousel, and first-run welcome to use the same V2 asset. Retained the original V1 licensed source and documented the AI-assisted derivative in `assets/PHOTOGRAPHY-LICENSES.md`.
+- Verification passed: focused Home/theme/welcome/runtime tests 56/56; TypeScript; complete mobile suite 543/543; iOS Expo export with 2,501 modules and 77 assets at `mobile/recorder/.cache/grand-touring-home-v2-export`. Physical iPhone/iPad crop review remains. No OTA, native build, staging, commit, or Git push was performed.
+- Published and verified the centered/brighter artwork on the iOS `production` channel for runtime `2.0.0-watch.4`: group `0ad46de2-9a5a-40ce-8351-2a9f14083a3a`, update `01a09138-f1ed-74dc-a653-213c1b8d252e`, message `Center Grand Touring Home artwork`. No native build, staging, commit, or Git push was performed.
+
+## Grand Touring website beta — September 11, 2026 (live)
+
+- User requested the existing website in Grand Touring at `journeydeck.me/beta`. Added isolated `web/beta.html`, `beta.css`, `beta.js`, four optimized approved-photo WebPs and a recolored pulse mark under `web/assets/beta/`. Preserved the latest editorial homepage layout and accents from production main; `/` is unchanged.
+- Hosted-only `/beta` serves the public preview with noindex headers; `/beta/` redirects to it. App/login/desktop authentication remains unchanged. Added route/asset regression assertions.
+- Main mobile workspace remains on `codex/journeydeck-v2`; existing mobile changes preserved. Release isolated at `.cache/grand-touring-web-beta-release`, branch `codex/grand-touring-web-beta`, based on `7aa4756`; commit `7e6168d`, PR https://github.com/drumpat01/DriveOS/pull/143. Merged as `807ae29227d0bba66149828c061672469377a4f2`; Render deploy `dep-dai4tvoae00c73bbejp0` is live.
+- Verification: isolated 34/34 server tests, TypeScript, ESLint and diff check passed. Desktop/tablet/phone browser checks passed with no overflow or failed assets; theme toggle and reduced motion passed. Local fixture preview on port 4318 (process 53880) was stopped. Root dependencies restored using npm ci.
+- Production verified: `/beta` 200 with noindex, `/` 200 with original editorial content, `/app` redirects to `/login`, `/beta/` redirects to `/beta`, new WebP assets return image/webp. Live desktop and mobile browser checks passed: no overflow, no missing assets/console errors, working theme toggle. No post-startup Render error logs returned.
+- CI run `34636057041` failed in the untouched private-dashboard Statistics smoke test: `#statisticsScore` remained `--`; 8/9 E2E checks passed and all 34 server tests/typecheck/lint passed. Remaining pipeline stages were skipped. GitHub auto-merge merged immediately because CI was not a required branch gate. Investigate the Statistics fixture separately; no dashboard source was changed.
+- Root working tree retains source copies of the deployed website additions alongside the pre-existing mobile edits; release worktree is clean and retained. No mobile OTA/native build or environment-variable changes occurred.
+
+## Memory editor scroll-boundary repair — September 11, 2026 (OTA published)
+
+- Fixed the native Memory editor sheet so Cancel/Save remain pinned beneath the header and outside the scrolling form. Only the photo and journey form content now scrolls, preventing an extra trailing range from moving every control offscreen.
+- The pinned editor uses one keyboard-aware bounded container on iOS; the inner scroll view disables bounce/overscroll and does not add a second keyboard inset. Other native sheets retain their automatic keyboard inset behavior.
+- Verification passed: focused Memory/native sheet tests 43/43; TypeScript; complete mobile suite 555/555; iOS Expo export with 2,503 modules, 77 assets, and an 8.5 MB Hermes bundle; `git diff --check` reported only existing CRLF notices.
+- Published to the iOS `production` channel using the production environment for runtime `2.0.0-watch.4`: group `622fdd0e-a070-476d-8ad7-c513f5982aea`, update `01a09208-ae58-7412-9b49-c4fb1a1815ac`, message `Keep Memory editor controls visible`. Server readback confirmed it is the production head.
+- Pending device review: edit a Memory on iPhone and iPad in portrait, iPad landscape, and narrow Split View; focus both text fields, interactively dismiss the keyboard, scroll to both ends, and confirm the pinned controls never disappear at larger Dynamic Type sizes. No native build, staging, commit, or Git push was performed.
+
+## Memory editor action hierarchy — September 11, 2026 (OTA published)
+
+- Corrected the Memory editor’s action hierarchy across all four themes. Save now uses the active theme’s true primary accent, readable foreground, selected neon rim and accent shadow; the saved state uses a semantic success pair. Delete Memory now uses a dedicated palette-matched red surface and readable foreground instead of receiving generic surface color conversion.
+- Added semantic success/danger pairs to the existing TypeScript theme palette and contrast coverage for every theme. The pinned Save/Cancel layout and confirmation behavior remain unchanged.
+- Verification passed: TypeScript; focused action/theme/Memory tests 44/44; complete mobile suite 555/555; iOS Expo export with 2,503 modules and 77 assets; `git diff --check` reported only existing CRLF notices.
+- Published to the iOS `production` channel with the production environment for runtime `2.0.0-watch.4`: group `7417bb07-8566-4058-befb-993d562b1949`, update `01a09216-415b-7a22-82e2-f245fb9d7f93`, message `Restyle Memory save and delete actions`. Server readback confirmed it is the production head. No native build, staging, commit, or Git push was performed.
+
+## iPad landscape Memory detail grid — September 11, 2026 (OTA published)
+
+- Rebalanced Memory details on full-width iPad landscape using the shared six-column layout. The artwork hero and a new `Memory at a glance` summary each occupy exactly three columns; the photo-matching action and journey list form a second three-plus-three row. Removed the inherited journey-list side margin that caused the prior third width.
+- The summary uses the available half for the Memory date span, notes or a friendly fallback, distance, road time, song and photo totals, plus a bounded four-photo moments strip. Phone, portrait iPad, narrow Split View, and large Dynamic Type retain the existing stacked layout.
+- Verification passed: TypeScript; focused Memory detail/tab tests 34/34; complete mobile suite 557/557; iOS Expo export with 2,503 modules, 77 assets, and an 8.5 MB Hermes bundle at `mobile/recorder/.cache/memory-detail-ipad-grid-export`.
+- Published to the iOS `production` channel with the production environment for runtime `2.0.0-watch.4`: group `df618cda-6eb3-42f3-bb80-e57fa327c8e2`, update `01a09229-083e-7d07-a7da-6d55a8bd0bd2`, message `Balance iPad Memory detail layout`. Server readback confirmed it is the production head.
+- Pending device review: confirm the three-plus-three balance on 11-inch and 13-inch iPad landscape, long Memory notes, empty Memories, several journeys, photo overflow, both sidebar positions, Split View, all four themes, and larger Dynamic Type. No native build, staging, commit, or Git push was performed.
+
+## Token-handful continuation handoff — September 11, 2026
+
+- User requested continuity planning because of token limits and is asking that work continue with a different model. Continue in the existing `JourneyDeckv2` workspace and keep all current V2 work in this branch.
+- Current V2 status is stable on iPad-landscape memory-detail and editor polish, with additional source changes still present in the worktree: shared image-loading, watermark/welcome, theme paywall gating, six-column iPad layout work, sidebar translucency behavior, Home artwork refresh for Grand Touring, and other prior iPad release fixes.
+- Operational preference remains: after verified JS/TS/styling changes, publish an OTA update by default to the current TestFlight app (`2.0.0-watch.4`) unless the user explicitly says not to, or a native build is required.
+- Ongoing v2 goal is still iPad/landscape release polish and final stability, with no unrelated refactors.
+- Immediate priorities for handoff: keep validating all iPad variants (landscape, portrait, native sidebar left/right, Split View, large Dynamic Type), theme transition resilience on long sessions, and paywall/access flow behavior without introducing dependency changes or non-V2 work.
+- Existing next review items to keep on top: repeat physical checks of the memory details layout and Home artwork visibility across all four themes, and continue to avoid native sidebar width changes.
+
+## iPhone Home post-load spacing stability — September 11, 2026 (OTA published)
+
+- Diagnosed the apparent downward movement of the latest-song widget after Home data loaded. The song artwork already had fixed 58pt geometry; the actual reflow came from the preceding latest-Memory card gaining an ID and therefore mounting `CardDetailLink`'s compound native journey context-menu host. That host contributed extra native layout space below the card only in the loaded state.
+- Kept the latest-Memory card's direct tap and Apple zoom detail transition, but passed an empty action list on this Home preview so the compound long-press menu host is not mounted there. Journey edit/share actions remain available from the full journey surfaces. The unloaded and loaded Home stacks now use the same layout geometry.
+- Added a focused structural regression assertion in `tests/tab-runtime.test.mts`. Verification passed: `npm run test:tab-runtime` 31/31, TypeScript, iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/home-spacing-stable-export`, and `git diff --check` with only existing CRLF notices. The complete mobile suite ran 555 tests; 554 passed and one unrelated ripple-diagnostics expectation failed because the runtime now emits `temporary_file_released` after `overlay_cleared` while the existing test still expects the older event list.
+- Published and verified on the iOS `production` branch with the production environment for runtime `2.0.0-watch.4`: group `2fc40a91-2e82-40fc-bc9d-a77515e90322`, update `01a09372-4fce-7c69-ab94-7c802bac2428`, message `Keep Home spacing stable after data loads`. Server readback confirmed it is the production head. No native build, staging, commit, or Git push was performed.
+- Pending device review: cold-launch the iPhone up to twice, confirm Data Health shows short update ID `01a09372`, then watch the Home screen through journey/music loading and confirm the gaps above and below Latest Memory remain equal.
+
+### Claude Code pickup checkpoint
+
+- Continue in `C:\Users\patri\JourneyDeckv2` on branch `codex/journeydeck-v2`. Read root `GEMINI.md`, `mobile/recorder/AGENTS.md`, and this file before acting. The working tree intentionally contains a large set of uncommitted V2 changes from multiple completed polish passes; preserve them and do not reset, revert, stage, commit, or push unless the user explicitly requests it.
+- The Home post-load spacing correction is already implemented in `mobile/recorder/src/shell.tsx`, covered in `mobile/recorder/tests/tab-runtime.test.mts`, and published in OTA `01a09372-4fce-7c69-ab94-7c802bac2428`. Do not reimplement or republish it unless physical-device testing still reproduces the shift.
+- First continuation action: verify the installed TestFlight app reports short update ID `01a09372`. On iPhone Home, observe the transition from placeholder content to the loaded latest Memory and song. The vertical space from Start Journey to Latest Memory is intentionally exceptional; the gap from Latest Memory to Latest Song should remain at the shared 16pt panel gap before and after data arrives.
+- If the shift remains, capture both states and inspect native layout measurements around the latest-Memory `CardDetailLink` before changing numeric gaps. The album artwork and fallback are both fixed at 58pt, so changing artwork dimensions or adding conditional margins would treat the symptom rather than the known reflow source.
+
+## Claude Code spacing handoff OTA — September 12, 2026 (published)
+
+- Claude Code completed additional JavaScript/TypeScript-only layout work but its session could not reach npm or Expo because all outbound hosts were rejected by its egress proxy. Codex independently inspected the resulting working tree and performed the release from `C:\Users\patri\JourneyDeckv2\mobile\recorder`.
+- The newest source edits align phone Soundtracks with the shared 16pt page rhythm and bottom inset, migrate its remaining artist/archive thumbnails to `JourneyImage`, and apply whole-column six-track sizing plus 12pt gutters throughout the shared Statistics landscape layout. No new dependency, native module, permission, bundle identity, runtime, or persistence change was introduced.
+- Independent verification passed: TypeScript; focused Soundtracks, Statistics, and tab-runtime tests 41/41; complete mobile suite 555/555; `git diff --check` with only existing CRLF notices; local iOS Expo export at `mobile/recorder/.cache/claude-spacing-handoff-export` with 2,503 modules and 77 assets.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `d69ccc5a-74b2-411c-8cbd-208183f2935f`, update `01a0954a-96eb-7cc8-8de2-0943330c6701`, message `Align Soundtracks and Statistics spacing`. `eas update:list` and `eas update:view` confirmed this exact update is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a0954a`. Check phone Soundtracks spacing and bottom resting inset, then iPad Statistics in landscape with the native sidebar on either side, portrait, Split View, and larger Dynamic Type. No native build, staging, commit, or Git push was performed.
+## Statistics range controls below header — September 12, 2026 (production OTA published)
+
+- Updated `mobile/recorder/src/ipad-statistics-screen.tsx` so the Statistics range selector renders directly below the artwork header instead of inside it.
+- On iPhone at standard text sizes, `7D`, `30D`, `90D · Plus`, and `All · Plus` now share one equal-width row. At accessibility font scales above 1.2, the selector returns to the existing two-row layout to prevent clipping. The sliding selection highlight, Plus gating, haptics, and range state remain unchanged.
+- Expanded `mobile/recorder/tests/ipad-statistics.test.mts` to verify the controls are outside the header, all four filters share one compact row, narrow labels can contract, and larger Dynamic Type wraps safely.
+- Verification passed: `npm run typecheck`; focused Statistics and motion tests (12/12); complete mobile suite (555/555); `npx expo export --platform ios --output-dir dist-statistics-filters`; and `git diff --check` (only existing line-ending warnings).
+- Published and verified on the iOS `production` branch with the production environment for runtime `2.0.0-watch.4`: group `652ce96f-4062-4092-b024-4f60f2e60fe9`, update `01a095ee-1bf8-7b92-a9fd-f3efc907cc6a`, message `Place Statistics filters below header`. Server readback confirms it is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a095ee`. Check the Statistics header/filter order and four-button row on a normal iPhone text size, then confirm larger Dynamic Type wraps without clipping. No native build, staging, commit, or Git push was performed.
+
+## Unpublished Statistics filter color polish — September 12, 2026
+
+- Updated the Statistics range selector so `7D` uses the same theme-resolved accent and selected-highlight color as `30D`. Chart and distance-band colors remain unchanged.
+- Added a focused assertion that selecting `7D` produces the same border accent as the default selected `30D` filter.
+- Verification passed: focused Statistics tests 7/7, TypeScript, and `git diff --check` with only existing line-ending warnings.
+- Per the user's instruction, this change has **not** been published as an OTA. Bundle it with the next small polish changes before publishing.
+
+## Unpublished repeatable custom Safe Places — September 12, 2026
+
+- Added repeatable custom Safe Places beneath Home, Work, and School on both iPhone and iPad Settings. The always-present `Custom` row opens an editor requiring a name and street address; after saving, the named place appears in the list and the row changes to `Add another safe place`.
+- Existing custom entries can be reopened, updated with a newly entered address, or removed. Custom places use distinct stable IDs, the existing local place table, endpoint naming/linking, private iCloud preference records, archive-change notifications, and the same 300-meter protection radius as the fixed Saved Places.
+- Expanded the sensitive-place query so only user-created custom Safe Places (the `saved-custom-place-v1-` identity) join Home, Work, and School in share-route masking. Temporary geocoder cache entries and unrelated custom aliases remain excluded.
+- Changed files for this feature: `mobile/recorder/src/local-store.ts`, `mobile/recorder/src/saved-places.ts`, `mobile/recorder/src/shell.tsx`, `mobile/recorder/src/ipad-settings-screen.tsx`, `mobile/recorder/tests/saved-places.test.mts`, `mobile/recorder/tests/ipad-settings.test.mts`, and `mobile/recorder/tests/private-library-sync.test.mts`.
+- Verification passed: TypeScript; 47 focused Settings, persistence, iCloud, place-matching, and sharing tests; complete mobile suite 556/556; `git diff --check` with only existing CRLF notices; and iOS Expo export at `mobile/recorder/.cache/custom-safe-places-export` with 2,503 modules and 77 assets.
+- Per the user's instruction, this feature and the preceding Statistics color change have **not** been published as an OTA. No native build, staging, commit, or Git push was performed.
+## Unpublished Soundtracks metric icon polish — September 12, 2026
+
+- Replaced the four thin text glyphs in the iPhone Soundtracks metric cards with filled SF Symbols: `car.fill`, `headphones.circle.fill`, `waveform.circle.fill`, and `flame.fill`.
+- Enlarged each badge from 43pt to 48pt and added a layered theme-resolved gradient, stronger border, bold hierarchical symbol rendering, and brighter centered glow. Card dimensions, values, labels, and screen-reader text remain intact.
+- Changed `mobile/recorder/src/music-screen.tsx` and added focused structural coverage in `mobile/recorder/tests/tab-runtime.test.mts`.
+- Verification passed: TypeScript, tab-runtime tests 32/32, and `git diff --check` with only existing CRLF notices. The complete 556-test suite passed immediately before this isolated visual change.
+- Per the user's instruction, this change remains unpublished with the Statistics color and repeatable custom Safe Places work. No OTA, native build, staging, commit, or Git push was performed.
+
+## Combined small-polish production OTA — September 12, 2026 (published)
+
+- Published the previously batched Statistics filter color, repeatable custom Safe Places, and Soundtracks metric icon changes together. `7D` now shares the selected yellow/accent treatment with `30D`; Settings supports any number of named custom Safe Places with private persistence, iCloud sync, endpoint naming, and share-route masking; phone Soundtracks KPI cards use larger filled SF Symbols with theme-resolved layered halos.
+- Added the missing `expo-symbols` mock to `mobile/recorder/tests/ipad-music.test.mts` so the iPad Music VM fixture covers the new Soundtracks icon import without loading Expo's native implementation in Node.
+- Final verification passed: TypeScript; complete mobile suite 557/557; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/all-small-polish-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `d2243e75-b1f7-4631-9249-aba3a2681746`, update `01a09616-7d38-7b69-8853-6142ccd36dd1`, message `Add custom Safe Places and polish Statistics and Soundtracks`. Both `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a09616`. Check both `7D` and `30D` selection colors, add/edit/remove several custom Safe Places and confirm they survive relaunch/iCloud sync, and review the four Soundtracks KPI icons in all themes. No native build, staging, commit, or Git push was performed.
+
+## Memory action, Soundtracks icon, and Settings order polish — September 12, 2026 (published)
+
+- Centered the phone Memories refresh control beneath the New Memory plus button by giving both action rows the same 5pt horizontal inset.
+- Changed the `Songs on the road` waveform KPI from the blue token to the same theme-resolved gold/coral accent path used by the other Soundtracks metrics in Grand Touring.
+- Reordered the shared `settingsCategories` catalog alphabetically by displayed title: Account & iCloud, Appearance, Membership & Support, Music & Connections, Recording & Location, Saved Places. Both phone and iPad consume this single order; the prominent driver-profile card remains separate.
+- Made the ripple lifecycle regression deterministic by waiting for the deferred screenshot release and asserting `temporary_file_released`, matching the intended cleanup behavior already present in source.
+- Verification passed: focused Memories 7/7, Settings 3/3, tab-runtime 32/32, ripple transition 9/9; TypeScript; complete mobile suite 557/557; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/alignment-icon-settings-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `4db1cf1f-c9c2-4ccb-934a-1b730eee01d9`, update `01a0961f-38e2-7642-a75a-5642ae451d4a`, message `Align Memory actions and polish Soundtracks and Settings`. `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a0961f`; inspect the plus/refresh vertical alignment on phone Memories, the gold waveform KPI in Grand Touring Soundtracks, and alphabetical category order on both phone and iPad Settings. No native build, staging, commit, or Git push was performed.
+
+## Statistics artwork visibility and Appearance interaction repair — September 12, 2026 (published)
+
+- Removed `Every mile. Every journey. Your numbers.` from the Statistics header. Added a Statistics-only `bright` artwork treatment that reduces the page-color wash over the center and delays the bottom fade, while retaining `HeaderArtworkLayers` and its existing blurred edge feather. Other tab headers retain the standard treatment.
+- Hardened Appearance input inside Settings scroll containers on iPhone and iPad. The parent scroll views now preserve taps and direction-lock nested gestures; the theme carousel explicitly participates in nested scrolling and retains taps; app-icon choices use a larger press-retention area. Theme commits remain deliberate: direct taps commit immediately, while swipes commit only after snapping settles.
+- Verification passed: TypeScript; focused Statistics, Settings, theme-carousel, app-icon, Saved Places, and tab-runtime tests; complete mobile suite 557/557; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/statistics-appearance-interaction-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `d49db63b-67e9-45e3-b8f7-84aa8937b5ca`, update `01a0962a-d718-7daf-b9d1-12ef4b9d197f`, message `Brighten Statistics header and restore Appearance interactions`. `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch up to twice and confirm Data Health shows short update ID `01a0962a`. In Appearance, swipe the carousel, tap both free themes, verify Plus themes open the paywall when appropriate, and select each app icon. Then confirm the Statistics photo is more visible in all four themes while its edges still fade into the page. No native build, staging, commit, or Git push was performed.
+
+## Appearance touch responder repair — September 12, 2026 (published)
+
+- Physical testing showed the preceding nested-scroll adjustment was insufficient: Appearance cards displayed their pressed indentation but iOS cancelled the release before `onPress`, and the horizontal theme carousel could not claim its drag gesture.
+- Updated the phone Settings editor and iPad Settings detail scrollers to set `canCancelContentTouches={false}` and `disableScrollViewPanResponder`, while retaining nested scrolling and `keyboardShouldPersistTaps="always"`. This lets the horizontal theme list and app-icon radio cards own touches that begin inside them.
+- Added a 650ms ripple preparation fail-safe. If the captured Skia image or modal readiness stalls, the transparent ripple layer clears and the already-persisted theme is applied instead of leaving Appearance blocked behind a modal.
+- Verification passed: TypeScript; 36 focused Settings, theme carousel, app-icon, ripple lifecycle, and interruption tests; complete mobile suite 558/558; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/appearance-touch-responder-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `5bdd61ae-a434-4c1b-84eb-96a6fbff728e`, update `01a09633-d843-7ba5-a05a-e3fa5776bc9b`, message `Restore Appearance touch handling`. `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch up to twice and confirm Data Health shows short update ID `01a09633`. On both phone and iPad where available, drag the theme carousel, tap a theme card, and tap an app-icon card. Confirm vertical Settings scrolling still works when dragging outside those controls. No native build, staging, commit, or Git push was performed.
+
+## Theme carousel native scroller replacement — September 12, 2026 (published)
+
+- Reviewed the user's 7.5-second iPhone screen recording frame by frame. It confirmed that Settings and native app-icon selection respond normally, including the iOS icon confirmation, while the theme cards and indicator remain fixed through the attempted carousel interaction. The remaining defect was isolated to the carousel control rather than the parent Settings responder or icon provider.
+- Replaced the four-item virtualized `Animated.FlatList` in `mobile/recorder/src/theme-picker.tsx` with a native horizontal `Animated.ScrollView`. All four cards are now mounted continuously; snapping, centered-card depth, direct taps, settled-swipe commits, interruption handling, Reduce Motion, VoiceOver adjustment, theme persistence, Plus gating, and the existing water transition are preserved. Updated both carousel fixtures (`tests/theme-picker-carousel.test.mts` and `tests/premium-themes.test.mts`) to exercise the actual ScrollView interface.
+- Verification passed: TypeScript; focused Appearance/ripple/icon tests 36/36; complete mobile suite 558/558; iOS Expo export with 2,503 modules and 77 assets at `mobile/recorder/.cache/appearance-native-scroll-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `da71e98b-779a-4481-b917-e66856e2a353`, update `01a0963e-9315-78fa-82d6-5624f90512b0`, message `Replace stalled theme carousel scroller`. `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch up to twice, confirm Data Health shows short update ID `01a0963e`, then drag across the center card in both directions and tap the visible neighboring cards. Confirm the selected card centers, the indicator advances, and the theme applies after settling. No native build, staging, commit, or Git push was performed.
+
+## Appearance carousel rollback to proven implementation — September 12, 2026 (published)
+
+- A second physical iPhone recording showed the replacement carousel receiving only a few points of horizontal movement before snapping back to Grand Touring. The app-icon picker continued to work, confirming the remaining failure was isolated to the theme carousel gesture path.
+- Git history could not supply the working carousel because its original source was published from an uncommitted temporary worktree. The exact implementation and final pre-release adjustment were recovered from the September 9 Codex session history and checked against the retained original iOS OTA export for group `799af2c3-187e-4187-9c7c-1201e37b185d` / update `01a08d13-ce7f-7a52-99e7-9a102b07f66b` (`Add card-based theme carousel`). That release used `Animated.FlatList`, `scrollToOffset`, and native parent-scroll gesture arbitration.
+- Restored that proven `Animated.FlatList` structure in `mobile/recorder/src/theme-picker.tsx`, including all four items mounted, native interval snapping, `disableIntervalMomentum`, centered-card transforms, tap selection, settled-swipe selection, interruption handling, Reduce Motion, and VoiceOver adjustment. Removed the later speculative carousel `nestedScrollEnabled` / tap-retention props and removed the parent Settings `disableScrollViewPanResponder` / `canCancelContentTouches={false}` overrides from `mobile/recorder/src/shell.tsx` and `mobile/recorder/src/ipad-settings-screen.tsx`.
+- Preserved all newer product behavior around the proven scroller: the four TypeScript theme definitions, Grand Touring V2 artwork, Plus locks and upgrade routing, secure persistence, stable selection semantics, and the existing water transition. The independent 650ms ripple-preparation fail-safe remains because it does not participate in pre-selection dragging. Also restored the missing phone `membershipTier` and `onUpgrade` props so Cinematic Dark and Rosewater cannot bypass the paywall on iPhone.
+- Updated the FlatList-based carousel, premium-theme, Settings, and Saved Places regression fixtures. Verification passed: TypeScript; focused Appearance/Settings/ripple/app-icon tests 41/41; complete mobile suite 558/558; iOS Expo export with 2,503 modules, 77 assets, and an 8.5 MB Hermes bundle at `mobile/recorder/.cache/appearance-carousel-rollback-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `3194444b-6d74-4ee9-90f7-70a699b9cfa3`, update `01a09708-00a1-77c8-9375-fc87f91b590a`, message `Restore proven Appearance carousel gestures`. Both `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a09708`. In phone Appearance, drag from the center of Grand Touring far enough to reach Warm Ivory and back to Cinematic Dark, tap both visible neighbors, and verify the indicator and centered card move together. On a free account, Cinematic Dark/Rosewater should open Plus; on a paid account, every selection should persist and invoke one ripple after the card settles. Repeat on iPad Appearance and confirm vertical Settings scrolling still works outside the carousel. No native build, staging, commit, or Git push was performed.
+
+## Direct Appearance selection grids — September 12, 2026 (published)
+
+- At the user's direction, abandoned the carousel interaction entirely and rebuilt the Appearance controls as direct 2x2 radio-card grids. There is no horizontal theme list, snapping, momentum state, page indicator, adjustable carousel, or nested gesture arbitration in Appearance.
+- Theme order is explicit and catalog-backed: the top `FREE` row is Grand Touring (`redline`) and Warm Ivory (`light`); the bottom `JOURNEYDECK PLUS` row is Cinematic Dark (`dark`) and Rosewater (`sakura`). Each card shows the existing artwork, name, light/dark appearance, description, palette swatches, selected check, and Plus badge where applicable. Free taps commit immediately through the existing secure `transitionTheme` water-ripple flow; locked taps open the existing membership paywall. A free account with a restored locked theme retains the prior normalization to Grand Touring.
+- App icons now use the same 2x2 tier presentation. The top free row is Grand Touring and Warm Ivory; the bottom Plus row is Original/Cinematic and Rosewater. Direct free taps still use the existing native icon provider and secure icon preference. Locked icon taps open the same membership paywall. An already active native icon is displayed honestly and is not changed automatically when the page opens.
+- Added `FREE_THEME_IDS` / `THEME_GRID_ORDER` to `src/theme-catalog.ts` and `FREE_APP_ICON_IDS` / `PLUS_APP_ICON_IDS` / `APP_ICON_GRID_ORDER` plus `appIconRequiresPlus` to `src/app-icon-catalog.ts`. Phone and iPad Settings now pass the verified membership tier and existing upgrade action to both pickers. Removed the obsolete untracked `src/theme-picker-model.ts` carousel model and replaced its carousel fixture with focused direct-grid coverage in `tests/theme-picker-grid.test.mts`; added `tests/app-icon-picker-grid.test.mts`.
+- Accessibility: all eight choices are individually activatable radio controls with name, position, description, tier, selected state, and a direct paywall hint when locked. Important card text is not line-clamped and can grow for Dynamic Type. The two fixed rows retain two equal-width cards on phone, iPad, and Split View.
+- Verification passed: TypeScript; focused theme/icon/Settings/ripple tests 33/33; complete mobile suite 560/560; iOS Expo export with 2,502 modules, 77 assets, and an 8.5 MB Hermes bundle at `mobile/recorder/.cache/appearance-grid-export`; and `git diff --check` with only existing CRLF notices.
+- Published with the EAS `production` environment to the iOS `production` branch for runtime `2.0.0-watch.4`: group `4a0af5d1-266b-4972-b2bc-c8dc18202498`, update `01a0971b-5f48-7506-9c4f-4ba768f893e8`, message `Replace Appearance carousel with direct 2x2 grids`. Both `eas update:list` and `eas update:view` confirmed it is the production head.
+- Physical review: cold-launch the TestFlight app up to twice and confirm Data Health shows short update ID `01a0971b`. Check the two-by-two rows on a narrow iPhone, iPad portrait, iPad landscape, Split View, and larger Dynamic Type. Tap both free themes, both Plus themes on free and paid accounts, both free icons, and both Plus icons; verify one ripple per successful theme tap, the paywall for locked cards, and native icon confirmation for allowed icon changes. No native build, staging, commit, or Git push was performed.
+
+## Cinematic app-icon label — September 12, 2026 (published)
+
+- Renamed the user-facing `Original` app-icon choice to `Cinematic`. Its stable persisted ID remains `original`, its native name remains `null`, and the underlying icon asset and Plus placement are unchanged.
+- Verification passed: TypeScript; focused icon/Settings tests 12/12; complete mobile suite 560/560; EAS iOS export/publish; and `git diff --check` with only existing CRLF notices.
+- Published and read back on the iOS `production` branch for runtime `2.0.0-watch.4`: group `d674ef52-3b5c-47fa-8ee0-98fb8d84abba`, update `01a0975d-6686-7b1b-90f4-d3e7cf4e6963`, message `Rename Original app icon to Cinematic`. No native build, staging, commit, or Git push was performed.

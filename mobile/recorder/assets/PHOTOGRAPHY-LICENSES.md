@@ -29,6 +29,7 @@ These app-ready derivatives preserve the licensed source photographs while apply
 | Bundled asset | App use | Photo and creator | Source |
 | --- | --- | --- | --- |
 | `theme-grand-touring-home-v1.png` | Grand Touring Home background | “Blue Car on Rainy Night” — Kamshotthat | [Pexels #5086489](https://www.pexels.com/photo/blue-car-on-rainy-night-5086489/) |
+| `theme-grand-touring-home-v2.png` | Grand Touring Home background, centered and brighter | AI-assisted derivative created from the licensed V1 source for JourneyDeck | Source retained above |
 | `theme-grand-touring-soundtracks-v1.png` | Grand Touring Soundtracks header | “Close-up Photo of Black Vinyl Player” — Wilson Lee | [Pexels #10138317](https://www.pexels.com/photo/close-up-photo-of-black-vinyl-player-10138317/) |
 | `theme-grand-touring-memories-v1.png` | Grand Touring Memories header and Memory fallback | “Close-up of a Vintage Green Car's Headlight” — Edoardo Giudici Saraval | [Unsplash NCVtwT6Lc7Q](https://unsplash.com/photos/close-up-of-a-vintage-green-cars-headlight-NCVtwT6Lc7Q) |
 | `theme-grand-touring-statistics-v1.png` | Grand Touring Statistics artwork | “Blue and White Sports Cars Riding on Empty Road at Night” — Inline Media | [Pexels #5229623](https://www.pexels.com/photo/blue-and-white-sports-car-riding-on-empty-road-at-night-5229623/) |

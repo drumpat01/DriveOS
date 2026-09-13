@@ -66,6 +66,11 @@ function harness() {
     './theme-palette': load('theme-palette.ts'), './ipad-page-header': { IpadPageHeader: 'Header' },
     './card-detail-link': { CardDetailLink: ({ children }: any) => children }, './journey-title': load('journey-title.ts'),
     './ipad-statistics-model': load('ipad-statistics-model.ts'),
+    './device-layout': {
+      IPAD_GRID_GAP: 12,
+      ipadGridColumns: (width: number, scale = 1) => width / scale >= 900 ? 6 : width / scale >= 540 ? 3 : width / scale >= 330 ? 2 : 1,
+      ipadGridSpan: (width: number, span: number, columns = 6, gap = 12) => (width - gap * (columns - 1)) / columns * span + gap * (span - 1),
+    },
   });
   return { state, api, screen,
     wrap: (child: any) => React.createElement(api.StatisticsMotionProvider, null, child),

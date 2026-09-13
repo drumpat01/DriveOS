@@ -102,35 +102,64 @@ test('premium palettes keep text and supporting metric colors readable on their 
     assert.equal(palette.themedColor('url(#route)', id), 'url(#route)');
     assert.match(palette.themedColor('rgba(5,3,11,0)', id, 'surface'), /,0\)$/);
   }
-  for (const invalid of [null, 'expired-theme', '__proto__', 7]) assert.equal(catalog.parseThemeId(invalid), 'dark');
+  for (const id of ['dark', 'light', 'sakura', 'redline'] as const) {
+    const p = catalog.themeCatalog[id].palette;
+    assert.ok(contrast(p.onSuccess, p.success) >= 4.5, `${id} saved action remains readable`);
+    assert.ok(contrast(p.onDanger, p.danger) >= 4.5, `${id} destructive action remains readable`);
+  }
+  assert.deepEqual(catalog.PLUS_THEME_IDS, ['dark', 'sakura']);
+  assert.deepEqual(catalog.FREE_THEME_IDS, ['redline', 'light']);
+  assert.deepEqual(catalog.THEME_GRID_ORDER, ['redline', 'light', 'dark', 'sakura']);
+  assert.equal(catalog.themeRequiresPlus('dark'), true);
+  assert.equal(catalog.themeRequiresPlus('sakura'), true);
+  assert.equal(catalog.themeRequiresPlus('redline'), false);
+  assert.equal(catalog.themeRequiresPlus('light'), false);
+  for (const invalid of [null, 'expired-theme', '__proto__', 7]) assert.equal(catalog.parseThemeId(invalid), 'redline');
 });
 
-test('theme picker exposes every theme without membership gating and reports failed saves', async () => {
+test('theme grid exposes every paid selection and reports failed saves', async () => {
   const selections: string[] = [], alerts: string[] = []; let fail = false;
   const origins: { x: number; y: number }[] = [];
-  const assets = Object.fromEntries(['cinematic-home-main-photo-v1.jpg', 'home-header-light-v1.png', 'theme-rosewater-road-v1.png', 'theme-grand-touring-home-v1.png'].map((name, i) => [`../assets/${name}`, i + 1]));
+  const assets = Object.fromEntries(['cinematic-home-main-photo-v1.jpg', 'home-header-light-v1.png', 'theme-rosewater-road-v1.png', 'theme-grand-touring-home-v2.png'].map((name, i) => [`../assets/${name}`, i + 1]));
   const api = load('theme-picker.tsx', {
-    ...assets, './theme-catalog': catalog,
-    './app-theme': { useThemeChoice: () => ({ theme: { ...catalog.themeCatalog.sakura, id: 'sakura' }, transitionTheme: (id: string, origin: { x: number; y: number }) => { if (fail) throw Error(); selections.push(id); origins.push({ ...origin }); } }) },
-    'react-native': { StyleSheet: { create: (v: any) => v, absoluteFill: {} }, Alert: { alert: (title: string) => alerts.push(title) }, ...Object.fromEntries(['View', 'Text', 'Pressable'].map(n => [n, host(n)])) },
-    'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
+    ...assets,
+    './theme-catalog': catalog,
+    './app-theme': { useThemeChoice: () => ({
+      theme: { ...catalog.themeCatalog.sakura, id: 'sakura' },
+      setTheme: () => {},
+      transitionTheme: (id: string, origin: { x: number; y: number }) => {
+        if (fail) throw Error();
+        selections.push(id);
+        origins.push({ ...origin });
+      },
+    }) },
+    'react-native': {
+      StyleSheet: { create: (v: any) => v, absoluteFill: {} },
+      Alert: { alert: (title: string) => alerts.push(title) },
+      ...Object.fromEntries(['View', 'Text', 'Pressable'].map(n => [n, host(n)])),
+    },
+    'expo-image': { Image: host('Image') },
+    'expo-linear-gradient': { LinearGradient: host('Gradient') },
+    'expo-symbols': { SymbolView: host('Symbol') },
   });
   let tree: any;
   try {
-    await act(() => { tree = create(React.createElement(api.ThemePicker), { createNodeMock: () => ({
+    await act(() => { tree = create(React.createElement(api.ThemePicker, { membershipTier: 'paid' }), { createNodeMock: () => ({
       measureInWindow: (callback: (...values: number[]) => void) => callback(40, 120, 160, 80),
     }) }); });
     const buttons = tree.root.findAllByType('Pressable');
-    assert.equal(buttons.length, 4);
-    assert.ok(buttons.some((b: any) => b.props.accessibilityLabel === 'Rosewater, light theme'));
-    assert.ok(buttons.some((b: any) => b.props.accessibilityLabel === 'Grand Touring, dark theme'));
-    assert.equal(buttons.filter((b: any) => b.props.accessibilityState.checked).length, 1);
-    for (const b of buttons) { assert.equal(b.props.accessibilityRole, 'radio'); await act(() => b.props.onPress({ nativeEvent: { pageX: 20, pageY: 30 } })); }
-    assert.equal(selections.join(','), 'dark,redline,light,sakura');
-    assert.deepEqual(origins, Array.from({ length: 4 }, () => ({ x: 20, y: 30 })), 'every theme uses the actual window tap');
+    assert.deepEqual(buttons.map((button: any) => button.props.testID), ['theme-card-redline', 'theme-card-light', 'theme-card-dark', 'theme-card-sakura']);
+    assert.equal(buttons.filter((button: any) => button.props.accessibilityState.checked).length, 1);
+    for (const button of buttons) {
+      assert.equal(button.props.accessibilityRole, 'radio');
+      await act(() => button.props.onPress({ nativeEvent: { pageX: 20, pageY: 30 } }));
+    }
+    assert.equal(selections.join(','), 'redline,light,dark', 'reselecting the committed theme does not replay the water transition');
+    assert.deepEqual(origins, Array.from({ length: 3 }, () => ({ x: 20, y: 30 })), 'every changed theme uses the actual window tap');
     await act(() => buttons[0].props.onPress({ nativeEvent: { pageX: 0, pageY: 0 } }));
-    assert.deepEqual(origins.at(-1), { x: 120, y: 160 }, 'accessibility activation starts at the pressed button center');
-    fail = true; await act(() => buttons[0].props.onPress({ nativeEvent: { pageX: 20, pageY: 30 } }));
+    assert.deepEqual(origins.at(-1), { x: 120, y: 160 }, 'coordinate-free activation starts at the pressed card center');
+    fail = true;
+    await act(() => buttons[0].props.onPress({ nativeEvent: { pageX: 20, pageY: 30 } }));
     assert.deepEqual(alerts, ['Appearance not saved']);
   } finally { await act(() => tree?.unmount()); }
 });
@@ -152,7 +181,7 @@ test('theme artwork switches only registered decorative images, preserving user 
   for (const file of ['cinematic-journey-photo-v1.jpg', 'cinematic-home-morning-photo-v1.jpg', 'cinematic-home-afternoon-photo-v1.jpg', 'cinematic-home-evening-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) assert.equal(resolve(asset(`../assets/${file}`), 'sakura'), rosewaterJourney);
 
   const grandTouringTabs = [
-    ['cinematic-home-main-photo-v1.jpg', 'theme-grand-touring-home-v1.png'],
+    ['cinematic-home-main-photo-v1.jpg', 'theme-grand-touring-home-v2.png'],
     ['cinematic-soundtracks-photo-v1.jpg', 'theme-grand-touring-soundtracks-v1.png'],
     ['cinematic-memories-polaroids-photo-v1.jpg', 'theme-grand-touring-memories-v1.png'],
     ['cinematic-statistics-photo-v1.jpg', 'theme-grand-touring-statistics-v1.png'],
@@ -165,7 +194,7 @@ test('theme artwork switches only registered decorative images, preserving user 
   });
   assert.equal(new Set(tabArt).size, 5, 'Grand Touring gives every primary tab distinct art');
   for (const file of [
-    'theme-grand-touring-home-v1.png',
+    'theme-grand-touring-home-v2.png',
     'theme-grand-touring-soundtracks-v1.png',
     'theme-grand-touring-memories-v1.png',
     'theme-grand-touring-statistics-v1.png',
@@ -184,4 +213,13 @@ test('theme artwork switches only registered decorative images, preserving user 
   const statistics = asset('../assets/cinematic-statistics-photo-v1.jpg');
   assert.equal(resolve(statistics, 'dark'), statistics, 'original Cinematic Dark artwork stays intact');
   assert.equal(resolve(statistics, 'light'), asset('../assets/statistics-header-light-v1.png'));
+});
+
+test('default Memory artwork receives a fresh shared image identity for every theme', () => {
+  const shell = readFileSync(new URL('../src/shell.tsx', import.meta.url), 'utf8');
+  const ipadHome = readFileSync(new URL('../src/ipad-home.tsx', import.meta.url), 'utf8');
+  assert.match(shell, /key=\{`default-memory-\$\{theme\.id\}`\}/);
+  assert.match(shell, /imageIdentity=\{`default-memory-\$\{theme\.id\}`\}/);
+  assert.match(ipadHome, /const sourceKey = .*`default-memory-\$\{theme\.id\}`/);
+  assert.match(ipadHome, /imageIdentity=\{sourceKey\}/);
 });

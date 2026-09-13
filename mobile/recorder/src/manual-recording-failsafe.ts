@@ -55,17 +55,32 @@ function validAccuratePoint(point: FailsafePoint, startedAtMs: number, evaluated
 function lastMeaningfulMovementAt(points: FailsafePoint[], startedAtMs: number, evaluatedAtMs: number) {
   let stationarySince: number | null = null;
   let previous: FailsafePoint | null = null;
+  let recentMovementAnchor: FailsafePoint | null = null;
   let latestAt: number | null = null;
   for (const point of [...points].sort((left, right) => Date.parse(left.recordedAt) - Date.parse(right.recordedAt))) {
     const recordedAtMs = Date.parse(point.recordedAt);
     if (!Number.isFinite(recordedAtMs) || recordedAtMs < startedAtMs || recordedAtMs > evaluatedAtMs
       || (latestAt != null && recordedAtMs <= latestAt)) continue;
     if (!validAccuratePoint(point, startedAtMs, evaluatedAtMs)) {
-      stationarySince = null; previous = null; latestAt = recordedAtMs;
+      stationarySince = null; previous = null; recentMovementAnchor = null; latestAt = recordedAtMs;
       continue;
     }
-    if (latestAt != null && recordedAtMs - latestAt > 120_000) { stationarySince = null; previous = null; }
+    if (latestAt != null && recordedAtMs - latestAt > 120_000) { stationarySince = null; previous = null; recentMovementAnchor = null; }
     latestAt = recordedAtMs;
+    // A separate short baseline catches a fresh departure before a longer
+    // uncertainty baseline can average it together with the parked interval.
+    if (recentMovementAnchor) {
+      const recentSeconds = (recordedAtMs - Date.parse(recentMovementAnchor.recordedAt)) / 1000;
+      if (recentSeconds >= 15) {
+        const lowerSpeed = Math.max(0, distanceMeters(recentMovementAnchor, point)
+          - Math.max(recentMovementAnchor.accuracyMeters ?? 0, point.accuracyMeters ?? 0)) / recentSeconds;
+        recentMovementAnchor = point;
+        if (lowerSpeed > MANUAL_RECORDING_MOVEMENT_SPEED_MPS) {
+          stationarySince = null; previous = point;
+          continue;
+        }
+      }
+    } else recentMovementAnchor = point;
     if (!previous) {
       previous = point;
       stationarySince = point.speedMps != null && point.speedMps >= 0 && point.speedMps <= 2.2 ? recordedAtMs : null;
@@ -76,6 +91,15 @@ function lastMeaningfulMovementAt(points: FailsafePoint[], startedAtMs: number, 
     if (elapsedSeconds < 15) continue;
     const uncertainty = Math.max(previous.accuracyMeters ?? 0, point.accuracyMeters ?? 0);
     const distance = distanceMeters(previous, point);
+    const lowerSpeed = Math.max(0, distance - uncertainty) / elapsedSeconds;
+    // Give accepted GPS uncertainty time to resolve (up to 100 seconds at
+    // 50m). Replacing the anchor every 15 seconds can classify a parked
+    // phone as ambiguous forever. Clear confirmed driving immediately.
+    if (lowerSpeed > MANUAL_RECORDING_MOVEMENT_SPEED_MPS) {
+      stationarySince = null; previous = point;
+      continue;
+    }
+    if (elapsedSeconds < Math.max(15, uncertainty / 0.5)) continue;
     const upperSpeed = (distance + uncertainty) / elapsedSeconds;
     if (upperSpeed <= MANUAL_RECORDING_MOVEMENT_SPEED_MPS) {
       stationarySince ??= previousAtMs;

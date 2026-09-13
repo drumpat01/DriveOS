@@ -12,8 +12,9 @@ import ts from 'typescript';
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
-let light = true;
-const native = { StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
+let light = true, fontScale = 1;
+const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
+  useWindowDimensions: () => ({ width: 1194, height: 834, fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'TextInput', 'RefreshControl'].map(name => [name, host(name)])) };
 function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
@@ -24,26 +25,30 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
 }
 const dataHelpers = load('ipad-music-data.ts');
 const model = load('library-model.ts');
+const gridLayout = load('device-layout.ts', { 'react-native': native });
 const theme = { useAppTheme: () => testTheme(light), useThemedStyles: (styles: any) => styles };
 const carousel = { AlbumCarousel: ({ tracks, enabled, onTrack }: any) => React.createElement('Carousel', { tracks, enabled },
   tracks.map((track: any, i: number) => React.createElement('Pressable', { key: i, disabled: !enabled, accessibilityLabel: `Open ${track.track} by ${track.artist}`, onPress: () => onTrack(track) }))) };
 const header = load('ipad-page-header.tsx', {
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': theme, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${light ? 'light' : 'dark'}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') }, './device-layout': gridLayout,
 });
 const ui = load('ipad-music-screen.tsx', {
   './album-carousel': carousel,
+  './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   './ipad-page-header': header,
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   './app-theme': theme, './theme-palette': load('theme-palette.ts'),
-  './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` },
+  './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` }, './device-layout': gridLayout,
 });
 const links: string[] = [], journeysOpened: string[] = [];
 const music = load('music-screen.tsx', {
   './album-carousel': carousel,
+  './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './ipad-music-data': dataHelpers,
+  'expo-symbols': { SymbolView: host('Symbol') },
   'react-native': { ...native, Alert: { alert: () => {} }, Linking: { openURL: async (url: string) => { links.push(url); } } },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') }, 'react-native-svg': {},
@@ -76,17 +81,38 @@ test('iPad Music search, paging, source links and Journey links work across resi
     assert.match(text(tree), /1 journey plays/);
     for (const width of [1132, 772, 280, 1132]) {
       await act(() => canvas.props.onLayout({ nativeEvent: { layout: { width } } }));
-      const row = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-music-artists-row');
-      assert.equal(row.props.style[1].flexDirection, width >= 960 ? 'row' : 'column');
+      const row = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-music-insights');
+      const wide = gridLayout.ipadGridColumns(width, fontScale) === 6;
+      assert.equal(row.props.style[1].flexDirection, wide ? 'row' : 'column');
+      if (wide) {
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-soundtrack' }).props.style, undefined, 'soundtrack fills the six-column canvas without a tall side rail');
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-metric-0' }).props.style.width, gridLayout.ipadGridSpan(width, 2));
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-metric-1' }).props.style.width, gridLayout.ipadGridSpan(width, 2));
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-metric-2' }).props.style.width, gridLayout.ipadGridSpan(width, 1));
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-metric-3' }).props.style.width, gridLayout.ipadGridSpan(width, 1));
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-top-artists' }).props.style.width, gridLayout.ipadGridSpan(width, 3));
+        assert.equal(tree.root.findByProps({ testID: 'ipad-music-listening-time' }).props.style.width, gridLayout.ipadGridSpan(width, 3));
+      }
       assert.equal(tree.root.findByType('TextInput').props.value, 'Unique artist');
       const title = tree.root.findByProps({ testID: 'ipad-page-title' });
-      assert.equal(title.props.style[1].fontSize, width >= 600 ? 36 : 28);
+      assert.equal(title.props.style[1].fontSize, width >= 600 ? 36 : width < 300 ? 24 : 28);
+      assert.equal(title.props.numberOfLines, 1);
       assert.equal(title.props.style[0].fontWeight, '600');
       const gallery = tree.root.findByType('Carousel');
       assert.equal(gallery.props.tracks.length, 8, 'all recent covers are available through the shared carousel');
 
       assert.equal(tree.root.findAllByType('ScrollView').find((node: any) => node.props.testID === 'ipad-music'), screen);
     }
+    assert.ok(tree.root.findByProps({ testID: 'listening-history-heading' }).findAllByType('Text').some((node: any) => node.children.join('') === 'Album'));
+    assert.equal(tree.root.findAll((node: any) => String(node.props.testID ?? '').startsWith('listening-history-album-'))[0].props.children, 'Coast album');
+    fontScale = 2;
+    await act(() => tree.update(render()));
+    await act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: 1132 } } }));
+    assert.equal(tree.root.findByProps({ testID: 'ipad-music-insights' }).props.style[1].flexDirection, 'column', 'larger text avoids the dense landscape split');
+    assert.equal(tree.root.findAllByProps({ testID: 'listening-history-heading' }).length, 0);
+    assert.equal(tree.root.findAll((node: any) => String(node.props.testID ?? '').startsWith('listening-history-album-'))[0].props.children, 'Coast album', 'stacked rows retain the album below the artist');
+    fontScale = 1;
+    await act(() => tree.update(render()));
     assert.equal(tree.root.findByType('Carousel').children.length, 8);
     await act(() => press(tree, 'Open Song 0 by Unique artist').props.onPress());
     assert.equal(links.at(-1), 'https://music.apple.com/song/0');
@@ -113,7 +139,7 @@ test('iPad Music search, paging, source links and Journey links work across resi
     await act(() => screen.props.refreshControl.props.onRefresh());
     assert.equal(refreshes, 1);
     assert.equal(screen.props.refreshControl.props.refreshing, false);
-  } finally { light = true; await act(() => tree?.unmount()); }
+  } finally { light = true; fontScale = 1; await act(() => tree?.unmount()); }
 });
 
 test('Music initial load, error and empty archive are honest without fake sample content', async () => {

@@ -10,7 +10,7 @@ const THEME_KEY = 'journeydeck.appearance.v2';
 
 function readTheme(): ThemeId {
   try { return parseThemeId(SecureStore.getItem(THEME_KEY)); }
-  catch { return 'dark'; }
+  catch { return 'redline'; }
 }
 
 function makeTheme(id: ThemeId) {
@@ -25,7 +25,7 @@ function makeTheme(id: ThemeId) {
 }
 const themes = { dark: makeTheme('dark'), light: makeTheme('light'), sakura: makeTheme('sakura'), redline: makeTheme('redline') };
 const ThemeContext = createContext({
-  theme: themes.dark,
+  theme: themes.redline,
   setMode: (_mode: ThemeMode) => {},
   setTheme: (_id: ThemeId) => {},
   transitionTheme: (_id: ThemeId, _origin?: ThemeTransitionOrigin) => {},

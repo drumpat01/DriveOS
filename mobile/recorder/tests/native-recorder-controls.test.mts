@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { createRecorderCommands } from '../modules/journeydeck-recorder/src/RecorderCommands.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -5,6 +7,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { DatabaseSync } from 'node:sqlite';
 import { createLatestNativeRecorderConfiguration } from '../modules/journeydeck-recorder/src/LatestNativeRecorderConfiguration.ts';
+import { subscribeRecorderStatusEvents } from '../modules/journeydeck-recorder/src/RecorderStatusEvents.ts';
 
 const require = createRequire(import.meta.url);
 const ts = require('typescript');
@@ -20,12 +23,39 @@ const status = { nativeModuleAvailable: true, statusReliable: true, configured: 
 function controls(native: any) {
   const exports: Record<string, any> = {};
   vm.runInNewContext(compiled, { exports, require: (name: string) => {
+    if (name === 'expo-crypto') return { randomUUID };
+    if (name === './src/RecorderCommands') return { createRecorderCommands };
     if (name === './src/JourneyDeckRecorderModule') return { __esModule: true, default: native };
     if (name === './src/LatestNativeRecorderConfiguration') return { createLatestNativeRecorderConfiguration };
+    if (name === './src/RecorderStatusEvents') return { subscribeRecorderStatusEvents };
     throw new Error(`unexpected dependency: ${name}`);
   } });
   return exports;
 }
+
+test('journal-capable binaries route Start/Pause/Resume/Finish through durable operation IDs', async () => {
+  const calls: { id: string; action: string; session: string }[] = [];
+  const api = controls({
+    getStatusAsync: async () => ({ ...status, controlToken: 'fixture-token' }),
+    executeCommandAsync: async (id: string, action: string, session: string, token: string) => {
+      assert.equal(token, 'fixture-token'); calls.push({ id, action, session });
+      return { ...status, command: { state: 'applied', operationId: id } };
+    },
+    getCommandOutcomeAsync: async () => ({ state: 'unknown' }),
+    startManualJourneyAsync: () => assert.fail('bypassed journal'),
+    pauseJourneyIfMatchingAsync: () => assert.fail('bypassed journal'),
+    resumeJourneyIfMatchingAsync: () => assert.fail('bypassed journal'),
+    finishJourneyIfMatchingAsync: () => assert.fail('bypassed journal'),
+  });
+  await api.startNativeManualJourney('start-operation');
+  await api.pauseNativeAutomaticJourney(status.sessionId);
+  await api.resumeNativeAutomaticJourney(status.sessionId);
+  await api.finishNativeAutomaticJourney(status.sessionId);
+  assert.deepEqual(calls.map(c => c.action), ['start', 'pause', 'resume', 'finish']);
+  assert.equal(calls[0].id, 'start-operation');
+  assert.equal(new Set(calls.map(c => c.id)).size, 4);
+  assert.ok(calls.slice(1).every(c => c.session === status.sessionId));
+});
 
 test('new binaries receive the requested journey ID in both native pause and resume commands', async () => {
   const calls: string[] = [];
@@ -47,6 +77,24 @@ test('older binaries do not apply a stale phone control to a newer Watch journey
   });
   assert.equal((await api.pauseNativeAutomaticJourney('native_recording_manual_old')).lastErrorCode, 'session_changed');
   assert.equal((await api.resumeNativeAutomaticJourney('native_recording_manual_old')).lastErrorCode, 'session_changed');
+});
+
+test('older binary Finish refuses a stale journey ID or an unreadable status', async () => {
+  for (const current of [status, { ...status, statusReliable: false, sessionId: 'native_recording_manual_old' }]) {
+    const api = controls({ getStatusAsync: async () => current,
+      finishActiveJourneyAsync: () => assert.fail('stale Finish stopped an unconfirmed journey') });
+    assert.ok((await api.finishNativeAutomaticJourney('native_recording_manual_old')).lastErrorCode);
+  }
+});
+
+test('Finish uses the native identity fence when present and preserves a matching older binary', async () => {
+  const calls: string[] = [];
+  const fenced = controls({ finishJourneyIfMatchingAsync: async (id: string) => { calls.push(id); return status; } });
+  await fenced.finishNativeAutomaticJourney(status.sessionId);
+  const older = controls({ getStatusAsync: async () => status,
+    finishActiveJourneyAsync: async () => { calls.push('legacy'); return { ...status, sessionId: null, paused: false }; } });
+  assert.equal((await older.finishNativeAutomaticJourney(status.sessionId)).sessionId, null);
+  assert.deepEqual(calls, [status.sessionId, 'legacy']);
 });
 
 test('unreadable native state or revoked location access does not resume a paused journey', async () => {

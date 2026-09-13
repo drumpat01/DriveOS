@@ -13,8 +13,9 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const platform = { OS: 'ios', isPad: true };
-let mode = 'light', saveFailed = false, alerts = 0;
+let mode = 'light', saveFailed = false, alerts = 0, fontScale = 1;
 const native = { Platform: platform, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
+  useWindowDimensions: () => ({ width: 1194, height: 834, fontScale }),
   Alert: { alert: () => alerts++ }, ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Switch', 'Pressable', 'ActivityIndicator'].map(name => [name, host(name)])) };
 function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
@@ -29,10 +30,11 @@ const phoneTabTitle = load('phone-tab-title.tsx', { 'react-native': native, './a
 const header = load('ipad-page-header.tsx', {
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': { useAppTheme: theme }, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${mode}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
-  './phone-tab-title': phoneTabTitle,
+  './phone-tab-title': phoneTabTitle, './device-layout': layout,
 });
 const ui = load('ipad-home.tsx', {
   './ipad-page-header': header,
+  './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   './app-theme': { useAppTheme: theme, useThemeChoice: () => ({ theme: theme(), setMode: (next: string) => { if (saveFailed) throw Error('write failed'); mode = next; } }) },
@@ -76,11 +78,41 @@ test('shared artwork header stacks copy above full-width actions on phones', asy
   } finally { await act(() => tree?.unmount()); }
 });
 
+test('shared iPad artwork header keeps narrow sidebar titles on one line', async () => {
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(header.IpadPageHeader, { title: 'Settings', artwork: 1, width: 218 })); });
+    const title = tree.root.findByProps({ testID: 'ipad-page-title' });
+    assert.equal(title.props.children, 'SETTINGS');
+    assert.equal(title.props.numberOfLines, 1);
+    assert.equal(title.props.adjustsFontSizeToFit, true);
+    assert.equal(title.props.minimumFontScale, 0.72);
+    assert.equal(title.props.style[1].fontSize, 24);
+    assert.equal(title.props.style[1].letterSpacing, 1.4);
+    assert.ok(tree.root.findByProps({ testID: 'ipad-page-header' }).props.style.flat().some((style: any) => style?.paddingHorizontal === 16));
+  } finally { await act(() => tree?.unmount()); }
+});
+
+test('Home actions span the artwork height only while title and portal fit side by side', async () => {
+  let tree: any;
+  const render = (width: number) => React.createElement(header.IpadPageHeader, {
+    title: 'Home', artwork: 1, width, subtitle: 'Your roads. Your memories. Your music.', fullHeightActions: true,
+  }, React.createElement('recorder'));
+  try {
+    await act(() => { tree = create(render(1024)); });
+    let actionStyle = tree.root.findByProps({ testID: 'page-header-actions' }).props.style.flat().filter(Boolean);
+    assert.ok(actionStyle.some((value: any) => value.marginVertical === -24), 'wide iPad portal reaches both artwork edges');
+    assert.ok(actionStyle.some((value: any) => value.width === layout.ipadGridSpan(1024, 2)), 'journey control occupies exactly two landscape columns');
+    await act(() => tree.update(render(480)));
+    actionStyle = tree.root.findByProps({ testID: 'page-header-actions' }).props.style.flat().filter(Boolean);
+    assert.equal(actionStyle.some((value: any) => value.marginVertical === -24), false, 'narrow Split View stacks without overlap');
+  } finally { await act(() => tree?.unmount()); }
+});
+
 test('iPad identity stays independent of narrow window layout and never matches iPhone or web', () => {
   assert.equal(layout.isIpad(), true);
   for (const width of [272, 390, 600, 740, 1180]) {
-    const columns = layout.ipadHomeColumns(width);
-    assert.ok(width / columns.metrics >= 180, 'metric text and icon retain usable space');
+    assert.ok([1, 2, 3, 6].includes(layout.ipadGridColumns(width)));
     assert.equal(layout.isIpad(), true);
   }
   platform.isPad = false;
@@ -88,6 +120,14 @@ test('iPad identity stays independent of narrow window layout and never matches 
   platform.isPad = true; platform.OS = 'web';
   assert.equal(layout.isIpad(), false);
   platform.OS = 'ios';
+});
+
+test('Home reduces card density for accessibility text without changing iPad identity', () => {
+  assert.equal(layout.ipadGridColumns(976, 1), 6);
+  assert.equal(layout.ipadGridColumns(976, 2), 2);
+  const widths = [1, 2, 3, 4, 6].map(span => layout.ipadGridSpan(976, span));
+  assert.ok(widths.every((value, index) => index === 0 || value > widths[index - 1]));
+  assert.equal(layout.ipadGridSpan(976, 2) * 3 + 24, 976);
 });
 
 test('Home uses real zero values, honest empty states, responsive artwork and both themes', async () => {
@@ -127,10 +167,10 @@ test('sidebar viewport resizing preserves Home recorder state and vertical scrol
     const canvas = tree.root.findAllByType('View').find((node: any) => node.props.onLayout);
     for (const usableWidth of [1200, 896, 560, 896, 1200]) {
       await act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: usableWidth } } }));
-      const metricValue = tree.root.findAllByType('Text').find((node: any) => node.children.join('') === '—');
-      let cell = metricValue.parent;
-      while (cell && !cell.props.style?.width) cell = cell.parent;
-      assert.equal(cell.props.style.width, `${100 / layout.ipadHomeColumns(usableWidth).metrics}%`);
+      const columns = layout.ipadGridColumns(usableWidth, fontScale);
+      const firstSpan = columns === 6 || columns === 3 ? 2 : 1;
+      assert.equal(tree.root.findByProps({ testID: 'ipad-home-metric-0' }).props.style.width, layout.ipadGridSpan(usableWidth, firstSpan, columns));
+      assert.equal(tree.root.findByProps({ testID: 'ipad-home-memories' }).props.style.width, layout.ipadGridSpan(usableWidth, columns === 6 ? 3 : columns, columns));
     }
     assert.equal(mounts, 1);
     assert.equal(unmounts, 0);

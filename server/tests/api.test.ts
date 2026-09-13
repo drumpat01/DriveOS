@@ -57,6 +57,23 @@ test("hosted root is public while login and the private app keep separate routes
     assert.match(landing.body, /The roads become the stories/i);
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
+    assert.doesNotMatch(landing.body, /\/beta\.css/);
+
+    const beta = await runtime.app.inject({ method: "GET", url: "/beta?preview=1" });
+    assert.equal(beta.statusCode, 200, beta.body);
+    assert.match(beta.body, /GRAND TOURING/);
+    assert.match(beta.body, /href="\/beta\.css"/);
+    assert.equal(beta.headers["x-robots-tag"], "noindex, nofollow");
+    const betaSlash = await runtime.app.inject({ method: "GET", url: "/beta/" });
+    assert.equal(betaSlash.statusCode, 302);
+    assert.equal(betaSlash.headers.location, "/beta");
+    for (const url of ["/beta.css", "/assets/beta/grand-touring-home.webp", "/assets/beta/journeydeck-pulse.svg"]) {
+      const asset = await runtime.app.inject({ method: "GET", url });
+      assert.equal(asset.statusCode, 200, url);
+    }
+    const nestedBeta = await runtime.app.inject({ method: "GET", url: "/beta/private" });
+    assert.equal(nestedBeta.statusCode, 302);
+    assert.equal(nestedBeta.headers.location, "/login");
 
     const login = await runtime.app.inject({ method: "GET", url: "/login" });
     assert.equal(login.statusCode, 200, login.body);

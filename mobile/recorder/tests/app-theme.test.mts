@@ -100,7 +100,7 @@ test('public V2 remains an ordinary App Store update; only internal preview chan
     process.env.EAS_BUILD_PROFILE = 'v2-preview';
     process.env.APP_VARIANT = 'v2-preview';
     const preview = resolve({ config });
-    assert.equal(preview.extra.features.atlasUnlocked, true);
+    assert.equal(preview.extra.features.atlasUnlocked, false);
     assert.notEqual(preview.ios.bundleIdentifier, production.ios.bundleIdentifier);
     assert.notEqual(preview.scheme, production.scheme);
     assert.notEqual(preview.runtimeVersion, production.runtimeVersion);

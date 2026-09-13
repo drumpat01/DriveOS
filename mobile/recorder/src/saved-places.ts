@@ -1,7 +1,9 @@
+import * as Crypto from 'expo-crypto';
 import {
   deletePlace,
   getPlace,
   getPrivatePreference,
+  listCustomSavedPlaces,
   upsertPlace,
   upsertPrivatePreference,
   type LocalPlace,
@@ -10,6 +12,7 @@ import {
 import { notifyLocalArchiveChanged } from './local-archive-events';
 
 export type SavedPlaceSlot = 'home' | 'work' | 'school';
+export type CustomSavedPlace = LocalPlace;
 
 export const SAVED_PLACE_SLOTS: ReadonlyArray<{ id: SavedPlaceSlot; label: string; symbol: string }> = [
   { id: 'home', label: 'Home', symbol: 'house.fill' },
@@ -91,5 +94,40 @@ export function saveSavedPlace(userId: LocalUserId, slot: SavedPlaceSlot, latitu
 export function removeSavedPlace(userId: LocalUserId, slot: SavedPlaceSlot): void {
   upsertPrivatePreference(userId, preferenceKey(slot), { enabled: false } satisfies StoredSavedPlace);
   deletePlace(userId, placeId(userId, slot));
+  notifyLocalArchiveChanged();
+}
+
+export function loadCustomSavedPlaces(userId: LocalUserId): CustomSavedPlace[] {
+  return listCustomSavedPlaces(userId);
+}
+
+export function saveCustomSavedPlace(userId: LocalUserId, name: string, latitude: number, longitude: number, id?: string): CustomSavedPlace {
+  const label = name.replace(/\s+/g, ' ').trim().slice(0, 64);
+  if (!label) throw new Error('Enter a name for this place.');
+  if (!hasValidCoordinate({ latitude, longitude })) throw new Error('That location is not valid.');
+  const existing = id ? getPlace(userId, id) : null;
+  if (id && (!existing || existing.kind !== 'custom' || !id.startsWith('saved-custom-place-v1-'))) {
+    throw new Error('That custom place is no longer available.');
+  }
+  const place = upsertPlace({
+    id: id ?? `saved-custom-place-v1-${Crypto.randomUUID()}`,
+    userId,
+    kind: 'custom',
+    label,
+    lat: latitude,
+    lng: longitude,
+    radiusMeters: SAVED_PLACE_RADIUS_METERS,
+    foursquareId: null,
+    osmId: null,
+    cachedUntil: null,
+  });
+  notifyLocalArchiveChanged();
+  return place;
+}
+
+export function removeCustomSavedPlace(userId: LocalUserId, id: string): void {
+  const existing = getPlace(userId, id);
+  if (!existing || existing.kind !== 'custom' || !id.startsWith('saved-custom-place-v1-')) return;
+  deletePlace(userId, id);
   notifyLocalArchiveChanged();
 }

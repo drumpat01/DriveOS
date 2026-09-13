@@ -13,7 +13,7 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const source = readFileSync(new URL('../src/shell.tsx', import.meta.url), 'utf8');
-let tablet = true, light = true, viewportWidth = 1100, viewportHeight = 800;
+let tablet = true, light = true, viewportWidth = 1100, viewportHeight = 800, viewportFontScale = 1;
 const colors = { isLight: true, name: 'Cinematic Dark', palette: { accent: '#b795e5', inset: '#291735' }, color: (value: string) => value, gradient: (values: any) => values };
 const controls = Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'Switch', 'Image', 'TextInput'].map(name => [name, host(name)]));
 function evaluate(sourceText: string, mocks: Record<string, any> = {}, globals: Record<string, any> = {}) {
@@ -29,9 +29,9 @@ const viewport = evaluate(readFileSync(new URL('../src/settings-scroll-view.tsx'
 const viewSource = source.slice(source.indexOf('function ConnectionsScreen('), source.indexOf('function JourneyDeckLogo('));
 const links: string[] = [], modes: string[] = [];
 const header = evaluate(readFileSync(new URL('../src/ipad-page-header.tsx', import.meta.url), 'utf8'), {
-  'react-native': { ...controls, StyleSheet: { create: (v: any) => v } }, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
+  'react-native': { ...controls, StyleSheet: { create: (v: any) => v }, useWindowDimensions: () => ({ fontScale: viewportFontScale }) }, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './header-artwork': { HeaderArtworkLayers: host('HeaderArtworkLayers'), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') }, './device-layout': { ipadGridColumns: (width: number, scale = 1) => width / scale >= 900 ? 6 : 3, ipadGridSpan: (width: number, span: number) => (width - 60) / 6 * span + 12 * (span - 1) },
 });
 const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', import.meta.url), 'utf8'), {
   './ipad-page-header': header,
@@ -39,7 +39,7 @@ const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', im
   './app-icon-picker': { AppIconPicker: host('AppIconPicker') },
   './place-data-credits': { PlaceDataCredits: host('PlaceDataCredits') },
   './settings-categories': require('../src/settings-categories.ts'),
-  'react-native': { ...controls, StyleSheet: { create: (v: any) => ({ ...v, hairlineWidth: 1 }), hairlineWidth: 1 }, useWindowDimensions: () => ({ width: viewportWidth, height: viewportHeight, fontScale: 1 }),
+  'react-native': { ...controls, StyleSheet: { create: (v: any) => ({ ...v, hairlineWidth: 1 }), hairlineWidth: 1 }, useWindowDimensions: () => ({ width: viewportWidth, height: viewportHeight, fontScale: viewportFontScale }),
     Linking: { openURL: async (url: string) => { links.push(url); } }, Alert: { alert: () => {} } },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   'expo-symbols': { SymbolView: host('Symbol') },
@@ -52,13 +52,13 @@ const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', im
 const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScreen;', {}, {
   ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
-  useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Original' } },
+  useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Cinematic' } },
   settingsCategories: require('../src/settings-categories.ts').settingsCategories,
   useThemedStyles: () => new Proxy({}, { get: () => ({}) }), darkStyles: {},
   useSafeAreaInsets: () => ({ top: 24, bottom: 20 }), isIpad: () => tablet,
-  loadSavedPlaces: () => ({}), loadProfileAppearance: () => ({ displayName: 'Test driver', avatarDataUri: null }), profileInitialsFor: () => 'TD',
+  loadSavedPlaces: () => ({}), loadCustomSavedPlaces: () => [{ id: 'saved-custom-place-v1-gym', label: 'Gym' }], loadProfileAppearance: () => ({ displayName: 'Test driver', avatarDataUri: null }), profileInitialsFor: () => 'TD',
   selectableProviderOptions: () => [{ id: 'apple-music', color: '#ff9478', name: 'Apple Music' }], publicProviderOptions: [], SAVED_PLACE_SLOTS: [{ id: 'home', label: 'Home', symbol: 'house' }, { id: 'work', label: 'Work', symbol: 'briefcase' }, { id: 'school', label: 'School', symbol: 'graduationcap' }],
-  IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsEditorScaffold: host('SettingsEditorScaffold'), SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'),
+  IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsEditorScaffold: host('SettingsEditorScaffold'), SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'), SettingsCustomPlaceEditor: host('CustomPlaceEditor'),
   PlaceDataCredits: host('PlaceDataCredits'),
   AtmosphericBackdrop: host('Backdrop'), PageHeader: host('Header'), SectionHeading: host('SectionHeading'), ProviderMark: host('Provider'),
   SymbolView: host('Symbol'), LinearGradient: host('Gradient'), ExpoImage: host('Image'), StyleSheet: {},
@@ -80,20 +80,57 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => { tree = create(render()); });
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length >= 1);
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-detail' }).length >= 1);
-    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem').length, 6);
+    const categoryItems = tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem');
+    assert.equal(categoryItems.length, 6);
+    assert.deepEqual(categoryItems.map((node: any) => node.props.accessibilityLabel), [
+      'Open Account & iCloud settings',
+      'Open Appearance settings',
+      'Open Membership & Support settings',
+      'Open Music & Connections settings',
+      'Open Recording & Location settings',
+      'Open Saved Places settings',
+    ]);
     assert.equal(tree.root.findByType('ThemePicker').props.embedded, true);
     assert.equal(tree.root.findByType('ThemePicker').props.compact, true);
+    assert.equal(tree.root.findByType('ThemePicker').props.membershipTier, 'free');
     assert.equal(tree.root.findByType('AppIconPicker').props.compact, true);
+    assert.equal(tree.root.findByType('AppIconPicker').props.membershipTier, 'free');
 
     await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 1100 } } }));
     let sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
-    assert.equal(sidebarStyle[1].width, 286);
+    assert.ok(Math.abs(sidebarStyle[1].width - 1100 / 3) < 0.01);
+    const sidebarTitle = tree.root.findByProps({ testID: 'ipad-page-title' });
+    assert.equal(sidebarTitle.props.numberOfLines, 1);
+    assert.equal(sidebarTitle.props.style[1].fontSize, 28);
+
+    await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 976 } } }));
+    sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
+    assert.ok(Math.abs(sidebarStyle[1].width - 976 / 3) < 0.01, 'landscape category rail occupies exactly two of six columns');
 
     viewportWidth = 820; viewportHeight = 1180;
     await act(() => tree.update(render()));
     await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 820 } } }));
     sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
     assert.ok(sidebarStyle[1].width >= 206 && sidebarStyle[1].width <= 238);
+
+    viewportWidth = 744; viewportHeight = 520;
+    await act(() => tree.update(render()));
+    await act(() => tree.root.findByProps({ testID: 'ipad-settings' }).props.onLayout({ nativeEvent: { layout: { width: 600 } } }));
+    assert.equal(tree.root.findByProps({ testID: 'ipad-settings' }).props.style[1].flexDirection, 'column');
+    const compactSidebar = tree.root.findByProps({ testID: 'ipad-settings-sidebar' });
+    assert.equal(compactSidebar.props.horizontal, true);
+    assert.equal(compactSidebar.props.style[1].width, '100%');
+    assert.equal(tree.root.findAllByProps({ testID: 'ipad-page-header' }).length, 0, 'narrow Split View gives the detail pane the full width');
+    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem').length, 6);
+
+    viewportFontScale = 2; viewportWidth = 1100; viewportHeight = 800;
+    await act(() => tree.update(render()));
+    await act(() => tree.root.findByProps({ testID: 'ipad-settings' }).props.onLayout({ nativeEvent: { layout: { width: 976 } } }));
+    assert.equal(tree.root.findByProps({ testID: 'ipad-settings' }).props.style[1].flexDirection, 'column', 'accessibility text receives the compact landscape navigation strip');
+    viewportFontScale = 1;
+    await act(() => tree.update(render()));
+    await act(() => tree.root.findByProps({ testID: 'ipad-settings' }).props.onLayout({ nativeEvent: { layout: { width: 976 } } }));
+    assert.equal(tree.root.findByProps({ testID: 'ipad-settings' }).props.style[1], false);
 
     await act(() => press('Open Account & iCloud settings').props.onPress());
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-account' }).length);
@@ -116,6 +153,14 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => press('Set Work').props.onPress());
     assert.equal(tree.root.findByType('PlaceEditor').props.slot, 'work');
     await act(() => tree.root.findByType('PlaceEditor').props.onBack());
+    await act(() => press('Open Saved Places settings').props.onPress());
+    await act(() => press('Edit custom place Gym').props.onPress());
+    assert.equal(tree.root.findByType('CustomPlaceEditor').props.place.label, 'Gym');
+    await act(() => tree.root.findByType('CustomPlaceEditor').props.onBack());
+    await act(() => press('Open Saved Places settings').props.onPress());
+    await act(() => press('Add another custom place').props.onPress());
+    assert.equal(tree.root.findByType('CustomPlaceEditor').props.place, undefined);
+    await act(() => tree.root.findByType('CustomPlaceEditor').props.onBack());
     await act(() => press('Edit primary driver profile').props.onPress());
     assert.equal(tree.root.findAllByType('ProfileEditor').length, 1);
     await act(() => tree.root.findByType('ProfileEditor').props.onBack());
@@ -127,11 +172,13 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => press('Open Appearance settings').props.onPress());
     assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);
+    assert.match(source, /keyboardShouldPersistTaps="handled"/, 'phone Settings keeps its proven pre-regression tap policy');
+    assert.doesNotMatch(source, /disableScrollViewPanResponder|canCancelContentTouches={false}/, 'Settings does not override native child gesture arbitration');
     assert.equal(editorStates.at(-1), true);
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     assert.equal(editorStates.at(-1), false);
   } finally {
-    tablet = true; light = true; viewportWidth = 1100; viewportHeight = 800;
+    tablet = true; light = true; viewportWidth = 1100; viewportHeight = 800; viewportFontScale = 1;
     await act(() => tree?.unmount());
   }
 });

@@ -1,13 +1,22 @@
+import { randomUUID } from 'expo-crypto';
+import { createRecorderCommands } from './src/RecorderCommands';
 import JourneyDeckRecorderModule from './src/JourneyDeckRecorderModule';
-import type { NativeRecorderInboxExport } from './src/JourneyDeckRecorder.types';
+import type { NativeRecorderInboxExport, NativeRecorderStatus, NativeRecorderStatusEvent } from './src/JourneyDeckRecorder.types';
 import { createLatestNativeRecorderConfiguration } from './src/LatestNativeRecorderConfiguration';
+import { subscribeRecorderStatusEvents } from './src/RecorderStatusEvents';
 
 export type {
   NativeMapKitPointOfInterest, NativeRecorderAuthorization, NativeRecorderInboxExport,
   NativeRecorderInboxPoint, NativeRecorderInboxSession, NativeRecorderStatus,
+  NativeRecorderStatusEvent,
 } from './src/JourneyDeckRecorder.types';
 
-const unavailableStatus = {
+export function subscribeNativeRecorderStatus(listener: (event: NativeRecorderStatusEvent) => void): () => void {
+  // Builds predating recorder events continue to use the foreground status poll.
+  return subscribeRecorderStatusEvents(JourneyDeckRecorderModule, listener);
+}
+
+const unavailableStatus: NativeRecorderStatus = {
   nativeModuleAvailable: false,
   statusReliable: false,
   configured: false,
@@ -32,7 +41,15 @@ export async function configureNativeManualRecorder(ready: boolean, ownerUserId:
   return JourneyDeckRecorderModule?.configureManualAsync?.(ready && !manualProfileTransition, ownerUserId, legacyActive) ?? unavailableStatus;
 }
 
+const journalCommands = JourneyDeckRecorderModule?.executeCommandAsync && JourneyDeckRecorderModule?.getCommandOutcomeAsync
+  ? createRecorderCommands({
+    getStatusAsync: () => JourneyDeckRecorderModule!.getStatusAsync(),
+    executeCommandAsync: (...args) => JourneyDeckRecorderModule!.executeCommandAsync!(...args),
+    getCommandOutcomeAsync: id => JourneyDeckRecorderModule!.getCommandOutcomeAsync!(id),
+  }, randomUUID) : null;
+
 export async function startNativeManualJourney(requestId: string) {
+  if (journalCommands) return journalCommands('start', '', requestId);
   return JourneyDeckRecorderModule?.startManualJourneyAsync?.(requestId) ?? unavailableStatus;
 }
 
@@ -50,6 +67,7 @@ export async function getNativeAutomaticRecorderStatus() {
 }
 
 export async function pauseNativeAutomaticJourney(sessionId?: string) {
+  if (journalCommands) return journalCommands('pause', sessionId);
   if (!JourneyDeckRecorderModule) return unavailableStatus;
   if (sessionId && JourneyDeckRecorderModule.pauseJourneyIfMatchingAsync) {
     return JourneyDeckRecorderModule.pauseJourneyIfMatchingAsync(sessionId);
@@ -64,6 +82,7 @@ export async function pauseNativeAutomaticJourney(sessionId?: string) {
 }
 
 export async function resumeNativeAutomaticJourney(sessionId?: string) {
+  if (journalCommands) return journalCommands('resume', sessionId);
   if (!JourneyDeckRecorderModule) return unavailableStatus;
   if (sessionId && JourneyDeckRecorderModule.resumeJourneyIfMatchingAsync) {
     return JourneyDeckRecorderModule.resumeJourneyIfMatchingAsync(sessionId);
@@ -78,8 +97,15 @@ export async function resumeNativeAutomaticJourney(sessionId?: string) {
 }
 
 export async function finishNativeAutomaticJourney(sessionId?: string) {
+  if (journalCommands) return journalCommands('finish', sessionId);
   if (!JourneyDeckRecorderModule) return unavailableStatus;
   if (sessionId && JourneyDeckRecorderModule.finishJourneyIfMatchingAsync) return JourneyDeckRecorderModule.finishJourneyIfMatchingAsync(sessionId);
+  if (sessionId) {
+    const status = await JourneyDeckRecorderModule.getStatusAsync();
+    if (status.statusReliable === false || status.sessionId !== sessionId) {
+      return { ...status, lastErrorCode: status.lastErrorCode ?? 'session_changed' };
+    }
+  }
   return JourneyDeckRecorderModule.finishActiveJourneyAsync();
 }
 

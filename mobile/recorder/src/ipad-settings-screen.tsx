@@ -21,8 +21,9 @@ type Props = {
   cloud: { status: string; detail: string }; membershipTier: 'free' | 'paid'; membershipExpirationDate: string | null;
   providerName: string; providerDetail: string;
   places: { id: SavedPlaceSlot; label: string; symbol: string; saved: boolean }[];
+  customPlaces: { id: string; label: string }[];
   onEditProfile: () => void; onAppleSignIn: () => void; onSignOut: () => void; onDeleteAccount: () => void;
-  onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void;
+  onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void; onCustomPlace: (placeId?: string) => void;
   advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
 };
 
@@ -46,7 +47,15 @@ export function IpadSettingsScreen(p: Props) {
   const [canvasWidth, setCanvasWidth] = useState(window.width || 1024);
   const selectedCategory = settingsCategories.find(item => item.id === category)!;
   const portrait = window.height > window.width;
-  const sidebarWidth = Math.max(206, Math.min(portrait ? 238 : 286, canvasWidth * (portrait ? 0.28 : 0.26)));
+  const availableWidth = canvasWidth / Math.max(1, window.fontScale);
+  const compact = availableWidth < 680;
+  // Give the in-app category rail more of the landscape canvas. UIKit owns the
+  // separate system sidebar width, so this is the safe place to rebalance the
+  // three-column composition without replacing native adaptive navigation.
+  const categoryRailWidth = portrait
+    ? Math.max(206, Math.min(238, canvasWidth * 0.28))
+    : canvasWidth / 3;
+  const categoryContentWidth = Math.max(1, categoryRailWidth - (portrait ? 28 : 36));
   const touringGreen = theme.id === 'redline' ? theme.palette.green : colors.accent;
   const touringGreenWash = theme.id === 'redline' ? `${touringGreen}42` : colors.inset;
   const panel = [styles.panel, { backgroundColor: colors.card, borderColor: theme.id === 'redline' ? `${touringGreen}aa` : colors.line }];
@@ -54,16 +63,16 @@ export function IpadSettingsScreen(p: Props) {
   const body = [styles.body, { color: colors.muted }];
   const cloudBusy = p.cloud.status === 'syncing';
   const cloudUnavailable = p.cloud.status === 'unavailable';
-  const placeCount = p.places.filter(place => place.saved).length;
+  const placeCount = p.places.filter(place => place.saved).length + p.customPlaces.length;
 
   const categorySummary = useMemo<Record<SettingsCategoryId, string>>(() => ({
     appearance: theme.name,
     recording: 'Manual recording',
     music: p.providerName,
     account: p.cloud.status === 'synced' ? 'iCloud synced' : p.cloud.detail,
-    places: `${placeCount} of ${p.places.length} saved`,
+    places: `${placeCount} saved`,
     membership: p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days',
-  }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.places.length, p.providerName, placeCount, theme.name]);
+  }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.providerName, placeCount, theme.name]);
 
   const icon = (name: SFSymbol, size = 24) => <View style={[styles.icon, { backgroundColor: theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={name} tintColor={theme.id === 'redline' ? colors.text : colors.accent} size={size} /></View>;
   const button = (label: string, onPress: () => void, options: { disabled?: boolean; primary?: boolean; accessibilityLabel?: string } = {}) =>
@@ -76,9 +85,9 @@ export function IpadSettingsScreen(p: Props) {
   };
 
   const appearance = <View testID="ipad-settings-appearance" style={styles.detailStack}>
-    <ThemePicker embedded compact />
+    <ThemePicker embedded compact membershipTier={p.membershipTier} onUpgrade={p.onMembership} />
     <View style={[styles.divider, { backgroundColor: colors.line }]} />
-    <AppIconPicker embedded compact />
+    <AppIconPicker embedded compact membershipTier={p.membershipTier} onUpgrade={p.onMembership} />
   </View>;
   const recording = <View testID="ipad-settings-recording" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('record.circle')}<View style={styles.flex}><Text style={title}>Manual recording</Text><Text style={body}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View>
@@ -109,7 +118,10 @@ export function IpadSettingsScreen(p: Props) {
   </View>;
   const places = <View testID="ipad-settings-places" style={styles.detailStack}>{p.places.map(place => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`${place.saved ? 'Change' : 'Set'} ${place.label}`} onPress={() => p.onPlace(place.id)}
     style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon(place.symbol as SFSymbol)}<View style={styles.flex}><Text style={title}>{place.label}</Text><Text style={body}>{place.saved ? 'Saved · protected when sharing' : 'Not set'}</Text></View>
-    <Text style={[styles.link, { color: colors.accent }]}>{place.saved ? 'Change' : 'Set'}</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>)}</View>;
+    <Text style={[styles.link, { color: colors.accent }]}>{place.saved ? 'Change' : 'Set'}</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>)}
+    {p.customPlaces.map(place => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Edit custom place ${place.label}`} onPress={() => p.onCustomPlace(place.id)} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('mappin.and.ellipse')}<View style={styles.flex}><Text style={title}>{place.label}</Text><Text style={body}>Saved · protected when sharing</Text></View><Text style={[styles.link, { color: colors.accent }]}>Change</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>)}
+    <Pressable accessibilityRole="button" accessibilityLabel={p.customPlaces.length ? 'Add another custom place' : 'Add custom place'} onPress={() => p.onCustomPlace()} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('plus')}<View style={styles.flex}><Text style={title}>Custom</Text><Text style={body}>{p.customPlaces.length ? 'Add another safe place' : 'Add a named safe place'}</Text></View><Text style={[styles.link, { color: colors.accent }]}>Add</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>
+  </View>;
   const membership = <View testID="ipad-settings-membership" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('crown')}<View style={styles.flex}><Text style={title}>{p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days'}</Text><Text style={body}>{p.membershipTier === 'paid' ? `Atlas and complete history unlocked${p.membershipExpirationDate ? ` through ${new Date(p.membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>{button(p.membershipTier === 'paid' ? 'Manage' : 'Unlock', p.onMembership, { primary: true })}</View></View>
     <Pressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: p.advancedVisible }} onPress={p.onToggleAdvanced} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('wrench.and.screwdriver')}<View style={styles.flex}><Text style={title}>Advanced Support</Text><Text style={body}>Diagnostics are hidden here unless you need help.</Text></View><SymbolView name={p.advancedVisible ? 'chevron.up' : 'chevron.down'} tintColor={colors.accent} size={15} /></Pressable>
@@ -120,18 +132,21 @@ export function IpadSettingsScreen(p: Props) {
   const detail = { appearance, recording, music, account, places, membership }[category];
 
   return <SafeAreaView edges={['left', 'right']} style={[styles.safe, { backgroundColor: colors.page }]}>
-    <View testID="ipad-settings" onLayout={event => setCanvasWidth(event.nativeEvent.layout.width)} style={styles.split}>
-      <ScrollView testID="ipad-settings-sidebar" style={[styles.sidebar, { width: sidebarWidth, borderRightColor: colors.line }]} contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets contentContainerStyle={{ paddingHorizontal: portrait ? 14 : 18, paddingTop: 16, paddingBottom: insets.bottom + 24 }}>
-        <IpadPageHeader title="Settings" width={sidebarWidth} artwork={require('../assets/cinematic-settings-photo-v1.jpg')} />
+    <View testID="ipad-settings" onLayout={event => setCanvasWidth(event.nativeEvent.layout.width)} style={[styles.split, compact && styles.compactSplit]}>
+      <ScrollView testID="ipad-settings-sidebar" horizontal={compact} showsHorizontalScrollIndicator={false}
+        style={[styles.sidebar, compact ? styles.compactSidebar : { width: categoryRailWidth }, { borderColor: colors.line }]}
+        contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets
+        contentContainerStyle={compact ? styles.compactSidebarContent : { paddingHorizontal: portrait ? 14 : 18, paddingTop: 16, paddingBottom: insets.bottom + 24 }}>
+        {!compact && <><IpadPageHeader title="Settings" width={categoryContentWidth} artwork={require('../assets/cinematic-settings-photo-v1.jpg')} />
         <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={p.onEditProfile} style={({ pressed }) => [styles.sidebarProfile, { borderColor: colors.line, backgroundColor: colors.card }, pressed && styles.dim]}>
           {p.avatar ? <Image source={p.avatar} contentFit="cover" style={styles.sidebarAvatar} /> : <View style={[styles.sidebarAvatar, { backgroundColor: colors.inset }]}><Text style={[styles.sidebarInitials, { color: colors.accent }]}>{p.initials}</Text></View>}
           <View style={styles.flex}><Text numberOfLines={1} style={[styles.sidebarName, { color: colors.text }]}>{p.displayName}</Text><Text numberOfLines={1} style={[styles.sidebarDetail, { color: colors.muted }]}>Primary driver</Text></View>
-        </Pressable>
-        <SlidingSelection selectedIndex={settingsCategories.findIndex(item => item.id === category)} style={styles.categoryList} highlightStyle={{ backgroundColor: touringGreenWash, borderRadius: 15 }}>{settingsCategories.map(item => { const active = item.id === category; return <Pressable key={item.id} accessibilityRole="menuitem" accessibilityLabel={`Open ${item.title} settings`} accessibilityState={{ selected: active }} onPress={() => setCategory(item.id)} style={({ pressed }) => [styles.categoryRow, { borderColor: active ? touringGreen : 'transparent', backgroundColor: 'transparent' }, pressed && styles.dim]}>
-          <SymbolView name={item.symbol as SFSymbol} tintColor={active ? (theme.id === 'redline' ? colors.text : colors.accent) : colors.muted} size={21} /><View style={styles.flex}><Text numberOfLines={2} style={[styles.categoryTitle, { color: active ? colors.text : colors.muted }]}>{item.title}</Text><Text numberOfLines={2} style={[styles.categorySummary, { color: colors.muted }]}>{categorySummary[item.id]}</Text></View>{active && <View style={[styles.activeDot, { backgroundColor: touringGreen }]} />}
+        </Pressable></>}
+        <SlidingSelection selectedIndex={settingsCategories.findIndex(item => item.id === category)} style={[styles.categoryList, compact && styles.compactCategoryList]} highlightStyle={{ backgroundColor: touringGreenWash, borderRadius: 15 }}>{settingsCategories.map(item => { const active = item.id === category; return <Pressable key={item.id} accessibilityRole="menuitem" accessibilityLabel={`Open ${item.title} settings`} accessibilityState={{ selected: active }} onPress={() => setCategory(item.id)} style={({ pressed }) => [styles.categoryRow, compact && styles.compactCategoryRow, { borderColor: active ? touringGreen : 'transparent', backgroundColor: 'transparent' }, pressed && styles.dim]}>
+          <SymbolView name={item.symbol as SFSymbol} tintColor={active ? (theme.id === 'redline' ? colors.text : colors.accent) : colors.muted} size={21} /><View style={styles.flex}><Text numberOfLines={compact ? 1 : 2} style={[styles.categoryTitle, { color: active ? colors.text : colors.muted }]}>{item.title}</Text>{!compact && <Text numberOfLines={2} style={[styles.categorySummary, { color: colors.muted }]}>{categorySummary[item.id]}</Text>}</View>{active && <View style={[styles.activeDot, { backgroundColor: touringGreen }]} />}
         </Pressable>; })}</SlidingSelection>
       </ScrollView>
-      <ScrollView testID="ipad-settings-detail" style={styles.detail} contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets contentContainerStyle={[styles.detailContent, { paddingBottom: insets.bottom + 32 }]}>
+      <ScrollView testID="ipad-settings-detail" style={styles.detail} contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets contentContainerStyle={[styles.detailContent, compact && styles.compactDetailContent, { paddingBottom: insets.bottom + 32 }]}>
         <View style={styles.detailHeader}><View style={[styles.detailIcon, { backgroundColor: theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={selectedCategory.symbol as SFSymbol} tintColor={theme.id === 'redline' ? colors.text : colors.accent} size={28} /></View><View style={styles.flex}><Text accessibilityRole="header" style={[styles.detailTitle, { color: colors.text }]}>{selectedCategory.title}</Text><Text style={[styles.detailSubtitle, { color: colors.muted }]}>{categoryCopy[category]}</Text></View></View>
         {detail}
       </ScrollView>
@@ -140,11 +155,14 @@ export function IpadSettingsScreen(p: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 }, split: { flex: 1, flexDirection: 'row' }, sidebar: { flexGrow: 0, flexShrink: 0, borderRightWidth: StyleSheet.hairlineWidth },
+  safe: { flex: 1 }, split: { flex: 1, flexDirection: 'row' }, compactSplit: { flexDirection: 'column' },
+  sidebar: { flexGrow: 0, flexShrink: 0, borderRightWidth: StyleSheet.hairlineWidth }, compactSidebar: { width: '100%', height: 84, borderRightWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth },
+  compactSidebarContent: { paddingHorizontal: 12, paddingVertical: 10 },
   sidebarProfile: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 17, padding: 10, marginTop: 14 }, sidebarAvatar: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  sidebarInitials: { fontSize: 17, fontWeight: '800' }, sidebarName: { fontSize: 14, fontWeight: '800' }, sidebarDetail: { fontSize: 11, marginTop: 2 }, categoryList: { gap: 6, marginTop: 16 },
+  sidebarInitials: { fontSize: 17, fontWeight: '800' }, sidebarName: { fontSize: 14, fontWeight: '800' }, sidebarDetail: { fontSize: 11, marginTop: 2 }, categoryList: { gap: 6, marginTop: 16 }, compactCategoryList: { flexDirection: 'row', gap: 8, marginTop: 0 },
   categoryRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 15, paddingHorizontal: 11, paddingVertical: 9 }, categoryTitle: { fontSize: 13, lineHeight: 17, fontWeight: '800' }, categorySummary: { fontSize: 10, lineHeight: 14, marginTop: 2 }, activeDot: { width: 5, height: 26, borderRadius: 3 },
-  detail: { flex: 1 }, detailContent: { width: '100%', maxWidth: 920, alignSelf: 'center', paddingHorizontal: 28, paddingTop: 28, gap: 22 }, detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 15 }, detailIcon: { width: 56, height: 56, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
+  compactCategoryRow: { width: 184, minHeight: 62, paddingVertical: 8 },
+  detail: { flex: 1 }, detailContent: { width: '100%', maxWidth: 920, alignSelf: 'center', paddingHorizontal: 28, paddingTop: 28, gap: 22 }, compactDetailContent: { paddingHorizontal: 18, paddingTop: 18 }, detailHeader: { flexDirection: 'row', alignItems: 'center', gap: 15 }, detailIcon: { width: 56, height: 56, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   detailTitle: { fontSize: 30, lineHeight: 35, fontWeight: '900', letterSpacing: -0.7 }, detailSubtitle: { fontSize: 14, lineHeight: 20, marginTop: 3 }, detailStack: { gap: 14 }, panel: { borderWidth: 1, borderRadius: 20, padding: 18, gap: 14 }, divider: { height: StyleSheet.hairlineWidth },
   row: { flexDirection: 'row', alignItems: 'center', gap: 13 }, flex: { flex: 1, minWidth: 0 }, icon: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, title: { fontSize: 17, fontWeight: '800' }, body: { fontSize: 13, lineHeight: 19 }, kicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   button: { minHeight: 44, minWidth: 92, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15, paddingVertical: 9 }, buttonText: { fontSize: 13, fontWeight: '800', textAlign: 'center' }, dim: { opacity: 0.55 },

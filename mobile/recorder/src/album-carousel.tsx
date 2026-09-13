@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Image } from 'expo-image';
 import { useIsFocused } from 'expo-router';
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { useAppTheme } from './app-theme';
@@ -8,6 +7,7 @@ import { MOTION_DURATIONS, useMotionPreferences } from './motion';
 import type { SoundtrackTrack } from './app-data';
 import { albumCarouselDepth, albumCarouselItems, albumCarouselLayout } from './album-carousel-model';
 import { highQualityAlbumArtwork } from './album-artwork';
+import { JourneyImage } from './journey-image';
 
 type AlbumItem = ReturnType<typeof albumCarouselItems>[number];
 
@@ -37,9 +37,9 @@ function AlbumCover({ item, index, cover, stride, offset, enabled, active, anima
           transitionProperty: 'transform', transitionDuration: animate ? MOTION_DURATIONS.feedback : 0, transitionTimingFunction: 'ease-out' }}>
           <View style={[styles.coverShadow, { shadowColor: theme.palette.accent }]}>
             <View style={[styles.cover, { width: cover, height: cover, backgroundColor: theme.palette.inset, borderColor: theme.palette.line }]}>
-              {artwork ? <Image source={{ uri: artwork }} style={StyleSheet.absoluteFill}
-                placeholder={artwork !== track.artworkUrl && track.artworkUrl ? { uri: track.artworkUrl } : undefined} placeholderContentFit="cover"
-                contentFit="cover" cachePolicy="memory-disk" recyclingKey={`${item.key}:${artwork}`}
+              {artwork ? <JourneyImage imageIdentity={`album-cover-${item.key}`} source={{ uri: artwork }} style={StyleSheet.absoluteFill}
+                placeholder={track.artworkUrl ? { uri: track.artworkUrl } : undefined} placeholderContentFit="cover"
+                contentFit="cover" cachePolicy="memory-disk"
                 onError={() => setFailedSources(previous => previous.includes(artwork) ? previous : [...previous, artwork])} />
                 : <Text accessible={false} style={{ color: theme.palette.accent, fontSize: 44 }}>♪</Text>}
             </View>

@@ -50,7 +50,7 @@ Source is prepared but **not activated or released**. `react-native-purchases` 1
 - Missing configuration or native SDK leaves existing StoreKit membership working.
 - Existing paid purchases are synced once per RevenueCat anonymous identity. A Keychain marker is written only after successful sync. Offline failure retries on the next membership read.
 - A successful Apple purchase or explicit restore requests a fresh billing sync without delaying or changing Apple's result. RevenueCat also observes native transactions.
-- Native SDK addition advances the source runtimes to `2.0.0-preview.9` and `2.0.0-watch.4`. Requires a new native build; **do not publish this source to preview.8 or watch.3**.
+- The combined native hardening release advances source runtimes to `2.0.0-preview.10` and `2.0.0-watch.5`. Build 23 remains on watch.4; do not publish this source to an older runtime.
 - Before release, validate monthly/annual purchases, cancellation, pending approval, restore/reinstall, renewal/refund and offline access on a device; confirm matching transactions in RevenueCat. Publish updated privacy disclosures covering purchase information and the pseudonymous RevenueCat identifier.
 - Dashboard credentials, product availability and real transactions have not yet been verified. No RevenueCat key has been configured by this change.
 

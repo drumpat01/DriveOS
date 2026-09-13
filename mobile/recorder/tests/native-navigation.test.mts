@@ -102,6 +102,7 @@ test('native bar has five fixed routes and an original orange Home image in both
     assert.equal(triggers[2].findByType('icon').props.src, 42);
     assert.equal(triggers[3].findByType('label').props.children, 'Statistics');
     assert.equal(tree.root.findByType('tabs').props.minimizeBehavior, 'never');
+    assert.equal(tree.root.findByType('tabs').props.disableTransparentOnScrollEdge, true, 'iPhone tab bar keeps its stable opaque edge appearance');
     assert.equal(tree.root.findByType('tabs').props.tintColor, isLight ? '#ad492e' : '#ff9470', 'iPhone navigation palette is preserved');
   }
   await act(() => tree.unmount());
@@ -113,6 +114,7 @@ test('iPad enables the native sidebar with Home first and all five destinations'
   try {
     await act(() => { tree = create(React.createElement(navigationContext.NativeNavigationContext.Provider, { value: { tabBarHidden: false } }, React.createElement(navigation.JourneyDeckNativeTabs))); });
     assert.equal(tree.root.findByType('tabs').props.sidebarAdaptable, true);
+    assert.equal(tree.root.findByType('tabs').props.disableTransparentOnScrollEdge, false, 'iPad lets UIKit use its native translucent scroll-edge material');
     assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), ['index', 'music', 'journeys', 'statistics', 'settings']);
     assert.equal(tree.root.findAllByType('trigger')[0].findByType('icon').props.renderingMode, 'original');
     for (const isLight of [true, false]) {
@@ -232,7 +234,7 @@ test('preview navigation runtime stays isolated from V1 and the installed previe
   try {
     process.env.APP_VARIANT = 'v2-preview';
     const preview = config({ config: app });
-    assert.equal(preview.runtimeVersion, '2.0.0-preview.9');
+    assert.equal(preview.runtimeVersion, '2.0.0-preview.10');
     assert.ok(preview.plugins.includes('./plugins/with-journeydeck-watch'));
     assert.equal(preview.ios.supportsTablet, true);
     assert.equal(preview.ios.requireFullScreen, false);

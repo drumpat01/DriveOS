@@ -241,7 +241,7 @@ export function musicEntryToCKRecord(entry: LocalMusicEntry): CloudKitRecord {
       id: entry.id, journeyId: entry.journeyId, source: entry.source, playedAt: entry.playedAt,
       track: entry.track, artist: entry.artist, album: entry.album, durationMs: entry.durationMs,
       artworkUrl: entry.artworkUrl, externalUrl: entry.externalUrl, confidence: entry.confidence,
-      createdAt: entry.createdAt, updatedAt: entry.createdAt,
+      createdAt: entry.createdAt, updatedAt: entry.updatedAt ?? entry.createdAt,
     },
     modificationDate: entry.createdAt,
   };
@@ -257,7 +257,19 @@ export function ckRecordToMusicEntry(record: CloudKitRecord, userId: LocalUserId
     artworkUrl: f.artworkUrl ? String(f.artworkUrl) : null, externalUrl: f.externalUrl ? String(f.externalUrl) : null,
     confidence: f.confidence != null ? Number(f.confidence) : null, syncedToCloud: 1,
     createdAt: String(f.createdAt || record.modificationDate || new Date().toISOString()),
+    updatedAt: String(f.updatedAt || record.modificationDate || f.createdAt || new Date().toISOString()),
   };
+}
+
+function sameMusicPlaybackIdentity(local: LocalMusicEntry, remote: LocalMusicEntry): boolean {
+  return local.id === remote.id && local.journeyId === remote.journeyId && local.source === remote.source
+    && local.playedAt === remote.playedAt && local.track === remote.track && local.artist === remote.artist
+    && local.createdAt === remote.createdAt;
+}
+
+function reliableMusicEditTime(entry: LocalMusicEntry): number | null {
+  const timestamp = Date.parse(entry.updatedAt ?? '');
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 export function memoryToCKRecord(memory: LocalMemory): CloudKitRecord {
@@ -613,14 +625,21 @@ export class CloudKitSyncEngine {
         const entry = ckRecordToMusicEntry(record, this.userId);
         if (isEditorManagedMusic(this.userId, entry.id)) continue;
         const local = getMusicEntry(this.userId, entry.id);
-        // The deployed MusicEntry schema uses createdAt as updatedAt. It cannot
-        // order later artwork/enrichment edits. Preserve dirty local content
-        // and report the conflict rather than silently replacing the only copy.
+        // Artwork and catalog enrichment update the shared canonical song row.
+        // That timestamp lets a later, identity-preserving metadata repair beat
+        // an older CloudKit copy without weakening protection for true edits.
         if (local && !local.syncedToCloud
           && JSON.stringify(musicEntryToCKRecord(local).fields) !== JSON.stringify(musicEntryToCKRecord(entry).fields)) {
-          this.recordUploadFailure(record.recordName, 'unversioned_local_conflict');
-          deferredCount++;
-          continue;
+          const localEdit = reliableMusicEditTime(local), remoteEdit = reliableMusicEditTime(entry);
+          if (sameMusicPlaybackIdentity(local, entry) && localEdit != null && remoteEdit != null && localEdit > remoteEdit) {
+            // Leave the newer local metadata queued. The push phase in this
+            // same sync will replace the older remote record and acknowledge it.
+            continue;
+          } else {
+            this.recordUploadFailure(record.recordName, 'unversioned_local_conflict');
+            deferredCount++;
+            continue;
+          }
         }
         if (entry.journeyId && !getJourney(this.userId, entry.journeyId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });

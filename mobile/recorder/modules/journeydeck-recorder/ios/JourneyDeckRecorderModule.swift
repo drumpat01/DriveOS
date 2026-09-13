@@ -4,7 +4,7 @@ import MapKit
 import SQLite3
 
 private let nativeInboxApplicationID: Int32 = 0x4a444e31
-private let nativeInboxSchemaVersion: Int32 = 1
+private let nativeInboxSchemaVersion: Int32 = 3
 private let driveStartSpeedMetersPerSecond = 6.7
 private let driveStartSampleCount = 3
 private let driveStartMinimumSpan: TimeInterval = 20
@@ -37,6 +37,7 @@ private struct DurableDetectionState: Codable {
   var candidateSamples: Int
   var stoppedSince: TimeInterval?
   var automaticSessionID: String?
+  var lastCommandSequence: Int?
   var manualInactivity: ManualJourneyInactivity?
 
   static let empty = DurableDetectionState(
@@ -54,15 +55,33 @@ private struct ActiveSession {
   let startedAt: Date
 }
 
-private enum NativeRecorderError: Error {
+private struct RecorderStatusSnapshot {
+  let session: ActiveSession?
+  let error: String?
+  let owner: String?
+  let device: String?
+  let enabled: Bool
+  let streamID: String
+  let sequence: Int
+  let lastEvent: String?
+  let lastEventAt: String?
+  let lastError: String?
+  let controlToken: String
+  let manualReady: Bool
+  let legacyManualActive: Bool
+}
+
+enum NativeRecorderError: Error {
   case databaseUnavailable
   case databaseIdentity
   case databaseSchema
   case sqlite(String)
   case notConfigured
+  case commandConflict
 
   var safeCode: String {
     switch self {
+    case .commandConflict: return "command_id_conflict"
     case .databaseUnavailable: return "database_unavailable"
     case .databaseIdentity: return "database_identity_mismatch"
     case .databaseSchema: return "database_upgrade_required"
@@ -72,11 +91,11 @@ private enum NativeRecorderError: Error {
   }
 }
 
-private final class NativeRecorderDatabase {
+final class NativeRecorderDatabase {
   private var handle: OpaquePointer?
 
-  init() throws {
-    let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+  init(directoryOverride: URL? = nil) throws {
+    let directory = directoryOverride ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
       .appendingPathComponent("SQLite", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let url = directory.appendingPathComponent("journeydeck-native-inbox.db")
@@ -134,10 +153,25 @@ private final class NativeRecorderDatabase {
         try execute("PRAGMA user_version=1;")
       }
     }
+    if schemaVersion < 2 {
+      try transaction {
+        try execute(RecorderCommandJournal.schema)
+        try execute("CREATE INDEX IF NOT EXISTS ix_native_commands_pending ON native_recorder_commands(owner_user_id,state,sequence);")
+        try execute("PRAGMA user_version=2;")
+      }
+    }
+    if schemaVersion < 3 {
+      try transaction {
+        try execute(RecorderStateMachine.checkpointSchema)
+        try execute("PRAGMA user_version=3;")
+      }
+    }
+    #if os(iOS)
     try? FileManager.default.setAttributes(
       [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
       ofItemAtPath: url.path
     )
+    #endif
   }
 
   deinit { close() }
@@ -254,6 +288,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
 
   private let locationManager = CLLocationManager()
   private let workQueue = DispatchQueue(label: "com.journeydeck.native-recorder", qos: .utility)
+  private let workQueueKey = DispatchSpecificKey<UInt8>()
   private let defaults = UserDefaults.standard
   private var state = DurableDetectionState.empty
   private var candidateLocations: [CLLocation] = []
@@ -261,15 +296,34 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   private var lastLocation: CLLocation?
   private var significantMonitoring = false
   private var preciseTracking = false
+  private var locationStateGeneration = 0
+  private var lastAuthorizationStatus: CLAuthorizationStatus = .notDetermined
   private var confirmationBurstTimer: DispatchWorkItem?
+  private var transitionObserver: (token: UUID, callback: (RecorderTransitionEvent) -> Void)?
+  private var eventStreamID = UUID().uuidString.lowercased()
+  private var eventSequence = 0
 
   private override init() {
     super.init()
-    state = loadDurableState()
+    workQueue.setSpecific(key: workQueueKey, value: 1)
     locationManager.delegate = self
+    lastAuthorizationStatus = locationManager.authorizationStatus
     locationManager.activityType = .automotiveNavigation
     locationManager.pausesLocationUpdatesAutomatically = false
     locationManager.showsBackgroundLocationIndicator = false
+  }
+
+  func setTransitionObserver(_ observer: @escaping (RecorderTransitionEvent) -> Void) -> UUID {
+    let token = UUID()
+    workQueue.async { self.transitionObserver = (token, observer) }
+    return token
+  }
+
+  func removeTransitionObserver(token: UUID) {
+    workQueue.async {
+      guard self.transitionObserver?.token == token else { return }
+      self.transitionObserver = nil
+    }
   }
 
   func bootstrap() {
@@ -303,49 +357,83 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   }
 
   func startManual(requestID: String, expectedToken: String? = nil) async -> [String: Any] {
+    let snapshot = await status()
+    return await executeCommand(operationID: requestID, action: "start", sessionID: "",
+      expectedToken: expectedToken ?? (snapshot["controlToken"] as? String ?? ""),
+      expiresAt: Date().timeIntervalSince1970 + 30)
+  }
+
+  func executeCommand(operationID: String, action: String, sessionID: String, expectedToken: String, expiresAt: Double) async -> [String: Any] {
     let authorized = await MainActor.run {
       CLLocationManager.locationServicesEnabled() && self.locationManager.authorizationStatus == .authorizedAlways
     }
-    guard authorized else {
-      setLastError("always_location_required")
-      return await status()
-    }
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+    let outcome: [String: Any] = await withCheckedContinuation { continuation in
       workQueue.async {
-        defer { continuation.resume() }
         do {
-          if let expectedToken, expectedToken != self.defaults.string(forKey: RecorderDefaults.controlToken) {
-            self.setLastError("refresh_required"); return
+          guard expiresAt.isFinite, Date().timeIntervalSince1970 <= expiresAt,
+                expiresAt - Date().timeIntervalSince1970 <= 60, UUID(uuidString: operationID) != nil, ["start", "pause", "resume", "finish"].contains(action),
+                let identity = self.configuredIdentity(), !expectedToken.isEmpty,
+                expectedToken == self.defaults.string(forKey: RecorderDefaults.controlToken) else {
+            continuation.resume(returning: ["state": "rejected", "errorCode": "refresh_required"]); return
           }
-          guard let identity = self.configuredIdentity(),
-                self.defaults.string(forKey: RecorderDefaults.manualOwner) == identity.owner,
-                !self.defaults.bool(forKey: RecorderDefaults.legacyManualActive) else {
-            self.setLastError("open_iphone_required")
-            return
-          }
-          guard UUID(uuidString: requestID) != nil else { self.setLastError("invalid_request"); return }
-          // A repeated start is idempotent even after its journey was completed.
-          let id = manualSessionPrefix + requestID.lowercased()
           let database = try NativeRecorderDatabase()
-          if try database.scalarInt("SELECT COUNT(*) FROM native_recording_sessions WHERE id=?;", bindings: [id]) > 0 { return }
-          if try self.activeSession(ownerUserID: identity.owner) != nil { return }
-          let session = try self.startSession(identity: identity, locations: [], manualID: id)
-          self.state = .empty
-          self.state.automaticSessionID = session.id
-          self.state.manualInactivity = ManualJourneyInactivity()
-          self.lastLocation = nil
-          self.persistState()
-          self.saveEvent("manual_started", sessionID: session.id)
-          self.setLastError(nil)
-        } catch { self.setLastError(self.safeCode(error)) }
+          let journal = RecorderCommandJournal(database)
+          let id = operationID.lowercased()
+          let target = action == "start" ? manualSessionPrefix + id : sessionID
+          guard target.hasPrefix(nativeSessionPrefix) else {
+            continuation.resume(returning: ["state": "rejected", "errorCode": "invalid_request"]); return
+          }
+          // Drain older intents before accepting another action on this queue.
+          try journal.recover(owner: identity.owner) { self.saveCommandEvent(action: $0, sessionID: $1) }
+          if action == "start" || action == "resume" {
+            guard authorized else {
+              continuation.resume(returning: ["state": "rejected", "errorCode": "always_location_required"]); return
+            }
+          }
+          if action == "start" && (self.defaults.string(forKey: RecorderDefaults.manualOwner) != identity.owner
+              || self.defaults.bool(forKey: RecorderDefaults.legacyManualActive)) {
+            continuation.resume(returning: ["state": "rejected", "errorCode": "open_iphone_required"]); return
+          }
+          let previousReceipt = try journal.outcome(operationID: id, owner: identity.owner)
+          try journal.submit(operationID: id, owner: identity.owner, device: identity.device,
+                             action: action, sessionID: target, issuedAt: self.iso(Date()))
+          try self.stopTrackingForPendingCommand(database, owner: identity.owner)
+          try journal.recover(owner: identity.owner, permittedOperationID: id) { self.saveCommandEvent(action: $0, sessionID: $1) }
+          let receipt = try journal.outcome(operationID: id, owner: identity.owner)
+          if receipt["state"] as? String == "applied", previousReceipt["state"] as? String != "applied" {
+            self.state.manualInactivity = nil
+             self.lastLocation = nil
+             self.setLastError(nil)
+          }
+          self.reconcilePersistedSession()
+          continuation.resume(returning: receipt)
+        } catch {
+          self.setLastError(self.safeCode(error))
+          continuation.resume(returning: ["state": "pending", "errorCode": self.safeCode(error)])
+        }
       }
     }
-    await withCheckedContinuation { continuation in
-      workQueue.async { self.reconcilePersistedSession(); continuation.resume() }
-    }
-    let result = await status()
+    var result = await status()
+    result["command"] = outcome
+    if let error = outcome["errorCode"] as? String { result["lastErrorCode"] = error }
     await JourneyDeckWatchBridge.shared.publish()
     return result
+  }
+
+  func commandOutcome(operationID: String) async -> [String: Any] {
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        do {
+          guard let identity = self.configuredIdentity() else { throw NativeRecorderError.notConfigured }
+          let database = try NativeRecorderDatabase()
+          let journal = RecorderCommandJournal(database)
+          try self.stopTrackingForPendingCommand(database, owner: identity.owner)
+          try journal.recover(owner: identity.owner) { self.saveCommandEvent(action: $0, sessionID: $1) }
+          self.reconcilePersistedSession()
+          continuation.resume(returning: try journal.outcome(operationID: operationID.lowercased(), owner: identity.owner))
+        } catch { continuation.resume(returning: ["state": "pending", "errorCode": self.safeCode(error)]) }
+      }
+    }
   }
 
   func configure(enabled: Bool, ownerUserID: String, deviceID: String) async -> [String: Any] {
@@ -355,22 +443,70 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       setLastError(NativeRecorderError.notConfigured.safeCode)
       return await status()
     }
-    await withCheckedContinuation { continuation in
+    let configured: Bool = await withCheckedContinuation { continuation in
       workQueue.async {
-        if self.configuredIdentity()?.owner != cleanOwner {
+        let previous = self.configuredIdentity()
+        let changed = previous?.owner != cleanOwner || previous?.device != cleanDevice
+        do {
+          if changed {
+            DispatchQueue.main.async { self.stopPreciseTracking() }
+            let database = try NativeRecorderDatabase()
+            // Also fence the incoming owner's old session: returning to a
+            // profile must not revive a recording left behind by an interrupted
+            // profile change or by cleared configuration defaults.
+            var owners = [(owner: cleanOwner, device: cleanDevice)]
+            if let previous, previous.owner != cleanOwner { owners.insert(previous, at: 0) }
+            for identity in owners {
+              if let row = try database.firstRow(
+                "SELECT id,status FROM native_recording_sessions WHERE owner_user_id=? AND status<>'completed';",
+                bindings: [identity.owner]), let id = row[0] {
+                let action: RecorderTransitionAction = row[1] == "finishing" ? .finish : .pause
+                let result = try RecorderStateMachine(database).apply(.init(action: action, source: .recovery,
+                  owner: identity.owner, device: identity.device, sessionID: id, occurredAt: self.iso(Date()),
+                  startedAt: nil, checkpoint: nil, operationID: nil, permitRestartStart: false))
+                guard result.applied else { throw NativeRecorderError.sqlite(result.errorCode ?? "profile_fence_failed") }
+                if identity.owner == previous?.owner { self.saveCommandEvent(action: action.rawValue, sessionID: id) }
+              }
+            }
+            self.defaults.removeObject(forKey: RecorderDefaults.manualOwner)
+            self.defaults.set(UUID().uuidString, forKey: RecorderDefaults.controlToken)
+            self.defaults.removeObject(forKey: RecorderDefaults.lastEvent)
+            self.defaults.removeObject(forKey: RecorderDefaults.lastEventAt)
+            self.defaults.removeObject(forKey: RecorderDefaults.lastError)
+            self.state = .empty
+            self.candidateLocations = []
+            self.preRollLocations = []
+            self.lastLocation = nil
+            self.eventStreamID = UUID().uuidString.lowercased()
+            self.eventSequence = 0
+          }
+          self.defaults.set(enabled, forKey: RecorderDefaults.enabled)
+          self.defaults.set(cleanOwner, forKey: RecorderDefaults.ownerUserID)
+          self.defaults.set(cleanDevice, forKey: RecorderDefaults.deviceID)
+          continuation.resume(returning: true)
+        } catch {
+          // A failed database fence must not enable the requested profile, or
+          // allow bootstrap/status to rearm the previous profile after relaunch.
+          self.defaults.set(false, forKey: RecorderDefaults.enabled)
+          self.defaults.removeObject(forKey: RecorderDefaults.ownerUserID)
+          self.defaults.removeObject(forKey: RecorderDefaults.deviceID)
           self.defaults.removeObject(forKey: RecorderDefaults.manualOwner)
           self.defaults.removeObject(forKey: RecorderDefaults.controlToken)
           self.state = .empty
+          self.candidateLocations = []
+          self.preRollLocations = []
           self.lastLocation = nil
+          self.eventStreamID = UUID().uuidString.lowercased()
+          self.eventSequence = 0
+          self.setLastError(self.safeCode(error))
+          DispatchQueue.main.async { self.stopSignificantMonitoring(); self.stopPreciseTracking() }
+          continuation.resume(returning: false)
         }
-        self.defaults.set(enabled, forKey: RecorderDefaults.enabled)
-        self.defaults.set(cleanOwner, forKey: RecorderDefaults.ownerUserID)
-        self.defaults.set(cleanDevice, forKey: RecorderDefaults.deviceID)
-        continuation.resume()
       }
     }
+    guard configured else { return await status() }
     await MainActor.run {
-      if enabled { self.startSignificantMonitoringIfAuthorized() }
+      if self.defaults.bool(forKey: RecorderDefaults.enabled) { self.startSignificantMonitoringIfAuthorized() }
       else { self.stopSignificantMonitoring() }
     }
     await withCheckedContinuation { continuation in
@@ -383,95 +519,114 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   }
 
   func status() async -> [String: Any] {
-    let snapshot: (ActiveSession?, String?) = await withCheckedContinuation { continuation in
+    await status(attempt: 0)
+  }
+
+  private func status(attempt: Int) async -> [String: Any] {
+    let snapshot: RecorderStatusSnapshot = await withCheckedContinuation { continuation in
       workQueue.async {
+        let identity = self.configuredIdentity()
+        let enabled = self.defaults.bool(forKey: RecorderDefaults.enabled)
+        let controlToken = self.defaults.string(forKey: RecorderDefaults.controlToken) ?? ""
+        let legacyManualActive = self.defaults.bool(forKey: RecorderDefaults.legacyManualActive)
+        let manualReady = identity != nil && identity?.owner == self.defaults.string(forKey: RecorderDefaults.manualOwner)
+          && !legacyManualActive
         do {
-          guard let identity = self.configuredIdentity() else { continuation.resume(returning: (nil, nil)); return }
+          guard let identity else {
+            continuation.resume(returning: RecorderStatusSnapshot(session: nil, error: nil, owner: nil, device: nil,
+              enabled: enabled, streamID: self.eventStreamID, sequence: self.eventSequence,
+              lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
+              lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+              lastError: self.defaults.string(forKey: RecorderDefaults.lastError), controlToken: controlToken,
+              manualReady: manualReady, legacyManualActive: legacyManualActive)); return
+          }
           var session = try self.activeSession(ownerUserID: identity.owner)
-          if let active = session, active.id.hasPrefix(manualSessionPrefix),
-             Date().timeIntervalSince(active.startedAt) >= ManualJourneyInactivity.maximumDuration {
-            self.reconcilePersistedSession()
+          var reconciliationError: String?
+          // Polling recovers transport for a committed active journey. Do not
+          // reconcile the idle path here: it owns automatic-detection bursts.
+          if session != nil {
+            reconciliationError = self.reconcilePersistedSession()
             session = try self.activeSession(ownerUserID: identity.owner)
           }
-          continuation.resume(returning: (session, nil))
+          continuation.resume(returning: RecorderStatusSnapshot(session: session, error: reconciliationError, owner: identity.owner,
+            device: identity.device, enabled: enabled, streamID: self.eventStreamID, sequence: self.eventSequence,
+            lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
+            lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+            lastError: self.defaults.string(forKey: RecorderDefaults.lastError), controlToken: controlToken,
+            manualReady: manualReady, legacyManualActive: legacyManualActive))
         } catch {
-          continuation.resume(returning: (nil, self.safeCode(error)))
+          continuation.resume(returning: RecorderStatusSnapshot(session: nil, error: self.safeCode(error),
+            owner: identity?.owner, device: identity?.device, enabled: enabled, streamID: self.eventStreamID,
+            sequence: self.eventSequence, lastEvent: self.defaults.string(forKey: RecorderDefaults.lastEvent),
+            lastEventAt: self.defaults.string(forKey: RecorderDefaults.lastEventAt),
+            lastError: self.defaults.string(forKey: RecorderDefaults.lastError),
+            controlToken: controlToken, manualReady: manualReady, legacyManualActive: legacyManualActive))
         }
       }
     }
-    let authorization = await MainActor.run { self.authorizationName(self.locationManager.authorizationStatus) }
-    let locationState = await MainActor.run { (self.significantMonitoring, self.preciseTracking) }
-    let session = snapshot.0
+    let locationState = await MainActor.run {
+      (self.authorizationName(self.locationManager.authorizationStatus), self.significantMonitoring,
+       self.preciseTracking, self.locationStateGeneration)
+    }
+    let stillCurrent = await withCheckedContinuation { continuation in
+      workQueue.async {
+        let identity = self.configuredIdentity()
+        continuation.resume(returning: identity?.owner == snapshot.owner && identity?.device == snapshot.device
+          && self.eventStreamID == snapshot.streamID && self.eventSequence == snapshot.sequence
+          && self.defaults.bool(forKey: RecorderDefaults.enabled) == snapshot.enabled
+          && (self.defaults.string(forKey: RecorderDefaults.controlToken) ?? "") == snapshot.controlToken
+          && self.defaults.bool(forKey: RecorderDefaults.legacyManualActive) == snapshot.legacyManualActive
+          && (identity != nil && identity?.owner == self.defaults.string(forKey: RecorderDefaults.manualOwner)
+            && !snapshot.legacyManualActive) == snapshot.manualReady)
+      }
+    }
+    let locationStillCurrent = await MainActor.run { self.locationStateGeneration == locationState.3 }
+    if (!stillCurrent || !locationStillCurrent) && attempt == 0 { return await status(attempt: 1) }
+    let coherent = stillCurrent && locationStillCurrent
+    let session = coherent ? snapshot.session : nil
     let nativeSessionID = session?.id.hasPrefix(nativeSessionPrefix) == true ? session?.id : nil
     let sessionValue: Any = nativeSessionID.map { $0 as Any } ?? NSNull()
-    let eventValue: Any = defaults.string(forKey: RecorderDefaults.lastEvent).map { $0 as Any } ?? NSNull()
-    let eventAtValue: Any = defaults.string(forKey: RecorderDefaults.lastEventAt).map { $0 as Any } ?? NSNull()
-    let errorValue: Any = (snapshot.1 ?? defaults.string(forKey: RecorderDefaults.lastError)).map { $0 as Any } ?? NSNull()
+    let eventValue: Any = snapshot.lastEvent.map { $0 as Any } ?? NSNull()
+    let eventAtValue: Any = snapshot.lastEventAt.map { $0 as Any } ?? NSNull()
+    let errorValue: Any = (snapshot.error ?? snapshot.lastError).map { $0 as Any } ?? NSNull()
     return [
       "nativeModuleAvailable": true,
-      "statusReliable": snapshot.1 == nil,
-      "configured": configuredIdentity() != nil,
-      "enabled": defaults.bool(forKey: RecorderDefaults.enabled),
-      "significantMonitoring": locationState.0,
-      "preciseTracking": locationState.1,
+      "statusReliable": snapshot.error == nil && coherent,
+      "configured": snapshot.owner != nil && coherent,
+      "enabled": snapshot.enabled,
+      "significantMonitoring": locationState.1,
+      "preciseTracking": locationState.2,
+      "commandJournalVersion": 1,
+      "eventStreamId": snapshot.streamID,
+      "eventSequence": snapshot.sequence,
       "recording": session?.status == "recording" && session?.id.hasPrefix(nativeSessionPrefix) == true,
       "paused": session?.status == "paused" && session?.id.hasPrefix(nativeSessionPrefix) == true,
       "sessionId": sessionValue,
-      "authorization": authorization,
+      "authorization": locationState.0,
       "lastEvent": eventValue,
       "lastEventAt": eventAtValue,
       "lastErrorCode": errorValue,
-      "controlToken": defaults.string(forKey: RecorderDefaults.controlToken) ?? "",
-      "manualReady": configuredIdentity() != nil && configuredIdentity()?.owner == defaults.string(forKey: RecorderDefaults.manualOwner)
-        && !defaults.bool(forKey: RecorderDefaults.legacyManualActive),
-      "legacyManualActive": defaults.bool(forKey: RecorderDefaults.legacyManualActive)
+      "controlToken": snapshot.controlToken,
+      "manualReady": snapshot.manualReady && coherent,
+      "legacyManualActive": snapshot.legacyManualActive
     ]
   }
 
+  private func legacyCommand(action: String, expectedSessionID: String?) async -> [String: Any] {
+    let snapshot = await status()
+    guard let sessionID = expectedSessionID ?? (snapshot["sessionId"] as? String) else { return snapshot }
+    return await executeCommand(operationID: UUID().uuidString, action: action, sessionID: sessionID,
+      expectedToken: snapshot["controlToken"] as? String ?? "", expiresAt: Date().timeIntervalSince1970 + 30)
+  }
+
   func pause(expectedSessionID: String? = nil) async -> [String: Any] {
-    await mutateActiveNativeSession(targetStatus: "paused", expectedSessionID: expectedSessionID)
-    let result = await status()
-    await JourneyDeckWatchBridge.shared.publish()
-    return result
+    await legacyCommand(action: "pause", expectedSessionID: expectedSessionID)
   }
-
   func resume(expectedSessionID: String? = nil) async -> [String: Any] {
-    let authorized = await MainActor.run {
-      CLLocationManager.locationServicesEnabled() && self.locationManager.authorizationStatus == .authorizedAlways
-    }
-    guard authorized else {
-      setLastError("always_location_required")
-      return await status()
-    }
-    await mutateActiveNativeSession(targetStatus: "recording", expectedSessionID: expectedSessionID)
-    let result = await status()
-    await JourneyDeckWatchBridge.shared.publish()
-    return result
+    await legacyCommand(action: "resume", expectedSessionID: expectedSessionID)
   }
-
   func finish(expectedSessionID: String? = nil) async -> [String: Any] {
-    await withCheckedContinuation { continuation in
-      workQueue.async {
-        do {
-          guard let identity = self.configuredIdentity(),
-                let session = try self.activeSession(ownerUserID: identity.owner),
-                session.id.hasPrefix(nativeSessionPrefix) else { continuation.resume(); return }
-          if let expectedSessionID, session.id != expectedSessionID { continuation.resume(); return }
-          try self.finishSession(session, endedAt: Date())
-          self.state = .empty
-          self.persistState()
-          self.saveEvent(session.id.hasPrefix(manualSessionPrefix) ? "manual_finished" : "finished", sessionID: session.id)
-          self.setLastError(nil)
-        } catch { self.setLastError(self.safeCode(error)) }
-        continuation.resume()
-      }
-    }
-    await withCheckedContinuation { continuation in
-      workQueue.async { self.reconcilePersistedSession(); continuation.resume() }
-    }
-    let result = await status()
-    await JourneyDeckWatchBridge.shared.publish()
-    return result
+    await legacyCommand(action: "finish", expectedSessionID: expectedSessionID)
   }
 
   func exportInbox(afterSequences: [String: Int], preferredSessionID: String? = nil) async -> [String: Any] {
@@ -589,10 +744,15 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
   }
 
   func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+    if manager.authorizationStatus != lastAuthorizationStatus {
+      lastAuthorizationStatus = manager.authorizationStatus
+      locationStateGeneration += 1
+    }
     if defaults.bool(forKey: RecorderDefaults.enabled) { startSignificantMonitoringIfAuthorized() }
     if manager.authorizationStatus != .authorizedAlways {
+      stopPreciseTracking()
       setLastError("always_location_required")
-    } else if defaults.string(forKey: RecorderDefaults.lastError) == "always_location_required" {
+    } else {
       setLastError(nil)
     }
   }
@@ -615,20 +775,29 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     do {
       let active = try activeSession(ownerUserID: identity.owner)
       if let active, active.id.hasPrefix(nativeSessionPrefix) {
-        state.automaticSessionID = active.id
+        try restoreCheckpoint(database: NativeRecorderDatabase(), identity: identity, session: active)
         if active.status == "recording" {
           try recordAndEvaluate(locations, session: active)
         } else if active.status == "finishing" {
-          try finishSession(active, endedAt: locations.last?.timestamp ?? Date())
+          let finalLocation = locations.last
+          do {
+            try finishSession(active, endedAt: finalLocation?.timestamp ?? Date()) { database in
+              if let finalLocation, self.validCoordinate(finalLocation) {
+                try self.insertLocations([finalLocation], sessionID: active.id, database: database)
+              }
+            }
+          }
+          catch {
+            DispatchQueue.main.async { self.stopPreciseTracking() }
+            throw error
+          }
           state = .empty
-          persistState()
           saveEvent("finished", sessionID: active.id)
           DispatchQueue.main.async { self.stopPreciseTracking() }
         }
         return
       }
       if active != nil {
-        resetCandidate()
         preRollLocations = []
         DispatchQueue.main.async {
           self.cancelConfirmationBurst()
@@ -648,12 +817,18 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
 
   private func evaluateStart(_ location: CLLocation, identity: (owner: String, device: String)) throws {
     guard validForDetection(location), abs(location.timestamp.timeIntervalSinceNow) <= driveStartSampleWindow else { return }
+    let previousCandidateLocations = candidateLocations
+    let previousPreRollLocations = preRollLocations
     appendPreRoll(location)
     let speed = startSpeed(for: location)
-    defer { lastLocation = location }
-    guard let speed else { return }
+    guard let speed else { lastLocation = location; return }
     guard speed >= driveStartSpeedMetersPerSecond else {
-      resetCandidate()
+      do { try resetCandidate(owner: identity.owner); lastLocation = location }
+      catch {
+        candidateLocations = previousCandidateLocations
+        preRollLocations = previousPreRollLocations
+        throw error
+      }
       return
     }
     let timestamp = location.timestamp.timeIntervalSince1970
@@ -661,33 +836,41 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       || timestamp < (state.candidateLastAt ?? timestamp)
       || timestamp - (state.candidateLastAt ?? timestamp) > driveStartSampleWindow
       || timestamp - (state.candidateStartedAt ?? timestamp) > driveStartSampleWindow
+    var nextState = state
     if expired {
-      state.candidateStartedAt = timestamp
-      state.candidateSamples = 1
+      nextState.candidateStartedAt = timestamp
+      nextState.candidateSamples = 1
       candidateLocations = [location]
     } else {
-      state.candidateSamples += 1
+      nextState.candidateSamples += 1
       candidateLocations.append(location)
     }
-    state.candidateLastAt = timestamp
-    persistState()
+    nextState.candidateLastAt = timestamp
+    do { try commitState(nextState, owner: identity.owner, sessionID: nil) }
+    catch {
+      candidateLocations = previousCandidateLocations
+      preRollLocations = previousPreRollLocations
+      throw error
+    }
+    lastLocation = location
     DispatchQueue.main.async { self.startPreciseTrackingIfAuthorized() }
-    let span = timestamp - (state.candidateStartedAt ?? timestamp)
-    guard state.candidateSamples >= driveStartSampleCount, span >= driveStartMinimumSpan else { return }
+    let span = timestamp - (nextState.candidateStartedAt ?? timestamp)
+    guard nextState.candidateSamples >= driveStartSampleCount, span >= driveStartMinimumSpan else { return }
     do {
       let departureLocations = preRollLocations.isEmpty ? candidateLocations : preRollLocations
       let session = try startSession(identity: identity, locations: departureLocations)
-      state = DurableDetectionState.empty
-      state.automaticSessionID = session.id
+      var committed = DurableDetectionState.empty
+      committed.automaticSessionID = session.id
+      committed.lastCommandSequence = state.lastCommandSequence
+      state = committed
       candidateLocations = []
       preRollLocations = []
-      persistState()
       DispatchQueue.main.async { self.cancelConfirmationBurst() }
       saveEvent("started", sessionID: session.id)
       setLastError(nil)
     } catch {
       saveEvent("start_failed", sessionID: nil)
-      resetCandidate()
+      try? resetCandidate(owner: identity.owner)
       preRollLocations = []
       DispatchQueue.main.async {
         self.cancelConfirmationBurst()
@@ -703,24 +886,37 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       return
     }
     let validLocations = locations.filter { $0.timestamp >= session.startedAt && self.validCoordinate($0) }
-    if !validLocations.isEmpty { try insertLocations(validLocations, sessionID: session.id) }
-    for location in validLocations where validForDetection(location) {
+    for location in validLocations {
+      let previousLastLocation = lastLocation
+      if !validForDetection(location) {
+        guard let owner = configuredIdentity()?.owner else { throw NativeRecorderError.notConfigured }
+        try commitState(state, owner: owner, sessionID: session.id) { database in
+          try self.insertLocations([location], sessionID: session.id, database: database)
+        }
+        continue
+      }
       let inferred = inferredSpeed(for: location)
       let native = location.speed >= 0 && location.speed <= 150 ? location.speed : nil
       let effective = inferred ?? native ?? 0
       lastLocation = location
+      var nextState = state
       if effective > driveStopSpeedMetersPerSecond {
-        state.stoppedSince = nil
+        nextState.stoppedSince = nil
       } else {
         let timestamp = location.timestamp.timeIntervalSince1970
-        let stoppedSince = state.stoppedSince ?? timestamp
-        state.stoppedSince = stoppedSince
+        let stoppedSince = nextState.stoppedSince ?? timestamp
+        nextState.stoppedSince = stoppedSince
         if timestamp - stoppedSince >= driveStopDuration {
-          try markFinishing(sessionID: session.id, endedAt: location.timestamp)
-          let finishing = ActiveSession(id: session.id, status: "finishing", startedAt: session.startedAt)
-          try finishSession(finishing, endedAt: location.timestamp)
+          do {
+            try finishSession(session, endedAt: location.timestamp) { database in
+              try self.insertLocations([location], sessionID: session.id, database: database)
+            }
+          } catch {
+            lastLocation = previousLastLocation
+            DispatchQueue.main.async { self.stopPreciseTracking() }
+            throw error
+          }
           state = .empty
-          persistState()
           saveEvent("finished", sessionID: session.id)
           DispatchQueue.main.async {
             self.stopPreciseTracking()
@@ -729,7 +925,12 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
           return
         }
       }
-      persistState()
+      guard let owner = configuredIdentity()?.owner else { throw NativeRecorderError.notConfigured }
+      do {
+        try commitState(nextState, owner: owner, sessionID: session.id) { database in
+          try self.insertLocations([location], sessionID: session.id, database: database)
+        }
+      } catch { lastLocation = previousLastLocation; throw error }
     }
   }
 
@@ -737,19 +938,26 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     var policy = state.manualInactivity ?? ManualJourneyInactivity()
     let now = Date().timeIntervalSince1970
     for location in locations where location.timestamp >= session.startedAt && location.timestamp.timeIntervalSince1970 <= now {
-      if validCoordinate(location) { try insertLocations([location], sessionID: session.id) }
       let stop = policy.observe(.init(timestamp: location.timestamp.timeIntervalSince1970,
         latitude: location.coordinate.latitude, longitude: location.coordinate.longitude,
         accuracy: location.horizontalAccuracy, speed: location.speed), now: now)
-      state.manualInactivity = policy
-      persistState()
+      var nextState = state
+      nextState.manualInactivity = policy
       if stop || now - session.startedAt.timeIntervalSince1970 >= ManualJourneyInactivity.maximumDuration {
-        try finishSession(session, endedAt: location.timestamp)
+        do {
+          try finishSession(session, endedAt: location.timestamp) { database in
+            if self.validCoordinate(location) { try self.insertLocations([location], sessionID: session.id, database: database) }
+          }
+        }
+        catch { DispatchQueue.main.async { self.stopPreciseTracking() }; throw error }
         state = .empty
-        persistState()
         saveEvent("manual_auto_finished", sessionID: session.id)
         DispatchQueue.main.async { self.stopPreciseTracking() }
         return
+      }
+      guard let owner = configuredIdentity()?.owner else { throw NativeRecorderError.notConfigured }
+      try commitState(nextState, owner: owner, sessionID: session.id) {
+        if self.validCoordinate(location) { try self.insertLocations([location], sessionID: session.id, database: $0) }
       }
     }
   }
@@ -759,22 +967,20 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let id = manualID ?? (nativeSessionPrefix + UUID().uuidString.lowercased())
     let startedAt = locations.first?.timestamp ?? Date()
     let now = Date()
-    try database.transaction {
-      guard try database.scalarInt("SELECT COUNT(*) FROM native_recording_sessions WHERE owner_user_id=? AND status<>'completed';", bindings: [identity.owner]) == 0 else {
-        throw NativeRecorderError.sqlite("active_session_exists")
+    var checkpoint = DurableDetectionState.empty
+    checkpoint.automaticSessionID = id
+    checkpoint.lastCommandSequence = state.lastCommandSequence
+    let json = try JSONEncoder().encode(checkpoint)
+    let result = try RecorderStateMachine(database).apply(.init(action: .start, source: .automatic,
+      owner: identity.owner, device: identity.device, sessionID: id, occurredAt: iso(now), startedAt: iso(startedAt),
+      checkpoint: String(data: json, encoding: .utf8), operationID: nil, permitRestartStart: true)) {
+        try self.insertLocations(locations, sessionID: id, database: database)
       }
-      try database.execute(
-        "INSERT INTO native_recording_sessions(id,owner_user_id,device_id,status,started_at,created_at,updated_at) VALUES(?,?,?,'recording',?,?,?);",
-        bindings: [id, identity.owner, identity.device, iso(startedAt), iso(now), iso(now)]
-      )
-      try insertLocations(locations, sessionID: id, database: database)
-    }
+    guard result.applied else { throw NativeRecorderError.sqlite(result.errorCode ?? "transition_rejected") }
     return ActiveSession(id: id, status: "recording", startedAt: startedAt)
   }
 
-  private func insertLocations(_ locations: [CLLocation], sessionID: String, database supplied: NativeRecorderDatabase? = nil) throws {
-    let database = try supplied ?? NativeRecorderDatabase()
-    let work = {
+  private func insertLocations(_ locations: [CLLocation], sessionID: String, database: NativeRecorderDatabase) throws {
       var sequence = Int(try database.scalarInt("SELECT next_sequence FROM native_recording_sessions WHERE id=?;", bindings: [sessionID]))
       for location in locations where self.validCoordinate(location) && sequence <= 10_000_000 {
         try database.execute(
@@ -786,99 +992,94 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
         sequence += 1
       }
       try database.execute("UPDATE native_recording_sessions SET next_sequence=?,updated_at=? WHERE id=?;", bindings: [sequence, self.iso(Date()), sessionID])
-    }
-    if supplied == nil { try database.transaction(work) } else { try work() }
   }
 
-  private func markFinishing(sessionID: String, endedAt: Date) throws {
+  private func finishSession(_ session: ActiveSession, endedAt: Date,
+                             relatedWrites: ((NativeRecorderDatabase) throws -> Void)? = nil) throws {
     let database = try NativeRecorderDatabase()
-    try database.execute(
-      "UPDATE native_recording_sessions SET status='finishing',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status='recording';",
-      bindings: [iso(endedAt), iso(Date()), sessionID]
-    )
-  }
-
-  private func finishSession(_ session: ActiveSession, endedAt: Date) throws {
-    let database = try NativeRecorderDatabase()
-    let now = iso(Date())
     let ended = iso(max(endedAt, session.startedAt))
-    try database.transaction {
-      try database.execute(
-        "UPDATE native_recording_sessions SET status='completed',ended_at=COALESCE(ended_at,?),updated_at=? WHERE id=? AND status<>'completed';",
-        bindings: [ended, now, session.id]
-      )
-    }
-  }
-
-  private func mutateActiveNativeSession(targetStatus: String, expectedSessionID: String? = nil) async {
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      workQueue.async {
-        defer {
-          // GPS follows the committed session state, even when a mutation
-          // failed or a newer Watch journey replaced the requested journey.
-          self.reconcilePersistedSession()
-          continuation.resume()
-        }
-        do {
-          guard let identity = self.configuredIdentity(), let session = try self.activeSession(ownerUserID: identity.owner),
-                session.id.hasPrefix(nativeSessionPrefix) else { return }
-          if let expectedSessionID, session.id != expectedSessionID {
-            self.setLastError("session_changed")
-            return
-          }
-          let database = try NativeRecorderDatabase()
-          try database.execute("UPDATE native_recording_sessions SET status=?,updated_at=? WHERE id=? AND status IN ('recording','paused');",
-                               bindings: [targetStatus, self.iso(Date()), session.id])
-          self.state.automaticSessionID = session.id
-          if session.id.hasPrefix(manualSessionPrefix) { self.state.manualInactivity = ManualJourneyInactivity() }
-          self.persistState()
-          self.setLastError(nil)
-        } catch { self.setLastError(self.safeCode(error)) }
+    guard let identity = configuredIdentity() else { throw NativeRecorderError.notConfigured }
+    let source: RecorderTransitionSource = session.id.hasPrefix(manualSessionPrefix) ? .inactivity : .automatic
+    let result = try RecorderStateMachine(database).apply(.init(action: .finish, source: source,
+      owner: identity.owner, device: identity.device, sessionID: session.id, occurredAt: ended, startedAt: nil,
+      checkpoint: nil, operationID: nil, permitRestartStart: false)) {
+        try relatedWrites?(database)
       }
-    }
+    guard result.applied else { throw NativeRecorderError.sqlite(result.errorCode ?? "transition_rejected") }
   }
 
-  private func reconcilePersistedSession() {
-    guard let identity = configuredIdentity() else { return }
+  @discardableResult
+  private func reconcilePersistedSession() -> String? {
+    guard let identity = configuredIdentity() else { return nil }
     do {
       guard let session = try activeSession(ownerUserID: identity.owner) else {
-        state = .empty
-        persistState()
+        let database = try NativeRecorderDatabase()
+        if let json = try RecorderStateMachine(database).loadIdleCheckpoint(owner: identity.owner),
+           let data = json.data(using: .utf8), let decoded = try? JSONDecoder().decode(DurableDetectionState.self, from: data),
+           decoded.automaticSessionID == nil { state = decoded }
+        else { state = .empty }
+        defaults.removeObject(forKey: RecorderDefaults.durableState)
         DispatchQueue.main.async { self.stopPreciseTracking() }
-        return
+        return nil
       }
       guard session.id.hasPrefix(nativeSessionPrefix) else {
-        state = .empty
-        persistState()
         DispatchQueue.main.async { self.stopPreciseTracking() }
-        return
+        return nil
       }
-      if state.automaticSessionID != session.id { state.manualInactivity = nil }
-      state.automaticSessionID = session.id
-      persistState()
-      if session.id.hasPrefix(manualSessionPrefix), Date().timeIntervalSince(session.startedAt) >= ManualJourneyInactivity.maximumDuration {
+      // Finishing is terminal work. The state machine rejects new movement
+      // checkpoints for it, so complete it before attempting restoration.
+      if session.status == "finishing" {
         try finishSession(session, endedAt: Date())
         state = .empty
-        persistState()
+        saveEvent("finished", sessionID: session.id)
+        DispatchQueue.main.async { self.stopPreciseTracking() }
+        return nil
+      }
+      try restoreCheckpoint(database: NativeRecorderDatabase(), identity: identity, session: session)
+      if state.automaticSessionID != session.id {
+        var nextState = state
+        nextState.manualInactivity = nil
+        nextState.automaticSessionID = session.id
+        try commitState(nextState, owner: identity.owner, sessionID: session.id)
+      }
+      if session.id.hasPrefix(manualSessionPrefix),
+         Date().timeIntervalSince(session.startedAt) >= ManualJourneyInactivity.maximumDuration
+          || (session.status == "recording" && state.manualInactivity?.shouldFinish(now: Date().timeIntervalSince1970) == true) {
+        try finishSession(session, endedAt: Date())
+        state = .empty
         saveEvent("manual_auto_finished", sessionID: session.id)
         DispatchQueue.main.async { self.stopPreciseTracking() }
-        return
+        return nil
       }
       if session.status == "recording" {
         DispatchQueue.main.async { self.startPreciseTrackingIfAuthorized() }
       } else if session.status == "paused" {
         DispatchQueue.main.async { self.stopPreciseTracking() }
-      } else if session.status == "finishing" {
-        try finishSession(session, endedAt: Date())
-        state = .empty
-        persistState()
-        saveEvent("finished", sessionID: session.id)
       }
-    } catch { setLastError(safeCode(error)) }
+      return nil
+    } catch {
+      let code = safeCode(error)
+      setLastError(code)
+      DispatchQueue.main.async { self.stopPreciseTracking() }
+      return code
+    }
+  }
+
+  private func stopTrackingForPendingCommand(_ database: NativeRecorderDatabase, owner: String) throws {
+    // A durable Pause/Finish intent stops acquisition even if its transition
+    // cannot yet commit (for example, a full disk). Never stop a different ID.
+    let pending = try database.scalarInt("""
+      SELECT COUNT(*) FROM native_recorder_commands c
+      JOIN native_recording_sessions s ON s.id=c.session_id AND s.owner_user_id=c.owner_user_id
+      WHERE c.owner_user_id=? AND c.state='pending' AND c.action IN ('pause','finish') AND s.status<>'completed';
+    """, bindings: [owner])
+    if pending > 0 { DispatchQueue.main.async { self.stopPreciseTracking() } }
   }
 
   private func activeSession(ownerUserID: String) throws -> ActiveSession? {
     let database = try NativeRecorderDatabase()
+    try stopTrackingForPendingCommand(database, owner: ownerUserID)
+    try RecorderCommandJournal(database).recover(owner: ownerUserID) { self.saveCommandEvent(action: $0, sessionID: $1) }
     guard let row = try database.firstRow(
       "SELECT id,status,started_at FROM native_recording_sessions WHERE owner_user_id=? AND status<>'completed' ORDER BY created_at DESC LIMIT 1;",
       bindings: [ownerUserID]
@@ -890,7 +1091,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     let occurredAt = iso(Date())
     defaults.set(kind, forKey: RecorderDefaults.lastEvent)
     defaults.set(occurredAt, forKey: RecorderDefaults.lastEventAt)
-    _ = sessionID
+    let status = kind.contains("failed") ? "failed" : kind == "paused" ? "paused"
+      : ((kind.contains("finish") || kind == "finished") ? "finished" : "recording")
+    eventSequence += 1
+    let event = RecorderTransitionEvent(streamID: eventStreamID, sequence: eventSequence, status: status, sessionID: sessionID, occurredAt: occurredAt)
+    if let observer = transitionObserver?.callback { DispatchQueue.main.async { observer(event) } }
     Task { await JourneyDeckWatchBridge.shared.publish() }
   }
 
@@ -906,6 +1111,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     if !significantMonitoring {
       locationManager.startMonitoringSignificantLocationChanges()
       significantMonitoring = true
+      locationStateGeneration += 1
     }
   }
 
@@ -913,8 +1119,10 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     if significantMonitoring {
       locationManager.stopMonitoringSignificantLocationChanges()
       significantMonitoring = false
+      locationStateGeneration += 1
     }
-    if state.automaticSessionID == nil { stopPreciseTracking() }
+    // The recorder queue reconciles precise GPS from the committed session.
+    // Do not read its movement state from the main queue to make that decision.
   }
 
   private func startPreciseTrackingIfAuthorized() {
@@ -929,6 +1137,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     locationManager.allowsBackgroundLocationUpdates = true
     locationManager.startUpdatingLocation()
     preciseTracking = true
+    locationStateGeneration += 1
   }
 
   private func startConfirmationBurstIfAuthorized() {
@@ -939,7 +1148,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       guard let self else { return }
       self.workQueue.async {
         guard self.state.automaticSessionID == nil else { return }
-        self.resetCandidate()
+        if let owner = self.configuredIdentity()?.owner { try? self.resetCandidate(owner: owner) }
         self.preRollLocations = []
         DispatchQueue.main.async { self.stopPreciseTracking() }
       }
@@ -959,14 +1168,26 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     locationManager.stopUpdatingLocation()
     locationManager.allowsBackgroundLocationUpdates = false
     preciseTracking = false
+    locationStateGeneration += 1
   }
 
-  private func resetCandidate() {
-    state.candidateStartedAt = nil
-    state.candidateLastAt = nil
-    state.candidateSamples = 0
+  private func resetCandidate(owner: String) throws {
+    var nextState = state
+    nextState.candidateStartedAt = nil
+    nextState.candidateLastAt = nil
+    nextState.candidateSamples = 0
+    try commitState(nextState, owner: owner, sessionID: nextState.automaticSessionID)
     candidateLocations = []
-    persistState()
+  }
+
+  private func saveCommandEvent(action: String, sessionID: String) {
+    switch action {
+    case "start": saveEvent("manual_started", sessionID: sessionID)
+    case "pause": saveEvent("paused", sessionID: sessionID)
+    case "resume": saveEvent("resumed", sessionID: sessionID)
+    case "finish": saveEvent(sessionID.hasPrefix(manualSessionPrefix) ? "manual_finished" : "finished", sessionID: sessionID)
+    default: break
+    }
   }
 
   private func appendPreRoll(_ location: CLLocation) {
@@ -1010,19 +1231,67 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     return (owner, device)
   }
 
-  private func loadDurableState() -> DurableDetectionState {
-    guard let data = defaults.data(forKey: RecorderDefaults.durableState),
-          let decoded = try? JSONDecoder().decode(DurableDetectionState.self, from: data) else { return .empty }
-    return decoded
+  private func commitState(_ nextState: DurableDetectionState, owner: String, sessionID: String?,
+                           relatedWrites: ((NativeRecorderDatabase) throws -> Void)? = nil) throws {
+    guard !owner.isEmpty, let data = try? JSONEncoder().encode(nextState),
+          let json = String(data: data, encoding: .utf8) else { throw NativeRecorderError.notConfigured }
+    let database = try NativeRecorderDatabase()
+    try RecorderStateMachine(database).saveCheckpoint(owner: owner, sessionID: sessionID,
+      stateJSON: json, occurredAt: iso(Date())) { try relatedWrites?(database) }
+    state = nextState
   }
 
-  private func persistState() {
-    if let data = try? JSONEncoder().encode(state) { defaults.set(data, forKey: RecorderDefaults.durableState) }
+  private func restoreCheckpoint(database: NativeRecorderDatabase, identity: (owner: String, device: String), session: ActiveSession) throws {
+    let machine = RecorderStateMachine(database)
+    var json = try machine.loadCheckpoint(owner: identity.owner, sessionID: session.id)
+    if json == nil, let legacy = defaults.data(forKey: RecorderDefaults.durableState) {
+      if let decoded = try? JSONDecoder().decode(DurableDetectionState.self, from: legacy),
+         decoded.automaticSessionID == session.id, let imported = String(data: legacy, encoding: .utf8) {
+        // Remove the legacy value only after the SQLite commit. A transient
+        // write failure retries migration instead of silently losing recovery.
+        try machine.saveCheckpoint(owner: identity.owner, sessionID: session.id,
+          stateJSON: imported, occurredAt: iso(Date()))
+        json = imported
+      }
+    }
+    // A matching value has committed, or the value is stale/malformed. Either
+    // way UserDefaults is no longer a continuing authority.
+    defaults.removeObject(forKey: RecorderDefaults.durableState)
+    var restored = DurableDetectionState.empty
+    if let json, let data = json.data(using: .utf8),
+       let decoded = try? JSONDecoder().decode(DurableDetectionState.self, from: data),
+       decoded.automaticSessionID == session.id { restored = decoded }
+    restored.automaticSessionID = session.id
+    let commandSequence = Int(try database.scalarInt(
+      "SELECT COALESCE(MAX(sequence),0) FROM native_recorder_commands WHERE owner_user_id=? AND state='applied';",
+      bindings: [identity.owner]))
+    if restored.lastCommandSequence != commandSequence {
+      restored.lastCommandSequence = commandSequence
+      restored.manualInactivity = nil
+      restored.stoppedSince = nil
+      lastLocation = nil
+      guard let data = try? JSONEncoder().encode(restored), let sanitized = String(data: data, encoding: .utf8) else {
+        throw NativeRecorderError.databaseSchema
+      }
+      try machine.saveCheckpoint(owner: identity.owner, sessionID: session.id,
+        stateJSON: sanitized, occurredAt: iso(Date()))
+    }
+    state = restored
   }
 
   private func setLastError(_ code: String?) {
-    if let code { defaults.set(code, forKey: RecorderDefaults.lastError) }
-    else { defaults.removeObject(forKey: RecorderDefaults.lastError) }
+    let apply = {
+      let previous = self.defaults.string(forKey: RecorderDefaults.lastError)
+      guard previous != code else { return }
+      if let code {
+        self.defaults.set(code, forKey: RecorderDefaults.lastError)
+        self.saveEvent("status_failed", sessionID: self.state.automaticSessionID)
+      } else {
+        self.defaults.removeObject(forKey: RecorderDefaults.lastError)
+      }
+    }
+    if DispatchQueue.getSpecific(key: workQueueKey) != nil { apply() }
+    else { workQueue.async(execute: apply) }
   }
 
   private func safeCode(_ error: Error) -> String {
@@ -1058,15 +1327,35 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
 }
 
 public final class JourneyDeckRecorderModule: Module {
+  private var transitionObserverToken: UUID?
+
   public func definition() -> ModuleDefinition {
     Name("JourneyDeckRecorder")
+    Events("recorderStatusChanged")
 
     OnCreate {
+      self.transitionObserverToken = JourneyDeckNativeRecorder.shared.setTransitionObserver { [weak self] event in
+        self?.sendEvent("recorderStatusChanged", event.payload)
+      }
       DispatchQueue.main.async { JourneyDeckNativeRecorder.shared.bootstrap() }
+    }
+
+    OnDestroy {
+      if let token = self.transitionObserverToken {
+        JourneyDeckNativeRecorder.shared.removeTransitionObserver(token: token)
+        self.transitionObserverToken = nil
+      }
     }
 
     AsyncFunction("configureAsync") { (enabled: Bool, ownerUserID: String, deviceID: String) async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.configure(enabled: enabled, ownerUserID: ownerUserID, deviceID: deviceID)
+    }
+
+    AsyncFunction("executeCommandAsync") { (operationID: String, action: String, sessionID: String, controlToken: String, expiresAt: Double) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.executeCommand(operationID: operationID, action: action, sessionID: sessionID, expectedToken: controlToken, expiresAt: expiresAt)
+    }
+    AsyncFunction("getCommandOutcomeAsync") { (operationID: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.commandOutcome(operationID: operationID)
     }
 
     AsyncFunction("getStatusAsync") { () async -> [String: Any] in

@@ -18,6 +18,7 @@ import { openJourneyCardAction } from './journey-card-action';
 import { filterJourneyLibrary, journeyRouteLabel } from './library-model';
 import { clampStudioTrayHeight, containsStudioPoint, memoryStudioDrop, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity, type StudioRect } from './memory-studio-model';
 import type { JourneyMemory, JourneySummary } from './app-data';
+import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
 
 type DragState = {
   compact: boolean;
@@ -228,7 +229,11 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
   const d: DragState = { compact: phone, source, target, active, x, y, originX, originY, rootX, rootY, scale, opacity, destination, root, reduceMotion,
     enabled: focused && !saving && !busy, dragging: Boolean(dragged), begin: id => { if (mounted.current && focused && !busy && source.value === id) setDragged(journeys.find(j => j.id === id) ?? null); }, finish };
   const floating = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateX: x.value - rootX.value - 145 }, { translateY: y.value - rootY.value - 62 }, { scale: scale.value }] }));
-  const wide = width >= 700, galleryColumns = width >= 1050 ? 2 : 1;
+  const availableWidth = width / Math.max(1, window.fontScale);
+  const gridColumns = ipadGridColumns(width, window.fontScale);
+  const wide = gridColumns === 6, galleryColumns = availableWidth >= 1050 ? 2 : 1;
+  const galleryWidth = wide && width ? ipadGridSpan(width, 4) : undefined;
+  const libraryWidth = wide && width ? ipadGridSpan(width, 2) : undefined;
   const panelHeight = Math.max(420, window.height - 330);
   const disabled = saving || busy;
   const animateTray = useCallback((expand: boolean) => {
@@ -346,7 +351,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
           {loading && <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} />}
           {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock your complete history  ›</Text></Pressable>}
           <View testID="ipad-memory-studio" style={[styles.workspace, { flexDirection: wide ? 'row' : 'column' }]}>
-            <View style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { flex: 1.6 }]}>
+            <View testID="ipad-memory-gallery-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { width: galleryWidth }]}>
               <View style={styles.panelHeader}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Your Memories</Text><Text style={{ color: c.muted }}>{memories.length}</Text></View>
               <TextInput accessibilityLabel="Search Memories" value={memoryQuery} onChangeText={setMemoryQuery} placeholder="Search Memories" placeholderTextColor={c.muted} style={[styles.search, { color: c.text, borderColor: c.line }]} />
               <StudioScroll label="Memory gallery"><View style={styles.grid}>
@@ -372,7 +377,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
                 {visibleMemories.length > memoryLimit && <Pressable accessibilityRole="button" onPress={() => setMemoryLimit(n => n + 20)} style={styles.action}><Text style={{ color: c.accent }}>Show more Memories</Text></Pressable>}
               </StudioScroll>
             </View>
-            <View style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { flex: 1 }]}>
+            <View testID="ipad-memory-library-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { width: libraryWidth }]}>
               <View style={styles.panelHeader}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Journey library</Text><Text style={{ color: c.muted }}>{visibleJourneys.length}</Text></View>
               <TextInput accessibilityLabel="Search journeys" value={query} onChangeText={setQuery} placeholder="Search places, songs, dates" placeholderTextColor={c.muted} style={[styles.search, { color: c.text, borderColor: c.line }]} />
               {selectedLive.length > 0 && <View style={[styles.selection, { backgroundColor: c.inset }]}>
@@ -402,7 +407,7 @@ const styles = StyleSheet.create({
   phoneSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 5, marginTop: 5 },
   phoneSearch: { flexGrow: 1, flexShrink: 1, minHeight: 44, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 10, fontSize: 15 },
   phonePlus: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  phoneSectionHeading: { paddingLeft: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  phoneSectionHeading: { paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   phoneRefresh: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   phoneMemoryCopy: { padding: 12, gap: 6 }, phoneMemoryTitle: { color: '#fff6ed', fontSize: 21, lineHeight: 25, fontWeight: '700' },
   phoneNewMemory: { minHeight: 64, borderWidth: 1, borderStyle: 'dashed', borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -413,7 +418,7 @@ const styles = StyleSheet.create({
   phoneJourneyFace: { padding: 11, gap: 5 }, phoneNotice: { padding: 12, fontSize: 13, lineHeight: 19 },
   page: { paddingHorizontal: 24, paddingTop: 18, paddingBottom: 36 }, canvas: { width: '100%', gap: 14 },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 12 }, hint: { flex: 1, fontSize: 14, lineHeight: 21 },
-  workspace: { gap: 18, alignItems: 'stretch' }, panel: { borderWidth: 1, borderRadius: 24, paddingTop: 18, minWidth: 0, overflow: 'hidden' },
+  workspace: { gap: IPAD_GRID_GAP, alignItems: 'stretch' }, panel: { borderWidth: 1, borderRadius: 24, paddingTop: 18, minWidth: 0, overflow: 'hidden' },
   panelHeader: { paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   heading: { fontSize: 20, fontWeight: '700', flexShrink: 1 }, search: { margin: 14, padding: 13, borderWidth: 1, borderRadius: 14, fontSize: 15 },
   scrollContent: { padding: 8, paddingBottom: 28 }, grid: { flexDirection: 'row', flexWrap: 'wrap' },

@@ -1,16 +1,16 @@
 import { TouchPressable as Pressable } from './touch-feedback';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
-import { Image } from 'expo-image';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme, useThemeChoice } from './app-theme';
 import { ivoryPalette } from './theme-palette';
 import { headerImageSource } from './header-image-sources';
 import { IpadPageHeader } from './ipad-page-header';
-import { ipadHomeColumns } from './device-layout';
+import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
 import { appDataClient, type JourneyMemory, type JourneyPhoto, type JourneySummary, type MusicDashboardData } from './app-data';
 import { journeyDisplayTitle } from './journey-title';
+import { JourneyImage } from './journey-image';
 
 function useColors() {
   const theme = useAppTheme();
@@ -61,7 +61,8 @@ function MemoryPhoto({ photo }: { photo: JourneyPhoto | null }) {
     return () => { alive = false; };
   }, [photo?.id]);
   const source = photo && loaded?.id === photo.id ? { uri: loaded.uri } : headerImageSource(require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), theme.id);
-  return <Image source={source} contentFit="cover" style={styles.memoryPhoto} />;
+  const sourceKey = photo && loaded?.id === photo.id ? `memory-photo-${photo.id}` : `default-memory-${theme.id}`;
+  return <JourneyImage key={sourceKey} imageIdentity={sourceKey} source={source} contentFit="cover" style={styles.memoryPhoto} />;
 }
 
 export function IpadHomeScreen({ memories, journeys, music, recorder, loading, error, onMemory, onJourney }: {
@@ -71,8 +72,14 @@ export function IpadHomeScreen({ memories, journeys, music, recorder, loading, e
 }) {
   const c = useColors();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(0);
-  const columns = ipadHomeColumns(width);
+  const gridColumns = ipadGridColumns(width, fontScale);
+  const cell = (span: number) => width ? ipadGridSpan(width, span, gridColumns) : '100%';
+  const metricSpans = gridColumns === 6 ? [2, 2, 1, 1] : gridColumns === 3 ? [2, 1, 2, 1] : [1, 1, 1, 1];
+  const featureSpan = gridColumns === 6 ? 3 : gridColumns;
+  const songSpan = gridColumns === 6 ? 2 : 1;
+  const soundtrackCount = gridColumns === 1 ? 2 : 3;
   const metrics = [
     { title: 'Miles with music', value: music?.metrics.milesWithMusic, icon: 'road.lanes' as const, digits: 1 },
     { title: 'Listening hours', value: music?.metrics.listeningHours, icon: 'headphones' as const, digits: 1 },
@@ -85,26 +92,26 @@ export function IpadHomeScreen({ memories, journeys, music, recorder, loading, e
   return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: c.page }}><ScrollView testID="ipad-home" style={{ flex: 1, backgroundColor: c.page }} contentInsetAdjustmentBehavior="automatic"
     contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: insets.bottom + 28 }}>
     <View onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
-      <IpadPageHeader title="Home" width={width} artwork={require('../assets/cinematic-home-main-photo-v1.jpg')} subtitle="Your roads. Your memories. Your music.">
+      <IpadPageHeader title="Home" width={width} artwork={require('../assets/cinematic-home-main-photo-v1.jpg')} subtitle="Your roads. Your memories. Your music." fullHeightActions>
         {recorder}
       </IpadPageHeader>
       {error ? <Text accessibilityRole="alert" style={{ color: c.muted }}>{error}</Text> : null}
       {loading && !music ? <ActivityIndicator accessibilityLabel="Loading your library" color={c.accent} /> : null}
-      <View style={styles.grid}>{metrics.map(metric => <View key={metric.title} style={{ width: `${100 / columns.metrics}%`, padding: 6 }}>
+      <View testID="ipad-home-metrics" style={styles.grid}>{metrics.map((metric, index) => <View testID={`ipad-home-metric-${index}`} key={metric.title} style={{ width: cell(metricSpans[index]) }}>
         <View style={[styles.metric, { backgroundColor: c.card, borderColor: c.line }]}>
           <View style={[styles.metricIcon, { backgroundColor: c.inset }]}><SymbolView name={metric.icon} tintColor={c.accent} style={styles.icon} /></View>
           <View style={{ flex: 1 }}><Text style={[styles.metricLabel, { color: c.muted }]}>{metric.title}</Text><Text style={[styles.metricValue, { color: c.text }]}>{metric.value == null ? '—' : metric.value.toLocaleString(undefined, { maximumFractionDigits: metric.digits })}</Text></View>
         </View>
       </View>)}</View>
       <View style={styles.grid}>
-        <View style={{ width: `${100 / columns.widgets}%`, padding: 6 }}><Widget title="Recent memories" icon="photo.on.rectangle">
+        <View testID="ipad-home-memories" style={{ width: cell(featureSpan) }}><Widget title="Recent memories" icon="photo.on.rectangle">
           {memories.length ? <View style={styles.memoryRow}>{memories.slice(0, 2).map(memory => <Pressable key={memory.id} accessibilityRole="button" accessibilityLabel={`Open memory ${memory.name}`} onPress={() => onMemory(memory.id)} style={({ pressed }) => [styles.memory, pressed && { opacity: 0.7 }]}>
             <MemoryPhoto photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />
             <Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{memory.name}</Text>
             <Text style={[styles.meta, { color: c.muted }]}>{memory.journeyIds.length} journeys · {memory.photos.length} photos</Text>
           </Pressable>)}</View> : <Empty>Your memories will appear here as your library grows.</Empty>}
         </Widget></View>
-        <View style={{ width: `${100 / columns.widgets}%`, padding: 6 }}><Widget title="Recent journeys" icon="road.lanes">
+        <View testID="ipad-home-journeys" style={{ width: cell(featureSpan) }}><Widget title="Recent journeys" icon="road.lanes">
           {journeys.length ? journeys.slice(0, 3).map(journey => <Pressable key={journey.id} accessibilityRole="button" accessibilityLabel={`Open journey ${journeyDisplayTitle(journey)}`} onPress={() => onJourney(journey.id)} style={({ pressed }) => [styles.journey, { borderColor: c.line }, pressed && { opacity: 0.7 }]}>
             <View style={[styles.journeyIcon, { backgroundColor: c.inset }]}><SymbolView name="road.lanes" tintColor={c.accent} style={styles.icon} /></View>
             <View style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{journeyDisplayTitle(journey)}</Text><Text style={[styles.meta, { color: c.muted }]}>{journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min</Text></View>
@@ -112,8 +119,8 @@ export function IpadHomeScreen({ memories, journeys, music, recorder, loading, e
         </Widget></View>
       </View>
       <Widget title="Today's soundtrack" icon="music.note">
-        {music?.recentSelections.length ? <View style={styles.grid}>{music.recentSelections.slice(0, 4).map((track, index) => <View key={`${track.playedAt}-${index}`} style={{ width: `${100 / columns.songs}%`, padding: 6 }}>
-          <View style={styles.song}>{track.artworkUrl ? <Image source={{ uri: track.artworkUrl }} style={styles.album} contentFit="cover" /> : <View style={[styles.album, styles.albumFallback, { backgroundColor: c.inset }]}><SymbolView name="music.note" tintColor={c.accent} style={styles.icon} /></View>}
+        {music?.recentSelections.length ? <View style={styles.grid}>{music.recentSelections.slice(0, soundtrackCount).map((track, index) => <View key={`${track.playedAt}-${index}`} style={{ width: cell(songSpan) }}>
+          <View style={styles.song}>{track.artworkUrl ? <JourneyImage imageIdentity={`ipad-home-album-${track.playedAt}-${index}`} source={{ uri: track.artworkUrl }} style={styles.album} contentFit="cover" /> : <View style={[styles.album, styles.albumFallback, { backgroundColor: c.inset }]}><SymbolView name="music.note" tintColor={c.accent} style={styles.icon} /></View>}
             <View style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{track.track}</Text><Text numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{track.artist}</Text></View>
           </View>
         </View>)}</View> : <Empty>Your latest journey soundtrack will appear here.</Empty>}
@@ -140,19 +147,19 @@ export function IpadRecorderControls({ status, busy, onStart, onEnable, onEnd, o
 }
 
 const styles = StyleSheet.create({
-  canvas: { width: '100%', maxWidth: 1400, alignSelf: 'center', gap: 16 },
+  canvas: { width: '100%', maxWidth: 1400, alignSelf: 'center', gap: IPAD_GRID_GAP },
   topRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 20 },
   titleBlock: { minWidth: 250, flex: 1 }, heading: { fontSize: 34, fontWeight: '800', letterSpacing: 2 }, subtitle: { fontSize: 15, marginTop: 7 },
-  hero: { width: '100%', borderRadius: 24, borderWidth: 1 }, grid: { flexDirection: 'row', flexWrap: 'wrap', margin: -6 },
-  metric: { borderRadius: 22, borderWidth: 1, padding: 16, minHeight: 102, flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  hero: { width: '100%', borderRadius: 24, borderWidth: 1 }, grid: { flexDirection: 'row', flexWrap: 'wrap', gap: IPAD_GRID_GAP },
+  metric: { borderRadius: 22, borderWidth: 1, padding: 16, minHeight: 102, flexDirection: 'row', alignItems: 'center', gap: IPAD_GRID_GAP, flex: 1 },
   metricIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }, icon: { width: 22, height: 22 },
   metricLabel: { fontSize: 12, lineHeight: 17 }, metricValue: { fontSize: 27, fontWeight: '700', marginTop: 4 },
-  widget: { borderRadius: 24, borderWidth: 1, padding: 20, gap: 18, flexGrow: 1 }, widgetHeading: { flexDirection: 'row', alignItems: 'center', gap: 10 }, widgetTitle: { fontSize: 19, fontWeight: '600', flexShrink: 1 },
-  memoryRow: { flexDirection: 'row', gap: 14 }, memory: { flex: 1, gap: 7 }, memoryPhoto: { width: '100%', aspectRatio: 1.55, borderRadius: 16 },
+  widget: { borderRadius: 24, borderWidth: 1, padding: 20, gap: IPAD_GRID_GAP, flexGrow: 1 }, widgetHeading: { flexDirection: 'row', alignItems: 'center', gap: IPAD_GRID_GAP }, widgetTitle: { fontSize: 19, fontWeight: '600', flexShrink: 1 },
+  memoryRow: { flexDirection: 'row', gap: IPAD_GRID_GAP }, memory: { flex: 1, gap: 7 }, memoryPhoto: { width: '100%', aspectRatio: 1.55, borderRadius: 16 },
   cardTitle: { fontSize: 15, fontWeight: '600', lineHeight: 21 }, meta: { fontSize: 12, lineHeight: 18, marginTop: 3 },
-  journey: { flexDirection: 'row', gap: 14, alignItems: 'center', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, journeyIcon: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  empty: { fontSize: 15, lineHeight: 23, minHeight: 70, paddingVertical: 18 }, song: { flexDirection: 'row', gap: 12, alignItems: 'center' }, album: { width: 64, height: 76, borderRadius: 12 }, albumFallback: { alignItems: 'center', justifyContent: 'center' },
-  recorder: { gap: 8, flexShrink: 1 }, recorderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, alignItems: 'center' }, status: { fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  start: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: 14, alignItems: 'center' }, startText: { fontSize: 16, fontWeight: '600' }, secondaryAction: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', paddingHorizontal: 12 },
+  journey: { flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, journeyIcon: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  empty: { fontSize: 15, lineHeight: 23, minHeight: 70, paddingVertical: 18 }, song: { flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center' }, album: { width: 64, height: 76, borderRadius: 12 }, albumFallback: { alignItems: 'center', justifyContent: 'center' },
+  recorder: { gap: IPAD_GRID_GAP, flexShrink: 1 }, recorderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: IPAD_GRID_GAP, alignItems: 'center' }, status: { fontSize: 12, fontWeight: '700', letterSpacing: 1 },
+  start: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center' }, startText: { fontSize: 16, fontWeight: '600' }, secondaryAction: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', paddingHorizontal: 12 },
   settingsRow: { maxWidth: 640, borderRadius: 22, padding: 22, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 18 },
 });

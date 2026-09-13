@@ -1,67 +1,177 @@
-import { useRef } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { useCallback, useEffect, useRef } from 'react';
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type GestureResponderEvent,
+} from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useThemeChoice } from './app-theme';
-import { themeCatalog, type ThemeId } from './theme-catalog';
+import { SymbolView } from 'expo-symbols';
 
-const previews = {
+import { useThemeChoice } from './app-theme';
+import {
+  FREE_THEME_IDS,
+  PLUS_THEME_IDS,
+  THEME_GRID_ORDER,
+  themeCatalog,
+  themeRequiresPlus,
+  type ThemeId,
+} from './theme-catalog';
+
+const previews: Record<ThemeId, number> = {
   dark: require('../assets/cinematic-home-main-photo-v1.jpg'),
   light: require('../assets/home-header-light-v1.png'),
   sakura: require('../assets/theme-rosewater-road-v1.png'),
-  redline: require('../assets/theme-grand-touring-home-v1.png'),
+  redline: require('../assets/theme-grand-touring-home-v2.png'),
 };
-const choices: ThemeId[] = ['dark', 'redline', 'light', 'sakura'];
 
-/** Available to every tester; theme selection never changes membership state. */
-export function ThemePicker({ embedded = false, compact = false }: { embedded?: boolean; compact?: boolean } = {}) {
-  const { theme, transitionTheme } = useThemeChoice();
-  const buttons = useRef(new Map<ThemeId, View>());
-  const c = theme.palette;
-  return <View testID="theme-picker" style={[s.panel, embedded && s.embedded, { backgroundColor: embedded ? 'transparent' : c.card, borderColor: embedded ? 'transparent' : c.line }]}>
-    <Text accessibilityRole="header" style={[embedded ? s.sectionTitle : s.title, { color: embedded ? c.accent : c.text }]}>{embedded ? 'THEME' : 'Appearance'}</Text>
-    {!embedded && <Text accessibilityLiveRegion="polite" style={[s.detail, { color: c.muted }]}>{theme.name}</Text>}
-    <View style={s.grid}>{choices.map(id => {
-      const choice = themeCatalog[id], p = choice.palette, selected = id === theme.id;
-      return <Pressable key={id} ref={view => { if (view) buttons.current.set(id, view); else buttons.current.delete(id); }} accessibilityRole="radio" accessibilityLabel={`${choice.name}, ${choice.mode} theme`}
-        accessibilityState={{ checked: selected }} onPress={(event: GestureResponderEvent) => {
-          const select = (x: number, y: number) => {
-            try { transitionTheme(id, { x, y }); } catch { Alert.alert('Appearance not saved', 'Please try selecting the theme again.'); }
-          };
-          const { pageX, pageY } = event.nativeEvent;
-          if (Number.isFinite(pageX) && Number.isFinite(pageY) && (pageX !== 0 || pageY !== 0)) {
-            select(pageX, pageY);
-          } else {
-            // VoiceOver/keyboard activation has no finger coordinate. Use this
-            // button's measured center, still in the same window coordinate space.
-            buttons.current.get(id)?.measureInWindow((x, y, width, height) => select(x + width / 2, y + height / 2));
-          }
-        }} style={({ pressed }) => [s.choice, compact && s.compactChoice, { backgroundColor: p.card, borderColor: selected ? c.accent : c.line, opacity: pressed ? 0.8 : 1 }]}>
-        <View style={[s.preview, compact && s.compactPreview]}>
-          <Image source={previews[id]} contentFit="cover" style={StyleSheet.absoluteFill} />
-          <LinearGradient colors={['transparent', p.page]} style={StyleSheet.absoluteFill} />
-          <Text style={[s.badge, { color: p.text, backgroundColor: p.card }]}>{choice.mode === 'light' ? 'LIGHT' : 'DARK'}{selected ? '  ✓' : ''}</Text>
-          <View style={s.swatches}>{(choice.swatches ?? [p.coral, p.amber, p.teal, p.blue, p.rose]).map((color, i) => <View key={i} style={[s.swatch, { backgroundColor: color }]} />)}</View>
-        </View>
-        <Text style={[s.name, { color: p.text }]}>{choice.name}</Text>
-        {!compact && <Text style={[s.description, { color: p.muted }]}>{choice.description}</Text>}
-      </Pressable>;
-    })}</View>
+type ThemePickerProps = {
+  embedded?: boolean;
+  compact?: boolean;
+  membershipTier?: 'free' | 'paid';
+  onUpgrade?: () => void;
+};
+
+type ThemeCardProps = {
+  id: ThemeId;
+  selected: boolean;
+  locked: boolean;
+  isPlus: boolean;
+  compact: boolean;
+  onSelect: (id: ThemeId, event: GestureResponderEvent) => void;
+  register: (id: ThemeId, view: View | null) => void;
+};
+
+function ThemeCard({ id, selected, locked, isPlus, compact, onSelect, register }: Readonly<ThemeCardProps>) {
+  const choice = themeCatalog[id];
+  const palette = choice.palette;
+  const swatches = choice.swatches ?? [palette.coral, palette.amber, palette.teal, palette.blue, palette.rose];
+  const position = THEME_GRID_ORDER.indexOf(id) + 1;
+
+  return <Pressable
+    ref={view => register(id, view)}
+    testID={`theme-card-${id}`}
+    accessibilityRole="radio"
+    accessibilityLabel={`${choice.name}, theme ${position} of ${THEME_GRID_ORDER.length}. ${choice.mode === 'light' ? 'Light' : 'Dark'} appearance. ${choice.description}. ${isPlus ? 'JourneyDeck Plus' : 'Free'}${locked ? '. Requires JourneyDeck Plus' : ''}`}
+    accessibilityHint={locked ? 'Opens JourneyDeck Plus' : selected ? 'Selected theme' : 'Applies this theme'}
+    accessibilityState={{ checked: selected, selected }}
+    pressRetentionOffset={16}
+    onPress={event => onSelect(id, event)}
+    style={({ pressed }) => [styles.themeCard, compact && styles.compactThemeCard, {
+      backgroundColor: palette.card,
+      borderColor: selected ? palette.accent : palette.line,
+      shadowColor: palette.accent,
+      opacity: pressed ? .82 : 1,
+      transform: [{ scale: pressed ? .985 : 1 }],
+    }]}
+  >
+    <View style={[styles.artwork, compact && styles.compactArtwork, { backgroundColor: palette.inset }]}>
+      <Image accessible={false} source={previews[id]} contentFit="cover" style={StyleSheet.absoluteFill} />
+      <LinearGradient pointerEvents="none" colors={['transparent', `${palette.page}24`, palette.card]} locations={[0, .56, 1]} style={StyleSheet.absoluteFill} />
+      {isPlus && <Text testID={`theme-plus-${id}`} style={[styles.plusBadge, { color: palette.onAccent, backgroundColor: palette.accent }]}>PLUS</Text>}
+      {selected && <View testID={`theme-selected-${id}`} style={[styles.selectedBadge, { backgroundColor: palette.accent }]}>
+        <SymbolView name="checkmark" tintColor={palette.onAccent} size={14} weight="bold" />
+      </View>}
+    </View>
+    <View style={styles.themeCopy}>
+      <Text style={[styles.themeName, compact && styles.compactThemeName, { color: palette.text }]}>{choice.name}</Text>
+      <Text style={[styles.appearance, { color: palette.accent }]}>{choice.mode.toUpperCase()}</Text>
+      <Text style={[styles.description, { color: palette.muted }]}>{choice.description}</Text>
+      <View accessible={false} style={styles.swatches}>{swatches.map((color, index) => <View key={`${color}-${index}`} style={[styles.swatch, { backgroundColor: color, borderColor: `${palette.text}30` }]} />)}</View>
+    </View>
+  </Pressable>;
+}
+
+/** Two free themes above two Plus themes. Selection occurs only through a direct card activation. */
+export function ThemePicker({ embedded = false, compact = false, membershipTier = 'free', onUpgrade }: ThemePickerProps = {}) {
+  const { theme, setTheme, transitionTheme } = useThemeChoice();
+  const cards = useRef(new Map<ThemeId, View>());
+  const host = useRef<View>(null);
+  const colors = theme.palette;
+  const committedId = theme.id;
+  const alertFailure = useCallback(() => Alert.alert('Appearance not saved', 'Please try selecting the theme again.'), []);
+
+  useEffect(() => {
+    if (membershipTier === 'paid' || !themeRequiresPlus(theme.id)) return;
+    try { setTheme('redline'); }
+    catch { alertFailure(); }
+  }, [alertFailure, membershipTier, setTheme, theme.id]);
+
+  const applyTheme = useCallback((id: ThemeId, origin: { x: number; y: number }) => {
+    if (id === committedId) return;
+    try { transitionTheme(id, origin); }
+    catch { alertFailure(); }
+  }, [alertFailure, committedId, transitionTheme]);
+
+  const applyFromCenter = useCallback((id: ThemeId) => {
+    const apply = (x: number, y: number, width: number, height: number) => applyTheme(id, { x: x + width / 2, y: y + height / 2 });
+    const card = cards.current.get(id);
+    if (card) card.measureInWindow(apply);
+    else host.current?.measureInWindow(apply);
+  }, [applyTheme]);
+
+  const selectTheme = (id: ThemeId, event: GestureResponderEvent) => {
+    if (membershipTier !== 'paid' && themeRequiresPlus(id)) {
+      onUpgrade?.();
+      return;
+    }
+    const { pageX, pageY } = event.nativeEvent;
+    if (Number.isFinite(pageX) && Number.isFinite(pageY) && (pageX !== 0 || pageY !== 0)) applyTheme(id, { x: pageX, y: pageY });
+    else applyFromCenter(id);
+  };
+
+  const renderRow = (label: string, ids: readonly ThemeId[], isPlus: boolean) => <View testID={`theme-row-${isPlus ? 'plus' : 'free'}`} style={styles.tierGroup}>
+    <View style={styles.tierHeading}>
+      <Text style={[styles.tierLabel, { color: isPlus ? colors.accent : colors.muted }]}>{label}</Text>
+      {isPlus && <SymbolView name="crown.fill" tintColor={colors.accent} size={13} />}
+    </View>
+    <View style={styles.gridRow}>{ids.map(id => <ThemeCard
+      key={id}
+      id={id}
+      selected={id === committedId}
+      locked={isPlus && membershipTier !== 'paid'}
+      isPlus={isPlus}
+      compact={compact}
+      onSelect={selectTheme}
+      register={(cardId, view) => { if (view) cards.current.set(cardId, view); else cards.current.delete(cardId); }}
+    />)}</View>
+  </View>;
+
+  return <View ref={host} testID="theme-picker" style={[styles.panel, embedded && styles.embedded, { backgroundColor: embedded ? 'transparent' : colors.card, borderColor: embedded ? 'transparent' : colors.line }]}>
+    <Text accessibilityRole="header" style={[embedded ? styles.sectionTitle : styles.title, { color: embedded ? colors.accent : colors.text }]}>{embedded ? 'THEME' : 'Theme'}</Text>
+    <Text style={[styles.detail, { color: colors.muted }]}>Choose the colors and artwork used throughout JourneyDeck.</Text>
+    <View accessibilityRole="radiogroup" style={styles.grid}>
+      {renderRow('FREE', FREE_THEME_IDS, false)}
+      {renderRow('JOURNEYDECK PLUS', PLUS_THEME_IDS, true)}
+    </View>
   </View>;
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
   panel: { padding: 16, borderRadius: 24, borderWidth: 1, gap: 8, width: '100%' },
   embedded: { padding: 0, borderRadius: 0 },
-  title: { fontSize: 20, fontWeight: '800' }, detail: { fontSize: 13 },
+  title: { fontSize: 20, fontWeight: '800' },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 6 },
-  choice: { flexGrow: 1, flexBasis: 140, minWidth: 140, borderRadius: 18, borderWidth: 2, overflow: 'hidden', paddingBottom: 12 },
-  compactChoice: { flexBasis: 120, minWidth: 120, paddingBottom: 8 },
-  preview: { height: 96, justifyContent: 'space-between', padding: 9 },
-  compactPreview: { height: 78 },
-  badge: { alignSelf: 'flex-start', fontSize: 10, fontWeight: '800', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8 },
-  swatches: { flexDirection: 'row', gap: 5 }, swatch: { width: 14, height: 14, borderRadius: 7 },
-  name: { fontSize: 15, fontWeight: '700', paddingHorizontal: 10, paddingTop: 4 },
-  description: { fontSize: 12, lineHeight: 17, paddingHorizontal: 10, paddingTop: 4 },
+  detail: { fontSize: 13, lineHeight: 19, marginBottom: 3 },
+  grid: { gap: 16 },
+  tierGroup: { gap: 7 },
+  tierHeading: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  tierLabel: { fontSize: 10, lineHeight: 14, fontWeight: '900', letterSpacing: 1.5 },
+  gridRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  themeCard: { flex: 1, minWidth: 0, borderRadius: 19, borderWidth: 1.5, overflow: 'hidden', shadowOpacity: .18, shadowRadius: 12, shadowOffset: { width: 0, height: 7 } },
+  compactThemeCard: { borderRadius: 21 },
+  artwork: { width: '100%', aspectRatio: 1.45, minHeight: 84, overflow: 'hidden' },
+  compactArtwork: { minHeight: 100 },
+  plusBadge: { position: 'absolute', left: 8, top: 8, fontSize: 8, lineHeight: 12, fontWeight: '900', letterSpacing: 1, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 9, overflow: 'hidden' },
+  selectedBadge: { position: 'absolute', right: 8, top: 8, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  themeCopy: { flexGrow: 1, paddingHorizontal: 11, paddingTop: 10, paddingBottom: 12, gap: 4 },
+  themeName: { fontSize: 17, lineHeight: 21, fontWeight: '800', letterSpacing: -.2 },
+  compactThemeName: { fontSize: 18, lineHeight: 23 },
+  appearance: { fontSize: 9, lineHeight: 12, fontWeight: '900', letterSpacing: 1.1 },
+  description: { fontSize: 11, lineHeight: 15 },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 4 },
+  swatch: { width: 15, height: 15, borderRadius: 8, borderWidth: .5 },
 });

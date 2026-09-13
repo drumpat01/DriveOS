@@ -5,8 +5,8 @@ import { isIpad } from './device-layout';
 import { IpadMusicScreen } from './ipad-music-screen';
 import { ipadListeningDays } from './ipad-music-data';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
 import {
   ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -21,6 +21,7 @@ import { NeonWidget, QuietInset } from './neon-widget-outline';
 import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { PhoneTabTitle } from './phone-tab-title';
 import { AlbumCarousel } from './album-carousel';
+import { JourneyImage } from './journey-image';
 
 export type MusicDashboardState = {
   status: 'loading' | 'ready' | 'error';
@@ -68,7 +69,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]}
+      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 16 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
@@ -92,16 +93,16 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
         </Panel>
 
         <View style={styles.metricGrid}>
-          <Metric symbol="♜" label="Miles with music" value={number(data.metrics.milesWithMusic)} detail="all time" accent={colors.coral} />
-          <Metric symbol="Ω" label="Listening hours" value={number(data.metrics.listeningHours)} detail="from archived plays" accent={colors.pink} />
-          <Metric symbol="♫" label="Songs on the road" value={number(data.metrics.songsOnRoad, 0)} detail="matched to journeys" accent={colors.blue} />
-          <Metric symbol="♨" label="Current streak" value={number(data.metrics.currentStreak, 0)} detail="days with music" accent="#ff4560" />
+          <Metric symbol="car.fill" label="Miles with music" value={number(data.metrics.milesWithMusic)} detail="all time" accent={colors.coral} />
+          <Metric symbol="headphones.circle.fill" label="Listening hours" value={number(data.metrics.listeningHours)} detail="from archived plays" accent={colors.pink} />
+          <Metric symbol="waveform.circle.fill" label="Songs on the road" value={number(data.metrics.songsOnRoad, 0)} detail="matched to journeys" accent={colors.coral} />
+          <Metric symbol="flame.fill" label="Current streak" value={number(data.metrics.currentStreak, 0)} detail="days with music" accent="#ff4560" />
         </View>
 
         <Panel title="Top artists" kicker="ALL-TIME ARCHIVE">
           {data.topArtists.length ? <View style={styles.artistList}>{data.topArtists.map((artist, index) => <View key={artist.artist} style={styles.artistRow}>
             <Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text>
-            {artist.artworkUrl ? <Image source={{ uri: artist.artworkUrl }} style={styles.artistArtwork} contentFit="cover" cachePolicy="memory-disk" transition={120} /> : <View style={styles.artistFallback}><Text style={styles.artistInitial}>{artist.artist.slice(0, 1).toUpperCase()}</Text></View>}
+            {artist.artworkUrl ? <JourneyImage imageIdentity={`artist-${artist.artist}`} source={{ uri: artist.artworkUrl }} style={styles.artistArtwork} contentFit="cover" /> : <View style={styles.artistFallback}><Text style={styles.artistInitial}>{artist.artist.slice(0, 1).toUpperCase()}</Text></View>}
             <Text style={styles.artistName} numberOfLines={1}>{artist.artist}</Text>
             <Text style={styles.artistPlays}>{number(artist.plays, 0)} plays</Text>
           </View>)}</View> : <Empty text="Your artist ranking will grow with your listening archive." />}
@@ -111,7 +112,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
           <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor={theme.color("#746a7c", 'text')} style={styles.archiveSearch} />
           {visibleArchive.slice(0, 60).map(entry => <View key={entry.key} style={styles.archiveRow}>
             <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
-              {entry.artworkUrl ? <Image source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
+              {entry.artworkUrl ? <JourneyImage imageIdentity={`archive-${entry.key}`} source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
               <View style={styles.archiveCopy}><Text style={styles.archiveTitle} numberOfLines={1}>{entry.track}</Text><Text style={styles.archiveArtist} numberOfLines={1}>{entry.artist}{entry.album ? `  •  ${entry.album}` : ''}</Text><Text style={styles.archiveRoute} numberOfLines={1}>{entry.routeLabel}</Text></View>
             </Pressable>
             <Pressable onPress={() => onJourney(entry.journeyId)} style={styles.archiveJourneyButton}><Text style={styles.archiveJourneyText}>Journey ›</Text></Pressable>
@@ -160,11 +161,12 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
   );
 }
 
-function Metric({ symbol, label, value, detail, accent }: { symbol: string; label: string; value: string; detail: string; accent: string }) {
+function Metric({ symbol, label, value, detail, accent }: { symbol: SFSymbol; label: string; value: string; detail: string; accent: string }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  return <QuietInset radius={19} accent={accent} style={styles.metric}><View style={[styles.metricIcon, { borderColor: theme.color(`${accent}55`, 'border'), backgroundColor: theme.color(`${accent}12`, 'surface'), shadowColor: theme.color(accent, 'shadow') }]}><Text style={[styles.metricSymbol, { color: theme.color(accent, 'text') }]}>{symbol}</Text></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+  const iconColor = theme.color(accent, 'text');
+  return <QuietInset radius={19} accent={accent} style={styles.metric}><View accessible={false} style={[styles.metricIconHalo, { borderColor: theme.color(`${accent}66`, 'border'), shadowColor: theme.color(accent, 'shadow') }]}><LinearGradient colors={[theme.color(`${accent}66`, 'surface'), theme.color(`${accent}18`, 'surface')]} style={styles.metricIcon}><SymbolView name={symbol} tintColor={iconColor} type="hierarchical" weight="bold" style={styles.metricSymbol} /></LinearGradient></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
 }
 
 function SoundtracksHeroHeader() {
@@ -354,7 +356,7 @@ const darkMusicHeaderStyles = StyleSheet.create({
 
 const darkStyles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.page },
-  pageContent: { paddingHorizontal: 16, gap: 13 },
+  pageContent: { paddingHorizontal: 16, gap: 16 },
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1460 },
   header: { minHeight: 142, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#482756', backgroundColor: '#110919', paddingHorizontal: 18, paddingVertical: 19, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } },
   eyebrow: { color: '#c5a1ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.9, marginTop: 4 },
@@ -363,7 +365,7 @@ const darkStyles = StyleSheet.create({
   loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { color: colors.muted, fontSize: 12 },
   notice: { borderWidth: 1, borderColor: '#744152', backgroundColor: '#1a0b15', borderRadius: 18, padding: 15, gap: 7, shadowColor: '#ff4d82', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, noticeTitle: { color: '#ff9a83', fontWeight: '900', fontSize: 14 }, noticeBody: { color: '#ad9da8', fontSize: 12, lineHeight: 18 }, retry: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#3b1930', paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#ff4d82', shadowOpacity: 0.35, shadowRadius: 10 }, retryText: { color: '#ff8bb6', fontWeight: '900', fontSize: 10 },
   sourceGuidance: { borderRadius: 17, borderWidth: 1, borderColor: '#493359', backgroundColor: '#120d19', paddingHorizontal: 15, paddingVertical: 13, gap: 5 }, sourceGuidanceKicker: { color: '#ff8f78', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, sourceGuidanceText: { color: '#a79dad', fontSize: 11, lineHeight: 17 },
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, metricIcon: { width: 43, height: 43, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 10 }, metricSymbol: { fontSize: 18, fontWeight: '800' }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 10, lineHeight: 13, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 9, lineHeight: 12, marginTop: 2 },
+  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, metricIconHalo: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, padding: 3, shadowOpacity: 0.68, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } }, metricIcon: { flex: 1, borderRadius: 21, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, metricSymbol: { width: 27, height: 27 }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 10, lineHeight: 13, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 9, lineHeight: 12, marginTop: 2 },
   panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 9, fontWeight: '800', letterSpacing: 0.65 },
   empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },

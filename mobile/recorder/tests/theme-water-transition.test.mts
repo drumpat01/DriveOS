@@ -27,10 +27,13 @@ test('the transition uses the recovered Skia shader inside the stable standard m
   assert.match(source, /<Canvas/);
   assert.match(source, /<Shader/);
   assert.match(source, /<Modal/);
+  assert.match(source, /overlay_prepare_timeout/);
+  assert.match(source, /onFinished\(\)/, 'a stalled overlay must clear and apply the selected theme');
 });
 
 test('the recovered shader and timing are locked to all eight approved golden checkpoints', () => {
   assert.equal(geometryApi.WATER_RIPPLE_DURATION, 1180);
+  assert.equal(geometryApi.WATER_RIPPLE_PREPARE_TIMEOUT, 650);
   assert.deepEqual(shaderApi.THEME_WATER_GOLDEN_PROGRESS, [0, 0.12, 0.23, 0.35, 0.48, 0.64, 0.8, 1]);
   for (const recoveredLine of [
     'float front = progress * (radius + 210.0) - 24.0;',
@@ -75,6 +78,7 @@ function harness(strict = false, renderOverlay = false) {
     saved: [] as string[],
     applied: [] as string[],
     captureThemes: [] as string[],
+    captureOptions: [] as Record<string, unknown>[],
     captures: [] as ReturnType<typeof deferred<any>>[],
     loaded: [] as string[],
     released: [] as string[],
@@ -87,7 +91,9 @@ function harness(strict = false, renderOverlay = false) {
     effectSetups: 0,
     effectCleanups: 0,
     timingCompletion: null as null | ((finished: boolean) => void),
+    timingStarts: 0,
     imageLoaded: false,
+    prepareTimeout: null as null | (() => void),
   };
   const mocks: Record<string, any> = {
     'react-native': {
@@ -103,8 +109,9 @@ function harness(strict = false, renderOverlay = false) {
       useImage: () => state.imageLoaded ? { width: () => 1320, height: () => 2868 } : null,
     },
     'react-native-view-shot': {
-      captureScreen: () => {
+      captureScreen: (options: Record<string, unknown>) => {
         state.captureThemes.push(state.id);
+        state.captureOptions.push(options);
         const capture = deferred<any>();
         state.captures.push(capture);
         return capture.promise;
@@ -115,8 +122,9 @@ function harness(strict = false, renderOverlay = false) {
       cancelAnimation: () => undefined,
       Easing: { linear: (value: number) => value },
       useDerivedValue: (factory: () => unknown) => ({ value: factory() }),
-      useSharedValue: () => ({ get: () => 0, set: () => undefined }),
+      useSharedValue: () => React.useMemo(() => ({ get: () => 0, set: () => undefined }), []),
       withTiming: (_to: number, _config: unknown, completion?: (finished: boolean) => void) => {
+        state.timingStarts++;
         state.timingCompletion = completion ?? null;
         return 1;
       },
@@ -138,7 +146,17 @@ function harness(strict = false, renderOverlay = false) {
     module, exports: module.exports,
     require: (id: string) => mocks[id] ?? require(id),
     requestAnimationFrame: (callback: () => void) => { state.raf.push(callback); return state.raf.length; },
-    setTimeout, clearTimeout,
+    setTimeout: (callback: () => void, duration?: number) => {
+      if (duration === geometryApi.WATER_RIPPLE_PREPARE_TIMEOUT) {
+        state.prepareTimeout = callback;
+        return 'prepare-timeout';
+      }
+      return setTimeout(callback, duration);
+    },
+    clearTimeout: (timer: ReturnType<typeof setTimeout> | string) => {
+      if (timer === 'prepare-timeout') { state.prepareTimeout = null; return; }
+      clearTimeout(timer as ReturnType<typeof setTimeout>);
+    },
   });
   function Content() {
     const [id, setId] = React.useState('dark');
@@ -172,6 +190,7 @@ function harness(strict = false, renderOverlay = false) {
     paint: () => act(async () => { const callbacks = state.raf.splice(0); callbacks.forEach(callback => callback()); }),
     showModal: () => act(async () => { tree.root.findByType('Modal').props.onShow(); }),
     loadSnapshot: () => act(async () => { state.imageLoaded = true; tree.update(element()); }),
+    expirePreparation: () => act(async () => { state.prepareTimeout?.(); }),
     completeTiming: () => act(async () => { state.timingCompletion?.(true); }),
     finish: () => act(async () => { control.overlay.props.frame.onFinished(); }),
     rerender: () => act(async () => { tree.update(element()); }),
@@ -188,6 +207,7 @@ test('StrictMode effect replay leaves the mounted theme transition usable', asyn
     await h.start();
     assert.deepEqual(h.state.saved, ['light']);
     assert.deepEqual(h.state.captureThemes, ['dark']);
+    assert.equal(JSON.stringify(h.state.captureOptions), JSON.stringify([{ format: 'png', result: 'tmpfile', width: 390, height: 844 }]));
     await h.resolveCapture(0);
     assert.ok(h.frame);
     assert.equal(h.frame.playing, false);
@@ -222,12 +242,14 @@ test('hook draws one safe whole-window capture before revealing the committed li
     assert.equal(h.frame.before.uri, 'file://snapshot-0');
     assert.equal(h.frame.playing, true);
     await h.finish();
+    await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(h.control.overlay, null);
     assert.deepEqual(h.state.applied, ['light']);
     assert.deepEqual(h.state.diagnostics.map(item => item.event), [
       'request', 'preference_saved', 'animation_decision', 'capture_start', 'capture_complete',
       'cover_requested', 'theme_apply_start',
       'theme_committed', 'theme_painted', 'water_surface_requested', 'overlay_cleared',
+      'temporary_file_released',
     ]);
     assert.ok(h.state.diagnostics.every(item => item.attempt === 1));
   } finally { await h.close(); }
@@ -254,6 +276,20 @@ test('the standard modal loads the Skia cover, reveals the live theme, and settl
     assert.equal(h.control.overlay, null);
     assert.ok(h.state.diagnostics.some(item => item.event === 'water_finished'));
     assert.ok(h.state.diagnostics.some(item => item.event === 'modal_unmounted'));
+  } finally { await h.close(); }
+});
+
+test('a stalled modal image clears promptly and still applies the selected theme', async () => {
+  const h = harness(false, true);
+  try {
+    await h.mount();
+    await h.start();
+    await h.resolveCapture(0);
+    assert.ok(h.control.overlay);
+    await h.expirePreparation();
+    assert.equal(h.control.overlay, null);
+    assert.deepEqual(h.state.applied, ['light']);
+    assert.ok(h.state.diagnostics.some(item => item.event === 'overlay_prepare_timeout'));
   } finally { await h.close(); }
 });
 
@@ -297,5 +333,24 @@ test('an actual viewport resize settles the water and ignores an outdated pendin
     assert.deepEqual(h.state.applied, ['light']);
     await h.resolveCapture(0);
     assert.equal(h.control.overlay, null);
+  } finally { await h.close(); }
+});
+
+test('Reduce Transparency changes the shader uniform without restarting UI-thread timing', async () => {
+  const h = harness(false, true);
+  try {
+    await h.mount();
+    await h.start();
+    await h.resolveCapture(0);
+    await h.showModal();
+    await h.loadSnapshot();
+    await h.paint();
+    await h.paint();
+    await h.paint();
+    await h.paint();
+    assert.equal(h.state.timingStarts, 1);
+    h.state.motion = { animate: true, reduceTransparency: true };
+    await h.rerender();
+    assert.equal(h.state.timingStarts, 1, 'accessibility updates must not restart the 1.18-second animation');
   } finally { await h.close(); }
 });

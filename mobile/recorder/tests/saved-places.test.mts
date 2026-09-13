@@ -9,12 +9,16 @@ const savedPlaces = readFileSync(resolve(directory, '../src/saved-places.ts'), '
 const localStore = readFileSync(resolve(directory, '../src/local-store.ts'), 'utf8');
 const shell = readFileSync(resolve(directory, '../src/shell.tsx'), 'utf8');
 
-test('Saved Places supports Home, Work, and School through private local-first preferences', () => {
+test('Saved Places supports fixed and repeatable custom places through private local-first persistence', () => {
   assert.match(savedPlaces, /'home' \| 'work' \| 'school'/);
   assert.match(savedPlaces, /saved-place\.v1\.\$\{slot\}/);
   assert.match(savedPlaces, /upsertPrivatePreference/);
   assert.match(savedPlaces, /notifyLocalArchiveChanged/);
+  assert.match(savedPlaces, /saveCustomSavedPlace/);
+  assert.match(savedPlaces, /saved-custom-place-v1-/);
+  assert.match(savedPlaces, /loadCustomSavedPlaces/);
   assert.match(localStore, /LOWER\(label\)='school'/);
+  assert.match(localStore, /id LIKE 'saved-custom-place-v1-%'/);
 });
 
 test('Settings replaces the passive safe-zone and recording cards with one compact Saved Places editor', () => {
@@ -25,6 +29,8 @@ test('Settings replaces the passive safe-zone and recording cards with one compa
   assert.match(settings, /Location\.getCurrentPositionAsync/);
   assert.match(settings, /setDestination\(\{ kind: 'saved-place', slot: slot\.id \}\)/);
   assert.match(settings, /<SettingsSavedPlaceEditor/);
+  assert.match(settings, /<SettingsCustomPlaceEditor/);
+  assert.match(settings, /Add another custom place/);
   assert.doesNotMatch(settings, /Home & Work Safe Zones/);
   assert.doesNotMatch(settings, /SectionHeading title="Recording"/);
 });
@@ -51,7 +57,8 @@ test('Settings editors never resize from transient iOS keyboard frames', () => {
   const editors = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function ConnectionsScreen'));
 
   assert.match(editors, /automaticallyAdjustKeyboardInsets=\{false\}/);
-  assert.match(editors, /keyboardShouldPersistTaps="handled"/);
+  assert.match(editors, /keyboardShouldPersistTaps="handled"/, 'Settings editors retain their proven native tap policy');
+  assert.doesNotMatch(editors, /disableScrollViewPanResponder|canCancelContentTouches=\{false\}/, 'Settings leaves child gesture arbitration to the native scroll views');
   assert.doesNotMatch(editors, /Keyboard\.addListener|KeyboardAvoidingView|keyboardHeight|paddingBottom: keyboard/);
   assert.doesNotMatch(editors, /<Modal|<OverlayModal|BlurView|CinematicGlass/);
 });

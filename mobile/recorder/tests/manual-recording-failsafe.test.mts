@@ -121,6 +121,15 @@ test('dense fixes from a moving car do not look stationary after accuracy subtra
   assert.equal(evaluateManualRecordingFailsafe({ session: session(), route, evaluatedAtMs: startedAtMs + 15 * 60_000 }).shouldFinish, false);
 });
 
+test('moderate GPS uncertainty can resolve over a longer baseline while parked or walking', () => {
+  for (const speed of [0, 1.4]) {
+    const route = Array.from({ length: 721 }, (_, second) =>
+      point(second / 60, second * speed / 111_195, speed, 50));
+    assert.equal(evaluateManualRecordingFailsafe({ session: session(), route,
+      evaluatedAtMs: startedAtMs + 720_000 }).shouldFinish, true);
+  }
+});
+
 test('background and foreground paths both enforce the same atomic failsafe', async () => {
   const sourceRoot = new URL('../', import.meta.url);
   const locationTask = await readFile(new URL('src/location-task.ts', sourceRoot), 'utf8');
@@ -133,4 +142,21 @@ test('background and foreground paths both enforce the same atomic failsafe', as
   assert.match(runtime, /claimManualSessionForFailsafeFinish/);
   assert.match(storage, /status IN \('recording','paused'\)/);
   assert.match(storage, /status<>'completed'/);
+});
+
+test('generated GPS sampling and accuracy combinations distinguish driving from walking/parking', () => {
+  for (const accuracy of [5, 20, 50]) for (const interval of [1, 5, 15, 30]) for (const speed of [0, 1.4, 2.3, 5, 25]) {
+    const route = Array.from({ length: Math.floor(720 / interval) + 1 }, (_, i) =>
+      point(i * interval / 60, i * interval * speed / 111_195, speed, accuracy));
+    assert.equal(evaluateManualRecordingFailsafe({ session: session(), route,
+      evaluatedAtMs: startedAtMs + 720_000 }).shouldFinish, speed <= 1.4,
+    `accuracy=${accuracy}, interval=${interval}, speed=${speed}`);
+  }
+});
+
+test('driving resumed just before the deadline is not averaged away by the longer accuracy baseline', () => {
+  const route = Array.from({ length: 601 }, (_, second) =>
+    point(second / 60, Math.max(0, second - 590) * 15 / 111_195, second > 590 ? 15 : 0, 50));
+  assert.equal(evaluateManualRecordingFailsafe({ session: session(), route,
+    evaluatedAtMs: startedAtMs + 600_000 }).shouldFinish, false);
 });

@@ -261,7 +261,8 @@ function insertLocationsForSession(session: SessionRow, locations: LocationObjec
       const { coords } = location;
       if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)
         || coords.latitude < -90 || coords.latitude > 90 || coords.longitude < -180 || coords.longitude > 180
-        || sequence > 10_000_000 || location.timestamp < Date.parse(session.started_at)) continue;
+        || sequence > 10_000_000 || !Number.isFinite(location.timestamp)
+        || location.timestamp < Date.parse(session.started_at)) continue;
       const result = db.runSync(
         'INSERT OR IGNORE INTO recording_points(session_id,sequence,recorded_at,latitude,longitude,accuracy_meters,altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,?,?,?,?);',
         session.id, sequence, new Date(Math.min(location.timestamp, Date.now())).toISOString(), coords.latitude, coords.longitude,
@@ -713,6 +714,22 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
     expiredCompletionLeaseCount,
     ok,
   };
+}
+
+/** Reads enough elapsed GPS history for the manual inactivity policy. */
+export function getManualRecordingFailsafeSnapshot(evaluatedAtMs = Date.now()) {
+  initializeDatabase();
+  const session = activeSession();
+  if (!session || session.id.startsWith('native_recording_')) return { session: null, route: [] };
+  // Safety policy needs a time window, not the UI's 500-point tail. At 1Hz
+  // that tail is shorter than the inactivity threshold and can never finish.
+  const route = db.getAllSync<QueuedPoint>(`SELECT sequence,recorded_at AS recordedAt,latitude,longitude,
+    accuracy_meters AS accuracyMeters,altitude_meters AS altitudeMeters,
+    heading_degrees AS headingDegrees,speed_mps AS speedMps
+    FROM recording_points WHERE session_id=? AND recorded_at>=? AND recorded_at<=?
+    ORDER BY recorded_at,sequence;`, session.id,
+  new Date(evaluatedAtMs - 15 * 60_000).toISOString(), new Date(evaluatedAtMs).toISOString());
+  return { session: getSessionSummary(session.id), route };
 }
 
 /** Reads the active drive directly from this iPhone, including points already uploaded. */
