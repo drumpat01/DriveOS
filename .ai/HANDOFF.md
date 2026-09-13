@@ -1,14 +1,27 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
-## Combined native + OTA TestFlight authorization — September 12, 2026
+## Combined native + OTA TestFlight release — September 12, 2026
 
 - The user explicitly lifted the earlier hold and authorized commit, push, a new
   production TestFlight build, and submission with all current native changes
   and bundled OTA advancements. Source runtime advances from Build 23's
   `2.0.0-watch.4` to `2.0.0-watch.5`; preview source advances to preview.10.
-- Release verification/build/submission is in progress. Do not publish a separate
-  OTA to watch.4 from this source; the production native build must carry the
-  bundle and establish the new runtime first.
+- Release source commit `33bbd4a9d72ebb542372de56ec3c465d2243c653`
+  (`feat: harden JourneyDeck V2 native recording`) is pushed to
+  `origin/codex/journeydeck-v2`. The build contains the complete committed native
+  and JavaScript/TypeScript/asset snapshot; no separate OTA was published.
+- EAS production iOS Build 24 succeeded: build ID
+  `e5c41645-7467-48ba-bae0-0c2a5b00fc27`, runtime `2.0.0-watch.5`, App Store
+  distribution, iPhone app plus Watch extension. Automatic submission ID
+  `1f1dd476-0ee6-4a83-8433-2bd68905bfaf` succeeded. Apple reports Build 24
+  `VALID` and `IN_BETA_TESTING` for internal TestFlight users.
+- Preflight evidence: 632/632 mobile tests, mobile TypeScript, production iOS
+  Hermes export, server typecheck, 34/34 server tests, server lint, staged
+  whitespace check, and staged gitleaks scan passed. The EAS archive provides
+  the first successful Swift compilation/signing result for NB-001 through
+  NB-007. Physical iPhone/Watch acceptance and injected live CloudKit/device
+  failure testing remain pending. Public App Store release was not requested;
+  its privacy/support URL metadata preflight remains separate.
 
 ## Native recording consolidation — September 12, 2026 (local only)
 

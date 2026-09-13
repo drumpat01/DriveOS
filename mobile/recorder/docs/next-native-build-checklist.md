@@ -1,30 +1,33 @@
 # Next native build checklist
 
-This is the living source of truth for native changes intended for the next
-JourneyDeck iOS build after Build 23 (`2.0.0`, runtime `2.0.0-watch.4`). Add new
-items here as they are approved or discovered. Keep implementation state and
-device verification separate: source completion does not mean the behavior has
-passed on an iPhone, iPad, or Apple Watch.
+This is the living source of truth for native changes shipped in JourneyDeck iOS
+Build 24 and candidates for later native builds. Build 24 is version `2.0.0`,
+runtime `2.0.0-watch.5`. Keep implementation/build state and device verification
+separate: a successful archive does not mean the behavior has passed on an
+iPhone, iPad, or Apple Watch.
 
 **Release authorization:** On September 12 the user explicitly lifted the prior
 hold and authorized committing, pushing, building, and submitting one production
 TestFlight build containing all listed native work and bundled OTA advancements.
 
-Latest local validation (September 12): **632/632 tests and TypeScript passed**,
-including real SQLite rollback/process-termination checks and UI recovery races.
-Swift compilation and physical-device acceptance remain pending. No build was run.
+Release result (September 12): source commit `33bbd4a` is pushed. EAS production
+Build 24 (`e5c41645-7467-48ba-bae0-0c2a5b00fc27`) compiled and signed the iPhone
+app and Watch extension successfully. Submission
+`1f1dd476-0ee6-4a83-8433-2bd68905bfaf` succeeded; Apple reports the build
+`VALID` and `IN_BETA_TESTING`. The build bundles all committed OTA advancements;
+no separate OTA was published. Physical-device acceptance remains pending.
 
 ## Required changes
 
 | ID | Native change | State | Required verification |
 | --- | --- | --- | --- |
-| NB-001 | Harden the Swift ten-minute manual inactivity policy with an accuracy-aware observation baseline and an independent recent-movement check, so accepted GPS uncertainty can resolve parking without hiding a departure near the cutoff. | Implemented locally; Swift is uncompiled. | Run the Swift policy harness, compile in Xcode/EAS, then test parking/walking, resumed driving near ten minutes, GPS drift/loss/recovery, and airplane-mode recovery. |
-| NB-002 | Make native recorder status and persisted-session reconciliation finish a fresh, already-confirmed inactivity interval. This closes the case where no new location callback arrives at the exact cutoff but a later native status/recovery entry point runs. | Implemented locally; Swift is uncompiled. | With the phone locked, confirm the native session, GPS indicator, phone clock, and Watch state all stop once. Foreground after the boundary and repeat with Pause/Resume and rapid Watch Stop/Start. |
-| NB-003 | Durable native recorder command journal with operation IDs and queryable outcomes for Start, Pause, Resume, and Finish, including phone, Watch, and legacy bridge entry points. | Implemented locally on September 12; Swift is uncompiled. Native inbox schema 2 adds durable intents and atomic transition receipts. Interrupted Start/Resume intents are rejected; Pause/Finish recover against the exact owner/session. Configure retains its existing serialized path. | Run `node scripts/test-native-command-journal.mjs` on a Mac, compile the app, and test lost responses, database-full writes, relaunch, expired commands, and rapid phone/Watch controls. Confirm a replayed Start cannot recreate an acknowledged journey. |
-| NB-004 | CloudKit stuck-operation recovery (promoted from NC-001): cancellable native requests, bounded responses, late-result suppression, and guards against overlapping unresolved work. | Implemented locally on September 12; Swift is uncompiled. Native transport version 6. Existing durable deletion pause, conflict checks, and commit-after-import cursors are preserved. | Compile and inject delayed/cancelled CloudKit callbacks on a disposable account. Verify timeout/retry, JS reload during a request, deletion after an uncertain response, missing zone results, and a large multi-page restore. Confirm queued records are not acknowledged from late responses. |
-| NB-005 | One native recording state machine for phone/Watch Start, Pause, Resume, Finish, automatic start/stop, inactivity completion, profile handoff, and persisted-session recovery. | Implemented locally; Swift is uncompiled. Terminal/owner/session fences and receipt validation live in `RecorderStateMachine.swift`. Native status reconciles committed active transport; new native engines no longer receive speculative Resume from a stale UI mirror. | Run both Swift harnesses with `node scripts/test-native-command-journal.mjs`; compile recorder and Watch; test phone/Watch races, profile switches, interrupted Finish, and relaunch. |
-| NB-006 | Store recovery-critical movement checkpoints in native SQLite with session state, point writes, and command receipts. | Implemented locally; Swift is uncompiled. Native inbox schema 3 adds an owner-scoped checkpoint with an optional session for idle detection candidates. Matching legacy UserDefaults state is migration input only; stale command intervals reset. | Run migration/rollback harnesses, then upgrade a disposable old database. Inject point/checkpoint/receipt failures and terminate between writes. Verify a failed profile fence cannot restart the previous profile. |
-| NB-007 | Native recorder status events update the React Native clock immediately, with polling retained for recovery. | Implemented locally; Swift is uncompiled. Start/Resume, Pause, Finish and failure signals use journey identity, stream ID and sequence. UI rejects stale events/status work; subscriptions support older binaries and remove their listeners. | Exercise Watch Pause/Finish with a locked phone, JS suspension/reload, lost events, rapid new journeys, and a profile switch during status reads. Verify phone/Watch clock agreement after foregrounding. |
+| NB-001 | Harden the Swift ten-minute manual inactivity policy with an accuracy-aware observation baseline and an independent recent-movement check, so accepted GPS uncertainty can resolve parking without hiding a departure near the cutoff. | Included in Build 24; EAS Swift archive passed. | Test parking/walking, resumed driving near ten minutes, GPS drift/loss/recovery, and airplane-mode recovery on a device. |
+| NB-002 | Make native recorder status and persisted-session reconciliation finish a fresh, already-confirmed inactivity interval. This closes the case where no new location callback arrives at the exact cutoff but a later native status/recovery entry point runs. | Included in Build 24; EAS Swift archive passed. | With the phone locked, confirm the native session, GPS indicator, phone clock, and Watch state all stop once. Foreground after the boundary and repeat with Pause/Resume and rapid Watch Stop/Start. |
+| NB-003 | Durable native recorder command journal with operation IDs and queryable outcomes for Start, Pause, Resume, and Finish, including phone, Watch, and legacy bridge entry points. | Included in Build 24; EAS Swift archive passed. Native inbox schema 2 adds durable intents and atomic transition receipts. Interrupted Start/Resume intents are rejected; Pause/Finish recover against the exact owner/session. Configure retains its existing serialized path. | Test lost responses, database-full writes, relaunch, expired commands, and rapid phone/Watch controls. Confirm a replayed Start cannot recreate an acknowledged journey. |
+| NB-004 | CloudKit stuck-operation recovery (promoted from NC-001): cancellable native requests, bounded responses, late-result suppression, and guards against overlapping unresolved work. | Included in Build 24; EAS Swift archive passed. Native transport version 6. Existing durable deletion pause, conflict checks, and commit-after-import cursors are preserved. | Inject delayed/cancelled CloudKit callbacks on a disposable account. Verify timeout/retry, JS reload during a request, deletion after an uncertain response, missing zone results, and a large multi-page restore. Confirm queued records are not acknowledged from late responses. |
+| NB-005 | One native recording state machine for phone/Watch Start, Pause, Resume, Finish, automatic start/stop, inactivity completion, profile handoff, and persisted-session recovery. | Included in Build 24; EAS Swift archive passed. Terminal/owner/session fences and receipt validation live in `RecorderStateMachine.swift`. Native status reconciles committed active transport; new native engines no longer receive speculative Resume from a stale UI mirror. | Test phone/Watch races, profile switches, interrupted Finish, and relaunch. |
+| NB-006 | Store recovery-critical movement checkpoints in native SQLite with session state, point writes, and command receipts. | Included in Build 24; EAS Swift archive passed. Native inbox schema 3 adds an owner-scoped checkpoint with an optional session for idle detection candidates. Matching legacy UserDefaults state is migration input only; stale command intervals reset. | Upgrade a disposable old database. Inject point/checkpoint/receipt failures and terminate between writes. Verify a failed profile fence cannot restart the previous profile. |
+| NB-007 | Native recorder status events update the React Native clock immediately, with polling retained for recovery. | Included in Build 24; EAS Swift archive passed. Start/Resume, Pause, Finish and failure signals use journey identity, stream ID and sequence. UI rejects stale events/status work; subscriptions support older binaries and remove their listeners. | Exercise Watch Pause/Finish with a locked phone, JS suspension/reload, lost events, rapid new journeys, and a profile switch during status reads. Verify phone/Watch clock agreement after foregrounding. |
 
 ## Native candidates pending design
 
@@ -60,6 +63,10 @@ Before submitting the combined build:
 
 ## Change log
 
+- 2026-09-12: Shipped NB-001 through NB-007 in production TestFlight Build 24
+  from commit `33bbd4a`. EAS build and submission succeeded; Apple reports
+  `VALID` / `IN_BETA_TESTING`. All committed OTA advancements are bundled in the
+  binary; no standalone OTA was published. Physical-device acceptance remains.
 - 2026-09-12: Added implemented source items NB-005 through NB-007 at the user's
   request. The user subsequently authorized the combined TestFlight release.
   Architecture, test evidence,
