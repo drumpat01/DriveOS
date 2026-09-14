@@ -24,10 +24,11 @@ Minted artwork bridge.
 
 - Expo Doctor: 21/21 checks pass after the SDK 57 patch alignment.
 - TypeScript passes.
-- Complete mobile test suite: 646/646 passes.
+- Complete mobile test suite: 647/647 passes.
 - Focused release/Minted/runtime tests: 20/20 passes.
-- Production iOS JavaScript export succeeds with 101 assets, including all 24
-  approved theme fronts for the first six medallions.
+- Production iOS JavaScript export succeeds with 2,660 modules, an 8.7 MB Hermes
+  bundle, and 117 assets, including all 40 approved theme fronts for the complete
+  ten-medallion collection.
 - Server typecheck, lint, 34/34 tests, and Atlas performance benchmark pass after
   merging the current public-site launch work from `main`.
 - Production dependency audit has no high or critical findings. Sixteen moderate
@@ -39,28 +40,23 @@ Minted artwork bridge.
 
 ## Required before this becomes the submitted release candidate
 
-1. Finish and approve the remaining four medallion fronts: Grand Tourer, Thousand
-   Mile Club, Halfway There, and Long Play. Their achievement rules exist, but
-   their final four-theme artwork does not. Long Way Home replaces After Dark and
-   is approved as option 7; Halfway There and Long Play replace Explorer and Open
-   Road.
-2. Capture upload-ready iPhone and iPad App Store screenshots from the final
+1. Capture upload-ready iPhone and iPad App Store screenshots from the final
    production-configured build. The six files under
    `docs/design/app-store-v2-first-screen` are concepts and have deliberately
    non-upload-ready dimensions.
-3. Deploy the corrected `web/privacy.html` from this candidate before App Review.
+2. Deploy the corrected `web/privacy.html` from this candidate before App Review.
    The live URL is reachable, but its current deployment still describes older
    Automatic Drive Detection and Tessie behavior that is absent from the public
    JourneyDeck 2.0 build.
-4. Confirm App Store Connect metadata, age rating, privacy answers, reviewer
+3. Confirm App Store Connect metadata, age rating, privacy answers, reviewer
    contact details, subscription products/offering, purchase screenshots,
    pricing/availability, agreements, tax, and banking. These are account state
    and cannot be proven from the repository.
-5. Create the production archive after the build hold is lifted. Inspect the
+4. Create the production archive after the build hold is lifted. Inspect the
    signed IPA for version/build/runtime, opaque default icon, iPhone/iPad support,
    Watch embedding, privacy manifests, CloudKit entitlements, RevenueCat, and
    Minted symbols before uploading that exact build.
-6. Install that build from TestFlight and complete the iPhone, iPad, and paired
+5. Install that build from TestFlight and complete the iPhone, iPad, and paired
    Watch device matrix in `mobile/recorder/docs/next-native-build-checklist.md`.
    Minted must be checked in all four themes, online and from cached artwork,
    with a fixed gold reverse/edge, Reduce Motion, VoiceOver, and fallback behavior.

@@ -1,19 +1,28 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
-## Final four medallions selected — September 14, 2026
+## Complete ten-medallion collection approved and integrated — September 14, 2026
 
-- The user replaced Explorer and Open Road. The four unfinished medallions are
-  now, in order: **Grand Tourer — 100 journeys**, **Thousand Mile Club — 1,000
-  total miles**, **Halfway There — 500 total miles**, and **Long Play — 10 songs
-  during one journey**.
-- Achievement definitions and rules now match the final lineup. Halfway There is
-  cumulative; Long Play requires one journey with at least 10 plays and does not
-  combine smaller song counts across journeys.
-- Verification passes: TypeScript, focused achievement tests 4/4, and the complete
-  mobile suite 646/646.
-- No artwork was generated for these four in this change. Continue the established
-  workflow with 10 monochrome-gold Grand Tourer concepts unless the user chooses a
-  different one to design next. No native/EAS build or OTA publish was performed.
+- The user approved the final 4 Journey / 3 Music / 3 Memory collection and all
+  four theme variants. The set is The First Track, Long Way Home, Thousand Mile
+  Club, Grand Tourer, First Note, Long Play, Soundtrack 100, Memory Maker, Picture
+  This, and Story Collector. Road Regular, Century Road, Halfway There, Explorer,
+  Open Road, and After Dark are not part of the final ten.
+- Saved the six new gold concept sheets, selected gold masters, four-theme sheets,
+  and 24 new fronts under `mobile/recorder/assets/medallion-concepts`. Updated all
+  four First Journey fronts so `FIRST JOURNEY` appears only on the upper arc. All
+  40 active fronts are straight-on 520x520 RGBA circles with a 10px transparent
+  safety margin; the Minted body, edge, and reverse remain regular gold.
+- Updated Achievements to the final lineup. First Note unlocks on the first journey
+  with at least one saved song; Long Play requires 10 plays in one journey;
+  Picture This retains the earliest valid photo-add date; Story Collector retains
+  the fifth valid Memory creation date.
+- Verification passes: TypeScript, focused achievement/Minted tests 8/8, complete
+  mobile suite 647/647, and iOS JavaScript export with 2,660 modules, an 8.7 MB
+  Hermes bundle, 117 assets, and all 40 active fronts.
+- No native/EAS build, OTA publish, demo-site update, Git commit, or Git push was
+  performed. The next release gates are real App Store screenshots, corrected
+  privacy-page deployment, App Store Connect state confirmation, then Build 28
+  and TestFlight acceptance after the build hold is lifted.
 
 ## Long Way Home medallion approved and integrated — September 14, 2026
 

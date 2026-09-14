@@ -35,8 +35,8 @@ vm.runInNewContext(code, {
     './touch-feedback': touchFeedbackMock,
     './app-theme': { useAppTheme: () => ({ id: 'redline', palette }) },
     './medallion-artwork': {
-      isApprovedMedallion: (id: string) => ['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'long-way-home', 'memory-maker'].includes(id),
-      medallionArtwork: Object.fromEntries(['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'long-way-home', 'memory-maker'].map(id => [id, { redline: `${id}-redline` }])),
+      isApprovedMedallion: (id: string) => ['first-track', 'long-way-home', 'thousand-mile', 'grand-tourer', 'first-note', 'long-play', 'soundtrack-100', 'memory-maker', 'picture-this', 'story-collector'].includes(id),
+      medallionArtwork: Object.fromEntries(['first-track', 'long-way-home', 'thousand-mile', 'grand-tourer', 'first-note', 'long-play', 'soundtrack-100', 'memory-maker', 'picture-this', 'story-collector'].map(id => [id, { redline: `${id}-redline` }])),
     },
     '../modules/journeydeck-keepsakes': {
       JourneyDeckMedallion: ({ name, ...props }: any) => React.createElement('JourneyDeckMedallion', { ...props, accessibilityRole: 'imagebutton', accessibilityLabel: `Turn ${name} medallion` }),
@@ -60,11 +60,13 @@ const memories = [{ id: 'm1', name: 'Lake Weekend', notes: '', artworkKey: 'road
 test('achievement milestones retain their earning journey and locked state', () => {
   const byId = Object.fromEntries(buildAchievements(journeys, memories).map((item: any) => [item.id, item]));
   assert.equal(byId['first-track'].earnedAt, journeys[0].startedAt);
-  for (const id of ['road-regular', 'century-road', 'soundtrack-100']) assert.equal(byId[id].earnedAt, journeys[9].startedAt);
-  assert.equal(byId['thousand-mile'].earned, false);
-  assert.equal(byId['halfway-there'].earned, false);
+  assert.equal(byId['first-note'].earnedAt, journeys[0].startedAt);
   assert.equal(byId['long-play'].earnedAt, journeys[0].startedAt);
+  assert.equal(byId['soundtrack-100'].earnedAt, journeys[9].startedAt);
+  assert.equal(byId['thousand-mile'].earned, false);
   assert.equal(byId['memory-maker'].earnedAt, memories[0].createdAtUtc);
+  assert.equal(byId['picture-this'].earned, false);
+  assert.equal(byId['story-collector'].earned, false);
   assert.equal(byId['grand-tourer'].earned, false);
   assert.equal(byId['long-way-home'].earned, false);
 });
@@ -87,6 +89,20 @@ test('Long Play requires 10 songs in one journey instead of a cumulative total',
   ];
   const achievement = buildAchievements(musicalJourneys).find((item: any) => item.id === 'long-play');
   assert.equal(achievement.earnedAt, musicalJourneys[2].startedAt);
+});
+
+test('photo and collection achievements retain the first photo and fifth Memory dates', () => {
+  const memoryRows = Array.from({ length: 5 }, (_, index) => ({
+    ...memories[0],
+    id: `m${index + 1}`,
+    name: `Memory ${index + 1}`,
+    createdAtUtc: `2026-09-${String(index + 1).padStart(2, '0')}T18:00:00Z`,
+    updatedAtUtc: `2026-09-${String(index + 1).padStart(2, '0')}T18:00:00Z`,
+    photos: index === 2 ? [{ id: 'p1', fileName: 'road.jpg', contentType: 'image/jpeg', byteLength: 1200, createdAtUtc: '2026-09-03T19:00:00Z' }] : [],
+  }));
+  const byId = Object.fromEntries(buildAchievements([], memoryRows).map((item: any) => [item.id, item]));
+  assert.equal(byId['picture-this'].earnedAt, memoryRows[2].photos[0].createdAtUtc);
+  assert.equal(byId['story-collector'].earnedAt, memoryRows[4].createdAtUtc);
 });
 
 test('achievement overview opens a native detail sheet with turnable earned context', async () => {

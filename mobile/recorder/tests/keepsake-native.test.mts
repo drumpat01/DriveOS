@@ -29,14 +29,18 @@ test('the approved medallions are backed by a pinned Minted native module', asyn
   assert.match(swift, /Drag left or right to rotate the medallion/);
 });
 
-test('all 24 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
+test('all 40 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
   const designs = {
     'first-track': ['the-first-track/option-01-theme-variants', 'first-track'],
-    'road-regular': ['road-regular/option-06-theme-variants', 'road-regular'],
-    'century-road': ['century-road/option-01-theme-variants', 'century-road'],
-    'soundtrack-100': ['soundtrack-100/option-01-theme-variants', 'soundtrack-100'],
     'long-way-home': ['long-way-home/option-07-theme-variants', 'long-way-home'],
+    'thousand-mile': ['thousand-mile-club/option-02-theme-variants', 'thousand-mile-club'],
+    'grand-tourer': ['grand-tourer/option-07-theme-variants', 'grand-tourer'],
+    'first-note': ['first-note/option-01-theme-variants', 'first-note'],
+    'long-play': ['long-play/option-04-theme-variants', 'long-play'],
+    'soundtrack-100': ['soundtrack-100/option-01-theme-variants', 'soundtrack-100'],
     'memory-maker': ['memory-maker/option-08-theme-variants', 'memory-maker'],
+    'picture-this': ['picture-this/option-08-theme-variants', 'picture-this'],
+    'story-collector': ['story-collector/option-01-theme-variants', 'story-collector'],
   } as const;
   const themes = { redline: 'grand-touring', sakura: 'rosewater', dark: 'cinematic-dark', light: 'warm-ivory' } as const;
   for (const [id, [directory, prefix]] of Object.entries(designs)) for (const [themeId, sourceTheme] of Object.entries(themes)) {

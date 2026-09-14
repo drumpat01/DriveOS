@@ -11,7 +11,7 @@ import { JourneyDeckMedallion } from '../modules/journeydeck-keepsakes';
 import { isApprovedMedallion, medallionArtwork } from './medallion-artwork';
 import type { JourneyMemory, JourneySummary } from './app-data';
 
-type AchievementId = 'first-track' | 'road-regular' | 'century-road' | 'soundtrack-100' | 'long-way-home' | 'memory-maker' | 'grand-tourer' | 'thousand-mile' | 'halfway-there' | 'long-play';
+type AchievementId = 'first-track' | 'long-way-home' | 'thousand-mile' | 'grand-tourer' | 'first-note' | 'long-play' | 'soundtrack-100' | 'memory-maker' | 'picture-this' | 'story-collector';
 
 type AchievementDefinition = {
   id: AchievementId;
@@ -29,15 +29,15 @@ type Achievement = AchievementDefinition & {
 
 const definitions: AchievementDefinition[] = [
   { id: 'first-track', name: 'The First Track', symbol: 'road.lanes', how: 'Complete and save your first journey.', why: 'Every road story needs a first chapter.' },
-  { id: 'road-regular', name: 'Road Regular', symbol: 'car.fill', how: 'Complete 10 journeys.', why: 'Ten saved drives mark the beginning of a real travel history.' },
-  { id: 'century-road', name: 'Century Road', symbol: 'gauge.with.dots.needle.67percent', how: 'Record 100 total miles.', why: 'A hundred miles turns scattered trips into a meaningful map.' },
-  { id: 'soundtrack-100', name: 'Soundtrack 100', symbol: 'music.note.list', how: 'Save 100 song plays with your journeys.', why: 'Your listening history becomes part of the places and moments you remember.' },
   { id: 'long-way-home', name: 'Long Way Home', symbol: 'signpost.right.and.left.fill', how: 'Complete a journey longer than 25 miles.', why: 'One long stretch of road can turn an ordinary drive into a story worth keeping.' },
-  { id: 'memory-maker', name: 'Memory Maker', symbol: 'photo.on.rectangle.angled', how: 'Create your first Memory.', why: 'A Memory keeps related journeys and photos together as one chapter.' },
-  { id: 'grand-tourer', name: 'Grand Tourer', symbol: 'car.side.fill', how: 'Complete 100 journeys.', why: 'One hundred journeys mark a lasting life on the road.' },
   { id: 'thousand-mile', name: 'Thousand Mile Club', symbol: 'mountain.2.fill', how: 'Record 1,000 total miles.', why: 'One thousand miles is a long-running record of where life has taken you.' },
-  { id: 'halfway-there', name: 'Halfway There', symbol: 'road.lanes.curved.right', how: 'Record 500 total miles.', why: 'Five hundred miles marks the midpoint of your first thousand-mile chapter.' },
+  { id: 'grand-tourer', name: 'Grand Tourer', symbol: 'car.side.fill', how: 'Complete 100 journeys.', why: 'One hundred journeys mark a lasting life on the road.' },
+  { id: 'first-note', name: 'First Note', symbol: 'music.note', how: 'Save your first song play with a journey.', why: 'The first saved song begins the soundtrack to your roads.' },
   { id: 'long-play', name: 'Long Play', symbol: 'record.circle.fill', how: 'Play 10 songs during one journey.', why: 'A ten-song journey has enough music to become a soundtrack of its own.' },
+  { id: 'soundtrack-100', name: 'Soundtrack 100', symbol: 'music.note.list', how: 'Save 100 song plays with your journeys.', why: 'Your listening history becomes part of the places and moments you remember.' },
+  { id: 'memory-maker', name: 'Memory Maker', symbol: 'photo.on.rectangle.angled', how: 'Create your first Memory.', why: 'A Memory keeps related journeys and photos together as one chapter.' },
+  { id: 'picture-this', name: 'Picture This', symbol: 'camera.fill', how: 'Add your first photo to a Memory.', why: 'A personal photo makes a saved road story vivid and unmistakably yours.' },
+  { id: 'story-collector', name: 'Story Collector', symbol: 'photo.stack.fill', how: 'Create five Memories.', why: 'Five Memories turn individual moments into a collection of road stories.' },
 ];
 
 const validDate = (journey: JourneySummary) => Number.isFinite(new Date(journey.startedAt).getTime());
@@ -47,38 +47,52 @@ const routeText = (journey?: JourneySummary) => journey ? `${journey.startingLoc
 
 export function buildAchievements(journeys: JourneySummary[], memories: JourneyMemory[] = []): Achievement[] {
   const rows = dated(journeys);
-  const milestone = (test: (state: { count: number; miles: number; songs: number; destinations: Set<string> }, journey: JourneySummary) => boolean) => {
-    const state = { count: 0, miles: 0, songs: 0, destinations: new Set<string>() };
+  const milestone = (test: (state: { count: number; miles: number; songs: number }, journey: JourneySummary) => boolean) => {
+    const state = { count: 0, miles: 0, songs: 0 };
     for (const journey of rows) {
       state.count += 1;
       state.miles += Math.max(0, Number.isFinite(journey.miles) ? journey.miles : 0);
       state.songs += Math.max(0, Number.isFinite(journey.songCount) ? journey.songCount : 0);
-      const destination = journey.endingLocation?.trim().toLowerCase();
-      if (destination) state.destinations.add(destination);
       if (test(state, journey)) return journey;
     }
     return undefined;
   };
   const earnedJourneyById: Partial<Record<AchievementId, JourneySummary>> = {
     'first-track': rows[0],
-    'road-regular': milestone(state => state.count >= 10),
-    'century-road': milestone(state => state.miles >= 100),
-    'soundtrack-100': milestone(state => state.songs >= 100),
     'long-way-home': rows.find(journey => Number.isFinite(journey.miles) && journey.miles > 25),
     'thousand-mile': milestone(state => state.miles >= 1000),
     'grand-tourer': milestone(state => state.count >= 100),
-    'halfway-there': milestone(state => state.miles >= 500),
+    'first-note': rows.find(journey => Number.isFinite(journey.songCount) && journey.songCount > 0),
     'long-play': rows.find(journey => Number.isFinite(journey.songCount) && journey.songCount >= 10),
+    'soundtrack-100': milestone(state => state.songs >= 100),
   };
-  const firstMemory = [...memories]
+  const memoryRows = [...memories]
     .filter(memory => Number.isFinite(new Date(memory.createdAtUtc).getTime()))
-    .sort((a, b) => new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime())[0];
+    .sort((a, b) => new Date(a.createdAtUtc).getTime() - new Date(b.createdAtUtc).getTime());
+  const firstMemory = memoryRows[0];
+  const fifthMemory = memoryRows[4];
+  const firstPhoto = memoryRows.flatMap(memory => (memory.photos ?? [])
+    .filter(photo => Number.isFinite(new Date(photo.createdAtUtc).getTime()))
+    .map(photo => ({ memory, photo })))
+    .sort((a, b) => new Date(a.photo.createdAtUtc).getTime() - new Date(b.photo.createdAtUtc).getTime())[0];
   return definitions.map(definition => {
     if (definition.id === 'memory-maker') return {
       ...definition,
       earned: Boolean(firstMemory),
       earnedAt: firstMemory?.createdAtUtc ?? null,
       earnedReason: firstMemory ? `Earned when you created ${firstMemory.name || 'your first Memory'}.` : definition.how,
+    };
+    if (definition.id === 'picture-this') return {
+      ...definition,
+      earned: Boolean(firstPhoto),
+      earnedAt: firstPhoto?.photo.createdAtUtc ?? null,
+      earnedReason: firstPhoto ? `Earned when you added your first photo to ${firstPhoto.memory.name || 'a Memory'}.` : definition.how,
+    };
+    if (definition.id === 'story-collector') return {
+      ...definition,
+      earned: Boolean(fifthMemory),
+      earnedAt: fifthMemory?.createdAtUtc ?? null,
+      earnedReason: fifthMemory ? `Earned when you created ${fifthMemory.name || 'your fifth Memory'}, your fifth Memory.` : definition.how,
     };
     const journey = earnedJourneyById[definition.id];
     return {

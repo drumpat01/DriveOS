@@ -13,4 +13,4 @@ Achievement: first journey completed.
 9. `09-warm-ivory-coastal-road.png` — Warm Ivory; coastal road and record sunrise.
 10. `10-warm-ivory-route-map.png` — Warm Ivory; topographic route to a record center.
 
-All concepts were generated as isolated, straight-on circular medallions with transparent backgrounds. The face copy is “THE FIRST TRACK” and “FIRST JOURNEY.”
+The approved final face keeps the option 1 vinyl sunrise and musical road, centers every ring and scenic element, and reads `FIRST JOURNEY` once across the upper arc. The lower arc is blank. All four theme exports are normalized to straight-on 520x520 circles with transparent corners.
