@@ -244,3 +244,8 @@ html { background: #081832; }
 .editorial .circle-link:hover { transform: none; background: #397d67; }
 .editorial .journey-mark { width: 80px; height: 42px; flex-shrink: 0; fill: none; stroke: #d4b15a; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 @media(max-width:760px) { .editorial .note-stamp { width: 140px; padding: 14px; } .editorial .note-stamp span { font-size: 7px; } .editorial .note-stamp em { font-size: 20px; } .editorial .journey-mark { width: 58px; height: 34px; } }
+.editorial .hero-actions { display: flex; align-items: center; gap: 12px; }
+.editorial .hero-cta { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; padding: 0 22px; border: 1px solid #608c78; border-radius: 17px; color: #f6f0e2; background: #2f6b57; font-size: 14px; font-weight: 800; white-space: nowrap; transition: transform .2s, background .2s; }
+.editorial .hero-cta:hover { transform: translateY(-2px); background: #397d67; }
+@media(max-width:760px) { .editorial .editor-bottom { align-items: flex-end; } .editorial .hero-actions { gap: 8px; } .editorial .hero-cta { min-height: 46px; padding: 0 14px; border-radius: 14px; font-size: 12px; } }
+@media(max-width:410px) { .editorial .editor-bottom { align-items: flex-start; flex-direction: column; } }

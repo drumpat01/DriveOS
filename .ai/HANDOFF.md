@@ -4484,3 +4484,13 @@ This scope supersedes older handoff or App Store documentation that says the pub
 - The user explicitly authorized committing and pushing all accumulated JourneyDeck changes, while keeping native/EAS builds on hold.
 - The app repository checkpoint includes the complete mobile source/test/documentation work and canonical medallion concepts. The separate clean `medallion-demo-site` workspace remains outside the app repository, and generated duplicate native medallion resources remain ignored because Minted now consumes OTA assets.
 - Pre-commit verification passed: TypeScript, focused achievement/Minted tests 5/5, full mobile suite 644/644, staged `git diff --check`, and a staged-path credential filename audit. No native/EAS build or OTA was started.
+
+## JourneyDeck 2.0 release-candidate audit — September 14, 2026
+
+- Reconciled `codex/journeydeck-v2` with `origin/main`, including the live public-site launch work. Preserved the production-accurate manual-only privacy language, added Terms/final support contact links, and added a regression check excluding Automatic Drive Detection and Tessie from the public policy.
+- Prepared the next native source candidate on production runtime `2.0.0-watch.7` and preview runtime `2.0.0-preview.12`. Added the exempt-encryption declaration and documented NB-009, the generic Minted OTA-artwork bridge. The remote production build counter remains 27, so the next auto-incremented build is expected to be 28.
+- Aligned Expo SDK 57 patch packages, removed high dependency findings, upgraded Wrangler to 4.131.2, regenerated Cloudflare types, and excluded ignored generated caches from the repository vulnerability scan.
+- Verification passed: Expo Doctor 21/21, TypeScript, focused release tests 20/20, mobile 644/644, production iOS JS export with 97 assets and all 20 approved theme fronts, public release preflight, server typecheck/lint/34 tests, Atlas benchmark, Cloudflare dry run, secret scan, and high/critical vulnerability scan. Live home/privacy/support/terms/robots/sitemap endpoints returned 200.
+- Desktop E2E remains 8/9 because the known Statistics fixture leaves `#statisticsScore` as `--`; this is unchanged from the public-site handoff and unrelated to the mobile candidate.
+- Remaining release gates are recorded in `docs/app-store/RELEASE_CANDIDATE_STATUS.md`: finish five medallion designs, capture real upload-ready iPhone/iPad screenshots, confirm App Store Connect/privacy/subscription/account state, build and inspect the signed IPA, then complete iPhone/iPad/Watch TestFlight acceptance.
+- No native/EAS build, OTA, upload, public-site deploy, or App Review submission was started. The build hold remains active.

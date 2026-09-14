@@ -69,4 +69,4 @@ Capture every screenshot from a production-configured build with internal testin
 - Spotify, Last.fm, direct Spotify, or any other unapproved public music import.
 - Navigation, emergency response, crash detection, or driving-safety guarantees.
 - That iCloud, Apple Music, ShazamKit, or an owner legacy backup is required for manual recording.
-- Automatic recording, Tesla integration, or Tessie support in version 1.
+- Automatic recording, Tesla integration, or Tessie support in version 2.0.

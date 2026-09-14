@@ -90,6 +90,6 @@ test('Achievements moves keepsakes out of Memories and into Settings', async () 
   assert.match(achievements, />WHY</);
   assert.match(achievements, /muted=\{!achievement\.earned\}/);
   assert.match(categories, /id: 'achievements', title: 'Achievements'/);
-  assert.match(appConfig, /preview \? '2\.0\.0-preview\.11' : '2\.0\.0-watch\.6'/);
+  assert.match(appConfig, /preview \? '2\.0\.0-preview\.12' : '2\.0\.0-watch\.7'/);
   assert.match(appConfig, /deploymentTarget: '17\.0'/);
 });
