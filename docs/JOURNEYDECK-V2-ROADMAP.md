@@ -226,6 +226,13 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 - Derive awards from authoritative local JourneyDeck data, preserve earned state through backup and restore, and provide clear progress and unlock explanations without exposing precise locations.
 - Keep badge criteria focused on reflection and discovery. Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior.
 
+### V3-07 — Durable cross-device music revisioning
+
+- Add a durable edit timestamp and monotonic sync revision to each music observation so metadata repairs can converge reliably across devices.
+- Increment the revision for every synced metadata change, carry it through private CloudKit records, and acknowledge uploads only when the local revision still matches the uploaded payload.
+- Define deterministic handling for concurrent edits and compatible metadata merges, then validate offline edits, delayed acknowledgements, stale replay, artwork enrichment, upgrades, and two-device recovery.
+- Preserve V2's conservative behavior until this migration ships: keep a conflicting local edit pending and report it instead of allowing an older cloud copy to overwrite it.
+
 ## Decisions to settle before the relevant implementation
 
 | Decision | Proposed approach / question | Needed by |
@@ -239,6 +246,7 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 | V3 red and green themes | Name and art-direct both as independent systems; allocate new stable IDs and validate contrast across every primary surface | V3 |
 | iPhone Duo emergency compatibility | Confirm shipping hardware and public SDK behavior, then define adaptive layouts, posture continuity, safe areas and physical-device acceptance without expanding V2.5 scope | V2.5 |
 | Badges | Define the initial badge catalog, progress rules, retroactive awards, presentation surfaces, accessibility and private backup behavior | V3 |
+| Cross-device music revisioning | Design an additive music schema migration, CloudKit revision contract, deterministic conflict handling and two-device acceptance matrix | V3 |
 | iPad experience | Define tablet navigation, screen layouts, supported orientations, and device-specific capabilities | M7 |
 | Release packaging | Ship only the active V2 scope; automatic recording and hosted interactive sharing are explicitly removed, while Last.fm remains blocked | M8 |
 
@@ -258,6 +266,7 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 - September 6 user revision: remove automatic recording because the Watch companion covers intentional Start/Stop; remove the interactive sharing website; keep Last.fm blocked pending a partners-team response.
 - September 9 user revision: remove Tessie and all Tessie-derived replay UI from V2; reconsider the integration in JourneyDeck V3.
 - September 9 V3 additions: Live Activities with explicit Dynamic Island support, a limited CarPlay companion, a new red theme, a separate new green theme, and private data-backed badges.
+- September 14 V3 addition: defer durable cross-device music revision metadata and convergence to V3; retain V2's conflict-safe, non-destructive fallback.
 - September 9 emergency addition: move foldable-device compatibility forward into a focused JourneyDeck V2.5 release as iPhone Duo support.
 - Additional user confirmation: include iPad app availability with a new tablet layout; roadmap addition only, with implementation deferred.
 - [Shared handoff](../.ai/HANDOFF.md): explicit version-2 sharing deferral, Foursquare 2.0 exclusion, Tessie deferral, and earlier recording/music implementation history.

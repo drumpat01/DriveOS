@@ -28,7 +28,7 @@ type Props = {
   customPlaces: { id: string; label: string }[];
   onEditProfile: () => void; onAppleSignIn: () => void; onSignOut: () => void; onDeleteAccount: () => void;
   onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void; onCustomPlace: (placeId?: string) => void;
-  advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
+  internalDiagnostics: boolean; advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
 };
 
 const categoryCopy: Record<SettingsCategoryId, string> = {
@@ -131,8 +131,10 @@ export function IpadSettingsScreen(p: Props) {
   const achievements = <AchievementsOverview journeys={p.journeys} memories={p.memories} />;
   const membership = <View testID="ipad-settings-membership" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('crown')}<View style={styles.flex}><Text style={title}>{p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days'}</Text><Text style={body}>{p.membershipTier === 'paid' ? `Atlas and complete history unlocked${p.membershipExpirationDate ? ` through ${new Date(p.membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>{button(p.membershipTier === 'paid' ? 'Manage' : 'Unlock', p.onMembership, { primary: true })}</View></View>
-    <Pressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: p.advancedVisible }} onPress={p.onToggleAdvanced} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('wrench.and.screwdriver')}<View style={styles.flex}><Text style={title}>Advanced Support</Text><Text style={body}>Diagnostics are hidden here unless you need help.</Text></View><SymbolView name={p.advancedVisible ? 'chevron.up' : 'chevron.down'} tintColor={colors.accent} size={15} /></Pressable>
-    <ExpandingSection expanded={p.advancedVisible}><View style={panel}>{button('Open Data Health', p.onDataHealth, { accessibilityLabel: 'Open Data Health' })}</View></ExpandingSection>
+    {p.internalDiagnostics && <>
+      <Pressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: p.advancedVisible }} onPress={p.onToggleAdvanced} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('wrench.and.screwdriver')}<View style={styles.flex}><Text style={title}>Advanced Support</Text><Text style={body}>Internal diagnostics and test controls.</Text></View><SymbolView name={p.advancedVisible ? 'chevron.up' : 'chevron.down'} tintColor={colors.accent} size={15} /></Pressable>
+      <ExpandingSection expanded={p.advancedVisible}><View style={panel}>{button('Open Data Health', p.onDataHealth, { accessibilityLabel: 'Open Data Health' })}</View></ExpandingSection>
+    </>}
     <View style={styles.linkGrid}><Pressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => openPage('privacy')} style={({ pressed }) => [panel, styles.linkCard, pressed && styles.dim]}>{icon('hand.raised')}<Text style={title}>Privacy Policy</Text><SymbolView name="arrow.up.right" tintColor={colors.accent} size={14} /></Pressable>
       <Pressable accessibilityRole="link" accessibilityLabel="Support Page" onPress={() => openPage('support')} style={({ pressed }) => [panel, styles.linkCard, pressed && styles.dim]}>{icon('questionmark.circle')}<Text style={title}>Support Page</Text><SymbolView name="arrow.up.right" tintColor={colors.accent} size={14} /></Pressable></View>
   </View>;

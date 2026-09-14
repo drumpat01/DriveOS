@@ -8,7 +8,7 @@ export const appIconCatalog: Record<AppIconId, {
   original: {
     name: 'Cinematic',
     description: 'JourneyDeck pulse',
-    nativeName: null,
+    nativeName: 'JourneyDeckCinematic',
   },
   'warm-ivory': {
     name: 'Warm Ivory',
@@ -22,7 +22,7 @@ export const appIconCatalog: Record<AppIconId, {
   },
   'grand-touring': {
     name: 'Grand Touring',
-    description: 'Navy carbon · champagne',
+    description: 'Blue gradient · champagne trim',
     nativeName: 'JourneyDeckGrandTouring',
   },
 };
@@ -36,10 +36,13 @@ export function appIconRequiresPlus(id: AppIconId) {
 }
 
 export function parseAppIconId(value: unknown): AppIconId {
-  return typeof value === 'string' && Object.hasOwn(appIconCatalog, value) ? value as AppIconId : 'original';
+  return typeof value === 'string' && Object.hasOwn(appIconCatalog, value) ? value as AppIconId : 'grand-touring';
 }
 
 export function appIconIdForNativeName(value: string | null): AppIconId | undefined {
+  // The primary icon is Grand Touring. Keep its alternate name for existing
+  // installations that already selected it before it became the default.
+  if (value === null) return 'grand-touring';
   return (Object.entries(appIconCatalog) as [AppIconId, (typeof appIconCatalog)[AppIconId]][])
     .find(([, icon]) => icon.nativeName === value)?.[0];
 }

@@ -1107,6 +1107,10 @@ export function MoreScreen({
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
+  // Data Health is an internal diagnostic surface. Public navigation falls
+  // back to Settings in the shell, and this guard prevents accidental render.
+  if (!isInternalTestingBuild()) return null;
+
   const destination = requested;
   let content: ReactNode;
   if (destination !== 'menu') {

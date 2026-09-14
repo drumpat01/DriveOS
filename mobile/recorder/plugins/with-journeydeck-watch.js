@@ -82,7 +82,7 @@ async function writeWatchFiles(projectRoot, platformRoot, config) {
   // The source artwork is 512px; actool requires an actual 1024px opaque image.
   // Use the same image pipeline as Expo's iOS icon generator.
   const { source } = await generateImageAsync({ projectRoot, cacheType: 'journeydeck-watch-icon' }, {
-    src: path.join(projectRoot, 'assets/icon.png'), name: 'AppIcon.png',
+    src: path.join(projectRoot, 'assets/icon-grand-touring-v2.png'), name: 'AppIcon.png',
     width: 1024, height: 1024, resizeMode: 'cover',
     removeTransparency: true, backgroundColor: '#08070d',
   });

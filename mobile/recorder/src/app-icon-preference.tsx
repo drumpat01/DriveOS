@@ -8,11 +8,11 @@ export type AppIconAvailability = 'checking' | 'ready' | 'requires-build' | 'uns
 
 function readStoredAppIcon(): AppIconId {
   try { return parseAppIconId(SecureStore.getItem(APP_ICON_KEY)); }
-  catch { return 'original'; }
+  catch { return 'grand-touring'; }
 }
 
 const AppIconContext = createContext({
-  appIconId: 'original' as AppIconId,
+  appIconId: 'grand-touring' as AppIconId,
   availability: 'checking' as AppIconAvailability,
   changing: false,
   setAppIcon: async (_id: AppIconId) => {},

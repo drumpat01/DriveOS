@@ -32,7 +32,7 @@ public final class JourneyDeckAppIconModule: Module {
         userInfo: [NSLocalizedDescriptionKey: "This device does not support alternate app icons."]
       )
     }
-    if let iconName, !["JourneyDeckWarmIvory", "JourneyDeckRosewater", "JourneyDeckGrandTouring"].contains(iconName) {
+    if let iconName, !["JourneyDeckWarmIvory", "JourneyDeckRosewater", "JourneyDeckGrandTouring", "JourneyDeckCinematic"].contains(iconName) {
       throw NSError(domain: "JourneyDeckAppIcon", code: 2,
         userInfo: [NSLocalizedDescriptionKey: "Unknown JourneyDeck app icon."])
     }

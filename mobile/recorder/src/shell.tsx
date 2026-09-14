@@ -1,3 +1,4 @@
+import { requestJourneyLocationAccess } from './location-permissions';
 import { loadReplayPhotos } from './journey-replay-photos';
 import { TouchPressable, ExpandingSection } from './touch-feedback';
 import { MemoryJourneyEditor, MemorySaveLabel } from './memory-edit-motion';
@@ -802,6 +803,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   };
 
   const openMore = (destination: MoreDestination) => {
+    if (!isInternalTestingBuild()) return;
     setMoreDestination(destination);
     router.navigate('/tools');
     void haptics.selection();
@@ -909,7 +911,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     },
     memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
-    tools: <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} />,
+    tools: isInternalTestingBuild() ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
     membership,
     refreshArchive: () => refreshPrimarySections(false),
     showUpgrade: () => setMembershipPaywallVisible(true),
@@ -930,15 +932,19 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           }}
           onRecordingContinue={async mode => {
             await chooseRecordingMode(mode);
-            advanceFirstRun('music', mode);
+            advanceFirstRun('location', mode);
+          }}
+          onLocationContinue={async () => {
+            try {
+              await requestJourneyLocationAccess();
+              advanceFirstRun('music');
+            } catch {
+              Alert.alert('Location access unavailable', 'Please try again. You can also set location access in device Settings.');
+            }
           }}
           onConnectAppleMusic={async () => {
             await chooseProvider('apple-music');
             await connectAppleMusic('apple-music');
-            advanceFirstRun('instructions');
-          }}
-          onSkipAppleMusic={async () => {
-            await chooseProvider('apple-music');
             advanceFirstRun('instructions');
           }}
           onFinish={() => {
@@ -2842,6 +2848,7 @@ function ConnectionsScreen({
   const [customSavedPlaces, setCustomSavedPlaces] = useState(() => loadCustomSavedPlaces(currentUser.id));
   const [profileAppearance, setProfileAppearance] = useState(() => loadProfileAppearance(currentUser));
   const [destination, setDestination] = useState<SettingsDestination>({ kind: 'overview' });
+  const internalTesting = isInternalTestingBuild();
   const { appIconId } = useAppIconChoice();
   const selected = selectableProviderOptions(ownerSpotifyEligible).find(option => option.id === provider) ?? publicProviderOptions[0]!;
   const insets = useSafeAreaInsets();
@@ -2865,7 +2872,7 @@ function ConnectionsScreen({
     void haptics.selection();
   };
 
-  const internalMusicControls = <>{isInternalTestingBuild() && advancedSupportVisible && <>
+  const internalMusicControls = <>{internalTesting && advancedSupportVisible && <>
           <SectionHeading title="Internal music testing" />
           <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color={theme.color("#1ed760", 'text')} status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
           {editingLastFm && <View style={styles.setupCard}>
@@ -2904,7 +2911,7 @@ function ConnectionsScreen({
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
-    advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
+    internalDiagnostics={internalTesting} advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
   />;
 
@@ -2967,13 +2974,15 @@ function ConnectionsScreen({
     </TouchPressable>
   </View>;
   const supportCard = <>
-    <SectionHeading title="Advanced Support" />
-    <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
-      <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
-      <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>TROUBLESHOOTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics are hidden here unless you need help.</Text></View>
-      <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
-    </TouchPressable>
-    <ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}><View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color('#54e6bc', 'text')} size={22} /></View><View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View><Text style={styles.settingsDataHealthArrow}>›</Text></TouchPressable></ExpandingSection>
+    <SectionHeading title="Support" />
+    {internalTesting && <>
+      <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
+        <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
+        <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>INTERNAL TESTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics and test controls for internal builds.</Text></View>
+        <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
+      </TouchPressable>
+      <ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}><View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color('#54e6bc', 'text')} size={22} /></View><View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View><Text style={styles.settingsDataHealthArrow}>›</Text></TouchPressable></ExpandingSection>
+    </>}
     <View style={styles.settingsSupportLinks}><TouchPressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Privacy Policy ↗</Text></TouchPressable><TouchPressable accessibilityRole="link" accessibilityLabel="Support Page" onPress={() => void Linking.openURL('https://journeydeck.me/support')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Support Page ↗</Text></TouchPressable></View>
   </>;
 

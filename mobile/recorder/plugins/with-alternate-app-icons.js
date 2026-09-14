@@ -16,8 +16,13 @@ const alternateIcons = [
   },
   {
     name: 'JourneyDeckGrandTouring',
-    source: 'assets/icon-grand-touring-v1.png',
-    backgroundColor: '#081832',
+    source: 'assets/icon-grand-touring-v2.png',
+    backgroundColor: '#d4b15a',
+  },
+  {
+    name: 'JourneyDeckCinematic',
+    source: 'assets/icon.png',
+    backgroundColor: '#08070d',
   },
 ];
 

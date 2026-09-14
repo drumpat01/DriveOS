@@ -181,7 +181,7 @@ test('Home owns the single recorder instance while Settings omits redundant reco
   assert.doesNotMatch(primarySections, /title="Record"|onRequestedChange\('record'\)|destination === 'record'/);
 });
 
-test('Settings is the fifth primary tab and keeps Data Health under Advanced Support', () => {
+test('Settings is the fifth primary tab and limits Data Health to internal builds', () => {
   assert.match(nativeNavigation, /name="music"/);
   assert.match(nativeNavigation, /name="journeys"/);
   assert.match(nativeNavigation, /name="index"/);
@@ -190,11 +190,14 @@ test('Settings is the fifth primary tab and keeps Data Health under Advanced Sup
   assert.match(shell, /<MusicScreen state=\{musicDashboard\}/);
   assert.match(shell, /onSoundtracks=\{\(\) => openTab\('music'\)\}/);
   assert.doesNotMatch(shell, /accessibilityLabel="Open tools and settings"/);
-  assert.match(shell, /accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /const internalTesting = isInternalTestingBuild\(\)/);
+  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
   assert.match(shell, /onDataHealth=\{\(\) => openMore\('health'\)\}/);
   assert.match(shell, /accessibilityState=\{\{ expanded: advancedSupportVisible \}\}/);
   assert.match(shell, /<ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /tools: <MoreScreen active=\{utilityVisible\}/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen active=\{utilityVisible\}/);
+  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\)\) return null;/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
   assert.match(moreScreen, /onBack=\{onClose\}/);
@@ -253,27 +256,30 @@ test('Phase 6 Home summarizes every completed local-first section and routes int
 test('first run uses the static theme-aware welcome and manual-only version-1 recording setup', async () => {
   assert.match(shell, /<FirstRunOnboardingScreen/);
   assert.match(shell, /onRecordingContinue=\{async mode/);
+  assert.match(shell, /advanceFirstRun\('location', mode\)/);
+  assert.match(shell, /await requestJourneyLocationAccess\(\);\s+advanceFirstRun\('music'\)/);
   assert.match(shell, /onConnectAppleMusic=\{async \(\) =>/);
-  assert.match(shell, /onSkipAppleMusic=\{async \(\) =>/);
+  assert.match(shell, /await connectAppleMusic\('apple-music'\);\s+advanceFirstRun\('instructions'\)/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'music' \| 'instructions' \| 'complete'/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'instructions' \| 'complete'/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
-  assert.match(firstRunScreen, /onboarding-road-background\.png/);
+  assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);
   assert.match(firstRunScreen, /useSafeAreaInsets\(\)/);
   assert.match(firstRunScreen, /paddingTop: insets\.top \+ 10/);
-  assert.match(firstRunScreen, /paddingBottom: Math\.max\(insets\.bottom, 12\)/);
+  assert.match(firstRunScreen, /paddingBottom: Math\.max\(insets\.bottom, 16\)/);
   assert.match(firstRunScreen, /<ScrollView/);
-  assert.match(firstRunScreen, /styles\.fixedAction/);
-  assert.match(firstRunScreen, /<RecordingChoice selected/);
+  assert.match(firstRunScreen, /contentContainerStyle=\{recordingStyles\.content\}/);
+  assert.doesNotMatch(firstRunScreen, /RecordingChoice|LIMITATIONS|BENEFITS/);
   assert.doesNotMatch(firstRunScreen, /<RecordingChoice mode="automatic"/);
   assert.match(firstRunScreen, /await onContinue\('manual'\)/);
-  assert.match(firstRunScreen, /Continue with Manual/);
+  assert.match(firstRunScreen, /accessibilityLabel="Continue"/);
   assert.doesNotMatch(firstRunScreen, /DESIGN_WIDTH|DESIGN_HEIGHT|useDesignRect|contentFit="cover"[\s\S]*?GPS_AUTOMATIC/);
-  assert.match(firstRunScreen, /Continue without Apple Music/);
-  assert.match(firstRunScreen, /label="Let the Journey Begin" onPress=\{onFinish\}/);
-  assert.match(firstRunScreen, /<ProgressHeader step="04 \/ 04" \/>/);
+  assert.match(firstRunScreen, /Bring your music along\./);
+  assert.match(firstRunScreen, /accessibilityLabel="Connect Apple Music"/);
+  assert.match(firstRunScreen, /accessibilityLabel="Let the Journey Begin" onPress=\{onFinish\}/);
+  assert.match(firstRunScreen, /accessibilityLabel="Step 5 of 5"/);
   assert.doesNotMatch(firstRunScreen, /04A \/ 04|04B \/ 04/);
   assert.match(welcomeIntro, /onboarding\.welcome-intro/);
 });

@@ -1,3 +1,4 @@
+import { requestJourneyLocationAccess } from './src/location-permissions';
 import { IpadRecorderControls } from './src/ipad-home';
 import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
 import { AppIconProvider } from './src/app-icon-preference';
@@ -540,28 +541,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   }, 'Connecting securely…');
 
   const enablePermissions = () => withBusy(async () => {
-    const foreground = await Location.requestForegroundPermissionsAsync();
-    if (foreground.status !== 'granted') {
-      if (!foreground.canAskAgain) {
-        Alert.alert('Location is disabled', 'Open iPhone Settings and allow JourneyDeck to use location.', [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => void Linking.openSettings() },
-        ]);
-        return;
-      }
-      throw new Error('Location access is required to record a journey.');
-    }
-    const background = await Location.requestBackgroundPermissionsAsync();
-    if (background.status !== 'granted') {
-      if (!background.canAskAgain) {
-        Alert.alert('Always Allow is needed', 'Open iPhone Settings, choose Location, then select Always so journeys can continue with the screen locked.', [
-          { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => void Linking.openSettings() },
-        ]);
-        return;
-      }
-      throw new Error('Choose “Always Allow” so recording continues with the screen locked.');
-    }
+    if (!(await requestJourneyLocationAccess())) return;
     if (!(await TaskManager.isAvailableAsync())) throw new Error('Background recording requires the installed JourneyDeck build, not Expo Go.');
     setNotice('Background location is ready.');
   }, 'Checking location access…');

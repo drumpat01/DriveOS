@@ -6,6 +6,7 @@ const lifecycle = await readFile(new URL('../src/account-lifecycle.ts', import.m
 const auth = await readFile(new URL('../src/auth.ts', import.meta.url), 'utf8');
 const shell = await readFile(new URL('../src/shell.tsx', import.meta.url), 'utf8');
 const recorder = await readFile(new URL('../App.tsx', import.meta.url), 'utf8');
+const locationPermissions = await readFile(new URL('../src/location-permissions.ts', import.meta.url), 'utf8');
 const cloud = await readFile(new URL('../src/icloud-sync.ts', import.meta.url), 'utf8');
 const nativeCloud = await readFile(new URL('../modules/journeydeck-cloudkit/ios/JourneyDeckCloudKitModule.swift', import.meta.url), 'utf8');
 const app = JSON.parse(await readFile(new URL('../app.json', import.meta.url), 'utf8'));
@@ -41,7 +42,9 @@ test('runtime 1.9 declares required permission and background-location configura
   assert.match(location[1].locationWhenInUsePermission, /record the route/);
   assert.match(location[1].locationAlwaysAndWhenInUsePermission, /phone is locked/);
   assert.match(recorder, /getForegroundPermissionsAsync\(\)[\s\S]*getBackgroundPermissionsAsync\(\)/);
-  assert.match(recorder, /canAskAgain[\s\S]*Linking\.openSettings\(\)/);
+  assert.match(recorder, /requestJourneyLocationAccess\(\)/);
+  assert.match(locationPermissions, /requestForegroundPermissionsAsync\(\)[\s\S]*requestBackgroundPermissionsAsync\(\)/);
+  assert.match(locationPermissions, /canAskAgain[\s\S]*Linking\.openSettings\(\)/);
 });
 
 test('native CloudKit rejects unsupported and oversized downloaded assets before persistence', () => {

@@ -1,5 +1,323 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Production release candidate Build 28 is in TestFlight — September 14, 2026
+
+- User explicitly lifted the build hold and authorized building and uploading
+  this release candidate to TestFlight. EAS production Build 28
+  (`ec98f55b-ce23-4716-b526-7d0366611358`) finished successfully. Exact-build
+  submission `4f95b46b-d18a-46ff-80cc-d92671ffd1eb` finished; App Store Connect
+  reports version `2.0.0` build 28 as `VALID` and `IN_BETA_TESTING`.
+- Build page: `https://expo.dev/accounts/journeydeck/projects/journeydeck/builds/ec98f55b-ce23-4716-b526-7d0366611358`.
+  Submission page: `https://expo.dev/accounts/journeydeck/projects/journeydeck/submissions/4f95b46b-d18a-46ff-80cc-d92671ffd1eb`.
+- Signed IPA inspection passed: bundle `com.journeydeck.recorder`, version/build
+  `2.0.0` (28), runtime `2.0.0-watch.7`, production channel, iPhone+iPad,
+  iOS 17+, embedded Watch 2.0.0 (28), production iCloud container, beta
+  provisioning, 16 privacy manifests, Minted/JourneyDeckKeepsakes/ArtworkCoin
+  symbols, and four alternate app icon registrations. Local IPA is ignored at
+  `mobile/recorder/.cache/JourneyDeck-2.0.0-28.ipa`.
+- Public release URL preflight and fresh production iOS export passed before the
+  build. Full mobile tests, TypeScript and diff check passed for the candidate.
+  User subsequently authorized committing and pushing this exact release-candidate
+  source to `origin/codex/journeydeck-v2`. No EAS Update, screenshot replacement,
+  App Review submission, or public release occurred. Next: install Build 28
+  through TestFlight and execute the iPhone/iPad/Watch acceptance matrix,
+  including all ten Minted medallions across four themes and actual system icon
+  masks.
+
+## Cross-device music revisioning moved to V3 — September 14, 2026
+
+- User explicitly moved durable cross-device music revision metadata and full
+  convergence work out of V2 and into confirmed V3 scope as V3-07.
+- Updated the roadmap, reliability audit, data-sync notes and release-candidate
+  status. V2 retains the current safe fallback: ambiguous local music edits stay
+  pending and are reported instead of being overwritten by an older cloud copy.
+- This is no longer a V2/TestFlight/App Store release gate. No runtime behavior,
+  schema, build, upload, commit, push or OTA changed.
+
+## Data Health hidden from public release — September 14, 2026
+
+- Data Health and its Advanced Support entry are now rendered only when
+  `isInternalTestingBuild()` is true on both iPhone and iPad. Public Settings
+  retains the Privacy Policy and Support Page links.
+- Public attempts to open the utility surface are blocked and the `/tools`
+  route falls back to Settings; `MoreScreen` also refuses to render outside an
+  internal build. Production EAS continues to set
+  `EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING=0`.
+- TypeScript and the full mobile test suite pass. Focused coverage verifies
+  public absence, internal availability, iPad behavior, and route gating. This
+  change is included in TestFlight Build 28.
+
+## TestFlight preflight completed locally — September 14, 2026
+
+- Final working tree passes TypeScript, Expo Doctor 21/21, public-release URL
+  checks, full mobile tests 653/653, native-capabilities 3/3, native-navigation
+  8/8, Gitleaks, diff check and a fresh production iOS export (2,661 modules,
+  117 assets, 8.7 MB Hermes bundle). Dependency audit has no high/critical
+  findings; 16 known moderate Expo-toolchain findings remain without a safe
+  non-breaking forced fix.
+- Production config resolves to JourneyDeck 2.0.0, bundle
+  `com.journeydeck.recorder`, runtime `2.0.0-watch.7`, iOS 17+, iPhone/iPad,
+  production CloudKit, production channel and App Store ID 6806502526. EAS
+  production environment contains the RevenueCat public Apple SDK key. Remote
+  build counter is 27, so autoIncrement should produce Build 28. Latest Build 27
+  remains FINISHED.
+- Grand Touring primary icon source is verified 1024x1024 opaque RGB. The
+  standalone Swift policy harness is the only unavailable local check because
+  this Windows host has no Swift compiler; the EAS archive must compile it.
+- Preflight exposed one stale source-location assertion after permission logic
+  was extracted; updated it to verify the shared helper, then full suite passed.
+  Added a restrained theme-colored shadow to onboarding headings after the final
+  Recording preview showed its title crossing the bright horizon; TypeScript and
+  36 focused onboarding/runtime tests pass after that visual-only adjustment.
+  No build, upload, commit, push or OTA. Next requires explicit release-hold lift:
+  stage/review intended files, commit/push, create production Build 28, inspect
+  the exact signed IPA, submit that build, and complete device acceptance.
+
+## Recording safeguard copy — September 14, 2026
+
+- Added to onboarding Recording: "As a safeguard, GPS recording stops after
+  10 minutes of detected inactivity." Checked native ManualJourneyInactivity:
+  ten-minute timeout requires accepted recent GPS evidence; missing GPS is not
+  proof of inactivity. Recording behavior is unchanged.
+
+## Approved licensed ocean background applied — September 14, 2026
+
+- User approved Walter Coppola's blue-hour ocean photo with the brighter overlay.
+  Bundled `onboarding-grand-touring-blue-hour.jpg` and license/provenance markdown.
+  Grand Touring uses the approved fade on all five screens; other themes retain
+  their overlays. Retired unlicensed Maloja asset/provenance moved to ignored
+  `.cache/onboarding-review/retired-maloja.*`, no longer in app assets/references.
+- Updated release status to remove the superseded photo permission gate.
+  Typecheck and 4 focused welcome/flow tests pass; static phone/tablet/narrow
+  previews regenerated from actual source. No build, commit, push or OTA.
+
+## Five-screen onboarding implemented with content transitions — September 14, 2026
+
+- User approved implementation: Welcome → Recording → Location → Apple Music →
+  Ready to begin. Added persisted `location` stage; existing completed users stay
+  complete. Progress labels now 02/05–05/05. Location Continue uses extracted
+  `requestJourneyLocationAccess` shared with Home recorder: foreground then
+  background, Settings recovery for blocked access, no tracking starts. Denial
+  advances setup; API errors show retry alert and remain on Location.
+- One shared themed photo/gradient stays mounted. Reanimated moves content out
+  left (220ms), then new content in from right (260ms). Transition blocks taps,
+  cleans up animations, and settles immediately for Reduce Motion/inactive app.
+  Welcome has content-only mode inside this shared frame. Removed obsolete
+  onboarding helpers/styles. Apple Music retains approved "this device" copy.
+- Typecheck, 44 existing focused tests plus 3 new behavior tests passed. New tests
+  cover location denial/order, persisted progress, sequential motion, stable
+  artwork and Reduce Motion. iOS production JS export succeeded (2661 modules)
+  at `mobile/recorder/.cache/onboarding-export`; no native build/OTA/push/commit.
+- Actual location layout preview: `.cache/onboarding-review/location-iphone.png`.
+  Phone/tablet/narrow static render passed. Native motion feel, Dynamic Type and
+  iOS permission dialogs still require device acceptance. The approved background
+  license is documented. Build hold remains active.
+
+## Location explanation concept — September 14, 2026
+
+- User requested a preview of a contextual location explanation before the first
+  journey permission request. Concept only, no permission flow wiring changed.
+  `.cache/onboarding-review/location-permission-preview.png` generated by
+  `location-preview.cjs`; uses Grand Touring with Continue and brief copy.
+- Native recorder requires authorizedAlways for precise background updates and
+  stops updates for paused/finished sessions. Concept reassurance uses "You
+  control recording with Start and Finish." User review pending.
+
+## Final onboarding screen preview — September 14, 2026
+
+- Finish now matches the shared scenery, serif heading and champagne action:
+  "The road is yours." with a short Start/Finish reminder and existing
+  "Let the Journey Begin" completion callback. No logo or instruction cards.
+- Browser phone/tablet/narrow previews generated; phone at
+  `.cache/onboarding-review/instructions-iphone.png`. TypeScript passed.
+  Updated obsolete fixed-footer/progress-header source assertions for the
+  scrollable layout. User review and native acceptance remain; build hold stays.
+
+## Minimal Apple Music onboarding preview — September 14, 2026
+
+- Added concise supporting copy: "Play Apple Music on this device to save songs
+  with your journeys." User explicitly requested "device" for iPad compatibility.
+  Copy-only follow-up; TypeScript passed before the final noun correction.
+
+- Screen 3 now uses the shared Grand Touring scenery, Apple Music mark,
+  "Bring your music along." and one "Connect Apple Music" action. Removed
+  paragraphs, feature bullets and the separate skip action. Existing connection
+  handling still advances after unavailable/declined authorization or errors.
+- TypeScript, 44 focused onboarding/runtime/public-release tests and diff check
+  pass. Browser preview: `.cache/onboarding-review/music-minimal-iphone.png`.
+  Native device acceptance remains. Branch `codex/journeydeck-v2`; build hold
+  remains; no commit, push, build or OTA. Next: user review, then Finish screen.
+
+## Welcome and Recording logos removed — September 14, 2026
+
+- At the user's request, removed app logos from Welcome and Recording only.
+  Removed unused shared icon imports/styles, retained Recording's right-aligned
+  step indicator, and preserved the approved Home Screen default icon.
+- TypeScript and 33 focused Welcome/tab-runtime tests pass. Browser previews:
+  `.cache/onboarding-review/welcome-no-logo.png` and `recording-no-logo.png`.
+  No build, OTA, commit or push. Next: continue onboarding review with Music.
+
+## Recording onboarding simplified — September 14, 2026
+
+- User approved removing the manual-mode comparison, all benefits/limitations,
+  and the selected-option card. Screen 2 now says: "You decide when the journey
+  begins." It explains Start, route saving, and Finish, with one privacy/safely
+  stopped note and a Continue button. Continue still saves manual mode and
+  advances through the existing callback; recording/permissions are unchanged.
+- Recording uses Welcome's shared per-theme artwork and icons, including the
+  approved Grand Touring icon/Maloja image, with serif heading, navy fade and
+  champagne action. Small canvases and large text can scroll. Music and Finish
+  presentations remain pending their separate user review.
+- TypeScript and 44 focused Welcome/tab-runtime/public-release checks pass.
+  Browser phone/tablet/narrow previews generated in `.cache/onboarding-review/`;
+  current phone is `recording-iphone.png`. Native device acceptance remains.
+  Branch `codex/journeydeck-v2`; no build, OTA, staging, commit or push.
+
+## Approved Grand Touring icon integrated — September 14, 2026
+
+- User approved the bold single-champagne logo on the blue gradient with an
+  outer champagne trim, clarified no blue should continue beyond the trim,
+  and authorized setting it as the default icon and adding it to Welcome.
+- Built-in image edits produced `assets/icon-concepts/grand-touring-production-master-v6.png`;
+  Expo image-utils packaged opaque 1024x1024 `assets/icon-grand-touring-v2.png`.
+  Primary light/dark, Grand Touring alternate, Watch, Welcome, and Settings picker
+  use it. Existing tinted/clear mask remains. Cinematic has a distinct alternate
+  native name; primary/null and existing Grand Touring alternate map correctly.
+  Icon selection remains independent of app theme. Earlier primary-icon
+  discrepancy is resolved in source; older design-only notes below are history.
+- TypeScript and 26 focused Welcome/icon-preference/picker/catalog/native-nav/
+  Watch tests pass. Generated icon catalogs are square and fully opaque.
+  Browser phone/tablet/narrow previews regenerated; final phone screenshot is
+  `.cache/onboarding-review/iphone-approved-icon.png`. Exact iOS/Watch masks,
+  Swift compile and device upgrade/selection checks remain NB-010 acceptance.
+- Branch `codex/journeydeck-v2`; prior local docs/onboarding/artwork work preserved.
+  No native build, OTA, staging, commit or push. Continue onboarding screen review;
+  keep build hold. Confirm rights to selected Maloja photograph before release.
+
+## Flat Grand Touring icon redesign — September 14, 2026
+
+- Latest request adds champagne trim around the icon perimeter. Generated
+  `assets/icon-concepts/grand-touring-champagne-trim-v5.png` from v4, preserving
+  the bold symbol and blue gradient. Shown inline; latest review candidate.
+  Verify the inset trim against iOS corner masking before production integration.
+
+- User approved v3's color direction, then requested a bigger circle and wider
+  champagne bars. Generated `assets/icon-concepts/grand-touring-blue-gradient-bold-v4.png`
+  from v3 and showed it inline. Larger/heavier single-color symbol retains the
+  blue gradient. Latest review candidate; shipping integration remains pending.
+
+- Latest correction: keep the circle and pulse ONE champagne color; add color
+  through a blue background gradient instead. Generated and saved
+  `assets/icon-concepts/grand-touring-blue-gradient-v3.png` from v1 with the
+  built-in image tool. This supersedes the multicolor v2 proposal. Pending review;
+  no shipping icon/config changes or release actions.
+
+- User liked the flatter direction and requested a little more color. Generated
+  `assets/icon-concepts/grand-touring-flat-color-v2.png`: champagne ring, ivory
+  pulse, muted green downward slope, navy background. Shown inline for review;
+  shipping icon configuration remains unchanged.
+
+- User liked the Maloja Welcome background but rejected the shiny/chrome icon,
+  then explicitly expanded the redesign to the Home Screen app icon as well.
+- Generated a flatter navy/champagne symbol concept with the built-in image tool,
+  saved at `mobile/recorder/assets/icon-concepts/grand-touring-flat-v1.png`.
+  Adjacent README records the prompt, provenance, and production follow-up.
+- Preview helper supports `JD_ICON_CONCEPT=flat` to show this draft on Welcome.
+  Native config and shipping icon assets are unchanged. Await visual feedback,
+  then prepare final opaque app icon and transparent Welcome mark, reconcile the
+  primary/alternate-icon settings, and verify native configuration. Build hold
+  remains active; no build, OTA, commit, or push. Branch `codex/journeydeck-v2`.
+
+## Grand Touring onboarding Welcome — September 14, 2026
+
+- User selected background option 2, Celso Mollo's **Maloja Pass Blue Hour**.
+  Replaced only Grand Touring's Welcome background with
+  `assets/onboarding-grand-touring-maloja.jpg`; Home artwork is unchanged.
+  Attribution/source and unconfirmed commercial redistribution permission are
+  recorded in the adjacent `.md`; confirm rights before shipping this photograph.
+  Regenerated phone/tablet/narrow browser previews and verified the welcome test.
+
+- User paused release preparation to review onboarding screen by screen. Approved
+  the Mobbin-inspired Welcome direction: immersive artwork, editorial typography,
+  Grand Touring identity, and one Get Started action. Implemented in
+  `mobile/recorder/src/first-run-welcome-screen.tsx` using existing theme artwork
+  and untinted theme icons, a navy fade, Georgia headline, and champagne button.
+  Removed the circular logo frame and repeated welcome/footer branding. Saved
+  theme choices remain respected; setup navigation and permissions are unchanged.
+- Added scroll overflow for small canvases/large text. Existing welcome test
+  updated and passes across four themes; mobile TypeScript passes. Browser layout
+  previews use the component with React Native Web/native boundary adapters at
+  390x844, 1194x834 and 320x568 in ignored `.cache/onboarding-review/`.
+  Native iPhone/iPad, Dynamic Type and VoiceOver acceptance remain pending.
+- Branch `codex/journeydeck-v2`; earlier App Store documentation edits preserved.
+  No build, OTA, Git commit or push. Next: review Welcome with the user, then the
+  recording and Apple Music screens. Build hold remains active.
+- Flagged icon discrepancy: Grand Touring is the default in-app theme and has a
+  native alternate icon, but `app.config.js` still specifies the older primary
+  light/dark icons. Resolve the intended fresh-install icon before the next build.
+
+## App Store 2.0 metadata updated — September 14, 2026
+
+- Saved the requested Description, What's New, and App Review Notes in the 2.0
+  draft. Verified all three exact values persisted after a browser reload.
+- Description covers iPhone/iPad, Watch controls, ten medallions, four themes,
+  optional private iCloud sync, music permissions, membership and 45-day history.
+  Review notes include distinct iPhone/iPad/Watch paths, paired-iPhone recording,
+  manual-only background location, optional services and subscription access.
+  Retained the existing background-location video, explicitly labeled as an
+  earlier-version demonstration. What's New summarizes the 2.0 additions.
+- Draft remains Prepare for Submission. No build or review submission started.
+  Promotional Text remains optional/blank; final screenshots and tested build
+  are still pending. Documentation changes remain uncommitted.
+
+## App Store 2.0 draft created and metadata reviewed — September 14, 2026
+
+- Created version `2.0` in App Store Connect, verified Prepare for Submission at
+  `https://appstoreconnect.apple.com/apps/6806502526/distribution/ios/version/inflight`.
+- Reviewed inherited metadata without rewriting it. Description needs 2.0
+  features and current iCloud sync wording; review notes still say iPhone-only
+  and contain an old review path. What's New and optional Promotional Text are
+  blank. Seven old iPhone screenshots copied; iPad and Watch each have zero.
+- Contact email/phone copied and were visually verified. Support/marketing URLs,
+  keywords and copyright copied. Manual release, immediate update distribution
+  after release, and keeping existing ratings are selected. No build selected.
+- Next: revise draft copy, then build/inspect/upload only after the build hold
+  is lifted, test on devices, capture screenshots, and complete submission.
+  No build, review submission, Git commit or push occurred. Only release-status
+  and handoff documentation changed locally on `codex/journeydeck-v2`.
+
+## Pre-build App Store account and privacy review — September 14, 2026
+
+- Deployed the JourneyDeck 2.0 privacy policy to `https://journeydeck.me/privacy`
+  through DriveOS PRs #145 and #146. Render deploy `dep-dak4fh5ckfvc73aa91t0`
+  is live at merge commit `13563abcb455ced1726095ec6a0049e2bd6abc34`.
+  Live verification returned HTTP 200, includes manual recording, RevenueCat,
+  and EAS Observe disclosures, and excludes Automatic Drive Detection and Tessie.
+  DriveOS server tests pass 34/34. GitHub's unrelated, known Statistics fixture
+  failure may still appear in the full E2E validation.
+- App Store Connect readback confirms age rating 4+, free app pricing, public
+  distribution in 148 regions, active Paid and Free Apps agreements, active U.S.
+  banking and W-9 tax records, and active DSA status. JourneyDeck Monthly and
+  Annual are Approved in the JourneyDeck Membership group at $2.99/month and
+  $24.99/year in the U.S., with Family Sharing enabled.
+- RevenueCat readback confirms both approved App Store products attach to the
+  `pro` entitlement. Created and verified the default offering with `$rc_monthly`
+  mapped to the monthly product and `$rc_annual` mapped to the annual product.
+- The current App Store privacy label correctly lists Device ID, Coarse Location,
+  Product Interaction, Performance Data, Other Diagnostic Data, and Purchase
+  History under Data Not Linked to You. Purchase History is published for App
+  Functionality and Analytics, is not linked to identity, and is not used for
+  tracking. Saved `journeydeckapp@gmail.com` and `(682) 325-7181` as the App
+  Review contact. No App Store submission or native/EAS build was performed.
+- Rechecked the release order against current Apple and Expo documentation. The
+  remaining sequence is: create the `2.0` App Store version record; create,
+  inspect, and upload Build 28 after the hold is lifted; pass TestFlight device
+  acceptance; capture final iPhone, iPad, and required Apple Watch screenshots
+  from that accepted build; upload the screenshots; select Build 28; complete
+  the final compliance/metadata preflight; and submit to App Review. Apple does
+  not require screenshots to be captured after a build, but using the accepted
+  release candidate keeps the product page accurate.
+
 ## Complete ten-medallion collection approved and integrated — September 14, 2026
 
 - The user approved the final 4 Journey / 3 Music / 3 Memory collection and all
@@ -19,10 +337,9 @@
 - Verification passes: TypeScript, focused achievement/Minted tests 8/8, complete
   mobile suite 647/647, and iOS JavaScript export with 2,660 modules, an 8.7 MB
   Hermes bundle, 117 assets, and all 40 active fronts.
-- No native/EAS build, OTA publish, demo-site update, Git commit, or Git push was
-  performed. The next release gates are real App Store screenshots, corrected
-  privacy-page deployment, App Store Connect state confirmation, then Build 28
-  and TestFlight acceptance after the build hold is lifted.
+- No native/EAS build or OTA publish was performed. The next release gates are
+  the two prepared App Store saves above, real App Store screenshots, then Build
+  28 and TestFlight acceptance after the build hold is lifted.
 
 ## Long Way Home medallion approved and integrated — September 14, 2026
 

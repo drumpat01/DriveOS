@@ -5,6 +5,8 @@ import test from 'node:test';
 const app = JSON.parse(await readFile(new URL('../app.json', import.meta.url), 'utf8'));
 const eas = JSON.parse(await readFile(new URL('../eas.json', import.meta.url), 'utf8'));
 const shell = await readFile(new URL('../src/shell.tsx', import.meta.url), 'utf8');
+const primarySections = await readFile(new URL('../src/primary-sections.tsx', import.meta.url), 'utf8');
+const ipadSettings = await readFile(new URL('../src/ipad-settings-screen.tsx', import.meta.url), 'utf8');
 const preferences = await readFile(new URL('../src/music-preferences.ts', import.meta.url), 'utf8');
 const lastFm = await readFile(new URL('../src/lastfm-sync.ts', import.meta.url), 'utf8');
 const spotify = await readFile(new URL('../src/spotify-direct.ts', import.meta.url), 'utf8');
@@ -27,6 +29,15 @@ test('production uses the production privacy edge and keeps internal testing dis
   assert.equal(app.expo.extra.edge.url, 'https://journeydeck-edge.patrickbstewart.workers.dev');
   assert.doesNotMatch(app.expo.extra.edge.url, /preview/i);
   assert.equal(eas.build.production.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING, '0');
+});
+
+test('public Settings and utility navigation cannot expose Data Health', () => {
+  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /internalDiagnostics=\{internalTesting\}/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen[\s\S]*? : settingsPage\(\)/);
+  assert.match(ipadSettings, /\{p\.internalDiagnostics && <>[\s\S]*?Open Data Health/);
+  assert.match(primarySections, /if \(!isInternalTestingBuild\(\)\) return null;/);
 });
 
 test('production microphone purpose string describes only user-initiated recognition', () => {
@@ -58,7 +69,7 @@ test('public music choices cannot include preview-only Spotify integrations', ()
   assert.match(spotify, /function requireInternalPreview\(\)/);
   assert.match(spotify, /requireInternalPreview\(\);/);
   assert.match(shell, /const publicProviderOptions = providerOptions\.filter\(option => isMusicProviderAvailable\(option\.id\)\)/);
-  assert.match(shell, /\{isInternalTestingBuild\(\) && advancedSupportVisible && <>/);
+  assert.match(shell, /\{internalTesting && advancedSupportVisible && <>/);
 });
 
 test('public recording defaults to manual while Apple Music continues during an active route', () => {
@@ -82,6 +93,8 @@ test('V2 disables Tessie and defers its product scope to V3', () => {
   assert.match(v2Roadmap, /V2\.5-01 — iPhone Duo support/);
   assert.match(v2Roadmap, /must not pull unrelated V3 features forward/);
   assert.match(v2Roadmap, /V3-06 — Badges/);
+  assert.match(v2Roadmap, /V3-07 — Durable cross-device music revisioning/);
+  assert.match(v2Roadmap, /retain V2's conflict-safe, non-destructive fallback/);
   assert.match(v2Roadmap, /Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior/);
   assert.match(v2Roadmap, /Do not hardcode speculative screen dimensions, hinge geometry, safe areas/);
   assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);

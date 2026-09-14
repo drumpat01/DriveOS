@@ -28,6 +28,7 @@ const viewport = evaluate(readFileSync(new URL('../src/settings-scroll-view.tsx'
 });
 const viewSource = source.slice(source.indexOf('function ConnectionsScreen('), source.indexOf('function JourneyDeckLogo('));
 const links: string[] = [], modes: string[] = [];
+let internalTesting = false;
 const header = evaluate(readFileSync(new URL('../src/ipad-page-header.tsx', import.meta.url), 'utf8'), {
   'react-native': { ...controls, StyleSheet: { create: (v: any) => v }, useWindowDimensions: () => ({ fontScale: viewportFontScale }) }, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './header-artwork': { HeaderArtworkLayers: host('HeaderArtworkLayers'), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
@@ -62,16 +63,16 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsEditorScaffold: host('SettingsEditorScaffold'), SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'), SettingsCustomPlaceEditor: host('CustomPlaceEditor'),
   PlaceDataCredits: host('PlaceDataCredits'),
   AchievementsOverview: host('AchievementsOverview'),
-  AtmosphericBackdrop: host('Backdrop'), PageHeader: host('Header'), SectionHeading: host('SectionHeading'), ProviderMark: host('Provider'),
+  AtmosphericBackdrop: host('Backdrop'), PageHeader: host('Header'), SectionHeading: host('SectionHeading'), ProviderMark: host('Provider'), ConnectionTile: host('ConnectionTile'),
   SymbolView: host('Symbol'), LinearGradient: host('Gradient'), ExpoImage: host('Image'), StyleSheet: {},
   AppleAuthentication: { AppleAuthenticationButton: host('AppleSignIn'), AppleAuthenticationButtonType: { CONTINUE: 1 }, AppleAuthenticationButtonStyle: { WHITE: 1 } },
-  haptics: { selection: async () => {} }, isInternalTestingBuild: () => false, Linking: { openURL: async () => {} },
+  haptics: { selection: async () => {} }, isInternalTestingBuild: () => internalTesting, Linking: { openURL: async () => {} },
 });
 
 test('responsive Settings uses an iPad split view and an iPhone category hub without losing actions', async () => {
   const calls: string[] = [], editorStates: boolean[] = [];
   const props: any = { provider: 'apple-music', currentUser: { id: 'test-user', appleSubject: null }, appleIdentityStatus: 'unknown', signingInWithApple: false,
-    accountActionPending: false, privateCloud: { status: 'idle', detail: 'Ready to sync' }, membershipTier: 'free', membershipExpirationDate: null,
+    accountActionPending: false, privateCloud: { status: 'idle', detail: 'Ready to sync' }, connectionCapabilities: { lastFmConfigured: false, tessieConfigured: false }, membershipTier: 'free', membershipExpirationDate: null,
     journeys: [{ id: 'j1', startedAt: '2026-09-05T10:00:00Z', startingLocation: 'Park', endingLocation: 'Museum', miles: 12, durationMinutes: 30, songCount: 2, soundtrackPreview: [] }],
     onAppleSignIn: () => calls.push('apple'), onPrivateCloudSync: () => calls.push('sync'), onEditorActiveChange: (active: boolean) => editorStates.push(active),
     onSignOut: () => calls.push('signout'), onDeleteAccount: () => calls.push('delete'), onMembership: () => calls.push('membership'), onChangeProvider: () => calls.push('provider'), onDataHealth: () => calls.push('health'),
@@ -149,6 +150,10 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => press('Change soundtrack provider').props.onPress());
     await act(() => press('Open Membership & Support settings').props.onPress());
     await act(() => press('Unlock').props.onPress());
+    assert.equal(press('Advanced Support'), undefined, 'public Settings hides internal diagnostics');
+    assert.equal(press('Open Data Health'), undefined, 'public Settings does not expose Data Health');
+    internalTesting = true;
+    await act(() => tree.update(render()));
     await act(() => press('Advanced Support').props.onPress());
     await act(() => press('Open Data Health').props.onPress());
     await act(() => press('Privacy Policy').props.onPress());
@@ -188,7 +193,7 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     assert.equal(editorStates.at(-1), false);
   } finally {
-    tablet = true; light = true; viewportWidth = 1100; viewportHeight = 800; viewportFontScale = 1;
+    tablet = true; light = true; viewportWidth = 1100; viewportHeight = 800; viewportFontScale = 1; internalTesting = false;
     await act(() => tree?.unmount());
   }
 });

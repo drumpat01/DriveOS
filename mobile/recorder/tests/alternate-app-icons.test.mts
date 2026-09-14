@@ -17,8 +17,9 @@ test('app icon choices keep stable persisted IDs and distinct native names', () 
   assert.equal(parseAppIconId('rosewater'), 'rosewater');
   assert.equal(parseAppIconId('grand-touring'), 'grand-touring');
   assert.equal(parseAppIconId('warm-ivory'), 'warm-ivory');
-  assert.equal(parseAppIconId('unknown'), 'original');
-  assert.equal(appIconIdForNativeName(null), 'original');
+  assert.equal(parseAppIconId('unknown'), 'grand-touring');
+  assert.equal(appIconIdForNativeName(null), 'grand-touring');
+  assert.equal(appIconIdForNativeName('JourneyDeckCinematic'), 'original');
   assert.equal(appIconIdForNativeName('JourneyDeckWarmIvory'), 'warm-ivory');
   assert.equal(appIconIdForNativeName('JourneyDeckRosewater'), 'rosewater');
   assert.equal(appIconIdForNativeName('JourneyDeckGrandTouring'), 'grand-touring');
@@ -39,7 +40,7 @@ test('iOS host target declares every alternate app icon set', () => {
   const list = project.pbxXCConfigurationList()[host.buildConfigurationList];
   for (const { value } of list.buildConfigurations) {
     const settings = project.pbxXCBuildConfigurationSection()[value].buildSettings;
-    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring"');
+    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring JourneyDeckCinematic"');
     assert.equal(settings.ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS, 'YES');
   }
 });

@@ -11,8 +11,9 @@ import * as catalog from '../src/app-icon-catalog.ts';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const require = createRequire(import.meta.url);
 
-test('native icon switching restores, handles every choice and survives a preference write failure', async () => {
-  let stored = 'original', nativeName: string | null = 'JourneyDeckRosewater', control: any;
+for (const initialName of [null, 'JourneyDeckGrandTouring', 'JourneyDeckCinematic', 'JourneyDeckRosewater']) {
+test(`native icon switching restores ${initialName ?? 'primary Grand Touring'}, handles every choice and survives a preference write failure`, async () => {
+  let stored = 'original', nativeName: string | null = initialName, control: any;
   let storageFails = false, nativeFails = false, mounts = 0;
   const requests: (string | null)[] = [];
   const module = { exports: {} as any };
@@ -37,12 +38,14 @@ test('native icon switching restores, handles every choice and survives a prefer
   let tree: any;
   try {
     await act(async () => { tree = create(React.createElement(module.exports.AppIconProvider, null, React.createElement(Content))); });
-    assert.equal(control.appIconId, 'rosewater', 'iOS takes precedence over stale saved choice');
-    assert.equal(stored, 'rosewater');
+    const expectedInitial = initialName === 'JourneyDeckCinematic' ? 'original'
+      : initialName === 'JourneyDeckRosewater' ? 'rosewater' : 'grand-touring';
+    assert.equal(control.appIconId, expectedInitial, 'iOS takes precedence over stale saved choice');
+    assert.equal(stored, expectedInitial);
     for (const id of ['grand-touring', 'warm-ivory', 'original', 'rosewater'] as const) {
       await act(async () => { await control.setAppIcon(id); });
       assert.equal(control.appIconId, id); assert.equal(stored, id);
-      assert.equal(nativeName, catalog.appIconCatalog[id].nativeName);
+      assert.equal(catalog.appIconIdForNativeName(nativeName), id);
     }
     assert.equal(mounts, 1, 'icon changes must not remount recorder content');
     nativeFails = true;
@@ -56,3 +59,4 @@ test('native icon switching restores, handles every choice and survives a prefer
     assert.equal(control.changing, false);
   } finally { await act(async () => tree?.unmount()); }
 });
+}

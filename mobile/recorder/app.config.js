@@ -16,6 +16,7 @@ module.exports = ({ config }) => {
     ...config,
     name: preview ? 'JourneyDeck V2' : config.name,
     version: '2.0.0',
+    icon: './assets/icon-grand-touring-v2.png',
     // RevenueCat adds native code; keep older installed runtimes isolated.
     runtimeVersion: preview ? '2.0.0-preview.12' : '2.0.0-watch.7',
     plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
@@ -34,8 +35,8 @@ module.exports = ({ config }) => {
       supportsTablet: true,
       requireFullScreen: false,
       icon: {
-        light: './assets/icon-light-plum-v1.png',
-        dark: './assets/icon.png',
+        light: './assets/icon-grand-touring-v2.png',
+        dark: './assets/icon-grand-touring-v2.png',
         // Grayscale mask for iOS tinted and clear Home Screen appearances.
         // The system supplies the tint or Liquid Glass background at runtime.
         tinted: './assets/icon-tinted-clear-v1.png',

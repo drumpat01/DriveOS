@@ -17,7 +17,7 @@ function load(themeId: 'dark' | 'light' | 'sakura' | 'redline') {
   const module = { exports: {} as any };
   const native = {
     StyleSheet: { create: (value: any) => value, absoluteFill: { position: 'absolute' } },
-    View: host('View'), Text: host('Text'), Pressable: host('Pressable'),
+    View: host('View'), Text: host('Text'), Pressable: host('Pressable'), ScrollView: host('ScrollView'),
   };
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => {
@@ -32,13 +32,13 @@ function load(themeId: 'dark' | 'light' | 'sakura' | 'redline') {
   return module.exports.FirstRunWelcomeScreen;
 }
 
-test('static welcome uses each theme, one logo, one action, and no automatic advance', async () => {
+test('static welcome uses each theme, no app logo, one action, and no automatic advance', async () => {
   assert.doesNotMatch(source, /Animated|setTimeout|setInterval|useEffect|autoplay|JourneyOpening/);
   const artwork = {
     dark: '../assets/onboarding-road-background.png',
     light: '../assets/home-header-light-v1.png',
     sakura: '../assets/theme-rosewater-road-v1.png',
-    redline: '../assets/theme-grand-touring-home-v2.png',
+    redline: '../assets/onboarding-grand-touring-blue-hour.jpg',
   };
   for (const themeId of ['dark', 'light', 'sakura', 'redline'] as const) {
     let starts = 0, tree: any;
@@ -46,14 +46,12 @@ test('static welcome uses each theme, one logo, one action, and no automatic adv
     try {
       await act(() => { tree = create(React.createElement(Welcome, { onStart: () => { starts++; } })); });
       const images = tree.root.findAllByType('Image');
-      assert.equal(images.filter((node: any) => node.props.testID === 'welcome-logo').length, 1);
+      assert.equal(images.length, 1, 'only the background artwork remains');
       assert.equal(images.find((node: any) => node.props.testID === 'welcome-road-artwork').props.source, artwork[themeId]);
       const labels = tree.root.findAllByType('Text').map((node: any) => node.children.join(''));
-      assert.ok(labels.includes('Welcome to'));
       assert.ok(labels.includes('JourneyDeck'));
       assert.ok(labels.includes('Every mile has a story.'));
-      assert.ok(labels.includes('JOURNEYDECK'));
-      assert.equal(labels.filter((label: string) => label === 'Start').length, 1);
+      assert.equal(labels.filter((label: string) => label === 'Get Started').length, 1);
       const start = tree.root.findByProps({ accessibilityLabel: 'Start JourneyDeck setup' });
       assert.equal(start.props.accessibilityRole, 'button');
       await act(() => start.props.onPress());

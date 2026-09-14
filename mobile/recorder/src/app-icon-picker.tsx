@@ -17,7 +17,7 @@ const previews: Record<AppIconId, number> = {
   original: require('../assets/icon.png'),
   'warm-ivory': require('../assets/icon-light-plum-v1.png'),
   rosewater: require('../assets/icon-rosewater-v1.png'),
-  'grand-touring': require('../assets/icon-grand-touring-v1.png'),
+  'grand-touring': require('../assets/icon-grand-touring-v2.png'),
 };
 
 type AppIconPickerProps = {
