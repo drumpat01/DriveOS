@@ -1,10 +1,10 @@
 # Next native build checklist
 
 This is the living source of truth for native changes shipped in JourneyDeck iOS
-Build 24 and candidates for later native builds. Build 24 is version `2.0.0`,
-runtime `2.0.0-watch.5`. Keep implementation/build state and device verification
-separate: a successful archive does not mean the behavior has passed on an
-iPhone, iPad, or Apple Watch.
+Builds 24 and 27 and candidates for later native builds. Build 27 is version
+`2.0.0`, runtime `2.0.0-watch.6`, and requires iOS 17. Keep implementation/build
+state and device verification separate: a successful archive does not mean the
+behavior has passed on an iPhone, iPad, or Apple Watch.
 
 **Release authorization:** On September 12 the user explicitly lifted the prior
 hold and authorized committing, pushing, building, and submitting one production
@@ -17,6 +17,13 @@ app and Watch extension successfully. Submission
 `VALID` and `IN_BETA_TESTING`. The build bundles all committed OTA advancements;
 no separate OTA was published. Physical-device acceptance remains pending.
 
+Latest release result (September 12): EAS production Build 27
+(`f3cf1d44-e1d6-4200-9ceb-b52d9da210e5`) compiled and signed the Minted keepsake,
+iPhone/iPad app, and Watch extension. Submission
+`e9b06d03-7d3f-477a-834e-a2dae356ea2f` succeeded; Apple reports the build
+`VALID` and `IN_BETA_TESTING`. No Git staging, commit, push, or OTA accompanied
+this build.
+
 ## Required changes
 
 | ID | Native change | State | Required verification |
@@ -28,6 +35,7 @@ no separate OTA was published. Physical-device acceptance remains pending.
 | NB-005 | One native recording state machine for phone/Watch Start, Pause, Resume, Finish, automatic start/stop, inactivity completion, profile handoff, and persisted-session recovery. | Included in Build 24; EAS Swift archive passed. Terminal/owner/session fences and receipt validation live in `RecorderStateMachine.swift`. Native status reconciles committed active transport; new native engines no longer receive speculative Resume from a stale UI mirror. | Test phone/Watch races, profile switches, interrupted Finish, and relaunch. |
 | NB-006 | Store recovery-critical movement checkpoints in native SQLite with session state, point writes, and command receipts. | Included in Build 24; EAS Swift archive passed. Native inbox schema 3 adds an owner-scoped checkpoint with an optional session for idle detection candidates. Matching legacy UserDefaults state is migration input only; stale command intervals reset. | Upgrade a disposable old database. Inject point/checkpoint/receipt failures and terminate between writes. Verify a failed profile fence cannot restart the previous profile. |
 | NB-007 | Native recorder status events update the React Native clock immediately, with polling retained for recovery. | Included in Build 24; EAS Swift archive passed. Start/Resume, Pause, Finish and failure signals use journey identity, stream ID and sequence. UI rejects stale events/status work; subscriptions support older binaries and remove their listeners. | Exercise Watch Pause/Finish with a locked phone, JS suspension/reload, lost events, rapid new journeys, and a profile switch during status reads. Verify phone/Watch clock agreement after foregrounding. |
+| NB-008 | Minted milestone keepsakes: compile a local `JourneyDeckKeepsakes` Expo module, pin Minted to exact version `1.1.1`, and turn the bundled `The First Track` gold-vinyl artwork into an interactive `ArtworkCoin` in Memories. | Included in Build 27; EAS Swift archive and TestFlight processing passed. Runtime is production `2.0.0-watch.6`; the app deployment target is iOS 17.0 because Minted requires iOS 17. A static React Native artwork fallback remains available when the native view is absent. Build `f3cf1d44-e1d6-4200-9ceb-b52d9da210e5`, submission `e9b06d03-7d3f-477a-834e-a2dae356ea2f`. | Confirm relief and metallic depth, drag rotation, resumed idle rotation, VoiceOver labeling, fallback rendering, and phone/iPad layout after the first journey. |
 
 ## Native candidates pending design
 
@@ -63,6 +71,12 @@ Before submitting the combined build:
 
 ## Change log
 
+- 2026-09-12: Shipped NB-008 in production TestFlight Build 27. EAS compiled
+  Minted and the local Expo bridge, exported the signed iPhone/iPad plus Watch
+  IPA, and Apple reports `VALID` / `IN_BETA_TESTING`. Signed-package inspection
+  confirmed iOS 17.0, runtime `2.0.0-watch.6`, both Minted and JourneyDeck
+  resource bundles, and SHA-256
+  `EF502E16FF561128B4F9E1997DA71E2C50E75A7DE74ECA24EA1EDB63C60F4A72`.
 - 2026-09-12: Shipped NB-001 through NB-007 in production TestFlight Build 24
   from commit `33bbd4a`. EAS build and submission succeeded; Apple reports
   `VALID` / `IN_BETA_TESTING`. All committed OTA advancements are bundled in the

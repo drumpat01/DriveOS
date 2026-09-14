@@ -234,7 +234,7 @@ test('preview navigation runtime stays isolated from V1 and the installed previe
   try {
     process.env.APP_VARIANT = 'v2-preview';
     const preview = config({ config: app });
-    assert.equal(preview.runtimeVersion, '2.0.0-preview.10');
+    assert.equal(preview.runtimeVersion, '2.0.0-preview.11');
     assert.ok(preview.plugins.includes('./plugins/with-journeydeck-watch'));
     assert.equal(preview.ios.supportsTablet, true);
     assert.equal(preview.ios.requireFullScreen, false);

@@ -86,7 +86,8 @@ function normalizedPlace(value: string | null | undefined) {
   return label;
 }
 
-function isInsightVisibleJourney(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation'>) {
+function isInsightVisibleJourney(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation' | 'showInMemories'>) {
+  if (journey.showInMemories === true) return true;
   const start = journey.startingLocation?.trim().toLocaleLowerCase().replace(/\s+/g, ' ') ?? '';
   const end = journey.endingLocation?.trim().toLocaleLowerCase().replace(/\s+/g, ' ') ?? '';
   return !((start === 'home' && end === 'home') || (start === 'work' && end === 'work'));

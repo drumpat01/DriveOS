@@ -76,6 +76,7 @@ const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   './theme-material': { ThemeMaterial: host('ThemeMaterial') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './ipad-page-header': { IpadPageHeader: host('Header') },
   './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
+  './first-journey-keepsake': { FirstJourneyKeepsake: host('FirstJourneyKeepsake') },
   './card-detail-link': { CardDetailLink: host('CardDetailLink') }, './library-model': load('library-model.ts'),
   './native-action-menu': { NativeActionMenu: host('Menu') }, './journey-card-action': { openJourneyCardAction: (...args: any[]) => journeyActions.push(args) },
   './memory-studio-model': { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity }, './device-layout': gridLayout,
@@ -204,6 +205,12 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     await act(async () => { tree = create(render(), { createNodeMock: el => ({ id: el.props.testID }) }); });
     assert.deepEqual(Array.from(tree.root.findByType('SafeAreaView').props.edges), ['top', 'left', 'right', 'bottom']);
     assert.equal(tree.root.findByType('KeyboardAvoidingView').props.behavior, 'padding');
+    assert.equal(tree.root.findAllByType('FirstJourneyKeepsake').length, 0, 'earned badges no longer occupy the Memories screen');
+    const journeyLink = press(tree, 'Open journey Start 2 → Coast');
+    assert.equal(journeyLink.props.accessibilityRole, 'link');
+    assert.equal(journeyLink.findByType('Text').children.join(''), 'View ›');
+    const journeyLine = press(tree, 'Select Start 2 → Coast').findAllByType('Text').find((node: any) => node.props.ellipsizeMode === 'tail');
+    assert.equal(journeyLine.props.numberOfLines, 1, 'journey details stay on one line');
     const root = tree.root.findByProps({ testID: 'studio-drag-root' });
     await act(() => root.props.onLayout({ nativeEvent: { layout: { width: 369, height: 680 } } }));
     assert.ok(root.props.style.marginBottom <= 12, 'native safe area owns bar clearance without a second fixed tab-bar spacer');
@@ -247,7 +254,8 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     }
     for (const value of [false, true, 'sakura', 'redline']) {
       light = value; await act(() => tree.update(render()));
-      assert.ok(tree.root.findByType('Image').props.source.startsWith(`${testTheme(value).id}:`));
+      assert.equal(tree.root.findAllByType('Image').length, 0, 'the phone tab title has no decorative header artwork');
+      assert.equal(tree.root.findByType('PhoneTabTitle').props.title, 'Memories');
       assert.equal(input.props.value, 'Start 2');
       assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
     }

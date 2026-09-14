@@ -21,7 +21,7 @@ The user was alerted that Build 2 omitted automatic iOS Home Screen icon variant
 ## Core Architecture Invariants & Rules
 
 1. **Expo SDK 57 Strict Adherence**:
-   - Current source targets `2.0.0-watch.5` (internal preview `2.0.0-preview.10`) for native recorder schema 3, the consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio and reversible editor schema 7. Build 23 uses `2.0.0-watch.4`. Keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical. Do not publish the new source to an older runtime.
+   - Current source targets `2.0.0-watch.6` (internal preview `2.0.0-preview.11`) for native recorder schema 3, the consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio, reversible editor schema 7, and the Minted 1.1.1 keepsake renderer. Build 24 uses `2.0.0-watch.5`. Keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical. Do not publish the new source to an older runtime.
    - Read versioned docs at https://docs.expo.dev/versions/v57.0.0/ before changing native modules.
 
 2. **Local-First & Multi-User Architecture**:

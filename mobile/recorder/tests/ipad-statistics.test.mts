@@ -74,7 +74,8 @@ const ui = load('ipad-statistics-screen.tsx', {
   'react-native': native, 'react-native-svg': { __esModule: true, default: host('Svg'), Circle: host('Circle'), Line: host('Line'), Polyline: host('Polyline') },
   'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ bottom: 20 }) },
-  './theme-material': { ThemeMaterial: host('ThemeMaterial') },
+  './delight-ui': { AdaptiveGlassSurface: host('GlassSurface') },
+  './use-core-motion': { useCoreMotion: () => ({ reduceTransparency: false }) },
   './app-theme': { useAppTheme: () => testTheme(light) }, './theme-palette': load('theme-palette.ts'),
   './ipad-page-header': { IpadPageHeader: host('Header') }, './card-detail-link': { CardDetailLink: host('DetailLink') },
   './journey-title': load('journey-title.ts'), './ipad-statistics-model': model, './device-layout': gridLayout,
@@ -120,6 +121,9 @@ test('widgets precede calendar; date selection, paging, ranges, links, refresh a
     assert.equal(new Set(metricSymbols.map((node: any) => node.props.tintColor)).size, 6, 'headline metrics use distinct cinematic accents');
     const metricCards = widgets.findAllByType('View').filter((node: any) => Array.isArray(node.props.style) && node.props.style.flat().some((style: any) => style?.height === 200));
     assert.equal(metricCards.length, 6);
+    assert.equal(widgets.findAllByType('GlassSurface').length, 6, 'every headline metric uses the adaptive native glass surface');
+    assert.ok(metricCards.every((node: any) => node.props.style.flat().some((style: any) => style?.borderWidth === 1)), 'metric accents form a complete perimeter outline');
+    assert.equal(widgets.findAllByType('View').filter((node: any) => node.props.style?.flat?.().some((style: any) => style?.position === 'absolute' && style?.left === 0 && style?.width === 3)).length, 0, 'metric cards have no left-edge highlight rail');
     assert.ok(metricCards.every((node: any) => node.props.style.flat().some((style: any) => style?.shadowOpacity > 0)), 'dark metric cards have neon glows');
     assert.match(text(tree), /Journey averages/); assert.match(text(tree), /Record book/); assert.match(text(tree), /Activity split/);
     assert.ok(tree.root.findByProps({ testID: 'statistics-bottom-widgets' }));
@@ -172,9 +176,9 @@ test('widgets precede calendar; date selection, paging, ranges, links, refresh a
     await act(async () => tree.update(render(45, state, true)));
     const header = tree.root.findByType('Header');
     assert.equal(header.props.compact, true);
-    assert.equal(header.props.subtitle, undefined, 'Statistics omits the sentence beneath its artwork');
-    assert.equal(header.props.artworkTreatment, 'bright', 'Statistics requests the brighter center treatment');
-    assert.equal(header.findAllByProps({ accessibilityLabel: '7D' }).length, 0, 'range filters render below rather than inside the artwork header');
+    assert.equal(header.props.subtitle, undefined, 'Statistics keeps a concise title-only header');
+    assert.equal(header.props.artwork, undefined, 'Statistics omits decorative header artwork');
+    assert.equal(header.findAllByProps({ accessibilityLabel: '7D' }).length, 0, 'range filters render below rather than inside the title header');
     assert.equal(tree.root.findByType('SafeAreaView').props.edges.join(','), 'top,left,right');
     assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentInsetAdjustmentBehavior, 'never');
     assert.equal(tree.root.findByProps({ testID: 'ipad-statistics' }).props.contentContainerStyle.padding, 16);

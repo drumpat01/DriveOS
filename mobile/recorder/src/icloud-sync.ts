@@ -16,6 +16,8 @@ import { isPrivateCloudDeletionPending, setPrivateCloudDeletionPending, type Loc
 import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
 import { rebuildAtlasSnapshot } from './local-atlas';
 import { beginNetworkActivity } from './network-activity';
+import { privateCloudProfileScope } from './private-cloud-profile';
+export { privateCloudProfileScope } from './private-cloud-profile';
 
 export type PrivateICloudSyncResult = {
   available: boolean;
@@ -37,11 +39,6 @@ const AUTOMATIC_SYNC_COOLDOWN_MS = 15 * 60_000;
 
 export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
-}
-
-export async function privateCloudProfileScope(user: LocalUser): Promise<string> {
-  const stableIdentity = user.appleSubject ? `apple:${user.appleSubject}` : `local:${user.id}`;
-  return (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-profile:${stableIdentity}`)).slice(0, 48);
 }
 
 /** Separate zone keeps new editor assets out of older native clients. */

@@ -356,6 +356,53 @@ test('photo relocation cannot select another owner/file, traverse folders, or in
   assert.equal((await resolver.resolvePrivatePhotoFile({ ...base, localUri })).status, 'missing');
 });
 
+test('an iCloud photo survives repeated app-container moves without a content edit or redownload', async () => {
+  const phone = device(); seed(phone);
+  const id = 'local_cloud-relocation';
+  const scope = createHash('sha256').update(`journeydeck-profile:apple:${phone.user.appleSubject}`).digest('hex').slice(0, 48);
+  const file = `photo_${id}-${'a'.repeat(64)}.heic`;
+  const relative = `Library/Application%20Support/JourneyDeckPrivateAssets/JourneyDeck-${scope}/Photo/${file}`;
+  const oldUri = `file:///old-app/${relative}`, currentUri = `file:///current-app/${relative}`;
+  files.set(currentUri, 'cloud-photo-bytes');
+  phone.store.upsertPhoto({ ...phone.store.getPhotoIncludingDeleted(phone.user.id, 'fixture-photo'), id, localUri: oldUri },
+    { syncRevision: 9, syncedToCloud: 1, updatedAt: '2026-09-01T12:00:00Z' });
+  const resolver = phone.load(resolve(src, 'private-photo-file.ts'));
+  const before = phone.store.getPhotoIncludingDeleted(phone.user.id, id);
+  assert.deepEqual(await resolver.resolvePrivatePhotoFile(before), { localUri: currentUri, status: 'available' });
+  const after = phone.store.getPhotoIncludingDeleted(phone.user.id, id);
+  assert.equal(after.syncRevision, before.syncRevision);
+  assert.equal(after.syncedToCloud, 1);
+  assert.equal(after.updatedAt, before.updatedAt);
+  // The current installation can be moved again: the same identity/path rule applies.
+  const nextUri = `file:///next-app/${relative}`;
+  files.delete(currentUri); files.set(nextUri, 'cloud-photo-bytes');
+  const next = device({ 'expo-file-system/legacy': {
+    documentDirectory: 'file:///next-app/Documents/',
+    getInfoAsync: async (uri: string) => ({ exists: files.has(uri), size: files.get(uri)?.length ?? 0 }),
+  } });
+  seed(next);
+  next.store.upsertPhoto({ ...after, userId: next.user.id });
+  assert.deepEqual(await next.load(resolve(src, 'private-photo-file.ts')).resolvePrivatePhotoFile(next.store.getPhotoIncludingDeleted(next.user.id, id)),
+    { localUri: nextUri, status: 'available' });
+});
+
+test('cloud photo repair accepts legacy native names but rejects another profile, photo, or traversed path', async () => {
+  const phone = device(); seed(phone);
+  const resolver = phone.load(resolve(src, 'private-photo-file.ts'));
+  const base = { ...phone.store.getPhotoIncludingDeleted(phone.user.id, 'fixture-photo'), id: 'local_safe-photo' };
+  const scope = createHash('sha256').update(`journeydeck-profile:apple:${phone.user.appleSubject}`).digest('hex').slice(0, 48);
+  const folder = `Library/Application%20Support/JourneyDeckPrivateAssets/JourneyDeck-${scope}/Photo/`;
+  const oldUri = `file:///old-app/${folder}photo_local_safe-photo.png`;
+  const currentUri = `file:///current-app/${folder}photo_local_safe-photo.png`;
+  assert.equal(await resolver.currentCloudPhotoUri({ ...base, localUri: oldUri }, 'file:///current-app/Documents/'), currentUri);
+  for (const localUri of [oldUri.replace(scope, 'f'.repeat(48)), oldUri.replace('photo_local_safe-photo', 'photo_local_other'),
+    oldUri.replace('Photo/', 'Photo/../Photo/'), oldUri.replace('Photo/', 'Photo/%2e%2e/Photo/'),
+    oldUri.replace('file:///old-app/', 'https://example.com/'), `${oldUri}?other=1`]) {
+    assert.equal(await resolver.currentCloudPhotoUri({ ...base, localUri }, 'file:///current-app/Documents/'), null);
+  }
+  assert.equal((await resolver.resolvePrivatePhotoFile({ ...base, localUri: oldUri })).status, 'missing');
+});
+
 test('a photo removed while recovery checks the filesystem is never resurrected', async () => {
   let phone: ReturnType<typeof device>;
   const photoId = 'local_race-photo';

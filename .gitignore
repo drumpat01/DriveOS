@@ -38,3 +38,9 @@ Thumbs.db
 .DS_Store
 __MACOSX/
 ._*
+
+# Separate local Sites workspace; it has its own Git history and deployment.
+/medallion-demo-site/
+
+# Minted reads OTA-downloaded artwork. Native copies are generated review leftovers.
+/mobile/recorder/modules/journeydeck-keepsakes/ios/Resources/

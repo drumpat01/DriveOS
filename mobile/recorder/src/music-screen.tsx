@@ -18,7 +18,6 @@ import type { MusicProvider } from './music-preferences';
 import { musicTrackDestination } from './music-destination';
 import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
 import { NeonWidget, QuietInset } from './neon-widget-outline';
-import { HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { PhoneTabTitle } from './phone-tab-title';
 import { AlbumCarousel } from './album-carousel';
 import { JourneyImage } from './journey-image';
@@ -170,14 +169,7 @@ function Metric({ symbol, label, value, detail, accent }: { symbol: SFSymbol; la
 }
 
 function SoundtracksHeroHeader() {
-  const musicHeaderStyles = useThemedStyles(darkMusicHeaderStyles);
-
-  return <>
-    <PhoneTabTitle title="Soundtracks" />
-    <View style={musicHeaderStyles.heroCardHeader}>
-      <HeaderArtwork source={require('../assets/cinematic-soundtracks-photo-v1.jpg')} />
-    </View>
-  </>;
+  return <PhoneTabTitle title="Soundtracks" />;
 }
 
 function Panel({ title, kicker, children }: { title: string; kicker: string; children: ReactNode }) {
@@ -342,7 +334,6 @@ function MusicHeaderScene() {
 }
 
 const darkMusicHeaderStyles = StyleSheet.create({
-  heroCardHeader: { width: '100%', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO },
   header: { minHeight: 166, borderColor: '#652d70', backgroundColor: '#0d0818', shadowColor: '#ff4594', shadowOpacity: 0.3, shadowRadius: 24 },
   eyebrow: { color: '#ff9fc4', maxWidth: 208 },
   title: { maxWidth: 208, textShadowColor: '#ff4f9a', textShadowRadius: 13 },

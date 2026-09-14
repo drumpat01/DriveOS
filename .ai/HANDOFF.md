@@ -1,5 +1,173 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Requested medallion list — September 13, 2026
+
+- Recorded the user's ten medallion names and milestones, in order, in
+  `docs/medallions.md`. Scope is recording the list; artwork and implementation
+  remain future work.
+- Branch `codex/journeydeck-v2`, HEAD `3f7f035`; existing mobile changes preserved.
+  Documentation only; list read back for accuracy. No runtime tests needed.
+- Next step when requested: use this list for medallion creation.
+- Design preference: each medallion may use any of the app's four current themes
+  and its corresponding color palette; recorded in `docs/medallions.md`.
+- Generated the first 10-concept review batch for `The First Track` under
+  `mobile/recorder/assets/medallion-concepts/the-first-track/`: two gold
+  monochrome, two Grand Touring, two Rosewater, two Cinematic Dark, and two Warm
+  Ivory. `README.md` maps concepts 01–10 to their palette and visual direction.
+  These are review concepts only and are not wired into the app.
+- Selected concept 01 as a theme-variant demonstration and generated four
+  palette exports under its `option-01-theme-variants/` folder. The README maps
+  visual regions and runtime theme IDs. Restored verified transparent alpha from
+  the original master after the generator painted checkerboards. The variants
+  remain review assets and are not wired into the app; production exports should
+  use deterministic layers/masks for pixel-identical geometry.
+- User approved concept 01's four theme treatments and explicitly directed that
+  no app/native builds occur until all medallions are complete. Created a
+  separate static review site in `medallion-demo-site/` with theme switching,
+  drag/momentum/idle rotation, modeled edge depth, reverse face, responsive
+  layout, keyboard controls, and placeholders for the remaining nine medals.
+  Privately published version 2 at
+  `https://journeydeck-medallion-review.drumpat01.chatgpt.site`. The browser
+  presentation approximates Minted; exact SwiftUI/SceneKit lighting remains an
+  iOS acceptance item for the eventual combined build. No mobile app source was
+  changed for the demo and no native, Expo, or EAS build was run.
+
+## Compact Memory journeys and Settings Achievements — September 13, 2026
+
+- Replaced the multi-row Journey library cards in Memories with one-line rows:
+  date, route, miles, duration, and songs truncate on the left while a persistent
+  `View ›` link sits on the right. Selection, drag/drop, and phone action menus
+  remain available.
+- Removed the First Track achievement banner from both phone and iPad Memories.
+  Added an Achievements category to phone and iPad Settings with eight milestone
+  badges. Locked badges are greyed out with their names and lock status beneath.
+- Tapping any badge presents the existing native Expo UI bottom sheet at half or
+  full height. The detail includes How, When, and Why context; its medallion can
+  be dragged horizontally to rotate, respects Reduce Motion, and shows a reverse
+  face. Milestones retain the exact journey/date that crossed each threshold.
+- Screenshot follow-up explicitly stretches the bottom-sheet scroll surface to
+  the full page width and centers the medallion within it. TypeScript and focused
+  Achievements/Settings tests pass 5/5. This centering adjustment has not yet
+  been published by OTA.
+- Added milestone, detail-sheet, Settings routing, single-line row, and removal
+  regression coverage. Focused tests pass 15/15, TypeScript passes, the full
+  mobile suite passes **644/644**, `git diff --check` has no errors, and a
+  production iOS export passes (2,613 modules, 78 assets).
+- No package/config/native changes were needed; this uses the Expo UI native
+  module already embedded in Build 27 runtime `2.0.0-watch.6`. Published to the
+  iOS `production` branch: group `a7d0c299-4a0a-4e28-b47b-feaed551e30b`, update
+  `01a09c5b-bc3c-7f4c-aa54-d1bdf37144fa`, message
+  `Add Settings achievements and compact journey rows`. `update:view` and
+  `update:list` confirmed it as production head. No native build, Git staging,
+  commit, or push was performed. Physical-device bottom-sheet and medallion
+  gesture validation remains pending.
+
+## Statistics Liquid Glass and complete outlines — September 13, 2026 (published OTA)
+
+- Replaced simulated `ThemeMaterial` lighting on every Statistics widget with
+  the existing `AdaptiveGlassSurface`: native `GlassView` on supported iOS 26
+  devices, blur fallback on older supported iOS, and an opaque surface when
+  Reduce Transparency is enabled.
+- Removed the Statistics metric and panel left-edge accent rails. Metric cards,
+  analysis panels, Atlas, and Year on the Road now use thin, evenly colored
+  complete perimeter outlines with balanced glow.
+- Updated both Statistics render harnesses. Focused tests pass 12/12, TypeScript
+  passes, the full mobile suite passes 642/642, `git diff --check` has no errors,
+  and production iOS export passes (2,515 modules, 78 assets).
+- Published to the iOS `production` branch for existing Build 27 runtime
+  `2.0.0-watch.6`: group `e44e892b-2962-43ba-9ad3-9a8ef715958d`, update
+  `01a09c3d-4461-7f10-b1e5-c9451aeaea81`, message
+  `Add Liquid Glass statistics widgets`. `update:view` and `update:list`
+  confirmed it as production head. No native build, Git staging, commit, or push.
+  Physical iOS 26 glass rendering remains unverified.
+
+## Concise Journey Details copy — September 13, 2026 (published OTA)
+
+- Simplified the Journey Details page copy: one-line Route and Soundtrack
+  headings, a short empty-soundtrack prompt, concise location-name guidance,
+  and no redundant soundtrack placeholder sentence. Behavior and data are
+  unchanged.
+- TypeScript, focused Journey Details tests (32/32), full mobile suite (642/642),
+  diff whitespace validation, and production iOS export passed (2,515 modules,
+  78 assets).
+- Published to the iOS `production` branch for Build 27 runtime
+  `2.0.0-watch.6`: group `a88e9e3d-36d4-4d9d-adfd-ceda76fdf006`, update
+  `01a09c0a-8374-791f-bb8f-683fb3995883`, message
+  `Simplify Journey details copy`.
+- Screenshot follow-up removed the map privacy paragraph, forced the concise map
+  instruction to one line, and reduced the gold Relive control to one compact
+  44-point row without its description. Focused tests (32/32), TypeScript, diff
+  whitespace validation, and a fresh production iOS export passed. Replacement
+  production group `bb5494e9-2c86-423b-ba6e-7df72f87e78b`, update
+  `01a09c10-97f5-77ee-877f-b4af29d9f76f`, message
+  `Compact Journey map controls`; `update:view` and `update:list` confirmed it as
+  the production head. No native build, Git staging, commit, or push.
+
+## Memory photo repair after TestFlight updates — September 12, 2026
+
+- User reports existing Memory photos disappear after each TestFlight update.
+  Reproduced a concrete gap: `private-photo-file.ts` repaired Documents paths
+  but not native iCloud downloads under Library/Application Support. A regression
+  with real SQLite metadata and a simulated relocated asset failed before the fix.
+- Added exact-owner/exact-photo Application Support path repair for native
+  content-addressed and legacy filenames. It preserves content revisions,
+  timestamps, backup acknowledgement, extension and payload digest, without
+  searching other profiles or downloading. Extracted unchanged CloudKit profile
+  scope derivation to `private-cloud-profile.ts` for reuse without a sync cycle.
+- Repeated-container relocation and invalid-owner/file/traversal tests pass;
+  focused private-library/content tests 33/33, TypeScript and iOS export passed.
+  Updated one structural test to read the moved scope helper; full mobile suite
+  **639/639** passed. No native code, schema, Git staging/commit/push changes.
+  Previous inline-journey choice work remains intact. Logs under
+  `mobile/recorder/.cache/photo-relocation-{tests,export}.log`.
+- Published production iOS OTA on Build 24 runtime `2.0.0-watch.5`: group
+  `e346fd63-976a-4b43-ac4a-1fc9797b0452`, update
+  `01a09874-b4ac-73d5-b5a5-2e6c1c929444`, message
+  `Reconnect Memory photos after TestFlight updates`. Read-back confirmed the
+  production head and iOS update ID. Physical-device
+  recovery remains unverified; this repairs existing files with stale paths,
+  not files that have actually been removed from the device.
+
+## Inline hidden-journey choice — September 12, 2026
+
+- User requested a small inline message below Start Journey, with a choice when
+  a saved Home-to-Home/Work-to-Work journey is hidden. Implemented phone/iPad
+  `HiddenJourneyNotice`: Show in Memories or Keep hidden, no modal. It checks
+  the latest completed recorder session after archive mirroring/foregrounding,
+  preserves the recording for either choice, and reports write failures inline.
+- Per-journey choices use existing owner-scoped private preferences (full
+  recording identity retained). Show overrides the presentation filter across
+  library/dashboard/primary sections and Atlas insights. No native/schema change.
+- Branch `codex/journeydeck-v2`, HEAD `3f7f035`. TypeScript, 14 focused tests,
+  full mobile suite **637/637**, diff whitespace validation and iOS export passed.
+  Published production iOS OTA for Build 24 runtime `2.0.0-watch.5`:
+  group `d8d15b80-0d53-4726-97c7-873c47c979f0`, update
+  `01a09868-6274-75f8-a67f-779c643287c6`, message
+  `Add inline choice for hidden Home and Work journeys`;
+  `update:list` and `update:view` confirmed the production head and iOS ID.
+  no Git staging/commit/push. Logs: `.cache/hidden-journey-choice-tests.log` and
+  `.cache/hidden-journey-choice-export.log` under `mobile/recorder`.
+- Physical iPhone/iPad/Dynamic Type checks remain pending. Confirm the couch
+  recording resolves to Home at both ends; choose Show and verify Memories,
+  then test Keep hidden and relaunch persistence on another recording.
+
+## Couch auto-finish expectation — September 12, 2026
+
+- User subsequently supplied a screenshot showing READY and native auto-finish
+  notice, with an older Latest memory. Code review found `journey-visibility.ts`
+  intentionally hides Home-to-Home and Work-to-Work records from app-data and
+  primary sections while retaining storage. This likely explains a couch test
+  if both endpoints resolved to Home; device record/import state is unverified.
+  No product changes made; do not remove the established filter without direction.
+- Read-only code review confirms manual journeys should finish after ten minutes
+  of observed inactivity, conditional on usable, continuing location observations;
+  this is not an exact ten-minute wall-clock deadline. Indoor poor accuracy,
+  ambiguous movement or observation gaps can reset/delay that interval.
+- Verified Swift policy and native finish/reconciliation paths on branch
+  `codex/journeydeck-v2`, HEAD `3f7f035`; working tree was clean. No code changes
+  or tests run. Build 24 release is recorded above/below; installed-device version
+  and couch/locked-phone acceptance remain unverified.
+
 ## Combined native + OTA TestFlight release — September 12, 2026
 
 - The user explicitly lifted the earlier hold and authorized commit, push, a new
@@ -4207,3 +4375,112 @@ This scope supersedes older handoff or App Store documentation that says the pub
 - Renamed the user-facing `Original` app-icon choice to `Cinematic`. Its stable persisted ID remains `original`, its native name remains `null`, and the underlying icon asset and Plus placement are unchanged.
 - Verification passed: TypeScript; focused icon/Settings tests 12/12; complete mobile suite 560/560; EAS iOS export/publish; and `git diff --check` with only existing CRLF notices.
 - Published and read back on the iOS `production` branch for runtime `2.0.0-watch.4`: group `d674ef52-3b5c-47fa-8ee0-98fb8d84abba`, update `01a0975d-6686-7b1b-90f4-d3e7cf4e6963`, message `Rename Original app icon to Cinematic`. No native build, staging, commit, or Git push was performed.
+## Minted first-journey keepsake — September 12, 2026 (TestFlight Build 27)
+
+- The user selected keepsake concept 1 and asked to run it through Minted, with music remaining the app's key differentiator. The source artwork is a cream-and-coral road medallion whose rising sun is a gold vinyl record and whose highway markings form a musical staff.
+- Added a local Expo module at `mobile/recorder/modules/journeydeck-keepsakes` that pins `haplollc/Minted` to exact version `1.1.1`, converts the bundled flat artwork into `ArtworkCoin`, and presents `SpinningArtworkCoinView` with idle rotation and drag interaction. A static React Native image remains as the non-native fallback.
+- Added `The First Track` earned card to phone and iPad Memories when at least one journey exists. Production runtime is isolated at `2.0.0-watch.6`; preview is `2.0.0-preview.11`.
+- Verification passed: focused keepsake/runtime/Memory tests 25/25, TypeScript, complete mobile suite 642/642, Expo autolinking, and iOS Hermes export with 2,515 modules and 78 assets. Build attempts 25 and 26 exposed and resolved Minted's iOS 17 floor and Expo Fabric's optional `AppContext` initializer requirement.
+- Production EAS Build 27 `f3cf1d44-e1d6-4200-9ceb-b52d9da210e5` finished successfully. Signed IPA inspection confirmed JourneyDeck 2.0.0 (27), iPhone+iPad, iOS 17.0, paired Watch app, runtime `2.0.0-watch.6`, `JourneyDeckKeepsakes.bundle`, identical bundled artwork, and compiled Minted symbols. IPA SHA-256: `EF502E16FF561128B4F9E1997DA71E2C50E75A7DE74ECA24EA1EDB63C60F4A72`.
+- Exact-build submission `e9b06d03-7d3f-477a-834e-a2dae356ea2f` completed. App Store Connect reports Build 27 `VALID`, `IN_BETA_TESTING`, `READY_FOR_BETA_SUBMISSION`, and not expired. Physical review remains: install Build 27, open Memories after a journey, inspect relief and gold-vinyl detail in every theme, drag and release the coin, wait for idle rotation, and repeat on iPad/VoiceOver. No Git staging, commit, push, or OTA was performed.
+
+## First-journey medallion face correction — September 12, 2026 (published OTA)
+
+- Physical review of Build 27 showed Minted's generated reverse/edge treatment at rest instead of the intended gold-vinyl road artwork. To avoid consuming another paid native build, the JavaScript bridge now presents the already-bundled artwork as a circular, updateable React Native face with a horizontal drag/3D turn and spring return. The compiled Minted module remains available for a later planned native release.
+- Verification passed: TypeScript; complete mobile suite 642/642; focused keepsake tests 3/3; and iOS Expo export with 2,515 modules and 78 assets at `mobile/recorder/.cache/keepsake-ota-export`.
+- Published with the EAS `production` environment to the iOS `production` branch for Build 27 runtime `2.0.0-watch.6`: group `6d107750-257d-4bf9-be16-0b1e7e52151d`, update `01a098f1-ebc6-70ef-bd5c-c3d29a58e662`, message `Fix first journey medallion artwork face`. No native build, staging, commit, or Git push was performed.
+- Physical review: cold-launch the TestFlight app up to twice, confirm Data Health shows short update ID `01a098f1`, open Memories, and verify the medallion shows the gold vinyl sunrise above the road/music staff and returns face-forward after a horizontal drag.
+- The first physical check of that OTA showed a blank white oval: the React Native `Image` did not paint reliably inside an absolutely filled, non-square animated container. Replaced it with the already-shipping `expo-image` renderer, explicit 100% dimensions, zero transition, and a centered 1:1 coin so the face cannot stretch into an oval.
+- TypeScript and focused keepsake tests 3/3 passed; the EAS export completed with 2,515 modules and 78 assets. Replacement production OTA for runtime `2.0.0-watch.6`: group `e5da178e-de80-4414-a574-8d44ecc62466`, update `01a098f5-8977-76bf-b4ba-f5e75994f063`, message `Render first journey medallion artwork reliably`. No native build was started.
+
+## Title-only non-Home tab headers — September 12, 2026 (published OTA)
+
+- At the user's direction, removed decorative header artwork from the Soundtracks, Memories, Statistics, and Settings tabs on both iPhone and iPad. Each tab retains its title at the top. Home retains its cinematic artwork on both form factors; content imagery inside Memory cards, Statistics storytelling cards, and secondary experiences remains intact.
+- Updated `IpadPageHeader` so artwork is optional and title-only tabs use a compact plain header rather than reserving an empty hero area. Removed obsolete phone header wrappers and updated the structural and rendered layout coverage.
+- Verification passed: TypeScript; focused phone/iPad tab layout tests 62/62; complete mobile suite 642/642; and EAS iOS export with 2,515 modules and 78 assets.
+- Published with the EAS `production` environment to the iOS `production` branch for Build 27 runtime `2.0.0-watch.6`: group `ef5883e2-e434-4f63-aaa6-7cfdd7406f25`, update `01a09916-8282-712e-99d1-5f3aa2498bdb`, message `Keep Home artwork and simplify other tab headers`. No native build, staging, commit, or Git push was performed.
+
+## Public-site launch readiness — September 13, 2026 (live)
+
+- Added the five agreed launch items: an above-fold `Follow the launch` CTA on the public and `/beta` landing pages, a branded custom 404 page, `robots.txt`, `sitemap.xml`, and tailored JourneyDeck Terms of Use. Privacy and Support now link to Terms.
+- Preserved access boundaries: `/beta` remains `noindex, nofollow`; `/app` still redirects to login; API routes remain protected; the sitemap lists only `/`, `/privacy`, `/support`, and `/terms`.
+- Merged PR #144 (`https://github.com/drumpat01/DriveOS/pull/144`) as commit `653d0394dc231a76ea29635af118f316f7bb1e41`. Render deploy `dep-dajbnb8jo6nc73c88je0` is live at `https://journeydeck.me`.
+- Verification passed: server typecheck and lint, server tests 34/34, focused public-route tests 12/12, diff checks, live HTTP route checks, and live Playwright checks at 1440x1000 and 390x844 with no overflow, broken images, asset failures, or page errors. Render reported no error logs after deployment.
+- The complete local E2E suite passed 8/9. Its only failure is the pre-existing Statistics fixture assertion (`#statisticsScore` remains `--` with August 2026 fixture dates), which is unrelated to these web changes. GitHub validation run `34764534829` was still running at handoff time.
+- Work was isolated on `codex/site-launch-readiness`; the existing dirty mobile working tree was preserved. No mobile source, native build, or OTA release was changed.
+
+## Medallion review site and fixed-gold reverse — September 13, 2026 (live)
+
+- Created the private JourneyDeck medallion review site at https://journeydeck-medallion-review.drumpat01.chatgpt.site from the nested repository at `medallion-demo-site`. It previews The First Track in Grand Touring, Rosewater, Cinematic Dark, and Warm Ivory with drag, momentum, idle rotation, a modeled edge/reverse, and placeholders for the remaining nine medallions.
+- Corrected the modeled coin so theme selection changes only the front artwork and surrounding demo palette. The reverse and edge now remain regular gold across every theme, with a subtle orange-peel surface matching Minted's default die-struck back.
+- Site version 3 is deployed privately from commit `09441f747133aeddcefb89ff4aa6df4a39934240` (deployment `appgdep_6aa74703e34481918fc796e6e75cc87a`). Static JavaScript syntax and Git diff checks passed.
+- No mobile source, Expo/EAS update, or native build was made. Continue adding approved medallion artwork to this demo, then integrate the complete set into the app for one later build.
+
+## Road Regular medallion approved — September 13, 2026 (live demo)
+
+- The user approved Road Regular option 6: a sculpted numeral 10 formed from parallel road bands, with the road rising through the zero.
+- Saved the gold master and four transparent theme fronts under `mobile/recorder/assets/medallion-concepts/road-regular`. The theme treatments are Grand Touring, Rosewater, Cinematic Dark, and Warm Ivory; the structural rim remains gold.
+- Added Road Regular as the second selectable achievement on the private review site. Site version 4 is live from nested-site commit `5d7d339402621ff343e1c91402f148ff61e4d1b7`, deployment `appgdep_6aa74d80311c8191a67dd5243fd704e3`.
+- Updated `docs/medallions.md` with the approved choices. No app source integration, Expo/EAS update, or native build was made.
+
+## Century Road medallion approved — September 13, 2026 (live demo)
+
+- The user approved fresh-set option 1 for Century Road: a bold Art Deco 100 with streamlined road wings, a central approach road, and an MI plaque.
+- Warm Ivory was corrected at the user's direction to exclude blue, cyan, and teal; it uses ivory, antique gold, muted plum, terracotta, and warm brown.
+- Saved the gold master and four transparent theme fronts under `mobile/recorder/assets/medallion-concepts/century-road`.
+- Added Century Road as the third selectable achievement on the private review site. Site version 5 is live from nested-site commit `79e47859650f4a8e1fcaeeaa3e9485711e7d305c`, deployment `appgdep_6aa75699d4f481918d7513b593bd8e43`.
+- No app source integration, Expo/EAS update, or native build was made.
+
+## Soundtrack 100 medallion approved — September 14, 2026 (live demo)
+
+- The user approved option 1 for Soundtrack 100: a large vinyl record with 100 on its center label and a single highway flowing into the record groove.
+- Saved the gold master, four-theme comparison sheet, and four transparent theme fronts under `mobile/recorder/assets/medallion-concepts/soundtrack-100`. Warm Ivory contains no blue, cyan, or teal.
+- Added Soundtrack 100 as the fourth selectable achievement on the private review site. Site version 6 is live from nested-site commit `ae321d8d624c83f2d2bac4ee63512da7bb5c271b`, deployment `appgdep_6aa7fe1f504481919f182deb51307461`.
+- No app source integration, Expo/EAS update, or native build was made.
+
+## Soundtrack 100 Cinematic Dark palette revision — September 14, 2026 (live demo)
+
+- At the user's direction, replaced the pink-dominant Soundtrack 100 Cinematic Dark front with a deep eggplant/royal-purple treatment using burnt-orange and amber record reflections, lane markings, and landscape highlights.
+- Saved the revised four-theme sheet as `soundtrack-100-option-01-four-themes-v2.png` and replaced the canonical transparent Cinematic Dark front used by the demo.
+- Site version 7 is live from nested-site commit `f486d3486b2b5b14714925435d8ce049e3e68ac8`, deployment `appgdep_6aa8042921f881919584ddfeb20ca761`.
+- No app source integration, Expo/EAS update, or native build was made.
+
+## Medallion review workflow change — September 14, 2026
+
+- The user asked to stop using the medallion demo site. Do not update or publish it during the remaining medallion design work.
+- Continue presenting concept boards and four-theme comparison images directly in the Codex conversation and save approved assets under `mobile/recorder/assets/medallion-concepts`.
+- Leave the existing private demo site unchanged unless the user explicitly asks to update, archive, or remove it. Continue avoiding app/native builds until the complete medallion set is ready.
+
+## Memory Maker medallion approved — September 14, 2026
+
+- The user approved option 8 for Memory Maker: two embossed hands holding an instant-photo memory of an open road, mountains, and sunrise, with a small heart on the photo border.
+- Saved the gold master, four-theme comparison sheet, and four transparent theme fronts under `mobile/recorder/assets/medallion-concepts/memory-maker`.
+- Cinematic Dark uses deep purple and burnt-orange/amber highlights rather than pink dominance. Warm Ivory excludes blue, cyan, and teal.
+- Per the current workflow, the demo site was not updated. No app source integration, Expo/EAS update, or native build was made yet.
+
+## Memory Maker Cinematic Dark palette revision — September 14, 2026
+
+- Replaced the muted Memory Maker Cinematic Dark front with a stronger neon treatment: black-purple field, saturated ultraviolet, orange/amber sun and lane glow, selective cyan road-edge light, luminous photo-frame edge, and a glowing orange heart.
+- Saved the revised comparison sheet as `memory-maker-option-08-four-themes-v2.png` and replaced the canonical transparent Cinematic Dark front in `memory-maker/option-08-theme-variants`.
+- Per the user's workflow, the demo site was not updated. No app source integration, Expo/EAS update, or native build was made.
+
+## Approved medallion app integration — September 14, 2026
+
+- Integrated the five approved medallions into Achievements: The First Track option 1, Road Regular option 6, Century Road option 1, Soundtrack 100 option 1, and Memory Maker option 8. Each front switches with the active Grand Touring (`redline`), Rosewater (`sakura`), Cinematic Dark (`dark`), or Warm Ivory (`light`) theme.
+- Added all 20 approved theme fronts to the JourneyDeckKeepsakes iOS resource bundle. The Expo native view now accepts achievement/theme/name props, mints the selected front with Minted 1.1.1, starts face-forward, and uses one fixed regular-gold body, edge, and orange-peel reverse for every theme.
+- Added a native catalog version gate. Existing binaries continue to use the two-sided React Native fallback, so they never render the old first-journey native asset for a different achievement; the Minted catalog activates after the later native build includes version 2.
+- Expanded the achievement catalog to all 10 planned medallions. Memory Maker unlocks from the earliest valid Memory creation date, Grand Tourer unlocks at 100 journeys, and the five designs still awaiting approval retain symbol placeholders.
+- Verification passed: TypeScript, focused achievement/Minted tests 5/5, full mobile suite 644/644, and `git diff --check` (line-ending warnings only). No Expo/EAS update, native build, demo-site update, staging, commit, or push was performed.
+
+## OTA-delivered Minted artwork bridge — September 14, 2026
+
+- Reworked the planned Minted integration so medallion fronts are Expo assets delivered by the JavaScript/OTA bundle. The bridge downloads the selected theme asset, passes its local file URI to native code, and keeps the React Native two-sided coin visible while that file becomes available.
+- Raised the native catalog capability to version 3. Native Minted now accepts any local artwork URI rather than hardcoding achievement IDs, themes, or resource names. New medallion artwork, names, theme mappings, and achievement rules can therefore be added in a later OTA after one native build ships this generic engine.
+- Removed the CocoaPods resource-bundle declaration, so the native target does not compile the current 20 fronts into the app. Minted itself, its fixed gold material, SceneKit behavior, and the URI bridge remain native and require a new build only when those parts change.
+- Added the pinned Expo Asset JavaScript dependency (`expo-asset` 57.0.16). Verification passed: TypeScript, focused achievement/Minted tests 5/5, full mobile suite 644/644, and `git diff --check` (line-ending warnings only). No Expo/EAS update, native build, demo-site update, staging, commit, or push was performed.
+
+## Repository checkpoint authorization — September 14, 2026
+
+- The user explicitly authorized committing and pushing all accumulated JourneyDeck changes, while keeping native/EAS builds on hold.
+- The app repository checkpoint includes the complete mobile source/test/documentation work and canonical medallion concepts. The separate clean `medallion-demo-site` workspace remains outside the app repository, and generated duplicate native medallion resources remain ignored because Minted now consumes OTA assets.
+- Pre-commit verification passed: TypeScript, focused achievement/Minted tests 5/5, full mobile suite 644/644, staged `git diff --check`, and a staged-path credential filename audit. No native/EAS build or OTA was started.

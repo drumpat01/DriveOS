@@ -9,10 +9,14 @@ function normalizedEndpoint(value: string | null | undefined) {
  * endpoints are the same anchor is not useful in the visible road story.
  * Keep the stored recording intact so this presentation rule is reversible.
  */
-export function isVisibleJourney(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation'>) {
+export function hiddenJourneyAnchor(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation'>): 'Home' | 'Work' | null {
   const start = normalizedEndpoint(journey.startingLocation);
   const end = normalizedEndpoint(journey.endingLocation);
-  return !((start === 'home' && end === 'home') || (start === 'work' && end === 'work'));
+  return start === end && start === 'home' ? 'Home' : start === end && start === 'work' ? 'Work' : null;
+}
+
+export function isVisibleJourney(journey: Pick<JourneySummary, 'startingLocation' | 'endingLocation' | 'showInMemories'>) {
+  return journey.showInMemories === true || hiddenJourneyAnchor(journey) === null;
 }
 
 export function visibleJourneys<T extends Pick<JourneySummary, 'startingLocation' | 'endingLocation'>>(journeys: T[]) {

@@ -3,7 +3,7 @@ import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { loadConnection } from './credentials';
-import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
+import { activeSession, archivedJourneyIdForSession, recentCompletedSessionIds, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
@@ -21,7 +21,8 @@ import { notifyLocalArchiveChanged } from './local-archive-events';
 import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId, mergeMemoryJourneySelection } from './memory-model';
 import { loadSavedPlaces } from './saved-places';
 import { resolvePrivatePhotoFile } from './private-photo-file';
-import { isVisibleJourney, visibleJourneys } from './journey-visibility';
+import { hiddenJourneyAnchor, isVisibleJourney, visibleJourneys } from './journey-visibility';
+import { journeyVisibilityChoice, saveJourneyVisibilityChoice, type JourneyVisibilityChoice } from './journey-visibility-preference';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -54,6 +55,7 @@ export type SoundtrackTrack = {
 
 export type JourneySummary = {
   id: string;
+  showInMemories?: boolean;
   legacyDriveId: string | null;
   provider: string | null;
   vehicleName: string | null;
@@ -200,6 +202,7 @@ function applyLocalPlaceAliases<T extends JourneySummary>(journey: T): T {
     : exactEnd;
   return {
     ...journey,
+    showInMemories: journeyVisibilityChoice(userId, journey.id) === 'show',
     rawStartingLocation,
     rawEndingLocation,
     startingLocationKey: startKey,
@@ -850,6 +853,7 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
   const endingPlace = j.endPlaceId ? getPlace(j.userId, j.endPlaceId) : null;
   return {
     id: j.id,
+    showInMemories: journeyVisibilityChoice(j.userId, j.id) === 'show',
     legacyDriveId: j.legacyDriveId,
     provider: j.provider,
     vehicleName: j.vehicleName,
@@ -868,6 +872,28 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
     songCount: j.songCount,
     soundtrackPreview: [],
   };
+}
+
+export type HiddenJourneyChoice = { userId: string; journeyId: string; anchor: 'Home' | 'Work' };
+
+export function pendingHiddenJourneyChoice(): HiddenJourneyChoice | null {
+  const userId = getCurrentUser().id;
+  const sessionId = recentCompletedSessionIds(1)[0];
+  if (!sessionId) return null;
+  const journeyId = archivedJourneyIdForSession(sessionId);
+  const journey = getJourney(userId, journeyId);
+  if (!journey || journeyVisibilityChoice(userId, journeyId)) return null;
+  loadSavedPlaces(userId);
+  const anchor = hiddenJourneyAnchor(applyLocalPlaceAliases(localJourneyToSummary(journey)));
+  return anchor ? { userId, journeyId, anchor } : null;
+}
+
+export function decideHiddenJourney(pending: HiddenJourneyChoice, choice: JourneyVisibilityChoice) {
+  if (getCurrentUser().id !== pending.userId || !getJourney(pending.userId, pending.journeyId)) {
+    throw new Error('That journey is no longer available in this profile.');
+  }
+  saveJourneyVisibilityChoice(pending.userId, pending.journeyId, choice);
+  notifyLocalArchiveChanged();
 }
 
 export const localAtlasClient = {

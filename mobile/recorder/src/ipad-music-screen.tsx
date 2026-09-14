@@ -96,7 +96,7 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
       contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: insets.bottom + 28 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
       <View testID="ipad-music-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
-        <IpadPageHeader title="Soundtracks" width={width} artwork={require('../assets/cinematic-soundtracks-photo-v1.jpg')} subtitle={`${providerName} · Your journey soundtrack`} />
+        <IpadPageHeader title="Soundtracks" width={width} subtitle={`${providerName} · Your journey soundtrack`} />
         {state.status === 'loading' && !data ? <ActivityIndicator accessibilityLabel="Loading your music archive" color={c.accent} /> : null}
         {state.status === 'error' ? <View accessibilityRole="alert" style={styles.notice}><Text style={[styles.body, { color: c.muted }]}>{state.message || 'Your music archive is temporarily unavailable.'}</Text>
           <Pressable accessibilityRole="button" onPress={onRefresh} disabled={refreshing} style={styles.action}><Text style={{ color: c.accent }}>Try again</Text></Pressable></View> : null}

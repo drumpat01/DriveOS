@@ -39,6 +39,7 @@ import { JourneyDeckNativeStack } from './src/native-navigation';
 import { CardMotionProvider } from './src/card-detail-link';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { appDataClient } from './src/app-data';
+import { HiddenJourneyNotice } from './src/hidden-journey-notice';
 import { recognizeAndQueueActiveSessionMusic, sampleAppleMusicForActiveSession } from './src/music-capture';
 import { authorizeShazamMicrophone } from './modules/journeydeck-music';
 import { queueLastFmForCompletedSession, syncPendingLastFmBestEffort } from './src/lastfm-sync';
@@ -713,8 +714,11 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       : summary?.status === 'recording' ? 'recording' : summary?.status === 'paused' ? 'paused'
       : !permissionsReady ? 'permission' : automaticMode ? 'automatic' : 'ready';
     if (tabletStatus === 'ready' || tabletStatus === 'loading') {
-      return <HomeRecorderStartPortal presentation="ipad-header" onPress={start} disabled={busy || startupPending}
-        showProgress={busy || startupPending} body={notice || undefined} />;
+      return <View style={styles.homeRecorderStack}>
+        <HomeRecorderStartPortal presentation="ipad-header" onPress={start} disabled={busy || startupPending}
+          showProgress={busy || startupPending} />
+        <HiddenJourneyNotice enabled={!startupPending && !busy} notice={notice} />
+      </View>;
     }
     return <IpadRecorderControls status={tabletStatus} busy={busy} onStart={start} onEnable={enablePermissions}
       onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />;
@@ -771,7 +775,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
             <Pressable disabled={busy} onPress={resume} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}><View style={styles.homeRecorderIdentifyIcon}><SymbolView name="play.fill" tintColor={theme.color("#d595ff", 'text')} size={24} /></View><View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Resume Journey</Text><Text style={styles.homeRecorderIdentifyBody}>Continue saving your route.</Text></View><Text style={styles.homeRecorderChevron}>›</Text></Pressable>
             <HomeRecorderPrimaryAction label="End Journey" symbol="waveform" onPress={finish} disabled={busy} />
           </> : null}
-        {!!notice && <Text style={styles.homeRecorderNotice}>{notice}</Text>}
+        <HiddenJourneyNotice enabled={!active && !startupPending && !busy} notice={notice} />
       </View>
     );
   }

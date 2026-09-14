@@ -33,6 +33,14 @@ test('the presentation filter preserves valid endpoint journeys and does not mut
   assert.equal(journeys.length, 4);
 });
 
+test('an explicit show choice reveals only that journey without changing its endpoints', () => {
+  const accepted = { ...route('Home', 'Home'), showInMemories: true };
+  const hidden = { ...route('Home', 'Home'), showInMemories: false };
+  assert.deepEqual(visibleJourneys([accepted, hidden, route('Work', 'Work')]), [accepted]);
+  assert.equal(accepted.startingLocation, 'Home');
+  assert.equal(isVisibleJourney({ ...route('Work', 'Work'), showInMemories: true }), true);
+});
+
 test('the visibility rule is applied before dashboards, lists, memories, statistics, and Atlas are built', () => {
   const appData = readFileSync(resolve(testDirectory, '../src/app-data.ts'), 'utf8');
   const primaryData = readFileSync(resolve(testDirectory, '../src/primary-sections-data.ts'), 'utf8');

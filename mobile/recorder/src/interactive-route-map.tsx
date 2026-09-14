@@ -357,7 +357,7 @@ export function InteractiveRouteMap({
           <Text style={styles.popupDetail}>{formatClock(terminalSelection === 'start' ? startedAt : endedAt)}</Text>
         </View>}
       </View>}
-      {!replayEngaged && replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={{ position: 'absolute', bottom: 18, left: 18, right: 18, borderRadius: 18, padding: 18, backgroundColor: theme.palette.accent, gap: 5 }}><Text style={{ color: theme.palette.onAccent, fontSize: 19, fontWeight: '800' }}>▶  Relive this journey</Text><Text style={{ color: theme.palette.onAccent }}>Your route, stops and soundtrack · one-minute story</Text></Pressable>}
+      {!replayEngaged && replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={[styles.replayStoryButton, { backgroundColor: theme.palette.accent }]}><Text style={[styles.replayStoryButtonText, { color: theme.palette.onAccent }]}>▶  Relive this journey</Text></Pressable>}
       {replayEngaged && replaySnapshot && <View onLayout={event => setStageHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
         <JourneyReplayStage playing={replayPlaying} complete={replayTimestamp >= lastReplayTime} animate={motion.animate} timestamp={replayTimestamp}
           song={replaySong} photo={currentPhoto} stop={activeStop} progress={replayProgress}
@@ -378,7 +378,7 @@ export function InteractiveRouteMap({
       <LegendItem color={journeyStartColor} label="Start" />
       <LegendItem color={journeyEndColor} label="End" />
     </View>
-    <Text style={styles.mapHint}>{replayCameraMode === 'chase' ? 'Tap anywhere on the map for nearby music · Pinch to zoom while the 3D camera follows' : 'Tap ▲ to return to the 3D replay camera'}</Text>
+    <Text style={styles.mapHint} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{replayCameraMode === 'chase' ? 'Tap map for music · Pinch to zoom · 3D follows' : 'Tap ▲ to follow the replay'}</Text>
 
     {queryCoordinate && <View style={styles.nearbyPanel}>
       <View style={styles.nearbyHeader}><View><Text style={styles.panelKicker}>NEARBY MUSIC</Text><Text style={styles.panelTitle}>{nearbySongs.length ? `${nearbySongs.length} soundtrack moment${nearbySongs.length === 1 ? '' : 's'}` : 'No songs in this radius'}</Text></View><Pressable onPress={() => setQueryCoordinate(null)}><Text style={styles.closeText}>×</Text></Pressable></View>
@@ -387,8 +387,6 @@ export function InteractiveRouteMap({
         <View style={styles.nearbyNumber}><Text style={styles.nearbyNumberText}>{moment.index}</Text></View><View style={styles.flex}><Text style={styles.nearbyTrack} numberOfLines={1}>{moment.track}</Text><Text style={styles.nearbyArtist} numberOfLines={1}>{moment.artist}</Text></View><Text style={styles.nearbyDistance}>{moment.distanceMiles < 0.1 ? '<0.1' : moment.distanceMiles.toFixed(1)} mi</Text>
       </Pressable>)}
     </View>}
-
-    <Text style={styles.privacyCopy}>Route and song coordinates stay in your local JourneyDeck library. OpenFreeMap supplies only the basemap underneath them.</Text>
 
     {replaySnapshot && <AdaptiveGlassSurface reduceTransparency={motion.reduceTransparency} style={styles.replayPanel}>
       <View style={styles.telemetryRow}>
@@ -548,7 +546,8 @@ const darkStyles = StyleSheet.create({
   nearbyTrack: { color: '#ece6ef', fontSize: 11, fontWeight: '800' },
   nearbyArtist: { color: '#817687', fontSize: 9, marginTop: 2 },
   nearbyDistance: { color: '#bd92d3', fontSize: 9, fontWeight: '800' },
-  privacyCopy: { color: '#716778', fontSize: 10, lineHeight: 15, paddingHorizontal: 4 },
+  replayStoryButton: { position: 'absolute', bottom: 12, left: 12, right: 12, minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, justifyContent: 'center' },
+  replayStoryButtonText: { fontSize: 16, lineHeight: 20, fontWeight: '800' },
   replayPanel: { borderRadius: 20, borderWidth: 1, borderColor: '#4e2d58', padding: 15, gap: 13, overflow: 'hidden' },
   replayNowPlaying: { flexDirection: 'row', gap: 11, alignItems: 'center' },
   replayArtwork: { width: 52, height: 52, borderRadius: 13, backgroundColor: '#211729' },

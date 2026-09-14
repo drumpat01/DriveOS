@@ -17,7 +17,7 @@ module.exports = ({ config }) => {
     name: preview ? 'JourneyDeck V2' : config.name,
     version: '2.0.0',
     // RevenueCat adds native code; keep older installed runtimes isolated.
-    runtimeVersion: preview ? '2.0.0-preview.10' : '2.0.0-watch.5',
+    runtimeVersion: preview ? '2.0.0-preview.11' : '2.0.0-watch.6',
     plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
       microphonePermission: config.ios.infoPlist.NSMicrophoneUsageDescription,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
@@ -26,6 +26,7 @@ module.exports = ({ config }) => {
     userInterfaceStyle: 'automatic',
     ios: {
       ...config.ios,
+      deploymentTarget: '17.0',
       supportsTablet: true,
       requireFullScreen: false,
       icon: {

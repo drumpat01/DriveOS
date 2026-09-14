@@ -131,7 +131,8 @@ test('iPad Music search, paging, source links and Journey links work across resi
       light = appearance;
       await act(() => tree.update(render()));
       assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, light ? '#fffaf0' : '#08070d');
-      assert.ok(tree.root.findAllByType('Image')[0].props.source.startsWith(light ? 'light:' : 'dark:'));
+      assert.equal(tree.root.findAllByType('Image').length, 0, 'the Soundtracks tab title has no decorative header artwork');
+      assert.match(text(tree), /SOUNDTRACKS/);
     }
     await act(() => tree.update(render('shazam')));
     assert.equal(press(tree, 'Open Song 0 by Unique artist').props.disabled, true);

@@ -85,7 +85,7 @@ assert.match(src, /priority: Record<CloudKitRecordType, number>[\s\S]*Journey: 0
 // 4. Real private CloudKit transport
 // ============================================================
 assert.match(transport, /Crypto\.digestStringAsync\(Crypto\.CryptoDigestAlgorithm\.SHA256/, 'hashes the local profile scope before native transport');
-assert.match(transport, /user\.appleSubject \? `apple:\$\{user\.appleSubject\}` : `local:\$\{user\.id\}`/, 'uses stable Apple identity for cross-device zone convergence');
+assert.match(readFileSync(resolve(__dir, '../src/private-cloud-profile.ts'), 'utf8'), /user\.appleSubject \? `apple:\$\{user\.appleSubject\}` : `local:\$\{user\.id\}`/, 'uses stable Apple identity for cross-device zone convergence');
 assert.match(transport, /pullCloudKitChanges[\s\S]*pushCloudKitRecords/, 'pulls before pushing for deterministic conflict handling');
 assert.match(transport, /for \(let batch = 0; batch < 5; batch\+\+\)/, 'drains a bounded set of upload batches without monopolizing app startup');
 assert.match(nativeModule, /privateCloudDatabase/, 'uses the current iCloud account private database');

@@ -11,7 +11,6 @@ import { useAppTheme } from './app-theme';
 import { ThemeMaterial } from './theme-material';
 import { IpadPageHeader } from './ipad-page-header';
 import { PhoneTabTitle } from './phone-tab-title';
-import { HeaderArtwork } from './header-artwork';
 import { CardDetailLink } from './card-detail-link';
 import { NativeActionMenu } from './native-action-menu';
 import { openJourneyCardAction } from './journey-card-action';
@@ -81,15 +80,14 @@ function StudioScroll({ children, label }: { children: ReactNode; label: string 
   </Animated.ScrollView></ViewportContext.Provider>;
 }
 
-function JourneyFace({ journey, floating = false, compact = false }: { journey: JourneySummary; floating?: boolean; compact?: boolean }) {
+function JourneyFace({ journey, floating = false, embedded = false }: { journey: JourneySummary; floating?: boolean; embedded?: boolean }) {
   const theme = useAppTheme();
-  return <View style={[styles.journeyFace, compact && styles.phoneJourneyFace, { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, floating && styles.floatingFace]}>
-    <ThemeMaterial radius={18} />
-    <View style={styles.row}><SymbolView name="road.lanes" tintColor={theme.palette.accent} style={styles.icon} />
-      <Text style={[styles.eyebrow, { color: theme.palette.accent }]}>{new Date(journey.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</Text>
-      <View style={{ flex: 1 }} /><SymbolView name="line.3.horizontal" tintColor={theme.palette.muted} style={styles.smallIcon} /></View>
-    <Text numberOfLines={2} style={[styles.journeyTitle, compact && { fontSize: 15, lineHeight: 20 }, { color: theme.palette.text }]}>{journeyRouteLabel(journey)}</Text>
-    <Text style={[styles.meta, { color: theme.palette.muted }]}>{journey.miles.toFixed(1)} mi  ·  {Math.round(journey.durationMinutes)} min  ·  {journey.songCount} songs</Text>
+  const date = new Date(journey.startedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return <View style={[styles.journeyFace, embedded && styles.embeddedJourneyFace, { backgroundColor: embedded ? 'transparent' : theme.palette.card, borderColor: embedded ? 'transparent' : theme.palette.line }, floating && styles.floatingFace]}>
+    {!embedded && <ThemeMaterial radius={18} />}
+    <SymbolView name="road.lanes" tintColor={theme.palette.accent} style={styles.icon} />
+    <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.journeyLine, { color: theme.palette.text }]}>{date} · {journeyRouteLabel(journey)} · {journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min · {journey.songCount} songs</Text>
+    {floating && <SymbolView name="line.3.horizontal" tintColor={theme.palette.muted} style={styles.smallIcon} />}
   </View>;
 }
 
@@ -101,7 +99,7 @@ function DraggableJourney({ journey, selected, onSelect, onOpen }: { journey: Jo
       const rect = measure(ref), root = measure(d.root);
       if (!rect || !root || d.source.value) return;
       d.rootX.value = root.pageX; d.rootY.value = root.pageY;
-      d.originX.value = rect.pageX + rect.width / 2; d.originY.value = rect.pageY + 62;
+      d.originX.value = rect.pageX + rect.width / 2; d.originY.value = rect.pageY + rect.height / 2;
       d.x.value = event.absoluteX; d.y.value = event.absoluteY;
       d.target.value = ''; d.destination.value = null; d.source.value = journey.id; d.active.value = true;
       d.opacity.value = 1; d.scale.value = d.reduceMotion ? 1 : withSpring(1.04, spring);
@@ -126,15 +124,17 @@ function DraggableJourney({ journey, selected, onSelect, onOpen }: { journey: Jo
     });
   const fade = useAnimatedStyle(() => ({ opacity: d.source.value === journey.id ? 0.35 : 1 }));
   return <DropZone id={`journey:${journey.id}`} style={styles.journeyWrap}>
-    <GestureDetector gesture={pan}><Animated.View testID={`studio-source-${journey.id}`} ref={ref} collapsable={false} style={fade}>
+    <View style={[styles.journeyRowCard, { backgroundColor: theme.palette.card, borderColor: selected ? theme.palette.accent : theme.palette.line }]}>
+    <ThemeMaterial radius={18} />
+    <GestureDetector gesture={pan}><Animated.View testID={`studio-source-${journey.id}`} ref={ref} collapsable={false} style={[styles.journeySelectArea, fade]}>
       <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Select ${journeyRouteLabel(journey)}`}
         accessibilityHint="Select journeys to organize, or hold and drag this card onto a Memory or another journey."
-        onPress={onSelect} style={selected ? { borderRadius: 18, borderWidth: 2, borderColor: theme.palette.accent } : undefined}>
-        <JourneyFace journey={journey} compact={d.compact} />
+        onPress={onSelect} style={styles.journeySelectArea}>
+        <JourneyFace journey={journey} embedded />
       </Pressable>
     </Animated.View></GestureDetector>
-    <View style={styles.row}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${journeyRouteLabel(journey)}`} onPress={onOpen} style={[styles.openJourney, { flex: 1 }]}>
-      <Text style={{ color: theme.palette.accent, fontWeight: '600' }}>{selected ? '✓ Selected' : 'View journey'}  ›</Text>
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open journey ${journeyRouteLabel(journey)}`} onPress={onOpen} style={styles.openJourney}>
+      <Text numberOfLines={1} style={{ color: theme.palette.accent, fontWeight: '700' }}>View ›</Text>
     </Pressable>
       {d.compact && <NativeActionMenu compact label={`Actions for ${journeyRouteLabel(journey)}`} actions={[
         { id: 'edit', title: 'Edit locations', image: 'pencil', attributes: { disabled: !d.enabled }, onSelect: () => { if (d.enabled && !d.source.value) openJourneyCardAction(journey.id, 'edit'); } },
@@ -277,9 +277,6 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
       onLayout={event => { setWidth(event.nativeEvent.layout.width); setPhoneHeight(event.nativeEvent.layout.height); }} style={styles.phoneRoot}>
       <View testID="iphone-memory-gallery" style={{ flex: 1, minHeight: 0 }}><StudioScroll label="Memory gallery">
         <PhoneTabTitle title="Memories" />
-        <View style={styles.phoneHeader}>
-          <HeaderArtwork source={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} />
-        </View>
         <View style={styles.phoneSearchRow}>
           <TextInput accessibilityLabel="Search Memories" value={memoryQuery} onChangeText={setMemoryQuery} returnKeyType="search" onSubmitEditing={Keyboard.dismiss} placeholder="Search Memories" placeholderTextColor={c.muted} style={[styles.phoneSearch, { color: c.text, borderColor: c.line }]} />
           <Pressable accessibilityRole="button" accessibilityLabel="New Memory" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.phonePlus, { backgroundColor: c.accent }]}>
@@ -334,7 +331,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
           </StudioScroll>
         </View>
       </NativeAnimated.View>
-      <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.floating, floating]}>{dragged && <JourneyFace journey={dragged} floating compact />}</Animated.View>
+      <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.floating, floating]}>{dragged && <JourneyFace journey={dragged} floating />}</Animated.View>
     </Animated.View></DragContext.Provider></KeyboardAvoidingView>
   </SafeAreaView>;
   return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: c.page }}>
@@ -342,7 +339,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
       <Animated.ScrollView ref={pageScroll} onScroll={pageOnScroll} scrollEventThrottle={16} onContentSizeChange={(_w, h) => { pageContentHeight.value = h; }}
         testID="ipad-memories" contentInsetAdjustmentBehavior="automatic" scrollEnabled={!dragged} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
         <View testID="ipad-memories-canvas" onLayout={e => setWidth(e.nativeEvent.layout.width)} style={styles.canvas}>
-          <IpadPageHeader title="Memories" width={width} artwork={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} subtitle="Your journeys. Your stories. Brought together.">
+          <IpadPageHeader title="Memories" width={width} subtitle="Your journeys. Your stories. Brought together.">
             <Pressable accessibilityRole="button" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.button, { backgroundColor: c.accent }]}><Text style={[styles.buttonText, { color: theme.palette.onAccent }]}>+ New Memory</Text></Pressable>
           </IpadPageHeader>
           <View style={styles.toolbar}><Text accessibilityLiveRegion="polite" style={[styles.hint, { color: c.muted }]}>{saving ? 'Saving your Memory…' : message}</Text>
@@ -403,7 +400,6 @@ const styles = StyleSheet.create({
   // NativeTabs provides per-screen safe-area insets, including its bottom bar.
   // SafeAreaView above consumes that inset; only add a small visual gutter here.
   phoneRoot: { flex: 1, minHeight: 0, marginHorizontal: 12, marginBottom: 8, gap: 8 },
-  phoneHeader: { marginHorizontal: -4 },
   phoneSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 5, marginTop: 5 },
   phoneSearch: { flexGrow: 1, flexShrink: 1, minHeight: 44, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 10, fontSize: 15 },
   phonePlus: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
@@ -415,7 +411,7 @@ const styles = StyleSheet.create({
   phoneTrayHeader: { minHeight: 66, paddingHorizontal: 16, paddingTop: 7, paddingBottom: 9, gap: 7 },
   trayHandle: { width: 32, height: 4, borderRadius: 2, alignSelf: 'center' },
   phoneTrayTitle: { fontSize: 17, fontWeight: '700' }, phoneTrayHint: { fontSize: 11, marginTop: 3 },
-  phoneJourneyFace: { padding: 11, gap: 5 }, phoneNotice: { padding: 12, fontSize: 13, lineHeight: 19 },
+  phoneNotice: { padding: 12, fontSize: 13, lineHeight: 19 },
   page: { paddingHorizontal: 24, paddingTop: 18, paddingBottom: 36 }, canvas: { width: '100%', gap: 14 },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: 12 }, hint: { flex: 1, fontSize: 14, lineHeight: 21 },
   workspace: { gap: IPAD_GRID_GAP, alignItems: 'stretch' }, panel: { borderWidth: 1, borderRadius: 24, paddingTop: 18, minWidth: 0, overflow: 'hidden' },
@@ -425,10 +421,10 @@ const styles = StyleSheet.create({
   memoryCard: { height: 246, borderRadius: 20, overflow: 'hidden', justifyContent: 'flex-end' },
   memoryCopy: { padding: 18, gap: 6 }, memoryTitle: { color: '#fff6ed', fontSize: 24, fontWeight: '800' }, memoryMeta: { color: '#f0e1ee', fontSize: 13 },
   newCard: { height: 246, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', padding: 22, gap: 14, justifyContent: 'center', alignItems: 'center' },
-  journeyWrap: { margin: 6, borderRadius: 18, overflow: 'visible' }, journeyFace: { borderWidth: 1, borderRadius: 18, padding: 16, gap: 10 },
+  journeyWrap: { margin: 6, borderRadius: 18, overflow: 'visible' }, journeyRowCard: { minHeight: 58, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' }, journeySelectArea: { flex: 1, minWidth: 0 }, journeyFace: { minHeight: 56, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 9 }, embeddedJourneyFace: { borderWidth: 0, borderRadius: 0, paddingRight: 6 }, journeyLine: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 }, icon: { width: 21, height: 21 }, smallIcon: { width: 16, height: 16 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 }, journeyTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' }, meta: { fontSize: 13, lineHeight: 19 },
-  openJourney: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 16 },
+  openJourney: { minWidth: 62, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 10 },
   dropOutline: { borderRadius: 20, borderWidth: 3, justifyContent: 'flex-end', alignItems: 'center' },
   dropLabel: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, marginBottom: 8 }, dropLabelText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   floating: { position: 'absolute', left: 0, top: 0, width: 290, zIndex: 100, shadowColor: '#180822', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.28, shadowRadius: 22, elevation: 20 }, floatingFace: { borderWidth: 2 },

@@ -14,12 +14,16 @@ import { PlaceDataCredits } from './place-data-credits';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import type { AppleIdentityStatus } from './auth';
 import type { SavedPlaceSlot } from './saved-places';
+import type { JourneyMemory, JourneySummary } from './app-data';
+import { AchievementsOverview } from './achievements-overview';
 
 type Props = {
   displayName: string; avatar: string | null; initials: string; appleIdentityStatus: AppleIdentityStatus;
   signingInWithApple: boolean; accountActionPending: boolean; hasAppleAccount: boolean;
   cloud: { status: string; detail: string }; membershipTier: 'free' | 'paid'; membershipExpirationDate: string | null;
   providerName: string; providerDetail: string;
+  journeys: JourneySummary[];
+  memories: JourneyMemory[];
   places: { id: SavedPlaceSlot; label: string; symbol: string; saved: boolean }[];
   customPlaces: { id: string; label: string }[];
   onEditProfile: () => void; onAppleSignIn: () => void; onSignOut: () => void; onDeleteAccount: () => void;
@@ -29,6 +33,7 @@ type Props = {
 
 const categoryCopy: Record<SettingsCategoryId, string> = {
   appearance: 'Choose the colors and app icon that feel like yours.',
+  achievements: 'See every badge and the story behind each milestone.',
   recording: 'Review how JourneyDeck records and protects location data.',
   music: 'Choose how your drives become soundtracks.',
   account: 'Manage your private profile, Apple Account, and iCloud backup.',
@@ -67,6 +72,7 @@ export function IpadSettingsScreen(p: Props) {
 
   const categorySummary = useMemo<Record<SettingsCategoryId, string>>(() => ({
     appearance: theme.name,
+    achievements: `${p.journeys.length} recorded journeys`,
     recording: 'Manual recording',
     music: p.providerName,
     account: p.cloud.status === 'synced' ? 'iCloud synced' : p.cloud.detail,
@@ -122,6 +128,7 @@ export function IpadSettingsScreen(p: Props) {
     {p.customPlaces.map(place => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`Edit custom place ${place.label}`} onPress={() => p.onCustomPlace(place.id)} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('mappin.and.ellipse')}<View style={styles.flex}><Text style={title}>{place.label}</Text><Text style={body}>Saved · protected when sharing</Text></View><Text style={[styles.link, { color: colors.accent }]}>Change</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>)}
     <Pressable accessibilityRole="button" accessibilityLabel={p.customPlaces.length ? 'Add another custom place' : 'Add custom place'} onPress={() => p.onCustomPlace()} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('plus')}<View style={styles.flex}><Text style={title}>Custom</Text><Text style={body}>{p.customPlaces.length ? 'Add another safe place' : 'Add a named safe place'}</Text></View><Text style={[styles.link, { color: colors.accent }]}>Add</Text><SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>
   </View>;
+  const achievements = <AchievementsOverview journeys={p.journeys} memories={p.memories} />;
   const membership = <View testID="ipad-settings-membership" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('crown')}<View style={styles.flex}><Text style={title}>{p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days'}</Text><Text style={body}>{p.membershipTier === 'paid' ? `Atlas and complete history unlocked${p.membershipExpirationDate ? ` through ${new Date(p.membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>{button(p.membershipTier === 'paid' ? 'Manage' : 'Unlock', p.onMembership, { primary: true })}</View></View>
     <Pressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: p.advancedVisible }} onPress={p.onToggleAdvanced} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('wrench.and.screwdriver')}<View style={styles.flex}><Text style={title}>Advanced Support</Text><Text style={body}>Diagnostics are hidden here unless you need help.</Text></View><SymbolView name={p.advancedVisible ? 'chevron.up' : 'chevron.down'} tintColor={colors.accent} size={15} /></Pressable>
@@ -129,7 +136,7 @@ export function IpadSettingsScreen(p: Props) {
     <View style={styles.linkGrid}><Pressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => openPage('privacy')} style={({ pressed }) => [panel, styles.linkCard, pressed && styles.dim]}>{icon('hand.raised')}<Text style={title}>Privacy Policy</Text><SymbolView name="arrow.up.right" tintColor={colors.accent} size={14} /></Pressable>
       <Pressable accessibilityRole="link" accessibilityLabel="Support Page" onPress={() => openPage('support')} style={({ pressed }) => [panel, styles.linkCard, pressed && styles.dim]}>{icon('questionmark.circle')}<Text style={title}>Support Page</Text><SymbolView name="arrow.up.right" tintColor={colors.accent} size={14} /></Pressable></View>
   </View>;
-  const detail = { appearance, recording, music, account, places, membership }[category];
+  const detail = { appearance, achievements, recording, music, account, places, membership }[category];
 
   return <SafeAreaView edges={['left', 'right']} style={[styles.safe, { backgroundColor: colors.page }]}>
     <View testID="ipad-settings" onLayout={event => setCanvasWidth(event.nativeEvent.layout.width)} style={[styles.split, compact && styles.compactSplit]}>
@@ -137,7 +144,7 @@ export function IpadSettingsScreen(p: Props) {
         style={[styles.sidebar, compact ? styles.compactSidebar : { width: categoryRailWidth }, { borderColor: colors.line }]}
         contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets
         contentContainerStyle={compact ? styles.compactSidebarContent : { paddingHorizontal: portrait ? 14 : 18, paddingTop: 16, paddingBottom: insets.bottom + 24 }}>
-        {!compact && <><IpadPageHeader title="Settings" width={categoryContentWidth} artwork={require('../assets/cinematic-settings-photo-v1.jpg')} />
+        {!compact && <><IpadPageHeader title="Settings" width={categoryContentWidth} />
         <Pressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={p.onEditProfile} style={({ pressed }) => [styles.sidebarProfile, { borderColor: colors.line, backgroundColor: colors.card }, pressed && styles.dim]}>
           {p.avatar ? <Image source={p.avatar} contentFit="cover" style={styles.sidebarAvatar} /> : <View style={[styles.sidebarAvatar, { backgroundColor: colors.inset }]}><Text style={[styles.sidebarInitials, { color: colors.accent }]}>{p.initials}</Text></View>}
           <View style={styles.flex}><Text numberOfLines={1} style={[styles.sidebarName, { color: colors.text }]}>{p.displayName}</Text><Text numberOfLines={1} style={[styles.sidebarDetail, { color: colors.muted }]}>Primary driver</Text></View>

@@ -14,6 +14,7 @@ import { PhoneTabTitle } from './phone-tab-title';
 import { IpadMemoriesScreen } from './ipad-memories-screen';
 import { SettingsScrollView } from './settings-scroll-view';
 import { IpadSettingsScreen } from './ipad-settings-screen';
+import { AchievementsOverview } from './achievements-overview';
 import { JourneyImage } from './journey-image';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
@@ -92,7 +93,7 @@ import { journeyDisplayTitle } from './journey-title';
 import { loadCityLabelForCoordinate } from './music-city-summary';
 import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } from './profile-appearance';
 import { NeonWidgetOutline } from './neon-widget-outline';
-import { CinematicPhotoGrade, HeaderArtwork, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { CinematicPhotoGrade, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
 import { headerImageSource } from './header-image-sources';
 import { isInternalTestingBuild } from './internal-testing';
 import { maskCoordinate, prepareShareCardCoords } from './privacy-masker';
@@ -862,6 +863,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     privateCloud={privateCloud}
     membershipTier={membership.tier}
     membershipExpirationDate={membershipStore.state.status.expirationDate}
+    journeys={primarySections.data?.journeys ?? journeys.data}
+    memories={membershipMemories.data.memories}
     lastFmUsername={lastFmUsername}
     lastFmConnected={lastFmConnected}
     editingLastFm={editingLastFm}
@@ -2491,10 +2494,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
     <ScrollView style={styles.safe} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} contentContainerStyle={[styles.overlayContent, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       {state.status === 'loading' ? <LoadingCard /> : state.status === 'error' || !journey ? <InlineNotice message={state.message ?? 'Journey unavailable.'} onRetry={onRetry} /> : <>
             <JourneyCinematicHero journey={journey} title={displayTitle} />
-            <View style={styles.journeyMapHeading}>
-              <Text style={styles.journeyMapKicker}>JOURNEY MAP</Text>
-              <Text style={styles.journeyMapTitle}>ROUTE + SONG LOCATIONS</Text>
-            </View>
+            <SectionHeading title="Route" />
             <InteractiveRouteMap key={journey.id}
               coordinates={journey.route?.coordinates ?? []}
               routeSamples={journey.route?.points}
@@ -2511,8 +2511,8 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
               onSelectSong={setSelectedSongIndex}
               fallback={<RouteSketch expanded coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />}
             />
-            <SectionHeading title="Soundtrack moments" action={`${journey.songCount} songs`} />
-            {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} selected={selectedSongIndex === index + 1} onPress={() => setSelectedSongIndex(index + 1)} />) : <EmptyCard title="No songs matched yet" body="Apple Music checks automatically after a drive. Other music is saved only when you tap Identify Song during the journey." />}
+            <SectionHeading title="Soundtrack" action={`${journey.songCount} songs`} />
+            {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} selected={selectedSongIndex === index + 1} onPress={() => setSelectedSongIndex(index + 1)} />) : <EmptyCard title="No songs yet" body="Identify songs while recording." />}
             {(journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null) && <>
               <SectionHeading title="Vehicle" />
               <View style={styles.infoCard}>
@@ -2532,7 +2532,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
     <NativeSheet visible={editingLocations} kicker="JOURNEY PLACES" title="Edit locations" dirty={locationsDirty} busy={savingLocations} onClose={() => setEditingLocations(false)}>
             <View style={styles.locationEditor}>
               <Text style={styles.locationEditorKicker}>NAME THE PLACES IN THIS JOURNEY</Text>
-              <Text style={styles.locationEditorHelp}>Names are reused whenever the same place appears. Leave a name blank to restore the original location.</Text>
+              <Text style={styles.locationEditorHelp}>Names apply everywhere. Leave blank to reset.</Text>
               <View style={styles.locationField}><Text style={styles.locationFieldLabel}>START</Text><TextInput value={startingName} onChangeText={setStartingName} placeholder="Home, Work, School…" placeholderTextColor={theme.color("#716879", 'text')} maxLength={64} returnKeyType="next" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawStartingLocation}</Text></View>
               <View style={styles.locationField}><Text style={styles.locationFieldLabel}>DESTINATION</Text><TextInput value={endingName} onChangeText={setEndingName} placeholder="Home, Work, School…" placeholderTextColor={theme.color("#716879", 'text')} maxLength={64} returnKeyType="done" style={styles.editorInput} /><Text style={styles.locationRaw} numberOfLines={2}>{rawEndingLocation}</Text></View>
               <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(locationsDirty, savingLocations, () => setEditingLocations(false))} disabled={savingLocations} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable><Pressable onPress={() => void saveLocations()} disabled={savingLocations} style={[styles.editorSave, savingLocations && styles.pressed]}><Text style={styles.editorSaveText}>{savingLocations ? 'Saving…' : 'Save names'}</Text></Pressable></View>
@@ -2795,7 +2795,7 @@ function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { 
 function ConnectionsScreen({
   provider, connectionCapabilities, lastFmUsername, lastFmConnected, editingLastFm, lastFmDraft,
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
-  currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, onMembership,
+  currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
   spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange,
 }: {
@@ -2808,6 +2808,8 @@ function ConnectionsScreen({
   privateCloud: PrivateCloudUiState;
   membershipTier: 'free' | 'paid';
   membershipExpirationDate: string | null;
+  journeys: JourneySummary[];
+  memories: JourneyMemory[];
   lastFmUsername: string;
   lastFmConnected: boolean;
   editingLastFm: boolean;
@@ -2894,6 +2896,8 @@ function ConnectionsScreen({
     appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
     providerName={selected.name} providerDetail={selected.summary}
+    journeys={journeys}
+    memories={memories}
     places={SAVED_PLACE_SLOTS.map(slot => ({ ...slot, saved: Boolean(savedPlaces[slot.id]) }))}
     customPlaces={customSavedPlaces.map(place => ({ id: place.id, label: place.label }))}
     onEditProfile={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }}
@@ -2977,6 +2981,7 @@ function ConnectionsScreen({
     const category = settingsCategories.find(item => item.id === destination.category)!;
     const categoryContent: Record<SettingsCategoryId, ReactNode> = {
       appearance: <><ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} /><AppIconPicker membershipTier={membershipTier} onUpgrade={onMembership} /></>,
+      achievements: <AchievementsOverview journeys={journeys} memories={memories} />,
       recording: <><View style={styles.settingsEditorPanel}><View style={styles.settingsCategoryFeature}><View style={styles.settingsHubIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={22} /></View><View style={styles.flex}><Text style={styles.connectionName}>Manual recording</Text><Text style={styles.connectionDetail}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View><View style={styles.privateCloudCard}><Text style={styles.privateCloudTitle}>LOCATION PRIVACY</Text><Text style={styles.privateCloudBody}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text><PlaceDataCredits /></View></>,
       music: <>{providerCard}{internalMusicControls}<View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View></>,
       account: <>{profileCard}{cloudCard}</>,
@@ -2989,6 +2994,7 @@ function ConnectionsScreen({
   const savedPlaceCount = SAVED_PLACE_SLOTS.filter(slot => Boolean(savedPlaces[slot.id])).length + customSavedPlaces.length;
   const categorySummary: Record<SettingsCategoryId, string> = {
     appearance: `${theme.name} · ${appIconCatalog[appIconId].name} icon`, recording: 'Manual recording', music: selected.name,
+    achievements: `${journeys.length} recorded journeys`,
     account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} saved`,
     membership: membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Help and privacy',
   };
@@ -3031,11 +3037,9 @@ function PageHeader({ eyebrow, title, body, variant = 'standard' }: { eyebrow: s
   const styles = useThemedStyles(darkStyles);
 
   if (variant === 'memories') {
-    return <><PhoneTabTitle title={title} /><View style={styles.pageArtHeader}>
-      <HeaderArtwork source={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} />
-    </View></>;
+    return <PhoneTabTitle title={title} />;
   }
-  if (variant === 'settings') return <><PhoneTabTitle title={title} /><View style={styles.pageArtHeader}><HeaderArtwork source={require('../assets/cinematic-settings-photo-v1.jpg')} /></View></>;
+  if (variant === 'settings') return <PhoneTabTitle title={title} />;
   return <View style={styles.pageHeader}>
     <PageHeaderScene variant={variant} />
     <Text style={[styles.pageEyebrow, variant !== 'standard' && pageSceneStyles.sceneEyebrow]}>{eyebrow}</Text>
@@ -3234,9 +3238,9 @@ function JourneyCinematicHero({ journey, title }: { journey: JourneyDetail; titl
     <View style={styles.journeyHeroSoundtrack}>
       {leadTrack ? <Artwork track={leadTrack} size={54} /> : <View style={styles.journeyHeroArtworkFallback}><Text style={styles.journeyHeroArtworkNote}>♪</Text></View>}
       <View style={styles.flex}>
-        <Text style={styles.journeyHeroSoundtrackLabel}>THE DRIVE'S SOUNDTRACK</Text>
+        <Text style={styles.journeyHeroSoundtrackLabel}>SOUNDTRACK</Text>
         <Text style={styles.journeyHeroTrack} numberOfLines={1}>{leadTrack?.track ?? (journey.songCount ? `${journey.songCount} songs captured` : 'No songs matched yet')}</Text>
-        <Text style={styles.journeyHeroArtist} numberOfLines={1}>{leadTrack?.artist ?? 'Your soundtrack will appear here'}</Text>
+        {!!leadTrack && <Text style={styles.journeyHeroArtist} numberOfLines={1}>{leadTrack.artist}</Text>}
       </View>
       <View style={styles.journeyHeroSongCount}><Text style={styles.journeyHeroSongCountValue}>{journey.songCount}</Text><Text style={styles.journeyHeroSongCountLabel}>SONGS</Text></View>
     </View>
@@ -3521,7 +3525,7 @@ const darkStyles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -40, left: -20, right: -20, height: 1420 },
   app: { flex: 1, backgroundColor: '#08070d' }, screenBody: { flex: 1, overflow: 'hidden' }, primaryTabHost: { flex: 1, backgroundColor: '#08070d' }, pager: { flex: 1, backgroundColor: '#08070d' }, settingsTabLayer: { ...StyleSheet.absoluteFill, zIndex: 5, backgroundColor: '#08070d' }, settingsTabLayerHidden: { display: 'none' }, tabLayer: { flex: 1, overflow: 'hidden', backgroundColor: '#08070d' }, tabTransitionLayer: { flex: 1, backgroundColor: '#08070d' }, utilityOverlay: { ...StyleSheet.absoluteFill, zIndex: 60, backgroundColor: '#08070d' }, persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 }, persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 }, flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#08070d' },
   loadingScreen: { flex: 1, backgroundColor: '#08070d', alignItems: 'center', justifyContent: 'center', gap: 14 }, loadingText: { color: '#b8afc5', fontSize: 14 },
-  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, settingsRootContent: { paddingHorizontal: 16 }, pageArtHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 14 },
+  pageContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 128, gap: 16 }, settingsRootContent: { paddingHorizontal: 16 },
   webDashboardPage: { paddingHorizontal: 6, paddingTop: 6, paddingBottom: 116, gap: 8 },
   webDashboardShell: { gap: 8, padding: 8, borderRadius: 30, borderWidth: 1, borderColor: '#56357a', backgroundColor: '#05040e', shadowColor: '#9d58ff', shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 9 }, overflow: 'hidden' },
   webHero: { height: 318, padding: 16, justifyContent: 'space-between', overflow: 'hidden', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderBottomLeftRadius: 9, borderBottomRightRadius: 9 },
@@ -3596,7 +3600,6 @@ const darkStyles = StyleSheet.create({
   inlineNotice: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#21180f', borderWidth: 1, borderColor: '#714c25', borderRadius: 15, padding: 12 }, noticeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffb15c' }, inlineNoticeText: { color: '#c1af9a', fontSize: 11, lineHeight: 16, flex: 1 }, retryText: { color: '#ffb15c', fontSize: 11, fontWeight: '900' }, loadingLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, minHeight: 28 }, loadingLineText: { color: '#8f8799', fontSize: 12 }, loadingCard: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 13, backgroundColor: '#111018', borderRadius: 20 },
   detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeSketchHero: { height: 236, borderWidth: 0, borderRadius: 0 }, routeSketchExpanded: { height: 430, borderWidth: 0, borderRadius: 0 }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
   journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroIntro: { position: 'relative', minHeight: 125, overflow: 'hidden', justifyContent: 'flex-end', paddingHorizontal: 18, paddingTop: 26, paddingBottom: 19 }, journeyHeroCopy: { position: 'relative' }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
-  journeyMapHeading: { marginTop: 8, paddingHorizontal: 2, gap: 5 }, journeyMapKicker: { color: '#ff8d72', fontSize: 9, fontWeight: '900', letterSpacing: 1.65 }, journeyMapTitle: { color: '#fff8ff', fontSize: 21, lineHeight: 25, fontWeight: '900', letterSpacing: -0.5 },
   trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, membershipSettingsIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, membershipSettingsLogo: { width: 46, height: 46, borderRadius: 14 }, membershipSettingsIconText: { color: '#fff8fb', fontSize: 17, fontWeight: '900' }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, icloudMark: { width: 46, height: 46, borderRadius: 13, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#b9dcff', alignItems: 'center', justifyContent: 'center', shadowColor: '#1687ff', shadowOpacity: 0.42, shadowRadius: 11, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   savedPlacesCard: { overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#553449', backgroundColor: '#141018' },

@@ -38,6 +38,7 @@ const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', im
   './theme-picker': { ThemePicker: host('ThemePicker') },
   './app-icon-picker': { AppIconPicker: host('AppIconPicker') },
   './place-data-credits': { PlaceDataCredits: host('PlaceDataCredits') },
+  './achievements-overview': { AchievementsOverview: host('AchievementsOverview') },
   './settings-categories': require('../src/settings-categories.ts'),
   'react-native': { ...controls, StyleSheet: { create: (v: any) => ({ ...v, hairlineWidth: 1 }), hairlineWidth: 1 }, useWindowDimensions: () => ({ width: viewportWidth, height: viewportHeight, fontScale: viewportFontScale }),
     Linking: { openURL: async (url: string) => { links.push(url); } }, Alert: { alert: () => {} } },
@@ -60,6 +61,7 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   selectableProviderOptions: () => [{ id: 'apple-music', color: '#ff9478', name: 'Apple Music' }], publicProviderOptions: [], SAVED_PLACE_SLOTS: [{ id: 'home', label: 'Home', symbol: 'house' }, { id: 'work', label: 'Work', symbol: 'briefcase' }, { id: 'school', label: 'School', symbol: 'graduationcap' }],
   IpadSettingsScreen: ipad.IpadSettingsScreen, SettingsScrollView: viewport.SettingsScrollView, SettingsEditorScaffold: host('SettingsEditorScaffold'), SettingsProfileEditor: host('ProfileEditor'), SettingsSavedPlaceEditor: host('PlaceEditor'), SettingsCustomPlaceEditor: host('CustomPlaceEditor'),
   PlaceDataCredits: host('PlaceDataCredits'),
+  AchievementsOverview: host('AchievementsOverview'),
   AtmosphericBackdrop: host('Backdrop'), PageHeader: host('Header'), SectionHeading: host('SectionHeading'), ProviderMark: host('Provider'),
   SymbolView: host('Symbol'), LinearGradient: host('Gradient'), ExpoImage: host('Image'), StyleSheet: {},
   AppleAuthentication: { AppleAuthenticationButton: host('AppleSignIn'), AppleAuthenticationButtonType: { CONTINUE: 1 }, AppleAuthenticationButtonStyle: { WHITE: 1 } },
@@ -70,6 +72,7 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
   const calls: string[] = [], editorStates: boolean[] = [];
   const props: any = { provider: 'apple-music', currentUser: { id: 'test-user', appleSubject: null }, appleIdentityStatus: 'unknown', signingInWithApple: false,
     accountActionPending: false, privateCloud: { status: 'idle', detail: 'Ready to sync' }, membershipTier: 'free', membershipExpirationDate: null,
+    journeys: [{ id: 'j1', startedAt: '2026-09-05T10:00:00Z', startingLocation: 'Park', endingLocation: 'Museum', miles: 12, durationMinutes: 30, songCount: 2, soundtrackPreview: [] }],
     onAppleSignIn: () => calls.push('apple'), onPrivateCloudSync: () => calls.push('sync'), onEditorActiveChange: (active: boolean) => editorStates.push(active),
     onSignOut: () => calls.push('signout'), onDeleteAccount: () => calls.push('delete'), onMembership: () => calls.push('membership'), onChangeProvider: () => calls.push('provider'), onDataHealth: () => calls.push('health'),
   };
@@ -81,10 +84,11 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length >= 1);
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-detail' }).length >= 1);
     const categoryItems = tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem');
-    assert.equal(categoryItems.length, 6);
+    assert.equal(categoryItems.length, 7);
     assert.deepEqual(categoryItems.map((node: any) => node.props.accessibilityLabel), [
       'Open Account & iCloud settings',
       'Open Appearance settings',
+      'Open Achievements settings',
       'Open Membership & Support settings',
       'Open Music & Connections settings',
       'Open Recording & Location settings',
@@ -121,7 +125,7 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     assert.equal(compactSidebar.props.horizontal, true);
     assert.equal(compactSidebar.props.style[1].width, '100%');
     assert.equal(tree.root.findAllByProps({ testID: 'ipad-page-header' }).length, 0, 'narrow Split View gives the detail pane the full width');
-    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem').length, 6);
+    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'menuitem').length, 7);
 
     viewportFontScale = 2; viewportWidth = 1100; viewportHeight = 800;
     await act(() => tree.update(render()));
@@ -137,6 +141,9 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => tree.root.findByType('AppleSignIn').props.onPress());
     await act(() => press('Sync iCloud now').props.onPress());
     assert.deepEqual(calls, ['apple', 'sync']);
+
+    await act(() => press('Open Achievements settings').props.onPress());
+    assert.equal(tree.root.findByType('AchievementsOverview').props.journeys.length, 1);
 
     await act(() => press('Open Music & Connections settings').props.onPress());
     await act(() => press('Change soundtrack provider').props.onPress());
@@ -168,7 +175,10 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     tablet = false; viewportWidth = 390; viewportHeight = 844;
     await act(() => tree.update(render()));
     assert.equal(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length, 0);
-    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => typeof node.props.accessibilityLabel === 'string' && /^Open .* settings$/.test(node.props.accessibilityLabel)).length, 6);
+    assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => typeof node.props.accessibilityLabel === 'string' && /^Open .* settings$/.test(node.props.accessibilityLabel)).length, 7);
+    await act(() => press('Open Achievements settings').props.onPress());
+    assert.equal(tree.root.findByType('AchievementsOverview').props.journeys.length, 1);
+    await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     await act(() => press('Open Appearance settings').props.onPress());
     assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);
