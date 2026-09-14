@@ -60,10 +60,10 @@ const memories = [{ id: 'm1', name: 'Lake Weekend', notes: '', artworkKey: 'road
 test('achievement milestones retain their earning journey and locked state', () => {
   const byId = Object.fromEntries(buildAchievements(journeys, memories).map((item: any) => [item.id, item]));
   assert.equal(byId['first-track'].earnedAt, journeys[0].startedAt);
-  assert.equal(byId.explorer.earnedAt, journeys[4].startedAt);
   for (const id of ['road-regular', 'century-road', 'soundtrack-100']) assert.equal(byId[id].earnedAt, journeys[9].startedAt);
-  assert.equal(byId['open-road'].earned, false);
   assert.equal(byId['thousand-mile'].earned, false);
+  assert.equal(byId['halfway-there'].earned, false);
+  assert.equal(byId['long-play'].earnedAt, journeys[0].startedAt);
   assert.equal(byId['memory-maker'].earnedAt, memories[0].createdAtUtc);
   assert.equal(byId['grand-tourer'].earned, false);
   assert.equal(byId['long-way-home'].earned, false);
@@ -79,12 +79,22 @@ test('Long Way Home unlocks on the first journey over 25 miles', () => {
   assert.equal(achievement.earnedAt, longJourneys[1].startedAt);
 });
 
+test('Long Play requires 10 songs in one journey instead of a cumulative total', () => {
+  const musicalJourneys = [
+    { ...journeys[0], id: 'six-songs-one', songCount: 6 },
+    { ...journeys[1], id: 'six-songs-two', songCount: 6 },
+    { ...journeys[2], id: 'ten-songs', songCount: 10 },
+  ];
+  const achievement = buildAchievements(musicalJourneys).find((item: any) => item.id === 'long-play');
+  assert.equal(achievement.earnedAt, musicalJourneys[2].startedAt);
+});
+
 test('achievement overview opens a native detail sheet with turnable earned context', async () => {
   let tree: any;
   await act(() => { tree = create(React.createElement(AchievementsOverview, { journeys, memories })); });
   const badges = tree.root.findAllByType('Pressable');
   assert.equal(badges.length, 10);
-  assert.match(badges.at(-1).props.accessibilityLabel, /Locked/);
+  assert.ok(badges.some((badge: any) => /Locked/.test(badge.props.accessibilityLabel)));
   await act(() => badges[0].props.onPress());
   const sheet = tree.root.findByType('BottomSheet');
   assert.equal(sheet.props.isPresented, true);

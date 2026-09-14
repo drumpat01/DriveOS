@@ -11,7 +11,7 @@ import { JourneyDeckMedallion } from '../modules/journeydeck-keepsakes';
 import { isApprovedMedallion, medallionArtwork } from './medallion-artwork';
 import type { JourneyMemory, JourneySummary } from './app-data';
 
-type AchievementId = 'first-track' | 'road-regular' | 'century-road' | 'soundtrack-100' | 'long-way-home' | 'explorer' | 'memory-maker' | 'open-road' | 'thousand-mile' | 'grand-tourer';
+type AchievementId = 'first-track' | 'road-regular' | 'century-road' | 'soundtrack-100' | 'long-way-home' | 'memory-maker' | 'grand-tourer' | 'thousand-mile' | 'halfway-there' | 'long-play';
 
 type AchievementDefinition = {
   id: AchievementId;
@@ -33,11 +33,11 @@ const definitions: AchievementDefinition[] = [
   { id: 'century-road', name: 'Century Road', symbol: 'gauge.with.dots.needle.67percent', how: 'Record 100 total miles.', why: 'A hundred miles turns scattered trips into a meaningful map.' },
   { id: 'soundtrack-100', name: 'Soundtrack 100', symbol: 'music.note.list', how: 'Save 100 song plays with your journeys.', why: 'Your listening history becomes part of the places and moments you remember.' },
   { id: 'long-way-home', name: 'Long Way Home', symbol: 'signpost.right.and.left.fill', how: 'Complete a journey longer than 25 miles.', why: 'One long stretch of road can turn an ordinary drive into a story worth keeping.' },
-  { id: 'explorer', name: 'Explorer', symbol: 'map.fill', how: 'Reach five distinct named destinations.', why: 'A wider map shows how many places belong to your story.' },
   { id: 'memory-maker', name: 'Memory Maker', symbol: 'photo.on.rectangle.angled', how: 'Create your first Memory.', why: 'A Memory keeps related journeys and photos together as one chapter.' },
-  { id: 'open-road', name: 'Open Road', symbol: 'steeringwheel', how: 'Complete 50 journeys.', why: 'Fifty journeys form a substantial personal road archive.' },
-  { id: 'thousand-mile', name: 'Thousand Mile Club', symbol: 'mountain.2.fill', how: 'Record 1,000 total miles.', why: 'One thousand miles is a long-running record of where life has taken you.' },
   { id: 'grand-tourer', name: 'Grand Tourer', symbol: 'car.side.fill', how: 'Complete 100 journeys.', why: 'One hundred journeys mark a lasting life on the road.' },
+  { id: 'thousand-mile', name: 'Thousand Mile Club', symbol: 'mountain.2.fill', how: 'Record 1,000 total miles.', why: 'One thousand miles is a long-running record of where life has taken you.' },
+  { id: 'halfway-there', name: 'Halfway There', symbol: 'road.lanes.curved.right', how: 'Record 500 total miles.', why: 'Five hundred miles marks the midpoint of your first thousand-mile chapter.' },
+  { id: 'long-play', name: 'Long Play', symbol: 'record.circle.fill', how: 'Play 10 songs during one journey.', why: 'A ten-song journey has enough music to become a soundtrack of its own.' },
 ];
 
 const validDate = (journey: JourneySummary) => Number.isFinite(new Date(journey.startedAt).getTime());
@@ -65,10 +65,10 @@ export function buildAchievements(journeys: JourneySummary[], memories: JourneyM
     'century-road': milestone(state => state.miles >= 100),
     'soundtrack-100': milestone(state => state.songs >= 100),
     'long-way-home': rows.find(journey => Number.isFinite(journey.miles) && journey.miles > 25),
-    explorer: milestone(state => state.destinations.size >= 5),
-    'open-road': milestone(state => state.count >= 50),
     'thousand-mile': milestone(state => state.miles >= 1000),
     'grand-tourer': milestone(state => state.count >= 100),
+    'halfway-there': milestone(state => state.miles >= 500),
+    'long-play': rows.find(journey => Number.isFinite(journey.songCount) && journey.songCount >= 10),
   };
   const firstMemory = [...memories]
     .filter(memory => Number.isFinite(new Date(memory.createdAtUtc).getTime()))

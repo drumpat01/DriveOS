@@ -1,5 +1,20 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Final four medallions selected — September 14, 2026
+
+- The user replaced Explorer and Open Road. The four unfinished medallions are
+  now, in order: **Grand Tourer — 100 journeys**, **Thousand Mile Club — 1,000
+  total miles**, **Halfway There — 500 total miles**, and **Long Play — 10 songs
+  during one journey**.
+- Achievement definitions and rules now match the final lineup. Halfway There is
+  cumulative; Long Play requires one journey with at least 10 plays and does not
+  combine smaller song counts across journeys.
+- Verification passes: TypeScript, focused achievement tests 4/4, and the complete
+  mobile suite 646/646.
+- No artwork was generated for these four in this change. Continue the established
+  workflow with 10 monochrome-gold Grand Tourer concepts unless the user chooses a
+  different one to design next. No native/EAS build or OTA publish was performed.
+
 ## Long Way Home medallion approved and integrated — September 14, 2026
 
 - Replaced **After Dark** with **Long Way Home — First journey over 25 miles**.
@@ -17,8 +32,9 @@
   Tourer remain.
 - Verification passes: TypeScript, focused achievement/Minted tests 6/6, complete
   mobile suite 645/645, and iOS JavaScript export with 101 assets including all
-  24 approved theme fronts. No native/EAS build, OTA publish, or demo-site update
-  was performed.
+  24 approved theme fronts. The unfinished set was subsequently changed to Grand
+  Tourer, Thousand Mile Club, Halfway There, and Long Play. No native/EAS build,
+  OTA publish, or demo-site update was performed.
 
 ## Requested medallion list — September 13, 2026
 

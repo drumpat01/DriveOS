@@ -13,11 +13,11 @@ Each medallion can use any of the app's four current themes and its correspondin
 3. **Century Road** — 100 miles
 4. **Soundtrack 100** — 100 song plays
 5. **Long Way Home** — First journey over 25 miles
-6. **Explorer** — Five destinations
-7. **Memory Maker** — First Memory created
-8. **Open Road** — 50 journeys
-9. **Thousand Mile Club** — 1,000 miles
-10. **Grand Tourer** — 100 journeys
+6. **Memory Maker** — First Memory created
+7. **Grand Tourer** — 100 journeys
+8. **Thousand Mile Club** — 1,000 miles
+9. **Halfway There** — Record 500 total miles
+10. **Long Play** — Play 10 songs during one journey
 
 ## Approved designs
 
