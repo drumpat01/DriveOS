@@ -40,6 +40,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(privacy.headers["content-type"]), /text\/html/);
     assert.match(privacy.body, /JourneyDeck Privacy Policy/i);
     assert.match(privacy.body, /journeydeckapp@gmail\.com/i);
+    assert.match(privacy.body, /JourneyDeck 2\.0 never begins a journey automatically/i);
+    assert.doesNotMatch(privacy.body, /Automatic Drive Detection|Tessie/i);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
