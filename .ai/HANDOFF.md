@@ -1,5 +1,25 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Long Way Home medallion approved and integrated — September 14, 2026
+
+- Replaced **After Dark** with **Long Way Home — First journey over 25 miles**.
+  The rule unlocks on the earliest individual journey whose distance is strictly
+  greater than 25 miles; an exact 25.0-mile journey does not unlock it.
+- The user approved option 7: a vintage highway shield above a straight mountain
+  road. Grand Touring uses the app's navy/champagne palette with a blank red
+  shield cap, blue lower field, and white `25 MI`. The other approved fronts are
+  Rosewater, Cinematic Dark, and Warm Ivory. The regular gold body, edge, and
+  reverse remain unchanged.
+- Saved the concept sheet, gold master, four-theme sheet, and four transparent
+  520x520 fronts under `mobile/recorder/assets/medallion-concepts/long-way-home`.
+  Added the four fronts to the generic Minted OTA artwork catalog. Six of ten
+  medallions are now approved; Explorer, Open Road, Thousand Mile Club, and Grand
+  Tourer remain.
+- Verification passes: TypeScript, focused achievement/Minted tests 6/6, complete
+  mobile suite 645/645, and iOS JavaScript export with 101 assets including all
+  24 approved theme fronts. No native/EAS build, OTA publish, or demo-site update
+  was performed.
+
 ## Requested medallion list — September 13, 2026
 
 - Recorded the user's ten medallion names and milestones, in order, in

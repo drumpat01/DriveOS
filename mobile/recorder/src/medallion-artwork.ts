@@ -5,10 +5,11 @@ export type ApprovedMedallionId =
   | 'road-regular'
   | 'century-road'
   | 'soundtrack-100'
+  | 'long-way-home'
   | 'memory-maker';
 
 export const approvedMedallionIds: readonly ApprovedMedallionId[] = [
-  'first-track', 'road-regular', 'century-road', 'soundtrack-100', 'memory-maker',
+  'first-track', 'road-regular', 'century-road', 'soundtrack-100', 'long-way-home', 'memory-maker',
 ];
 
 export const medallionArtwork: Record<ApprovedMedallionId, Record<ThemeId, number>> = {
@@ -35,6 +36,12 @@ export const medallionArtwork: Record<ApprovedMedallionId, Record<ThemeId, numbe
     sakura: require('../assets/medallion-concepts/soundtrack-100/option-01-theme-variants/soundtrack-100-rosewater.png'),
     dark: require('../assets/medallion-concepts/soundtrack-100/option-01-theme-variants/soundtrack-100-cinematic-dark.png'),
     light: require('../assets/medallion-concepts/soundtrack-100/option-01-theme-variants/soundtrack-100-warm-ivory.png'),
+  },
+  'long-way-home': {
+    redline: require('../assets/medallion-concepts/long-way-home/option-07-theme-variants/long-way-home-grand-touring.png'),
+    sakura: require('../assets/medallion-concepts/long-way-home/option-07-theme-variants/long-way-home-rosewater.png'),
+    dark: require('../assets/medallion-concepts/long-way-home/option-07-theme-variants/long-way-home-cinematic-dark.png'),
+    light: require('../assets/medallion-concepts/long-way-home/option-07-theme-variants/long-way-home-warm-ivory.png'),
   },
   'memory-maker': {
     redline: require('../assets/medallion-concepts/memory-maker/option-08-theme-variants/memory-maker-grand-touring.png'),

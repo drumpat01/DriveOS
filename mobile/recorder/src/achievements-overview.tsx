@@ -11,7 +11,7 @@ import { JourneyDeckMedallion } from '../modules/journeydeck-keepsakes';
 import { isApprovedMedallion, medallionArtwork } from './medallion-artwork';
 import type { JourneyMemory, JourneySummary } from './app-data';
 
-type AchievementId = 'first-track' | 'road-regular' | 'century-road' | 'soundtrack-100' | 'night-drive' | 'explorer' | 'memory-maker' | 'open-road' | 'thousand-mile' | 'grand-tourer';
+type AchievementId = 'first-track' | 'road-regular' | 'century-road' | 'soundtrack-100' | 'long-way-home' | 'explorer' | 'memory-maker' | 'open-road' | 'thousand-mile' | 'grand-tourer';
 
 type AchievementDefinition = {
   id: AchievementId;
@@ -32,7 +32,7 @@ const definitions: AchievementDefinition[] = [
   { id: 'road-regular', name: 'Road Regular', symbol: 'car.fill', how: 'Complete 10 journeys.', why: 'Ten saved drives mark the beginning of a real travel history.' },
   { id: 'century-road', name: 'Century Road', symbol: 'gauge.with.dots.needle.67percent', how: 'Record 100 total miles.', why: 'A hundred miles turns scattered trips into a meaningful map.' },
   { id: 'soundtrack-100', name: 'Soundtrack 100', symbol: 'music.note.list', how: 'Save 100 song plays with your journeys.', why: 'Your listening history becomes part of the places and moments you remember.' },
-  { id: 'night-drive', name: 'After Dark', symbol: 'moon.stars.fill', how: 'Complete a journey that starts between 9 PM and 5 AM.', why: 'Night roads have a character and soundtrack of their own.' },
+  { id: 'long-way-home', name: 'Long Way Home', symbol: 'signpost.right.and.left.fill', how: 'Complete a journey longer than 25 miles.', why: 'One long stretch of road can turn an ordinary drive into a story worth keeping.' },
   { id: 'explorer', name: 'Explorer', symbol: 'map.fill', how: 'Reach five distinct named destinations.', why: 'A wider map shows how many places belong to your story.' },
   { id: 'memory-maker', name: 'Memory Maker', symbol: 'photo.on.rectangle.angled', how: 'Create your first Memory.', why: 'A Memory keeps related journeys and photos together as one chapter.' },
   { id: 'open-road', name: 'Open Road', symbol: 'steeringwheel', how: 'Complete 50 journeys.', why: 'Fifty journeys form a substantial personal road archive.' },
@@ -64,7 +64,7 @@ export function buildAchievements(journeys: JourneySummary[], memories: JourneyM
     'road-regular': milestone(state => state.count >= 10),
     'century-road': milestone(state => state.miles >= 100),
     'soundtrack-100': milestone(state => state.songs >= 100),
-    'night-drive': rows.find(journey => { const hour = new Date(journey.startedAt).getHours(); return hour >= 21 || hour < 5; }),
+    'long-way-home': rows.find(journey => Number.isFinite(journey.miles) && journey.miles > 25),
     explorer: milestone(state => state.destinations.size >= 5),
     'open-road': milestone(state => state.count >= 50),
     'thousand-mile': milestone(state => state.miles >= 1000),

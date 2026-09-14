@@ -35,8 +35,8 @@ vm.runInNewContext(code, {
     './touch-feedback': touchFeedbackMock,
     './app-theme': { useAppTheme: () => ({ id: 'redline', palette }) },
     './medallion-artwork': {
-      isApprovedMedallion: (id: string) => ['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'memory-maker'].includes(id),
-      medallionArtwork: Object.fromEntries(['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'memory-maker'].map(id => [id, { redline: `${id}-redline` }])),
+      isApprovedMedallion: (id: string) => ['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'long-way-home', 'memory-maker'].includes(id),
+      medallionArtwork: Object.fromEntries(['first-track', 'road-regular', 'century-road', 'soundtrack-100', 'long-way-home', 'memory-maker'].map(id => [id, { redline: `${id}-redline` }])),
     },
     '../modules/journeydeck-keepsakes': {
       JourneyDeckMedallion: ({ name, ...props }: any) => React.createElement('JourneyDeckMedallion', { ...props, accessibilityRole: 'imagebutton', accessibilityLabel: `Turn ${name} medallion` }),
@@ -66,6 +66,17 @@ test('achievement milestones retain their earning journey and locked state', () 
   assert.equal(byId['thousand-mile'].earned, false);
   assert.equal(byId['memory-maker'].earnedAt, memories[0].createdAtUtc);
   assert.equal(byId['grand-tourer'].earned, false);
+  assert.equal(byId['long-way-home'].earned, false);
+});
+
+test('Long Way Home unlocks on the first journey over 25 miles', () => {
+  const longJourneys = [
+    { ...journeys[0], id: 'short', miles: 25 },
+    { ...journeys[1], id: 'first-long', miles: 25.1 },
+    { ...journeys[2], id: 'later-long', miles: 80 },
+  ];
+  const achievement = buildAchievements(longJourneys).find((item: any) => item.id === 'long-way-home');
+  assert.equal(achievement.earnedAt, longJourneys[1].startedAt);
 });
 
 test('achievement overview opens a native detail sheet with turnable earned context', async () => {

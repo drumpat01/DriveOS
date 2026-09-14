@@ -29,12 +29,13 @@ test('the approved medallions are backed by a pinned Minted native module', asyn
   assert.match(swift, /Drag left or right to rotate the medallion/);
 });
 
-test('all 20 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
+test('all 24 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
   const designs = {
     'first-track': ['the-first-track/option-01-theme-variants', 'first-track'],
     'road-regular': ['road-regular/option-06-theme-variants', 'road-regular'],
     'century-road': ['century-road/option-01-theme-variants', 'century-road'],
     'soundtrack-100': ['soundtrack-100/option-01-theme-variants', 'soundtrack-100'],
+    'long-way-home': ['long-way-home/option-07-theme-variants', 'long-way-home'],
     'memory-maker': ['memory-maker/option-08-theme-variants', 'memory-maker'],
   } as const;
   const themes = { redline: 'grand-touring', sakura: 'rosewater', dark: 'cinematic-dark', light: 'warm-ivory' } as const;

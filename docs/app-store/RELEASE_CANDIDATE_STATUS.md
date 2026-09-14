@@ -24,10 +24,10 @@ Minted artwork bridge.
 
 - Expo Doctor: 21/21 checks pass after the SDK 57 patch alignment.
 - TypeScript passes.
-- Complete mobile test suite: 644/644 passes.
+- Complete mobile test suite: 645/645 passes.
 - Focused release/Minted/runtime tests: 20/20 passes.
-- Production iOS JavaScript export succeeds with 2,640 modules, a Hermes bundle,
-  97 assets, and all 20 approved theme fronts for the first five medallions.
+- Production iOS JavaScript export succeeds with 101 assets, including all 24
+  approved theme fronts for the first six medallions.
 - Server typecheck, lint, 34/34 tests, and Atlas performance benchmark pass after
   merging the current public-site launch work from `main`.
 - Production dependency audit has no high or critical findings. Sixteen moderate
@@ -39,9 +39,10 @@ Minted artwork bridge.
 
 ## Required before this becomes the submitted release candidate
 
-1. Finish and approve the remaining five medallion fronts: After Dark, Explorer,
-   Open Road, Thousand Mile Club, and Grand Tourer. Their achievement rules exist,
-   but their final four-theme artwork does not.
+1. Finish and approve the remaining four medallion fronts: Explorer, Open Road,
+   Thousand Mile Club, and Grand Tourer. Their achievement rules exist, but their
+   final four-theme artwork does not. Long Way Home replaces After Dark and is
+   approved as option 7.
 2. Capture upload-ready iPhone and iPad App Store screenshots from the final
    production-configured build. The six files under
    `docs/design/app-store-v2-first-screen` are concepts and have deliberately
