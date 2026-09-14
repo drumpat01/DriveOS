@@ -46,15 +46,19 @@ Minted artwork bridge.
    production-configured build. The six files under
    `docs/design/app-store-v2-first-screen` are concepts and have deliberately
    non-upload-ready dimensions.
-3. Confirm App Store Connect metadata, age rating, privacy answers, reviewer
+3. Deploy the corrected `web/privacy.html` from this candidate before App Review.
+   The live URL is reachable, but its current deployment still describes older
+   Automatic Drive Detection and Tessie behavior that is absent from the public
+   JourneyDeck 2.0 build.
+4. Confirm App Store Connect metadata, age rating, privacy answers, reviewer
    contact details, subscription products/offering, purchase screenshots,
    pricing/availability, agreements, tax, and banking. These are account state
    and cannot be proven from the repository.
-4. Create the production archive after the build hold is lifted. Inspect the
+5. Create the production archive after the build hold is lifted. Inspect the
    signed IPA for version/build/runtime, opaque default icon, iPhone/iPad support,
    Watch embedding, privacy manifests, CloudKit entitlements, RevenueCat, and
    Minted symbols before uploading that exact build.
-5. Install that build from TestFlight and complete the iPhone, iPad, and paired
+6. Install that build from TestFlight and complete the iPhone, iPad, and paired
    Watch device matrix in `mobile/recorder/docs/next-native-build-checklist.md`.
    Minted must be checked in all four themes, online and from cached artwork,
    with a fixed gold reverse/edge, Reduce Motion, VoiceOver, and fallback behavior.
