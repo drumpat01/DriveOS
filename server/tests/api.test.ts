@@ -80,6 +80,8 @@ test("hosted root is public while login and the private app keep separate routes
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
     assert.match(landing.body, /Follow the launch/i);
+    assert.match(landing.body, /href="#medallions"/);
+    assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.equal(landing.body.match(/https:\/\/x\.com\/JourneyDeck/g)?.length, 5);
     assert.match(landing.body, /class="nav-social" href="https:\/\/x\.com\/JourneyDeck" target="_blank" rel="noopener noreferrer"/);
@@ -93,6 +95,12 @@ test("hosted root is public while login and the private app keep separate routes
     for (const [url, mime] of [
       ["/landing.css?v=cinematic-3", /text\/css/],
       ["/landing.js?v=cinematic-1", /javascript/],
+      ["/medallions/medallions.css?v=medallions-1", /text\/css/],
+      ["/medallions/medallions.js?v=medallions-1", /javascript/],
+      ["/medallions/catalog.js", /javascript/],
+      ["/medallions/viewer.js?v=medallions-1", /javascript/],
+      ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
+      ["/assets/medallions/story-collector-light-thumb.webp", /image\/webp/],
       ["/assets/journeydeck-coast-v2.jpg", /image\/jpeg/],
       ["/assets/journeydeck-cinematic-512.png", /image\/png/]
     ] as const) {

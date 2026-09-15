@@ -1,5 +1,14 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Public medallion website release — September 14, 2026
+
+- Website-only release prepared from production `13563ab` on `deploy/20260915-public-medallions`. The homepage includes all ten interactive 3D medallions, all four appearances, milestone copy, lazy loading, drop/replay, keyboard/drag, Reduced Motion and static fallback. Cinematic Dark matches the existing homepage. Latest production privacy changes are preserved.
+- Includes 80 prepared WebP assets, self-contained renderer bundle/license, and an independently rebuildable snapshot under `tools/public-medallions/` pinned to the exact demo dependencies. No mobile source, native build, OTA, server/runtime dependency or deployment configuration changes.
+- Public-route regression coverage includes medallion assets. Pinned the existing Statistics E2E clock to its August 2026 fixture date, resolving the already-failing main/PR146 smoke assertion without changing app behavior.
+- Verification: release preflight passed (existing SQLite-runtime-dependent checks skipped); server typecheck/lint and all 34 tests passed; Atlas benchmark, all 9 E2E smoke tests, PowerShell analysis and secret scan passed. Actual Fastify/CSP browser checks passed at desktop/tablet/390px/320px with no errors or missing assets. Prior all-40, motion, failure/recovery and no-JS checks passed. The isolated medallion dependency audit reports zero vulnerabilities.
+- Full npm pipeline reaches its repository-wide vulnerability scan, which reports 17 pre-existing high findings (15 in unchanged mobile lockfile, 2 in unchanged root lockfile). These dependencies are byte-identical to production main; no ignore rules or security checks were changed. Follow up separately on existing dependency updates.
+- Local release preview: `http://127.0.0.1:4189/#medallions`; isolated fixture, no cloud writes. Screenshots/logs are ignored under `.cache/public-medallions/`. Publication and live verification are next; the separate dirty app/design workspace is preserved.
+
 ## Temporary Profile Test Lab — implemented, awaiting device acceptance — August 27, 2026
 
 - Added a non-destructive Profile Test Lab to Data Health. It creates a separate timestamped local test profile, reloads the app into it, reports exact aggregate counts for journeys, GPS points, songs, Memories, Collections, and recorder queue, and provides a direct return button to each normal profile. Switching is blocked unless the recorder is ready; the original profile and all of its data remain untouched.
