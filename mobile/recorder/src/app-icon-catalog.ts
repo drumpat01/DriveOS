@@ -7,22 +7,22 @@ export const appIconCatalog: Record<AppIconId, {
 }> = {
   original: {
     name: 'Cinematic',
-    description: 'JourneyDeck pulse',
+    description: 'Midnight plum · coral pulse',
     nativeName: 'JourneyDeckCinematic',
   },
   'warm-ivory': {
     name: 'Warm Ivory',
-    description: 'Ivory glass · plum pulse',
+    description: 'Warm ivory · plum pulse',
     nativeName: 'JourneyDeckWarmIvory',
   },
   rosewater: {
     name: 'Rosewater',
-    description: 'Blush glass · raspberry',
+    description: 'Blush ivory · raspberry pulse',
     nativeName: 'JourneyDeckRosewater',
   },
   'grand-touring': {
     name: 'Grand Touring',
-    description: 'Blue gradient · champagne trim',
+    description: 'Midnight navy · champagne pulse',
     nativeName: 'JourneyDeckGrandTouring',
   },
 };

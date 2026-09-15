@@ -1,5 +1,29 @@
 # Grand Touring flat icon concept
 
+## Rosewater proportion correction — September 15, 2026
+
+The user requested matching Grand Touring's central symbol size and circle/bar
+thickness to Rosewater. This supersedes the earlier enlarged-symbol direction.
+The blue gradient, champagne symbol, flat styling and champagne perimeter remain.
+
+`grand-touring-rosewater-proportions-v7.png` is the selected built-in imagegen edit
+using `../icon-rosewater-v1.png` as the geometry reference. Expo image-utils
+packages it as the opaque 1024x1024 `../icon-grand-touring-v2.png`, retaining the
+existing shared references for Settings, primary light/dark, the Grand Touring
+alternate and Watch. No icon IDs, native selection logic or runtime changed.
+
+Final built-in prompt:
+
+> Recolor this exact app icon to blue and champagne. STRICTLY retain the original central symbol outline pixel-for-pixel: same size, exact circle thickness, exact narrower horizontal pulse bar thickness, exact waveform position. Do not redesign the symbol or recenter it. Its outside horizontal span is16.5%-83.5% of square canvas and its vertical span15.3%-85.3%. Its side ring thickness is8.5% of canvas width, its TOP ring thickness is9% of canvas height. The horizontal pulse bars are5.3% of canvas height. Fill the current rose central symbol with a single uniform flat champagne gold #D4B15A; remove its 3D shadows, bevels and highlights but KEEP the exact outline geometry of the solid object. Replace the pink glass background with a smooth blue gradient from vivid navy-blue upper-left #0b4ca0 to deep midnight-blue lower-right #06245d. Replace glass perimeter with flat champagne gold perimeter: inner blue rounded square inset2% from edges, champagne continues outward to canvas edge. No gloss, bevels, shadows, pink, words or mockup. Single square opaque icon. The point of this edit is exact preservation of the reference central symbol size and stroke weights while only changing its palette and removing 3D effects.
+
+The prompt describes the target; the generated result was visually checked,
+not verified as a pixel-identical silhouette. Side-by-side browser previews at
+60px and the Settings 88/104px sizes are in the ignored
+`../../.cache/icon-proportions/review.html` and `review.png`. Thirteen existing
+icon catalog/build/preference/picker tests pass, including generated opaque
+alternate catalogs. Actual Home Screen delivery requires a new native build;
+physical iOS/Watch masking remains an acceptance check (NB-013).
+
 ## Approved production integration
 
 The user selected the bold blue-gradient/champagne-trim design as the new default

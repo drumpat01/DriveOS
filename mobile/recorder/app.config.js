@@ -17,12 +17,12 @@ module.exports = ({ config }) => {
     name: preview ? 'JourneyDeck V2' : config.name,
     version: '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // RevenueCat adds native code; keep older installed runtimes isolated.
-    runtimeVersion: preview ? '2.0.0-preview.12' : '2.0.0-watch.7',
+    // Isolate this icon and mobile polish build from Build 30 OTA updates.
+    runtimeVersion: preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
       microphonePermission: config.ios.infoPlist.NSMicrophoneUsageDescription,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
-    }], './plugins/with-even-native-tabs', './plugins/with-alternate-app-icons', './plugins/with-journeydeck-watch'],
+    }], './plugins/with-even-native-tabs', './plugins/with-alternate-app-icons', './plugins/with-journeydeck-watch', './plugins/with-journeydeck-siri'],
     scheme: preview ? 'journeydeck-v2' : config.scheme,
     userInterfaceStyle: 'automatic',
     ios: {

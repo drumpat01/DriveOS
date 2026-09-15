@@ -51,7 +51,79 @@ manifests. No Git staging, commit, push, or OTA accompanied this build.
 | NB-008 | Minted milestone keepsakes: compile a local `JourneyDeckKeepsakes` Expo module, pin Minted to exact version `1.1.1`, and turn the bundled `The First Track` gold-vinyl artwork into an interactive `ArtworkCoin` in Memories. | Included in Build 27; EAS Swift archive and TestFlight processing passed. Runtime is production `2.0.0-watch.6`; the app deployment target is iOS 17.0 because Minted requires iOS 17. A static React Native artwork fallback remains available when the native view is absent. Build `f3cf1d44-e1d6-4200-9ceb-b52d9da210e5`, submission `e9b06d03-7d3f-477a-834e-a2dae356ea2f`. | Confirm relief and metallic depth, drag rotation, resumed idle rotation, VoiceOver labeling, fallback rendering, and phone/iPad layout after the first journey. |
 | NB-009 | Generic Minted OTA-artwork bridge: accept a downloaded local artwork URI, mint any achievement face with one fixed gold body/edge/reverse, and keep artwork names, theme mappings, and earning rules in the updateable JavaScript layer. | Included in Build 28; EAS Swift archive and TestFlight processing passed. Minted remains pinned to `1.1.1`; native catalog capability is version 3. Runtime is production `2.0.0-watch.7`. Signed IPA contains `JourneyDeckKeepsakes`, `ArtworkCoin`, and `Minted` symbols. | Verify all approved fronts appear face-forward in four themes on iPhone and iPad. Confirm the reverse and edge stay regular gold, offline cached artwork reopens, drag/idle motion works, Reduce Motion is honored, and an unavailable URI keeps the React Native fallback visible. |
 
+## RC2 native changes and device acceptance
+
+RC2 Build 30 (`31052a3a-ae42-4105-8890-d8dda77d2682`) now contains NB-013
+and NB-012 on runtime `2.0.0-watch.8`. Apple reports `VALID` and
+`IN_BETA_TESTING` after exact-build submission
+`da871dc2-7cb2-4a2b-99a6-6b0fceda6e17`. Source/device acceptance remains
+separate: the icon's system mask and Siri controls still need physical checks.
+
+The user confirmed on September 15 that NB-013 and NB-012 are in scope for
+release candidate 2. The iPad medallion presentation and iPhone/iPad replay
+are accepted on device after the latest OTA. RC2 implementation/build and
+device verification remain separate from those OTA confirmations.
+The user also confirms the three remaining Build 28 smoke checks passed:
+locked/backgrounded phone plus paired Watch recording and saved result,
+offline local archive/iCloud recovery, and selected-song/Relive spacing with
+large-text/iPad rotation. This does not claim every failure edge case was run.
+
+### NB-013 — Grand Touring icon proportions match Rosewater (September 15)
+
+Build 30 packaged an earlier Grand Touring design with an unwanted gold outside
+border; physical review rejected it. The user then approved a centered,
+border-free Grand Touring design with midnight navy matching the app, followed
+by matching Warm Ivory, Rosewater and Cinematic designs. Current source includes
+all four opaque 1024px images in the Settings picker and iOS/iPadOS native icon
+catalog. Stable icon IDs, native names and Plus gating are unchanged. The primary
+light/dark and Watch icon source share the approved Grand Touring navy image.
+
+Verification: native alternate catalogs contain the exact approved source
+pixels, the Watch generated primary contains the exact Grand Touring source
+pixels, 17 focused icon/Watch/preference tests pass, TypeScript passes, and the
+iOS export includes all four picker images. These changes are **not** in Build
+30. The next signed build must verify all four Settings previews and actual
+iPhone/iPad Home Screen icons after switching, switching back to primary, fresh
+install and upgrade, plus the single Grand Touring Watch Home Screen icon.
+watchOS does not offer a runtime alternate-icon API, so the Watch Home Screen
+icon cannot follow the phone's selected alternate. OTA can change Settings
+previews but cannot replace the installed system icons.
+
+### NB-012 — Siri start and stop journey controls (September 15)
+
+Implemented in signed RC2 Build 30; physical Siri discovery and journey-control
+verification remain pending. Build 29 failed native compilation and was not
+submitted; Build 30 compiled the corrected import and App Intents metadata.
+
+- Add native Swift Start Journey and Stop Journey App Intents and an
+  AppShortcutsProvider for phrases such as "Start a journey in JourneyDeck"
+  and "Stop my journey in JourneyDeck".
+- Use the existing native recorder command journal and state machine. Stop
+  finishes and saves locally; repeated Start must not create a second journey.
+  Preserve owner/session checks and report success only after durable confirmation.
+- Handle missing Always location permission, incomplete profile setup, an
+  already-active journey, and no journey to stop with clear Siri responses.
+  Provide a foreground setup fallback when required.
+- Verify Siri/Shortcuts discovery in the signed app, cold launch, background
+  and locked-phone operation, actual GPS capture, local persistence, repeated
+  commands, and races with phone/Watch controls on physical devices.
+- Included in signed RC2 Build 30 with isolated `2.0.0-watch.8` runtime; this
+  integration cannot ship through an OTA update alone.
+
 ## Native acceptance and later candidates
+
+### NB-011 — Medallion correction moved to OTA (September 14)
+
+The native capability-4 / `.watch.8` proposal was retired. Three.js replaces
+the medal JS view using Expo DOM WebView, confirmed present in the signed
+Build 28 IPA. Native sources remain unchanged; production runtime `.watch.7`
+and preview `.preview.12` remain compatible. No new native build is needed.
+
+After OTA delivery, verify all ten medals/four themes at face-on, quarter
+turn, edge-on and reverse on iPhone and iPad. Check Memory Maker's complete
+hands/photo, circular gold reverse, uninterrupted shading, visible thickness,
+offline reopen, theme changes, drag/idle, Reduce Motion and VoiceOver. Browser
+and source validation passed; physical device acceptance remains pending.
 
 ### NB-010 — Approved Grand Touring primary icon (September 14)
 
@@ -102,6 +174,26 @@ Before submitting the combined build:
   archive integrity, and private iCloud sync before any wider TestFlight release.
 
 ## Change log
+
+- 2026-09-15: Shipped final icon production TestFlight Build 31 on isolated
+  `2.0.0-watch.9` runtime. Four approved no-border icons are bundled for the
+  Settings chooser and native iOS alternate icon catalog; Grand Touring navy
+  is the primary and Watch icon. All current mobile changes since Build 30 are
+  bundled; no OTA accompanied the build. EAS build
+  `e81cad23-f011-49be-afb3-b4a1ac1ec6cf` and exact submission
+  `990fddc2-1100-428b-b584-196bf0318a54` finished. Apple reports `VALID` /
+  `IN_BETA_TESTING`. Physical icon/Siri and final visual acceptance remain.
+
+- 2026-09-15: Shipped NB-012 Siri intents and NB-013 corrected Grand Touring
+  artwork in production TestFlight Build 30. EAS archive and signed IPA checks
+  passed; exact submission completed and Apple reports `VALID` /
+  `IN_BETA_TESTING`. Native/device acceptance remains separate.
+
+- 2026-09-15: Completed NB-013 Grand Touring artwork correction locally using
+  Rosewater's symbol proportions. Native delivery and device acceptance pending.
+
+- 2026-09-15: Queued NB-012 Siri Start/Stop Journey controls for the next native
+  build at the user's request. Planning only; implementation remains pending.
 
 - 2026-09-14: Prepared NB-009 as the next release-candidate native delta. Bumped
   the runtime to `2.0.0-watch.7` / `2.0.0-preview.12`, aligned SDK 57 patch

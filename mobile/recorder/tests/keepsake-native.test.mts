@@ -1,15 +1,20 @@
 import assert from 'node:assert/strict';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createRequire } from 'node:module';
+
+const { PNG } = createRequire(import.meta.url)('pngjs');
+const sharp = createRequire(import.meta.url)('sharp');
 
 const projectRoot = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, projectRoot), 'utf8');
 
 test('the approved medallions are backed by a pinned Minted native module', async () => {
-  const [config, podspec, swift] = await Promise.all([
+  const [config, podspec, swift, bridge] = await Promise.all([
     read('modules/journeydeck-keepsakes/expo-module.config.json'),
     read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakes.podspec'),
     read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakesModule.swift'),
+    read('modules/journeydeck-keepsakes/index.tsx'),
   ]);
 
   assert.deepEqual(JSON.parse(config).apple?.modules, ['JourneyDeckKeepsakesModule']);
@@ -18,9 +23,10 @@ test('the approved medallions are backed by a pinned Minted native module', asyn
   assert.match(podspec, /kind: 'exactVersion', version: '1\.1\.1'/);
   assert.match(podspec, /products: \['Minted'\]/);
   assert.match(swift, /import Minted/);
-  assert.match(swift, /ArtworkCoin\(image: image\)/);
-  assert.match(swift, /ArtworkCoinScene\.makeScene\(coin: coin, gold: gold\)/);
+  // Build 28's native module is unchanged. The OTA bypasses its renderer.
   assert.match(swift, /Constant\("assetCatalogVersion"\) \{ 3 \}/);
+  assert.doesNotMatch(bridge, /requireNativeView|JourneyDeckKeepsakesModule/);
+  assert.match(bridge, /ExpoDomWebViewModule/);
   assert.match(swift, /node\?\.eulerAngles\.y = 0/);
   assert.match(swift, /required init\(appContext: AppContext\? = nil\)/);
   assert.match(swift, /Prop\("artworkUri"\)/);
@@ -30,24 +36,29 @@ test('the approved medallions are backed by a pinned Minted native module', asyn
 });
 
 test('all 40 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
-  const designs = {
-    'first-track': ['the-first-track/option-01-theme-variants', 'first-track'],
-    'long-way-home': ['long-way-home/option-07-theme-variants', 'long-way-home'],
-    'thousand-mile': ['thousand-mile-club/option-02-theme-variants', 'thousand-mile-club'],
-    'grand-tourer': ['grand-tourer/option-07-theme-variants', 'grand-tourer'],
-    'first-note': ['first-note/option-01-theme-variants', 'first-note'],
-    'long-play': ['long-play/option-04-theme-variants', 'long-play'],
-    'soundtrack-100': ['soundtrack-100/option-01-theme-variants', 'soundtrack-100'],
-    'memory-maker': ['memory-maker/option-08-theme-variants', 'memory-maker'],
-    'picture-this': ['picture-this/option-08-theme-variants', 'picture-this'],
-    'story-collector': ['story-collector/option-01-theme-variants', 'story-collector'],
-  } as const;
-  const themes = { redline: 'grand-touring', sakura: 'rosewater', dark: 'cinematic-dark', light: 'warm-ivory' } as const;
-  for (const [id, [directory, prefix]] of Object.entries(designs)) for (const [themeId, sourceTheme] of Object.entries(themes)) {
-    const fallbackArtwork = new URL(`assets/medallion-concepts/${directory}/${prefix}-${sourceTheme}.png`, projectRoot);
-    const [fallbackBytes, fallbackInfo] = await Promise.all([readFile(fallbackArtwork), stat(fallbackArtwork)]);
-    assert.deepEqual([...fallbackBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-    assert.ok(fallbackInfo.size > 100_000, `${id}-${themeId} should retain production artwork detail`);
+  const ids = ['first-track', 'long-way-home', 'thousand-mile', 'grand-tourer', 'first-note', 'long-play', 'soundtrack-100', 'memory-maker', 'picture-this', 'story-collector'];
+  const themes = ['redline', 'sakura', 'dark', 'light'];
+  const frames = JSON.parse(await read('assets/medallions-v2/frames.json'));
+  const catalog = await read('src/medallion-artwork.ts');
+  assert.equal(Object.keys(frames).length, 40);
+  for (const id of ids) for (const theme of themes) {
+    const key = id + '-' + theme;
+    const original = await readFile(new URL('assets/medallions-v2/' + key + '.png', projectRoot));
+    const { width, height, data } = PNG.sync.read(original);
+    assert.ok(width >= 1040 && height >= 1040, key + ' retains more than twice the original resolution');
+    const runtime = await readFile(new URL('assets/medallions-v2/runtime/' + key + '.webp', projectRoot));
+    const decoded = await sharp(runtime).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    assert.equal(decoded.info.width, width); assert.equal(decoded.info.height, height);
+    // RGB under fully transparent pixels is intentionally undefined by WebP.
+    for (let i = 0; i < data.length; i += 4) if (data[i + 3] === 0) {
+      data.fill(0, i, i + 3); decoded.data.fill(0, i, i + 3);
+    }
+    assert.equal(Buffer.compare(data, decoded.data), 0, key + ' lossless visible pixels');
+    const frame = frames[key];
+    assert.ok(frame.x >= 0 && frame.y >= 0 && frame.x + frame.width <= 1 && frame.y + frame.height <= 1, key + ' frame remains in source');
+    assert.ok(frame.width > .85 && frame.height > .85 && frame.width <= 1 && frame.height <= 1, key + ' complete face crop');
+    assert.ok(Math.abs(frame.width * width - frame.height * height) < width * .03, key + ' orthographic circle');
+    assert.ok(catalog.includes('../assets/medallions-v2/runtime/' + key + '.webp'), key + ' uses recreated art');
   }
   const podspec = await read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakes.podspec');
   assert.doesNotMatch(podspec, /resource_bundles/);
@@ -63,19 +74,16 @@ test('Achievements moves keepsakes out of Memories and into Settings', async () 
     read('app.config.js'),
   ]);
 
-  assert.match(bridge, /requireNativeView/);
-  assert.match(bridge, /assetCatalogVersion/);
+  assert.match(bridge, /requireOptionalNativeModule/);
+  assert.match(bridge, /MedallionDOM/);
   assert.match(bridge, /from 'expo-asset'/);
-  assert.match(bridge, /Asset\.fromModule\(artworkSource\)\.downloadAsync\(\)/);
-  assert.match(bridge, /artworkUri=\{artworkUri\}/);
+  assert.match(bridge, /Asset\.fromModule\(source\)\.downloadAsync\(\)/);
+  assert.match(bridge, /new File\(asset\.localUri\)\.base64\(\)/);
   assert.match(bridge, /JourneyDeckMedallion/);
-  assert.match(bridge, /PanResponder\.create/);
-  assert.match(bridge, /Animated\.spring/);
-  assert.match(bridge, /from 'expo-image'/);
-  assert.match(bridge, /aspectRatio: 1/);
-  assert.match(bridge, /contentFit="cover"/);
-  assert.match(bridge, /if \(NativeMedallion && artworkUri\) return <NativeMedallion/);
-  assert.match(bridge, /goldBack/);
+  assert.match(bridge, /useMotionPreferences/);
+  assert.match(bridge, /MedallionArtworkImage/);
+  assert.match(bridge, /frame=\{frame\}/);
+  assert.match(bridge, /useExpoDOMWebView: true/);
   assert.match(card, /FIRST RECORDED JOURNEY/);
   assert.match(card, /The First Track/);
   assert.match(card, /road story began with a soundtrack/);
@@ -87,7 +95,7 @@ test('Achievements moves keepsakes out of Memories and into Settings', async () 
   assert.match(achievements, /Memory Maker/);
   assert.match(achievements, /Grand Tourer/);
   assert.match(achievements, /<BottomSheet/);
-  assert.match(achievements, /snapPoints=\{\['half', 'full'\]\}/);
+  assert.match(achievements, /snapPoints=\{\['full'\]\}/);
   assert.match(achievements, /Gesture\.Pan\(\)/);
   assert.match(achievements, /rotateY/);
   assert.match(achievements, />HOW</);
@@ -95,6 +103,6 @@ test('Achievements moves keepsakes out of Memories and into Settings', async () 
   assert.match(achievements, />WHY</);
   assert.match(achievements, /muted=\{!achievement\.earned\}/);
   assert.match(categories, /id: 'achievements', title: 'Achievements'/);
-  assert.match(appConfig, /preview \? '2\.0\.0-preview\.12' : '2\.0\.0-watch\.7'/);
+  assert.match(appConfig, /preview \? '2\.0\.0-preview\.13' : '2\.0\.0-watch\.8'/);
   assert.match(appConfig, /deploymentTarget: '17\.0'/);
 });

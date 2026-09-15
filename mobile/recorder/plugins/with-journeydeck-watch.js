@@ -79,12 +79,12 @@ async function writeWatchFiles(projectRoot, platformRoot, config) {
   }));
   const icons = path.join(destination, 'Assets.xcassets/AppIcon.appiconset');
   fs.mkdirSync(icons, { recursive: true });
-  // The source artwork is 512px; actool requires an actual 1024px opaque image.
-  // Use the same image pipeline as Expo's iOS icon generator.
+  // watchOS uses one bundled Home Screen icon. Match the iPhone/iPad primary
+  // Grand Touring icon; alternate phone icons cannot change it at runtime.
   const { source } = await generateImageAsync({ projectRoot, cacheType: 'journeydeck-watch-icon' }, {
     src: path.join(projectRoot, 'assets/icon-grand-touring-v2.png'), name: 'AppIcon.png',
     width: 1024, height: 1024, resizeMode: 'cover',
-    removeTransparency: true, backgroundColor: '#08070d',
+    removeTransparency: true, backgroundColor: '#081832',
   });
   fs.writeFileSync(path.join(icons, 'AppIcon.png'), source);
   fs.writeFileSync(path.join(icons, 'Contents.json'), JSON.stringify({

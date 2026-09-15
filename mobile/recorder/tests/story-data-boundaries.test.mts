@@ -58,7 +58,7 @@ test('native config isolates the new runtime and preserves manual Shazam permiss
   const prior = process.env.APP_VARIANT; delete process.env.APP_VARIANT;
   try {
     const config = require('../app.config.js')({ config: app });
-    assert.equal(config.runtimeVersion, '2.0.0-watch.7');
+    assert.equal(config.runtimeVersion, '2.0.0-watch.9');
     assert.equal(config.ios.deploymentTarget, '17.0');
     assert.equal(config.ios.config.usesNonExemptEncryption, false);
     assert.match(config.ios.infoPlist.NSPhotoLibraryUsageDescription, /dates and locations/);

@@ -58,6 +58,8 @@ test('alternate icon assets are build-ready 1024px opaque iOS app icon sets', as
       assert.equal(png.readUInt32BE(16), 1024);
       assert.equal(png.readUInt32BE(20), 1024);
       const decoded = await require('@expo/image-utils').getPngInfo(generated);
+      const source = await require('@expo/image-utils').getPngInfo(join(root, icon.source));
+      assert.ok(decoded.data.equals(source.data), `${icon.name} must contain the exact approved source pixels`);
       for (let alpha = 3; alpha < decoded.data.length; alpha += 4) {
         assert.equal(decoded.data[alpha], 255, `${icon.name} must be opaque`);
       }

@@ -79,6 +79,8 @@ test("hosted root is public while login and the private app keep separate routes
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /journeydeck-social-preview\.png/i);
     assert.match(landing.body, /Follow the launch/i);
+    assert.match(landing.body, /href="#medallions"/);
+    assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.equal(landing.body.match(/https:\/\/x\.com\/JourneyDeck/g)?.length, 5);
     assert.match(landing.body, /class="nav-social" href="https:\/\/x\.com\/JourneyDeck" target="_blank" rel="noopener noreferrer"/);
@@ -92,6 +94,12 @@ test("hosted root is public while login and the private app keep separate routes
     for (const [url, mime] of [
       ["/landing.css?v=cinematic-3", /text\/css/],
       ["/landing.js?v=cinematic-1", /javascript/],
+      ["/medallions/medallions.css?v=medallions-1", /text\/css/],
+      ["/medallions/medallions.js?v=medallions-1", /javascript/],
+      ["/medallions/catalog.js", /javascript/],
+      ["/medallions/viewer.js?v=medallions-1", /javascript/],
+      ["/assets/medallions/soundtrack-100-dark.webp", /image\/webp/],
+      ["/assets/medallions/story-collector-light-thumb.webp", /image\/webp/],
       ["/assets/journeydeck-coast-v2.jpg", /image\/jpeg/],
       ["/assets/journeydeck-cinematic-512.png", /image\/png/]
     ] as const) {
@@ -105,12 +113,19 @@ test("hosted root is public while login and the private app keep separate routes
     const beta = await runtime.app.inject({ method: "GET", url: "/beta?preview=1" });
     assert.equal(beta.statusCode, 200, beta.body);
     assert.match(beta.body, /GRAND TOURING/);
-    assert.match(beta.body, /href="\/beta\.css\?v=launch-readiness-1"/);
+    assert.match(beta.body, /href="\/beta\.css\?v=grand-tour-1"/);
+    assert.match(beta.body, /id="medallion-theme"/);
+    assert.match(beta.body, /data-theme="redline"/);
+    assert.match(beta.body, /aria-label="1 of 5: Home"/);
+    assert.match(beta.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(beta.body, /https:\/\/www\.apple\.com\/legal\/internet-services\/itunes\/dev\/stdeula\//);
+    assert.match(beta.body, /APPLE WATCH \/ 2\.0 PREVIEW/);
+    assert.doesNotMatch(beta.body, /Coming soon for iPhone|Follow the launch|Tessie/);
     assert.equal(beta.headers["x-robots-tag"], "noindex, nofollow");
     const betaSlash = await runtime.app.inject({ method: "GET", url: "/beta/" });
     assert.equal(betaSlash.statusCode, 302);
     assert.equal(betaSlash.headers.location, "/beta");
-    for (const url of ["/beta.css", "/assets/beta/grand-touring-home.webp", "/assets/beta/journeydeck-pulse.svg"]) {
+    for (const url of ["/beta.css", "/beta.js", "/assets/beta/grand-touring-home.webp", "/assets/beta/journeydeck-pulse.svg", ...["home", "soundtracks", "memories", "medallions", "statistics"].map(name => `/assets/beta/screens/${name}.webp`)]) {
       const asset = await runtime.app.inject({ method: "GET", url });
       assert.equal(asset.statusCode, 200, url);
     }

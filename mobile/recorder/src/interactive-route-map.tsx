@@ -1,4 +1,5 @@
 import { JourneyReplayStage, ReplayPosition } from './journey-replay-stage';
+import { JourneyReplayMarker, REPLAY_TICK_MS } from './journey-replay-marker';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useIsFocused } from 'expo-router';
 import { recordedReplayStops, replayPhotoMoments, type ReplayPhoto } from './journey-replay-model';
@@ -159,7 +160,7 @@ export function InteractiveRouteMap({
         }
         return next;
       });
-    }, 100);
+    }, REPLAY_TICK_MS);
     return () => {
       clearInterval(timer);
       replayClockRef.current = null;
@@ -170,7 +171,7 @@ export function InteractiveRouteMap({
     if (replayPlaying && replaySnapshot && replayCameraMode === 'chase' && motion.animate && !mapGestureRef.current) {
       cameraRef.current?.easeTo({
         center: replaySnapshot.coordinate,
-        duration: 110,
+        duration: REPLAY_TICK_MS,
         easing: 'linear',
         zoom: replayZoomRef.current,
         pitch: REPLAY_CHASE_PITCH,
@@ -337,7 +338,7 @@ export function InteractiveRouteMap({
         {replayEngaged && reachedStops.map((stop, index) => <Marker key={stop.id} id={stop.id} lngLat={stop.coordinate} anchor="center"><Animated.View entering={motion.animate ? FadeIn.duration(260) : undefined} accessibilityLabel={`Stop ${index + 1}`} style={[styles.songMarker, { backgroundColor: theme.palette.inset }]}><Text style={styles.songMarkerText}>Ⅱ</Text></Animated.View></Marker>)}
         {replayEngaged && photoMoments.filter(photo => photo.at <= replayTimestamp).map(photo => <Marker key={photo.id} id={`replay-photo-${photo.id}`} lngLat={photo.coordinate} anchor="center"><Animated.View entering={motion.animate ? FadeIn.duration(260) : undefined} accessibilityLabel="Journey photo" style={styles.songMarker}><Text style={styles.songMarkerText}>▣</Text></Animated.View></Marker>)}
         {queryCoordinate && <Marker id="journey-nearby-query" lngLat={queryCoordinate} anchor="center"><View style={styles.queryMarker}><View style={styles.queryMarkerCore} /></View></Marker>}
-        {replaySnapshot && <Marker id="journey-replay-position" lngLat={replaySnapshot.coordinate} anchor="center"><ReplayPosition heading={(replaySnapshot.headingDegrees ?? 0) - (replayCameraMode === 'chase' && replayPlaying && motion.animate ? replaySnapshot.headingDegrees ?? 0 : 0)} playing={replayPlaying} animate={motion.animate} /></Marker>}
+        {replaySnapshot && <JourneyReplayMarker points={replayRoute} timestamp={replayTimestamp} playing={replayPlaying} animate={motion.animate}><ReplayPosition heading={(replaySnapshot.headingDegrees ?? 0) - (replayCameraMode === 'chase' && replayPlaying && motion.animate ? replaySnapshot.headingDegrees ?? 0 : 0)} playing={replayPlaying} animate={motion.animate} /></JourneyReplayMarker>}
       </Map>}
       {!mapFailed && <View pointerEvents="none" style={styles.mapTint} />}
       <View pointerEvents="none" style={styles.mapStatus}><Text style={styles.mapStatusText}>{coordinates.length} route points · {locatedCount}/{totalSongCount} songs located</Text></View>
@@ -347,17 +348,19 @@ export function InteractiveRouteMap({
         <Pressable accessibilityLabel={replayCameraMode === 'chase' ? 'Show the full route' : 'Follow journey replay'} onPress={replayCameraMode === 'chase' ? fitRoute : followReplay} style={styles.mapControl}><Text style={styles.mapControlArrow}>{replayCameraMode === 'chase' ? '⌖' : '▲'}</Text></Pressable>
       </AdaptiveGlassSurface>}
       {!mapReady && !mapFailed && <View pointerEvents="none" style={styles.loading}><ActivityIndicator color={theme.color("#a98cff", 'text')} /><Text style={styles.loadingText}>Styling your route…</Text></View>}
-      {!replayEngaged && (popupSong || terminalSelection) && <View style={styles.popup}>
-        {popupSong ? <>
-          {popupSong.artworkUrl ? <Image source={popupSong.artworkUrl} style={styles.popupArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.popupArtwork, styles.popupArtworkFallback]}><Text style={styles.popupArtworkNote}>♪</Text></View>}
-          <View style={styles.popupCopy}><Text style={styles.popupKicker}>SONG {popupSong.index} · {formatClock(popupSong.playedAt)}</Text><Text style={styles.popupTitle} numberOfLines={1}>{popupSong.track}</Text><Text style={styles.popupDetail} numberOfLines={1}>{popupSong.artist}</Text></View>
-        </> : <View style={styles.popupCopy}>
-          <Text style={styles.popupKicker}>{terminalSelection === 'start' ? 'JOURNEY START' : 'JOURNEY END'}</Text>
-          <Text style={styles.popupTitle} numberOfLines={2}>{terminalSelection === 'start' ? (startLabel ?? 'Starting point') : (endLabel ?? 'Destination')}</Text>
-          <Text style={styles.popupDetail}>{formatClock(terminalSelection === 'start' ? startedAt : endedAt)}</Text>
+      {!replayEngaged && <View pointerEvents="box-none" style={styles.overviewOverlays}>
+        {(popupSong || terminalSelection) && <View style={styles.popup}>
+          {popupSong ? <>
+            {popupSong.artworkUrl ? <Image source={popupSong.artworkUrl} style={styles.popupArtwork} contentFit="cover" cachePolicy="memory-disk" /> : <View style={[styles.popupArtwork, styles.popupArtworkFallback]}><Text style={styles.popupArtworkNote}>♪</Text></View>}
+            <View style={styles.popupCopy}><Text style={styles.popupKicker}>SONG {popupSong.index} · {formatClock(popupSong.playedAt)}</Text><Text style={styles.popupTitle} numberOfLines={1}>{popupSong.track}</Text><Text style={styles.popupDetail} numberOfLines={1}>{popupSong.artist}</Text></View>
+          </> : <View style={styles.popupCopy}>
+            <Text style={styles.popupKicker}>{terminalSelection === 'start' ? 'JOURNEY START' : 'JOURNEY END'}</Text>
+            <Text style={styles.popupTitle} numberOfLines={2}>{terminalSelection === 'start' ? (startLabel ?? 'Starting point') : (endLabel ?? 'Destination')}</Text>
+            <Text style={styles.popupDetail}>{formatClock(terminalSelection === 'start' ? startedAt : endedAt)}</Text>
+          </View>}
         </View>}
+        {replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={[styles.replayStoryButton, { backgroundColor: theme.palette.accent }]}><Text style={[styles.replayStoryButtonText, { color: theme.palette.onAccent }]}>▶  Relive this journey</Text></Pressable>}
       </View>}
-      {!replayEngaged && replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={[styles.replayStoryButton, { backgroundColor: theme.palette.accent }]}><Text style={[styles.replayStoryButtonText, { color: theme.palette.onAccent }]}>▶  Relive this journey</Text></Pressable>}
       {replayEngaged && replaySnapshot && <View onLayout={event => setStageHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
         <JourneyReplayStage playing={replayPlaying} complete={replayTimestamp >= lastReplayTime} animate={motion.animate} timestamp={replayTimestamp}
           song={replaySong} photo={currentPhoto} stop={activeStop} progress={replayProgress}
@@ -501,7 +504,8 @@ const darkStyles = StyleSheet.create({
   mapControlArrow: { color: '#e9d9ef', fontSize: 20, fontWeight: '900' },
   loading: { position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#050208ee' },
   loadingText: { color: '#c2b2c8', fontSize: 11, fontWeight: '800' },
-  popup: { position: 'absolute', left: 12, right: 68, bottom: 14, minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: 1, borderColor: '#71437a', backgroundColor: '#09050ff2', paddingHorizontal: 10, paddingVertical: 8 },
+  overviewOverlays: { position: 'absolute', left: 12, right: 12, bottom: 12, gap: 10 },
+  popup: { marginRight: 56, minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: 1, borderColor: '#71437a', backgroundColor: '#09050ff2', paddingHorizontal: 10, paddingVertical: 8 },
   popupArtwork: { width: 48, height: 48, borderRadius: 9 },
   popupArtworkFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#2a1238' },
   popupArtworkNote: { color: '#d6b7ff', fontSize: 19, fontWeight: '900' },
@@ -546,7 +550,7 @@ const darkStyles = StyleSheet.create({
   nearbyTrack: { color: '#ece6ef', fontSize: 11, fontWeight: '800' },
   nearbyArtist: { color: '#817687', fontSize: 9, marginTop: 2 },
   nearbyDistance: { color: '#bd92d3', fontSize: 9, fontWeight: '800' },
-  replayStoryButton: { position: 'absolute', bottom: 12, left: 12, right: 12, minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, justifyContent: 'center' },
+  replayStoryButton: { minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, justifyContent: 'center' },
   replayStoryButtonText: { fontSize: 16, lineHeight: 20, fontWeight: '800' },
   replayPanel: { borderRadius: 20, borderWidth: 1, borderColor: '#4e2d58', padding: 15, gap: 13, overflow: 'hidden' },
   replayNowPlaying: { flexDirection: 'row', gap: 11, alignItems: 'center' },

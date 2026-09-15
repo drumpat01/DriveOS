@@ -1,5 +1,361 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## V2 completed and frozen — September 15, 2026
+
+- User confirmed V2 was submitted to App Review and directed all outstanding repository changes to be committed and pushed. Approval/public release are not yet confirmed; manual release remains the configured policy.
+- V2 development is complete. Only urgent customer-reported bug fixes are allowed; all features and non-urgent changes belong to V3 on a separate branch. The authoritative freeze is recorded in root `GEMINI.md`.
+- Final baseline includes existing mobile icon/Siri/replay/medallion changes, public website assets and tests, marketing artwork, and release documentation. No new runtime behavior was introduced during closure. Current branch: `codex/journeydeck-v2`.
+- Closure verification: 24 targeted mobile icon/Siri/replay/medallion tests and 12 server API tests passed; staged Gitleaks scan found no leaks. Removed trailing blank lines in two artwork-generation documents. Root and mobile freeze instructions now agree, and mobile runtime documentation matches Build 31. All outstanding tracked/untracked non-ignored project changes are included in the closure commit; no build, OTA, or main-branch deployment was requested.
+- Earlier submission-pending notes below are historical. Next: Apple review/manual release, urgent customer bug maintenance only for V2, and separate V3 development.
+
+## App Store Connect preparation — September 15, 2026
+
+- Final recheck at 3:11 PM: Apple's Add for Review validation passed. Draft explicitly shows `Item Ready to Submit`, iOS App 2.0, `2.0.0 (31)`, and enabled `Submit for Review`. Final submission NOT clicked. Corrected Watch order in Media Manager and verified it persisted on returning to the version page before re-adding the draft. The initial draft was temporarily removed to unlock media ordering; the final draft is ready. This supersedes earlier notes below saying validation was not run. External Chrome is left at the final draft dialog for the user.
+
+- Uploaded and verified the approved eight iPhone graphics (6.9-inch, inherited by 6.5-inch), eight corrected iPad graphics (13-inch), and two native Watch captures (Series 6). Both marketing sets are in numeric 01–08 order; Watch Start precedes Stop. Files came from Desktop `iPhone screenshots`, `Finished iPad`, and `Finished Watch`.
+- Saved a new 2,850-character Description and separate 823-character What's New for v2.0; verified persistence after reload. Added Siri/replay instructions to existing reviewer notes (3,586 characters total) and saved. Build 31 / 2.0.0 remains selected. Manual release, immediate distribution upon manual release, and keep-existing-rating remain selected.
+- Reviewed Lifestyle primary / Travel secondary, existing 4+ rating, published privacy declarations, and Approved monthly/annual subscriptions. Apple shows only a newer-Watch-screenshot advisory on the version page; uploaded 368x448 screenshots were accepted.
+- Contact correction: user said to use the same phone/email as 1.9.0. Visual screenshots of both version pages prove the contacts are already populated and identical. AX/DOM text output omitted these values and caused the prior false blank-field report. No contact edits were needed. No Add for Review or final submit was clicked. User explicitly prohibits final submission by the agent. External Chrome remains on v2.0.
+- Branch `codex/journeydeck-v2`, HEAD `8b8d056`, existing dirty application tree preserved. No native build, OTA, app code changes, staging, commit, or push. Next: user final submission. Submission validation has not been run via Add for Review.
+
+## Watch screenshots and approved iPad set — September 15, 2026
+
+- User approved the corrected iPad proportions (“Perfect”) and moved the set to Desktop `Finished iPad`. Received two real Watch PNG captures via `iCloudDrive/!QuickTransfer/`: ready/Start Journey and recording/Stop Journey. Both are native 368×448 PNGs without alpha, an Apple-accepted Watch screenshot size. Copied unchanged to `C:/Users/patri/OneDrive/Desktop/Finished Watch/01-start-journey.png` and `02-recording-stop-journey.png` in that order. No mockup or resize needed. iPhone set is Desktop `iPhone screenshots`; iPad set is Desktop `Finished iPad`. App Store Connect screenshot upload and the user's final submission interaction remain pending.
+
+## iPad App Store screenshots — September 15, 2026 (local review)
+
+- User rejected the first mockups as stretched/skewed. Replaced hand-positioned quadrilaterals with a rigid rectangle projected using 3° pitch, −5° yaw, −2° roll and uniform scaling. Removed the thick polygon sides in favor of a thin rounded silhouette edge and soft shadow. Re-rendered all eight, visually reviewed the sheet, and replaced the Desktop PNGs/review sheet/ZIP. Current files remain opaque 2752×2064 and are 0.63–1.58 MB; awaiting user review of the corrected proportions.
+
+- User placed eight real iPad captures `IMG_0098`, `0099`, `0100`, `0101`, `0103`, `0104`, `0105`, `0106` in `C:/Users/patri/OneDrive/Desktop/iPad Screenshots/` (five landscape 2360×1640, three portrait 1640×2360). Created eight matching marketing graphics with the same navy/gold colors and Arial-like bold/regular headline style and copy as the accepted iPhone set. Each actual iPad capture is shown whole on a slightly tilted tablet with a bezel, perspective, thickness, and shadow; portrait screens appear on upright devices. Final output is eight opaque RGB 2752×2064 landscape PNGs, 0.68–1.77 MB, accepted for Apple's 13-inch iPad slot. Review sheet, source-review sheet, and repeatable Pillow renderer are under `C:/Users/patri/.codex/visualizations/2026/09/15/01a0a4e1-9ab7-7ba3-bab5-52cd8d896ebc/ipad-app-store/`. Copied only the eight final PNGs, review sheet, and ZIP to Desktop `iPad Screenshots/App Store graphics/`, preserving the user's original captures.
+- User visual review and App Store Connect upload remain pending. Build 31 is selected/saved for 2.0; Apple Watch captures and final submission remain pending. No app code/build/OTA, App Store Connect upload, Git staging/commit/push, or App Review action in this task. Branch `codex/journeydeck-v2`, HEAD `8b8d056`, existing dirty tree preserved.
+
+## Eight user-designed iPhone App Store panels — September 15, 2026 (local review)
+
+- User superseded the earlier five marketing layouts with a stitched 1525×411 PNG from a design app and explicitly asked to cut its eight panels apart and scale them for iPhone screenshots while preserving the source colors and words. Cropped each panel at its colored edges, excluding white gutters and editor labels, then exported eight opaque 1320×2868 PNGs. The eight upload files, ZIP, review sheet, and repeatable render script are under `C:/Users/patri/.codex/visualizations/2026/09/15/01a0a4e1-9ab7-7ba3-bab5-52cd8d896ebc/iphone-app-store-from-reference/`. Dimensions and opacity verified; images range 1.7–2.6 MB.
+- The provided stitched source has only about 180 pixels of native width per panel. Scaling it to App Store dimensions preserves its appearance but cannot recover fine text or screen details. User corrected panel 3 headline to `See Every Track and Turn Again`; regenerated `03-see-every-track-and-turn-again.png`, review sheet, and ZIP with that exact wording on the same gold layout. User review is pending before replacing App Store Connect screenshots. Earlier five layouts remain local but are superseded. Build 31 remains selected/saved for version 2.0; iPad and Watch screenshots and final App Review submission remain pending.
+- No app code, build, OTA, Git staging/commit/push, App Store Connect upload, or App Review action in this screenshot export task. Current app branch remains `codex/journeydeck-v2`, HEAD `8b8d056`; preserve the existing dirty tree.
+
+## V2 iPhone App Store marketing graphics — September 15, 2026 (local review)
+
+- User provided eight iPhone Build 31 captures and explicitly prohibited upscaling. The transferred JPEGs are all 589×1280. Created five 1320×2868 RGB PNG layouts with the screenshots embedded at their exact pixel size; code validates pixel equality after export. Local outputs and a five-panel review sheet are under `C:/Users/patri/.codex/visualizations/2026/09/15/01a0a4e1-9ab7-7ba3-bab5-52cd8d896ebc/iphone-app-store/`, with a ZIP of the five upload assets. No original JPEGs were copied into the repository.
+- Order: Home ready/recording; journey summary/Soundtracks; Memory/medallion; Atlas (Plus labeled); Appearance/four current app icons. Clips exclude exact addresses and identifiable route maps from the medallion, Memory, Atlas, and journey detail captures. Each PNG is accepted 6.9-inch size, opaque and 0.8–1.8 MB. Native app pixels were not invented or enlarged.
+- **Next:** user reviews marketing layouts. If approved, replace the inherited seven old iPhone screenshots in App Store Connect; Build 31 is already selected and saved on version 2.0. iPad and Apple Watch captures remain outstanding. User explicitly asked to stop for screenshots and before final App Review submission. The transferred screenshots' 589px width limits interface readability; native full-resolution captures could replace them at 1:1 if supplied.
+
+## Final icon TestFlight build 31 — September 15, 2026
+
+- User authorized a new production TestFlight build with all mobile changes since Build 30, four approved no-border icons in the Settings chooser and iOS alternate icon catalog, and the bundled navy Grand Touring Watch icon. Production runtime advanced to `2.0.0-watch.9` (preview `2.0.0-preview.14`) to isolate older OTA updates. No OTA, Git staging/commit/push, or App Review action.
+- Full mobile tests 681/681, 30 focused icon/Siri/Watch/release-runtime checks, TypeScript, and iOS export passed. Four 1024px source icons are opaque RGB. Swift policy harness requires macOS and could not run on this Windows host; EAS Xcode archive compiled successfully.
+- EAS production Build 31 `e81cad23-f011-49be-afb3-b4a1ac1ec6cf` finished. Signed IPA `mobile/recorder/.cache/final-build31.ipa` confirms `2.0.0` (31), iPhone/iPad families, iOS 17, Watch build 31, production runtime `2.0.0-watch.9`, four registered alternate names, four bundled Settings icon previews byte-identical to source, and Siri symbols in the app binary. Source came from the current dirty working tree on `codex/journeydeck-v2`, HEAD `8b8d056`; preserve dirty web/mobile work.
+- Exact EAS submission `990fddc2-1100-428b-b584-196bf0318a54` finished against Build 31. App Store Connect reports Build 31 `VALID` and `IN_BETA_TESTING` for internal TestFlight, runtime `2.0.0-watch.9`. Device checks of the masked Home Screen/Watch icons and Siri behavior remain for testers. Watch Home Screen alternate selection cannot dynamically follow iPhone/iPad alternate selection; its bundled primary is Grand Touring navy.
+
+## Five JourneyDeck YouTube channel banner options — September 15, 2026
+
+- User requested five banner images at least 2048 × 1152 and 6 MB or less. Used built-in imagegen with approved JourneyDeck icon references, then saved five 2560 × 1440 quality-92 JPEGs under `docs/design/youtube-channel-banners/`: Blue Hour Coast, Route Atlas, Miles and Music, Sunrise Memories, Cinematic Neon. `review-sheet.jpg` compares all five; `README.md` records the prompt set and YouTube safe-area guidance.
+- Verified every final image is 16:9, 2560 × 1440, 0.60–0.77 MB, with the JourneyDeck word and emblem in the centered safe region. No Canva file, YouTube upload, app OTA/native build, public-site deploy, or Git staging/commit/push was made. Branch remains `codex/journeydeck-v2`, preserving the pre-existing dirty tree.
+
+## RC2 Grand Touring icon border correction — September 15, 2026 (local only)
+
+- User approved all three matched no-border variants and requested actual Settings/native icon integration. Copied concept review PNGs into `assets/icon-warm-ivory-v2.png`, `assets/icon-rosewater-v2.png`, and `assets/icon-cinematic-dark-v2.png`; updated `src/app-icon-picker.tsx` previews, catalog descriptions, and `plugins/with-alternate-app-icons.js` source paths. Primary light/dark and Watch continue using the current navy `assets/icon-grand-touring-v2.png`. Native alternate PNG pixel buffers exactly match the selected 1024px source files; Watch generated primary pixel buffer exactly matches Grand Touring source. Stable persisted icon IDs/native names and Plus gating preserved.
+- Verified focused icon/Watch/preference checks 17/17, Watch/alternate rerun 8/8, TypeScript, iOS Expo JS export (2,677 modules, 119 assets including all three new previews), and `git diff --check` (line-ending notices only). No EAS Update, native build, App Store upload, main-site deploy, or Git staging/commit/push. Build 30 still contains old icon artwork and must not be submitted.
+- Apple currently provides alternate Home Screen icons for iOS/iPadOS via `UIApplication.setAlternateIconName`, but not a watchOS runtime counterpart. The Watch Home Screen icon is a single bundled Grand Touring primary icon and cannot follow the phone's alternate icon selection; Apple HIG lists alternate selection for iOS/iPadOS/tvOS, not watchOS. Do not claim phone-to-Watch Home Screen icon synchronization. In-app Watch branding/theme could be separately synchronized if requested.
+- User requested matching no-border Warm Ivory, Rosewater and Cinematic Dark icons based on approved Grand Touring navy geometry. Created full-resolution imagegen masters and opaque 1024px review PNGs under `mobile/recorder/assets/icon-concepts/*-matched-no-border*.png`; after visual approval, these were promoted to actual app assets as recorded above. Four-theme sheet is `.cache/icon-proportions/four-theme-review.png` (256px and 60px views). Hue segmentation measured circle diameters at 67.58% (Grand Touring), 67.86% (Warm Ivory), 68.02% (Rosewater), 67.86% (Cinematic), with vertical centers within 0.09% of master for Warm/Rose and 0.09% for Cinematic. These are optical matches, not pixel-identical silhouettes.
+- Published the three 1024px review variants and sheet to separate `journeydeck-rc2-icon-review` Pages project as `JourneyDeck-{Warm-Ivory,Rosewater,Cinematic-Dark}-No-Border-Preview.png` and `JourneyDeck-Four-Theme-Review.png`. Preserved both older Grand Touring downloads. Each new direct link returned HTTP 200 `image/png`; downloaded SHA-256 matched the corresponding source PNG. No EAS Update, native build, JourneyDeck main-site deploy, or Git action.
+- User liked the centered icon and requested darker blue matching Grand Touring navy. Imagegen changed only the background toward theme `page #081832` / `inset #132d55`; latest candidate is `mobile/recorder/assets/icon-grand-touring-v2.png`, master `assets/icon-concepts/grand-touring-navy-preview.png`, 60px preview `.cache/icon-proportions/grand-touring-navy-60.png`. Published phone-test copy at `https://journeydeck-rc2-icon-review.pages.dev/JourneyDeck-Grand-Touring-Navy-Preview.png`, preserving the previous RC2 download URL beside it. Both links returned HTTP 200; navy download SHA-256 exactly matches current source (`ce052e211d8c61c1b8a958d22a99e349b155e440f2bcf1f80c693981647de7ce`). Opaque 1024px icon checks 4/4 passed; `git diff --check` passed. No app OTA/native build, Git action, or JourneyDeck website deployment.
+- At the user's request, published the earlier centered 1024px `icon-grand-touring-v2.png` as a standalone Cloudflare Pages static file: `https://journeydeck-rc2-icon-review.pages.dev/JourneyDeck-Grand-Touring-RC2.png`. Project `journeydeck-rc2-icon-review` is separate from the JourneyDeck site. Public GET returned HTTP 200 `image/png`, 1,392,574 bytes; downloaded SHA-256 matched that earlier source (`5a252621f447c8f3d35c5f875fb35d1896d99a25187dff30778006461c472428`). No app OTA/native build, website deployment, or Git action.
+- User asked to center the approved circle. On the original 1254px image, the gold bounds were x=188..1052, y=159..1021, placing the ring about 7px left and 37px high. Saved the centered imagegen revision to `mobile/recorder/assets/icon-concepts/grand-touring-centered-rc2-fix.png` and replaced `mobile/recorder/assets/icon-grand-touring-v2.png`; 60px preview is `mobile/recorder/.cache/icon-proportions/grand-touring-centered-60.png`. The latest 1254px ring bounds are x=199..1046, y=199..1048, within 4px horizontally and 3px vertically of canvas center (<0.2px at 60px). No OTA or native build was started.
+- User reviewed the new blue-edge/champagne icon and explicitly said, “I like this version.” Keep this new artwork, including its revised pulse; the prior assistant statement about reverting the pulse was mistaken. User is concerned about paying for another native build. Do not start one or publish an OTA without a later explicit request.
+- Production Build 30 is in TestFlight, but the user rejected its Grand Touring icon after physical review: the gold outer border is the specific defect. Build 30 must not be submitted to App Review.
+- Replaced `mobile/recorder/assets/icon-grand-touring-v2.png` with a border-free blue/champagne draft and saved the imagegen master at `mobile/recorder/assets/icon-concepts/grand-touring-no-border-rc2-fix.png`. The local 60px preview is `.cache/icon-proportions/grand-touring-no-border-60.png`.
+- Verified the image is opaque 1024x1024 PNG, 17 focused icon/native tests passed, and `git diff --check` passed with line-ending notices only. Branch remains `codex/journeydeck-v2`; prior mixed worktree changes are preserved.
+- The user explicitly said to keep this local and **not push an OTA**. No EAS Update, native build, upload, Git staging, commit, or push was performed for this correction. Settings artwork can update by OTA, while installed Home Screen and Watch icons require a later native build.
+- Next: accept the new icon at Home Screen size before compiling another build; then capture final iPhone/iPad/Watch screenshots from that accepted build.
+
+## RC2 Build 30 is in TestFlight — September 15, 2026
+
+- User authorized creating and pushing RC2 to TestFlight. Implemented app-target Swift Start/Stop App Intents and App Shortcuts via `plugins/with-journeydeck-siri.js`, with a public native facade calling the existing owner-fenced durable recorder commands. RC2 packages the corrected Grand Touring primary/alternate/Watch asset prepared earlier. Production runtime is isolated at `2.0.0-watch.8` (preview `2.0.0-preview.13`). No recorder schema change.
+- First EAS production Build 29 (`254495f7-3fa5-46c2-b118-3d95c878bba0`) failed Xcode at an implicit import access mismatch in the new app-target Swift file; no Apple submission occurred. Changed to explicit `internal import JourneyDeckRecorder`. EAS Build 30 (`31052a3a-ae42-4105-8890-d8dda77d2682`) compiled and signed successfully. Exact-build submission `da871dc2-7cb2-4a2b-99a6-6b0fceda6e17` finished. App Store Connect readback reports `2.0.0` (30), `VALID`, `IN_BETA_TESTING`, runtime `2.0.0-watch.8`.
+- Verification: 681/681 mobile tests, TypeScript, iOS export, Expo Doctor 21/21, public URL preflight, Git whitespace check and EAS macOS Swift policy harness passed. Ignored local IPA `.cache/rc2-release/JourneyDeck-2.0.0-30.ipa` (SHA-256 `03f825cb18d858285c108233e8773bbf42c2a3285405b3361889b9e78dbe6322`) verifies app/Watch Build 30, iPhone+iPad, iOS17, production iCloud, signed entitlements, four alternate icon registrations, 16 privacy manifests, and extracted App Intents metadata with both spoken phrases. Static Siri integration test passes; physical Siri operation and Apple icon masking remain unverified.
+- Branch `codex/journeydeck-v2`; pre-existing dirty mobile/web work preserved. EAS built from the current working tree, whose Git HEAD remains the older Build 28 commit; no Git staging, commit, push, OTA, screenshot upload, or App Review action in this turn. Next: install RC2 on iPhone/iPad/paired Watch; verify Home/Settings/Watch icon appearance and Siri discovery, Start/Stop with locked/backgrounded phone, setup/permission responses, repeated calls, races and saved archive. After accepted device behavior, replace App Store Connect iPhone screenshots and add iPad/Watch screenshots from Build 30, then complete metadata/build selection and submission preflight.
+
+## Build 28 device acceptance confirmed — September 15, 2026
+
+- User confirms all three remaining Build 28 checks previously listed work: a real journey with locked/backgrounded phone and paired Watch controls including saved result; offline reopening with local archive/iCloud recovery; and iPhone selected-song/Relive spacing plus large-text/iPad rotation. Record these as user device acceptance, without inferring unmentioned edge-case matrix coverage.
+- No further specific Build 28 test is known to be outstanding from the recent RC audit. Next work is RC2 native Siri implementation, corrected icon/artwork packaging, fresh build and device acceptance, followed by replacement iPhone and new iPad/Watch App Store Connect screenshots. Existing dirty tree preserved; documentation only, no runtime tests or release action.
+
+## RC2 scope and remaining Build 28 checks — September 15, 2026
+
+- User confirms iPad medallions work and journey replay looks good on both iPhone and iPad after the latest production OTA. These specific device visual checks are accepted; do not infer the full recorder, accessibility, or offline matrix from them.
+- User explicitly includes corrected Grand Touring Home Screen/Settings/Watch artwork (NB-013) and Siri Start/Stop journey controls (NB-012) in release candidate 2. Artwork is prepared locally; Siri remains planned and unimplemented. RC2 requires a new native binary/runtime and physical acceptance of these changes.
+- App Store Connect screenshots must replace the old iPhone set and add iPad and Watch sets. Capture final screenshots from the accepted RC2 build. Build selection, export compliance, and submission remain open; no release action was taken in this assessment.
+- Build 28 can still exercise currently unconfirmed recorder/paired-Watch lock/background/race and recovery behavior, local archive/iCloud/offline reopen, the selected-song/Relive spacing, and broader layout/accessibility checks. Ask for or perform only checks not already passed by the user. Branch `codex/journeydeck-v2`; existing dirty work preserved. Documentation-only update, no build/OTA/commit/push or runtime tests.
+
+## Final RC readiness audit — September 15, 2026 (read-only)
+
+- User asked whether anything else remains before the final RC. Build 28 is already valid/in TestFlight, and the September 15 production iOS OTA head includes the accepted iPad loading cover plus prior Relive/replay polish. This audit did not recheck App Store Connect remotely or run the complete suite; prior focused tests, TypeScript, production export and EAS publication were verified in their respective turns.
+- Practical open gates from `docs/app-store/RELEASE_CANDIDATE_STATUS.md`: physical iPhone/iPad/paired Watch device matrix after latest OTA (including iPad drag, rotation/Split View/Dynamic Type/Reduce Motion, route replay and recorder lock/background/Watch races); replace old iPhone and absent iPad/Watch screenshots; select accepted build, export compliance and final metadata/reviewer access preflight before App Review.
+- Build decision: NB-013 corrected Grand Touring Home Screen icon is not installed by OTA; NB-012 Siri Start/Stop is only planned. If either belongs in the final 2.0 RC, a new native binary/runtime and device acceptance are required. If they are deferred, Build 28 can be submitted only after device/metadata gates, with its existing native icon. Preserve V2 feature-freeze scope; do not claim Siri or corrected Home Screen artwork shipped.
+- Branch `codex/journeydeck-v2` with extensive pre-existing dirty mobile/web work; no edits outside this factual handoff, no Git commit/push, native build, OTA or App Review action in this audit. Consult Apple App Review on-device completeness and App Store Connect screenshot/build guidance before submission.
+
+## iPad loading reveal accepted — September 15, 2026
+
+- After follow-up OTA `89559132-ece4-486e-85bb-dd9758a5da60`, user responded "Good that'll work" to the covered 3D reveal. Mark this specific loading presentation accepted; do not infer completion of every orientation, drag or broader V2 acceptance check from this response.
+- Documentation-only milestone. No code changes, additional publication or Git commit/push. Existing verification and working tree remain as recorded below.
+
+## iPad medallion preparation cover — September 15, 2026 (follow-up OTA)
+
+- User device feedback on `75b3b497-fb72-4518-ad21-bfe7d8747e8d`: iPad medallion appears, but drop is not seen and the flat placeholder visibly turns into 3D. Replaced the iPad layout-triggered drop/flat-artwork crossfade in `modules/journeydeck-keepsakes/index.tsx` with a stationary, opaque native WebView behind a page-colored loading cover. Cover shows a small spinner and "Preparing medallion…", then fades 180ms to the ready 3D coin. Normal loading mounts no 2D medallion. iPhone's 440pt/400ms/0.8 spring and 80ms handoff remain unchanged.
+- `src/medallion-dom.tsx` now accepts optional iPad-only `waitForPaint`: defer readiness until a positive canvas layout, an explicit draw, and the next browser frame. Cleanup cancels pending readiness frames. Theme changes remount an opaque native cover; resizing does not replay it. Reduce Motion removes the spinner and uses a 100ms fade. Errors/12s active preparation timeout settle on static artwork and ignore late readiness, avoiding a later 2D-to-3D switch. Backgrounding pauses the timer/spinner; dismissal clears work.
+- Verification: 30 focused medallion/achievement tests pass, including no-flat-preview coverage, positive paint readiness, stale callbacks, theme changes, both iPad layouts, timeout/error, background/dismissal and unchanged iPhone. TypeScript and whitespace checks pass. Updated `docs/medallions.md` to acknowledge failed prior device behavior and document the replacement. Physical iPad acceptance of this new method is still pending.
+- Continued the user's authorized OTA correction flow: EAS CLI 24.5.0 published production iOS runtime `2.0.0-watch.7`, group `89559132-ece4-486e-85bb-dd9758a5da60`, update `01a0a553-0182-70fa-828c-f9e7ed5f1576`; message "Hide iPad medallion preparation until the 3D frame is ready". Dashboard: https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/89559132-ece4-486e-85bb-dd9758a5da60 . Production environment/RevenueCat configuration and internal-testing 0 used. Fresh export: `mobile/recorder/.cache/ipad-medallion-cover/export` (2,675 iOS/142 DOM modules); uploaded 1 bundle/2 assets, reused 118 assets. Previous polish changes remain included.
+- Branch `codex/journeydeck-v2`; all existing dirty work preserved, no Git commit/push or native build. Next: download/relaunch on iPad; verify cover hides all startup imagery, ready coin appears fully 3D, drag works in portrait/landscape/Split View, and iPhone retains the accepted drop.
+
+## OTA polish published — September 15, 2026
+
+- User explicitly requested "Push to ota". Published the current verified mobile working tree with EAS CLI 24.5.0 to `@journeydeck/journeydeck`, production channel/branch, production environment, iOS runtime `2.0.0-watch.7`. Message: `Fix iPad medallion entrance, Relive overlap, and smooth journey replay`.
+- Update group `75b3b497-fb72-4518-ad21-bfe7d8747e8d`; iOS update `01a0a544-9953-7d22-90ed-1376bf48b694`. Dashboard: https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/75b3b497-fb72-4518-ad21-bfe7d8747e8d . `eas update:view` independently confirmed iOS, runtime and message. Production channel mapping was checked before publishing. Previous compatible group: `dec1faa0-9caf-4e4b-89b0-c864e3ca4253`.
+- Fresh production export at `mobile/recorder/.cache/ota-polish-sep15/export` includes the production RevenueCat configuration and internal-testing flag 0; 2,675 iOS modules/142 DOM modules. Uploaded 1 app bundle and 3 assets, reused 117 assets. Earlier focused tests/typecheck remain passed; no code changed after those checks. Includes the earlier iPad drop and Relive spacing fixes, replay smoothing and bundled Settings Grand Touring artwork. Home Screen icon/Siri still require the separately queued native build.
+- Branch remains `codex/journeydeck-v2`, dirty tree preserved. No Git staging/commit/push, native build or App Review submission. Supersedes the unpublished status in the local implementation notes below. Next: physical phone/tablet acceptance after download/relaunch; verify medallion drop/drag in both iPad orientations and Split View, song card visibility, replay movement/rates/controls and Reduce Motion. Device download/adoption and visual success have not been confirmed.
+
+## Replay marker smoothing — September 15, 2026 (local)
+
+- User reports replay jerking between GPS spots. Found existing timestamp/coordinate interpolation but a direct Marker prop jumping at 10Hz while native camera eased for 110ms. New `mobile/recorder/src/journey-replay-marker.tsx` wraps the installed MapLibre Marker in Reanimated and animates displayed time over the shared 100ms update window on the UI thread. `replaySnapshotAt` and helpers are worklets; lower-bound binary search avoids scanning long routes every frame. Intermediate frames stay on each saved segment, including turns crossed within one tick. Camera now uses the same 100ms linear window. React telemetry/media/route-trace cadence remains unchanged; presentation trails the published clock by roughly one tick.
+- Paused seeks/Reduce Motion set positions immediately; effect cleanup cancels marker animation on retarget/unmount. Existing blur/background pause, replay rates, controls and saved data remain unchanged. Prior Relive overlay stacking fix preserved in `interactive-route-map.tsx`.
+- Verification: 47 route-moments/journey-replay/tab-runtime tests pass, including animated-prop intermediate-frame simulation without React renders, corners, interruption, pause/seek, Reduce Motion, playback-rate increments and 100k-point lookup. TypeScript and `git diff --check` pass. iOS export succeeded at `mobile/recorder/.cache/replay-smoothing/export` (2,675 iOS modules, 142 DOM modules, 117 assets, 8.7MB Hermes). Export includes all current mobile dirty work, including prior medallion/Relive/icon edits; not an isolated release package. Updated motion and release notes.
+- Branch `codex/journeydeck-v2`. No native changes, commit, push or OTA publication. Next: include in the next authorized `.watch.7` OTA polish batch; confirm smoothness on actual iPhone/iPad at 1x/4x/12x/Story, turns/stops, pause/resume, seek/restart, map gestures, background/blur and Reduce Motion. No measured device frame rate or visual success claimed.
+
+## iPhone Relive/song overlap fixed — September 15, 2026 (local)
+
+- User screenshot showed Relive covering the selected song on the journey map. Both overlays had independent absolute bottom offsets. Updated `mobile/recorder/src/interactive-route-map.tsx` to place the overview song/terminal card and CTA in one bottom-anchored vertical stack with a 10pt gap. Card width and CTA styling/actions are preserved; their intrinsic heights now prevent overlap. Empty stack space uses `pointerEvents="box-none"`; active replay stage behavior is unchanged.
+- Verification: 37 existing journey-replay/tab-runtime tests and TypeScript pass. Browser layout verification using the actual source style definitions passes 12 width/text-scale combinations (320/390/430/834px at 1/1.5/2x), plus card-only/button-only states. Inspected phone and large-text previews. Harness/screenshots: `mobile/recorder/.cache/relive-song-overlap/`. This is a style-layout approximation, not a native MapLibre device capture.
+- Updated mobile motion notes. Branch `codex/journeydeck-v2`; prior iPad medallion and unrelated work preserved. No native changes, commit, push or OTA publication. Include in the next authorized `.watch.7` OTA polish batch, then confirm song selection, start/end cards and Relive on device. The earlier iPad export predates this fix and must be regenerated before publication.
+
+## iPad medallion drop startup fix — September 15, 2026 (local)
+
+- User reports no medallion drop in iPad portrait or landscape; iPhone works correctly. Found an indefinite ready dependency: the native coin and zero-opacity WebView stayed translated -440pt above a clipped frame until DOM readiness. Native WebView startup throttling is a suspected trigger, not a reproduced physical-device diagnosis.
+- Updated `mobile/recorder/modules/journeydeck-keepsakes/index.tsx` for iPad startup: first positive coin layout starts the existing 400ms/0.8 spring, keeping WebView opacity 1 behind a themed native artwork cover. Ready fades that cover in 180ms; no second drop on readiness or resizing. A stalled/failed renderer leaves artwork visible. iPhone keeps its ready-gated drop and 80ms handoff. Theme changes replay entry correctly; input is enabled only when ready. No Swift, renderer geometry, artwork or runtime changes in this fix.
+- Expanded `tests/medallion-bridge.test.mts` with persistent shared-value mocks and withheld-callback iPad portrait/landscape, zero/positive layout, resizing, late readiness, theme, failure and Reduce Motion cases, plus explicit unchanged iPhone entrance assertions. Updated `docs/medallions.md` to match executable presentation behavior.
+- Verification: 28 focused medallion/achievement tests pass; TypeScript and `git diff --check` pass. iOS export completed at `mobile/recorder/.cache/ipad-medallion-drop/export` (2,674 iOS modules, 142 DOM modules, 117 assets, 8.7MB Hermes bundle). Export includes the existing dirty working tree, including the prior Settings icon correction; it is not a published update or an isolated release package.
+- Branch `codex/journeydeck-v2`; existing unrelated dirty work preserved. No commit, push, native build or OTA publication. Next: deliver with the authorized iPad OTA polish batch on `.watch.7`, then verify actual iPad drop AND interactive drag in both orientations/Split View, Reduce Motion and reopen/theme changes; confirm iPhone still matches accepted behavior. No physical-device success claimed.
+
+## V2 remaining work narrowed to iPad OTA polish — September 15, 2026
+
+- User states the only remaining V2 app work before submission is a few iPad visual tweaks for OTA. Recorded this scope in `docs/app-store/RELEASE_CANDIDATE_STATUS.md`. Await specific screenshots/descriptions; do not invent a redesign or expand the feature set.
+- Target existing Build 28 runtime `.watch.7` for iPad layout/style corrections; preserve native sidebar, portrait/landscape, narrow Split View and Dynamic Type. Siri NB-012 and native icon delivery NB-013 remain on the separate next-native-build list.
+- Documentation-only update on `codex/journeydeck-v2`; existing dirty work preserved. Inspected status, recent history and release notes; no runtime tests or external release-state audit. No OTA, native build or App Review submission started. Next: address the user's specified iPad visual issues and verify the affected layouts before OTA delivery.
+
+## Grand Touring icon proportions corrected locally — September 15, 2026
+
+- User clarified: match Rosewater's central symbol size and circle/bar thickness. This supersedes the previous enlarged-symbol approval. Used built-in imagegen with Rosewater as geometry reference, preserving Grand Touring's flat blue/champagne direction. Saved selected master `mobile/recorder/assets/icon-concepts/grand-touring-rosewater-proportions-v7.png` and packaged opaque 1024x1024 `assets/icon-grand-touring-v2.png` with Expo image-utils. Prompt/provenance recorded in the icon-concepts README.
+- Settings, primary light/dark, retained Grand Touring alternate and Watch already share this source asset; references, icon IDs and selection logic are unchanged. Added NB-013 to the next native build checklist. Siri NB-012 remains queued.
+- Verification: existing alternate-icon/catalog, preference and picker tests 13/13 pass; generated alternate catalogs are opaque 1024px. Inspected side-by-side browser previews at 60px and Settings 88/104px in `mobile/recorder/.cache/icon-proportions/review.html` and `review.png`. Visual proportion match verified, not pixel-identical silhouettes or physical iOS masking.
+- Branch `codex/journeydeck-v2`; other dirty work preserved. No build, OTA, staging, commit or push. Next: include NB-013 artwork in the next native binary and check phone/Watch masking and icon switching on device. Coordinate Settings delivery because OTA cannot replace installed Home Screen artwork.
+
+## Siri controls queued for next native build — September 15, 2026
+
+- User requested adding Siri journey start/stop to the next build list. Added NB-012 to `mobile/recorder/docs/next-native-build-checklist.md`, with native App Intents/Shortcuts scope, shared recorder behavior, permission/setup responses, and physical-device acceptance requirements.
+- Status: planned, not implemented. Next native build preparation should include NB-012 implementation and verification. This request updated the list only; no build, publication, or Git action was started.
+- Branch `codex/journeydeck-v2`; existing dirty work preserved. Documentation-only change; reviewed the checklist diff and checked whitespace. No runtime tests needed.
+
+## Siri journey controls assessment — September 15, 2026
+
+- User asked how Siri could start/stop journeys; assessment only, no feature implementation or build requested. No Siri/App Intents integration found in searched mobile source/modules/plugins.
+- Recommend native Swift Start/Finish App Intents and an AppShortcutsProvider using the existing JourneyDeckNativeRecorder command journal/state machine, as Watch controls already do. Preserve owner/session fencing, durable receipts and local storage; repeated Start must not duplicate journeys and Stop should finish/save.
+- Current native Start requires Always location authorization and manual profile readiness. Validate background/cold-launch/locked-phone GPS behavior on device and provide foreground setup fallback; do not promise lock-screen operation before acceptance. Native intent discovery requires a new native binary/runtime, not just OTA.
+- Inspected handbook, mobile instructions, recorder consolidation docs, command implementation, git status/diff stat/mobile instruction diff and recent history; consulted Apple App Intents/Core Location documentation. Branch codex/journeydeck-v2; existing dirty mobile/site work preserved. No tests run for this assessment. Next if implementation requested: wire app-target intent discovery to shared native commands and test state handling plus real-device Siri lifecycle behavior.
+
+## Grand Touring beta website is live — September 15, 2026
+
+- User authorized replacing live `/beta` with a mobile-first Grand Touring design. Implemented app purpose, live App Store CTA, Home-first flipping carousel using their five supplied screenshots, inline ten-medallion/four-theme 3D demo, features/Atlas, iPad/Watch preview, three-step guide, privacy, X and Apple/legal/support links.
+- Published https://journeydeck.me/beta through PR https://github.com/drumpat01/DriveOS/pull/148, website commit `7f660e42761f76f8d8b67f8d41a817369197f4e7`, merge `9cb3202d8a5c7c049dde42114a755774fc3bbd70`. Render deploy `dep-dakipktbedkc73ej8gi0` became live at `2026-09-15T11:33:23Z`. Release worktree `C:/Users/patri/.codex/tmp/journeydeck-grand-touring-beta`, branch `deploy/20260915-grand-touring-beta`. Source website files/assets/docs/test updates are mirrored here, preserving previous dirty mobile work.
+- Server typecheck/lint and34 tests, Atlas benchmark, all13 browser tests, PowerShell analysis, staged/source secret scans and full release preflight pass (existing SQLite-dependent preflight skips). Actual hosted Fastify/CSP checks verify 320/390/768/1440px, Home-first/copy synchronization, real touch swipe and vertical scrolling, autoplay/manual pause, rapid changes, lazy 3D, four finishes, drag, Reduced Motion and no-JS fallback. Windows WebKit navigation times out; no Safari validation claimed. The known17 HIGH dependency findings remain in unchanged production lockfiles.
+- Local preview `http://127.0.0.1:4190/beta`, isolated fixture/no cloud writes. In release worktree `.cache/grand-touring-beta/verify.cjs` checks actual interactions and `.cache/grand-touring-beta/verify-release.cjs` checks live Git-blob bytes, routes and health. Screenshots/logs are in the same ignored directory.
+- Live verification passes: ten served files match the committed Git blobs, including all five supplied screenshots and unchanged root homepage; public/legal/login/health/readiness routes, beta redirect/noindex, private app isolation, real touch/swipe/scroll, lazy 3D, selection/four finishes/drag and reduced motion. Live browser/asset errors and recent Render error logs are empty. Final desktop capture: release worktree `.cache/grand-touring-beta/live-desktop-final.png` (inspected). CI `34963464123` confirms34 server and13 browser tests pass; overall failure is only the known17 dependency findings. No check settings or branch-protection overrides were used.
+- Website objective complete. Follow up separately on existing dependency updates and change the preview availability wording when App Store 2.0 launches. This app branch should reconcile main's website commits before its next release. No app/native/OTA change was made in this task.
+
+## Public medallions are live — September 14, 2026, 10:44pm CDT
+
+- Published https://journeydeck.me/#medallions through PR147: https://github.com/drumpat01/DriveOS/pull/147. Website commit `396fb322fd1f9abb807333256ce05df97ed4a829`; merge `bfd36ee968572e446135041d02dabb078ff18cc9`. Render deploy `dep-dakbttdbedkc73ecsq1g` became live at `2026-09-15T03:44:51Z` on service `srv-d9t7teu417fc73doc3vg`.
+- Live verification: all85 homepage/module/style/artwork files match the committed Git blobs; health/readiness/legal/private-app checks pass; actual desktop and390px browser 3D/theme/medallion selection works without page errors or failed assets. Recent Render error logs were empty. Screenshots: `.cache/public-medallions/live-desktop.png` and `live-mobile.png` in the release worktree. Initial filesystem-byte comparison differed only because local Windows text files use CRLF; authoritative Git-blob comparison passes.
+- CI run34925781663 confirms all9 E2E tests pass after the narrow Statistics fixture-clock correction. Overall CI remains red solely for17 existing HIGH dependency findings in unchanged production root/mobile lockfiles; the new isolated medallion package has zero audit findings. No security ignore settings or branch-protection overrides were used. Track the existing dependency updates separately.
+- Release worktree: `C:/Users/patri/.codex/tmp/journeydeck-public-medallions`, branch `deploy/20260915-public-medallions`. Original `C:/Users/patri/JourneyDeckv2` stays on `codex/journeydeck-v2` with its pre-existing mobile work and mirrored public-site changes. No app/native/OTA release occurred in this website task. Local previews remain4188 (original) and4189 (release); no cleanup/discard or branch-switch was performed.
+- Website objective is complete. Follow up on the existing dependency findings independently; this original app branch will eventually need to reconcile the website merge from main before its own release.
+
+## Public medallion release continuation — September 14, 2026
+
+- User asked to continue after the local integration. Prepared isolated worktree `C:/Users/patri/.codex/tmp/journeydeck-public-medallions` from current production/main `13563ab`, preserving RevenueCat/privacy updates. Branch `deploy/20260915-public-medallions`, commit `396fb322fd1f9abb807333256ce05df97ed4a829`, PR https://github.com/drumpat01/DriveOS/pull/147.
+- Made the renderer build self-contained: `tools/public-medallions/source/` snapshots the four exact approved renderer modules and frames; locked esbuild 0.28.2, sharp 0.35.4, Three.js 0.186.0 in its own package. Build helper optionally accepts an original-art directory. Escaped shader strings keep the compiled bundle whitespace-clean. Removed the old web build entry that imported unavailable mobile files. Mirrored release source/build/test refinements back into this original working tree.
+- Added public medallion asset route checks. Fixed the pre-existing Statistics smoke test by pinning only that test's clock to its static August 2026 fixtures. Server34/34, E2E9/9, typecheck/lint, Atlas benchmark, PowerShell analysis, full release preflight, secret scanning, staged diff/scope audit and real Fastify/CSP responsive browser checks pass. New isolated dependency audit: zero vulnerabilities.
+- Full npm pipeline reaches repository-wide Trivy, which reports17 existing HIGH findings in unchanged root/mobile lockfiles (15 mobile,2 root). No dependency ignore or bypass configuration was introduced. PR documents this separately.
+- GitHub run34925781663 is still running. Next: inspect final CI result, merge exact PR head through normal merge if appropriate, watch Render service `srv-d9t7teu417fc73doc3vg` deploy from main, then run `.cache/public-medallions/verify-live.cjs` in the release worktree and inspect recent error logs. CLI is authenticated in its existing workspace; Render MCP lacked a selected workspace, so no MCP workspace was changed. Release preview is on localhost4189 (session95210); original preview stays4188.
+
+## Public homepage medallion integration — September 14, 2026 (local, ready for review)
+
+- Integrated the latest all-ten/four-theme drop demo into the public homepage at `/#medallions`, with a navigation link, responsive collection gallery, appearance/medallion selectors, milestone copy, drag/keyboard rotation and replay. Cinematic Dark matches the existing homepage; other palettes are scoped to the explorer. No homepage recolor was necessary.
+- `web/medallions/` contains the controller, styles, catalog, generated Three.js bundle, build entry and license. `tools/Build-PublicMedallions.mjs` reuses the mobile/demo renderer and existing dependencies without changing mobile source. `web/assets/medallions/` includes all 40 full faces and 40 circular thumbnails (16.3 MiB combined); original mobile artwork is preserved. Build/use details: `docs/public-medallions.md`.
+- Lazy-loads 3D when visible, disposes superseded renderers, respects Reduced Motion, and shows framed artwork after WebGL/bundle failure or without JavaScript. Public content uses no personal achievement data. Auth, desktop routes, CSP, legal links and the existing V2 toggle remain unchanged.
+- Verified JavaScript/build-script syntax and `git diff --check`; focused public/hosted/desktop route tests 3/3; real Fastify/CSP browser checks at 1440, 768, 390 and 320px; all 40 actual WebGL variants; rapid selection, keyboard, drag, replay, normal/reduced motion, context-loss fallback/recovery, bundle-load failure and JavaScript-disabled fallback. Healthy runs had no page errors or failed assets. The first browser run overlapped asset generation and saw unfinished thumbnails; rerun after the build completed passed cleanly.
+- Review server remains at `http://127.0.0.1:4188/#medallions`, started with `node --import tsx .cache/public-medallions/serve.mts` (tool session 7598). Uses an isolated fixture database and disabled cloud integrations. Browser scripts/screenshots are in ignored `.cache/public-medallions/`.
+- Branch `codex/journeydeck-v2`, base `8b8d056`; existing dirty mobile/docs work preserved. This task changed only public website files, the build helper, public-site documentation and this handoff. No staging, commit, push, deployment, native build or OTA. Next: user review; publishing requires the normal authorized website release workflow. Include all generated web assets/bundle in that release.
+
+## 3D-first medallion drop preview — September 14, 2026 (current, source only)
+
+- User found the moving shine insufficient to hide the roughly one-second Three.js preparation. The detail medallion now initializes its WebGL renderer while the complete coin is clipped 440pt above the sheet. The renderer's `onReady` follows its first rendered frame; its 80ms layer switch finishes offscreen, then the finished 3D coin enters with a 400ms, 0.8-damping spring and a subtle 0.97-to-1 scale settle. There is no visible flat-image-to-3D conversion.
+- The fallback remains available for missing Expo DOM support, artwork-read failure, or WebGL failure and enters only on that failure path. Reduce Motion removes the translation/bounce and uses a 100ms opacity reveal. Both layers share one moving wrapper, so a readiness change cannot cause a position jump.
+- Updated `tests/medallion-bridge.test.mts` around the 3D-first readiness and accessibility handoff. Focused 7/7, full mobile 671/671, TypeScript, `git diff --check`, and a clean production iOS export passed.
+- Exact local review page is open at `http://127.0.0.1:4177/` from `.cache/medallion-fix/drop-preview` (local PID 37156). It runs the real `createMedallionViewer`, recreates WebGL on **Replay load + drop**, and keeps the 3D coin spinable after landing. This is a local preview only; no OTA, native build, staging, commit, or Git push was performed. Await the user's motion approval before publishing another production OTA.
+- User then identified pixelation and vertical banding while turning Soundtrack 100. The approved fronts are 1254x1254 raster illustrations, not SVGs; some tall vinyl highlights are authored pixels. Renderer quality is now raised without replacing the art: 2048 face working texture, 1024 material/normal maps (was 512), up to 16x anisotropy (was 8x), 1.5x canvas supersampling capped at 4x device scale, high-performance WebGL, shader dithering, and 96x256 face tessellation (was 32x192). The offscreen readiness gate covers the added preparation.
+- The same local page was rebuilt/reloaded with the quality pass and inspected at front and 30 degrees using the real renderer. Focused geometry/surface/bridge tests pass 16/16, TypeScript passes, and the production iOS export at `.cache/medallion-fix/high-quality-preview-ios-export` succeeds with the DOM bundle. The authored vinyl light streaks remain part of the source art; a materially different pattern would require a reviewed raster-art revision across theme variants.
+- At the user's request for slightly more 3D presence, raised only the face normal strength from 0.55 to 0.68, clearcoat from 0.16 to 0.20, environment response from 0.85 to 0.90, and tightened clearcoat roughness from 0.30 to 0.28. Physical relief depth/thickness and artwork remain unchanged. Rebuilt/reloaded the local preview and inspected at 30 degrees; focused 16/16 and TypeScript still pass. No OTA published.
+- Expanded the localhost preview at `http://127.0.0.1:4177/` into a complete browser for all 10 medallions and all four themes. Both selectors rebuild the real 3D renderer, replay the offscreen-load/drop entrance, update the achievement title/how/why, and recolor the phone sheet for Grand Touring, Rosewater, Cinematic Dark, or Warm Ivory. Copied and verified all 40 runtime WebPs under the ignored preview folder. Browser interaction verified Soundtrack 100/Grand Touring and Memory Maker/Warm Ivory. Preview-only change; no OTA published.
+- User approved all medallions and explicitly requested production OTA publication. Final verification passed: full mobile 671/671 and a clean production iOS export with 2,674 app modules, 142 DOM modules, 117 assets, all 40 medallion variants, and runtime `2.0.0-watch.7`.
+- Published to the iOS `production` channel/branch using the EAS `production` environment at 2026-09-15 03:03:32 UTC / September 14 10:03pm CDT. Group `dec1faa0-9caf-4e4b-89b0-c864e3ca4253`, update `01a0a305-0d33-7e02-94ac-7d3f0e1b2ae1`, message `Polish 3D medallions and seamless entrance`. `eas update:view` verified platform, branch, runtime, and message. Release link: https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/dec1faa0-9caf-4e4b-89b0-c864e3ca4253
+- No native build, staging, commit, or Git push was performed. Installed production Build 28 may need up to two cold launches: the first downloads the OTA and the next runs it.
+
+## Medallion rim and loading polish — September 14, 2026 (current)
+
+- Physical iPhone acceptance found the recreated coins nearly complete. The
+  achievements grid still let some authored fronts end without a clear outer
+  gold ring, and detail sheets showed a flat fallback for about one second while
+  Three.js initialized.
+- `MedallionArtworkImage` now gives all 40 native thumbnails a consistent
+  ordinary-gold outer rim with a bright perimeter line and an inset circular
+  crop. Locked medals dim the complete coin, including its rim.
+- The detail fallback is now a finished-looking gold-rimmed coin with an iOS
+  depth shadow and a 900ms moving gold-white reflection while the renderer
+  prepares. It crossfades into WebGL in 180ms. Reduce Motion uses a static coin
+  and 100ms opacity transition. Accessibility exposes only the visible layer.
+  If WebGL fails, the dimensional fallback remains visible.
+- Reduced the generated reverse normal/roughness work map from 1024 to 768 while
+  drawing the same vector engraving, cutting that CPU preparation by about 44%
+  without changing front detail or physical geometry.
+- Focused10/10, full mobile671/671, TypeScript, diff check and production iOS
+  export passed. Visual review confirmed the uniform rims, loading treatment,
+  and actual exported DOM onReady/render. No native source or runtime changed.
+- Published the exact tested export to production iOS at 2026-09-15 02:18:00 UTC
+  / September14 9:18pm CDT. Group `67a9e9e7-bbdd-4cbe-acae-25c1c2bcd662`,
+  update `01a0a2db-5d16-7abb-a847-517f86245621`, runtime `2.0.0-watch.7`.
+  `eas update:view` verified platform, branch and runtime. Uploaded one bundle
+  and two assets; 118 assets reused. Release link:
+  https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/67a9e9e7-bbdd-4cbe-acae-25c1c2bcd662
+- No Git commit/push. Next: physical iPhone acceptance of all grid rings, loader
+  reflection/crossfade, Reduce Motion, repeated opens, and renderer failure path.
+
+## Recreated coin medallions — September 14, 2026 (current)
+
+- User rejected the prior deep relief OTA and explicitly requested recreated,
+  realistic, large, reflective, spinable medallions with all theme variants.
+  Recreated all 40 front faces at 1254x1254 with imagegen. The previous source
+  artwork contained photographed sidewalls and off-center faces; the .10
+  image-driven displacement amplified painted highlights into severe ridges.
+- New `assets/medallions-v2/` PNG originals and generation notes are preserved.
+  Runtime uses lossless WebP (74,967,138 bytes total, versus 98,782,818 PNG bytes),
+  verified pixel-for-pixel for visible pixels. `scripts/prepare-medallion-assets.cjs`
+  reproduces WebP assets and `frames.json`; sharp is a development dependency.
+  Generated outside backgrounds often contain opaque checkerboards. Never use
+  raw sources uncropped. Gold perimeter detection plus a centered 2.5% inset was
+  audited at 1,440 angles per face; the native grid/fallback and DOM share it.
+- New concentric, closed gold body is .132 thick. Face varies only .006 and stays
+  below the protective lip. Image brightness cannot displace geometry. Shallow
+  normal engraving, enamel/metal masks, broad studio reflections, reeded edge
+  and engraved gold reverse replace the former noisy relief/self-shadows.
+  Starts exactly front-facing, drag rotates fully with bounded inertia; holding
+  before release cancels stale velocity. Reduced Motion and inactive pause remain.
+- Verified: focused25/25, full mobile671/671, TypeScript, diff check, production
+  iOS export with all40 WebP assets. Actual exported DOM bundle reports onReady
+  with inline WebP/frame props and renders correctly. All40 browser fronts and
+  representative oblique/edge/reverse views inspected; actual pointer drag,
+  front-pose stability, inactive blocking and offline cached reopen checked.
+  Hidden IAB throttles rAF (1 frame/700ms), so fluidity needs physical acceptance.
+  Controlled actual-renderer motion harness passes6/6 for coast/decay, hold,
+  Reduce Motion, inactive/hidden states and disposal (`verify-motion.cjs` in
+  ignored `.cache/medallion-fix/`).
+- Build28 runtime remains `2.0.0-watch.7`; no native edits/build, Git commit or
+  push. Branch `codex/journeydeck-v2`, base `8b8d056`. Published exact tested
+  export `mobile/recorder/.cache/medallion-fix/v2-production-export` to production
+  iOS at September15 01:04:18 UTC / September14 8:04pm CDT. Group:
+  `90bac26f-7d91-4e3a-a3a2-d033695f4cf0`; update:
+  `01a0a297-e2e0-7274-b802-9b1df9cf9da6`. `eas update:view` verified platform,
+  production branch and runtime. Uploaded42 assets, reused78. Release link:
+  https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/90bac26f-7d91-4e3a-a3a2-d033695f4cf0
+  Temporary review tabs and port8768 server closed. Next: physical iPhone/iPad
+  acceptance of all themes, edge/reverse, drag/coast, sheet sizing and offline
+  reopen. No additional implementation or publication work is pending.
+
+## Larger embossed medallions — September 14, 2026
+
+**Superseded after failed physical-device visual acceptance; see current section.**
+
+- User requested a much larger medal, 2x image resolution and visibly 3D
+  artwork after confirming the navy/full-sheet OTA on iPhone. Detail size now
+  uses measured sheet width/height (up to 380pt, typically 310–345pt on iPhone,
+  versus the previous 210pt cap), retaining room for readable milestone text.
+- Renderer now produces 1040x1040 face textures from the approved 520x520 PNGs
+  with high-quality canvas interpolation; source artwork files are unchanged.
+  Asked optional conventional-vs-AI upscale preference; no answer received,
+  continued with stated conventional, design-preserving renderer upscale.
+  This adds pixel samples, not invented detail. Native render density now
+  supports 3x iPhone screens and up to 8x anisotropic texture filtering.
+- Continuous gold-feature relief now has 128 rings / 256 segments and 0.10
+  maximum height (previous 0.025), bilinear sampling, softened contours,
+  directional self-shadows and stronger live material lighting. It is raised
+  bas-relief, not independently modeled free-standing scene objects.
+- Checked all 40 variants in browser; inspected front/60-degree/edge profiles
+  on First Track and Memory Maker plus light-theme relief. Focused 13/13,
+  TypeScript and diff check passed. Full 659/659 tests and production export
+  passed. Published production iOS OTA (runtime 2.0.0-watch.7) September 15,
+  00:13 UTC / September 14, 7:13pm CDT: group
+  4d564b09-18eb-4dd5-b2e8-1af103ffd682, update
+  01a0a269-7e09-7c0b-ae00-8ba95f69334a. EAS publication verified.
+  Physical device performance/appearance remain pending. Temporary browser
+  preview and port-8768 server closed at completion. No Git commit or push.
+
+## Medallion sheet layout follow-up — September 14, 2026
+
+- User approved the Three.js medals on their iPhone, then supplied a recording
+  showing a lighter blue half-height sheet with sideways overflow. Requested
+  dark navy and all content visible without scrolling around.
+- Achievement sheet now uses theme.palette.page (#081832 in Grand Touring),
+  opens at the full detent, and wraps RN content in RNHostView so layout is
+  measured from the actual presented sheet. Bouncing is disabled, medal size
+  adapts to the measured height, and scrolling is enabled only for overflow
+  (long personal text / accessibility sizes). Other themes keep their page color.
+- Verified focused 8/8 tests plus responsive-height assertions and TypeScript;
+  diff check and production iOS export passed. OTA published September 14,
+  23:58 UTC to production iOS runtime 2.0.0-watch.7: group
+  c71ed92d-bd13-4948-b113-c4da35488b6e, update
+  01a0a25b-5924-71fa-9119-876246397e22. Native code/runtime unchanged;
+  physical sheet acceptance remains pending. No commit/push/new native build.
+
+## Build 28 Three.js medallion OTA — September 14, 2026
+
+- User explicitly requested production OTA after choosing Three.js. Replaced
+  the JS Minted view with an Expo DOM Three.js renderer: circular solid body,
+  raised rims, reeded edge, gold reverse, alpha-centered artwork and subtle
+  true geometric relief. Approved 40 PNGs are unchanged. Grid removes its
+  extra border/mask. Local asset bytes are passed inline; no CDN is required.
+- Build 28's signed IPA contains ExpoDomWebViewModule. Native sources remain
+  unchanged at capability 3; runtime stays 2.0.0-watch.7 (preview .12).
+  The abandoned native capability-4 / watch.8 draft was not built and is saved
+  only under ignored .cache/medallion-fix/native-draft. The JS bridge no longer
+  invokes Minted. Three.js is a JS-only dependency; no native build is needed.
+- Verified: focused 13/13 and full mobile 659/659 tests, TypeScript, diff check,
+  production-environment iOS export including bundled DOM HTML/JS, all 40
+  variants in the actual browser renderer, circular front/edge/back, Memory
+  Maker in all four themes, repeated recreation and cached artwork offline.
+  The actual exported Expo DOM component also reports onReady through a
+  simulated native bridge. Physical iPhone/iPad acceptance remains pending.
+- Production iOS OTA published and verified at 2026-09-14 23:50 UTC for
+  runtime `2.0.0-watch.7`, branch/channel production. Group
+  `003a024c-c275-4342-a597-eba2963dff1b`, iOS update
+  `01a0a254-2ab1-7995-be8e-a48e5cf73605`.
+  https://expo.dev/accounts/journeydeck/projects/journeydeck/updates/003a024c-c275-4342-a597-eba2963dff1b
+  Uploaded 1 app bundle and 44 assets (76 reused); EAS update:view confirms
+  platform/runtime/group. Logs are ignored under .cache/medallion-fix.
+  No Git staging/commit/push or new native build was performed.
+- Branch codex/journeydeck-v2, base 8b8d056; source edits remain uncommitted.
+  After delivery, verify device rotation, gold reverse, Memory Maker alignment,
+  theme changes, offline reopen, drag/idle, Reduce Motion and VoiceOver.
+
 ## Production release candidate Build 28 is in TestFlight — September 14, 2026
 
 - User explicitly lifted the build hold and authorized building and uploading

@@ -50,7 +50,7 @@ test('preview and production select separate public Apple keys and new native ru
     process.env.APP_VARIANT = 'v2-preview';
     const preview = configureApp({ config: base });
     assert.equal(preview.extra.revenueCat.appleApiKey, 'appl_preview');
-    assert.equal(preview.runtimeVersion, '2.0.0-preview.12');
+    assert.equal(preview.runtimeVersion, '2.0.0-preview.14');
     delete process.env.REVENUECAT_PREVIEW_APPLE_API_KEY;
     assert.equal(configureApp({ config: base }).extra.revenueCat.appleApiKey, '');
     delete process.env.APP_VARIANT;

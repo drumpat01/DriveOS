@@ -111,6 +111,8 @@ test('Music page renders its cinematic hero and live archived play', async ({ pa
 });
 
 test('Statistics Option 1 renders live journey analysis and interactive ranges', async ({ page }) => {
+  // The mock journeys are fixed in August 2026; keep rolling ranges on that fixture date.
+  await page.clock.setFixedTime(new Date('2026-08-15T19:00:00Z'));
   await page.locator('.nav-button[data-view="statistics"]').click();
 
   await expect(page).toHaveURL(/#statistics$/);

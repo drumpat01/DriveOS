@@ -45,6 +45,74 @@ function load(name: string, mocks: Record<string, any>, globals: Record<string, 
   const code = ts.transpileModule(readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => mocks[id] ?? require(id), ...globals }); return module.exports;
 }
+
+test('replay marker advances between React ticks on its recorded path and cancels on seek, reduced motion and unmount', async () => {
+  const running = new Map<any, { from: number; to: number; duration: number }>();
+  let renders = 0;
+  const NativeMarker = ({ children, ...props }: any) => {
+    renders++;
+    return React.createElement('AnimatedMarker', props, children);
+  };
+  const api = load('journey-replay-marker.tsx', {
+    '@maplibre/maplibre-react-native': { Marker: NativeMarker },
+    './route-moments': route,
+    'react-native-reanimated': {
+      __esModule: true, default: { createAnimatedComponent: (component: any) => component },
+      Easing: { linear: 'linear' },
+      useSharedValue: (initial: number) => {
+        const ref = React.useRef<any>(null);
+        if (!ref.current) {
+          const shared = { current: initial, get() { return this.current; }, set(value: any) {
+            if (typeof value === 'number') { this.current = value; running.delete(this); }
+            else running.set(this, { from: this.current, to: value.to, duration: value.duration });
+          } };
+          ref.current = shared;
+        }
+        return ref.current;
+      },
+      useAnimatedProps: (callback: () => any) => ({ get lngLat() { return callback().lngLat; } }),
+      withTiming: (to: number, config: any) => { assert.equal(config.easing, 'linear'); return { to, ...config }; },
+      cancelAnimation: (shared: any) => running.delete(shared),
+    },
+  });
+  const points: route.ReplayRoutePoint[] = [
+    { recordedAtEpochMs: 0, coordinate: [0, 0], headingDegrees: 0, speedMph: 10, batteryPercent: 80 },
+    { recordedAtEpochMs: 50, coordinate: [1, 0], headingDegrees: 90, speedMph: 10, batteryPercent: 80 },
+    { recordedAtEpochMs: 100, coordinate: [1, 1], headingDegrees: 90, speedMph: 10, batteryPercent: 80 },
+    { recordedAtEpochMs: 10_000, coordinate: [1, 2], headingDegrees: 90, speedMph: 10, batteryPercent: 80 },
+  ];
+  let tree: any;
+  const render = (timestamp: number, playing = true, animate = true) => React.createElement(api.JourneyReplayMarker, { points, timestamp, playing, animate }, React.createElement('Puck'));
+  const position = () => tree.root.findByType('AnimatedMarker').props.animatedProps.lngLat;
+  const frame = (elapsed: number) => {
+    for (const [shared, animation] of running) {
+      shared.current = animation.from + (animation.to - animation.from) * Math.min(1, elapsed / animation.duration);
+    }
+  };
+  await act(() => { tree = create(render(0)); });
+  await act(() => tree.update(render(100)));
+  const tickRenders = renders;
+  frame(25); assert.deepEqual(position(), [.5, 0]);
+  frame(50); assert.deepEqual(position(), [1, 0], 'crosses the corner rather than cutting diagonally');
+  frame(75); assert.deepEqual(position(), [1, .5]);
+  assert.equal(renders, tickRenders, 'intermediate UI frames do not render React');
+  await act(() => tree.update(render(200)));
+  assert.deepEqual(position(), [1, .5], 'retargeting starts at the current displayed position');
+  frame(50); assert.deepEqual(position(), route.replaySnapshotAt(points, 137.5)!.coordinate);
+  await act(() => tree.update(render(20, false)));
+  assert.equal(running.size, 0); assert.deepEqual(position(), [.4, 0], 'paused seek is exact');
+  frame(100); assert.deepEqual(position(), [.4, 0], 'cancelled motion cannot move a paused marker');
+  await act(() => tree.update(render(50, true, false)));
+  assert.equal(running.size, 0); assert.deepEqual(position(), [1, 0], 'Reduce Motion uses immediate positions');
+  for (const rate of [1, 4, 12, 60]) {
+    await act(() => tree.update(render(0, false)));
+    await act(() => tree.update(render(100 * rate)));
+    assert.equal([...running.values()][0].duration, 100, 'screen timing is independent of replay speed');
+    frame(50); assert.deepEqual(position(), route.replaySnapshotAt(points, 50 * rate)!.coordinate);
+  }
+  await act(() => tree.unmount());
+  assert.equal(running.size, 0);
+});
 test('saved photo associations respect owner, surviving memories, and original capture time', () => {
   let owner = 'one'; const prefs = new Map();
   const api = load('journey-replay-photos.ts', {
@@ -69,6 +137,7 @@ test('mounted replay reveals moments in order, rewinds them, pauses, and settles
   const native = { ...Object.fromEntries(['View', 'Text', 'Pressable', 'ActivityIndicator'].map(n => [n, host(n)])), StyleSheet: { create: (s: any) => s, hairlineWidth: 1 }, Linking: { openURL() {} }, PanResponder: { create: (handlers: any) => ({ panHandlers: handlers }) } };
   const api = load('interactive-route-map.tsx', {
     './journey-replay-stage': { JourneyReplayStage: host('ReplayStage'), ReplayPosition: host('ReplayPosition') },
+    './journey-replay-marker': { JourneyReplayMarker: host('ReplayMarker'), REPLAY_TICK_MS: 100 },
     'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-router': { useIsFocused: () => focused },
     'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, FadeIn: { duration: () => 'fade' }, FadeInDown: { duration: () => 'enter' } },
     '@maplibre/maplibre-react-native': Object.fromEntries(['Map', 'Camera', 'Marker', 'Layer', 'GeoJSONSource'].map(n => [n, host(n)])),

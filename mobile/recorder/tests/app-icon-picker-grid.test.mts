@@ -25,7 +25,7 @@ function loadPicker(state: {
   const module = { exports: {} as any };
   const source = readFileSync(new URL('../src/app-icon-picker.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const assets = Object.fromEntries(['icon.png', 'icon-light-plum-v1.png', 'icon-rosewater-v1.png', 'icon-grand-touring-v2.png']
+  const assets = Object.fromEntries(['icon-cinematic-dark-v2.png', 'icon-warm-ivory-v2.png', 'icon-rosewater-v2.png', 'icon-grand-touring-v2.png']
     .map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,

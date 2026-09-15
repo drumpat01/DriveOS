@@ -14,9 +14,9 @@ import {
 import { useAppIconChoice } from './app-icon-preference';
 
 const previews: Record<AppIconId, number> = {
-  original: require('../assets/icon.png'),
-  'warm-ivory': require('../assets/icon-light-plum-v1.png'),
-  rosewater: require('../assets/icon-rosewater-v1.png'),
+  original: require('../assets/icon-cinematic-dark-v2.png'),
+  'warm-ivory': require('../assets/icon-warm-ivory-v2.png'),
+  rosewater: require('../assets/icon-rosewater-v2.png'),
   'grand-touring': require('../assets/icon-grand-touring-v2.png'),
 };
 

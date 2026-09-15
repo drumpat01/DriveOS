@@ -6,22 +6,22 @@ const { generateImageAsync } = require('@expo/image-utils');
 const alternateIcons = [
   {
     name: 'JourneyDeckWarmIvory',
-    source: 'assets/icon-light-plum-v1.png',
-    backgroundColor: '#f6f0e2',
+    source: 'assets/icon-warm-ivory-v2.png',
+    backgroundColor: '#fffaf0',
   },
   {
     name: 'JourneyDeckRosewater',
-    source: 'assets/icon-rosewater-v1.png',
+    source: 'assets/icon-rosewater-v2.png',
     backgroundColor: '#fff4f7',
   },
   {
     name: 'JourneyDeckGrandTouring',
     source: 'assets/icon-grand-touring-v2.png',
-    backgroundColor: '#d4b15a',
+    backgroundColor: '#081832',
   },
   {
     name: 'JourneyDeckCinematic',
-    source: 'assets/icon.png',
+    source: 'assets/icon-cinematic-dark-v2.png',
     backgroundColor: '#08070d',
   },
 ];

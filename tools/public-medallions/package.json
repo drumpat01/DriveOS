@@ -1,0 +1,13 @@
+{
+  "name": "journeydeck-public-medallions-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ../Build-PublicMedallions.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "sharp": "0.35.4",
+    "three": "0.186.0"
+  }
+}

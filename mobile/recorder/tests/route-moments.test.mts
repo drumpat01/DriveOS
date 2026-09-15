@@ -2,8 +2,41 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildReplayRoute, buildSongRouteMoments, coordinateAtRecordedTime, nearbySongMoments,
-  replaySnapshotAt, songAtReplayTime, travelledReplayCoordinates,
+  replaySnapshotAt, songAtReplayTime, travelledReplayCoordinates, type ReplayRoutePoint,
 } from '../src/route-moments.ts';
+
+test('frame samples follow recorded corners and stationary segments without cutting across them', () => {
+  const points: ReplayRoutePoint[] = [
+    { recordedAtEpochMs: 0, coordinate: [0, 0], headingDegrees: 350, speedMph: 10, batteryPercent: 80 },
+    { recordedAtEpochMs: 50, coordinate: [1, 0], headingDegrees: 10, speedMph: 10, batteryPercent: 80 },
+    { recordedAtEpochMs: 100, coordinate: [1, 1], headingDegrees: 10, speedMph: 0, batteryPercent: 80 },
+    { recordedAtEpochMs: 200, coordinate: [1, 1], headingDegrees: 10, speedMph: 0, batteryPercent: 80 },
+  ];
+  const before = structuredClone(points);
+  assert.deepEqual(replaySnapshotAt(points, 25)?.coordinate, [.5, 0]);
+  assert.equal(replaySnapshotAt(points, 25)?.headingDegrees, 0, 'heading crosses north by the short turn');
+  assert.deepEqual(replaySnapshotAt(points, 50)?.coordinate, [1, 0]);
+  assert.deepEqual(replaySnapshotAt(points, 75)?.coordinate, [1, .5]);
+  assert.deepEqual(replaySnapshotAt(points, 175)?.coordinate, [1, 1]);
+  assert.deepEqual(points, before, 'presentation never rewrites saved geometry or telemetry');
+});
+
+test('frame lookup handles duplicate timestamps, empty routes and long journeys', () => {
+  assert.equal(replaySnapshotAt([], 0), null);
+  const point = (time: number, x: number): ReplayRoutePoint => ({ recordedAtEpochMs: time, coordinate: [x, 0], headingDegrees: 0, speedMph: 10, batteryPercent: 80 });
+  const points = [point(0, 0), point(100, 1), point(100, 2), point(200, 3)];
+  assert.deepEqual(replaySnapshotAt(points, 100)?.coordinate, [1, 0]);
+  assert.deepEqual(replaySnapshotAt(points, 150)?.coordinate, [2.5, 0]);
+  assert.deepEqual(replaySnapshotAt([points[0]], 200)?.coordinate, [0, 0]);
+  const longRoute = Array.from({ length: 100_000 }, (_, i) => point(i * 1000, i / 1000));
+  let reads = 0;
+  const counted = new Proxy(longRoute, { get(target, key, receiver) {
+    if (typeof key === 'string' && /^\d+$/.test(key)) reads++;
+    return Reflect.get(target, key, receiver);
+  } });
+  assert.ok(Math.abs(replaySnapshotAt(counted, 98_765_500)!.coordinate[0] - 98.7655) < 1e-10);
+  assert.ok(reads < 30, `lookup used ${reads} point reads`);
+});
 
 test('song moments use the closest timestamped GPS breadcrumb when one is available', () => {
   const coordinate = coordinateAtRecordedTime([

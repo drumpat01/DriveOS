@@ -61,7 +61,7 @@ for (const bundleIdentifier of ['com.journeydeck.recorder', 'com.journeydeck.rec
   });
 }
 
-test('generated Watch files identify the paired preview app and contain a correctly sized app icon', async () => {
+test('generated Watch files identify the paired preview app and match the bundled Grand Touring primary icon', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'journeydeck-watch-test-'));
   try {
     await plugin.writeWatchFiles(root, directory, { name: 'JourneyDeck V2', ios: { bundleIdentifier: 'com.journeydeck.recorder.v2' } });
@@ -78,6 +78,8 @@ test('generated Watch files identify the paired preview app and contain a correc
     assert.equal(icon.readUInt32BE(16), 1024, 'actual PNG width must match the catalog slot');
     assert.equal(icon.readUInt32BE(20), 1024, 'actual PNG height must match the catalog slot');
     const decoded = await require('@expo/image-utils').getPngInfo(join(icons, catalog.images[0].filename));
+    const primary = await require('@expo/image-utils').getPngInfo(join(root, 'assets/icon-grand-touring-v2.png'));
+    assert.ok(decoded.data.equals(primary.data), 'Watch primary icon must match the iPhone/iPad primary icon pixels');
     assert.equal(decoded.data.length, 1024 * 1024 * 4);
     for (let alpha = 3; alpha < decoded.data.length; alpha += 4) {
       assert.equal(decoded.data[alpha], 255, 'Watch App Store icon must be opaque');

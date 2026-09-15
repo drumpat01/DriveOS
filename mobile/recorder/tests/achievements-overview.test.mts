@@ -19,21 +19,21 @@ const gesture = () => {
 const source = readFileSync(new URL('../src/achievements-overview.tsx', import.meta.url), 'utf8');
 const module = { exports: {} as any };
 const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-const palette = { text: '#fff', muted: '#888', accent: '#fc0', card: '#123', line: '#345', inset: '#234' };
+const palette = { page: '#081832', text: '#fff', muted: '#888', accent: '#fc0', card: '#123', line: '#345', inset: '#234' };
 vm.runInNewContext(code, {
   module,
   exports: module.exports,
   require: (id: string) => ({
     react: React,
     'react/jsx-runtime': nodeRequire('react/jsx-runtime'),
-    '@expo/ui': { BottomSheet: host('BottomSheet') },
-    'expo-image': { Image: host('Image') },
+    '@expo/ui': { BottomSheet: host('BottomSheet'), RNHostView: host('RNHostView') },
     'expo-symbols': { SymbolView: host('SymbolView') },
     'react-native': { View: host('View'), Text: host('Text'), ScrollView: host('ScrollView'), StyleSheet: { create: (value: any) => value }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }) },
     'react-native-gesture-handler': { Gesture: { Pan: gesture }, GestureDetector: host('GestureDetector') },
     'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, useReducedMotion: () => false, useSharedValue: (initial: any) => { let value = initial; return { get: () => value, set: (next: any) => { value = typeof next === 'function' ? next(value) : next; } }; }, useAnimatedStyle: (fn: any) => fn(), withSpring: (value: any) => value },
     './touch-feedback': touchFeedbackMock,
     './app-theme': { useAppTheme: () => ({ id: 'redline', palette }) },
+    './medallion-artwork-image': { MedallionArtworkImage: host('MedallionArtworkImage') },
     './medallion-artwork': {
       isApprovedMedallion: (id: string) => ['first-track', 'long-way-home', 'thousand-mile', 'grand-tourer', 'first-note', 'long-play', 'soundtrack-100', 'memory-maker', 'picture-this', 'story-collector'].includes(id),
       medallionArtwork: Object.fromEntries(['first-track', 'long-way-home', 'thousand-mile', 'grand-tourer', 'first-note', 'long-play', 'soundtrack-100', 'memory-maker', 'picture-this', 'story-collector'].map(id => [id, { redline: `${id}-redline` }])),
@@ -110,15 +110,38 @@ test('achievement overview opens a native detail sheet with turnable earned cont
   await act(() => { tree = create(React.createElement(AchievementsOverview, { journeys, memories })); });
   const badges = tree.root.findAllByType('Pressable');
   assert.equal(badges.length, 10);
+  const artworkImages = tree.root.findAllByType('MedallionArtworkImage');
+  assert.equal(artworkImages.length, 10, 'all badge faces use the shared circular crop');
+  for (const artwork of artworkImages) {
+    assert.equal(artwork.props.themeId, 'redline');
+    assert.ok(artwork.props.achievementId);
+    const style = Object.assign({}, ...artwork.props.style.filter(Boolean));
+    assert.equal(style.width, style.height, 'the shared artwork component supplies the consistent physical rim');
+  }
   assert.ok(badges.some((badge: any) => /Locked/.test(badge.props.accessibilityLabel)));
   await act(() => badges[0].props.onPress());
   const sheet = tree.root.findByType('BottomSheet');
   assert.equal(sheet.props.isPresented, true);
-  assert.deepEqual(Array.from(sheet.props.snapPoints), ['half', 'full']);
+  assert.deepEqual(Array.from(sheet.props.snapPoints), ['full']);
+  assert.equal(sheet.props.containerColor, palette.page);
+  assert.equal(tree.root.findByType('RNHostView').props.matchContents, false, 'use the presented sheet dimensions, not the underlying screen');
   const medallion = tree.root.findByProps({ accessibilityLabel: 'Turn The First Track medallion' });
   assert.equal(medallion.props.accessibilityRole, 'imagebutton');
   assert.equal((Array.isArray(medallion.props.style) ? medallion.props.style[0] : medallion.props.style).alignSelf, 'center');
-  assert.equal(tree.root.findByType('ScrollView').props.style.width, '100%');
+  const scroll = tree.root.findByType('ScrollView');
+  assert.equal(scroll.props.style[0].width, '100%');
+  assert.equal(scroll.props.bounces, false);
+  await act(() => {
+    scroll.props.onLayout({ nativeEvent: { layout: { width: 390, height: 740 } } });
+    scroll.props.onContentSizeChange(390, 660);
+  });
+  assert.equal(scroll.props.scrollEnabled, false, 'fitting content does not scroll');
+  await act(() => scroll.props.onContentSizeChange(390, 900));
+  assert.equal(scroll.props.scrollEnabled, true, 'large accessibility text remains reachable');
+  await act(() => scroll.props.onLayout({ nativeEvent: { layout: { width: 320, height: 550 } } }));
+  assert.equal(medallion.props.style[1].height, 120, 'short sheets reserve room for milestone text');
+  await act(() => scroll.props.onLayout({ nativeEvent: { layout: { width: 540, height: 900 } } }));
+  assert.equal(medallion.props.style[1].height, 380, 'larger sheets use the available space for a prominent medal');
   const text = tree.root.findAllByType('Text').flatMap((node: any) => node.children).join(' ');
   for (const label of ['HOW', 'WHEN', 'WHY', 'ACHIEVEMENT EARNED']) assert.match(text, new RegExp(label));
   await act(() => sheet.props.onDismiss());

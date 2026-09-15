@@ -1,8 +1,8 @@
 # JourneyDeck Mobile Subsystem (iOS / Expo SDK 57)
 
-## V2 feature freeze — September 10, 2026
+## V2 complete and frozen — September 15, 2026
 
-The user has declared V2 feature complete. Limit V2 work to minor bug fixes and small polish/UI tweaks. Preserve the established feature set and behavior; do not add features, undertake broad redesigns, or expand scope unless the user explicitly changes this direction. Feature-complete status does not imply all device acceptance checks are finished.
+The user confirmed V2 submission to App Review and declared development complete. No V2 changes are allowed except urgent bugs reported by customers. Cosmetic polish, features, refactors, dependency upgrades, and other non-urgent improvements belong to V3 on a separate branch. Keep any urgent fix minimal, document the customer report and urgency, and run targeted validation. Release actions still require user authorization. Submission does not imply Apple approval or public release. See root `GEMINI.md` for the authoritative freeze policy.
 
 ## V2 iPad release acceptance priority — September 10, 2026
 
@@ -21,7 +21,7 @@ The user was alerted that Build 2 omitted automatic iOS Home Screen icon variant
 ## Core Architecture Invariants & Rules
 
 1. **Expo SDK 57 Strict Adherence**:
-   - Current source targets `2.0.0-watch.7` (internal preview `2.0.0-preview.12`) for native recorder schema 3, the consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio, reversible editor schema 7, and the generic Minted 1.1.1 OTA-artwork renderer. Build 27 uses `2.0.0-watch.6`. Keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical. Do not publish the new source to an older runtime.
+   - Submitted Build 31 targets `2.0.0-watch.9` (internal preview `2.0.0-preview.14`) for native Siri Start/Stop and corrected bundled icon artwork. It retains Build 28's native recorder schema 3, consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio, reversible editor schema 7 and Expo DOM WebView for Three.js medallions. Build 28 uses `2.0.0-watch.7`; keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical.
    - Read versioned docs at https://docs.expo.dev/versions/v57.0.0/ before changing native modules.
 
 2. **Local-First & Multi-User Architecture**:

@@ -2,12 +2,30 @@
 
 ## Replay stage and Memory editing
 
+September 15 overlap correction: the overview song/start/end card and Relive
+button share one bottom-anchored vertical stack with a 10pt gap. Each keeps its
+intrinsic height so larger text or a wrapped button cannot cover the card.
+The transparent stack passes map touches through its empty space. Starting
+replay replaces the whole stack with the existing replay stage.
+
 The September 10 replay revision presents a prominent Relive this journey action and a one-minute story rate alongside 1x/4x/12x. `JourneyReplayStage` keeps the active media/stop/arrival card, transport and accessible progress rail directly over the map. The position puck pulses only during active animated playback; the upcoming route dims. Camera padding follows stage measurement so large text does not hide the moving marker; Reduce Motion uses the overview. State is still driven by saved timestamps, and earlier untimed photos are not assigned fake timestamps.
 
 `MemoryJourneyEditor` divides draft membership into an ordered selected collection and remaining choices, using 260-ms entry/layout and 150-ms exit. Native persistence remains in the shell. `MemorySaveLabel` shows a check for 1.2 seconds only after a successful save; pending and failed saves never show success. Shared motion/background preferences disable animation. Accepted Memory/Atlas opening transitions remain untouched. Full 524 tests, TypeScript and iOS export pass; native feel remains a device acceptance check.
 
 
 ## Journey replay reveals
+
+September 15 smoothing: `JourneyReplayMarker` uses Reanimated animated native
+MapLibre props to interpolate the displayed replay timestamp on the UI thread.
+The marker follows each saved segment, including corners within a single replay
+tick; the snapshot lookup uses a binary search for long journeys. React's media,
+telemetry and route-trace updates remain at 100ms. The marker and linear native
+chase-camera transitions share that 100ms window (one tick of presentation lag),
+instead of the marker jumping to each tick while the camera trails it by 110ms.
+Pause, seek and Reduce Motion set an immediate position and cancel the tween;
+blur/background still stop the replay. Recorded geometry/timestamps are unchanged.
+Tests and iOS export pass; physical iPhone/iPad smoothness remains to be checked
+at 1x/4x/12x/Story, around turns/stops, and after gestures, pause/resume and seeks.
 
 `interactive-route-map.tsx` retains its recorded-route tracing and moving marker. Starting playback or scrubbing activates chronological marker reveals; overview still exposes the full soundtrack. Stops use stationary recorded breadcrumbs (60 seconds within 30 m; gaps above 90 seconds break a stop). Song and photo cards enter over 260 ms; Reduce Motion removes those entrances and automatic chase-camera movement. Scrubbing/restarting recomputes reached moments and pauses playback; route blur/background also pause. VoiceOver can adjust progress in five-percent increments.
 
