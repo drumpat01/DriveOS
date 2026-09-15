@@ -1,5 +1,14 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## Grand Touring beta website — September 15, 2026
+
+- Replaced `/beta` with a mobile-first Grand Touring site: app purpose and live App Store download, a five-screen flipping carousel, major features, embedded 3D medallions, Atlas, iPad/Watch preview, three-step instructions, privacy and X updates. Kept Privacy/Terms/Support/sign-in and Apple standard EULA links. Existing `/` and private app routes are unchanged.
+- Uses the five screenshots supplied by the user: Home first (Photo 5), Soundtracks (1), Memories (2), Medallions (3), Statistics (4). Original 589x1280 captures are untouched; delivery WebPs use quality 95. App Store 1.9 availability is distinguished from the 2.0 preview. See `docs/public-beta.md` for content/assets/motion details.
+- Real hosted-mode Fastify/CSP checks: Home-first/copy synchronization, rapid changes, optional autoplay/pause, touch swipe and vertical scrolling, lazy 3D, all four finishes, drag, reduced motion and no-JS fallback; layouts at 320/390/768/1440px. Fixed a software-renderer compositing blemish by removing nested rotations in Reduced Motion. Windows WebKit navigation times out in this environment; no Safari validation is claimed.
+- Verification: server typecheck/lint and 34 tests, Atlas benchmark, all 13 E2E tests, PowerShell analysis, secret scan and full release preflight passed (existing SQLite-runtime-dependent preflight skips). The initial new E2E assertion raced image decoding; corrected it to wait for the selected caption and completed transition. Repository vulnerability scan retains 17 existing HIGH findings in unchanged root/mobile lockfiles; isolated medallion package has zero. No new dependencies or ignore settings.
+- Isolated release worktree `C:/Users/patri/.codex/tmp/journeydeck-grand-touring-beta`, branch `deploy/20260915-grand-touring-beta`, based on `bfd36ee` main. Original dirty mobile/app workspace remains preserved. Local preview is `http://127.0.0.1:4190/beta` (isolated fixture, no cloud writes). Browser captures/logs live under ignored `.cache/grand-touring-beta/`.
+- User authorized replacement of live `/beta`. Next: publish through the normal PR/main/Render flow and verify deployed bytes, public routes, live interactions and logs. No app/native/OTA changes are part of this release.
+
 ## Public medallion website release — September 14, 2026
 
 - Website-only release prepared from production `13563ab` on `deploy/20260915-public-medallions`. The homepage includes all ten interactive 3D medallions, all four appearances, milestone copy, lazy loading, drop/replay, keyboard/drag, Reduced Motion and static fallback. Cinematic Dark matches the existing homepage. Latest production privacy changes are preserved.
