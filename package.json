@@ -8,7 +8,7 @@
     "test:e2e": "playwright test",
     "check:powershell": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./tools/Test-PSScriptAnalyzer.ps1",
     "check:secrets": "gitleaks git --redact --no-banner --exit-code 1 .",
-    "check:vulnerabilities": "trivy fs --scanners vuln --include-dev-deps --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs node_modules --skip-dirs artifacts .",
+    "check:vulnerabilities": "trivy fs --scanners vuln --include-dev-deps --exit-code 1 --severity HIGH,CRITICAL --ignore-unfixed --skip-dirs node_modules --skip-dirs artifacts --skip-dirs .cache --skip-dirs mobile/recorder/.cache .",
     "build:server": "tsc -p server/tsconfig.json",
     "check:server": "tsc -p server/tsconfig.json --noEmit",
     "lint:server": "eslint \"server/**/*.ts\"",
@@ -37,7 +37,7 @@
     "tsx": "^4.20.5",
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.44.1",
-    "wrangler": "4.127.0"
+    "wrangler": "^4.131.2"
   },
   "engines": {
     "node": ">=24.0.0"
