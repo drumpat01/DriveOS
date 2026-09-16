@@ -2,7 +2,6 @@ User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /app
-Disallow: /beta
 Disallow: /login
 Disallow: /spotify-callback
 Disallow: /wife
