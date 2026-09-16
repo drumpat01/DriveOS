@@ -11,7 +11,7 @@ Reduce recurring agent token and tool usage caused by oversized handoff history,
 - Active branch: `codex/journeydeck-v2`.
 - JourneyDeck V2 remains complete and frozen. Only urgent customer-reported runtime fixes belong on the V2 line; new product work belongs on a separate V3 branch.
 - This task changes agent documentation and local Codex plugin/skill configuration only. It does not change application runtime behavior.
-- The user authorized committing and pushing all instruction-cleanup changes. No application deployment, Expo/EAS build, OTA, or App Review action was requested.
+- The instruction cleanup was committed and pushed to `origin/codex/journeydeck-v2`. No application deployment, Expo/EAS build, OTA, or App Review action was requested.
 
 ## Material changes in progress
 
@@ -28,12 +28,11 @@ Reduce recurring agent token and tool usage caused by oversized handoff history,
 - All six duplicated personal Cloudflare skill directories are absent from the active skills root and present in the recoverable disabled folder.
 - Zoom plugin removal returned `uninstalled`.
 - `git diff --check` passed with line-ending notices only; no whitespace errors were reported.
-- The staged change set contains only the intended agent-documentation changes and the new handoff archive.
+- Commit and push completed successfully after checks; the change set contained only the intended agent-documentation changes and the new handoff archive.
 
 ## Next steps
 
-1. Commit the staged documentation cleanup.
-2. Push `codex/journeydeck-v2` to `origin`.
+- No pending work for the instruction-cleanup task.
 
 ## Historical context
 
