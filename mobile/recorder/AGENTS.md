@@ -2,54 +2,62 @@
 
 ## V2 complete and frozen — September 15, 2026
 
-The user confirmed V2 submission to App Review and declared development complete. No V2 changes are allowed except urgent bugs reported by customers. Cosmetic polish, features, refactors, dependency upgrades, and other non-urgent improvements belong to V3 on a separate branch. Keep any urgent fix minimal, document the customer report and urgency, and run targeted validation. Release actions still require user authorization. Submission does not imply Apple approval or public release. See root `GEMINI.md` for the authoritative freeze policy.
+The user confirmed V2 submission to App Review and declared development complete. No V2 runtime changes are allowed except urgent customer-reported bugs. Cosmetic polish, features, refactors, dependency upgrades, and other non-urgent improvements belong to V3 on a separate branch. Keep urgent fixes minimal, document the report and urgency, and run targeted validation. Release actions still require user authorization. See root `GEMINI.md` for the authoritative freeze policy.
 
-## V2 iPad release acceptance priority — September 10, 2026
+## iPad acceptance surfaces
 
-Treat iPad portrait, landscape with Apple's native sidebar, rotation, and narrow Split View as release-blocking acceptance surfaces for V2. Base responsive choices on the measured content canvas left after native navigation insets, preserve the system-managed sidebar, and check Dynamic Type before publishing UI changes.
+For relevant mobile UI work, treat iPad portrait, landscape with Apple's native sidebar, rotation, narrow Split View, and Dynamic Type as required acceptance surfaces. Base responsive choices on the measured content canvas after native navigation insets and preserve the system-managed sidebar.
 
-At normal iPad landscape widths, major tab content follows a shared six-column grid with 12pt gutters. Cards and panels must occupy whole-column spans (for example 2+4, 3+3, or 2+2+2); do not introduce fractional panel widths between those tracks. Collapse the grid at narrower effective widths so Split View and Dynamic Type remain readable.
+At normal iPad landscape widths, major tab content follows a shared six-column grid with 12pt gutters. Cards and panels occupy whole-column spans such as 2+4, 3+3, or 2+2+2. Collapse the grid at narrower effective widths.
 
 ## Approved reusable Atlas Flip animation
 
-Before implementing or modifying a widget flip/expanded-details interaction, read [the Atlas Flip baseline in docs/motion.md](docs/motion.md#atlas-flip--approved-reusable-card-expansion). The user approved the Driving Rhythms implementation on September 9, 2026 and asked that it be reused. Preserve its exact timing, complete card faces, native foreground layer boundary, and modal/source handoff. Reuse that implementation for requested widgets rather than redesigning the animation; do not automatically enable it on other widgets.
+Before changing a widget flip or expanded-details interaction, read only the [Atlas Flip baseline in docs/motion.md](docs/motion.md#atlas-flip--approved-reusable-card-expansion). Preserve its timing, complete card faces, native foreground boundary, and modal/source handoff. Do not enable it on unrelated widgets.
 
-## User-approved combined native build (September 4, 2026)
+## Core architecture invariants
 
-The user was alerted that Build 2 omitted automatic iOS Home Screen icon variants and explicitly authorized the next V2 preview build to include BOTH native tab spacing and the selected option 2 light icon with the existing dark icon. The reminder has been fulfilled; no further confirmation is needed. Use native iOS appearance assets, independent of the in-app theme switch. Preserve the isolated v2-preview identity and production App Store update path.
+1. **Expo SDK 57:** Submitted Build 31 targets production runtime `2.0.0-watch.9` and preview runtime `2.0.0-preview.14`. Expo SDK 57, React 19, and React Native 0.86 remain fixed. `app.config.js` is authoritative; `app.json` is historical. Consult the relevant versioned Expo documentation only when changing native modules or framework behavior.
+2. **Local-first:** On-device SQLite in `src/local-store.ts` is the primary store. Migrations remain additive through `PRAGMA user_version`.
+3. **Analytics:** `src/local-atlas.ts` and `localAtlasClient` in `src/app-data.ts` provide local statistics.
+4. **Privacy:** `src/privacy-masker.ts` must preserve the 300 m Home/Work safety boundary before exports or share cards.
+5. **Private sync:** `src/cloudkit-sync.ts` uses the private `iCloud.com.journeydeck.recorder` container.
+6. **Edge:** Cloudflare Workers live in `cloudflare/`; cloud connectivity must not become a prerequisite for local use.
 
-## Core Architecture Invariants & Rules
+## Validation policy
 
-1. **Expo SDK 57 Strict Adherence**:
-   - Submitted Build 31 targets `2.0.0-watch.9` (internal preview `2.0.0-preview.14`) for native Siri Start/Stop and corrected bundled icon artwork. It retains Build 28's native recorder schema 3, consolidated recorder state machine, CloudKit recovery, RevenueCat, PhotoKit, recap audio, reversible editor schema 7 and Expo DOM WebView for Three.js medallions. Build 28 uses `2.0.0-watch.7`; keep OTA packages isolated by native runtime. Expo SDK 57 / React 19 / RN 0.86 remain unchanged. `app.config.js` is authoritative; the `app.json` 1.9 baseline is historical.
-   - Read versioned docs at https://docs.expo.dev/versions/v57.0.0/ before changing native modules.
+Run commands individually and keep output scoped.
 
-2. **Local-First & Multi-User Architecture**:
-   - **Primary Master Store**: On-device SQLite (`src/local-store.ts`) with `PRAGMA user_version` additive migrations.
-   - **Atlas Analytics Engine**: Pure SQLite statistics in `src/local-atlas.ts` and synchronous client `localAtlasClient` in `src/app-data.ts`.
-   - **Privacy Masking**: `src/privacy-masker.ts` enforces 300m safety geofences for Home & Work before any export or share card generation.
-   - **iCloud Sync**: `src/cloudkit-sync.ts` manages private E2EE synchronization with container `iCloud.com.journeydeck.recorder`.
-   - **Serverless Edge**: Cloudflare Workers in `cloudflare/` (`https://journeydeck-edge.patrickbstewart.workers.dev`).
+### Default: targeted validation
 
-3. **Testing Pipeline**:
-   - Run tests individually (never chain with `&&` or PowerShell pipes):
-     - `npm run typecheck`
-     - `npm run test:tab-runtime`
-     - `npm run test:local-store`
-     - `npm run test:local-atlas`
-     - `npm run test:privacy-masker`
-     - `npm run test:local-atlas-client`
-     - `npm run test:cloudkit-sync`
-     - `npm run test:cloudflare-workers`
-     - `npm run test:auth`
-     - `npm run test:recovery`
-     - `npm run test:sync-status`
-     - `npm run test:music-observations`
-     - `npm run test:drive-detection`
-     - `npm run test:navigation-motion`
-     - `npm run test:native-capabilities`
-     - `npx expo export --platform ios`
+- Run `npm run typecheck` when TypeScript types may be affected.
+- Run only tests covering the changed behavior. Select from the commands below rather than running the entire list automatically.
+- Use `git diff --check` after edits.
 
-4. **Git Hygiene**:
-   - Inspect `git status` before making modifications.
-   - Stage explicit paths and use atomic commits.
+Available focused suites:
+
+- `npm run test:tab-runtime`
+- `npm run test:local-store`
+- `npm run test:local-atlas`
+- `npm run test:privacy-masker`
+- `npm run test:local-atlas-client`
+- `npm run test:cloudkit-sync`
+- `npm run test:cloudflare-workers`
+- `npm run test:auth`
+- `npm run test:recovery`
+- `npm run test:sync-status`
+- `npm run test:music-observations`
+- `npm run test:drive-detection`
+- `npm run test:navigation-motion`
+- `npm run test:native-capabilities`
+
+### Broader validation
+
+Run multiple affected suites when a change crosses subsystem boundaries. Explain why each additional suite is relevant. Do not treat unrelated historical failures as a reason to rerun everything.
+
+### Release or native-build validation
+
+Run the complete applicable mobile suite and `npx expo export --platform ios` only for an explicitly authorized release candidate, native build, runtime/package change, or change whose bundling behavior needs export verification. These are not default checks for ordinary source or documentation edits.
+
+## Git hygiene
+
+Inspect `git status` before modifications, stage only explicit paths, and make atomic commits only when the user authorizes committing.
