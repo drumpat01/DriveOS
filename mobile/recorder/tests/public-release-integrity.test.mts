@@ -120,31 +120,27 @@ test('public membership uses verified StoreKit products without hardcoded pricin
   assert.match(membershipNative, /product\.displayPrice/);
 });
 
-test('membership sells Atlas intelligence and complete history in one full-screen composition', () => {
+test('membership sells Atlas intelligence and complete history in one minimal full-bleed-hero composition', () => {
   assert.match(membershipPaywall, /presentationStyle="fullScreen"/);
   assert.match(membershipPaywall, /cinematic-membership-photo-v1\.jpg/);
-  assert.match(membershipPaywall, /atlas-header-orbit-v1\.png/);
-  assert.match(membershipPaywall, /ambientGlow: \{[\s\S]*?width: 320,[\s\S]*?height: 320,/);
-  assert.doesNotMatch(membershipPaywall, /rgba\(170,36,157,0\.18\)/);
   assert.match(membershipPaywall, /Your driving story, decoded\./);
-  assert.match(membershipPaywall, /YOUR PRIVATE ATLAS/);
   assert.match(membershipPaywall, /Pattern Intelligence/);
   assert.match(membershipPaywall, /Favorite Places/);
   assert.match(membershipPaywall, /Journey Studio/);
   assert.match(membershipPaywall, /Your Year on the Road/);
-  assert.match(membershipPaywall, /Every journey beyond the latest 45 days/);
+  assert.match(membershipPaywall, /Complete History/);
+  assert.match(membershipPaywall, /Every journey beyond the latest 45 days\./);
   assert.match(membershipPaywall, /BEST VALUE/);
   assert.match(membershipPaywall, /accessibilityRole="radio"/);
   assert.match(membershipPaywall, /purchaseInFlight/);
   assert.match(membershipPaywall, /useWindowDimensions/);
   assert.match(membershipPaywall, /useSafeAreaInsets/);
-  assert.match(membershipPaywall, /\(usableHeight - 790\) \/ 60/);
-  assert.match(membershipPaywall, /height: 156 \+ \(44 \* expansion\)/);
-  assert.match(membershipPaywall, /minHeight: 84 \+ \(14 \* expansion\)/);
-  assert.match(membershipPaywall, /fontScale >= 1\.25/);
-  assert.match(membershipPaywall, /featureRow: \{ flexDirection: 'row'/);
-  assert.doesNotMatch(membershipPaywall, /featureGrid: \{[^\n]*flexWrap/);
-  assert.match(membershipPaywall, /ctaShell: \{ minHeight: 52, marginTop: 9/);
+  // Benefits read as one plain list, not a bordered feature grid.
+  assert.match(membershipPaywall, /benefitRow: \{ flexDirection: 'row'/);
+  assert.doesNotMatch(membershipPaywall, /featureGrid|ambientGlow/);
+  // Uses the app's own theme tokens instead of a fixed unrelated palette.
+  assert.match(membershipPaywall, /journeyDeckSemanticColors\(theme\.id, theme\.palette\)/);
+  assert.doesNotMatch(membershipPaywall, /#ff8a4d|#ff3f72|#020106/);
 });
 
 test('release checklist keeps the non-code App Store gates explicit', () => {

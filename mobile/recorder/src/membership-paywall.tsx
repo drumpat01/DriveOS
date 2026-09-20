@@ -1,21 +1,20 @@
-import { useAppTheme, useThemedStyles } from './app-theme';
+import { useAppTheme } from './app-theme';
 import { headerImageSource } from './header-image-sources';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Image,
-  ImageBackground,
   Linking,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -23,6 +22,7 @@ import {
   type JourneyDeckMembershipProduct,
 } from '../modules/journeydeck-membership';
 import type { JourneyDeckMembershipState } from './membership-store';
+import { journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography, type JourneyDeckSemanticColors } from './journeydeck-design-tokens';
 
 const MONTHLY_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[0];
 const ANNUAL_PRODUCT_ID = JOURNEYDECK_MEMBERSHIP_PRODUCT_IDS[1];
@@ -50,6 +50,11 @@ function preferredProductId(products: JourneyDeckMembershipProduct[], current: s
   return products.find(product => product.id === ANNUAL_PRODUCT_ID)?.id ?? products[0]?.id ?? null;
 }
 
+function alpha(hex: string, opacity: number) {
+  const value = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, '0');
+  return /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${value}` : hex;
+}
+
 export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onPurchase, onRestore }: {
   visible: boolean;
   state: JourneyDeckMembershipState;
@@ -59,18 +64,17 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
   onRestore: () => Promise<void>;
 }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const colors = journeyDeckSemanticColors(theme.id, theme.palette);
+  const insets = useSafeAreaInsets();
+  const { height: viewportHeight, width: viewportWidth, fontScale } = useWindowDimensions();
+  const heroHeight = Math.max(300, Math.min(420, viewportHeight * 0.44));
+  const stackedLayout = fontScale >= 1.25 || viewportWidth < 350;
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [productsFresh, setProductsFresh] = useState(false);
   const loadProductsRef = useRef(onLoadProducts);
   const openGeneration = useRef(0);
   const purchaseInFlight = useRef(false);
-  const { fontScale, height: viewportHeight, width: viewportWidth } = useWindowDimensions();
-  const safeAreaInsets = useSafeAreaInsets();
-  const usableHeight = viewportHeight - safeAreaInsets.top - safeAreaInsets.bottom;
-  const expansion = Math.max(0, Math.min(1, (usableHeight - 790) / 60));
-  const stackedLayout = fontScale >= 1.25 || viewportWidth < 350;
 
   useEffect(() => {
     loadProductsRef.current = onLoadProducts;
@@ -119,108 +123,48 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
   }
 
   return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
-    <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={theme.gradient(['#1d071f', '#09050f', '#020106'])} locations={[0, 0.46, 1]} style={StyleSheet.absoluteFill} />
-      <View pointerEvents="none" style={styles.ambientGlow}>
-        <Image
-          accessible={false}
-          resizeMode="contain"
-          source={require('../assets/atlas-header-orbit-v1.png')}
-          style={StyleSheet.absoluteFill}
-        />
-      </View>
-      <ScrollView
-        bounces={false}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.topRow}>
-          <View>
-            <Text style={styles.eyebrow}>JOURNEYDECK MEMBERSHIP</Text>
-            <Text style={styles.atlasLabel}>ATLAS · PRIVATE DRIVE INTELLIGENCE</Text>
-          </View>
+    <View style={[styles.safe, { backgroundColor: colors.page }]}>
+      <ScrollView bounces={false} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.hero, { height: heroHeight, paddingTop: insets.top }]}>
+          <ExpoImage
+            accessible={false}
+            source={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
+            contentFit="cover"
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={[`${colors.page}00`, `${colors.page}59`, colors.page]}
+            locations={[0, 0.6, 1]}
+            style={StyleSheet.absoluteFill}
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close membership"
             hitSlop={8}
             onPress={onClose}
-            style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.close, { top: 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
           >
-            <Text style={styles.closeText}>×</Text>
+            <SymbolView name="xmark" tintColor={colors.text} size={14} weight="bold" />
           </Pressable>
-        </View>
-
-        <Text accessibilityRole="header" style={styles.title}>Your driving story, decoded.</Text>
-        <Text style={styles.subtitle}>Atlas finds the patterns, places, routes, and music hidden across every journey.</Text>
-
-        <View style={[styles.hero, { height: 156 + (44 * expansion), marginTop: 11 + (5 * expansion) }]}>
-          <ImageBackground
-            accessible={false}
-            source={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
-            resizeMode="cover"
-            style={styles.heroImage}
-            imageStyle={styles.heroImageCorners}
-          >
-            <LinearGradient
-              colors={theme.gradient(['rgba(3,1,8,0.02)', 'rgba(4,1,9,0.08)', 'rgba(5,2,10,0.88)'])}
-              locations={[0, 0.57, 1]}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroKicker}>YOUR PRIVATE ATLAS</Text>
-              <Text style={styles.heroTitle}>Every road becomes intelligence.</Text>
-            </View>
-          </ImageBackground>
-        </View>
-
-        <View style={[styles.featureGrid, { gap: 7 + (3 * expansion), marginTop: 9 + (3 * expansion) }]}>
-          <View style={[styles.featureRow, { gap: 7 + (3 * expansion) }, stackedLayout && styles.featureRowStacked]}>
-            <IntelligenceFeature
-              expansion={expansion}
-              stacked={stackedLayout}
-              kind="pattern"
-              title="Pattern Intelligence"
-              description="See when and where you drive."
-            />
-            <IntelligenceFeature
-              expansion={expansion}
-              stacked={stackedLayout}
-              kind="places"
-              title="Favorite Places"
-              description="Find the places that matter most."
-            />
-          </View>
-          <View style={[styles.featureRow, { gap: 7 + (3 * expansion) }, stackedLayout && styles.featureRowStacked]}>
-            <IntelligenceFeature
-              expansion={expansion}
-              stacked={stackedLayout}
-              kind="routes"
-              title="Journey Studio"
-              description="Trim, split, and restore your drives."
-            />
-            <IntelligenceFeature
-              expansion={expansion}
-              stacked={stackedLayout}
-              kind="music"
-              title="Your Year on the Road"
-              description="Relive your year with music and motion."
-            />
+          <View style={styles.heroCopy}>
+            <Text style={[styles.eyebrow, { color: colors.accent }]}>JOURNEYDECK MEMBERSHIP</Text>
+            <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Your driving story, decoded.</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Atlas finds the patterns, places, routes, and music hidden across every journey.</Text>
           </View>
         </View>
 
-        <View style={[styles.historyRow, { minHeight: 43 + (9 * expansion), marginTop: 8 + (3 * expansion) }]}>
-          <View style={styles.historyIcon}><Text style={styles.historyIconText}>∞</Text></View>
-          <View style={styles.historyCopy}>
-            <Text style={styles.historyTitle}>COMPLETE HISTORY</Text>
-            <Text style={styles.historyDetail}>Every journey beyond the latest 45 days</Text>
-          </View>
-          <Text style={styles.historyCheck}>✓</Text>
+        <View style={styles.benefits}>
+          <BenefitRow icon="chart.line.uptrend.xyaxis" title="Pattern Intelligence" description="See when and where you drive." colors={colors} />
+          <BenefitRow icon="mappin.and.ellipse" title="Favorite Places" description="Find the places that matter most." colors={colors} />
+          <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
+          <BenefitRow icon="music.note" title="Your Year on the Road" description="Relive your year with music and motion." colors={colors} />
+          <BenefitRow icon="infinity" title="Complete History" description="Every journey beyond the latest 45 days." colors={colors} last />
         </View>
 
-        <View style={[styles.planArea, { minHeight: 86 + (14 * expansion), marginTop: 8 + (3 * expansion) }]}>
-          {state.productsLoading && <View accessibilityLiveRegion="polite" style={[styles.loading, { minHeight: 84 + (14 * expansion) }]}>
-            <ActivityIndicator color={theme.color("#ff7962", 'text')} />
-            <Text style={styles.loadingText}>Checking live App Store prices…</Text>
+        <View style={styles.planArea}>
+          {state.productsLoading && <View accessibilityLiveRegion="polite" style={styles.loading}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Checking live App Store prices…</Text>
           </View>}
 
           {!state.productsLoading && orderedProducts.length > 0 && <View accessibilityRole="radiogroup" style={[styles.planRow, stackedLayout && styles.planRowStacked]}>
@@ -238,34 +182,22 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
                 onPress={() => setSelectedProductId(product.id)}
                 style={({ pressed }) => [
                   styles.plan,
-                  { minHeight: 84 + (14 * expansion), paddingVertical: 9 + (3 * expansion) },
-                  selected && styles.planSelected,
+                  { borderColor: alpha(colors.separator, 0.7), backgroundColor: colors.surface },
+                  selected && { borderColor: colors.accent, backgroundColor: alpha(colors.accent, 0.1) },
                   pressed && styles.pressed,
                 ]}
               >
-                <View style={styles.planHeading}>
-                  <Text style={[styles.planName, selected && styles.planNameSelected]}>{planName(product)}</Text>
-                  {annual && <Text style={styles.bestValue}>BEST VALUE</Text>}
-                </View>
-                <Text
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.75}
-                  numberOfLines={1}
-                  style={styles.planPrice}
-                >
-                  {product.displayPrice}
-                </Text>
-                <Text style={styles.planPeriod}>{suffix || 'App Store price'}</Text>
-                <View style={[styles.radio, selected && styles.radioSelected]}>
-                  {selected && <View style={styles.radioDot} />}
-                </View>
+                {annual && <Text style={[styles.bestValue, { color: colors.onAccent, backgroundColor: colors.accent }]}>BEST VALUE</Text>}
+                <Text style={[styles.planName, { color: colors.textSecondary }, selected && { color: colors.accent }]}>{planName(product)}</Text>
+                <Text adjustsFontSizeToFit minimumFontScale={0.8} numberOfLines={1} style={[styles.planPrice, { color: colors.text }]}>{product.displayPrice}</Text>
+                <Text style={[styles.planPeriod, { color: colors.textSecondary }]}>{suffix || 'App Store price'}</Text>
               </Pressable>;
             })}
           </View>}
 
-          {!state.productsLoading && !orderedProducts.length && <View accessibilityLiveRegion="polite" style={[styles.unavailable, { minHeight: 72 + (14 * expansion) }]}>
-            <Text style={styles.unavailableTitle}>App Store options unavailable</Text>
-            <Text style={styles.unavailableDetail}>{state.message ?? 'Close this screen and try again in a moment.'}</Text>
+          {!state.productsLoading && !orderedProducts.length && <View accessibilityLiveRegion="polite" style={[styles.unavailable, { backgroundColor: colors.surface, borderColor: alpha(colors.separator, 0.7) }]}>
+            <Text style={[styles.unavailableTitle, { color: colors.text }]}>App Store options unavailable</Text>
+            <Text style={[styles.unavailableDetail, { color: colors.textSecondary }]}>{state.message ?? 'Close this screen and try again in a moment.'}</Text>
           </View>}
         </View>
 
@@ -277,246 +209,79 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
           accessibilityState={{ disabled: purchaseDisabled }}
           disabled={purchaseDisabled}
           onPress={() => void purchaseSelectedProduct()}
-          style={({ pressed }) => [styles.ctaShell, { minHeight: 52 + (6 * expansion) }, purchaseDisabled && styles.ctaDisabled, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.cta, { backgroundColor: purchaseDisabled ? alpha(colors.accent, 0.4) : colors.accent }, pressed && styles.pressed]}
         >
-          <LinearGradient
-            colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(purchaseDisabled ? ['#5b3e4e', '#523149'] : ['#ff8a4d', '#ff3f72'])}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.cta, { minHeight: 52 + (6 * expansion) }]}
-          >
-            {state.purchasePending
-              ? <ActivityIndicator color={theme.color("#24060c", 'text')} />
-              : <Text style={[styles.ctaText, theme.isCustom && { color: theme.palette.onAccent }]}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
-          </LinearGradient>
+          {state.purchasePending
+            ? <ActivityIndicator color={colors.onAccent} />
+            : <Text style={[styles.ctaText, { color: colors.onAccent }]}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
         </Pressable>
 
-        {state.message && orderedProducts.length > 0 && <Text accessibilityLiveRegion="polite" style={styles.message}>{state.message}</Text>}
+        {state.message && orderedProducts.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.message, { color: colors.danger }]}>{state.message}</Text>}
 
-        <View style={[styles.footerRow, { marginTop: 3 + (5 * expansion) }]}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={state.purchasePending}
-            onPress={() => void onRestore()}
-            style={({ pressed }) => [styles.footerAction, pressed && styles.pressed]}
-          >
-            <Text style={styles.restoreText}>Restore Purchases</Text>
+        <View style={[styles.footerRow, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <Pressable accessibilityRole="button" disabled={state.purchasePending} onPress={() => void onRestore()} style={({ pressed }) => [pressed && styles.pressed]}>
+            <Text style={[styles.footerLink, { color: colors.textSecondary }]}>Restore Purchases</Text>
           </Pressable>
-          <Text style={styles.footerDot}>·</Text>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}
-            style={styles.footerAction}
-          >
-            <Text style={styles.link}>Privacy</Text>
+          <Text style={[styles.footerDot, { color: colors.separator }]}>·</Text>
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}>
+            <Text style={[styles.footerLink, styles.footerLinkUnderline, { color: colors.textSecondary }]}>Privacy</Text>
           </Pressable>
-          <Text style={styles.footerDot}>·</Text>
-          <Pressable
-            accessibilityRole="link"
-            onPress={() => void Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}
-            style={styles.footerAction}
-          >
-            <Text style={styles.link}>Terms</Text>
+          <Text style={[styles.footerDot, { color: colors.separator }]}>·</Text>
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+            <Text style={[styles.footerLink, styles.footerLinkUnderline, { color: colors.textSecondary }]}>Terms</Text>
           </Pressable>
         </View>
-        <Text style={styles.legal}>Subscriptions renew automatically unless cancelled at least 24 hours before the current period ends.</Text>
+        <Text style={[styles.legal, { color: colors.textSecondary }]}>Subscriptions renew automatically unless cancelled at least 24 hours before the current period ends.</Text>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   </Modal>;
 }
 
-function IntelligenceFeature({ expansion, stacked, kind, title, description }: {
-  expansion: number;
-  stacked: boolean;
-  kind: 'pattern' | 'places' | 'routes' | 'music';
-  title: string;
-  description: string;
-}) {
-  const styles = useThemedStyles(darkStyles);
-
-  return <View style={[styles.feature, stacked && styles.featureStacked, { minHeight: 72 + (12 * expansion), paddingVertical: 9 + (3 * expansion) }]}>
-    <MiniIntelligence kind={kind} />
-    <View style={styles.featureCopy}>
-      <Text style={styles.featureTitle}>{title}</Text>
-      <Text numberOfLines={stacked ? undefined : 2} style={styles.featureDescription}>{description}</Text>
+function BenefitRow({ icon, title, description, colors, last = false }: { icon: SFSymbol; title: string; description: string; colors: JourneyDeckSemanticColors; last?: boolean }) {
+  return <View style={[styles.benefitRow, !last && { borderBottomColor: alpha(colors.separator, 0.4), borderBottomWidth: StyleSheet.hairlineWidth }]}>
+    <View style={[styles.benefitIcon, { backgroundColor: alpha(colors.accent, 0.14) }]}>
+      <SymbolView name={icon} tintColor={colors.accent} size={19} />
+    </View>
+    <View style={styles.benefitCopy}>
+      <Text style={[journeyDeckTypography.label, { color: colors.text }]}>{title}</Text>
+      <Text style={[journeyDeckTypography.caption, { color: colors.textSecondary, marginTop: 2 }]}>{description}</Text>
     </View>
   </View>;
 }
 
-function MiniIntelligence({ kind }: { kind: 'pattern' | 'places' | 'routes' | 'music' }) {
-  const styles = useThemedStyles(darkStyles);
-
-  if (kind === 'places') {
-    return <View accessible={false} style={styles.mini}>
-      <View style={styles.placeOuter}><View style={styles.placeInner}><View style={styles.placeDot} /></View></View>
-    </View>;
-  }
-  if (kind === 'routes') {
-    return <View accessible={false} style={styles.mini}>
-      <View style={[styles.routeLine, styles.routeLineOne]} />
-      <View style={[styles.routeLine, styles.routeLineTwo]} />
-      <View style={styles.routePoint} />
-    </View>;
-  }
-  if (kind === 'music') {
-    return <View accessible={false} style={[styles.mini, styles.miniBars]}>
-      {[11, 20, 15, 26, 17].map((height, index) => <View key={index} style={[styles.musicBar, { height }]} />)}
-    </View>;
-  }
-  return <View accessible={false} style={[styles.mini, styles.miniBars]}>
-    {[8, 14, 22, 28, 18].map((height, index) => <View key={index} style={[styles.patternBar, { height }]} />)}
-  </View>;
-}
-
-const darkStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#020106' },
-  ambientGlow: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    top: -175,
-    right: -100,
-    opacity: 0.72,
-  },
-  content: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 14 },
-  topRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eyebrow: { color: '#ff9a79', fontSize: 9, fontWeight: '900', letterSpacing: 1.9 },
-  atlasLabel: { color: '#9d79bd', fontSize: 8, fontWeight: '900', letterSpacing: 1.25, marginTop: 4 },
-  close: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#755079',
-    backgroundColor: 'rgba(23,11,28,0.92)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: { color: '#fff7fb', fontSize: 29, lineHeight: 30, marginTop: -2, fontWeight: '300' },
-  title: { color: '#fff9ff', fontSize: 30, lineHeight: 32, fontWeight: '900', letterSpacing: -1.05, marginTop: 4 },
-  subtitle: { color: '#bdb0bf', fontSize: 12, lineHeight: 16, marginTop: 5, maxWidth: 360 },
-  hero: {
-    height: 156,
-    marginTop: 11,
-    borderRadius: 22,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#b34c70',
-    backgroundColor: '#110716',
-    shadowColor: '#ff4b72',
-    shadowOpacity: 0.32,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 7 },
-  },
-  heroImage: { flex: 1, justifyContent: 'flex-end' },
-  heroImageCorners: { borderRadius: 21 },
-  heroCopy: { paddingHorizontal: 15, paddingBottom: 11 },
-  heroKicker: { color: '#ffae8e', fontSize: 8, fontWeight: '900', letterSpacing: 1.8 },
-  heroTitle: { color: '#fff9ff', fontSize: 16, lineHeight: 19, fontWeight: '900', letterSpacing: -0.25, marginTop: 3 },
-  featureGrid: { gap: 7, marginTop: 9 },
-  featureRow: { flexDirection: 'row', gap: 7 },
-  featureRowStacked: { flexDirection: 'column' },
-  feature: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 72,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#57315c',
-    backgroundColor: 'rgba(20,9,25,0.92)',
-    paddingHorizontal: 9,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  featureStacked: { flex: 0, width: '100%' },
-  featureCopy: { flex: 1 },
-  featureTitle: { color: '#fff6fb', fontSize: 11, lineHeight: 13, fontWeight: '900' },
-  featureDescription: { color: '#a99dab', fontSize: 9, lineHeight: 12, marginTop: 3 },
-  mini: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#853c65',
-    backgroundColor: '#2a0e23',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingBottom: 6 },
-  patternBar: { width: 3, borderRadius: 2, backgroundColor: '#ff7b62' },
-  musicBar: { width: 3, borderRadius: 2, backgroundColor: '#d66eff' },
-  placeOuter: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#bc567d', alignItems: 'center', justifyContent: 'center' },
-  placeInner: { width: 17, height: 17, borderRadius: 9, borderWidth: 1, borderColor: '#ff7d66', alignItems: 'center', justifyContent: 'center' },
-  placeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#ff9272' },
-  routeLine: { position: 'absolute', width: 31, height: 2, borderRadius: 2, backgroundColor: '#ff7962' },
-  routeLineOne: { transform: [{ rotate: '-26deg' }], top: 13, left: 3 },
-  routeLineTwo: { transform: [{ rotate: '25deg' }], top: 23, left: 5, backgroundColor: '#d866ff' },
-  routePoint: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff0e9', borderWidth: 2, borderColor: '#ff635f' },
-  historyRow: {
-    minHeight: 43,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#56315c',
-    backgroundColor: 'rgba(19,9,24,0.92)',
-    marginTop: 8,
-    paddingHorizontal: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  historyIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#32121f', borderWidth: 1, borderColor: '#914357', alignItems: 'center', justifyContent: 'center' },
-  historyIconText: { color: '#ff8066', fontSize: 15, fontWeight: '900' },
-  historyCopy: { flex: 1 },
-  historyTitle: { color: '#ff9b7a', fontSize: 8, fontWeight: '900', letterSpacing: 1.25 },
-  historyDetail: { color: '#e4d9e6', fontSize: 10, fontWeight: '700', marginTop: 2 },
-  historyCheck: { color: '#ff8b70', fontSize: 16, fontWeight: '900' },
-  planArea: { minHeight: 86, marginTop: 8 },
-  planRow: { flexDirection: 'row', gap: 8 },
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+  content: { flexGrow: 1, paddingBottom: journeyDeckSpacing[6] },
+  hero: { width: '100%', justifyContent: 'flex-end', overflow: 'hidden' },
+  close: { position: 'absolute', right: journeyDeckSpacing[4], width: 32, height: 32, borderRadius: journeyDeckRadius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  heroCopy: { paddingHorizontal: journeyDeckSpacing[6], paddingBottom: journeyDeckSpacing[5] },
+  eyebrow: { ...journeyDeckTypography.kicker, marginBottom: journeyDeckSpacing[2] },
+  title: { fontFamily: 'Georgia', fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.6 },
+  subtitle: { ...journeyDeckTypography.body, marginTop: journeyDeckSpacing[2], maxWidth: 420 },
+  benefits: { paddingHorizontal: journeyDeckSpacing[6], paddingTop: journeyDeckSpacing[5] },
+  benefitRow: { flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3], paddingVertical: journeyDeckSpacing[3] },
+  benefitIcon: { width: 38, height: 38, borderRadius: journeyDeckRadius.compact, alignItems: 'center', justifyContent: 'center' },
+  benefitCopy: { flex: 1 },
+  planArea: { paddingHorizontal: journeyDeckSpacing[6], paddingTop: journeyDeckSpacing[6] },
+  planRow: { flexDirection: 'row', gap: journeyDeckSpacing[3] },
   planRowStacked: { flexDirection: 'column' },
-  plan: {
-    flex: 1,
-    minHeight: 84,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: '#55315c',
-    backgroundColor: '#130918',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  planSelected: {
-    borderColor: '#ff755f',
-    backgroundColor: '#25101c',
-    shadowColor: '#ff4b6b',
-    shadowOpacity: 0.26,
-    shadowRadius: 10,
-  },
-  planHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 16, gap: 4 },
-  planName: { color: '#bdb0c1', fontSize: 10, fontWeight: '900', letterSpacing: 0.45 },
-  planNameSelected: { color: '#ff9d80' },
-  bestValue: { color: '#24070d', backgroundColor: '#ff8168', borderRadius: 999, overflow: 'hidden', paddingHorizontal: 5, paddingVertical: 2, fontSize: 7, fontWeight: '900', letterSpacing: 0.4 },
-  planPrice: { color: '#fff8fd', fontSize: 20, lineHeight: 23, fontWeight: '900', letterSpacing: -0.45, marginTop: 4, paddingRight: 22 },
-  planPeriod: { color: '#9f91a3', fontSize: 9, lineHeight: 11, marginTop: 2 },
-  radio: { position: 'absolute', right: 10, bottom: 10, width: 16, height: 16, borderRadius: 8, borderWidth: 1.5, borderColor: '#755178', alignItems: 'center', justifyContent: 'center' },
-  radioSelected: { borderColor: '#ff8168' },
-  radioDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ff8168' },
-  loading: { minHeight: 84, borderRadius: 17, backgroundColor: '#130918', borderWidth: 1, borderColor: '#55315c', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'center' },
-  loadingText: { color: '#baadbd', fontSize: 11, fontWeight: '700' },
-  unavailable: { minHeight: 72, borderRadius: 17, backgroundColor: '#130918', borderWidth: 1, borderColor: '#55315c', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
-  unavailableTitle: { color: '#f7edf8', fontSize: 12, fontWeight: '900' },
-  unavailableDetail: { color: '#9f92a2', fontSize: 10, marginTop: 4 },
-  ctaShell: { minHeight: 52, marginTop: 9, borderRadius: 17, overflow: 'hidden', shadowColor: '#ff456c', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
-  cta: { minHeight: 52, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
-  ctaText: { color: '#24070d', fontSize: 15, fontWeight: '900', letterSpacing: -0.15 },
-  ctaDisabled: { opacity: 0.62, shadowOpacity: 0 },
-  pressed: { opacity: 0.75, transform: [{ scale: 0.99 }] },
-  message: { color: '#ffb492', fontSize: 10, lineHeight: 14, textAlign: 'center', marginTop: 7 },
-  footerRow: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, marginTop: 3 },
-  footerAction: { minHeight: 44, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
-  restoreText: { color: '#d8b4f3', fontSize: 11, fontWeight: '800' },
-  footerDot: { color: '#625768', fontSize: 12 },
-  link: { color: '#a78fbb', fontSize: 11, textDecorationLine: 'underline' },
-  legal: { color: '#746b78', fontSize: 9.5, lineHeight: 13, textAlign: 'center', paddingHorizontal: 9 },
+  plan: { flex: 1, borderRadius: journeyDeckRadius.card, borderWidth: 1.5, borderCurve: 'continuous', paddingHorizontal: journeyDeckSpacing[4], paddingVertical: journeyDeckSpacing[4] },
+  bestValue: { alignSelf: 'flex-start', borderRadius: journeyDeckRadius.full, overflow: 'hidden', paddingHorizontal: journeyDeckSpacing[2], paddingVertical: 3, fontSize: 10, fontWeight: '800', letterSpacing: 0.4, marginBottom: journeyDeckSpacing[2] },
+  planName: { fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  planPrice: { fontFamily: 'Georgia', fontSize: 24, lineHeight: 28, fontWeight: '700', marginTop: journeyDeckSpacing[1] },
+  planPeriod: { fontSize: 12, lineHeight: 16, marginTop: 2 },
+  loading: { minHeight: 96, borderRadius: journeyDeckRadius.card, flexDirection: 'row', gap: journeyDeckSpacing[2], alignItems: 'center', justifyContent: 'center' },
+  loadingText: { fontSize: 13, fontWeight: '600' },
+  unavailable: { minHeight: 96, borderRadius: journeyDeckRadius.card, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: journeyDeckSpacing[4], gap: journeyDeckSpacing[1] },
+  unavailableTitle: { fontSize: 14, fontWeight: '800' },
+  unavailableDetail: { fontSize: 12, textAlign: 'center' },
+  cta: { minHeight: 56, marginTop: journeyDeckSpacing[5], marginHorizontal: journeyDeckSpacing[6], borderRadius: journeyDeckRadius.control, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
+  ctaText: { fontSize: 17, fontWeight: '800', letterSpacing: -0.15 },
+  pressed: { opacity: 0.78, transform: [{ scale: 0.99 }] },
+  message: { fontSize: 12, lineHeight: 16, textAlign: 'center', marginTop: journeyDeckSpacing[3], paddingHorizontal: journeyDeckSpacing[6] },
+  footerRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: journeyDeckSpacing[2], marginTop: journeyDeckSpacing[5] },
+  footerLink: { fontSize: 12, fontWeight: '600' },
+  footerLinkUnderline: { textDecorationLine: 'underline' },
+  footerDot: { fontSize: 12 },
+  legal: { fontSize: 10.5, lineHeight: 14, textAlign: 'center', paddingHorizontal: journeyDeckSpacing[6] },
 });
