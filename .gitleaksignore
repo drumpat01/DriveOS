@@ -1,3 +1,6 @@
 # Historical EAS submission UUID (not an API key); the nearby words "API key"
 # cause generic-api-key to match this public job identifier in the handoff.
 eab40a388d243c3bafb7f9b1dfc19c35538002b9:.ai/HANDOFF.md:generic-api-key:68
+
+# Same historical EAS submission UUID after the handoff chronology was archived.
+f1ce0d8a2481e6fa34d46ac10a73a677b0057d9f:.ai/archive/HANDOFF-through-2026-09-15.md:generic-api-key:2867

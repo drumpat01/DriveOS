@@ -200,10 +200,11 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
   // same fixed root, so atomic web asset updates become visible immediately.
   await app.register(staticPlugin, { root: cfg.webRoot, prefix: "/", wildcard: true, index: false, decorateReply: true });
   if (cfg.mode === "web") {
-    app.get("/beta", async (_req, reply) => reply.header("x-robots-tag", "noindex, nofollow").sendFile("beta.html"));
-    app.get("/beta/", async (_req, reply) => reply.redirect("/beta"));
+    for (const legacyLandingPath of ["/beta", "/beta/", "/beta.html", "/landing.html"]) {
+      app.get(legacyLandingPath, async (_req, reply) => reply.redirect("/"));
+    }
   }
-  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "landing.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (req, reply) => {
     const requestPath = req.url.split("?")[0];
     if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/")) return reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html");
