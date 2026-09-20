@@ -11,8 +11,9 @@ import type { MusicDashboardData, SoundtrackTrack } from './app-data';
 import type { MusicArchiveEntry } from './library-model';
 import type { MusicProvider } from './music-preferences';
 import { AlbumCarousel } from './album-carousel';
-import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
+import { useAdaptiveLayout } from './adaptive-layout';
 import { JourneyImage } from './journey-image';
+import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
 
 function useColors() {
   const theme = useAppTheme();
@@ -22,28 +23,28 @@ function useColors() {
 }
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
-  const c = useColors();
+  const c = useColors(); const elementTheme = useAppTheme();
   return <View style={[styles.panel, { backgroundColor: c.card, borderColor: c.line }]}>
-    <View style={styles.panelHeading}><Text accessibilityRole="header" style={[styles.panelTitle, { color: c.text }]}>{title}</Text>
+    <View style={[styles.panelHeading, elementTheme.id === 'midnight-canopy' && { borderLeftWidth: 4, borderLeftColor: elementTheme.palette.rose, paddingLeft: 10 }]}><Text accessibilityRole="header" style={[styles.panelTitle, { color: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.teal : c.text }]}>{title}</Text>
       {subtitle ? <Text style={[styles.meta, { color: c.muted }]}>{subtitle}</Text> : null}</View>
     {children}
   </View>;
 }
 
 function Empty({ children }: { children: ReactNode }) {
-  const c = useColors();
+  const c = useColors(); const elementTheme = useAppTheme();
   return <Text style={[styles.empty, { color: c.muted }]}>{children}</Text>;
 }
 
 function Artwork({ uri, size, round = false }: { uri: string | null; size: number; round?: boolean }) {
-  const c = useColors();
+  const c = useColors(); const elementTheme = useAppTheme();
   const shape = { width: size, height: size, borderRadius: round ? size / 2 : 12 };
   return uri ? <JourneyImage imageIdentity={`ipad-music-${round ? 'artist' : 'album'}-${uri}`} source={{ uri }} contentFit="cover" style={shape} />
     : <View style={[shape, styles.center, { backgroundColor: c.inset }]}><SymbolView name="music.note" tintColor={c.accent} style={styles.icon} /></View>;
 }
 
 function ListeningChart({ daily }: { daily: MusicDashboardData['daily'] }) {
-  const c = useColors();
+  const c = useColors(); const elementTheme = useAppTheme();
   const days = daily.slice(-7);
   const max = Math.max(1, ...days.map(day => day.minutes));
   if (!days.some(day => day.minutes > 0)) return <Empty>No saved song durations this week. Your listening time will appear as music is archived.</Empty>;
@@ -68,22 +69,26 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
   state: MusicDashboardState; provider: MusicProvider; archive: MusicArchiveEntry[]; query: string; onQueryChange: (value: string) => void;
   canOpenTracks: boolean; onTrack: (track: SoundtrackTrack) => void; onJourney: (id: string) => void; refreshing: boolean; onRefresh: () => void;
 }) {
-  const c = useColors();
+  const c = useColors(); const elementTheme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const adaptiveLayout = useAdaptiveLayout();
   const { fontScale } = useWindowDimensions();
   const [width, setWidth] = useState(0);
   const [historyCount, setHistoryCount] = useState(6);
   useEffect(() => setHistoryCount(6), [query]);
   const data = state.data;
-  const availableWidth = width / Math.max(1, fontScale);
   const gridColumns = ipadGridColumns(width, fontScale);
-  const wide = gridColumns === 6;
-  const table = availableWidth >= 640;
-  const metricColumns = availableWidth >= 420 ? 2 : 1;
+  const verticalFold = adaptiveLayout.fold?.axis === 'vertical' ? adaptiveLayout.fold : null;
+  const wide = Boolean(verticalFold) || gridColumns === 6;
+  const mainColumn = verticalFold ? { width: Math.max(0, verticalFold.before.width - 24), flexGrow: 0, flexShrink: 0 } : styles.main;
+  const sideColumn = verticalFold ? { width: Math.max(0, verticalFold.after.width - 24), flexGrow: 0, flexShrink: 0 } : styles.side;
+  const table = width / Math.max(1, fontScale) >= 640;
+  const metricColumns = width / Math.max(1, fontScale) >= 420 ? 2 : 1;
   const metricSpans = [2, 2, 1, 1];
-  const metricWidth = (index: number) => wide && width ? ipadGridSpan(width, metricSpans[index])
+  const metricWidth = (index: number) => !verticalFold && wide && width
+    ? ipadGridSpan(width, metricSpans[index], gridColumns)
     : metricColumns === 2 && width ? (width - IPAD_GRID_GAP) / 2 : '100%';
-  const insightWidth = wide && width ? ipadGridSpan(width, 3) : undefined;
+  const insightWidth = !verticalFold && wide && width ? ipadGridSpan(width, 3, gridColumns) : undefined;
   const providerName = provider === 'apple-music' ? 'Apple Music' : provider === 'lastfm' ? 'Spotify via Last.fm' : provider === 'shazam' ? 'Song Recognition' : 'Music archive';
   const metrics: { title: string; value: number | undefined; icon: SFSymbol; unit: string; digits: number }[] = [
     { title: 'Miles with music', value: data?.metrics.milesWithMusic, icon: 'road.lanes', unit: 'mi', digits: 1 },
@@ -100,14 +105,14 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
         {state.status === 'loading' && !data ? <ActivityIndicator accessibilityLabel="Loading your music archive" color={c.accent} /> : null}
         {state.status === 'error' ? <View accessibilityRole="alert" style={styles.notice}><Text style={[styles.body, { color: c.muted }]}>{state.message || 'Your music archive is temporarily unavailable.'}</Text>
           <Pressable accessibilityRole="button" onPress={onRefresh} disabled={refreshing} style={styles.action}><Text style={{ color: c.accent }}>Try again</Text></Pressable></View> : null}
-        <View testID="ipad-music-overview" style={styles.overview}>
-          <View testID="ipad-music-soundtrack"><Panel title="Today's soundtrack" subtitle={data?.recentSelections.length ? `${data.recentSelections.length} recent selections` : undefined}>
+        <View testID="ipad-music-artists-row" style={[styles.row, { flexDirection: verticalFold ? 'row' : 'column', gap: verticalFold ? verticalFold.frame.width : 16 }]}>
+          <View testID="ipad-music-soundtrack" style={verticalFold ? mainColumn : undefined}><Panel title="Today's soundtrack" subtitle={data?.recentSelections.length ? `${data.recentSelections.length} recent selections` : undefined}>
             {data?.recentSelections.length ? <AlbumCarousel tracks={data.recentSelections} enabled={canOpenTracks} onTrack={onTrack} /> : <Empty>Your latest songs will appear here after JourneyDeck receives listening history.</Empty>}
           </Panel></View>
-          <View testID="ipad-music-summary" style={styles.summary}>
-            <View style={styles.metrics}>{metrics.map((metric, index) => <View testID={`ipad-music-metric-${index}`} key={metric.title} style={{ width: metricWidth(index) }}>
-          <View style={[styles.metric, { borderColor: c.line, backgroundColor: c.card }]}><View style={[styles.metricIcon, { backgroundColor: c.inset }]}><SymbolView name={metric.icon} tintColor={c.accent} style={styles.icon} /></View>
-            <View style={styles.flex}><Text style={[styles.meta, { color: c.muted }]}>{metric.title}</Text><Text style={[styles.value, { color: c.text }]}>
+          <View testID="ipad-music-summary" style={[verticalFold ? sideColumn : undefined, styles.summary]}>
+            <View style={styles.metrics}>{metrics.map((metric, index) => <View key={metric.title} testID={`ipad-music-metric-${index}`} style={{ width: metricWidth(index), padding: 6 }}>
+          <View style={[styles.metric, { borderColor: c.line, backgroundColor: c.card }]}><View style={[styles.metricIcon, { backgroundColor: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.coral : c.inset }]}><SymbolView name={metric.icon} tintColor={elementTheme.id === 'midnight-canopy' ? c.text : c.accent} style={styles.icon} /></View>
+            <View style={styles.flex}><Text style={[styles.meta, { color: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.teal : c.muted }]}>{metric.title}</Text><Text style={[styles.value, { color: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.amber : c.text }]}>
               {metric.value == null ? '—' : metric.value.toLocaleString(undefined, { maximumFractionDigits: metric.digits })} <Text style={[styles.meta, { color: c.muted }]}>{metric.unit}</Text></Text></View></View>
         </View>)}</View>
             <View testID="ipad-music-insights" style={[styles.row, { flexDirection: wide ? 'row' : 'column' }]}>
@@ -145,6 +150,8 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
 
 const styles = StyleSheet.create({
   canvas: { width: '100%', maxWidth: 1400, alignSelf: 'center', gap: 16 },
+  main: { flex: 2, minWidth: 0 },
+  side: { flex: 1, minWidth: 0 },
   flex: { flex: 1, minWidth: 0 },
   row: { gap: IPAD_GRID_GAP, alignItems: 'stretch' },
   overview: { gap: 16 },

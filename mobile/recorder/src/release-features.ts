@@ -18,3 +18,19 @@ export const TESSIE_INTEGRATION_ENABLED: boolean = false;
  * controlled TestFlight drive and disabled again through OTA if necessary.
  */
 export const NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false;
+
+/** Atlas design testing is unlocked only by the isolated V3 preview build. */
+export const PREVIEW_ATLAS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.atlasUnlocked === true;
+
+/** Source-only interaction lab exposed exclusively by the isolated V3 preview. */
+export const V3_MARKERS_PROTOTYPE_ENABLED: boolean = Constants.expoConfig?.extra?.features?.markerPrototype === true;
+
+/** Manual U.S. 50 States checklist and Home widget, isolated to V3 preview. */
+export const V3_FIFTY_STATES_ENABLED: boolean = Constants.expoConfig?.extra?.features?.fiftyStates === true;
+
+/** Native question engine and Home prompt, available only in the V3 preview. */
+export const V3_ASK_JOURNEYDECK_ENABLED: boolean = Constants.expoConfig?.extra?.features?.askJourneyDeck === true;
+
+/** Approved forest appearance and alternate icon, isolated to the V3 preview. */
+export const V3_MIDNIGHT_CANOPY_ENABLED: boolean = Constants.expoConfig?.extra?.features?.midnightCanopy === true;
+import Constants from 'expo-constants';

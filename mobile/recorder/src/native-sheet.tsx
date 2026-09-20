@@ -14,9 +14,9 @@ export function requestSheetClose(dirty: boolean, busy: boolean, onClose: () => 
 }
 
 /** UIKit owns presentation and dismissal; the underlying tab stays mounted. */
-export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty = false, busy = false, footer, children }: {
+export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty = false, busy = false, closeDisabled = false, footer, children }: {
   visible: boolean; kicker: string; title: string; onClose: () => void; onDismiss?: () => void;
-  dirty?: boolean; busy?: boolean; footer?: ReactNode; children: ReactNode;
+  dirty?: boolean; busy?: boolean; closeDisabled?: boolean; footer?: ReactNode; children: ReactNode;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(sheetStyles);
@@ -28,12 +28,12 @@ export function NativeSheet({ visible, kicker, title, onClose, onDismiss, dirty 
   }, [visible, onDismiss]);
   return <Modal visible={visible} presentationStyle="pageSheet" animationType="slide"
     transparent={false} backdropColor={theme.color('#08070d', 'surface')}
-    allowSwipeDismissal={false} onRequestClose={() => requestSheetClose(dirty, busy, onClose)} onDismiss={onDismiss}>
+    allowSwipeDismissal={false} onRequestClose={() => requestSheetClose(dirty, busy || closeDisabled, onClose)} onDismiss={onDismiss}>
     <KeyboardAvoidingView style={styles.root} behavior={footer && Platform.OS === 'ios' ? 'padding' : undefined} accessibilityViewIsModal>
       <View style={styles.header}>
         <View style={styles.heading}><Text style={styles.kicker}>{kicker}</Text><Text style={styles.title}>{title}</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close sheet" disabled={busy}
-          onPress={() => requestSheetClose(dirty, busy, onClose)} style={[styles.button, busy && styles.disabled]}><SymbolView name="xmark" tintColor={styles.close.color} style={styles.closeIcon} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close sheet" disabled={busy || closeDisabled}
+          onPress={() => requestSheetClose(dirty, busy || closeDisabled, onClose)} style={[styles.button, busy && styles.disabled]}><SymbolView name="xmark" tintColor={styles.close.color} style={styles.closeIcon} /></Pressable>
       </View>
       <ScrollView automaticallyAdjustKeyboardInsets={!footer} keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" bounces={false}
         alwaysBounceVertical={false} overScrollMode="never" contentInsetAdjustmentBehavior={footer ? 'never' : 'automatic'} contentContainerStyle={styles.content}>

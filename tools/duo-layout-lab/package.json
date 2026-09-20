@@ -1,0 +1,14 @@
+{
+  "name": "journeydeck-duo-layout-lab",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "serve": "node server.mjs",
+    "test": "node --test model.test.mjs",
+    "verify": "node verify.mjs"
+  },
+  "devDependencies": {
+    "three": "0.186.0"
+  }
+}

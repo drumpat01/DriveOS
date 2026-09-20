@@ -76,7 +76,7 @@ function insertJourney(db: DatabaseSync, id: string, userId: string, placeId: st
 }
 
 test('the unified database advances while the legacy recorder identity remains explicit for import', () => {
-  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 7);
+  assert.equal(MASTER_DATABASE_SCHEMA_VERSION, 9);
   assert.equal(RECORDER_DATABASE_SCHEMA_VERSION, 2);
   assert.notEqual(MASTER_DATABASE_APPLICATION_ID, RECORDER_DATABASE_APPLICATION_ID);
 });

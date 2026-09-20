@@ -22,6 +22,7 @@ const navigationContext = load('native-navigation-context.tsx');
 let light = false;
 let ipad = false;
 let windowSize = { width: 820, height: 1180 };
+let adaptive = { isRegular: false, orientation: 'portrait' };
 let memoryParams: any = { id: 'memory-a' };
 let memoryFlip: any = null;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
@@ -31,6 +32,7 @@ const navigation = load('native-navigation.tsx', {
   'react-native': { View: host('view'), useWindowDimensions: () => { throw new Error('Tab labels must not depend on global rotation metrics'); } },
   'react-native-safe-area-context': { useSafeAreaFrame: () => ({ x: 0, y: 0, ...windowSize }) },
   './device-layout': { isIpad: () => ipad },
+  './adaptive-layout': { useAdaptiveLayout: () => adaptive },
   './detail-screen-frame': { DetailViewportProvider: host('viewport') },
   './card-detail-link': { useCardDetailDismissal: () => {} },
   './memory-flip': { MemoryFlipProvider: host('memory-flip'), MemoryFlipImageContext: React.createContext(false), useMemoryFlip: () => memoryFlip },
@@ -108,6 +110,35 @@ test('native bar has five fixed routes and an original orange Home image in both
   await act(() => tree.unmount());
 });
 
+test('Duo leaves trailing-edge vertical tab placement to UIKit without replacing the tab host', async () => {
+  let tree: any;
+  const render = () => React.createElement(navigationContext.NativeNavigationContext.Provider, { value: { tabBarHidden: false } }, React.createElement(navigation.JourneyDeckNativeTabs));
+  const routes = ['music', 'journeys', 'index', 'statistics', 'settings'];
+  try {
+    ipad = false;
+    adaptive = { isRegular: false, orientation: 'portrait' };
+    await act(() => { tree = create(render()); });
+    const tabs = tree.root.findByType('tabs');
+    assert.equal(tabs.props.sidebarAdaptable, undefined, 'the closed outer display keeps UIKit automatic trailing-edge placement');
+    assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), routes);
+
+    adaptive = { isRegular: true, orientation: 'landscape' };
+    await act(() => tree.update(render()));
+    assert.equal(tree.root.findByType('tabs').props.sidebarAdaptable, undefined, 'open landscape keeps UIKit automatic trailing-edge vertical tabs, not an iPad sidebar');
+    assert.equal(tree.root.findByType('tabs'), tabs, 'opening the device must retain the native tab host');
+    assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), routes);
+
+    adaptive = { isRegular: true, orientation: 'portrait' };
+    await act(() => tree.update(render()));
+    assert.equal(tree.root.findByType('tabs').props.sidebarAdaptable, undefined, 'the open portrait display keeps UIKit automatic placement');
+    assert.equal(tree.root.findByType('tabs'), tabs, 'changing pose must not rebuild navigation state');
+    assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), routes);
+  } finally {
+    adaptive = { isRegular: false, orientation: 'portrait' };
+    await act(() => tree?.unmount());
+  }
+});
+
 test('iPad enables the native sidebar with Home first and all five destinations', async () => {
   ipad = true;
   let tree: any;
@@ -152,7 +183,7 @@ test('screen context updates and tab changes retain drafts and one Home recorder
   // context consumers under that lifecycle, including replacement JSX props.
   const nativeHost = readFileSync(new URL('../node_modules/expo-router/build/native-tabs/NativeTabsView.ios.js', import.meta.url), 'utf8');
   assert.match(nativeHost, /const children = tabs\.map/);
-  assert.match(nativeHost, /tab\.routeKey/);
+  assert.match(nativeHost, /screenKey: shared\.screenKey/);
   const render = (selected: string) => React.createElement(navigationContext.NativeNavigationContext.Provider, {
     value: { tabs: Object.fromEntries(tabs.map(tab => [tab, React.createElement(Probe, { tab })])), onTabFocus: () => {} },
   }, tabs.map(tab => React.createElement('native-screen', { key: tab, hidden: selected !== tab }, React.createElement(navigation.NativeTabScreen, { tab }))));
@@ -172,28 +203,32 @@ test('screen context updates and tab changes retain drafts and one Home recorder
 test('Expo stack retains Memory and tab keys when opening a Journey and going back', () => {
   const { StackRouter } = require('../node_modules/expo-router/build/react-navigation/routers/StackRouter.js');
   const { TabRouter } = require('../node_modules/expo-router/build/react-navigation/routers/TabRouter.js');
+  const { createInitialState } = require('../node_modules/expo-router/build/react-navigation/core/createInitialState.js');
   const tabOptions = { routeNames: ['music', 'journeys', 'index', 'statistics', 'settings'], routeParamList: {}, routeGetIdList: {} };
   const tabRouter = TabRouter({ initialRouteName: 'index', backBehavior: 'history' });
-  let tabState = tabRouter.getInitialState(tabOptions);
+  let tabState = tabRouter.normalizeState(createInitialState({ ...tabOptions, initialRouteName: 'index', parentChain: ['(tabs)'] }));
   assert.equal(tabState.routes[tabState.index].name, 'index');
-  const tabKeys = tabState.routes.map((route: any) => route.key);
   for (const name of ['settings', 'music', 'journeys']) {
-    tabState = tabRouter.getStateForAction(tabState, { type: 'JUMP_TO', payload: { name } }, tabOptions);
-    assert.deepEqual(tabState.routes.map((route: any) => route.key), tabKeys);
+    tabState = tabRouter.getStateForAction(tabState, { type: 'JUMP_TO', payload: { name } }, tabOptions).state;
+  }
+  const tabKeys = Object.fromEntries(tabState.routes.map((route: any) => [route.name, route.key]));
+  for (const name of ['index', 'music', 'journeys']) {
+    tabState = tabRouter.getStateForAction(tabState, { type: 'JUMP_TO', payload: { name } }, tabOptions).state;
+    assert.deepEqual(Object.fromEntries(tabState.routes.map((route: any) => [route.name, route.key])), tabKeys);
   }
   const stack = StackRouter({ initialRouteName: '(tabs)' });
   const options = { routeNames: ['(tabs)', 'memory/[id]', 'journey/[id]', 'atlas', 'tools'], routeParamList: {}, routeGetIdList: {} };
-  let state = stack.getInitialState(options);
+  let state = createInitialState({ ...options, initialRouteName: '(tabs)', parentChain: [] });
   state.routes[0].state = tabState;
   const tabKey = state.routes[0].key;
-  state = stack.getStateForAction(state, { type: 'PUSH', payload: { name: 'memory/[id]', params: { id: 'memory-a' } } }, options);
+  state = stack.getStateForAction(state, { type: 'PUSH', payload: { name: 'memory/[id]', params: { id: 'memory-a' } } }, options).state;
   const memoryKey = state.routes[1].key;
-  state = stack.getStateForAction(state, { type: 'PUSH', payload: { name: 'journey/[id]', params: { id: 'journey-b' } } }, options);
-  state = stack.getStateForAction(state, { type: 'GO_BACK' }, options);
+  state = stack.getStateForAction(state, { type: 'PUSH', payload: { name: 'journey/[id]', params: { id: 'journey-b' } } }, options).state;
+  state = stack.getStateForAction(state, { type: 'GO_BACK' }, options).state;
   assert.equal(state.routes[state.index].key, memoryKey);
   assert.equal(state.routes[0].key, tabKey);
   assert.equal(state.routes[0].state, tabState);
-  state = stack.getStateForAction(state, { type: 'GO_BACK' }, options);
+  state = stack.getStateForAction(state, { type: 'GO_BACK' }, options).state;
   assert.equal(state.routes[state.index].name, '(tabs)');
   assert.equal(state.routes[0].state.routes[tabState.index].name, 'journeys');
 });

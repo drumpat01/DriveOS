@@ -32,12 +32,19 @@ function JourneyDeckStackContent() {
     <Stack.Screen name="memory/[id]" options={{ title: 'Memory', headerShown: false, animation: flip?.activeToken ? 'none' : 'default' }} />
     <Stack.Screen name="atlas" options={{ headerShown: false }} />
     <Stack.Screen name="tools" options={{ headerShown: false }} />
+    <Stack.Screen name="time-capsule-prototype" options={{ title: 'Markers', headerShown: true }} />
+    <Stack.Screen name="fifty-states" options={{ headerShown: false, statusBarStyle: 'light' }} />
+    <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'formSheet', sheetGrabberVisible: true, sheetAllowedDetents: [1], headerShown: true }} />
+    <Stack.Screen name="siri-testing" options={{ title: 'Siri AI testing', headerShown: true }} />
   </Stack></ThemeProvider>;
 }
 export function JourneyDeckNativeTabs() {
   const theme = useAppTheme();
   const { tabBarHidden } = useJourneyDeckNavigation();
   const tablet = isIpad();
+  // Standard iPhone tabs let UIKit own Duo's trailing-edge vertical bar in the
+  // outer display and open landscape. sidebarAdaptable is iPad-only because it
+  // requests the separate leading-edge sidebar presentation.
   // Use native layout measurements, not global dimensions sampled during rotation.
   const { width, height } = useSafeAreaFrame();
   const statisticsLabel = tablet && height > width ? 'Stats' : 'Statistics';
@@ -48,7 +55,7 @@ export function JourneyDeckNativeTabs() {
   const selected = theme.isCustom ? theme.palette.accent : tablet ? neutral : theme.isLight ? '#ad492e' : '#ff9470';
   const homeLabelStyle = theme.isCustom ? { color: selected } : tablet ? { color: '#ff8956' } : undefined;
   const homeTrigger = <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop disableAutomaticContentInsets>{theme.isCustom ? <NativeTabs.Trigger.Icon sf="house.fill" /> : <NativeTabs.Trigger.Icon src={require('../assets/home-tab-orange.png')} renderingMode="original" />}<NativeTabs.Trigger.Label selectedStyle={homeLabelStyle}>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>;
-  return <NativeTabs sidebarAdaptable={tablet ? true : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge={!tablet} tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
+  return <NativeTabs backgroundColor={theme.id === 'midnight-canopy' ? theme.palette.inset : undefined} sidebarAdaptable={tablet ? true : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge={!tablet} tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
     {isIpad() && homeTrigger}
     <NativeTabs.Trigger name="music" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="music.note" /><NativeTabs.Trigger.Label>Music</NativeTabs.Trigger.Label></NativeTabs.Trigger>
     <NativeTabs.Trigger name="journeys" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="photo.on.rectangle" /><NativeTabs.Trigger.Label>Memories</NativeTabs.Trigger.Label></NativeTabs.Trigger>

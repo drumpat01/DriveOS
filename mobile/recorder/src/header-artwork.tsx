@@ -22,10 +22,13 @@ export function HeaderArtworkLayers({ source }: HeaderArtworkProps) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const themedSource = headerImageSource(source, theme.id);
+  // The approved Autumn photograph is portrait: keep its road bend in the
+  // wide iPad Home banner rather than cropping to the upper tree canopy.
+  const contentPosition = theme.id === 'midnight-canopy' && source === require('../assets/cinematic-home-main-photo-v1.jpg') ? { top: '80%' as const, left: '50%' as const } : undefined;
 
   return <>
-    <JourneyImage imageIdentity={`header-${theme.id}-sharp`} source={themedSource} contentFit="cover" style={StyleSheet.absoluteFill} />
-    <JourneyImage imageIdentity={`header-${theme.id}-blur`} source={themedSource} contentFit="cover" blurRadius={18} style={[StyleSheet.absoluteFill, styles.blurredArtwork]} />
+    <JourneyImage imageIdentity={`header-${theme.id}-sharp`} source={themedSource} contentFit="cover" contentPosition={contentPosition} style={StyleSheet.absoluteFill} />
+    <JourneyImage imageIdentity={`header-${theme.id}-blur`} source={themedSource} contentFit="cover" contentPosition={contentPosition} blurRadius={18} style={[StyleSheet.absoluteFill, styles.blurredArtwork]} />
     <CinematicPhotoGrade />
     <HeaderEdgeFeather />
   </>;

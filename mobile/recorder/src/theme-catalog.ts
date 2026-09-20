@@ -1,10 +1,11 @@
-export type ThemeId = 'dark' | 'light' | 'sakura' | 'redline';
+export type ThemeId = 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canopy';
 export type ThemeAppearance = 'dark' | 'light';
 export type ThemePalette = {
   page: string; card: string; inset: string; text: string; muted: string;
   accent: string; onAccent: string; line: string; chrome: string;
   success: string; onSuccess: string; danger: string; onDanger: string;
   coral: string; amber: string; teal: string; blue: string; rose: string; green: string;
+  glow?: string;
 };
 
 // Keep stored IDs stable so existing Sakura/Redline selections become their replacements.
@@ -33,11 +34,26 @@ export const themeCatalog: Record<ThemeId, { name: string; mode: ThemeAppearance
     success: '#2f6b57', onSuccess: '#f6f0e2', danger: '#8e3040', onDanger: '#f6f0e2',
     coral: '#d4b15a', amber: '#f6f0e2', teal: '#9cb7d6', blue: '#6fa5f0', rose: '#e4c77a', green: '#2f6b57',
   } },
+  'midnight-canopy': { name: 'Autumn Drive', mode: 'dark', description: 'Forest green · sunset orange · deep red', swatches: ['#162f13', '#206722', '#590000', '#ffd000', '#ffa600', '#ff7600', '#ffffff', '#000000'], palette: {
+    // User-selected Theme Creator preset "test 4", September 17, 2026.
+    // Keep the stored ID stable; photos and album artwork are not palette tokens.
+    page: '#162f13', card: '#206722', inset: '#590000', text: '#ffffff', muted: '#ffffff',
+    accent: '#ffa600', onAccent: '#000000', line: '#ffd000', chrome: '#590000',
+    success: '#206722', onSuccess: '#ffffff', danger: '#590000', onDanger: '#ffffff',
+    coral: '#590000', amber: '#ffa600', teal: '#ffa600', blue: '#590000', rose: '#590000', green: '#162f13',
+    glow: '#ff7600',
+  } },
 };
 
 export const FREE_THEME_IDS: readonly ThemeId[] = ['redline', 'light'];
 export const PLUS_THEME_IDS: readonly ThemeId[] = ['dark', 'sakura'];
 export const THEME_GRID_ORDER: readonly ThemeId[] = [...FREE_THEME_IDS, ...PLUS_THEME_IDS];
+
+export function themeChoices(includeAutumnDrive: boolean): readonly ThemeId[] {
+  return includeAutumnDrive
+    ? ['dark', 'redline', 'midnight-canopy', 'light', 'sakura']
+    : ['dark', 'redline', 'light', 'sakura'];
+}
 
 export function themeRequiresPlus(id: ThemeId) {
   return PLUS_THEME_IDS.includes(id);
@@ -47,7 +63,7 @@ export function parseThemeId(value: unknown): ThemeId {
   return typeof value === 'string' && Object.hasOwn(themeCatalog, value) ? value as ThemeId : 'redline';
 }
 
-export function isCustomTheme(id: ThemeId) { return id === 'sakura' || id === 'redline'; }
+export function isCustomTheme(id: ThemeId) { return id === 'sakura' || id === 'redline' || id === 'midnight-canopy'; }
 
 /** Pastel chart fills use the approved swatches; small labels retain deeper readable inks. */
 export function chartColor(value: string, id: ThemeId) {

@@ -14,6 +14,7 @@ import { PlaceDataCredits } from './place-data-credits';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import type { AppleIdentityStatus } from './auth';
 import type { SavedPlaceSlot } from './saved-places';
+import { useAdaptiveLayout } from './adaptive-layout';
 import type { JourneyMemory, JourneySummary } from './app-data';
 import { AchievementsOverview } from './achievements-overview';
 
@@ -27,8 +28,10 @@ type Props = {
   places: { id: SavedPlaceSlot; label: string; symbol: string; saved: boolean }[];
   customPlaces: { id: string; label: string }[];
   onEditProfile: () => void; onAppleSignIn: () => void; onSignOut: () => void; onDeleteAccount: () => void;
-  onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void; onCustomPlace: (placeId?: string) => void;
+  onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void;
+  onCustomPlace: (placeId?: string) => void;
   internalDiagnostics: boolean; advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
+  onMarkersPrototype?: () => void;
 };
 
 const categoryCopy: Record<SettingsCategoryId, string> = {
@@ -48,23 +51,25 @@ export function IpadSettingsScreen(p: Props) {
     : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#b795e5', line: '#49304f', inset: '#291735' });
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
+  const adaptiveLayout = useAdaptiveLayout();
   const [category, setCategory] = useState<SettingsCategoryId>('appearance');
   const [canvasWidth, setCanvasWidth] = useState(window.width || 1024);
   const selectedCategory = settingsCategories.find(item => item.id === category)!;
   const portrait = window.height > window.width;
   const availableWidth = canvasWidth / Math.max(1, window.fontScale);
   const compact = availableWidth < 680;
-  // Give the in-app category rail more of the landscape canvas. UIKit owns the
-  // separate system sidebar width, so this is the safe place to rebalance the
-  // three-column composition without replacing native adaptive navigation.
   const categoryRailWidth = portrait
     ? Math.max(206, Math.min(238, canvasWidth * 0.28))
     : canvasWidth / 3;
-  const categoryContentWidth = Math.max(1, categoryRailWidth - (portrait ? 28 : 36));
+  const verticalFold = adaptiveLayout.fold?.axis === 'vertical' ? adaptiveLayout.fold : null;
+  const sidebarWidth = verticalFold
+    ? Math.max(206, Math.min(verticalFold.before.width, Math.max(206, canvasWidth - 320 - verticalFold.frame.width)))
+    : categoryRailWidth;
+  const categoryContentWidth = Math.max(1, sidebarWidth - (portrait ? 28 : 36));
   const touringGreen = theme.id === 'redline' ? theme.palette.green : colors.accent;
   const touringGreenWash = theme.id === 'redline' ? `${touringGreen}42` : colors.inset;
   const panel = [styles.panel, { backgroundColor: colors.card, borderColor: theme.id === 'redline' ? `${touringGreen}aa` : colors.line }];
-  const title = [styles.title, { color: colors.text }];
+  const title = [styles.title, { color: theme.id === 'midnight-canopy' ? theme.palette.amber : colors.text }];
   const body = [styles.body, { color: colors.muted }];
   const cloudBusy = p.cloud.status === 'syncing';
   const cloudUnavailable = p.cloud.status === 'unavailable';
@@ -80,7 +85,7 @@ export function IpadSettingsScreen(p: Props) {
     membership: p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days',
   }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.providerName, placeCount, theme.name]);
 
-  const icon = (name: SFSymbol, size = 24) => <View style={[styles.icon, { backgroundColor: theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={name} tintColor={theme.id === 'redline' ? colors.text : colors.accent} size={size} /></View>;
+  const icon = (name: SFSymbol, size = 24) => <View style={[styles.icon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.coral : theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={name} tintColor={theme.id === 'midnight-canopy' || theme.id === 'redline' ? colors.text : colors.accent} size={size} /></View>;
   const button = (label: string, onPress: () => void, options: { disabled?: boolean; primary?: boolean; accessibilityLabel?: string } = {}) =>
     <Pressable accessibilityRole="button" accessibilityLabel={options.accessibilityLabel ?? label} disabled={options.disabled} onPress={onPress}
       style={({ pressed }) => [styles.button, { borderColor: theme.id === 'redline' ? touringGreen : colors.line, backgroundColor: options.primary ? touringGreen : touringGreenWash }, (pressed || options.disabled) && styles.dim]}>
@@ -97,6 +102,7 @@ export function IpadSettingsScreen(p: Props) {
   </View>;
   const recording = <View testID="ipad-settings-recording" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('record.circle')}<View style={styles.flex}><Text style={title}>Manual recording</Text><Text style={body}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View>
+    {p.onMarkersPrototype && <View testID="ipad-markers-prototype-entry" style={panel}><View style={styles.row}>{icon('photo.on.rectangle')}<View style={styles.flex}><Text style={title}>Journey markers</Text><Text style={body}>Open saved markers and add notes or photos after your drive.</Text></View>{button('Open markers', p.onMarkersPrototype)}</View></View>}
     <View style={panel}><View style={styles.row}>{icon('location.fill')}<View style={styles.flex}><Text style={title}>Location stays private</Text><Text style={body}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text></View></View></View>
     <PlaceDataCredits />
   </View>;
@@ -143,7 +149,7 @@ export function IpadSettingsScreen(p: Props) {
   return <SafeAreaView edges={['left', 'right']} style={[styles.safe, { backgroundColor: colors.page }]}>
     <View testID="ipad-settings" onLayout={event => setCanvasWidth(event.nativeEvent.layout.width)} style={[styles.split, compact && styles.compactSplit]}>
       <ScrollView testID="ipad-settings-sidebar" horizontal={compact} showsHorizontalScrollIndicator={false}
-        style={[styles.sidebar, compact ? styles.compactSidebar : { width: categoryRailWidth }, { borderColor: colors.line }]}
+        style={[styles.sidebar, compact ? styles.compactSidebar : { width: sidebarWidth }, { borderColor: colors.line }]}
         contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets
         contentContainerStyle={compact ? styles.compactSidebarContent : { paddingHorizontal: portrait ? 14 : 18, paddingTop: 16, paddingBottom: insets.bottom + 24 }}>
         {!compact && <><IpadPageHeader title="Settings" width={categoryContentWidth} />
@@ -155,8 +161,9 @@ export function IpadSettingsScreen(p: Props) {
           <SymbolView name={item.symbol as SFSymbol} tintColor={active ? (theme.id === 'redline' ? colors.text : colors.accent) : colors.muted} size={21} /><View style={styles.flex}><Text numberOfLines={compact ? 1 : 2} style={[styles.categoryTitle, { color: active ? colors.text : colors.muted }]}>{item.title}</Text>{!compact && <Text numberOfLines={2} style={[styles.categorySummary, { color: colors.muted }]}>{categorySummary[item.id]}</Text>}</View>{active && <View style={[styles.activeDot, { backgroundColor: touringGreen }]} />}
         </Pressable>; })}</SlidingSelection>
       </ScrollView>
-      <ScrollView testID="ipad-settings-detail" style={styles.detail} contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets contentContainerStyle={[styles.detailContent, compact && styles.compactDetailContent, { paddingBottom: insets.bottom + 32 }]}>
-        <View style={styles.detailHeader}><View style={[styles.detailIcon, { backgroundColor: theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={selectedCategory.symbol as SFSymbol} tintColor={theme.id === 'redline' ? colors.text : colors.accent} size={28} /></View><View style={styles.flex}><Text accessibilityRole="header" style={[styles.detailTitle, { color: colors.text }]}>{selectedCategory.title}</Text><Text style={[styles.detailSubtitle, { color: colors.muted }]}>{categoryCopy[category]}</Text></View></View>
+      {verticalFold ? <View testID="ipad-settings-fold-spacer" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none" style={{ width: verticalFold.frame.width }} /> : null}
+      <ScrollView testID="ipad-settings-detail" style={styles.detail} contentInsetAdjustmentBehavior="automatic" automaticallyAdjustContentInsets automaticallyAdjustsScrollIndicatorInsets contentContainerStyle={[styles.detailContent, { paddingBottom: insets.bottom + 32 }]}>
+        <View style={styles.detailHeader}><View style={[styles.detailIcon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.coral : theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={selectedCategory.symbol as SFSymbol} tintColor={theme.id === 'midnight-canopy' || theme.id === 'redline' ? colors.text : colors.accent} size={28} /></View><View style={styles.flex}><Text accessibilityRole="header" style={[styles.detailTitle, { color: colors.text }]}>{selectedCategory.title}</Text><Text style={[styles.detailSubtitle, { color: colors.muted }]}>{categoryCopy[category]}</Text></View></View>
         {detail}
       </ScrollView>
     </View>

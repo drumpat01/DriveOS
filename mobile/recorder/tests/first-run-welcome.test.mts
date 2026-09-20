@@ -13,7 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const source = readFileSync(new URL('../src/first-run-welcome-screen.tsx', import.meta.url), 'utf8');
 
-function load(themeId: 'dark' | 'light' | 'sakura' | 'redline') {
+function load(themeId: 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canopy') {
   const module = { exports: {} as any };
   const native = {
     StyleSheet: { create: (value: any) => value, absoluteFill: { position: 'absolute' } },
@@ -32,15 +32,16 @@ function load(themeId: 'dark' | 'light' | 'sakura' | 'redline') {
   return module.exports.FirstRunWelcomeScreen;
 }
 
-test('static welcome uses each theme, no app logo, one action, and no automatic advance', async () => {
+test('static welcome makes the private route, music, and memory value clear with one action', async () => {
   assert.doesNotMatch(source, /Animated|setTimeout|setInterval|useEffect|autoplay|JourneyOpening/);
   const artwork = {
     dark: '../assets/onboarding-road-background.png',
     light: '../assets/home-header-light-v1.png',
     sakura: '../assets/theme-rosewater-road-v1.png',
     redline: '../assets/onboarding-grand-touring-blue-hour.jpg',
+    'midnight-canopy': '../assets/theme-midnight-canopy-v1.png',
   };
-  for (const themeId of ['dark', 'light', 'sakura', 'redline'] as const) {
+  for (const themeId of ['dark', 'light', 'sakura', 'redline', 'midnight-canopy'] as const) {
     let starts = 0, tree: any;
     const Welcome = load(themeId);
     try {
@@ -49,9 +50,12 @@ test('static welcome uses each theme, no app logo, one action, and no automatic 
       assert.equal(images.length, 1, 'only the background artwork remains');
       assert.equal(images.find((node: any) => node.props.testID === 'welcome-road-artwork').props.source, artwork[themeId]);
       const labels = tree.root.findAllByType('Text').map((node: any) => node.children.join(''));
-      assert.ok(labels.includes('JourneyDeck'));
-      assert.ok(labels.includes('Every mile has a story.'));
-      assert.equal(labels.filter((label: string) => label === 'Get Started').length, 1);
+      assert.ok(labels.includes('JOURNEYDECK'));
+      assert.ok(labels.includes('Your drives,\nremembered.'));
+      assert.ok(labels.includes('Record the route, match the music you played, and keep the moments in one private road archive.'));
+      assert.ok(labels.includes('Private by design. Your roads stay on this iPhone and in your iCloud.'));
+      assert.equal(labels.filter((label: string) => label === 'Set up JourneyDeck').length, 1);
+      assert.equal(tree.root.findAllByType('Pressable').length, 1);
       const start = tree.root.findByProps({ accessibilityLabel: 'Start JourneyDeck setup' });
       assert.equal(start.props.accessibilityRole, 'button');
       await act(() => start.props.onPress());

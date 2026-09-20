@@ -1,3 +1,5 @@
+import * as markerModel from '../src/journey-marker-model.ts';
+import { JOURNEY_MARKER_SCHEMA_SQL, JOURNEY_MARKER_SYNC_SCHEMA_SQL } from '../src/journey-marker-schema.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -21,6 +23,8 @@ function fixture() {
     CREATE TABLE local_places(id TEXT PRIMARY KEY,user_id TEXT,created_at TEXT);`);
   database.exec(UNIFIED_DATABASE_SCHEMA_SQL.slice(UNIFIED_DATABASE_SCHEMA_SQL.indexOf('CREATE TABLE IF NOT EXISTS local_migration_state')));
   database.exec(RECORDER_DATABASE_HARDENING_SQL);
+  database.exec(JOURNEY_MARKER_SCHEMA_SQL);
+  database.exec(JOURNEY_MARKER_SYNC_SCHEMA_SQL);
   const db = {
     execSync: (sql: string) => database.exec(sql),
     runSync: (sql: string, ...params: any[]) => database.prepare(sql).run(...params),
@@ -43,6 +47,7 @@ function fixture() {
     './database-hardening': { SQLITE_CONNECTION_HARDENING_SQL },
     './unified-data-migration': { migrateLegacyRecorderIntoUnifiedDatabase() {} },
     './native-recorder-inbox-model': inboxModel,
+    './journey-marker-model': markerModel,
     './music-observations': { normalizeMusicObservation: (value: any) => value },
     './music-playback-dedupe': { findDuplicatePlayback: () => null },
   };
@@ -62,6 +67,46 @@ function nativeSession(id: string, status: NativeRecorderInboxSession['status'] 
     points: sequences.map(sequence => ({ sequence, recordedAt: `2026-09-07T12:00:0${sequence}.000Z`,
       latitude: 0, longitude: 0, accuracyMeters: 5, altitudeMeters: null, headingDegrees: null, speedMps: 0 })) };
 }
+
+const capturedMarker = { id: `marker_${randomUUID()}`, capturedAt: '2026-09-07T12:00:03.000Z',
+  locationAt: '2026-09-07T12:00:02.000Z', latitude: 0, longitude: 0, accuracyMeters: 5 };
+
+test('native markers import exactly once, preserve notes, and survive completion acknowledgement', () => {
+  const { storage, database } = fixture();
+  try {
+    const session = { ...nativeSession('markers'), markers: [capturedMarker] };
+    storage.importNativeRecorderInbox({ sessions: [session], errorCode: null });
+    database.prepare('UPDATE local_journey_markers SET notes=? WHERE id=?').run('Remember this', capturedMarker.id);
+    storage.importNativeRecorderInbox({ sessions: [session], errorCode: null });
+    assert.equal(database.prepare('SELECT COUNT(*) AS n FROM local_journey_markers').get()?.n, 1);
+    assert.equal(database.prepare('SELECT notes FROM local_journey_markers').get()?.notes, 'Remember this');
+    const ack = storage.importNativeRecorderInbox({ sessions: [{ ...session, status: 'completed', endedAt: '2026-09-07T12:10:00.000Z' }], errorCode: null });
+    assert.deepEqual(Array.from(ack), [session.id]);
+    assert.equal(database.prepare('SELECT root_journey_id FROM local_journey_markers').get()?.root_journey_id, `local_${session.id}`);
+  } finally { database.close(); }
+});
+
+test('marker write failure rolls back the route import so native data cannot be acknowledged', () => {
+  const { storage, database } = fixture();
+  try {
+    database.exec("CREATE TRIGGER fail_marker BEFORE INSERT ON local_journey_markers BEGIN SELECT RAISE(ABORT,'disk full'); END;");
+    const session = { ...nativeSession('failed', 'completed'), markers: [capturedMarker] };
+    assert.throws(() => storage.importNativeRecorderInbox({ sessions: [session], errorCode: null }), /disk full/);
+    assert.equal(database.prepare('SELECT COUNT(*) AS n FROM recording_sessions').get()?.n, 0);
+    database.exec('DROP TRIGGER fail_marker');
+    assert.equal(storage.importNativeRecorderInbox({ sessions: [session], errorCode: null }).length, 1);
+  } finally { database.close(); }
+});
+
+test('foreign-profile and malformed markers are never imported', () => {
+  const { storage, database } = fixture();
+  try {
+    const session = { ...nativeSession('foreign'), ownerUserId: 'other', markers: [capturedMarker] };
+    assert.equal(storage.importNativeRecorderInbox({ sessions: [session], errorCode: null }).length, 0);
+    assert.equal(database.prepare('SELECT COUNT(*) AS n FROM local_journey_markers').get()?.n, 0);
+    assert.throws(() => storage.importNativeRecorderInbox({ sessions: [{ ...session, ownerUserId: 'owner', markers: [{ ...capturedMarker, latitude: 100 }] }], errorCode: null }), /Invalid native marker/);
+  } finally { database.close(); }
+});
 
 test('failsafe reads ten minutes of dense GPS even when the UI tail is only 500 points', () => {
   const { storage, database } = fixture();

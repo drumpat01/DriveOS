@@ -4,8 +4,8 @@ import ExpoModulesCore
 import Foundation
 
 private let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckCloudKitContainer") as? String ?? "iCloud.com.journeydeck.recorder"
-private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "JourneyEdit", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference"]
-private let assetRecordTypes: Set<String> = ["Photo", "RouteArchive", "JourneyEdit"]
+private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "JourneyEdit", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference", "JourneyMarker", "MarkerPhoto"]
+private let assetRecordTypes: Set<String> = ["Photo", "MarkerPhoto", "RouteArchive", "JourneyEdit"]
 private let maximumPhotoAssetBytes: UInt64 = 10 * 1_024 * 1_024
 private let maximumRouteAssetBytes: UInt64 = 20 * 1_024 * 1_024
 
@@ -253,7 +253,7 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(7, "A private photo file is missing from this device.")
     }
     let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
-    let maximumBytes = recordType == "Photo" ? maximumPhotoAssetBytes : maximumRouteAssetBytes
+    let maximumBytes = ["Photo", "MarkerPhoto"].contains(recordType) ? maximumPhotoAssetBytes : maximumRouteAssetBytes
     guard size > 0 && size <= maximumBytes else {
       throw JourneyDeckCloudKitError.make(8, "A private asset file is empty or too large to sync.")
     }
@@ -265,7 +265,7 @@ private final class PrivateCloudKitTransport {
       throw JourneyDeckCloudKitError.make(10, "A downloaded private asset is invalid.")
     }
     let size = (try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
-    let maximumBytes = recordType == "Photo" ? maximumPhotoAssetBytes : maximumRouteAssetBytes
+    let maximumBytes = ["Photo", "MarkerPhoto"].contains(recordType) ? maximumPhotoAssetBytes : maximumRouteAssetBytes
     guard size > 0 && size <= maximumBytes else {
       throw JourneyDeckCloudKitError.make(11, "A downloaded private asset is empty or too large.")
     }
@@ -278,7 +278,7 @@ private final class PrivateCloudKitTransport {
     let safeName = String(recordName.map { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" ? $0 : "_" })
     let photoExtensions: Set<String> = ["heic", "heif", "jpg", "jpeg", "png", "webp"]
     let sourceExtension = source.pathExtension.lowercased()
-    let fileExtension = recordType == "Photo" ? (photoExtensions.contains(sourceExtension) ? sourceExtension : "jpg") : "json"
+    let fileExtension = ["Photo", "MarkerPhoto"].contains(recordType) ? (photoExtensions.contains(sourceExtension) ? sourceExtension : "jpg") : "json"
     // Downloading precedes JavaScript revision/conflict checks. A stable
     // record-name path could overwrite the current winning photo with an older
     // remote version even when SQLite later rejects that record. Keep each
@@ -478,7 +478,7 @@ public final class JourneyDeckCloudKitModule: Module {
     }
 
     AsyncFunction("getCapabilitiesAsync") { () -> [String: Any] in
-      ["privateContentVersion": 4, "transportVersion": 6, "retryMetadata": true]
+      ["privateContentVersion": 5, "transportVersion": 7, "retryMetadata": true]
     }
 
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in

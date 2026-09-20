@@ -17,6 +17,7 @@ const host = (name: string) => React.forwardRef(function Host({ children, ...pro
 });
 
 function loadThemePicker(options: {
+  includeAutumn?: boolean;
   initial?: catalog.ThemeId;
   fail?: { current: boolean };
   setThemes?: string[];
@@ -32,6 +33,7 @@ function loadThemePicker(options: {
     'home-header-light-v1.png',
     'theme-rosewater-road-v1.png',
     'theme-grand-touring-home-v2.png',
+    'theme-midnight-canopy-v1.png',
   ].map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,
@@ -39,6 +41,7 @@ function loadThemePicker(options: {
     require: (id: string) => ({
       ...assets,
       './theme-catalog': catalog,
+      './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: options.includeAutumn ?? false },
       './app-theme': { useThemeChoice: () => ({
         theme: { ...catalog.themeCatalog[initial], id: initial },
         setTheme: (id: string) => options.setThemes?.push(id),
@@ -60,14 +63,14 @@ function loadThemePicker(options: {
   return module.exports;
 }
 
-async function mount(options: { initial?: catalog.ThemeId; membershipTier?: 'free' | 'paid' } = {}) {
+async function mount(options: { initial?: catalog.ThemeId; membershipTier?: 'free' | 'paid'; includeAutumn?: boolean } = {}) {
   const transitions: { id: string; origin: { x: number; y: number } }[] = [];
   const setThemes: string[] = [];
   const alerts: string[] = [];
   const fail = { current: false };
   let upgrades = 0;
   let surroundingMounts = 0;
-  const api = loadThemePicker({ initial: options.initial, transitions, setThemes, alerts, fail });
+  const api = loadThemePicker({ initial: options.initial, includeAutumn: options.includeAutumn, transitions, setThemes, alerts, fail });
   function Screen() {
     React.useEffect(() => { surroundingMounts += 1; }, []);
     return React.createElement('RecorderScreen', null, React.createElement(api.ThemePicker, {
@@ -174,4 +177,34 @@ test('all important grid copy can grow for Dynamic Type', async () => {
     const textNodes = harness.tree.root.findAllByType('Text');
     assert.ok(textNodes.every((node: any) => node.props.numberOfLines === undefined));
   } finally { await harness.unmount(); }
+});
+
+test('V3 Autumn is a standard free card and animates from touch or accessibility activation', async () => {
+  const harness = await mount({ includeAutumn: true, membershipTier: 'free' });
+  try {
+    const free = harness.tree.root.findByProps({ testID: 'theme-row-free' });
+    const card = free.findByProps({ testID: 'theme-card-midnight-canopy' });
+    assert.equal(free.findAllByType('Pressable').length, 3);
+    assert.equal(harness.tree.root.findAllByProps({ testID: 'theme-row-preview' }).length, 0);
+    assert.deepEqual(harness.cards().map((c: any) => c.props.testID), ['theme-card-redline', 'theme-card-light', 'theme-card-midnight-canopy', 'theme-card-dark', 'theme-card-sakura']);
+    assert.match(card.props.accessibilityLabel, /Autumn Drive, theme 3 of 5/);
+    assert.doesNotMatch(card.props.accessibilityLabel, /Requires JourneyDeck Plus/);
+    await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
+    await act(() => card.props.onPress({ nativeEvent: { pageX: 0, pageY: 0 } }));
+    assert.deepEqual(harness.transitions, [
+      { id: 'midnight-canopy', origin: { x: 85, y: 380 } },
+      { id: 'midnight-canopy', origin: { x: 120, y: 160 } },
+    ]);
+    assert.deepEqual(harness.setThemes, [], 'selection must use the animated API, never the immediate setter');
+    assert.equal(harness.upgrades(), 0);
+    assert.equal(harness.mounts(), 1);
+  } finally { await harness.unmount(); }
+  const restored = await mount({ includeAutumn: true, initial: 'midnight-canopy', membershipTier: 'free' });
+  try {
+    const card = restored.cards().find((c: any) => c.props.testID === 'theme-card-midnight-canopy');
+    assert.equal(card.props.accessibilityState.selected, true);
+    await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
+    assert.equal(restored.transitions.length, 0, 'reselecting Autumn does not replay the transition');
+    assert.deepEqual(restored.setThemes, [], 'restored Autumn remains available to free members');
+  } finally { await restored.unmount(); }
 });

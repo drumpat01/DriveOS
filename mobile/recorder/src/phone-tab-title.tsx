@@ -17,8 +17,11 @@ export function PhoneTabTitle({ title, leading, trailing, testID }: {
         textShadowRadius: theme.id === 'redline' ? 0 : 8,
       }]}>{title.toUpperCase()}</Text>
     {hasControls ? <View style={[styles.control, styles.trailing]}>{trailing}</View> : null}
+
   </View>;
 }
+
+
 
 const styles = StyleSheet.create({
   row: { width: '100%', minHeight: 33, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },

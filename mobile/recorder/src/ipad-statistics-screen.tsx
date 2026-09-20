@@ -15,8 +15,9 @@ import type { JourneySummary } from './app-data';
 import { buildIpadStatistics, calendarDays, dayKey, localDay, summarize, type StatisticsRange } from './ipad-statistics-model';
 import { StatisticsBar, StatisticsDayJourneys, StatisticsMotionFrame, StatisticsMotionProvider, StatisticsRollingValue, StatisticsSparkline } from './statistics-motion';
 import { haptics } from './haptics';
-import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
+import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
 import { useCoreMotion } from './use-core-motion';
+import { IPAD_GRID_GAP, ipadGridSpan } from './device-layout';
 
 function useColors() {
   const theme = useAppTheme();
@@ -31,11 +32,12 @@ const dateLabel = (date: Date) => date.toLocaleDateString(undefined, { month: 's
 function StatisticsGlass({ radius, reduceTransparency }: { radius: number; reduceTransparency: boolean }) {
   return <AdaptiveGlassSurface reduceTransparency={reduceTransparency} style={[StyleSheet.absoluteFill, { borderRadius: radius }]}><View /></AdaptiveGlassSurface>;
 }
-function Panel({ title, subtitle, children, accent, reduceTransparency, fill = false, testID }: { title: string; subtitle?: string; children: ReactNode; accent?: string; reduceTransparency: boolean; fill?: boolean; testID?: string }) {
+function Panel({ title, subtitle, children, accent, reduceTransparency = false, fill = false, testID }: { title: string; subtitle?: string; children: ReactNode; accent?: string; reduceTransparency?: boolean; fill?: boolean; testID?: string }) {
+  const theme = useAppTheme();
   const c = useColors();
-  return <StatisticsMotionFrame testID={testID} style={[styles.panel, fill && styles.fill, { borderColor: accent ? `${accent}${c.isLight ? '88' : 'cc'}` : c.line }, accent && neonGlow(accent, c.isLight, 7)]}>
+  return <StatisticsMotionFrame testID={testID} style={[styles.panel, fill && styles.fill, { borderColor: theme.id === 'midnight-canopy' ? c.line : accent ? `${accent}${c.isLight ? '88' : 'cc'}` : c.line }, accent && neonGlow(accent, c.isLight, 7)]}>
     <StatisticsGlass radius={20} reduceTransparency={reduceTransparency} />
-    <Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>{title}</Text>
+    <Text accessibilityRole="header" style={[styles.heading, { color: theme.id === 'midnight-canopy' ? c.teal : c.text }, theme.id === 'midnight-canopy' && { borderLeftWidth: 4, borderLeftColor: theme.palette.rose, paddingLeft: 10 }]}>{title}</Text>
     {subtitle ? <Text style={[styles.caption, { color: c.muted }]}>{subtitle}</Text> : null}{children}
   </StatisticsMotionFrame>;
 }
@@ -82,9 +84,11 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const theme = useAppTheme();
   const motion = useCoreMotion();
   const c = useColors(), insets = useSafeAreaInsets(), { fontScale } = useWindowDimensions();
+  const adaptiveLayout = useAdaptiveLayout();
   const [width, setWidth] = useState(0), [range, setRange] = useState<StatisticsRange>(30);
+  const [compactSection, setCompactSection] = useState<'overview' | 'days' | 'insights'>('overview');
   const [selectedDay, setSelectedDay] = useState<string | null>(null), [monthKey, setMonthKey] = useState<string | null>(null);
-  const [recentCount, setRecentCount] = useState(8), [dayCount, setDayCount] = useState(5);
+  const [recentCount, setRecentCount] = useState(compact ? 3 : 8), [dayCount, setDayCount] = useState(5);
   const [refreshing, setRefreshing] = useState(false);
   const refresh = async () => {
     if (refreshing) return;
@@ -100,11 +104,16 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const month = localDay(desiredMonth.slice(0, 7) < startKey.slice(0, 7) ? startKey : desiredMonth.slice(0, 7) > endKey.slice(0, 7) ? endKey : desiredMonth);
   const dailyJourneys = [...(model.byDay.get(focus) ?? [])].reverse();
   const daily = useMemo(() => summarize(model.byDay.get(focus) ?? [], state.data?.details ?? []), [model, focus, state.data]);
-  const columns = ipadGridColumns(width, fontScale), wide = columns === 6;
+  const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, compact ? 16 : 24);
+  const headerFoldColumns = verticalFoldContentColumns(adaptiveLayout.fold, (compact ? 16 : 24) + 24);
+  const wide = Boolean(foldColumns) || width / fontScale >= 960, columns = width / fontScale >= 1000 ? 6 : width / fontScale >= 550 ? 3 : width / fontScale >= 330 ? 2 : 1;
   const singleRowRanges = compact && fontScale <= 1.2;
-  const span = (count: number) => width ? ipadGridSpan(width, count, columns) : '100%';
+  const span = (count: number) => width ? ipadGridSpan(width, count) : '100%';
   const panelContentWidth = Math.max(0, width - 38);
   const panelSpan = (count: number) => panelContentWidth ? ipadGridSpan(panelContentWidth, count) : '100%';
+  const beforePane = foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0, minWidth: 0 } : undefined;
+  const afterPane = foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0, minWidth: 0 } : undefined;
+  const paneGap = foldColumns?.gap;
   const chooseDay = (key: string) => { if (key !== focus) void haptics.selection(); setSelectedDay(key); setMonthKey(key); setDayCount(5); };
   const metrics: { key: 'miles' | 'journeys' | 'drivingMinutes' | 'plays' | 'listeningMinutes' | 'activeDays'; title: string; icon: SFSymbol; color: string; format: (n: number) => string }[] = [
     { key: 'miles', title: 'Total miles', icon: 'road.lanes', color: c.coral, format: n => `${number(n, 1)} mi` },
@@ -121,41 +130,91 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const weekendJourneys = model.selected.filter(journey => [0, 6].includes(new Date(journey.startedAt).getDay())).length;
   const weekdayJourneys = model.totals.journeys - weekendJourneys;
   const quietDays = Math.max(0, model.days.length - model.totals.activeDays);
-  const rangeColors = theme.id === 'redline' ? [c.green, c.accent, c.blue, theme.palette.chrome] : [c.teal, theme.isCustom ? c.accent : c.amber, c.coral, c.blue];
+  const rangeColors = theme.id === 'midnight-canopy' ? [c.amber, c.accent, c.amber, c.amber] : theme.id === 'redline' ? [c.green, c.accent, c.blue, theme.palette.chrome] : [c.teal, theme.isCustom ? c.accent : c.amber, c.coral, c.blue];
   const rangeFilterColors = [rangeColors[1], rangeColors[1], rangeColors[2], rangeColors[3]];
+  const rangeSelector = <SlidingSelection selectedIndex={([7, 30, 90, 'all'] as const).indexOf(effectiveRange)} style={[styles.row, compact && styles.rangeGrid, singleRowRanges && styles.rangeRow]} itemStyle={compact ? (singleRowRanges ? styles.rangeButton : styles.growButton) : undefined} highlightStyle={{ borderRadius: 12, backgroundColor: `${rangeFilterColors[([7, 30, 90, 'all'] as const).indexOf(effectiveRange)]}${c.isLight ? '22' : '2e'}` }}>{([7, 30, 90, 'all'] as const).map((value, index) => <Button key={value} accent={rangeFilterColors[index]} fitLabel={singleRowRanges} label={`${value === 'all' ? 'All' : `${value}D`}${historyDays !== null && (value === 'all' || value > historyDays) ? ' · Plus' : ''}`} selected={effectiveRange === value}
+    onPress={() => { if (historyDays !== null && (value === 'all' || value > historyDays)) { onUpgrade(); return; } if (value !== effectiveRange) void haptics.selection(); setRange(value); setSelectedDay(null); setMonthKey(null); setRecentCount(compact ? 3 : 8); setDayCount(5); }} />)}</SlidingSelection>;
+  const compactSectionSelector = <SlidingSelection selectedIndex={['overview', 'days', 'insights'].indexOf(compactSection)} style={styles.sectionSelector} itemStyle={styles.sectionButton}
+    highlightStyle={{ borderRadius: 12, backgroundColor: `${c.accent}${c.isLight ? '20' : '30'}` }}>
+    {(['overview', 'days', 'insights'] as const).map(section => <Button key={section} grow label={section[0].toUpperCase() + section.slice(1)} selected={compactSection === section}
+      onPress={() => { if (section !== compactSection) void haptics.selection(); setCompactSection(section); }} />)}
+  </SlidingSelection>;
+  const metricComparison = (metric: typeof metrics[number]) => {
+    const value = model.totals[metric.key], previous = model.previous?.[metric.key];
+    const partial = metric.key === 'listeningMinutes' && (model.totals.partialMusic || model.previous?.partialMusic);
+    return partial ? 'Known song durations' : previous === undefined ? 'No comparison available' : previous === 0 ? value === 0 ? 'Unchanged from prior period' : 'Prior period: 0' : `${value >= previous ? '+' : ''}${number((value - previous) / previous * 100, 1)}% vs prior period`;
+  };
+  const metricCard = (metric: typeof metrics[number], cardWidth: number | '100%') => {
+    const value = model.totals[metric.key], comparison = metricComparison(metric);
+    const series = model.days.slice(-90).map(day => day[metric.key]);
+    const autumn = theme.id === 'midnight-canopy';
+    const highlight = autumn ? (['miles', 'drivingMinutes', 'listeningMinutes'].includes(metric.key) ? c.accent : c.amber) : metric.color;
+    return <View key={metric.key} testID={`statistics-metric-${metric.key}`} style={[styles.metric, { width: cardWidth, backgroundColor: c.card, borderColor: highlight }, !autumn && neonGlow(metric.color, c.isLight, 11)]}>
+      {!autumn && <StatisticsGlass radius={18} reduceTransparency={motion.reduceTransparency} />}
+      <View style={autumn ? { alignSelf: 'flex-start', padding: 4, borderRadius: 8, backgroundColor: c.rose } : undefined}><SymbolView name={metric.icon} tintColor={autumn ? c.text : metric.color} style={{ width: 21, height: 21 }} /></View><Text style={[styles.caption, { color: theme.id === 'midnight-canopy' ? c.teal : c.muted }]}>{metric.title}</Text>
+      <StatisticsRollingValue style={[styles.value, { color: theme.id === 'midnight-canopy' ? theme.palette.amber : c.text }]} value={metric.format(value)} /><Text style={[styles.tiny, { color: c.muted }]}>{comparison}</Text>
+      <StatisticsSparkline values={series} color={autumn ? highlight : theme.chartColor(metric.color)} style={[styles.sparkline, !autumn && neonGlow(metric.color, c.isLight, 6)]} />
+    </View>;
+  };
+  const compactMetricCard = (metric: typeof metrics[number], cardWidth: number | '100%') => <View key={metric.key} testID={`statistics-metric-${metric.key}`}
+    style={[styles.compactMetric, { width: cardWidth, backgroundColor: c.card, borderColor: `${metric.color}${c.isLight ? '70' : 'bb'}` }]}>
+    <View style={styles.compactMetricTop}><SymbolView name={metric.icon} tintColor={metric.color} style={{ width: 18, height: 18 }} />
+      <Text numberOfLines={1} style={[styles.caption, { color: c.muted }]}>{metric.title}</Text></View>
+    <StatisticsRollingValue style={[styles.compactValue, { color: c.text }]} value={metric.format(model.totals[metric.key])} />
+  </View>;
+  const foldMetricColumns = Math.max(1, Math.min(3, Math.floor(((Math.min(foldColumns?.beforeWidth ?? 0, foldColumns?.afterWidth ?? 0) / fontScale) + 12) / 180)));
+  const foldMetricPane = (items: typeof metrics, paneWidth: number) => <View style={[styles.row, { width: paneWidth, flexGrow: 0, flexShrink: 0 }]}>{items.map(metric => metricCard(metric, (paneWidth - (foldMetricColumns - 1) * 12) / foldMetricColumns))}</View>;
+  const hourlyPanel = <Panel testID="statistics-hourly-panel" title="Hourly departures" subtitle="Journey count by local start hour" accent={theme.id === 'redline' ? c.green : c.amber} fill><Bars values={model.hours} labels={model.hours.map((_, i) => `${i}:00`)} unit="journeys" colors={theme.id === 'redline' ? [c.green, c.accent, c.blue, theme.palette.chrome] : [c.amber, c.coral, c.teal, c.blue]} /></Panel>;
+  const scatterPanel = <Panel testID="statistics-scatter-panel" title="Distance vs duration" subtitle="Each dot is one journey · miles horizontally, minutes vertically" accent={c.coral} fill>
+    <Svg width="100%" height={180} viewBox="0 0 300 180" accessibilityLabel={`${model.selected.length} journeys. Full mileage and duration are listed in Recent journeys.`} accessible>
+      <Line x1={12} y1={160} x2={288} y2={160} stroke={c.line} /><Line x1={12} y1={10} x2={12} y2={160} stroke={c.line} />
+      {(() => { const maxMiles = Math.max(1, ...model.selected.map(j => Number.isFinite(j.miles) ? j.miles : 0)), maxMinutes = Math.max(1, ...model.selected.map(j => Number.isFinite(j.durationMinutes) ? j.durationMinutes : 0)); return model.selected.map((j, index) => <Circle key={j.id} cx={12 + Math.max(0, j.miles || 0) / maxMiles * 270} cy={160 - Math.max(0, j.durationMinutes || 0) / maxMinutes * 145} r={3.5} fill={rangeColors[index % rangeColors.length]} opacity={0.8} />); })()}
+    </Svg><Text style={[styles.caption, { color: c.muted }]}>0–{number(Math.max(0, ...model.selected.map(j => Number.isFinite(j.miles) ? j.miles : 0)), 1)} mi · 0–{number(Math.max(0, ...model.selected.map(j => Number.isFinite(j.durationMinutes) ? j.durationMinutes : 0)))} min</Text>
+  </Panel>;
+  const musicPanel = <Panel testID="statistics-music-panel" title="Music totals" subtitle="Distinct entries in saved journey soundtracks" accent={c.rose} fill>
+    {[['Unique tracks', model.totals.uniqueTracks, c.rose], ['Artists', model.totals.uniqueArtists, c.blue], ['Albums', model.totals.uniqueAlbums, c.teal]].map(([label, value, color]) => <StatLine key={String(label)} label={String(label)} value={number(Number(value))} color={String(color)} />)}
+  </Panel>;
+  const atlasCard = <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas" onPress={onAtlas ?? onUpgrade}
+    style={({ pressed }) => [styles.featureCard, compact && styles.compactFeatureCard, { borderColor: `${c.accent}${c.isLight ? '88' : 'cc'}`, opacity: pressed ? .75 : 1 }, neonGlow(c.accent, c.isLight, 7)]}>
+    <StatisticsGlass radius={compact ? 20 : 24} reduceTransparency={motion.reduceTransparency} />
+    <Text style={[styles.featureEyebrow, { color: c.accent }]}>YOUR PRIVATE INTELLIGENCE · PLUS</Text>
+    <Text style={[styles.featureTitle, compact && styles.compactFeatureTitle, { color: c.text }]}>Atlas ↗</Text>
+    <Text style={[styles.featureBody, { color: c.muted }]}>Discover your routes, driving rhythms, and the places that connect them.</Text>
+  </Pressable>;
+  const yearCard = onYearOnRoad ? <Pressable accessibilityRole="button" accessibilityLabel="Your Year on the Road. JourneyDeck Plus" onPress={onYearOnRoad}
+    style={({ pressed }) => [styles.featureCard, compact && styles.compactFeatureCard, { borderColor: `${c.accent}${c.isLight ? '88' : 'cc'}`, opacity: pressed ? .75 : 1 }, neonGlow(c.accent, c.isLight, 7)]}>
+    <StatisticsGlass radius={compact ? 20 : 24} reduceTransparency={motion.reduceTransparency} />
+    <Text style={[styles.featureEyebrow, { color: c.accent }]}>YOUR PERSONAL PREMIERE · PLUS</Text>
+    <Text style={[styles.featureTitle, compact && styles.compactFeatureTitle, { color: c.text }]}>Your Year on the Road ↗</Text>
+    <Text style={[styles.featureBody, { color: c.muted }]}>The miles. The music. The moments. Play your story in any theme.</Text>
+  </Pressable> : null;
   return <StatisticsMotionProvider><SafeAreaView edges={compact ? ['top', 'left', 'right'] : ['left', 'right']} style={{ flex: 1, backgroundColor: c.page }}>
-    <ScrollView testID="ipad-statistics" contentInsetAdjustmentBehavior={compact ? 'never' : 'automatic'} contentContainerStyle={{ padding: compact ? 16 : 24, paddingTop: compact ? 16 : 18, paddingBottom: insets.bottom + (compact ? 16 : 28) }}
+    <ScrollView testID="ipad-statistics" contentInsetAdjustmentBehavior={compact ? 'never' : 'automatic'} contentContainerStyle={{ padding: compact ? 16 : 24, paddingTop: 18, paddingBottom: insets.bottom + (compact ? 112 : 28) }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.accent} />}>
-      <View testID="ipad-statistics-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={[styles.canvas, compact && styles.canvasCompact]}>
-        <IpadPageHeader compact={compact} title="Statistics" width={width} />
-        <SlidingSelection selectedIndex={([7, 30, 90, 'all'] as const).indexOf(effectiveRange)} style={[styles.row, compact && styles.rangeGrid, singleRowRanges && styles.rangeRow]} itemStyle={compact ? (singleRowRanges ? styles.rangeButton : styles.growButton) : undefined} highlightStyle={{ borderRadius: 12, backgroundColor: `${rangeFilterColors[([7, 30, 90, 'all'] as const).indexOf(effectiveRange)]}${c.isLight ? '22' : '2e'}` }}>{([7, 30, 90, 'all'] as const).map((value, index) => <Button key={value} accent={rangeFilterColors[index]} fitLabel={singleRowRanges} label={`${value === 'all' ? 'All' : `${value}D`}${historyDays !== null && (value === 'all' || value > historyDays) ? ' · Plus' : ''}`} selected={effectiveRange === value}
-            onPress={() => { if (historyDays !== null && (value === 'all' || value > historyDays)) { onUpgrade(); return; } if (value !== effectiveRange) void haptics.selection(); setRange(value); setSelectedDay(null); setMonthKey(null); setRecentCount(8); setDayCount(5); }} />)}</SlidingSelection>
-        <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas" onPress={onAtlas ?? onUpgrade}
-          style={({ pressed }) => ({ borderRadius: 24, padding: 24, borderWidth: 1, borderColor: `${c.accent}${c.isLight ? '88' : 'cc'}`, opacity: pressed ? .75 : 1, overflow: 'hidden', gap: 8, ...neonGlow(c.accent, c.isLight, 7) })}>
-          <StatisticsGlass radius={24} reduceTransparency={motion.reduceTransparency} />
-          <Text style={{ color: c.accent, fontSize: 10, fontWeight: '800', letterSpacing: 2 }}>YOUR PRIVATE INTELLIGENCE · PLUS</Text>
-          <Text style={{ color: c.text, fontSize: 25, fontWeight: '800' }}>Atlas ↗</Text>
-          <Text style={{ color: c.muted, fontSize: 14 }}>Discover your routes, driving rhythms, and the places that connect them.</Text>
-        </Pressable>
+      <View testID="ipad-statistics-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
+        <IpadPageHeader compact={compact} title="Statistics" width={width} artwork={compact ? undefined : require('../assets/cinematic-statistics-photo-v1.jpg')} subtitle={compact ? undefined : 'Every mile. Every journey. Your numbers.'} split={compact ? undefined : headerFoldColumns}>{compact ? undefined : rangeSelector}</IpadPageHeader>
+        {compact ? rangeSelector : null}
+        {compact ? compactSectionSelector : atlasCard}
         {state.status === 'error' ? <View accessibilityRole="alert"><Text style={{ color: c.muted }}>{state.message || 'Statistics could not refresh. Saved data remains available.'}</Text><Button label="Try again" onPress={onRefresh} /></View> : null}
         {!state.data ? state.status === 'loading' ? <ActivityIndicator accessibilityLabel="Loading statistics" color={c.accent} /> : <Text style={{ color: c.muted }}>Statistics are unavailable. Try refreshing.</Text> : <>
           <Text style={[styles.caption, { color: c.muted }]}>{dateLabel(model.start)} – {dateLabel(model.end)} · By journey start date{historyDays === null ? '' : ` · ${historyDays}-day history`}</Text>
           {!model.selected.length ? <Text style={[styles.body, { color: c.muted }]}>No journeys in this period. Your recorded journeys will populate this dashboard.</Text> : null}
-          <View testID="statistics-widgets" style={styles.row}>{metrics.map(metric => {
-            const value = model.totals[metric.key], previous = model.previous?.[metric.key];
-            const partial = metric.key === 'listeningMinutes' && (model.totals.partialMusic || model.previous?.partialMusic);
-            const comparison = partial ? 'Known song durations' : previous === undefined ? 'No comparison available' : previous === 0 ? value === 0 ? 'Unchanged from prior period' : 'Prior period: 0' : `${value >= previous ? '+' : ''}${number((value - previous) / previous * 100, 1)}% vs prior period`;
-            const series = model.days.slice(-90).map(day => day[metric.key]);
-            return <View key={metric.key} style={[styles.metric, { width: span(1), borderColor: `${metric.color}${c.isLight ? '88' : 'dd'}` }, neonGlow(metric.color, c.isLight, 7)]}>
-              <StatisticsGlass radius={18} reduceTransparency={motion.reduceTransparency} />
-              <SymbolView name={metric.icon} tintColor={metric.color} style={{ width: 21, height: 21 }} /><Text style={[styles.caption, { color: c.muted }]}>{metric.title}</Text>
-              <StatisticsRollingValue style={[styles.value, { color: c.text }]} value={metric.format(value)} /><Text style={[styles.tiny, { color: c.muted }]}>{comparison}</Text>
-              <StatisticsSparkline values={series} color={theme.chartColor(metric.color)} style={[styles.sparkline, neonGlow(metric.color, c.isLight, 6)]} />
-            </View>;
-          })}</View>
-          <Panel title="Your days, in detail" subtitle="Select a day to see its totals and journeys." accent={c.amber} reduceTransparency={motion.reduceTransparency}>
-            <View testID="statistics-calendar-layout" style={{ flexDirection: wide ? 'row' : 'column', gap: IPAD_GRID_GAP }}>
-              <View testID="statistics-calendar-panel" style={{ width: wide ? panelSpan(4) : '100%', minWidth: 0 }}>
+          {compact && compactSection === 'overview' ? <>
+            <Panel testID="statistics-overview-hero" title="Period overview" subtitle={model.selected.length ? metricComparison(metrics[0]) : 'Ready for your next recorded journey'} accent={c.coral}>
+              <View testID="statistics-metric-miles" style={styles.heroMetric}><View><Text style={[styles.caption, { color: c.muted }]}>Total miles</Text>
+                <StatisticsRollingValue style={[styles.heroValue, { color: c.text }]} value={metrics[0].format(model.totals.miles)} /></View>
+                <SymbolView name="road.lanes" tintColor={c.coral} style={{ width: 28, height: 28 }} /></View>
+              {model.selected.length ? <Bars keys={model.days.map(d => d.key)} selectedKey={focus} values={model.days.map(d => d.miles)} labels={model.days.map(d => localDay(d.key).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }))} unit="miles" onSelect={i => { chooseDay(model.days[i].key); setCompactSection('days'); }} />
+                : <Text style={[styles.caption, { color: c.muted }]}>Daily distance will appear here after a journey is saved.</Text>}
+            </Panel>
+            <View testID="statistics-widgets" style={styles.row}>{metrics.slice(1).map(metric => compactMetricCard(metric, width ? (width - 12) / 2 : '100%'))}</View>
+            {atlasCard}
+          </> : !compact ? <View testID="statistics-widgets" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : styles.row}>{foldColumns
+            ? <>{foldMetricPane(metrics.slice(0, 3), foldColumns.beforeWidth)}{foldMetricPane(metrics.slice(3), foldColumns.afterWidth)}</>
+            : metrics.map(metric => metricCard(metric, width ? (width - (columns - 1) * 12) / columns : '100%'))}</View> : null}
+          {(!compact || compactSection === 'days') ? <Panel title="Your days, in detail" subtitle="Select a day to see its totals and journeys." accent={c.amber}>
+            <View testID="statistics-calendar-layout" style={{ flexDirection: wide ? 'row' : 'column', gap: paneGap ?? IPAD_GRID_GAP }}>
+              <View testID="statistics-calendar-panel" style={foldColumns ? beforePane : { width: wide ? panelSpan(4) : '100%', minWidth: 0 }}>
                 <View style={[styles.row, { justifyContent: 'space-between', marginBottom: 12 }]}><Button accent={c.teal} label="Previous month" disabled={dayKey(month).slice(0, 7) <= startKey.slice(0, 7)} onPress={() => setMonthKey(dayKey(new Date(month.getFullYear(), month.getMonth() - 1, 1)))} />
                   <Text style={[styles.body, { color: c.text }]}>{month.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</Text>
                   <Button accent={c.teal} label="Next month" disabled={dayKey(month).slice(0, 7) >= endKey.slice(0, 7)} onPress={() => setMonthKey(dayKey(new Date(month.getFullYear(), month.getMonth() + 1, 1)))} /></View>
@@ -171,8 +230,8 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
                     </Pressable>;
                   })}</View>
               </View>
-              <StatisticsMotionFrame testID="statistics-day-panel" style={{ width: wide ? panelSpan(2) : '100%', minWidth: 0, gap: 12 }}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>{dateLabel(localDay(focus))}</Text>
-                <View style={styles.row}>{metrics.filter(m => m.key !== 'activeDays').map(metric => <View key={metric.key} style={{ minWidth: 90, flexGrow: 1 }}><Text style={[styles.caption, { color: c.muted }]}>{metric.title}</Text><StatisticsRollingValue style={[styles.body, { color: c.text }]} value={metric.format(daily[metric.key])} /></View>)}</View>
+              <StatisticsMotionFrame testID="statistics-day-panel" style={foldColumns ? [afterPane, { gap: 12 }] : { width: wide ? panelSpan(2) : '100%', minWidth: 0, gap: 12 }}><Text accessibilityRole="header" style={[styles.heading, { color: theme.id === 'midnight-canopy' ? c.teal : c.text }, theme.id === 'midnight-canopy' && { borderLeftWidth: 4, borderLeftColor: theme.palette.rose, paddingLeft: 10 }]}>{dateLabel(localDay(focus))}</Text>
+                <View style={styles.row}>{metrics.filter(m => m.key !== 'activeDays').map(metric => <View key={metric.key} style={{ minWidth: 90, flexGrow: 1 }}><Text style={[styles.caption, { color: theme.id === 'midnight-canopy' ? c.teal : c.muted }]}>{metric.title}</Text><StatisticsRollingValue style={[styles.body, { color: c.text }]} value={metric.format(daily[metric.key])} /></View>)}</View>
                 <StatisticsDayJourneys selectionKey={focus}>
                 {dailyJourneys.length ? dailyJourneys.slice(0, dayCount).map(journey => <JourneyRow key={journey.id} journey={journey} onJourney={onJourney} />) : <Text style={{ color: c.muted }}>No journeys recorded this day.</Text>}
                 {dailyJourneys.length > dayCount ? <Button label="More journeys this day" onPress={() => setDayCount(n => n + 10)} /> : null}
@@ -180,53 +239,45 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
                 </StatisticsDayJourneys>
               </StatisticsMotionFrame>
             </View>
-          </Panel>
-          <StatisticsMotionFrame testID="statistics-distance-row" style={{ flexDirection: wide ? 'row' : 'column', gap: IPAD_GRID_GAP }}><View testID="statistics-distance-panel" style={{ width: wide ? span(4) : '100%', minWidth: 0 }}><Panel title="Daily distance" subtitle="Miles per day · tap a bar to select its date" accent={theme.id === 'redline' ? c.green : c.coral} reduceTransparency={motion.reduceTransparency} fill>
+          </Panel> : null}
+          {!compact ? <StatisticsMotionFrame testID="statistics-distance-layout" style={{ flexDirection: wide ? 'row' : 'column', gap: paneGap ?? IPAD_GRID_GAP }}><View testID="statistics-distance-panel" style={foldColumns ? beforePane : { width: wide ? span(4) : '100%', minWidth: 0 }}><Panel title="Daily distance" subtitle="Miles per day · tap a bar to select its date" accent={theme.id === 'redline' ? c.green : c.coral} fill>
             <Bars keys={model.days.map(d => d.key)} selectedKey={focus} values={model.days.map(d => d.miles)} labels={model.days.map(d => localDay(d.key).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }))} unit="miles" onSelect={i => chooseDay(model.days[i].key)} />
-          </Panel></View><View testID="statistics-breakdown-panel" style={{ width: wide ? span(2) : '100%', minWidth: 0 }}><Panel title="Distance breakdown" subtitle="Journeys by distance" accent={c.teal} reduceTransparency={motion.reduceTransparency} fill>
+          </Panel></View><View testID="statistics-breakdown-panel" style={foldColumns ? afterPane : { width: wide ? span(2) : '100%', minWidth: 0 }}><Panel title="Distance breakdown" subtitle="Journeys by distance" accent={c.teal} fill>
             {model.bands.map((band, index) => <View key={band.label} style={{ gap: 7, marginVertical: 8 }}><Text style={{ color: c.text }}>{band.label} · {band.count} journeys ({number(band.count / Math.max(1, model.totals.journeys) * 100)}%)</Text><View style={{ height: 6, backgroundColor: c.inset, borderRadius: 3 }}><StatisticsBar horizontal fraction={band.count / Math.max(1, model.totals.journeys)} color={rangeColors[index]} /></View></View>)}
-          </Panel></View></StatisticsMotionFrame>
-          <StatisticsMotionFrame testID="statistics-analysis-row" style={{ flexDirection: wide ? 'row' : 'column', alignItems: 'stretch', gap: IPAD_GRID_GAP }}><View style={{ width: wide ? span(2) : '100%', minWidth: 0 }}><Panel testID="statistics-hourly-panel" title="Hourly departures" subtitle="Journey count by local start hour" accent={theme.id === 'redline' ? c.green : c.amber} reduceTransparency={motion.reduceTransparency} fill><Bars values={model.hours} labels={model.hours.map((_, i) => `${i}:00`)} unit="journeys" colors={theme.id === 'redline' ? [c.green, c.accent, c.blue, theme.palette.chrome] : [c.amber, c.coral, c.teal, c.blue]} /></Panel></View>
-            <View style={{ width: wide ? span(2) : '100%', minWidth: 0 }}><Panel testID="statistics-scatter-panel" title="Distance vs duration" subtitle="Each dot is one journey · miles horizontally, minutes vertically" accent={c.coral} reduceTransparency={motion.reduceTransparency} fill>
-              <Svg width="100%" height={180} viewBox="0 0 300 180" accessibilityLabel={`${model.selected.length} journeys. Full mileage and duration are listed in Recent journeys.`} accessible>
-                <Line x1={12} y1={160} x2={288} y2={160} stroke={c.line} /><Line x1={12} y1={10} x2={12} y2={160} stroke={c.line} />
-                {(() => { const maxMiles = Math.max(1, ...model.selected.map(j => Number.isFinite(j.miles) ? j.miles : 0)), maxMinutes = Math.max(1, ...model.selected.map(j => Number.isFinite(j.durationMinutes) ? j.durationMinutes : 0)); return model.selected.map((j, index) => <Circle key={j.id} cx={12 + Math.max(0, j.miles || 0) / maxMiles * 270} cy={160 - Math.max(0, j.durationMinutes || 0) / maxMinutes * 145} r={3.5} fill={rangeColors[index % rangeColors.length]} opacity={0.8} />); })()}
-              </Svg><Text style={[styles.caption, { color: c.muted }]}>0–{number(Math.max(0, ...model.selected.map(j => Number.isFinite(j.miles) ? j.miles : 0)), 1)} mi · 0–{number(Math.max(0, ...model.selected.map(j => Number.isFinite(j.durationMinutes) ? j.durationMinutes : 0)))} min</Text>
-            </Panel></View><View style={{ width: wide ? span(2) : '100%', minWidth: 0 }}><Panel testID="statistics-music-panel" title="Music totals" subtitle="Distinct entries in saved journey soundtracks" accent={c.rose} reduceTransparency={motion.reduceTransparency} fill>
-              {[['Unique tracks', model.totals.uniqueTracks, c.rose], ['Artists', model.totals.uniqueArtists, c.blue], ['Albums', model.totals.uniqueAlbums, c.teal]].map(([label, value, color]) => <StatLine key={String(label)} label={String(label)} value={number(Number(value))} color={String(color)} />)}
-            </Panel></View></StatisticsMotionFrame>
-          <StatisticsMotionFrame testID="statistics-bottom-layout" style={{ flexDirection: wide ? 'row' : 'column', alignItems: 'stretch', gap: IPAD_GRID_GAP }}>
-            <View testID="statistics-recent-panel" style={{ width: wide ? span(4) : '100%', minWidth: 0 }}><Panel title="Recent journeys" subtitle={`${model.selected.length} journeys in this period · newest first`} accent={c.blue} reduceTransparency={motion.reduceTransparency} fill>
+          </Panel></View></StatisticsMotionFrame> : compactSection === 'insights' ? <Panel testID="statistics-breakdown-panel" title="Distance breakdown" subtitle="Journeys by distance" accent={c.teal}>
+            {model.bands.map((band, index) => <View key={band.label} style={{ gap: 7, marginVertical: 8 }}><Text style={{ color: c.text }}>{band.label} · {band.count} journeys ({number(band.count / Math.max(1, model.totals.journeys) * 100)}%)</Text><View style={{ height: 6, backgroundColor: c.inset, borderRadius: 3 }}><StatisticsBar horizontal fraction={band.count / Math.max(1, model.totals.journeys)} color={rangeColors[index]} /></View></View>)}
+          </Panel> : null}
+          {(!compact || compactSection === 'insights') ? <StatisticsMotionFrame testID="statistics-analysis-row" style={{ flexDirection: wide ? 'row' : 'column', alignItems: 'stretch', gap: paneGap ?? IPAD_GRID_GAP }}>
+            <View style={foldColumns ? beforePane : { width: wide ? span(2) : '100%', minWidth: 0 }}>{hourlyPanel}</View>
+            {foldColumns ? <View style={[afterPane, { gap: 16 }]}><View>{scatterPanel}</View><View>{musicPanel}</View></View>
+              : <><View style={{ width: wide ? span(2) : '100%', minWidth: 0 }}>{scatterPanel}</View><View style={{ width: wide ? span(2) : '100%', minWidth: 0 }}>{musicPanel}</View></>}
+          </StatisticsMotionFrame> : null}
+          {(!compact || compactSection === 'overview' || compactSection === 'insights') ? <StatisticsMotionFrame testID="statistics-bottom-layout" style={{ flexDirection: wide ? 'row' : 'column', alignItems: 'stretch', gap: paneGap ?? IPAD_GRID_GAP }}>
+            {(!compact || compactSection === 'overview') ? <View testID="statistics-recent-panel" style={foldColumns ? beforePane : { width: wide ? span(4) : '100%', minWidth: 0 }}><Panel title="Recent journeys" subtitle={`${model.selected.length} journeys in this period · newest first`} accent={c.blue} fill>
               {model.selected.slice(0, recentCount).map(journey => <JourneyRow key={journey.id} journey={journey} onJourney={onJourney} />)}
               {model.selected.length > recentCount ? <Button label="Show more journeys" accent={c.blue} onPress={() => setRecentCount(n => n + 20)} /> : null}
-            </Panel></View>
-            <View testID="statistics-bottom-widgets" style={{ width: wide ? span(2) : '100%', minWidth: 0, gap: IPAD_GRID_GAP }}>
-              <Panel title="Journey averages" subtitle="Simple totals divided by journey count" accent={c.teal} reduceTransparency={motion.reduceTransparency}>
+            </Panel></View> : null}
+            <View testID="statistics-bottom-widgets" style={foldColumns ? [afterPane, { gap: 16 }] : { width: wide ? span(2) : '100%', minWidth: 0, gap: IPAD_GRID_GAP }}>
+              {(!compact || compactSection === 'insights') ? <Panel title="Journey averages" subtitle="Simple totals divided by journey count" accent={c.teal}>
                 <StatLine label="Miles per journey" value={`${number(model.totals.miles / journeyCount, 1)} mi`} color={c.coral} />
                 <StatLine label="Time per journey" value={duration(model.totals.drivingMinutes / journeyCount)} color={c.teal} />
                 <StatLine label="Plays per journey" value={number(model.totals.plays / journeyCount, 1)} color={c.rose} />
-              </Panel>
+              </Panel> : null}
               <Panel title="Record book" subtitle="Highest recorded values in this period" accent={theme.id === 'redline' ? c.green : c.amber} reduceTransparency={motion.reduceTransparency}>
                 <StatLine label="Longest distance" value={longestDistance ? `${number(Math.max(0, longestDistance.miles || 0), 1)} mi` : '—'} color={c.coral} />
                 <StatLine label="Longest drive" value={longestDuration ? duration(Math.max(0, longestDuration.durationMinutes || 0)) : '—'} color={c.amber} />
                 <StatLine label="Most plays" value={mostMusic ? number(Math.max(0, mostMusic.songCount || 0)) : '—'} color={c.rose} />
               </Panel>
-              <Panel title="Activity split" subtitle="Recorded days and journey counts" accent={c.green} reduceTransparency={motion.reduceTransparency}>
+              {(!compact || compactSection === 'insights') ? <Panel title="Activity split" subtitle="Recorded days and journey counts" accent={c.green} reduceTransparency={motion.reduceTransparency}>
                 <StatLine label="Weekday journeys" value={number(weekdayJourneys)} color={c.blue} />
                 <StatLine label="Weekend journeys" value={number(weekendJourneys)} color={c.green} />
                 <StatLine label="Days without journeys" value={number(quietDays)} color={c.muted} />
-              </Panel>
+              </Panel> : null}
             </View>
-          </StatisticsMotionFrame>
-          <Text style={[styles.caption, { color: c.muted }]}>Listening time sums saved song durations, not measured playback. {model.totals.partialMusic ? 'Some music details or durations are missing; listening and distinct music totals are partial. ' : ''}All music is grouped by its journey’s start date. Sparklines show up to 90 days. Comparisons use the preceding equal-length period when accessible.</Text>
+          </StatisticsMotionFrame> : null}
+          {(!compact || compactSection === 'insights') ? <Text style={[styles.caption, { color: c.muted }]}>Listening time sums saved song durations, not measured playback. {model.totals.partialMusic ? 'Some music details or durations are missing; listening and distinct music totals are partial. ' : ''}All music is grouped by its journey’s start date. Sparklines show up to 90 days. Comparisons use the preceding equal-length period when accessible.</Text> : null}
         </>}
-        {onYearOnRoad && <Pressable accessibilityRole="button" accessibilityLabel="Your Year on the Road. JourneyDeck Plus" onPress={onYearOnRoad}
-          style={({ pressed }) => ({ borderRadius: 24, padding: 24, borderWidth: 1, borderColor: `${c.accent}${c.isLight ? '88' : 'cc'}`, opacity: pressed ? .75 : 1, overflow: 'hidden', gap: 8, ...neonGlow(c.accent, c.isLight, 7) })}>
-          <StatisticsGlass radius={24} reduceTransparency={motion.reduceTransparency} />
-          <Text style={{ color: c.accent, fontSize: 10, fontWeight: '800', letterSpacing: 2 }}>YOUR PERSONAL PREMIERE · PLUS</Text>
-          <Text style={{ color: c.text, fontSize: 25, fontWeight: '800' }}>Your Year on the Road ↗</Text>
-          <Text style={{ color: c.muted, fontSize: 14 }}>The miles. The music. The moments. Play your story in any theme.</Text>
-        </Pressable>}
+        {(!compact || compactSection === 'overview') ? yearCard : null}
       </View>
     </ScrollView>
   </SafeAreaView></StatisticsMotionProvider>;
@@ -244,7 +295,14 @@ const styles = StyleSheet.create({
   rangeGrid: { width: '100%', alignItems: 'stretch' },
   rangeRow: { flexWrap: 'nowrap', gap: 8 },
   rangeButton: { flex: 1, minWidth: 0 },
+  sectionSelector: { width: '100%', flexDirection: 'row', flexWrap: 'nowrap', gap: 8, alignItems: 'stretch' },
+  sectionButton: { flex: 1, minWidth: 0 },
   metric: { height: 200, padding: 14, borderWidth: 1, borderRadius: 18, gap: 8 },
+  compactMetric: { minHeight: 102, padding: 14, borderWidth: 1, borderRadius: 18, gap: 10, justifyContent: 'space-between' },
+  compactMetricTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  compactValue: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  heroMetric: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  heroValue: { fontSize: 36, lineHeight: 42, fontWeight: '700', fontVariant: ['tabular-nums'] },
   sparkline: { marginTop: 'auto' },
   value: { fontSize: 24, fontWeight: '600', fontVariant: ['tabular-nums'] },
   calendar: { flexDirection: 'row', flexWrap: 'wrap' }, weekday: { width: '14.285714%', textAlign: 'center', paddingBottom: 10 },
@@ -255,4 +313,10 @@ const styles = StyleSheet.create({
   statDot: { width: 8, height: 8, borderRadius: 4 },
   statLabel: { flex: 1, fontSize: 12 },
   statValue: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  featureCard: { borderRadius: 24, padding: 24, borderWidth: 1, overflow: 'hidden', gap: 8 },
+  compactFeatureCard: { borderRadius: 20, padding: 18 },
+  featureEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2 },
+  featureTitle: { fontSize: 25, fontWeight: '800' },
+  compactFeatureTitle: { fontSize: 21 },
+  featureBody: { fontSize: 14, lineHeight: 20 },
 });

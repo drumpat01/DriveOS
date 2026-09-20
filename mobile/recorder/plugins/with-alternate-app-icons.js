@@ -24,13 +24,24 @@ const alternateIcons = [
     source: 'assets/icon-cinematic-dark-v2.png',
     backgroundColor: '#08070d',
   },
+  {
+    name: 'JourneyDeckMidnightCanopy',
+    source: 'assets/icon-midnight-canopy-v1.png',
+    backgroundColor: '#101a12',
+    v3Only: true,
+  },
 ];
 
-function configureAlternateIconBuildSettings(project) {
+function iconsForConfig(config) {
+  const includeAutumnDrive = config?.extra?.features?.midnightCanopy === true;
+  return alternateIcons.filter(icon => includeAutumnDrive || !icon.v3Only);
+}
+
+function configureAlternateIconBuildSettings(project, icons = alternateIcons) {
   const host = project.getFirstTarget().firstTarget;
   const list = project.pbxXCConfigurationList()[host.buildConfigurationList];
   const configurations = project.pbxXCBuildConfigurationSection();
-  const names = `"${alternateIcons.map(icon => icon.name).join(' ')}"`;
+  const names = `"${icons.map(icon => icon.name).join(' ')}"`;
   for (const { value } of list.buildConfigurations) {
     const settings = configurations[value]?.buildSettings;
     if (!settings) continue;
@@ -40,9 +51,13 @@ function configureAlternateIconBuildSettings(project) {
   return project;
 }
 
-async function writeAlternateIconAssets(projectRoot, assetCatalogRoot) {
+async function writeAlternateIconAssets(projectRoot, assetCatalogRoot, icons = alternateIcons) {
   fs.mkdirSync(assetCatalogRoot, { recursive: true });
+  const activeNames = new Set(icons.map(icon => icon.name));
   for (const icon of alternateIcons) {
+    if (!activeNames.has(icon.name)) fs.rmSync(path.join(assetCatalogRoot, `${icon.name}.appiconset`), { recursive: true, force: true });
+  }
+  for (const icon of icons) {
     const destination = path.join(assetCatalogRoot, `${icon.name}.appiconset`);
     fs.mkdirSync(destination, { recursive: true });
     const filename = `${icon.name}.png`;
@@ -67,17 +82,19 @@ async function writeAlternateIconAssets(projectRoot, assetCatalogRoot) {
 }
 
 module.exports = config => {
+  const icons = iconsForConfig(config);
   config = withDangerousMod(config, ['ios', async mod => {
     const sourceRoot = IOSConfig.Paths.getSourceRoot(mod.modRequest.projectRoot);
-    await writeAlternateIconAssets(mod.modRequest.projectRoot, path.join(sourceRoot, 'Images.xcassets'));
+    await writeAlternateIconAssets(mod.modRequest.projectRoot, path.join(sourceRoot, 'Images.xcassets'), icons);
     return mod;
   }]);
   return withXcodeProject(config, mod => {
-    configureAlternateIconBuildSettings(mod.modResults);
+    configureAlternateIconBuildSettings(mod.modResults, icons);
     return mod;
   });
 };
 
 module.exports.alternateIcons = alternateIcons;
+module.exports.iconsForConfig = iconsForConfig;
 module.exports.configureAlternateIconBuildSettings = configureAlternateIconBuildSettings;
 module.exports.writeAlternateIconAssets = writeAlternateIconAssets;

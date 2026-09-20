@@ -14,8 +14,11 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const platform = { OS: 'ios', isPad: true };
 let mode = 'light', saveFailed = false, alerts = 0, fontScale = 1;
+let adaptiveFold: any = null;
 const native = { Platform: platform, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
   useWindowDimensions: () => ({ width: 1194, height: 834, fontScale }),
+  PanResponder: { create: (handlers: any) => ({ panHandlers: handlers }) },
+  I18nManager: { isRTL: false },
   Alert: { alert: () => alerts++ }, ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Switch', 'Pressable', 'ActivityIndicator'].map(name => [name, host(name)])) };
 function load(name: string, mocks: Record<string, unknown> = {}) {
   const module = { exports: {} as any };
@@ -25,6 +28,16 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
   return module.exports;
 }
 const layout = load('device-layout.ts', { 'react-native': native });
+const homeWidgetLayout = load('home-widget-layout.ts', { 'expo-secure-store': { getItem: () => null, setItem: () => undefined } });
+const homeWidgetGrid = {
+  useHomeWidgetLayout: (kind: string) => {
+    const [layouts, setLayouts] = React.useState(() => ({ compact: homeWidgetLayout.defaultHomeWidgetLayout('compact'), regular: homeWidgetLayout.defaultHomeWidgetLayout('regular') }));
+    const update = (next: any) => setLayouts((value: any) => ({ ...value, [kind]: next }));
+    return { placements: layouts[kind], move: (id: string, offset: number) => update(homeWidgetLayout.moveHomeWidget(layouts[kind], id, offset)), resize: (id: string) => update(homeWidgetLayout.cycleHomeWidgetSpan(layouts[kind], id)), toggle: (id: string) => update(homeWidgetLayout.toggleHomeWidget(layouts[kind], id)), reset: () => update(homeWidgetLayout.defaultHomeWidgetLayout(kind)) };
+  },
+  HomeLayoutEditorSheet: ({ visible, children }: any) => visible ? React.createElement('View', { testID: 'home-layout-editor-sheet' }, children) : null,
+  HomeGridCell: ({ placement, title, editing, width, children, onMove, onResize, onToggle }: any) => React.createElement('View', { testID: `home-grid-${placement.id}`, style: [{ width }], accessibilityLabel: `${title}, ${placement.span} of 12 columns${placement.hidden ? ', hidden' : ''}`, accessibilityActions: editing ? [{ name: 'moveEarlier', label: 'Move earlier' }, { name: 'moveLater', label: 'Move later' }, { name: 'resize', label: 'Resize' }, { name: placement.hidden ? 'show' : 'hide', label: placement.hidden ? 'Show' : 'Hide' }] : undefined, onAccessibilityAction: (event: any) => event.nativeEvent.actionName === 'moveEarlier' ? onMove(-1) : event.nativeEvent.actionName === 'moveLater' ? onMove(1) : event.nativeEvent.actionName === 'resize' ? onResize() : onToggle() }, children),
+};
 const theme = () => testTheme(mode);
 const phoneTabTitle = load('phone-tab-title.tsx', { 'react-native': native, './app-theme': { useAppTheme: theme } });
 const header = load('ipad-page-header.tsx', {
@@ -39,11 +52,99 @@ const ui = load('ipad-home.tsx', {
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   './app-theme': { useAppTheme: theme, useThemeChoice: () => ({ theme: theme(), setMode: (next: string) => { if (saveFailed) throw Error('write failed'); mode = next; } }) },
   './theme-palette': load('theme-palette.ts'), './device-layout': layout,
+  './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }), verticalFoldContentColumns: (fold: any, padding: number) => fold?.axis === 'vertical' ? { beforeWidth: fold.before.width - padding, afterWidth: fold.after.width - padding, gap: fold.frame.width } : null },
+  './home-widget-layout': homeWidgetLayout,
+  './home-widget-grid': homeWidgetGrid,
+  './journeydeck-design-tokens': { journeyDeckSemanticColors: (_id: string, palette: any) => ({ accent: palette.coral ?? palette.accent, onAccent: palette.onAccent }) },
+  './fifty-states-ui': { FiftyStatesHomeWidget: host('FiftyStatesHomeWidget') },
+  './ask-journeydeck-widget': { AskJourneyDeckWidget: host('AskJourneyDeckWidget') },
+  './release-features': { V3_ASK_JOURNEYDECK_ENABLED: false },
+  'expo-router': { router: { push: () => undefined } },
   './header-image-sources': { headerImageSource: (source: string, appearance: string) => `${appearance}:${source}` },
   './app-data': { appDataClient: { photoDataUrl: async () => null } },
   './journey-title': { journeyDisplayTitle: (journey: any) => journey.title },
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|');
+
+test('twelve-column Home rows fit after portrait, landscape and Split View resizing', async () => {
+  let tree: any;
+  const styleOf = (node: any) => Object.assign({}, ...[node.props.style].flat(Infinity));
+  try {
+    await act(() => { tree = create(React.createElement(ui.IpadHomeScreen, {
+      memories: [], journeys: [], music: { metrics: {}, recentSelections: [] },
+      recorder: React.createElement('recorder'), onMemory() {}, onJourney() {},
+    })); });
+    for (const width of [786, 954, 600, 320, 786]) {
+      await act(() => tree.root.findByProps({ testID: 'ipad-home-canvas' }).props.onLayout({ nativeEvent: { layout: { width } } }));
+      const grid = styleOf(tree.root.findByProps({ testID: 'ipad-home-widgets' }));
+      assert.equal(grid.flexDirection, 'row');
+      assert.equal(grid.flexWrap, 'wrap');
+      const ids = width >= 700 ? ['memories', 'journeys'] : ['miles', 'listening'];
+      const widths = ids.map(id => styleOf(tree.root.findByProps({ testID: `home-grid-${id}` })).width);
+      assert.deepEqual(widths, ['50%', '50%']);
+      const occupied = widths.reduce((total, value) => total + parseFloat(value) / 100 * width, 0)
+        + (grid.columnGap ?? grid.gap ?? 0);
+      assert.ok(occupied <= width, `two six-column widgets must fit within ${width}pt, got ${occupied}pt`);
+    }
+  } finally {
+    await act(() => tree?.unmount());
+  }
+});
+
+test('V3 ready recorder is a full-width compact row and preserves disabled start behavior', async () => {
+  let tree: any, starts = 0;
+  const props = { status: 'ready', busy: false, startLabel: 'Record Journey', onStart: () => starts++, onEnable() {}, onEnd() {}, onResume() {} };
+  try {
+    await act(() => { tree = create(React.createElement(ui.IpadRecorderControls, props)); });
+    const button = tree.root.findByType('Pressable');
+    const style = Object.assign({}, ...button.props.style({ pressed: false }));
+    assert.equal(style.width, '100%');
+    assert.equal(style.minHeight, 64);
+    button.props.onPress();
+    assert.equal(starts, 1);
+    await act(() => tree.update(React.createElement(ui.IpadRecorderControls, { ...props, busy: true })));
+    assert.equal(tree.root.findByType('Pressable').props.disabled, true);
+  } finally { await act(() => tree?.unmount()); }
+});
+
+test('open-book Home assigns content and recorder actions to physical panes without remounting', async () => {
+  let mounts = 0;
+  function Recorder() { const [draft] = React.useState('recording state'); React.useEffect(() => { mounts++; }, []); return React.createElement('recorder', { draft }); }
+  const props = { memories: [], journeys: [], music: { metrics: { milesWithMusic: 1, listeningHours: 2, songsOnRoad: 3, currentStreak: 4 }, recentSelections: [] }, recorder: React.createElement(Recorder), onMemory() {}, onJourney() {} };
+  let tree: any;
+  try {
+    adaptiveFold = { axis: 'vertical', frame: { width: 27 }, before: { width: 634 }, after: { width: 634 } };
+    await act(() => { tree = create(React.createElement(ui.IpadHomeScreen, props)); });
+    await act(() => tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-home-canvas').props.onLayout({ nativeEvent: { layout: { width: 1247 } } }));
+    const foldGrid = tree.root.findByProps({ testID: 'ipad-home-fold-grid' });
+    const before = tree.root.findByProps({ testID: 'ipad-home-fold-before' });
+    const after = tree.root.findByProps({ testID: 'ipad-home-fold-after' });
+    assert.equal(foldGrid.props.style.gap, 27);
+    assert.equal(before.props.style[1].width, 610);
+    assert.equal(after.props.style[1].width, 610);
+    for (const pane of [before, after]) {
+      const style = Object.assign({}, ...pane.props.style);
+      assert.equal(style.columnGap ?? style.gap ?? 0, 0, 'cell padding owns the pane gutters');
+    }
+    for (const id of ['miles', 'listening', 'songs', 'streak', 'memories', 'journeys', 'soundtrack']) {
+      const cell = tree.root.findByProps({ testID: `home-grid-${id}` });
+      assert.match(cell.props.style.flat().find((style: any) => typeof style?.width === 'string').width, /%$/, `${id} is sized only within one physical pane`);
+    }
+    const header = tree.root.findByProps({ testID: 'page-header-content' });
+    assert.ok(header.props.style.flat().some((style: any) => style?.gap === 27));
+    assert.equal(tree.root.findByType('recorder').props.draft, 'recording state');
+    const scroll = tree.root.findByType('ScrollView');
+
+    adaptiveFold = null;
+    await act(() => tree.update(React.createElement(ui.IpadHomeScreen, props)));
+    assert.equal(tree.root.findByType('recorder').props.draft, 'recording state');
+    assert.equal(tree.root.findByType('ScrollView'), scroll, 'the live scroll container survives the pose transition');
+    assert.equal(mounts, 1);
+  } finally {
+    adaptiveFold = null;
+    await act(() => tree?.unmount());
+  }
+});
 
 test('Home opens the selected Memory and journey in every theme', async () => {
   const calls: string[] = [];
@@ -76,6 +177,23 @@ test('shared artwork header stacks copy above full-width actions on phones', asy
     assert.ok(tree.root.findByProps({ testID: 'phone-tab-title' }));
     assert.equal(text(tree).includes('Every mile. Every journey. Your numbers.'), true);
   } finally { await act(() => tree?.unmount()); }
+});
+
+test('open-book header assigns logical leading and trailing panes in RTL', async () => {
+  let tree: any;
+  native.I18nManager.isRTL = true;
+  try {
+    await act(() => { tree = create(React.createElement(header.IpadPageHeader, {
+      title: 'Statistics', artwork: 1, width: 1247, split: { beforeWidth: 560, afterWidth: 660, gap: 27 },
+    }, React.createElement('actions'))); });
+    const content = tree.root.findByProps({ testID: 'page-header-content' });
+    assert.ok(content.props.style.flat().some((style: any) => style?.flexDirection === 'row-reverse' && style?.gap === 27));
+    assert.ok(tree.root.findByProps({ testID: 'ipad-page-title' }).parent.props.style.flat().some((style: any) => style?.width === 660));
+    assert.ok(tree.root.findByProps({ testID: 'page-header-actions' }).props.style.flat().some((style: any) => style?.width === 560));
+  } finally {
+    native.I18nManager.isRTL = false;
+    await act(() => tree?.unmount());
+  }
 });
 
 test('shared iPad artwork header keeps narrow sidebar titles on one line', async () => {
@@ -167,10 +285,10 @@ test('sidebar viewport resizing preserves Home recorder state and vertical scrol
     const canvas = tree.root.findAllByType('View').find((node: any) => node.props.onLayout);
     for (const usableWidth of [1200, 896, 560, 896, 1200]) {
       await act(() => canvas.props.onLayout({ nativeEvent: { layout: { width: usableWidth } } }));
-      const columns = layout.ipadGridColumns(usableWidth, fontScale);
-      const firstSpan = columns === 6 || columns === 3 ? 2 : 1;
-      assert.equal(tree.root.findByProps({ testID: 'ipad-home-metric-0' }).props.style.width, layout.ipadGridSpan(usableWidth, firstSpan, columns));
-      assert.equal(tree.root.findByProps({ testID: 'ipad-home-memories' }).props.style.width, layout.ipadGridSpan(usableWidth, columns === 6 ? 3 : columns, columns));
+      for (const id of ['miles', 'memories']) {
+        const cell = tree.root.findByProps({ testID: `home-grid-${id}` });
+        assert.match(cell.props.style.flat().find((style: any) => typeof style?.width === 'string').width, /%$/);
+      }
     }
     assert.equal(mounts, 1);
     assert.equal(unmounts, 0);

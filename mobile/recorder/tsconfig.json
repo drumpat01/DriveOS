@@ -2,7 +2,8 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "customConditions": ["react-native", "react-native-legacy-deep-imports"]
   },
   "exclude": ["tests"]
 }

@@ -1,0 +1,7 @@
+{
+  "profile": "SELECT p.value AS id, e.value AS epoch FROM local_preferences p JOIN local_users u ON u.id=p.value JOIN local_preferences e ON e.key='ask_profile_epoch' WHERE p.key='active_user_id' AND NOT EXISTS (SELECT 1 FROM local_preferences WHERE key='ask_profile_blocked' AND value='1')",
+  "journeys": "SELECT id, started_at AS startedAt, ended_at AS endedAt, miles, duration_minutes AS minutes FROM local_journeys WHERE user_id=? AND julianday(started_at)>=julianday(?) AND julianday(ended_at)<=julianday(?) ORDER BY started_at DESC,id LIMIT 20001",
+  "memories": "SELECT m.id,m.created_at AS createdAt FROM local_memories m WHERE m.user_id=? AND m.deleted_at IS NULL AND julianday(m.created_at)>=julianday(?) AND julianday(m.created_at)<=julianday(?) ORDER BY m.created_at DESC,m.id LIMIT 20001",
+  "music": "SELECT m.id,m.journey_id AS journeyId,m.played_at AS playedAt,m.track,m.artist FROM local_music_entries m JOIN local_journeys j ON j.id=m.journey_id AND j.user_id=m.user_id WHERE m.user_id=? AND julianday(j.started_at)>=julianday(?) AND julianday(j.ended_at)<=julianday(?) AND julianday(m.played_at)>=julianday(j.started_at) AND julianday(m.played_at)<=julianday(j.ended_at) ORDER BY m.played_at DESC,m.id LIMIT 20001",
+  "sensitiveLabels": "SELECT label FROM local_places WHERE user_id=? AND kind IN ('home','work','custom') LIMIT 20001"
+}

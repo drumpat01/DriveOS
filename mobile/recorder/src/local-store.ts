@@ -1,3 +1,5 @@
+import { MARKER_OTA_COMPAT } from './journey-marker-compatibility';
+import { migrateCompatMarkers } from './journey-marker-compat-data';
 ﻿/**
  * local-store.ts
  *
@@ -34,6 +36,7 @@ import {
 import { findDuplicatePlayback, partitionDuplicatePlaybacks } from './music-playback-dedupe';
 import { getMasterDatabase, openMasterDatabase } from './database-owner';
 import { PRIVATE_PLACE_PREFIX, parsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
+import { JOURNEY_MARKER_SCHEMA_SQL, JOURNEY_MARKER_SYNC_SCHEMA_SQL } from './journey-marker-schema';
 import { JOURNEY_EDITOR_SCHEMA_SQL } from './journey-editor-schema';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
@@ -480,6 +483,10 @@ const MIGRATIONS: Array<() => void> = [
   },
   // Migration 7 -- immutable editing operations and current journey projections.
   () => { db.execSync(JOURNEY_EDITOR_SCHEMA_SQL); },
+  // Migration 8 -- durable journey markers and private attachment references.
+  () => { db.execSync(JOURNEY_MARKER_SCHEMA_SQL); migrateCompatMarkers(db); },
+  // Migration 9 -- revision-safe private-sync queues for Markers and photos.
+  () => { db.execSync(JOURNEY_MARKER_SYNC_SCHEMA_SQL); },
 ];
 
 const PLAYBACK_DEDUPE_REPAIR_KEY = 'repair.music-playback-dedupe.v1';
@@ -564,11 +571,12 @@ function initializeOpenedLocalStore(openedDatabase: ReturnType<typeof getMasterD
   if (applicationId === 0) db.execSync(`PRAGMA application_id = ${MASTER_DATABASE_APPLICATION_ID};`);
   else if (applicationId !== MASTER_DATABASE_APPLICATION_ID) throw new Error('JourneyDeck local archive has an unexpected SQLite application id.');
   const current = db.getFirstSync<{ user_version: number }>('PRAGMA user_version;')?.user_version ?? 0;
-  if (current > MASTER_DATABASE_SCHEMA_VERSION || current > MIGRATIONS.length) {
+  const migrationLimit = MARKER_OTA_COMPAT ? 7 : MIGRATIONS.length;
+  if (current > MASTER_DATABASE_SCHEMA_VERSION || current > migrationLimit) {
     throw new Error(`JourneyDeck local archive schema ${current} is newer than this app supports.`);
   }
   schemaVersion = current;
-  for (let i = current; i < MIGRATIONS.length; i++) {
+  for (let i = current; i < migrationLimit; i++) {
     db.withTransactionSync(() => {
       MIGRATIONS[i]!();
       db.execSync(`PRAGMA user_version = ${i + 1};`);
@@ -810,6 +818,8 @@ export function listLocalUsers(): LocalUser[] {
 export function deleteLocalUserData(userId: LocalUserId): void {
   initializeLocalStore();
   db.withTransactionSync(() => {
+    const markerPrefix = `journey.marker.v1:${encodeURIComponent(userId)}:`;
+    db.runSync('DELETE FROM local_preferences WHERE substr(key,1,?)=?;', markerPrefix.length, markerPrefix);
     db.runSync('DELETE FROM local_users WHERE id=?;', userId);
     db.runSync("DELETE FROM local_preferences WHERE key='active_user_id' AND value=?;", userId);
     db.runSync('DELETE FROM local_preferences WHERE key=?;', `private_cloud_deletion:${userId}`);
@@ -873,8 +883,27 @@ export function setActiveLocalUserId(userId: LocalUserId): void {
   initializeLocalStore();
   const user = db.getFirstSync<{ id: string }>('SELECT id FROM local_users WHERE id=?;', userId);
   if (!user) throw new Error('Cannot activate an unknown local user.');
-  db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES('active_user_id',?,?)
-    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, userId, now());
+  db.withTransactionSync(() => {
+    const previous = db.getFirstSync<{ value: string }>("SELECT value FROM local_preferences WHERE key='active_user_id';")?.value;
+    const epoch = db.getFirstSync<{ value: string }>("SELECT value FROM local_preferences WHERE key='ask_profile_epoch';")?.value;
+    const transitioning = db.getFirstSync<{ value: string }>("SELECT value FROM local_preferences WHERE key='ask_profile_blocked';")?.value === '1';
+    db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES('active_user_id',?,?)
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, userId, now());
+    // Rotate on transitions, including A → B → A and same-profile sign-in.
+    // An unchanged bootstrap keeps a just-issued background Siri ticket usable.
+    // Device-only preferences never sync to iCloud; tickets never survive process death.
+    if (previous !== userId || !epoch || transitioning) {
+      db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES('ask_profile_epoch',?,?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, Crypto.randomUUID(), now());
+    }
+    setAskProfileBlocked(false);
+  });
+}
+
+export function setAskProfileBlocked(blocked: boolean): void {
+  initializeLocalStore();
+  db.runSync(`INSERT INTO local_preferences(key,value,updated_at) VALUES('ask_profile_blocked',?,?)
+    ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at;`, blocked ? '1' : '0', now());
 }
 
 // --- Journey management ------------------------------------------------------

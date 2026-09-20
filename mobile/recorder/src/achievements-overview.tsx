@@ -10,8 +10,10 @@ import { JourneyDeckMedallion } from '../modules/journeydeck-keepsakes';
 import { isApprovedMedallion } from './medallion-artwork';
 import { MedallionArtworkImage } from './medallion-artwork-image';
 import type { JourneyMemory, JourneySummary } from './app-data';
+import { useFiftyStates } from './fifty-states-store';
+import { V3_FIFTY_STATES_ENABLED } from './release-features';
 
-type AchievementId = 'first-track' | 'long-way-home' | 'thousand-mile' | 'grand-tourer' | 'first-note' | 'long-play' | 'soundtrack-100' | 'memory-maker' | 'picture-this' | 'story-collector';
+type AchievementId = 'first-track' | 'long-way-home' | 'thousand-mile' | 'grand-tourer' | 'first-note' | 'long-play' | 'soundtrack-100' | 'memory-maker' | 'picture-this' | 'story-collector' | 'all-fifty';
 
 type AchievementDefinition = {
   id: AchievementId;
@@ -45,7 +47,7 @@ const dated = (journeys: JourneySummary[]) => journeys.filter(validDate).sort((a
 const dateText = (value: string | null) => value ? new Date(value).toLocaleString(undefined, { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Not unlocked yet';
 const routeText = (journey?: JourneySummary) => journey ? `${journey.startingLocation || 'Unknown start'} to ${journey.endingLocation || 'Unknown destination'}` : '';
 
-export function buildAchievements(journeys: JourneySummary[], memories: JourneyMemory[] = []): Achievement[] {
+export function buildAchievements(journeys: JourneySummary[], memories: JourneyMemory[] = [], fiftyStates?: { completedAt: string | null }): Achievement[] {
   const rows = dated(journeys);
   const milestone = (test: (state: { count: number; miles: number; songs: number }, journey: JourneySummary) => boolean) => {
     const state = { count: 0, miles: 0, songs: 0 };
@@ -75,7 +77,18 @@ export function buildAchievements(journeys: JourneySummary[], memories: JourneyM
     .filter(photo => Number.isFinite(new Date(photo.createdAtUtc).getTime()))
     .map(photo => ({ memory, photo })))
     .sort((a, b) => new Date(a.photo.createdAtUtc).getTime() - new Date(b.photo.createdAtUtc).getTime())[0];
-  return definitions.map(definition => {
+  const activeDefinitions: AchievementDefinition[] = fiftyStates ? [...definitions, {
+    id: 'all-fifty', name: 'All 50', symbol: 'star.circle.fill',
+    how: 'Check off all 50 states in your 50 States checklist.',
+    why: 'Fifty states, countless roads, one complete collection.',
+  }] : definitions;
+  return activeDefinitions.map(definition => {
+    if (definition.id === 'all-fifty') {
+      const completedAt = fiftyStates?.completedAt;
+      const earned = Boolean(completedAt && Number.isFinite(Date.parse(completedAt)));
+      return { ...definition, earned, earnedAt: earned ? completedAt! : null,
+        earnedReason: earned ? 'Earned when you completed your 50 States checklist.' : definition.how };
+    }
     if (definition.id === 'memory-maker') return {
       ...definition,
       earned: Boolean(firstMemory),
@@ -142,7 +155,8 @@ function SymbolTurningMedallion({ achievement }: { achievement: Achievement }) {
 export function AchievementsOverview({ journeys, memories = [] }: { journeys: JourneySummary[]; memories?: JourneyMemory[] }) {
   const theme = useAppTheme();
   const { width, fontScale } = useWindowDimensions();
-  const achievements = useMemo(() => buildAchievements(journeys, memories), [journeys, memories]);
+  const { completedAt } = useFiftyStates(undefined, V3_FIFTY_STATES_ENABLED);
+  const achievements = useMemo(() => buildAchievements(journeys, memories, V3_FIFTY_STATES_ENABLED ? { completedAt } : undefined), [journeys, memories, completedAt]);
   const [selectedId, setSelectedId] = useState<AchievementId | null>(null);
   const [sheetHeight, setSheetHeight] = useState(0);
   const [sheetWidth, setSheetWidth] = useState(0);

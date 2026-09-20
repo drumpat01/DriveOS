@@ -1,6 +1,8 @@
+import { CreateJourneyMarkerButton } from './src/journey-markers';
 import { requestJourneyLocationAccess } from './src/location-permissions';
 import { IpadRecorderControls } from './src/ipad-home';
 import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
+import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
 import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -37,6 +39,7 @@ import {
 } from './src/tracking';
 import { JourneyDeckShell } from './src/shell';
 import { JourneyDeckNativeStack } from './src/native-navigation';
+import { DisplayLayoutProvider } from './src/display-layout';
 import { CardMotionProvider } from './src/card-detail-link';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { appDataClient } from './src/app-data';
@@ -58,7 +61,7 @@ import {
 import { getCurrentUser } from './src/auth';
 import { processPendingCompletionJobs } from './src/completion-jobs';
 import { syncNativeRecorderInbox } from './src/native-recorder-inbox';
-import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED } from './src/release-features';
+import { NATIVE_AUTOMATIC_RECORDER_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_FIFTY_STATES_ENABLED } from './src/release-features';
 import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJourneyDeckEventOnce } from './src/observability';
 import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
 import { manualRecordingFailsafeNotice } from './src/manual-recording-failsafe';
@@ -693,14 +696,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const tabletStatus = startupPending ? 'loading' : summary?.status === 'finishing' ? 'finishing'
       : summary?.status === 'recording' ? 'recording' : summary?.status === 'paused' ? 'paused'
       : !permissionsReady ? 'permission' : automaticMode ? 'automatic' : 'ready';
-    if (tabletStatus === 'ready' || tabletStatus === 'loading') {
-      return <View style={styles.homeRecorderStack}>
-        <HomeRecorderStartPortal presentation="ipad-header" onPress={start} disabled={busy || startupPending}
-          showProgress={busy || startupPending} />
-        <HiddenJourneyNotice enabled={!startupPending && !busy} notice={notice} />
-      </View>;
-    }
-    return <IpadRecorderControls status={tabletStatus} busy={busy} onStart={start} onEnable={enablePermissions}
+    return <IpadRecorderControls status={tabletStatus} busy={busy} startLabel={V3_FIFTY_STATES_ENABLED ? 'Record Journey' : 'Start Journey'} onStart={start} onEnable={enablePermissions}
       onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />;
   }
 
@@ -744,6 +740,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
           : !permissionsReady ? <HomeRecorderPrimaryAction label="Enable Location" symbol="location.fill" onPress={enablePermissions} disabled={busy} />
           : !active && !automaticMode ? null
           : recording ? <>
+            {summary && <CreateJourneyMarkerButton sessionId={summary.id} />}
             {showManualSongButton && <Pressable disabled={busy} onPress={identifySong} style={({ pressed }) => [styles.homeRecorderIdentify, pressed && styles.homeRecorderPressed]}>
               <LinearGradient colors={theme.gradient(['rgba(88,43,148,0.96)', 'rgba(20,13,30,0.96)'])} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.homeRecorderIdentifyIcon}><SymbolView name="music.note" tintColor={theme.color("#d595ff", 'text')} size={27} /></LinearGradient>
               <View style={styles.homeRecorderIdentifyCopy}><Text style={styles.homeRecorderIdentifyTitle}>Identify Song</Text><Text style={styles.homeRecorderIdentifyBody}>Tap once for each song you want to remember.</Text></View>
@@ -790,6 +787,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
               <NeonWidget radius={22} tone="hero" style={[styles.statusCard, { borderColor: theme.color(accent, 'border') }]}><View style={[styles.statusDot, { backgroundColor: theme.color(accent, 'surface') }]} /><Text style={[styles.statusText, { color: theme.color(accent, 'text') }]}>{!summary && automaticMode ? (automaticDetectionActive ? 'Watching for a drive' : 'Automatic detection paused') : statusLabel(summary?.status, clockTracking)}</Text><Text style={styles.statusHint}>{summary?.status === 'recording' ? (clockTracking ? 'You can lock your phone' : 'Checking iOS background tracking') : summary?.status === 'paused' ? 'GPS capture is stopped' : summary?.status === 'finishing' ? 'Points are safe on this phone' : automaticMode ? (automaticDetectionActive ? 'JourneyDeck will start when driving is detected' : 'Check Always Allow location access') : 'Start when you begin driving'}</Text></NeonWidget>
               <View style={styles.metrics}>{metrics.map(([label, value], index) => <QuietInset radius={16} accent={index === 0 ? '#ff795b' : index === 1 ? '#ff4d87' : index === 2 ? '#a66cff' : '#5aa7ff'} style={styles.metric} key={label}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue} numberOfLines={1}>{value}</Text></QuietInset>)}</View>
               {!active && !automaticMode && <PrimaryButton label="Start recording" onPress={start} disabled={busy} />}
+              {summary?.status === 'recording' && <CreateJourneyMarkerButton sessionId={summary.id} />}
               {summary?.status === 'recording' && <View style={styles.actionRow}><SecondaryButton label="Pause" onPress={pause} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'paused' && <View style={styles.actionRow}><SecondaryButton label="Resume" onPress={resume} disabled={busy} /><PrimaryButton label="Finish" onPress={finish} disabled={busy} /></View>}
               {summary?.status === 'recording' && <NeonWidget radius={22} style={styles.manualRecognitionCard}>
@@ -832,7 +830,7 @@ function RecorderAtmosphere() {
 }
 
 function App() {
-  return <GestureHandlerRootView style={{ flex: 1 }}><DatabaseStartupGate><AppThemeProvider><AppIconProvider><CardMotionProvider><JourneyDeckShell recorder={RecorderScreen}><JourneyDeckNativeStack /></JourneyDeckShell></CardMotionProvider></AppIconProvider></AppThemeProvider></DatabaseStartupGate></GestureHandlerRootView>;
+  return <GestureHandlerRootView style={{ flex: 1 }}><DisplayLayoutProvider><DatabaseStartupGate><AppThemeProvider><AppIconProvider><CardMotionProvider><JourneyDeckShell recorder={RecorderScreen}><JourneyDeckNativeStack /></JourneyDeckShell></CardMotionProvider></AppIconProvider></AppThemeProvider></DatabaseStartupGate></DisplayLayoutProvider></GestureHandlerRootView>;
 }
 
 export default ObserveRoot.wrap(App);
@@ -878,10 +876,16 @@ function JourneySavedMoment({ moment, active, reduceMotion, onDismiss }: { momen
   </Reanimated.View>;
 }
 function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, presentation = 'phone', body }: {
-  onPress: () => void; disabled?: boolean; showProgress?: boolean; presentation?: 'phone' | 'ipad-header'; body?: string;
+  onPress: () => void;
+  disabled?: boolean;
+  showProgress?: boolean;
+  presentation?: 'phone' | 'ipad-header';
+  body?: string;
 }) {
   const theme = useAppTheme();
+  const homeColors = journeyDeckSemanticColors(theme.id, theme.palette);
   const styles = useThemedStyles(darkStyles);
+  const actionLabel = V3_FIFTY_STATES_ENABLED ? 'Record Journey' : 'Start Journey';
   const { reduceMotion, ambientMotionEnabled } = useMotionPreferences();
   const ipadHeader = presentation === 'ipad-header';
   const portalBody = body ?? (ipadHeader ? null : 'Ready to remember your next drive.');
@@ -913,7 +917,7 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, pres
     cancelAnimation(lightSweep);
     breathe.set(0);
     lightSweep.set(0);
-    if (!ambientMotionEnabled || disabled) return;
+    if (!ambientMotionEnabled || disabled || V3_FIFTY_STATES_ENABLED) return;
     breathe.set(withRepeat(withTiming(1, { duration: 2_800 }), -1, true));
     lightSweep.set(withRepeat(withTiming(1, { duration: 4_600 }), -1, false));
     return () => {
@@ -932,10 +936,22 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, pres
     pressedScale.set(reduceMotion ? 1 : withSpring(1, MOTION_SPRINGS.responsive));
   };
 
+  if (V3_FIFTY_STATES_ENABLED) return <Pressable
+    testID="home-start-journey-portal"
+    accessibilityRole="button" accessibilityLabel={actionLabel}
+    accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(showProgress) }}
+    disabled={disabled} onPress={onPress}
+    style={({ pressed }) => ({ width: '100%', minHeight: 64, borderRadius: 20, paddingHorizontal: 20, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: homeColors.accent, opacity: disabled || pressed ? 0.6 : 1 })}
+  >
+    {showProgress ? <ActivityIndicator color={homeColors.onAccent} /> : <SymbolView name="record.circle" tintColor={homeColors.onAccent} size={24} />}
+    <Text style={{ color: homeColors.onAccent, fontSize: 20, fontWeight: '700', flexShrink: 1 }}>{actionLabel}</Text>
+    <SymbolView name="arrow.right" tintColor={homeColors.onAccent} size={22} />
+  </Pressable>;
+
   return <Reanimated.View style={[motionStyle, ipadHeader && styles.homeRecorderStartPortalIpadFrame]}><Pressable
     testID="home-start-journey-portal"
     accessibilityRole="button"
-    accessibilityLabel="Start Journey"
+    accessibilityLabel={actionLabel}
     accessibilityHint={`Begins recording your route on this ${ipadHeader ? 'iPad' : 'iPhone'}.`}
     accessibilityState={{ disabled: Boolean(disabled) }}
     disabled={disabled}
@@ -962,7 +978,7 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, pres
         {portalBody ? <Text numberOfLines={ipadHeader ? 2 : undefined} style={[styles.homeRecorderStartPortalBody, ipadHeader && styles.homeRecorderStartPortalBodyIpad, theme.isLight && !theme.isCustom && { color: '#49354f' }]}>{portalBody}</Text> : null}
       </View>
       <View pointerEvents="none" style={[styles.homeRecorderStartPortalAction, ipadHeader && styles.homeRecorderStartPortalActionIpad]}>
-        <Text style={[styles.homeRecorderStartPortalTitle, ipadHeader && styles.homeRecorderStartPortalTitleIpad, theme.isLight && !theme.isCustom && { color: '#3f2052', textShadowColor: 'transparent', textShadowRadius: 0 }]}>Start Journey</Text>
+        <Text style={[styles.homeRecorderStartPortalTitle, ipadHeader && styles.homeRecorderStartPortalTitleIpad, theme.isLight && !theme.isCustom && { color: '#3f2052', textShadowColor: 'transparent', textShadowRadius: 0 }]}>{actionLabel}</Text>
         {showProgress ? <ActivityIndicator color={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size="small" /> : <SymbolView name="arrow.right" tintColor={theme.isCustom ? theme.palette.text : theme.isLight ? '#3f2052' : theme.color("#fff6f1", 'text')} size={ipadHeader ? 25 : 31} />}
       </View>
     </View>

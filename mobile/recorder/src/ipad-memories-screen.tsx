@@ -17,6 +17,7 @@ import { openJourneyCardAction } from './journey-card-action';
 import { filterJourneyLibrary, journeyRouteLabel } from './library-model';
 import { clampStudioTrayHeight, containsStudioPoint, memoryStudioDrop, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity, type StudioRect } from './memory-studio-model';
 import type { JourneyMemory, JourneySummary } from './app-data';
+import { useAdaptiveLayout } from './adaptive-layout';
 import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
 
 type DragState = {
@@ -127,14 +128,14 @@ function DraggableJourney({ journey, selected, onSelect, onOpen }: { journey: Jo
     <View style={[styles.journeyRowCard, { backgroundColor: theme.palette.card, borderColor: selected ? theme.palette.accent : theme.palette.line }]}>
     <ThemeMaterial radius={18} />
     <GestureDetector gesture={pan}><Animated.View testID={`studio-source-${journey.id}`} ref={ref} collapsable={false} style={[styles.journeySelectArea, fade]}>
-      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`Select ${journeyRouteLabel(journey)}`}
-        accessibilityHint="Select journeys to organize, or hold and drag this card onto a Memory or another journey."
-        onPress={onSelect} style={styles.journeySelectArea}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${journeyRouteLabel(journey)}`}
+        accessibilityHint="Open this journey, or hold and drag it onto a Memory."
+        onPress={onOpen} style={styles.journeySelectArea}>
         <JourneyFace journey={journey} embedded />
       </Pressable>
     </Animated.View></GestureDetector>
-    <Pressable accessibilityRole="link" accessibilityLabel={`Open journey ${journeyRouteLabel(journey)}`} onPress={onOpen} style={styles.openJourney}>
-      <Text numberOfLines={1} style={{ color: theme.palette.accent, fontWeight: '700' }}>View ›</Text>
+    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={`${selected ? 'Remove' : 'Add'} ${journeyRouteLabel(journey)} ${selected ? 'from' : 'to'} selection`} onPress={onSelect} style={styles.journeyCheckButton}>
+      <View style={[styles.journeyCheck, { borderColor: selected ? theme.palette.accent : theme.palette.line, backgroundColor: selected ? theme.palette.accent : 'transparent' }]}>{selected ? <SymbolView name="checkmark" tintColor={theme.palette.onAccent} style={styles.journeyCheckIcon} /> : null}</View>
     </Pressable>
       {d.compact && <NativeActionMenu compact label={`Actions for ${journeyRouteLabel(journey)}`} actions={[
         { id: 'edit', title: 'Edit locations', image: 'pencil', attributes: { disabled: !d.enabled }, onSelect: () => { if (d.enabled && !d.source.value) openJourneyCardAction(journey.id, 'edit'); } },
@@ -144,16 +145,18 @@ function DraggableJourney({ journey, selected, onSelect, onOpen }: { journey: Jo
   </DropZone>;
 }
 
-export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate, onAdd, onEdit, onShare, onMemory, onJourney, onRefresh, loading, error, historyLimited, onUpgrade, busy = false, presentation = 'ipad' }: {
+export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate, onAdd, onEdit, onShare, onMemory, onJourney, onRefresh, onFiftyStates, loading, error, historyLimited, onUpgrade, busy = false, presentation = 'ipad' }: {
   memories: JourneyMemory[]; journeys: JourneySummary[]; renderArtwork: (memory: JourneyMemory) => ReactNode;
   onCreate: (ids: string[]) => void; onAdd: (memoryId: string, ids: string[]) => Promise<void>;
   onEdit: (memory: JourneyMemory) => void; onShare: (memory: JourneyMemory) => void;
   onMemory: (id: string) => void; onJourney: (id: string) => void; onRefresh: () => void;
+  onFiftyStates?: () => void;
   loading: boolean; error?: string; historyLimited: boolean; onUpgrade: () => void; busy?: boolean; presentation?: 'ipad' | 'iphone';
 }) {
   const theme = useAppTheme(), focused = useIsFocused(), window = useWindowDimensions();
+  const adaptiveLayout = useAdaptiveLayout();
   const phone = presentation === 'iphone';
-  const [phoneHeight, setPhoneHeight] = useState(window.height - 150), [trayExpanded, setTrayExpanded] = useState(true);
+  const [phoneHeight, setPhoneHeight] = useState(window.height - 150), [trayExpanded, setTrayExpanded] = useState(false);
   const c = theme.resolvePalette(theme.isLight ? { page: '#fffaf0', card: '#fffcf6', text: '#291d26', muted: '#685461', accent: '#754487', line: '#d8c5ba', inset: '#eee2ef' }
     : { page: '#08070d', card: '#120d1a', text: '#fff6ed', muted: '#b6a6c1', accent: '#c5a0f4', line: '#49304f', inset: '#291735' });
   const [width, setWidth] = useState(0), [query, setQuery] = useState(''), [memoryQuery, setMemoryQuery] = useState('');
@@ -229,11 +232,16 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
   const d: DragState = { compact: phone, source, target, active, x, y, originX, originY, rootX, rootY, scale, opacity, destination, root, reduceMotion,
     enabled: focused && !saving && !busy, dragging: Boolean(dragged), begin: id => { if (mounted.current && focused && !busy && source.value === id) setDragged(journeys.find(j => j.id === id) ?? null); }, finish };
   const floating = useAnimatedStyle(() => ({ opacity: opacity.value, transform: [{ translateX: x.value - rootX.value - 145 }, { translateY: y.value - rootY.value - 62 }, { scale: scale.value }] }));
-  const availableWidth = width / Math.max(1, window.fontScale);
   const gridColumns = ipadGridColumns(width, window.fontScale);
-  const wide = gridColumns === 6, galleryColumns = availableWidth >= 1050 ? 2 : 1;
-  const galleryWidth = wide && width ? ipadGridSpan(width, 4) : undefined;
-  const libraryWidth = wide && width ? ipadGridSpan(width, 2) : undefined;
+  const wide = gridColumns === 6;
+  const galleryColumns = width / Math.max(1, window.fontScale) >= 1050 ? 2 : 1;
+  const verticalFold = adaptiveLayout.fold?.axis === 'vertical' && wide ? adaptiveLayout.fold : null;
+  const memoryPanelLayout = verticalFold
+    ? { width: Math.max(0, verticalFold.before.width - 24), flexGrow: 0, flexShrink: 0 }
+    : { width: width ? ipadGridSpan(width, 4, gridColumns) : undefined };
+  const journeyPanelLayout = verticalFold
+    ? { width: Math.max(0, verticalFold.after.width - 24), flexGrow: 0, flexShrink: 0 }
+    : { width: width ? ipadGridSpan(width, 2, gridColumns) : undefined };
   const panelHeight = Math.max(420, window.height - 330);
   const disabled = saving || busy;
   const animateTray = useCallback((expand: boolean) => {
@@ -302,9 +310,15 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
           {selectedLive.length > 0 && <Pressable accessibilityRole="button" accessibilityLabel={`Add selected journeys to ${memory.name}`} disabled={disabled} onPress={() => void add(memory.id, selectedLive)} style={[styles.addSelected, { backgroundColor: c.inset }]}><Text style={{ color: c.accent, fontWeight: '600' }}>+ Add {selectedLive.length} selected</Text></Pressable>}
         </Animated.View>)}</View>
         {!visibleMemories.length && <Text style={[styles.empty, { color: c.muted }]}>{memoryQuery ? 'No Memories match this search.' : 'Make a Memory from the journeys you want to keep together.'}</Text>}
-        <View style={{ margin: 5 }}><DropZone id="new"><Pressable accessibilityRole="button" accessibilityLabel="Create Memory from journeys" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.phoneNewMemory, { borderColor: c.accent, backgroundColor: c.inset }]}>
+        {onFiftyStates && <View style={styles.phoneCollectionSection}><Text style={[styles.collectionEyebrow, { color: c.muted }]}>COLLECTIONS</Text><Pressable testID="fifty-states-collection" accessibilityRole="button" accessibilityLabel="Open 50 States collection" onPress={onFiftyStates}
+          style={[styles.collectionCard, styles.phoneCollectionCard, { backgroundColor: c.inset, borderColor: c.line }]}>
+          <View style={[styles.collectionIcon, styles.phoneCollectionIcon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.rose : c.accent }]}><SymbolView name="map.fill" tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.onAccent} style={styles.icon} /></View>
+          <View style={styles.collectionCopy}><Text style={[styles.collectionTitle, styles.phoneCollectionTitle, { color: c.text }]}>50 States</Text><Text style={[styles.meta, { color: c.muted }]}>Track the states you’ve seen</Text></View>
+          <Text style={[styles.collectionArrow, { color: c.accent }]}>›</Text>
+        </Pressable></View>}
+        {dragged ? <View style={{ margin: 5 }}><DropZone id="new"><Pressable accessibilityRole="button" accessibilityLabel="Create Memory from journeys" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.phoneNewMemory, { borderColor: c.accent, backgroundColor: c.inset }]}>
           <SymbolView name="rectangle.stack.badge.plus" tintColor={c.accent} style={styles.icon} /><Text style={{ color: c.accent, fontWeight: '600', flexShrink: 1 }}>Drop here to start a new Memory</Text>
-        </Pressable></DropZone></View>
+        </Pressable></DropZone></View> : null}
         {visibleMemories.length > memoryLimit && <Pressable accessibilityRole="button" onPress={() => setMemoryLimit(n => n + 20)} style={styles.action}><Text style={{ color: c.accent }}>Show more Memories</Text></Pressable>}
         {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset, margin: 5 }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock complete history  ›</Text></Pressable>}
         {message.startsWith('Journeys added') && <Text accessibilityLiveRegion="polite" style={[styles.phoneNotice, { color: c.accent }]}>{message}</Text>}
@@ -339,16 +353,22 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
       <Animated.ScrollView ref={pageScroll} onScroll={pageOnScroll} scrollEventThrottle={16} onContentSizeChange={(_w, h) => { pageContentHeight.value = h; }}
         testID="ipad-memories" contentInsetAdjustmentBehavior="automatic" scrollEnabled={!dragged} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.page}>
         <View testID="ipad-memories-canvas" onLayout={e => setWidth(e.nativeEvent.layout.width)} style={styles.canvas}>
-          <IpadPageHeader title="Memories" width={width} subtitle="Your journeys. Your stories. Brought together.">
+          <IpadPageHeader title="Memories" width={width} artwork={require('../assets/cinematic-memories-polaroids-photo-v1.jpg')} subtitle="Your journeys. Your stories. Brought together.">
             <Pressable accessibilityRole="button" disabled={disabled} onPress={() => onCreate(selectedLive)} style={[styles.button, { backgroundColor: c.accent }]}><Text style={[styles.buttonText, { color: theme.palette.onAccent }]}>+ New Memory</Text></Pressable>
           </IpadPageHeader>
+          {onFiftyStates && <Pressable testID="fifty-states-collection" accessibilityRole="button" accessibilityLabel="Open 50 States collection" onPress={onFiftyStates}
+            style={[styles.collectionCard, { backgroundColor: c.inset, borderColor: c.line }]}>
+            <View style={[styles.collectionIcon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.rose : c.accent }]}><SymbolView name="map.fill" tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.onAccent} style={styles.icon} /></View>
+            <View style={styles.collectionCopy}><Text style={[styles.collectionEyebrow, { color: theme.id === 'midnight-canopy' ? theme.palette.amber : c.accent }]}>COLLECTIONS</Text><Text style={[styles.collectionTitle, { color: c.text }]}>50 States</Text><Text style={[styles.meta, { color: c.muted }]}>A manual checklist of the states you’ve seen</Text></View>
+            <Text style={[styles.collectionArrow, { color: c.accent }]}>›</Text>
+          </Pressable>}
           <View style={styles.toolbar}><Text accessibilityLiveRegion="polite" style={[styles.hint, { color: c.muted }]}>{saving ? 'Saving your Memory…' : message}</Text>
             <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onRefresh} style={styles.action}><Text style={{ color: c.accent }}>Refresh</Text></Pressable></View>
           {error ? <Text accessibilityRole="alert" style={{ color: c.accent }}>{error}</Text> : null}
           {loading && <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} />}
           {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock your complete history  ›</Text></Pressable>}
-          <View testID="ipad-memory-studio" style={[styles.workspace, { flexDirection: wide ? 'row' : 'column' }]}>
-            <View testID="ipad-memory-gallery-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { width: galleryWidth }]}>
+          <View testID="ipad-memory-studio" style={[styles.workspace, { flexDirection: wide ? 'row' : 'column', gap: verticalFold ? verticalFold.frame.width : 18 }]}>
+            <View testID="ipad-memory-gallery-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && memoryPanelLayout]}>
               <View style={styles.panelHeader}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Your Memories</Text><Text style={{ color: c.muted }}>{memories.length}</Text></View>
               <TextInput accessibilityLabel="Search Memories" value={memoryQuery} onChangeText={setMemoryQuery} placeholder="Search Memories" placeholderTextColor={c.muted} style={[styles.search, { color: c.text, borderColor: c.line }]} />
               <StudioScroll label="Memory gallery"><View style={styles.grid}>
@@ -374,7 +394,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
                 {visibleMemories.length > memoryLimit && <Pressable accessibilityRole="button" onPress={() => setMemoryLimit(n => n + 20)} style={styles.action}><Text style={{ color: c.accent }}>Show more Memories</Text></Pressable>}
               </StudioScroll>
             </View>
-            <View testID="ipad-memory-library-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && { width: libraryWidth }]}>
+            <View testID="ipad-memory-library-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && journeyPanelLayout]}>
               <View style={styles.panelHeader}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Journey library</Text><Text style={{ color: c.muted }}>{visibleJourneys.length}</Text></View>
               <TextInput accessibilityLabel="Search journeys" value={query} onChangeText={setQuery} placeholder="Search places, songs, dates" placeholderTextColor={c.muted} style={[styles.search, { color: c.text, borderColor: c.line }]} />
               {selectedLive.length > 0 && <View style={[styles.selection, { backgroundColor: c.inset }]}>
@@ -400,6 +420,11 @@ const styles = StyleSheet.create({
   // NativeTabs provides per-screen safe-area insets, including its bottom bar.
   // SafeAreaView above consumes that inset; only add a small visual gutter here.
   phoneRoot: { flex: 1, minHeight: 0, marginHorizontal: 12, marginBottom: 8, gap: 8 },
+  collectionCard: { minHeight: 82, marginHorizontal: 5, borderWidth: 1, borderRadius: 20, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 13 },
+  collectionIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  collectionCopy: { flex: 1, gap: 2 }, collectionEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2 }, collectionTitle: { fontSize: 19, lineHeight: 23, fontWeight: '700' },
+  collectionArrow: { fontSize: 30, lineHeight: 32, paddingHorizontal: 4 },
+  phoneCollectionSection: { gap: 8, marginTop: 12, paddingHorizontal: 5 }, phoneCollectionCard: { minHeight: 68, marginHorizontal: 0, paddingVertical: 10 }, phoneCollectionIcon: { width: 42, height: 42, borderRadius: 14 }, phoneCollectionTitle: { fontSize: 16, lineHeight: 20 },
   phoneSearchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 5, marginTop: 5 },
   phoneSearch: { flexGrow: 1, flexShrink: 1, minHeight: 44, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, paddingVertical: 10, fontSize: 15 },
   phonePlus: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
@@ -424,7 +449,7 @@ const styles = StyleSheet.create({
   journeyWrap: { margin: 6, borderRadius: 18, overflow: 'visible' }, journeyRowCard: { minHeight: 58, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' }, journeySelectArea: { flex: 1, minWidth: 0 }, journeyFace: { minHeight: 56, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 9 }, embeddedJourneyFace: { borderWidth: 0, borderRadius: 0, paddingRight: 6 }, journeyLine: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 }, icon: { width: 21, height: 21 }, smallIcon: { width: 16, height: 16 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 }, journeyTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' }, meta: { fontSize: 13, lineHeight: 19 },
-  openJourney: { minWidth: 62, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end', paddingHorizontal: 10 },
+  journeyCheckButton: { width: 48, minHeight: 56, alignItems: 'center', justifyContent: 'center' }, journeyCheck: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' }, journeyCheckIcon: { width: 14, height: 14 },
   dropOutline: { borderRadius: 20, borderWidth: 3, justifyContent: 'flex-end', alignItems: 'center' },
   dropLabel: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, marginBottom: 8 }, dropLabelText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   floating: { position: 'absolute', left: 0, top: 0, width: 290, zIndex: 100, shadowColor: '#180822', shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.28, shadowRadius: 22, elevation: 20 }, floatingFace: { borderWidth: 2 },

@@ -66,8 +66,23 @@ import { parseRouteArchive, ROUTE_ARCHIVE_FORMAT_VERSION, serializeRouteArchive 
 import { isDirectJourneyMemoryId } from './memory-model';
 import { acknowledgeJourneyEdits, ingestJourneyEdit, journeyEditsPendingSync, listJourneyEditConflicts, requeueDeletedJourneyEdits,
   MAX_JOURNEY_EDIT_ASSET_BYTES, parseJourneyEditPayload, type StoredJourneyEdit } from './journey-editor-store';
+import {
+  getMarkerIncludingDeleted,
+  getMarkerPhotoIncludingDeleted,
+  listMarkerPhotosPendingPrivateSync,
+  listMarkersPendingPrivateSync,
+  markerMediaUri,
+  markMarkerPhotoRevisionsSynced,
+  markMarkerRevisionsSynced,
+  requeueDeletedMarkerCloudRecords,
+  upsertMarkerFromPrivateCloud,
+  upsertMarkerPhotoFromPrivateCloud,
+  type JourneyMarkerSyncRecord,
+  type MarkerPhotoSyncRecord,
+} from './journey-marker-store';
+import { validCapturedMarker } from './journey-marker-model';
 
-export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
+export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto';
 
 export interface CloudKitRecord {
   recordName: string;
@@ -341,6 +356,89 @@ export function ckRecordToPreference(record: CloudKitRecord, userId: LocalUserId
   };
 }
 
+export function markerToCKRecord(marker: JourneyMarkerSyncRecord): CloudKitRecord {
+  return {
+    recordName: `journey_marker_${marker.id}`,
+    recordType: 'JourneyMarker',
+    fields: {
+      id: marker.id,
+      sessionId: marker.sessionId,
+      rootJourneyId: marker.rootJourneyId,
+      capturedAt: marker.capturedAt,
+      locationAt: marker.locationAt,
+      latitude: marker.latitude,
+      longitude: marker.longitude,
+      accuracyMeters: marker.accuracyMeters,
+      notes: marker.notes,
+      deletedAt: marker.deletedAt,
+      syncRevision: marker.syncRevision,
+      createdAt: marker.createdAt,
+      updatedAt: marker.updatedAt,
+    },
+    modificationDate: marker.updatedAt,
+  };
+}
+
+export function ckRecordToMarker(record: CloudKitRecord, userId: LocalUserId): JourneyMarkerSyncRecord {
+  const f = record.fields;
+  const marker: JourneyMarkerSyncRecord = {
+    id: String(f.id || ''), userId,
+    sessionId: String(f.sessionId || ''), rootJourneyId: String(f.rootJourneyId || ''),
+    capturedAt: String(f.capturedAt || ''), locationAt: String(f.locationAt || ''),
+    latitude: Number(f.latitude), longitude: Number(f.longitude), accuracyMeters: Number(f.accuracyMeters),
+    notes: String(f.notes || ''), deletedAt: f.deletedAt ? String(f.deletedAt) : null,
+    syncedToCloud: 1, syncRevision: Math.max(1, Math.trunc(Number(f.syncRevision) || 1)),
+    createdAt: String(f.createdAt || ''), updatedAt: String(f.updatedAt || record.modificationDate || ''),
+  };
+  if (`journey_marker_${marker.id}` !== record.recordName || !/^marker_[0-9a-f-]{36}$/.test(marker.id)
+    || !marker.sessionId || marker.sessionId.length > 200 || !marker.rootJourneyId || marker.rootJourneyId.length > 200
+    || marker.notes.length > 10_000 || !Number.isFinite(Date.parse(marker.createdAt))
+    || !Number.isFinite(Date.parse(marker.updatedAt)) || (marker.deletedAt != null && !Number.isFinite(Date.parse(marker.deletedAt)))) {
+    throw new Error('A private Marker record is invalid.');
+  }
+  return marker;
+}
+
+export function markerPhotoToCKRecord(photo: MarkerPhotoSyncRecord, assetFilePath?: string, byteLength = 0): CloudKitRecord {
+  return {
+    recordName: `marker_photo_${photo.id}`,
+    recordType: 'MarkerPhoto',
+    assetFilePath: photo.deletedAt ? undefined : assetFilePath,
+    fields: {
+      id: photo.id,
+      markerId: photo.markerId,
+      fileName: photo.fileName,
+      contentType: 'image/jpeg',
+      byteLength: photo.deletedAt ? 0 : byteLength,
+      deletedAt: photo.deletedAt,
+      syncRevision: photo.syncRevision,
+      createdAt: photo.createdAt,
+      updatedAt: photo.updatedAt,
+    },
+    modificationDate: photo.updatedAt,
+  };
+}
+
+export function ckRecordToMarkerPhoto(record: CloudKitRecord, userId: LocalUserId): MarkerPhotoSyncRecord {
+  const f = record.fields;
+  const id = String(f.id || '');
+  const photo: MarkerPhotoSyncRecord = {
+    id, userId, markerId: String(f.markerId || ''), kind: 'photo', fileName: String(f.fileName || ''),
+    deletedAt: f.deletedAt ? String(f.deletedAt) : null, syncedToCloud: 1,
+    syncRevision: Math.max(1, Math.trunc(Number(f.syncRevision) || 1)),
+    createdAt: String(f.createdAt || ''), updatedAt: String(f.updatedAt || record.modificationDate || ''),
+  };
+  const byteLength = Number(f.byteLength);
+  if (`marker_photo_${id}` !== record.recordName || !/^[0-9a-f-]{36}$/.test(id)
+    || photo.fileName !== `${id}.jpg` || !/^marker_[0-9a-f-]{36}$/.test(photo.markerId)
+    || String(f.contentType || '') !== 'image/jpeg' || !Number.isFinite(Date.parse(photo.createdAt))
+    || !Number.isFinite(Date.parse(photo.updatedAt)) || (photo.deletedAt != null && !Number.isFinite(Date.parse(photo.deletedAt)))
+    || (!photo.deletedAt && (!Number.isInteger(byteLength) || byteLength < 1 || byteLength > 10 * 1024 * 1024))) {
+    throw new Error('A private Marker photo record is invalid.');
+  }
+  return photo;
+}
+
 // --- Conflict Resolution: Last-Write-Wins (LWW) -----------------------------
 
 export function resolveConflict<T extends { updatedAt: string }>(local: T, remote: T): T {
@@ -360,16 +458,18 @@ export class CloudKitSyncEngine {
   private privateContentV2: boolean;
   private privateRouteAssets: boolean;
   private privateJourneyEdits: boolean;
+  private privateMarkers: boolean;
   private preparedRevisions = new Map<string, number>();
   private preparedSnapshots = new Map<string, string>();
   private preparationFailures = new Set<string>();
   private issues = new Map<string, string>();
 
-  constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean; privateJourneyEdits?: boolean } = {}) {
+  constructor(userId: LocalUserId, options: { privateContentV2?: boolean; privateRouteAssets?: boolean; privateJourneyEdits?: boolean; privateMarkers?: boolean } = {}) {
     this.userId = userId;
     this.privateContentV2 = options.privateContentV2 === true;
     this.privateRouteAssets = options.privateRouteAssets === true;
     this.privateJourneyEdits = options.privateJourneyEdits === true;
+    this.privateMarkers = options.privateMarkers === true;
   }
 
   public getSyncState(): SyncState {
@@ -399,6 +499,8 @@ export class CloudKitSyncEngine {
     const pendingMemoryIds = memoriesPendingSync(this.userId, limit).filter(isDirectJourneyMemoryId);
     const pendingPreferenceKeys = this.privateContentV2 ? preferencesPendingSync(this.userId, limit) : [];
     const pendingRoutes = this.privateRouteAssets ? routeArchivesPendingSync(this.userId, Math.min(10, limit)) : [];
+    const pendingMarkers = this.privateMarkers ? listMarkersPendingPrivateSync(this.userId, limit) : [];
+    const pendingMarkerPhotos = this.privateMarkers ? listMarkerPhotosPendingPrivateSync(this.userId, limit) : [];
     const pendingJourneys = pendingJourneyIds.map(id => getJourney(this.userId, id)).filter((item): item is LocalJourney => Boolean(item));
     const pendingMusic = pendingMusicIds.map(id => getMusicEntry(this.userId, id)).filter((item): item is LocalMusicEntry => Boolean(item));
     const memories = listMemoriesIncludingDeleted(this.userId).filter(item => pendingMemoryIds.includes(item.id) && (this.privateContentV2 || !item.deletedAt));
@@ -419,6 +521,27 @@ export class CloudKitSyncEngine {
       }
       memoryPhotoRecords.push(photoToCKRecord(photo));
     }
+    const markerPhotoRecords: CloudKitRecord[] = [];
+    for (const photo of pendingMarkerPhotos) {
+      if (markerPhotoRecords.length >= limit || this.preparationFailures.has(`marker_photo_${photo.id}`)) continue;
+      if (photo.deletedAt) {
+        markerPhotoRecords.push(markerPhotoToCKRecord(photo));
+        continue;
+      }
+      const assetFilePath = markerMediaUri(this.userId, photo);
+      const info = await FileSystem.getInfoAsync(assetFilePath);
+      if (!info.exists || info.isDirectory || !info.size) {
+        this.preparationFailures.add(`marker_photo_${photo.id}`);
+        this.recordUploadFailure(`marker_photo_${photo.id}`, 'local_marker_photo_missing');
+        continue;
+      }
+      if (info.size > 10 * 1024 * 1024) {
+        this.preparationFailures.add(`marker_photo_${photo.id}`);
+        this.recordUploadFailure(`marker_photo_${photo.id}`, 'local_marker_photo_too_large');
+        continue;
+      }
+      markerPhotoRecords.push(markerPhotoToCKRecord(photo, assetFilePath, info.size));
+    }
     const routeRecords = await Promise.all(pendingRoutes.map(routeArchiveToCKRecord));
     const editRecords = this.privateJourneyEdits ? await Promise.all(journeyEditsPendingSync(this.userId, 4).map(edit => journeyEditToCKRecord(this.userId, edit))) : [];
     const records = [
@@ -429,6 +552,8 @@ export class CloudKitSyncEngine {
       ...pendingMusic.map(musicEntryToCKRecord),
       ...memories.map(memoryToCKRecord),
       ...memoryPhotoRecords,
+      ...pendingMarkers.map(markerToCKRecord),
+      ...markerPhotoRecords,
     ].filter(record => {
       // Preparing assets yields to JavaScript. An edit committed during that
       // wait takes ownership of the whole projection before these rows leave.
@@ -465,6 +590,10 @@ export class CloudKitSyncEngine {
       local_photo_missing: 'The saved photo file is missing on this device. Repeated Sync taps cannot upload a missing file.',
       local_photo_unreadable: 'The saved photo file could not be checked on this device.',
       local_photo_empty: 'The saved photo file is empty on this device.',
+      local_marker_photo_missing: 'A Marker photo file is missing on this device. Its Marker and other photos remain queued safely.',
+      local_marker_photo_too_large: 'A Marker photo exceeds the 10 MB private backup limit.',
+      marker_identity_conflict: 'Another device supplied different immutable capture details for this Marker. The local copy was preserved.',
+      marker_photo_identity_conflict: 'Another device supplied different immutable ownership details for this Marker photo. The local copy was preserved.',
       network_failure: 'The connection failed during upload.',
       network_unavailable: 'A network connection is unavailable.',
       rate_limited: 'iCloud asked JourneyDeck to wait before retrying.',
@@ -488,7 +617,11 @@ export class CloudKitSyncEngine {
     for (const character of recordName) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
     const reference = (hash >>> 0).toString(16).padStart(8, '0');
     let label = 'Library item';
-    if (recordName.startsWith('photo_')) {
+    if (recordName.startsWith('marker_photo_')) {
+      const photo = getMarkerPhotoIncludingDeleted(this.userId, recordName.slice('marker_photo_'.length));
+      label = photo?.deletedAt ? 'Removed Marker photo' : 'Marker photo';
+    } else if (recordName.startsWith('journey_marker_')) label = 'Journey Marker';
+    else if (recordName.startsWith('photo_')) {
       const photo = getPhotoIncludingDeleted(this.userId, recordName.slice(6));
       const memory = photo?.memoryId ? getMemoryIncludingDeleted(this.userId, photo.memoryId) : null;
       const photos = photo?.memoryId ? listPhotosIncludingDeleted(this.userId).filter(item => item.memoryId === photo.memoryId && !item.deletedAt) : [];
@@ -541,6 +674,10 @@ export class CloudKitSyncEngine {
     markPreferenceRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'preference_', this.preparedRevisions, true));
     markRouteArchiveRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'route_', this.preparedRevisions));
     acknowledgeJourneyEdits(this.userId, revisionAcks(pushedRecordNames, 'edit_', this.preparedRevisions).map(ack => ack.id));
+    if (this.privateMarkers) {
+      markMarkerRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'journey_marker_', this.preparedRevisions));
+      markMarkerPhotoRevisionsSynced(this.userId, revisionAcks(pushedRecordNames, 'marker_photo_', this.preparedRevisions));
+    }
     for (const name of pushedRecordNames) {
       this.preparedRevisions.delete(name);
       this.preparedSnapshots.delete(name);
@@ -561,7 +698,8 @@ export class CloudKitSyncEngine {
   public async ingestRemoteRecords(remoteRecords: CloudKitRecord[], assertProfileCurrent: () => void = () => {}): Promise<{ updatedCount: number; deferredCount: number }> {
     let count = 0;
     let deferredCount = 0;
-    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3, Collection: 4, Memory: 5, Photo: 6, PrivatePreference: -1 };
+    const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3,
+      JourneyMarker: 4, Collection: 5, Memory: 6, Photo: 7, MarkerPhoto: 8, PrivatePreference: -1 };
     const editsById = new Map(remoteRecords.filter(record => record.recordType === 'JourneyEdit').map(record => [String(record.fields.id), record]));
     const editDepth = (record: CloudKitRecord, seen = new Set<string>()): number => {
       const parentId = String(record.fields.parentId ?? '');
@@ -644,6 +782,25 @@ export class CloudKitSyncEngine {
         if (entry.journeyId && !getJourney(this.userId, entry.journeyId)) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
         upsertMusicEntry(entry, { syncedToCloud: 1, createdAt: entry.createdAt });
         count++;
+      } else if (record.recordType === 'JourneyMarker') {
+        const remote = ckRecordToMarker(record, this.userId);
+        const journey = getJourney(this.userId, remote.rootJourneyId);
+        if (!journey) { this.recordUploadFailure(record.recordName, 'missing_dependency'); deferredCount++; continue; }
+        if (!validCapturedMarker(remote, journey.startedAt, journey.endedAt)) {
+          throw new Error('A private Marker does not belong to its Journey capture interval.');
+        }
+        const local = getMarkerIncludingDeleted(this.userId, remote.id);
+        if (local && (local.sessionId !== remote.sessionId || local.rootJourneyId !== remote.rootJourneyId
+          || local.capturedAt !== remote.capturedAt || local.locationAt !== remote.locationAt
+          || local.latitude !== remote.latitude || local.longitude !== remote.longitude
+          || local.accuracyMeters !== remote.accuracyMeters || local.createdAt !== remote.createdAt)) {
+          this.recordUploadFailure(record.recordName, 'marker_identity_conflict');
+          deferredCount++;
+          continue;
+        }
+        if (local && resolvePrivateConflict(local, remote) !== remote) continue;
+        upsertMarkerFromPrivateCloud(this.userId, remote);
+        count++;
       } else if (record.recordType === 'Memory') {
         const remote = ckRecordToMemory(record, this.userId);
         if (!isDirectJourneyMemoryId(remote.id)) continue;
@@ -659,6 +816,24 @@ export class CloudKitSyncEngine {
         if ((!local && !remote.deletedAt && !remote.localUri) || (local && resolvePrivateConflict(local, remote) !== remote)) continue;
         if (!remote.localUri && local) remote.localUri = local.localUri;
         upsertPhoto(remote, { syncedToCloud: 1, deletedAt: remote.deletedAt, syncRevision: remote.syncRevision, createdAt: remote.createdAt, updatedAt: remote.updatedAt });
+        count++;
+      } else if (record.recordType === 'MarkerPhoto') {
+        const remote = ckRecordToMarkerPhoto(record, this.userId);
+        if (!getMarkerIncludingDeleted(this.userId, remote.markerId)) {
+          this.recordUploadFailure(record.recordName, 'missing_dependency');
+          deferredCount++;
+          continue;
+        }
+        const local = getMarkerPhotoIncludingDeleted(this.userId, remote.id);
+        if (local && (local.markerId !== remote.markerId || local.fileName !== remote.fileName
+          || local.kind !== remote.kind || local.createdAt !== remote.createdAt)) {
+          this.recordUploadFailure(record.recordName, 'marker_photo_identity_conflict');
+          deferredCount++;
+          continue;
+        }
+        if (local && resolvePrivateConflict(local, remote) !== remote) continue;
+        await upsertMarkerPhotoFromPrivateCloud(this.userId, remote, record.assetFilePath ?? null, Number(record.fields.byteLength));
+        assertProfileCurrent();
         count++;
       } else if (record.recordType === 'PrivatePreference') {
         const remote = ckRecordToPreference(record, this.userId);
@@ -684,6 +859,7 @@ export class CloudKitSyncEngine {
     // re-queue any surviving local row instead of erasing the only copy.
     quarantineCloudDeletions(this.userId, recordNames);
     requeueDeletedJourneyEdits(this.userId, recordNames);
+    if (this.privateMarkers) requeueDeletedMarkerCloudRecords(this.userId, recordNames);
   }
 
   private pendingCount(): number {
@@ -693,7 +869,8 @@ export class CloudKitSyncEngine {
     const pendingDirectMemoryCount = memoriesPendingSync(this.userId, 500).filter(isDirectJourneyMemoryId).length;
     return journeysPendingSync(this.userId, 500).length + musicEntriesPendingSync(this.userId, 500).length +
       pendingDirectMemoryCount + pendingMemoryPhotoCount + preferencesPendingSync(this.userId, 500).length +
-      (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0) + journeyEditsPendingSync(this.userId, 500).length;
+      (this.privateRouteAssets ? routeArchivesPendingSync(this.userId, 25).length : 0) + journeyEditsPendingSync(this.userId, 500).length +
+      (this.privateMarkers ? listMarkersPendingPrivateSync(this.userId, 500).length + listMarkerPhotosPendingPrivateSync(this.userId, 500).length : 0);
   }
 
   public setSyncCompleted(): void {

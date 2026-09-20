@@ -1,7 +1,7 @@
 import { compactArtistCredit } from './artist-credit';
 import { TouchPressable as Pressable } from './touch-feedback';
 import { useAppTheme, useThemedStyles } from './app-theme';
-import { isIpad } from './device-layout';
+import { useAdaptiveLayout } from './adaptive-layout';
 import { IpadMusicScreen } from './ipad-music-screen';
 import { ipadListeningDays } from './ipad-music-data';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
@@ -19,7 +19,6 @@ import { musicTrackDestination } from './music-destination';
 import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
 import { NeonWidget, QuietInset } from './neon-widget-outline';
 import { PhoneTabTitle } from './phone-tab-title';
-import { AlbumCarousel } from './album-carousel';
 import { JourneyImage } from './journey-image';
 
 export type MusicDashboardState = {
@@ -51,11 +50,15 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
   const data = state.data;
   const canOpenTracks = provider === 'apple-music' || provider === 'lastfm';
   const insets = useSafeAreaInsets();
+  const layout = useAdaptiveLayout();
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const [archiveQuery, setArchiveQuery] = useState('');
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const [ranking, setRanking] = useState<'artists' | 'tracks'>('artists');
   const archive = useMemo(() => buildMusicArchive(journeys, details), [journeys, details]);
   const visibleArchive = useMemo(() => filterMusicArchive(archive, archiveQuery), [archive, archiveQuery]);
   const topTracks = useMemo(() => topArchiveTracks(archive), [archive]);
+  const historyLimit = archiveQuery.trim() || showAllHistory ? 60 : 5;
   const ipadDaily = useMemo(() => ipadListeningDays(archive), [archive, state.data?.generatedAt]);
   const refreshFromGesture = useCallback(async () => {
     if (manualRefreshing) return;
@@ -63,12 +66,12 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
     try { await onRefresh(); }
     finally { setManualRefreshing(false); }
   }, [manualRefreshing, onRefresh]);
-  if (isIpad()) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
+  if (layout.isRegular) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
     canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} />;
   return (
     <ScrollView
       style={styles.page}
-      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 16 }]}
+      contentContainerStyle={[styles.pageContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 112 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
@@ -87,29 +90,20 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
       {state.status === 'error' ? <View style={styles.notice}><Text style={styles.noticeTitle}>Music archive unavailable</Text><Text style={styles.noticeBody}>{state.message}</Text><Pressable onPress={() => void onRefresh()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
 
       {data ? <>
-        <Panel title="Today's soundtrack" kicker={data.recentSelections.length ? `${data.recentSelections.length} RECENT SELECTIONS` : 'WAITING FOR MUSIC'}>
-          {data.recentSelections.length ? <AlbumCarousel tracks={data.recentSelections} enabled={canOpenTracks} onTrack={track => void openTrack(track, provider)} /> : <Empty text="Your latest songs will appear here after JourneyDeck receives listening history." />}
+        <Panel title="Latest road soundtrack" kicker={data.recentSelections.length ? `${data.recentSelections.length} RECENT` : 'WAITING FOR MUSIC'}>
+          {data.recentSelections.length ? <LatestSoundtrack track={data.recentSelections[0]} enabled={canOpenTracks} onPress={() => void openTrack(data.recentSelections[0], provider)} /> : <Empty text="Your latest song will appear here after JourneyDeck receives listening history." />}
         </Panel>
 
-        <View style={styles.metricGrid}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricRail} contentInsetAdjustmentBehavior="never">
           <Metric symbol="car.fill" label="Miles with music" value={number(data.metrics.milesWithMusic)} detail="all time" accent={colors.coral} />
           <Metric symbol="headphones.circle.fill" label="Listening hours" value={number(data.metrics.listeningHours)} detail="from archived plays" accent={colors.pink} />
           <Metric symbol="waveform.circle.fill" label="Songs on the road" value={number(data.metrics.songsOnRoad, 0)} detail="matched to journeys" accent={colors.coral} />
           <Metric symbol="flame.fill" label="Current streak" value={number(data.metrics.currentStreak, 0)} detail="days with music" accent="#ff4560" />
-        </View>
+        </ScrollView>
 
-        <Panel title="Top artists" kicker="ALL-TIME ARCHIVE">
-          {data.topArtists.length ? <View style={styles.artistList}>{data.topArtists.map((artist, index) => <View key={artist.artist} style={styles.artistRow}>
-            <Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text>
-            {artist.artworkUrl ? <JourneyImage imageIdentity={`artist-${artist.artist}`} source={{ uri: artist.artworkUrl }} style={styles.artistArtwork} contentFit="cover" /> : <View style={styles.artistFallback}><Text style={styles.artistInitial}>{artist.artist.slice(0, 1).toUpperCase()}</Text></View>}
-            <Text style={styles.artistName} numberOfLines={1}>{artist.artist}</Text>
-            <Text style={styles.artistPlays}>{number(artist.plays, 0)} plays</Text>
-          </View>)}</View> : <Empty text="Your artist ranking will grow with your listening archive." />}
-        </Panel>
-
-        <Panel title="Listening history" kicker={`${visibleArchive.length} JOURNEY PLAYS`}>
+        <Panel title="Listening history" kicker={`${archive.length} JOURNEY PLAYS`}>
           <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor={theme.color("#746a7c", 'text')} style={styles.archiveSearch} />
-          {visibleArchive.slice(0, 60).map(entry => <View key={entry.key} style={styles.archiveRow}>
+          {visibleArchive.slice(0, historyLimit).map(entry => <View key={entry.key} style={styles.archiveRow}>
             <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
               {entry.artworkUrl ? <JourneyImage imageIdentity={`archive-${entry.key}`} source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
               <View style={styles.archiveCopy}><Text style={styles.archiveTitle} numberOfLines={1}>{entry.track}</Text><Text style={styles.archiveArtist} numberOfLines={1}>{entry.artist}{entry.album ? `  •  ${entry.album}` : ''}</Text><Text style={styles.archiveRoute} numberOfLines={1}>{entry.routeLabel}</Text></View>
@@ -117,42 +111,43 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
             <Pressable onPress={() => onJourney(entry.journeyId)} style={styles.archiveJourneyButton}><Text style={styles.archiveJourneyText}>Journey ›</Text></Pressable>
           </View>)}
           {!visibleArchive.length && <Empty text={archiveQuery ? 'No listening moments match that search.' : 'Songs matched to journeys will build your searchable archive here.'} />}
+          {!archiveQuery.trim() && visibleArchive.length > 5 ? <Pressable accessibilityRole="button" onPress={() => setShowAllHistory(value => !value)} style={styles.sectionAction}><Text style={styles.sectionActionText}>{showAllHistory ? 'Show less' : `View all ${visibleArchive.length} plays`}</Text><SymbolView name={showAllHistory ? 'chevron.up' : 'chevron.down'} tintColor={theme.palette.accent} weight="semibold" style={styles.sectionActionIcon} /></Pressable> : null}
         </Panel>
 
-        <Panel title="Top tracks" kicker="CALCULATED ON THIS IPHONE">
-          {topTracks.map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text style={styles.archiveTitle}>{track.track}</Text><Text accessibilityLabel={track.artist} numberOfLines={1} style={styles.archiveArtist}>{compactArtistCredit(track.artist)}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>)}
-          {!topTracks.length && <Empty text="Your most-played road songs will appear here." />}
+        <Panel title="Your sound" kicker="ALL-TIME ARCHIVE">
+          <View accessibilityRole="tablist" style={styles.rankingTabs}>
+            {(['artists', 'tracks'] as const).map(option => <Pressable key={option} accessibilityRole="tab" accessibilityState={{ selected: ranking === option }} onPress={() => setRanking(option)} style={[styles.rankingTab, ranking === option && styles.rankingTabSelected]}><Text style={[styles.rankingTabText, ranking === option && styles.rankingTabTextSelected]}>{option === 'artists' ? 'Artists' : 'Tracks'}</Text></Pressable>)}
+          </View>
+          {ranking === 'artists' ? (data.topArtists.length ? <View style={styles.artistList}>{data.topArtists.slice(0, 5).map((artist, index) => <View key={artist.artist} style={styles.artistRow}>
+            <Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text>
+            {artist.artworkUrl ? <JourneyImage imageIdentity={`artist-${artist.artist}`} source={{ uri: artist.artworkUrl }} style={styles.artistArtwork} contentFit="cover" /> : <View style={styles.artistFallback}><Text style={styles.artistInitial}>{artist.artist.slice(0, 1).toUpperCase()}</Text></View>}
+            <Text style={styles.artistName} numberOfLines={1}>{artist.artist}</Text>
+            <Text style={styles.artistPlays}>{number(artist.plays, 0)} plays</Text>
+          </View>)}</View> : <Empty text="Your artist ranking will grow with your listening archive." />) : (topTracks.length ? topTracks.slice(0, 5).map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text numberOfLines={1} style={styles.archiveTitle}>{track.track}</Text><Text accessibilityLabel={track.artist} numberOfLines={1} style={styles.archiveArtist}>{compactArtistCredit(track.artist)}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>) : <Empty text="Your most-played road songs will appear here." />)}
         </Panel>
-
-        <View style={styles.insightPair}>
-          <View style={[styles.insightCard, styles.flexCard]}>
-            <CardHeader title="Tour mileage" kicker="THIS WEEK" />
-            <Text style={styles.tourValue}>{number(data.tour.miles)}</Text><Text style={styles.tourUnit}>miles with a soundtrack</Text>
-            <RouteGlow />
-            <Text style={[styles.change, (data.tour.changePercent ?? 0) < 0 && styles.changeDown]}>{data.tour.changePercent === null ? 'First week of matched journey music' : `${data.tour.changePercent >= 0 ? '↑' : '↓'} ${Math.abs(data.tour.changePercent)}% vs last week`}</Text>
-          </View>
-          <View style={[styles.insightCard, styles.flexCard]}>
-            <CardHeader title="Mood by mile" kicker="WHEN YOU LISTEN" />
-            <MoodBar items={data.mood} />
-          </View>
-        </View>
 
         <View style={styles.insightCard}>
+          <CardHeader title="Road insights" kicker="THIS WEEK" />
+          <View style={styles.insightSummary}><View><Text style={styles.tourValue}>{number(data.tour.miles)}</Text><Text style={styles.tourUnit}>miles with a soundtrack</Text></View><View style={styles.weekSummary}><Text style={styles.weekSummaryValue}>{number(data.week.total, 0)}</Text><Text style={styles.tourUnit}>plays this week</Text></View></View>
+          <RouteGlow />
+          <Text style={[styles.change, (data.tour.changePercent ?? 0) < 0 && styles.changeDown]}>{data.tour.changePercent === null ? 'Your first week of matched journey music' : `${data.tour.changePercent >= 0 ? '↑' : '↓'} ${Math.abs(data.tour.changePercent)}% mileage vs last week`}</Text>
+        </View>
+
+        {data.mood.some(item => item.count > 0) ? <View style={styles.insightCard}>
+          <CardHeader title="Mood by mile" kicker="WHEN YOU LISTEN" />
+          <MoodBar items={data.mood} />
+        </View> : null}
+
+        {data.cities.length ? <View style={styles.insightCard}>
           <CardHeader title="Cities & sound" kicker="JOURNEY MATCHES" />
           <CityBars items={data.cities} />
-        </View>
+        </View> : null}
 
-        <View style={styles.insightCard}>
+        {data.daily.some(day => day.minutes > 0) ? <View style={styles.insightCard}>
           <CardHeader title="Listening time" kicker="LAST 7 DAYS" />
           <IntensityChart daily={data.daily.slice(-7)} />
           <Text style={styles.chartFootnote}>Minutes listened each day</Text>
-        </View>
-
-        <View style={styles.insightCard}>
-          <CardHeader title="This week in sound" kicker={provider === 'apple-music' ? 'APPLE MUSIC PLAYS' : provider === 'lastfm' ? 'SPOTIFY PLAYS' : 'RECOGNIZED SONGS'} />
-          <WeekBars daily={data.daily.slice(-7)} />
-          <View style={styles.weekTotal}><Text style={styles.weekTotalValue}>{number(data.week.total, 0)}</Text><Text style={styles.weekTotalLabel}>plays this week</Text><Text style={[styles.weekChange, (data.week.changePercent ?? 0) < 0 && styles.changeDown]}>{data.week.changePercent === null ? 'New' : `${data.week.changePercent >= 0 ? '+' : ''}${data.week.changePercent}%`}</Text></View>
-        </View>
+        </View> : null}
 
         {!canOpenTracks ? <Text style={styles.linkFootnote}>Manual Song Recognition saves only the match and timestamp, so JourneyDeck leaves track taps inactive.</Text> : <Text style={styles.linkFootnote}>Tap any album to open it in {provider === 'lastfm' ? 'Spotify' : 'Apple Music'}.</Text>}
       </> : null}
@@ -164,8 +159,18 @@ function Metric({ symbol, label, value, detail, accent }: { symbol: SFSymbol; la
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  const iconColor = theme.color(accent, 'text');
-  return <QuietInset radius={19} accent={accent} style={styles.metric}><View accessible={false} style={[styles.metricIconHalo, { borderColor: theme.color(`${accent}66`, 'border'), shadowColor: theme.color(accent, 'shadow') }]}><LinearGradient colors={[theme.color(`${accent}66`, 'surface'), theme.color(`${accent}18`, 'surface')]} style={styles.metricIcon}><SymbolView name={symbol} tintColor={iconColor} type="hierarchical" weight="bold" style={styles.metricSymbol} /></LinearGradient></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+  const iconColor = theme.id === 'midnight-canopy' ? theme.palette.text : theme.color(accent, 'text');
+  return <QuietInset radius={19} accent={accent} style={styles.metric}><View accessible={false} style={[styles.metricIconHalo, { borderColor: theme.color(`${accent}66`, 'border'), shadowColor: theme.color(accent, 'shadow') }]}><LinearGradient colors={theme.id === 'midnight-canopy' ? [symbol === 'flame.fill' ? theme.palette.rose : theme.palette.coral, symbol === 'flame.fill' ? theme.palette.rose : theme.palette.coral] : [theme.color(`${accent}66`, 'surface'), theme.color(`${accent}18`, 'surface')]} style={styles.metricIcon}><SymbolView name={symbol} tintColor={iconColor} type="hierarchical" weight="bold" style={styles.metricSymbol} /></LinearGradient></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={[styles.metricValue, theme.id === 'midnight-canopy' && { color: theme.palette.amber }]}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+}
+
+function LatestSoundtrack({ track, enabled, onPress }: { track: SoundtrackTrack; enabled: boolean; onPress: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${track.track} by ${track.artist}`} accessibilityState={{ disabled: !enabled }} disabled={!enabled} onPress={onPress} style={styles.latestSoundtrack}>
+    {track.artworkUrl ? <JourneyImage imageIdentity={`latest-soundtrack-${track.track}-${track.artist}`} source={{ uri: track.artworkUrl }} style={styles.latestArtwork} contentFit="cover" /> : <View style={styles.latestArtworkFallback}><SymbolView name="music.note" tintColor={theme.palette.accent} weight="bold" style={styles.latestArtworkSymbol} /></View>}
+    <View style={styles.latestCopy}><Text style={styles.latestKicker}>MOST RECENT PLAY</Text><Text numberOfLines={2} style={styles.latestTitle}>{track.track}</Text><Text numberOfLines={1} style={styles.latestArtist}>{compactArtistCredit(track.artist)}</Text>{track.album ? <Text numberOfLines={1} style={styles.latestAlbum}>{track.album}</Text> : null}</View>
+    {enabled ? <SymbolView name="arrow.up.right" tintColor={theme.palette.accent} weight="semibold" style={styles.latestOpenIcon} /> : null}
+  </Pressable>;
 }
 
 function SoundtracksHeroHeader() {
@@ -356,11 +361,13 @@ const darkStyles = StyleSheet.create({
   loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { color: colors.muted, fontSize: 12 },
   notice: { borderWidth: 1, borderColor: '#744152', backgroundColor: '#1a0b15', borderRadius: 18, padding: 15, gap: 7, shadowColor: '#ff4d82', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } }, noticeTitle: { color: '#ff9a83', fontWeight: '900', fontSize: 14 }, noticeBody: { color: '#ad9da8', fontSize: 12, lineHeight: 18 }, retry: { alignSelf: 'flex-start', borderRadius: 999, backgroundColor: '#3b1930', paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#ff4d82', shadowOpacity: 0.35, shadowRadius: 10 }, retryText: { color: '#ff8bb6', fontWeight: '900', fontSize: 10 },
   sourceGuidance: { borderRadius: 17, borderWidth: 1, borderColor: '#493359', backgroundColor: '#120d19', paddingHorizontal: 15, paddingVertical: 13, gap: 5 }, sourceGuidanceKicker: { color: '#ff8f78', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, sourceGuidanceText: { color: '#a79dad', fontSize: 11, lineHeight: 17 },
-  metricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, metric: { width: '48.6%', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12 }, metricIconHalo: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, padding: 3, shadowOpacity: 0.68, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } }, metricIcon: { flex: 1, borderRadius: 21, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, metricSymbol: { width: 27, height: 27 }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 10, lineHeight: 13, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 9, lineHeight: 12, marginTop: 2 },
+  latestSoundtrack: { minHeight: 118, flexDirection: 'row', alignItems: 'center', gap: 13, paddingTop: 2 }, latestArtwork: { width: 104, height: 104, borderRadius: 16 }, latestArtworkFallback: { width: 104, height: 104, borderRadius: 16, backgroundColor: '#24152f', alignItems: 'center', justifyContent: 'center' }, latestArtworkSymbol: { width: 38, height: 38 }, latestCopy: { flex: 1, minWidth: 0 }, latestKicker: { color: '#ff829d', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, latestTitle: { color: colors.text, fontSize: 20, lineHeight: 24, fontWeight: '900', marginTop: 7 }, latestArtist: { color: '#b5a7bc', fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 5 }, latestAlbum: { color: '#82768a', fontSize: 9, lineHeight: 14, marginTop: 2 }, latestOpenIcon: { width: 18, height: 18 },
+  metricRail: { gap: 10, paddingRight: 14 }, metric: { width: 148, minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10 }, metricIconHalo: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, padding: 3, shadowOpacity: 0.68, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } }, metricIcon: { flex: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, metricSymbol: { width: 22, height: 22 }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 9, lineHeight: 12, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 1, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 8, lineHeight: 11, marginTop: 1 },
   panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 9, fontWeight: '800', letterSpacing: 0.65 },
   empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },
-  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 175, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 7, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
+  rankingTabs: { flexDirection: 'row', gap: 4, borderRadius: 12, backgroundColor: '#09060f', padding: 3, marginBottom: 8 }, rankingTab: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, rankingTabSelected: { backgroundColor: '#2b1738', borderWidth: 1, borderColor: '#5f3972' }, rankingTabText: { color: '#897d91', fontSize: 11, fontWeight: '800' }, rankingTabTextSelected: { color: '#f5edf8' },
+  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 0, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, insightSummary: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 3 }, weekSummary: { alignItems: 'flex-end', paddingTop: 3 }, weekSummaryValue: { color: '#ff829d', fontSize: 28, lineHeight: 33, fontWeight: '900', fontVariant: ['tabular-nums'] }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 8, lineHeight: 13, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
   moodBlock: { flex: 1, justifyContent: 'space-between', paddingTop: 8 }, moodBar: { height: 17, borderRadius: 9, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 10, fontWeight: '900' }, moodLabel: { color: '#817589', fontSize: 7, marginTop: 3 }, moodFootnote: { color: '#ff765a', fontSize: 6.5, marginTop: 15 },
   cityList: { gap: 12, paddingTop: 2 }, cityRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, cityName: { width: 103, color: '#d8cfdd', fontSize: 9 }, cityTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: '#27172f', overflow: 'hidden' }, cityFill: { height: 6, borderRadius: 3, backgroundColor: colors.pink, shadowColor: colors.pink, shadowOpacity: 1, shadowRadius: 6 }, cityCount: { width: 25, color: '#b9a9c1', fontSize: 9, fontWeight: '800', textAlign: 'right' }, cityAttribution: { color: '#6f6476', fontSize: 7, lineHeight: 11, marginTop: 3 },
   chart: { height: 116, overflow: 'hidden' },
@@ -370,5 +377,6 @@ const darkStyles = StyleSheet.create({
   weekBars: { height: 105, flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingHorizontal: 3 }, weekBarItem: { flex: 1, height: 105, alignItems: 'center', justifyContent: 'flex-end' }, weekBarTrack: { width: '100%', flex: 1, justifyContent: 'flex-end' }, weekBarFill: { width: '100%', minHeight: 2, borderTopLeftRadius: 4, borderTopRightRadius: 4, backgroundColor: colors.coral, shadowColor: colors.pink, shadowOpacity: 0.75, shadowRadius: 7 }, weekBarLabel: { color: '#81758a', fontSize: 7, marginTop: 7 }, weekTotal: { flexDirection: 'row', alignItems: 'baseline', gap: 7, marginTop: 12 }, weekTotalValue: { color: colors.text, fontSize: 27, fontWeight: '900' }, weekTotalLabel: { flex: 1, color: '#8d8294', fontSize: 8 }, weekChange: { color: colors.coral, fontSize: 10, fontWeight: '900' },
   archiveSearch: { height: 46, borderRadius: 14, borderWidth: 1, borderColor: '#472759', backgroundColor: '#09060f', color: colors.text, paddingHorizontal: 13, fontSize: 12, marginBottom: 9 },
   archiveRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1938', paddingVertical: 9, gap: 7 }, archiveTrackButton: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, archiveArtwork: { width: 48, height: 48, borderRadius: 10 }, archiveArtworkFallback: { width: 48, height: 48, borderRadius: 10, backgroundColor: '#26142f', alignItems: 'center', justifyContent: 'center' }, archiveNote: { color: colors.pink, fontSize: 21, fontWeight: '900' }, archiveCopy: { flex: 1, minWidth: 0 }, archiveTitle: { color: '#f3edf6', fontSize: 12, fontWeight: '900' }, archiveArtist: { color: '#9a8da1', fontSize: 9, marginTop: 3 }, archiveRoute: { color: '#776b80', fontSize: 8, marginTop: 4 }, archiveJourneyButton: { paddingHorizontal: 7, paddingVertical: 8, borderRadius: 9, backgroundColor: '#261632' }, archiveJourneyText: { color: '#c79be9', fontSize: 8, fontWeight: '900' }, topTrackRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1938' },
+  sectionAction: { minHeight: 42, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#382044', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 2 }, sectionActionText: { color: '#c79be9', fontSize: 11, fontWeight: '900' }, sectionActionIcon: { width: 12, height: 12 },
   linkFootnote: { color: '#766b7d', fontSize: 9, lineHeight: 14, textAlign: 'center', paddingHorizontal: 24, marginTop: 2 },
 });

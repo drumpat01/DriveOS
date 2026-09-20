@@ -14,6 +14,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const source = readFileSync(new URL('../src/shell.tsx', import.meta.url), 'utf8');
 let tablet = true, light = true, viewportWidth = 1100, viewportHeight = 800, viewportFontScale = 1;
+let adaptiveFold: any = null;
 const colors = { isLight: true, name: 'Cinematic Dark', palette: { accent: '#b795e5', inset: '#291735' }, color: (value: string) => value, gradient: (values: any) => values };
 const controls = Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'Switch', 'Image', 'TextInput'].map(name => [name, host(name)]));
 function evaluate(sourceText: string, mocks: Record<string, any> = {}, globals: Record<string, any> = {}) {
@@ -32,7 +33,7 @@ let internalTesting = false;
 const header = evaluate(readFileSync(new URL('../src/ipad-page-header.tsx', import.meta.url), 'utf8'), {
   'react-native': { ...controls, StyleSheet: { create: (v: any) => v }, useWindowDimensions: () => ({ fontScale: viewportFontScale }) }, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './header-artwork': { HeaderArtworkLayers: host('HeaderArtworkLayers'), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') }, './device-layout': { ipadGridColumns: (width: number, scale = 1) => width / scale >= 900 ? 6 : 3, ipadGridSpan: (width: number, span: number) => (width - 60) / 6 * span + 12 * (span - 1) },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle'), AutumnTitleAccent: host('AutumnTitleAccent') }, './device-layout': { ipadGridColumns: (width: number, scale = 1) => width / scale >= 900 ? 6 : 3, ipadGridSpan: (width: number, span: number) => (width - 60) / 6 * span + 12 * (span - 1) },
 });
 const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', import.meta.url), 'utf8'), {
   './ipad-page-header': header,
@@ -50,9 +51,13 @@ const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', im
   './app-theme': { useThemeChoice: () => ({ theme: testTheme(light), setMode: (mode: string) => modes.push(mode) }) },
   './theme-palette': { ivoryPalette: { page: '#fffaf0', surface: '#fffcf6', text: '#291d26', secondary: '#685461', violet: '#754487', border: '#d8c5ba', lilac: '#eee2ef' } },
   './header-image-sources': { headerImageSource: (source: any) => source },
+  './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }) },
 });
 const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScreen;', {}, {
   ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
+  useAdaptiveLayout: () => ({ isRegular: tablet, fold: adaptiveFold }),
+  V3_MARKERS_PROTOTYPE_ENABLED: false,
+  router: { push: () => undefined },
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
   useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Cinematic' } },
   settingsCategories: require('../src/settings-categories.ts').settingsCategories,
@@ -117,6 +122,15 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 820 } } }));
     sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
     assert.ok(sidebarStyle[1].width >= 206 && sidebarStyle[1].width <= 238);
+
+    adaptiveFold = { axis: 'vertical', frame: { x: 654, y: 24, width: 27, height: 895 }, before: { x: 20, y: 24, width: 634, height: 895 }, after: { x: 681, y: 24, width: 634, height: 895 } };
+    viewportWidth = 1335; viewportHeight = 939;
+    await act(() => tree.update(render({ membershipTier: 'paid' })));
+    await act(() => tree.root.findAllByProps({ testID: 'ipad-settings' })[0].props.onLayout({ nativeEvent: { layout: { width: 1295 } } }));
+    sidebarStyle = tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' })[0].props.style;
+    assert.equal(sidebarStyle[1].width, 634);
+    assert.equal(tree.root.findByProps({ testID: 'ipad-settings-fold-spacer' }).props.style.width, 27);
+    adaptiveFold = null;
 
     viewportWidth = 744; viewportHeight = 520;
     await act(() => tree.update(render()));
@@ -185,8 +199,15 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     assert.equal(tree.root.findByType('AchievementsOverview').props.journeys.length, 1);
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     await act(() => press('Open Appearance settings').props.onPress());
+    assert.equal(tree.root.findAllByType('ThemePicker').length, 0, 'phone appearance opens as a compact overview');
+    assert.equal(tree.root.findAllByType('AppIconPicker').length, 0, 'phone icon gallery stays one level deeper');
+    await act(() => press('Choose theme').props.onPress());
     assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
+    assert.equal(tree.root.findByType('SettingsEditorScaffold').props.backLabel, 'Appearance');
+    await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
+    await act(() => press('Choose app icon').props.onPress());
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);
+    await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     assert.match(source, /keyboardShouldPersistTaps="handled"/, 'phone Settings keeps its proven pre-regression tap policy');
     assert.doesNotMatch(source, /disableScrollViewPanResponder|canCancelContentTouches={false}/, 'Settings does not override native child gesture arbitration');
     assert.equal(editorStates.at(-1), true);

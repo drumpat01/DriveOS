@@ -78,7 +78,7 @@ function patchController(source) {
 module.exports = config => withDangerousMod(config, ['ios', async config => {
   const packageFile = require.resolve('react-native-screens/package.json', { paths: [config.modRequest.projectRoot] });
   const version = JSON.parse(fs.readFileSync(packageFile, 'utf8')).version;
-  if (version !== '4.26.2') throw new Error(`Review the JourneyDeck tab-spacing patch for React Native Screens ${version}.`);
+  if (version !== '4.27.0') throw new Error(`Review the JourneyDeck tab-spacing patch for React Native Screens ${version}.`);
   const controller = path.join(path.dirname(packageFile), 'ios/tabs/host/RNSTabBarController.mm');
   const source = fs.readFileSync(controller, 'utf8');
   const patched = patchController(source);

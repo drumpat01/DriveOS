@@ -11,8 +11,17 @@ Pod::Spec.new do |s|
   s.swift_version  = '5.9'
 
   s.dependency 'ExpoModulesCore'
-  s.frameworks = 'CoreLocation', 'MapKit', 'UIKit', 'WatchConnectivity'
+  s.frameworks = 'CoreLocation', 'MapKit', 'UIKit', 'WatchConnectivity', 'JavaScriptCore', 'StoreKit'
+  s.resource_bundles = { 'JourneyDeckAsk' => ['AskResources/*.{js,json}'] }
   s.libraries = 'sqlite3'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  sdk_version = `xcrun --sdk iphoneos --show-sdk-version 2>/dev/null`.strip
+  s.weak_frameworks = 'FoundationModels' if !sdk_version.empty? && Gem::Version.new(sdk_version) >= Gem::Version.new('26.0')
+  duo_sdk = !sdk_version.empty? && Gem::Version.new(sdk_version) >= Gem::Version.new('27.1')
+  swift_conditions = '$(inherited)'
+  swift_conditions += ' JOURNEYDECK_DUO_RESERVED_REGIONS' if duo_sdk
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
+    'SWIFT_ACTIVE_COMPILATION_CONDITIONS' => swift_conditions
+  }
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
 end

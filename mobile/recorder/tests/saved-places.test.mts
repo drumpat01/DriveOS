@@ -23,7 +23,8 @@ test('Saved Places supports fixed and repeatable custom places through private l
 
 test('Settings replaces the passive safe-zone and recording cards with one compact Saved Places editor', () => {
   const settings = shell.slice(shell.indexOf('type SettingsDestination'), shell.indexOf('function CinematicTabPage'));
-  assert.match(settings, /SectionHeading title="Saved Places"/);
+  assert.match(settings, /Name familiar places automatically and protect their exact locations when sharing/);
+  assert.match(settings, /const placesCard = <View style={styles\.savedPlacesCard}>/);
   assert.match(settings, /SAVED_PLACE_SLOTS\.map/);
   assert.match(settings, /Location\.geocodeAsync/);
   assert.match(settings, /Location\.getCurrentPositionAsync/);

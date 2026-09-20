@@ -41,3 +41,8 @@ yarn-error.*
 /ios
 /android
 .env.eas-simulator
+__pycache__/
+*.ipa
+*.ipa.enc
+.env*
+*.log

@@ -11,7 +11,8 @@ import {
   type JourneyDeckMembershipProduct,
   type JourneyDeckMembershipStatus,
 } from '../modules/journeydeck-membership';
-import { entitlementsForVerifiedMembership, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { entitlementsForVerifiedMembership, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { PREVIEW_ATLAS_UNLOCKED } from './release-features';
 
 const unavailableStatus: JourneyDeckMembershipStatus = {
   nativeModuleAvailable: false,
@@ -170,7 +171,10 @@ export function useJourneyDeckMembership() {
     return () => clearTimeout(timer);
   }, [refresh, status]);
 
-  const entitlements = useMemo(() => entitlementsForVerifiedMembership(status), [status]);
+  const entitlements = useMemo(
+    () => withPreviewAtlasAccess(entitlementsForVerifiedMembership(status), PREVIEW_ATLAS_UNLOCKED),
+    [status],
+  );
   const state: JourneyDeckMembershipState = { phase, status, entitlements, products, productsLoading, purchasePending, message };
   return { state, refresh, loadProducts, purchase, restore };
 }

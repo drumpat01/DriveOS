@@ -1,3 +1,5 @@
+import type { JourneyMarker } from './journey-marker-store';
+import { SymbolView } from 'expo-symbols';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -45,6 +47,7 @@ export function PrimaryMobilityMap({
   routes,
   places = [],
   songMoments = [],
+  markers = [],
   animateLiveRoute = false,
   currentCoordinate,
   currentHeading = 0,
@@ -57,6 +60,7 @@ export function PrimaryMobilityMap({
   routes: RouteLine[];
   places?: MapPlace[];
   songMoments?: MapSongMoment[];
+  markers?: JourneyMarker[];
   animateLiveRoute?: boolean;
   currentCoordinate?: [number, number] | null;
   currentHeading?: number | null;
@@ -139,6 +143,11 @@ export function PrimaryMobilityMap({
         <Layer id="live-position-body" type="circle" paint={{ 'circle-color': '#ff4d57', 'circle-radius': 17, 'circle-stroke-color': '#ffd6d7', 'circle-stroke-width': 3, 'circle-opacity': 1 }} />
         <Layer id="live-position-arrow" type="symbol" layout={{ 'text-field': '▲', 'text-size': 17, 'text-rotate': currentHeading ?? 0, 'text-font': ['Noto Sans Regular'], 'text-allow-overlap': true }} paint={{ 'text-color': '#ffffff' }} />
       </LayerAnnotation>}
+      {markers.map((marker, index) => <Marker id={`live-marker-${marker.id}`} key={marker.id} lngLat={[marker.longitude, marker.latitude]} anchor="bottom">
+        <View accessibilityLabel={`Saved marker ${index + 1}`} style={{ width: 38, height: 44, borderRadius: 6, borderWidth: 2, borderColor: mapPalette.routeLine, backgroundColor: theme.palette.card, alignItems: 'center', justifyContent: 'center', shadowColor: mapPalette.routeGlow, shadowOpacity: 0.95, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } }}>
+          <SymbolView name="photo" tintColor={theme.palette.accent} size={24} />
+        </View>
+      </Marker>)}
       {validSongMoments.map(moment => <Marker
         id={`live-song-${moment.index}`}
         key={`${moment.index}-${moment.coordinate.join(',')}`}

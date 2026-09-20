@@ -23,7 +23,13 @@ function makeTheme(id: ThemeId) {
     gradient: (colors: readonly string[]) => themedGradient(colors, id) as [string, string, ...string[]],
   };
 }
-const themes = { dark: makeTheme('dark'), light: makeTheme('light'), sakura: makeTheme('sakura'), redline: makeTheme('redline') };
+const themes: Record<ThemeId, ReturnType<typeof makeTheme>> = {
+  dark: makeTheme('dark'),
+  light: makeTheme('light'),
+  sakura: makeTheme('sakura'),
+  redline: makeTheme('redline'),
+  'midnight-canopy': makeTheme('midnight-canopy'),
+};
 const ThemeContext = createContext({
   theme: themes.redline,
   setMode: (_mode: ThemeMode) => {},

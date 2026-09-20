@@ -1,9 +1,6 @@
 name: Sync Spotify history
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"
-      timezone: "America/Chicago"
   workflow_dispatch:
     inputs:
       restart_backfill:

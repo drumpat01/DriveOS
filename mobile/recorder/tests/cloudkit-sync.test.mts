@@ -41,6 +41,9 @@ assert.match(src, /resolvePrivatePhotoFile\(photo\)[\s\S]*preparationFailures\.a
 assert.match(transport, /failedUploads \+= engine\.getPreparationFailureCount\(\)/, 'reports locally unavailable photo assets while valid records continue syncing');
 assert.match(src, /preferenceToCKRecord/, 'syncs user-scoped private preferences');
 assert.match(src, /routeArchiveToCKRecord/, 'syncs exact routes as private assets');
+assert.match(src, /markerToCKRecord/, 'syncs Journey Marker metadata');
+assert.match(src, /markerPhotoToCKRecord/, 'syncs Marker photos as private assets');
+assert.match(src, /upsertMarkerPhotoFromPrivateCloud/, 'restores Marker photo assets into app-owned storage');
 
 // ============================================================
 // 2. Pure logic tests: LWW Conflict Resolution
@@ -96,7 +99,7 @@ assert.match(nativeRequests, /savePolicy = \.ifServerRecordUnchanged/, 'prevents
 assert.match(nativeModule, /changeTokenExpired/, 'recovers from expired CloudKit tokens');
 assert.match(nativeModule, /allowedRecordTypes/, 'restricts native record types');
 const deployedTypes = [...productionSchema.matchAll(/RECORD TYPE (\w+)/g)].map(match => match[1]).filter(type => type !== 'Users').sort();
-assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'JourneyEdit', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference', 'RouteArchive'], 'checked-in schema contains every JourneyDeck private record type');
+assert.deepEqual(deployedTypes, ['Collection', 'Journey', 'JourneyEdit', 'JourneyMarker', 'MarkerPhoto', 'Memory', 'MusicEntry', 'Photo', 'PrivatePreference', 'RouteArchive'], 'checked-in schema contains every JourneyDeck private record type');
 const editorSchema = productionSchema.match(/RECORD TYPE JourneyEdit \(([\s\S]*?)\);/)?.[1] ?? '';
 for (const field of ['asset ASSET', 'formatVersion INT64', 'id STRING', 'parentId STRING', 'rootJourneyId STRING', 'sha256 STRING', 'syncRevision INT64', 'updatedAt STRING']) {
   assert.ok(editorSchema.includes(field), `editor recovery schema contains ${field}`);
@@ -105,8 +108,12 @@ assert.match(productionSchema, /RECORD TYPE Journey[\s\S]*durationMinutes DOUBLE
 assert.match(productionSchema, /RECORD TYPE MusicEntry[\s\S]*confidence DOUBLE[\s\S]*durationMs INT64/, 'Music numeric fields retain their CloudKit production types');
 assert.match(productionSchema, /RECORD TYPE Photo[\s\S]*asset ASSET[\s\S]*syncRevision INT64/, 'private photos use CloudKit assets and versioned metadata');
 assert.match(productionSchema, /RECORD TYPE RouteArchive[\s\S]*asset ASSET[\s\S]*pointCount INT64[\s\S]*sha256 STRING/, 'exact routes use checksummed private CloudKit assets');
+assert.match(productionSchema, /RECORD TYPE JourneyMarker[\s\S]*accuracyMeters DOUBLE[\s\S]*rootJourneyId STRING[\s\S]*syncRevision INT64/, 'Markers use versioned private metadata records');
+assert.match(productionSchema, /RECORD TYPE MarkerPhoto[\s\S]*asset ASSET[\s\S]*markerId STRING[\s\S]*syncRevision INT64/, 'Marker photos use versioned private assets');
 assert.match(src, /Crypto\.digestStringAsync[\s\S]*RouteArchive/, 'route assets are checksummed before upload');
 assert.match(nativeModule, /getCapabilitiesAsync[\s\S]*privateContentVersion/, 'new native builds advertise private-content asset support');
+assert.match(nativeModule, /privateContentVersion": 5/, 'new native builds gate Marker records behind private-content version 5');
+assert.match(transport, /privateCloudMarkerScope[\s\S]*journeydeck-markers-v1/, 'Marker records use a separate zone for older-binary compatibility');
 assert.match(podspec, /frameworks.*CloudKit/, 'links the native CloudKit framework');
 assert.match(app, /enrichCompletedJourney[\s\S]*processPendingCompletionJobs/, 'starts the durable completion worker after a journey finishes');
 assert.match(completionJobs, /apple_music_history[\s\S]*private_cloud_sync/, 'orders local music enrichment before private iCloud sync');

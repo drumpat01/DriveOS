@@ -22,6 +22,15 @@ export function entitlementsForVerifiedMembership(status: VerifiedMembershipStat
   return entitlementsForMembershipTier(status.nativeModuleAvailable && status.tier === 'paid' ? 'paid' : 'free');
 }
 
+export function withPreviewAtlasAccess(
+  entitlements: JourneyDeckMembershipEntitlements,
+  enabled: boolean,
+): JourneyDeckMembershipEntitlements {
+  return enabled && !entitlements.atlasAccess
+    ? { ...entitlements, atlasAccess: true }
+    : entitlements;
+}
+
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
   return entitlements.timelineHistoryDays === null
     ? Number.NEGATIVE_INFINITY

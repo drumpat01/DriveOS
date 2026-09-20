@@ -54,6 +54,7 @@ function fixture(width = 390) {
       if (name === './year-on-road-model') return load('model', modelSource);
       if (name === './theme-catalog') return load('catalog', catalogSource);
       if (name === './year-on-road-music') return load('music', musicSource);
+      if (name === './release-features') return { V3_MIDNIGHT_CANOPY_ENABLED: false };
       if (name === './header-image-sources') return { headerImageSource: (_source: number, theme: string) => theme };
       if (name === './year-on-road-audio') return { useYearOnRoadAudio: (enabled: boolean, playing: boolean, chapter: number, musicId: string) => { soundStates.push({ enabled, playing, chapter, musicId }); return true; } };
       if (/\.png$|\.jpg$/.test(name)) return 1;

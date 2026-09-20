@@ -3,13 +3,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const sharp = require('sharp');
 const root = path.resolve(__dirname, '..');
-const source = path.join(root, 'assets/medallions-v2');
+const collection = process.argv[2] || 'medallions-v2';
+if (!['medallions-v2', 'medallions-v3'].includes(collection)) throw new Error('Unknown medallion collection');
+const source = path.join(root, 'assets', collection);
 const output = path.join(source, 'runtime');
 fs.mkdirSync(output, { recursive: true });
 const { findMedallionFrame } = require('../src/medallion-surface.ts');
 (async () => {
-  const files = fs.readdirSync(source).filter(name => name.endsWith('.png')).sort();
-  if (files.length !== 40) throw new Error(`Expected all 40 authored faces, found ${files.length}`);
+  const v3Faces = new Set(['all-fifty-dark.png', 'all-fifty-light.png', 'all-fifty-midnight-canopy.png', 'all-fifty-redline.png', 'all-fifty-sakura.png']);
+  const files = fs.readdirSync(source).filter(name => name.endsWith('.png') && (collection !== 'medallions-v3' || v3Faces.has(name))).sort();
+  const expected = collection === 'medallions-v2' ? 50 : 5;
+  if (files.length !== expected) throw new Error(`Expected all ${expected} authored faces, found ${files.length}`);
   const frames = {};
   let originalBytes = 0, runtimeBytes = 0;
   for (const name of files) {

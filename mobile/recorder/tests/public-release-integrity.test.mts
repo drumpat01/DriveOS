@@ -89,13 +89,12 @@ test('V2 disables Tessie and defers its product scope to V3', () => {
   assert.match(v2Roadmap, /V3-03 — CarPlay companion/);
   assert.match(v2Roadmap, /V3-04 — New red theme/);
   assert.match(v2Roadmap, /V3-05 — New green theme/);
-  assert.match(v2Roadmap, /Emergency JourneyDeck V2\.5 scope/);
-  assert.match(v2Roadmap, /V2\.5-01 — iPhone Duo support/);
-  assert.match(v2Roadmap, /must not pull unrelated V3 features forward/);
-  assert.match(v2Roadmap, /V3-06 — Badges/);
+  assert.match(v2Roadmap, /V3-07 — iPhone Duo support/);
+  assert.match(v2Roadmap, /The former V2\.5 compatibility release is canceled/);
+  assert.match(v2Roadmap, /V3-06 is retired rather than reusing its identifier/);
   assert.match(v2Roadmap, /V3-07 — Durable cross-device music revisioning/);
   assert.match(v2Roadmap, /retain V2's conflict-safe, non-destructive fallback/);
-  assert.match(v2Roadmap, /Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior/);
+  assert.match(v2Roadmap, /do not reward extra driving or unsafe behavior/);
   assert.match(v2Roadmap, /Do not hardcode speculative screen dimensions, hinge geometry, safe areas/);
   assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
   assert.match(tessie, /storedVerifiedVehicleCount/);

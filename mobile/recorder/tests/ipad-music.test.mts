@@ -13,6 +13,7 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 let light = true, fontScale = 1;
+let adaptiveFold: any = null;
 const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
   useWindowDimensions: () => ({ width: 1194, height: 834, fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'TextInput', 'RefreshControl'].map(name => [name, host(name)])) };
@@ -32,7 +33,7 @@ const carousel = { AlbumCarousel: ({ tracks, enabled, onTrack }: any) => React.c
 const header = load('ipad-page-header.tsx', {
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
   './app-theme': theme, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${light ? 'light' : 'dark'}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') }, './device-layout': gridLayout,
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle'), AutumnTitleAccent: host('AutumnTitleAccent') }, './device-layout': gridLayout,
 });
 const ui = load('ipad-music-screen.tsx', {
   './album-carousel': carousel,
@@ -42,19 +43,21 @@ const ui = load('ipad-music-screen.tsx', {
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   './app-theme': theme, './theme-palette': load('theme-palette.ts'),
   './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` }, './device-layout': gridLayout,
+  './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }) },
 });
 const links: string[] = [], journeysOpened: string[] = [];
 const music = load('music-screen.tsx', {
   './album-carousel': carousel,
   './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './ipad-music-data': dataHelpers,
+  './adaptive-layout': { useAdaptiveLayout: () => ({ isRegular: true, fold: adaptiveFold }) },
   'expo-symbols': { SymbolView: host('Symbol') },
   'react-native': { ...native, Alert: { alert: () => {} }, Linking: { openURL: async (url: string) => { links.push(url); } } },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') }, 'react-native-svg': {},
   './music-destination': { musicTrackDestination: (track: any) => track.externalUrl }, './library-model': model,
   './neon-widget-outline': {}, './header-artwork': { HEADER_ARTWORK_ASPECT_RATIO: 2 },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle'), AutumnTitleAccent: host('AutumnTitleAccent') },
 });
 const track = (i: number) => ({ track: `Song ${i}`, artist: i === 0 ? 'Unique artist' : 'Road artist', album: 'Coast album', playedAt: '2026-09-05T10:00:00Z',
   durationMs: 180000, artworkUrl: null, externalUrl: `https://music.apple.com/song/${i}`, source: 'apple-music', confidence: null });
@@ -63,6 +66,22 @@ const journey = { id: 'journey-1', startedAt: '2026-09-05T09:00:00Z', startingLo
 const dashboard = { generatedAt: '2026-09-05T11:00:00Z', metrics: { milesWithMusic: 0, listeningHours: 1, songsOnRoad: 20, currentStreak: 1 }, recentSelections: tracks.slice(0, 8), topArtists: [{ artist: 'Road artist', plays: 19, artworkUrl: null }], daily: [] };
 const text = (tree: any) => tree.root.findAllByType('Text').map((node: any) => node.children.filter((child: any) => typeof child === 'string').join('')).join('|');
 const press = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === label);
+
+test('Duo fold keeps Soundtracks columns out of the division region', async () => {
+  adaptiveFold = { axis: 'vertical', frame: { x: 654, y: 24, width: 27, height: 895 }, before: { x: 20, y: 24, width: 634, height: 895 }, after: { x: 681, y: 24, width: 634, height: 895 } };
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(music.MusicScreen, { state: { status: 'ready', data: dashboard }, provider: 'apple-music', journeys: [journey], details: [journey], onJourney() {}, onRefresh: async () => {} })); });
+    await act(() => tree.root.findByProps({ testID: 'ipad-music-canvas' }).props.onLayout({ nativeEvent: { layout: { width: 1287 } } }));
+    const row = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-music-artists-row');
+    assert.equal(row.props.style[1].gap, 27);
+    assert.equal(row.children[0].props.style.width, 610);
+    assert.equal(row.children[1].props.style[0].width, 610);
+  } finally {
+    adaptiveFold = null;
+    await act(() => tree?.unmount());
+  }
+});
 
 test('iPad Music search, paging, source links and Journey links work across resizes and themes', async () => {
   let tree: any;

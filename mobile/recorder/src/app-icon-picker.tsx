@@ -12,13 +12,19 @@ import {
   type AppIconId,
 } from './app-icon-catalog';
 import { useAppIconChoice } from './app-icon-preference';
+import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
 
 const previews: Record<AppIconId, number> = {
   original: require('../assets/icon-cinematic-dark-v2.png'),
   'warm-ivory': require('../assets/icon-warm-ivory-v2.png'),
   rosewater: require('../assets/icon-rosewater-v2.png'),
   'grand-touring': require('../assets/icon-grand-touring-v2.png'),
+  'midnight-canopy': require('../assets/icon-midnight-canopy-v1.png'),
 };
+
+const visibleAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
+  ? [...APP_ICON_GRID_ORDER, 'midnight-canopy']
+  : APP_ICON_GRID_ORDER;
 
 type AppIconPickerProps = {
   embedded?: boolean;
@@ -48,7 +54,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
     ));
   };
 
-  const renderRow = (label: string, ids: readonly AppIconId[], isPlus: boolean) => <View testID={`app-icon-row-${isPlus ? 'plus' : 'free'}`} style={styles.tierGroup}>
+  const renderRow = (label: string, ids: readonly AppIconId[], isPlus: boolean, group: 'free' | 'plus' | 'preview') => <View testID={`app-icon-row-${group}`} style={styles.tierGroup}>
     <View style={styles.tierHeading}>
       <Text style={[styles.tierLabel, { color: isPlus ? colors.accent : colors.muted }]}>{label}</Text>
       {isPlus && <SymbolView name="crown.fill" tintColor={colors.accent} size={13} />}
@@ -57,12 +63,12 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
       const choice = appIconCatalog[id];
       const selected = id === appIconId;
       const locked = isPlus && membershipTier !== 'paid';
-      const position = APP_ICON_GRID_ORDER.indexOf(id) + 1;
+      const position = visibleAppIconIds.indexOf(id) + 1;
       return <Pressable
         key={id}
         testID={`app-icon-${id}`}
         accessibilityRole="radio"
-        accessibilityLabel={`${choice.name}, app icon ${position} of ${APP_ICON_GRID_ORDER.length}. ${choice.description}. ${isPlus ? 'JourneyDeck Plus' : 'Free'}${locked ? '. Requires JourneyDeck Plus' : ''}`}
+        accessibilityLabel={`${choice.name}, app icon ${position} of ${visibleAppIconIds.length}. ${choice.description}. ${isPlus ? 'JourneyDeck Plus' : 'Free'}${locked ? '. Requires JourneyDeck Plus' : ''}`}
         accessibilityHint={locked ? 'Opens JourneyDeck Plus' : selected ? 'Selected app icon' : 'Applies this app icon'}
         accessibilityState={{ checked: selected, selected, disabled: !ready || changing }}
         disabled={!ready || changing}
@@ -95,8 +101,9 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
     <Text accessibilityRole="header" style={[embedded ? styles.sectionTitle : styles.title, { color: embedded ? colors.accent : colors.text }]}>{embedded ? 'APP ICON' : 'App Icon'}</Text>
     <Text accessibilityLiveRegion="polite" style={[styles.detail, { color: colors.muted }]}>{detail}</Text>
     <View accessibilityRole="radiogroup" style={styles.grid}>
-      {renderRow('FREE', FREE_APP_ICON_IDS, false)}
-      {renderRow('JOURNEYDECK PLUS', PLUS_APP_ICON_IDS, true)}
+      {renderRow('FREE', FREE_APP_ICON_IDS, false, 'free')}
+      {renderRow('JOURNEYDECK PLUS', PLUS_APP_ICON_IDS, true, 'plus')}
+      {V3_MIDNIGHT_CANOPY_ENABLED && renderRow('V3 PREVIEW', ['midnight-canopy'], false, 'preview')}
     </View>
   </View>;
 }

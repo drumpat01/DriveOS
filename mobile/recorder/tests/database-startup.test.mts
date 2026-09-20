@@ -72,7 +72,7 @@ test('runtime wiring defers the only live handle and gates UI and headless tasks
 test('schema and multi-row critical mutations remain atomic on the controlled connection', () => {
   const localStore = readFileSync(new URL('../src/local-store.ts', import.meta.url), 'utf8');
   const editor = readFileSync(new URL('../src/journey-editor-store.ts', import.meta.url), 'utf8');
-  assert.match(localStore, /for \(let i = current; i < MIGRATIONS\.length; i\+\+\) \{\s*db\.withTransactionSync/);
+  assert.match(localStore, /for \(let i = current; i < migrationLimit; i\+\+\) \{\s*db\.withTransactionSync/);
   assert.match(localStore, /export function insertGpsPoints[\s\S]*?db\.withTransactionSync/);
   assert.match(localStore, /export function deleteLocalUserData[\s\S]*?db\.withTransactionSync/);
   assert.match(editor, /commitReviewedJourneyEdit[\s\S]*?db\.withTransactionSync/);

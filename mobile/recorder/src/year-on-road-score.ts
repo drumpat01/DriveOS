@@ -11,6 +11,7 @@ const scores: Record<YearOnRoadMusicId, { tempo: number; chords: number[][]; mot
   light: { tempo: 108, chords: [[50, 54, 57, 61], [45, 52, 57, 61], [47, 54, 59, 62], [43, 50, 55, 59]], motif: [0, 1, 2, 1, 3, 2, 1, 2], color: 1 },
   redline: { tempo: 124, chords: [[47, 54, 59, 62], [43, 50, 55, 59], [45, 52, 57, 61], [42, 49, 54, 57]], motif: [0, 2, 3, 1, 2, 3, 1, 2], color: 2 },
   sakura: { tempo: 120, chords: [[52, 56, 59, 64], [48, 55, 59, 62], [50, 57, 60, 64], [47, 54, 59, 62]], motif: [2, 1, 3, 2, 0, 3, 1, 2], color: 3 },
+  'midnight-canopy': { tempo: 112, chords: [[45, 52, 55, 59], [41, 48, 52, 57], [43, 50, 54, 57], [40, 47, 52, 55]], motif: [0, 2, 1, 3, 2, 1, 3, 2], color: 0 },
 };
 
 export function renderYearOnRoadScore(id: ScoreId = 'dark'): Uint8Array {

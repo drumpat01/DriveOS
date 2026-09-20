@@ -12,7 +12,7 @@ Later on September 4, the user also approved the native-navigation Phase 1 descr
 
 This is the product roadmap for the iOS app and its required supporting services. It is separate from the completed desktop modular-monolith migration roadmap. Desktop redesign, Android, and unrelated architecture rewrites are outside this scope.
 
-September 9 scope decision: Tessie connection, vehicle telemetry, charging history, and vehicle intelligence are deferred in full to JourneyDeck V3. V2 has no Tessie integration or Tessie-derived UI; the preserved implementation remains hard-disabled compatibility/reference code only. Live Activities with explicit Dynamic Island support, a safety-constrained CarPlay companion, one new red theme, and one new green theme are confirmed for V3. iPhone Duo support is an emergency JourneyDeck V2.5 compatibility release. Automatic journey recording and interactive shared-journey web pages remain outside V2. Spotify through Last.fm remains blocked and must not advance until the Last.fm partners team responds.
+September 15 scope decision: V2.5 will not ship as a separate release. All future work, including iPhone Duo compatibility, belongs to JourneyDeck V3. V2 has no Tessie integration or Tessie-derived UI; the preserved implementation remains hard-disabled compatibility/reference code only. Live Activities with explicit Dynamic Island support, a safety-constrained CarPlay companion, one new red theme, and one new green theme are confirmed for V3. Automatic journey recording and interactive shared-journey web pages remain outside V2. Spotify through Last.fm remains blocked and must not advance until the Last.fm partners team responds.
 
 September 6 paid-membership direction: keep the focused Atlas value set to cinematic journey playback and recaps, premium Home widgets and Watch complications, Atlas intelligence, and premium themes and app icons. Themes and icons are a distinct benefit rather than being buried under widgets. Basic recording, route viewing, POI labels, and ordinary iCloud backup remain core functionality. Tessie access is no longer part of the V2 membership or core-feature scope.
 
@@ -179,31 +179,23 @@ Build 6 completed and signed IPA verified: [install universal V2 preview](https:
 
 **Done when:** The app installs and runs on supported iPads; primary screens and flows use the new tablet layout; Light/Dark themes and accessibility are validated on a physical iPad; existing iPhone behavior is preserved.
 
-## Emergency JourneyDeck V2.5 scope
-
-V2.5 is a focused compatibility release for urgent hardware support. It must preserve V2 behavior and data, and it must not pull unrelated V3 features forward.
-
-### V2.5-01 — iPhone Duo support
-
-- Adapt navigation, dashboards, maps, replay, editors, Memories, media and recording controls for iPhone Duo while preserving ordinary iPhone and iPad layouts.
-- Base the implementation on shipping hardware and public Apple SDK capabilities. Do not hardcode speculative screen dimensions, hinge geometry, safe areas, multitasking behavior or continuity rules.
-- Preserve active recording, local state, map camera state, unsaved edits and media playback through supported fold/unfold and size-class transitions.
-- Treat all themes, accessibility sizes, orientations, background recording, battery use and physical-device acceptance as emergency release gates.
-
 ## Confirmed JourneyDeck V3 scope
 
-These items are approved for V3 planning and are not V2 release requirements. Their implementation details, native baselines, entitlements, pricing, and acceptance plans remain to be designed before work begins.
+These items are approved for V3 planning and are not V2 release requirements. Their implementation details, native baselines, entitlements, pricing, and acceptance plans remain to be designed before work begins. September additions confirm iOS widgets, a user-initiated ShazamKit Listen action on Apple Watch and the journey Live Activity, conversational Siri/Apple Intelligence access to JourneyDeck data, hands-free Journey Markers, a U.S.-customer-only 50 States checklist game, and Adventure Roulette; Tessie activation, Live Activities, the green theme, and adaptive Duo support were reaffirmed.
+
+For the first isolated V3 preview, Atlas and all implemented themes must be directly testable without a paid membership. Atlas preview access grants only `atlasAccess`: it must not fabricate a paid tier, unlock complete history, or enable Tessie/other paid capabilities. Production remains StoreKit-gated for Atlas. The existing Theme Picker is already membership-free; newly implemented V3 themes must remain available there for preview acceptance.
 
 ### V3-01 — Tessie and vehicle intelligence
 
 - Deliberate Tessie connection and disconnection, live vehicle context, charging history, energy use, cost, and journey-linked efficiency.
-- Keep V2's preserved Tessie code hard-disabled until it has been reviewed against the V3 architecture and current provider requirements.
+- Turn on Tessie integration in V3, including the user-facing connection and vehicle-intelligence experience. Review V2's dormant code against the V3 architecture and current provider, credential, privacy, cost, entitlement, and lifecycle requirements before removing its hard-disable gate; do not activate it in V2.
 
 ### V3-02 — Live Activities and Dynamic Island
 
 - Present glanceable active-journey status such as recording state, elapsed time, distance, and GPS health on the Lock Screen and Dynamic Island.
 - Design the Dynamic Island's compact, minimal, and expanded presentations deliberately instead of treating it as an incidental Live Activity surface.
 - Limit controls to safe recording actions, integrate them with the single recorder owner, and require a compatible native extension/build plus physical lifecycle testing.
+- Include a user-initiated ShazamKit Listen action in the active-journey Live Activity, subject to supported iOS interaction, microphone permissions, and distraction-safe behavior; never start ambient recognition automatically.
 
 ### V3-03 — CarPlay companion
 
@@ -219,12 +211,59 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 
 - Add a distinct green-led visual system with its own palette, materials, map treatment, artwork, icon option, accessibility contrast, and Reduce Transparency behavior.
 - Assign a new stable theme ID; do not repurpose an existing stored theme selection or collapse it into Grand Touring's current Racing Green accent.
+- Implemented source-side as **Autumn Drive** for the isolated V3 preview under stable internal ID `midnight-canopy`: [approved palette, Statistics reference, and borderless icon provenance](design/midnight-canopy/README.md). The theme and chooser wiring are complete; native icon switching and full accessibility/visual acceptance still require a user-authorized V3 device build.
 
-### V3-06 — Badges
+### V3-07 — iPhone Duo support
 
-- Add collectible, private badges for meaningful JourneyDeck milestones across journeys, distance, exploration, Memories and music.
-- Derive awards from authoritative local JourneyDeck data, preserve earned state through backup and restore, and provide clear progress and unlock explanations without exposing precise locations.
-- Keep badge criteria focused on reflection and discovery. Do not reward speeding, excessive driving, phone interaction while moving or other unsafe behavior.
+- Adapt navigation, dashboards, maps, replay, editors, Memories, media and recording controls for iPhone Duo while preserving ordinary iPhone and iPad layouts.
+- Base the implementation on shipping hardware and public Apple SDK capabilities. Do not hardcode speculative screen dimensions, hinge geometry, safe areas, multitasking behavior or continuity rules.
+- Preserve active recording, local state, map camera state, unsaved edits and media playback through supported fold/unfold and size-class transitions.
+- Treat all themes, accessibility sizes, orientations, background recording, battery use and physical-device acceptance as V3 release gates.
+- The former V2.5 compatibility release is canceled; Duo work already underway in the isolated V3 branch remains source-only until native and device acceptance.
+- Use the shared adaptive interface driven by live window, size-class, safe-area and fold-region measurements rather than device-name checks; maintain continuity across compact/regular presentations and Duo postures.
+
+### V3-08 — iOS widgets
+
+- Add native iOS Home Screen and Lock Screen widgets for glanceable JourneyDeck journey, vehicle, and/or reflection information, with exact widget families and content to be selected during design.
+- Share only minimum, privacy-safe local snapshots with WidgetKit; keep widgets useful without network access and avoid exposing precise routes, home/work locations, credentials, or stale recording/vehicle state.
+- Define timeline freshness, refresh budget, empty/offline states, accessibility, theme treatment, and tap destinations; require a compatible native extension/build and physical-device validation.
+
+### V3-09 — ShazamKit Listen on Apple Watch and Live Activity
+
+- Add an explicit Listen button to the Watch app and the active-journey Live Activity, both routing through a single user-initiated ShazamKit recognition flow where the platform supports it.
+- Require microphone permission and clear listening/recognition feedback; prevent duplicate sessions and preserve journey/recorder continuity. Do not turn this into continuous, background, or automatic song capture.
+- Validate Watch connectivity/standalone behavior and Live Activity interaction on supported devices, including failure, cancellation, and inactive-journey states.
+
+### V3-10 — Conversational Siri and JourneyDeck intelligence
+
+- **September 16 focused prototype (source only):** implemented the optional phone/iPad Home `Ask JourneyDeck` widget and native free-text sheet, app-target question App Intent, shared offline deterministic native archive reader, spoken-response contract, interactive supporting-details snippet/route, and profile/lock/redaction boundaries. See [implementation contract and physical-device acceptance](../mobile/recorder/docs/ask-journeydeck-prototype.md). Three questions and one follow-up are covered by local engine/SQLite tests, **not yet tested on a physical device**. No build was requested or run; broader entities, semantic/onscreen context and model-backed analysis below remain future work.
+- Model authorized journeys, memories, music, and connected vehicle context as App Entities and expose useful App Intents. Adopt only genuinely matching App Schemas, then validate Siri's natural-language questions and follow-up conversations on iOS 27 devices. Keep an explicit “Ask JourneyDeck” question action as a fallback where an entity or schema cannot cover a request.
+- Let Siri find relevant records through privacy-reviewed Spotlight indexing where appropriate, or an app-provided entity query for sensitive, large, or fast-changing data. Annotate JourneyDeck detail screens with the entity currently visible so requests such as “Tell me more about this journey” have reliable onscreen context; offer an in-app path to inspect supporting records.
+- Build an optional in-app AI analyst for richer comparisons and explanations. Use JourneyDeck's authorized data queries for exact dates, distances, counts, and totals; never accept a model-generated number as the source of truth. Evaluate Apple's on-device Foundation Models first for private/offline analysis, then consider eligible Private Cloud Compute only for more complex questions with clear disclosure, minimal data transfer, availability/quota handling, and a local fallback.
+- Ground answers in the user's authorized data, identify missing or stale information, enforce owner/Duo data isolation, and keep spoken responses concise and distraction-safe. Never index raw routes, sensitive home/work locations, or credentials. Do not send private archive records to an external model without a separately designed, explicit opt-in and strict data minimization.
+- Prototype three representative questions and one follow-up on a native iOS 27 build before locking the architecture. Siri's entity understanding and follow-up behavior depend on the schemas and platform capabilities JourneyDeck can legitimately adopt; do not claim arbitrary Siri questions are automatically routed to the app or that JourneyDeck replaces Siri.
+
+### V3-11 — Journey Markers
+
+- Let a person say “Hey Siri, create a marker in JourneyDeck” during an active journey without looking at or touching the phone. Siri creates only a timestamped Marker attached to that active Journey; it does not prompt for text or media while the person is driving.
+- Show each Marker as its own small polaroid-pin icon on the Journey route, visually distinct from numbered song pins. Tapping the pin opens that Marker rather than a general journey editor.
+- After the drive, let the person enrich the Marker with text and photos. A Marker is a tiny memory inside its Journey; use “Marker” and “Markers” throughout the UI. Voice memos are not part of the feature.
+- Markers do not resurface on a future date, send reminders, or use automatic location triggers. Preserve local-first storage and recovery, bind every Marker to the correct profile, journey, and capture time, and never expose its precise coordinate outside the private Journey experience.
+- The current source-only interaction lab is available only in the isolated V3 preview from Settings. It demonstrates the Siri phrase, distinct route icon, and later enrichment flow beneath JourneyDeck's standard themed native header. Its controls remain in-memory demonstrations pending the native App Intent, durable marker storage, and private media implementation.
+
+### V3-12 — U.S. 50 States checklist game
+
+- For U.S. customers only, provide a simple checklist where people manually mark which of the 50 U.S. states they have seen represented on license plates, view completed and remaining states, and resume their progress over time.
+- The game does not take or import pictures, use camera/OCR or automatic recognition, record plate numbers or vehicle identities, or attach precise sighting locations. A checked state is the complete saved observation.
+- Keep checklist interaction passenger-only or available while parked; do not reward extra driving or unsafe behavior. The V3 preview now includes accessible manual toggles, a recoverable reset confirmation, and user-scoped local-first persistence. U.S. storefront/customer eligibility remains a release-distribution gate rather than an inferred location or background-location check.
+- Give eligible U.S. customers an optional customizable `50 States` Home widget showing compact progress and opening the dedicated checklist screen. The Home surface scrolls to accommodate it and other chosen widgets while keeping the V3 `Record Journey` action/live recording outside the grid. Memories → Collections provides the secondary entry; there is no permanent tab or Settings entry.
+- Grand Touring visual exploration: [six map, grid, checklist, dashboard, roadbook, and combined concepts](design/us-50-states-grand-touring/README.md). The selected map → statistics → state-picker direction is implemented in the isolated V3 preview with a stylized tile map; the concepts are visual references, not authoritative geography assets.
+
+### V3-13 — Adventure Roulette
+
+- Offer an opt-in destination picker for spontaneous trips: choose constraints such as available time, distance, mood, and destination type, then reveal a suggested adventure that the person can accept, reroll, or dismiss before departure.
+- Hand accepted destinations to a supported navigation app rather than silently starting a drive. Tessie-connected range/charging context may improve suggestions, but the feature must also work without Tessie and must not present an unverified range estimate as a safety guarantee.
+- Design place-source quality, opening hours/freshness, offline behavior, exclusions for sensitive places, cost, and driver-safe interaction before implementation; never encourage interacting with the roulette while driving.
 
 ### V3-07 — Durable cross-device music revisioning
 
@@ -242,6 +281,12 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 | Provider access and operating cost | Keep Last.fm blocked pending partner clearance; reassess Tessie access and cost only during V3 planning | M5/V3 |
 | Vehicle entitlement | Deferred: define Tessie pricing/access from first principles in JourneyDeck V3 | V3 |
 | Live Activities and Dynamic Island | Define the native extension, shared recorder state, update budget, stale-state recovery, and compact/minimal/expanded Dynamic Island presentations | V3 |
+| iOS widgets | Choose WidgetKit families, privacy-safe local data contract, timeline budget, offline/empty states, and tap destinations | V3 |
+| ShazamKit Listen actions | Validate supported Watch and Live Activity interaction paths, microphone permissions, shared recognition ownership, and driver-distraction limits | V3 |
+| Conversational Siri / AI analyst | Choose genuinely matching App Schemas, entity/index/query/onscreen contracts, and question fallback; validate multi-turn Siri behavior on device and deterministic statistics plus on-device/PCC model availability, disclosure, grounding, quotas, privacy, and offline fallback | V3 |
+| Journey Markers | Implement the hands-free App Intent, durable journey binding, polaroid route pins, private text/photo attachments, deletion, and stopped-vs-moving interaction rules | V3 |
+| U.S. 50 States checklist game | Define U.S.-customer eligibility, the 50-state catalog, manual checklist/progress UX, optional customizable Home widget and scrolling behavior, Memories → Collections entry, passenger/parked gating, reset behavior, accessibility, and local-first persistence; exclude photos, OCR, plate details, vehicles, and sighting locations | V3 |
+| Adventure Roulette | Define suggestion/place source, user constraints, reroll and navigation handoff, offline fallback, Tessie-independent behavior, sensitive-place exclusions, and safety checks | V3 |
 | CarPlay | Confirm entitlement eligibility and select only Apple-approved, driver-safe templates and controls | V3 |
 | V3 red and green themes | Name and art-direct both as independent systems; allocate new stable IDs and validate contrast across every primary surface | V3 |
 | iPhone Duo emergency compatibility | Confirm shipping hardware and public SDK behavior, then define adaptive layouts, posture continuity, safe areas and physical-device acceptance without expanding V2.5 scope | V2.5 |
@@ -265,9 +310,12 @@ These items are approved for V3 planning and are not V2 release requirements. Th
 - Original September 4 scope included interactive sharing, Foursquare, Tessie, automatic recording, Spotify through Last.fm, and a light mode color theme.
 - September 6 user revision: remove automatic recording because the Watch companion covers intentional Start/Stop; remove the interactive sharing website; keep Last.fm blocked pending a partners-team response.
 - September 9 user revision: remove Tessie and all Tessie-derived replay UI from V2; reconsider the integration in JourneyDeck V3.
-- September 9 V3 additions: Live Activities with explicit Dynamic Island support, a limited CarPlay companion, a new red theme, a separate new green theme, and private data-backed badges.
+- September 9 V3 additions: Live Activities with explicit Dynamic Island support, a limited CarPlay companion, a new red theme, a separate new green theme, and private data-backed badges (the separate badges milestone was removed September 15 after becoming medallions).
+- September 15 decision: medallions supersede badges; do not carry badges as a separate V3 feature. V3-06 is retired rather than reusing its identifier.
+- September 9 emergency addition (superseded September 15): foldable-device compatibility was initially planned as a focused JourneyDeck V2.5 release.
+- September 15 decision: cancel a separate V2.5 release and move iPhone Duo support and all future work into V3.
+- September 15 V3 brainstorming briefly described a Time Capsule, but that was a misunderstanding rather than a feature. September 17 device review defined Journey Markers: timestamped hands-free Siri moments inside an active Journey, using a distinct polaroid route pin and accepting text and photos afterward. Voice memos, future reveal, reminders, and resurfacing are out of scope. September 16 clarification narrows V3-12 to a U.S.-customer-only manual 50-state checklist with no picture capture/import, OCR, plate details, vehicle identity, or sighting-location storage. Its primary entry is an optional customizable Home widget on the existing scrollable Home surface, with Memories → Collections as a secondary entry and no permanent navigation tab.
 - September 14 V3 addition: defer durable cross-device music revision metadata and convergence to V3; retain V2's conflict-safe, non-destructive fallback.
-- September 9 emergency addition: move foldable-device compatibility forward into a focused JourneyDeck V2.5 release as iPhone Duo support.
 - Additional user confirmation: include iPad app availability with a new tablet layout; roadmap addition only, with implementation deferred.
 - [Shared handoff](../.ai/HANDOFF.md): explicit version-2 sharing deferral, Foursquare 2.0 exclusion, Tessie deferral, and earlier recording/music implementation history.
 - [Mobile release checklist](../mobile/recorder/APP_STORE_RELEASE.md): current V1 boundaries and music release gates.

@@ -48,7 +48,16 @@ function device(overrides: Record<string, any> = {}) {
         makeDirectoryAsync: async () => {},
         writeAsStringAsync: async (path: string, text: string) => files.set(path, text),
         readAsStringAsync: async (path: string) => { if (!files.has(path)) throw new Error('Missing fixture asset'); return files.get(path); },
-        getInfoAsync: async (path: string) => ({ exists: files.has(path), size: files.get(path)?.length ?? 0 }),
+        getInfoAsync: async (path: string) => ({ exists: files.has(path), isDirectory: false, size: files.get(path)?.length ?? 0 }),
+        copyAsync: async ({ from, to }: { from: string; to: string }) => {
+          if (!files.has(from)) throw new Error('Missing fixture asset');
+          files.set(to, files.get(from)!);
+        },
+        moveAsync: async ({ from, to }: { from: string; to: string }) => {
+          if (!files.has(from)) throw new Error('Missing fixture asset');
+          files.set(to, files.get(from)!); files.delete(from);
+        },
+        deleteAsync: async (path: string) => { for (const key of [...files.keys()]) if (key === path || key.startsWith(path)) files.delete(key); },
       };
       if (name.startsWith('.')) return load(resolve(dirname(path), `${name}.ts`));
       throw new Error(`Unexpected fixture dependency: ${name}`);
@@ -58,8 +67,9 @@ function device(overrides: Record<string, any> = {}) {
   }
   const store = load(resolve(src, 'local-store.ts'));
   const user = store.ensureLocalUser({ appleSubject: 'fixture-apple-account' });
+  store.setActiveLocalUserId(user.id);
   const sync = load(resolve(src, 'cloudkit-sync.ts'));
-  const engine = new sync.CloudKitSyncEngine(user.id, { privateContentV2: true, privateRouteAssets: true });
+  const engine = new sync.CloudKitSyncEngine(user.id, { privateContentV2: true, privateRouteAssets: true, privateMarkers: true });
   return { db, store, user, engine, sync, load, reload: (path: string) => { cache.delete(path); return load(path); } };
 }
 
@@ -91,6 +101,24 @@ function seed(d: ReturnType<typeof device>) {
   return { home, park };
 }
 
+function seedMarker(d: ReturnType<typeof device>, notes = 'A private roadside memory') {
+  const id = `marker_${randomUUID()}`, photoId = randomUUID();
+  const capturedAt = '2026-09-01T12:10:00Z';
+  d.db.prepare(`INSERT INTO local_journey_markers(
+    id,user_id,session_id,root_journey_id,captured_at,location_at,latitude,longitude,accuracy_meters,notes,
+    synced_to_cloud,deleted_at,sync_revision,created_at,updated_at
+  ) VALUES(?,?,?,?,?,?,?,?,?,?,0,NULL,1,?,?)`).run(
+    id, d.user.id, 'native_recording_fixture', 'fixture-journey', capturedAt, capturedAt, 10.25, 20.25, 5, notes, capturedAt, capturedAt,
+  );
+  const fileName = `${photoId}.jpg`;
+  const path = `file:///current-app/Documents/journeydeck-marker-media/${encodeURIComponent(d.user.id)}/${fileName}`;
+  files.set(path, 'marker-photo-bytes');
+  d.db.prepare(`INSERT INTO local_marker_media(
+    id,marker_id,kind,file_name,created_at,synced_to_cloud,deleted_at,sync_revision,updated_at
+  ) VALUES(?,?,'photo',?,?,0,NULL,1,?)`).run(photoId, id, fileName, capturedAt, capturedAt);
+  return { id, photoId, path };
+}
+
 test('a fresh iPad restores the full private library, canonical labels, routes, assets, and derived statistics', async () => {
   const phone = device(), ipad = device();
   const { home } = seed(phone);
@@ -120,6 +148,105 @@ test('a fresh iPad restores the full private library, canonical labels, routes, 
   assert.equal((await ipad.engine.preparePushPayload()).length, 0, 'restoring is not a new edit');
   assert.equal((await ipad.engine.ingestRemoteRecords(records)).deferredCount, 0, 'replaying the retained cursor is safe');
   assert.equal(ipad.db.prepare('SELECT COUNT(*) AS n FROM local_places').get()?.n, 2);
+});
+
+test('Journey Markers and photos round-trip through versioned private records without leaking local profile or paths', async () => {
+  const phone = device(), ipad = device(); seed(phone);
+  const marker = seedMarker(phone);
+  const records = await phone.engine.preparePushPayload();
+  const markerRecords = records.filter((record: any) => record.recordType === 'JourneyMarker' || record.recordType === 'MarkerPhoto');
+  assert.deepEqual(markerRecords.map((record: any) => record.recordType).sort(), ['JourneyMarker', 'MarkerPhoto']);
+  const markerRecord = markerRecords.find((record: any) => record.recordType === 'JourneyMarker');
+  const photoRecord = markerRecords.find((record: any) => record.recordType === 'MarkerPhoto');
+  assert.equal(markerRecord.recordName, `journey_marker_${marker.id}`);
+  assert.equal(photoRecord.recordName, `marker_photo_${marker.photoId}`);
+  assert.equal(photoRecord.assetFilePath, marker.path);
+  assert.equal(JSON.stringify(markerRecords.map(({ recordName, recordType, fields }: any) => ({ recordName, recordType, fields }))).includes(phone.user.id), false,
+    'local profile ids never enter Marker CloudKit records');
+  assert.equal(JSON.stringify(markerRecord.fields).includes('file:///'), false, 'device paths never enter record fields');
+
+  const restored = await ipad.engine.ingestRemoteRecords([...records].reverse());
+  assert.equal(restored.deferredCount, 0);
+  const markerStore = ipad.load(resolve(src, 'journey-marker-store.ts'));
+  const saved = markerStore.getMarkerIncludingDeleted(ipad.user.id, marker.id);
+  assert.equal(saved.notes, 'A private roadside memory');
+  assert.equal(saved.rootJourneyId, 'fixture-journey');
+  const photo = markerStore.getMarkerPhotoIncludingDeleted(ipad.user.id, marker.photoId);
+  assert.equal(photo.deletedAt, null);
+  const restoredPath = markerStore.markerMediaUri(ipad.user.id, photo);
+  assert.equal(files.get(restoredPath), 'marker-photo-bytes');
+  assert.notEqual(restoredPath, marker.path, 'downloaded assets are copied into the receiving profile storage');
+
+  phone.engine.acknowledgeSuccessfulPush(markerRecords.map((record: any) => record.recordName));
+  assert.equal(phone.db.prepare('SELECT synced_to_cloud FROM local_journey_markers WHERE id=?').get(marker.id)?.synced_to_cloud, 1);
+  assert.equal(phone.db.prepare('SELECT synced_to_cloud FROM local_marker_media WHERE id=?').get(marker.photoId)?.synced_to_cloud, 1);
+  assert.equal((await ipad.engine.preparePushPayload()).filter((record: any) => ['JourneyMarker', 'MarkerPhoto'].includes(record.recordType)).length, 0,
+    'restored Marker content is acknowledged locally');
+});
+
+test('Marker acknowledgements are revision-safe and stale records cannot resurrect a removed photo', async () => {
+  const phone = device(), ipad = device(); seed(phone);
+  const marker = seedMarker(phone);
+  const original = (await phone.engine.preparePushPayload()).filter((record: any) => ['JourneyMarker', 'MarkerPhoto'].includes(record.recordType));
+  await ipad.engine.ingestRemoteRecords([...(await phone.engine.preparePushPayload())]);
+
+  phone.db.prepare(`UPDATE local_journey_markers SET notes='Edited while uploading',sync_revision=2,
+    synced_to_cloud=0,updated_at='2026-09-01T12:11:00Z' WHERE id=?`).run(marker.id);
+  phone.engine.acknowledgeSuccessfulPush(original.map((record: any) => record.recordName));
+  assert.equal(phone.db.prepare('SELECT synced_to_cloud FROM local_journey_markers WHERE id=?').get(marker.id)?.synced_to_cloud, 0,
+    'an acknowledgement for revision 1 cannot acknowledge revision 2');
+
+  const ipadMarkers = ipad.load(resolve(src, 'journey-marker-store.ts'));
+  ipadMarkers.saveMarkerNotes(ipad.user.id, marker.id, 'Edited on iPad');
+  const photo = ipadMarkers.listMarkerMedia(ipad.user.id, marker.id)[0];
+  await ipadMarkers.removeMarkerMedia(ipad.user.id, marker.id, photo);
+  const edits = (await ipad.engine.preparePushPayload()).filter((record: any) => ['JourneyMarker', 'MarkerPhoto'].includes(record.recordType));
+  await phone.engine.ingestRemoteRecords(edits);
+  assert.equal(phone.load(resolve(src, 'journey-marker-store.ts')).getMarkerIncludingDeleted(phone.user.id, marker.id).notes, 'Edited on iPad');
+  assert.ok(phone.load(resolve(src, 'journey-marker-store.ts')).getMarkerPhotoIncludingDeleted(phone.user.id, marker.photoId).deletedAt);
+  assert.equal(files.has(marker.path), false, 'the winning tombstone removes the local app-owned photo');
+
+  await phone.engine.ingestRemoteRecords(original);
+  assert.ok(phone.load(resolve(src, 'journey-marker-store.ts')).getMarkerPhotoIncludingDeleted(phone.user.id, marker.photoId).deletedAt,
+    'a stale live-photo replay cannot resurrect a newer tombstone');
+});
+
+test('Marker restore defers missing Journeys and rejects immutable identity collisions without overwriting local capture data', async () => {
+  const phone = device(), fresh = device(); seed(phone);
+  const marker = seedMarker(phone);
+  const markerRecords = (await phone.engine.preparePushPayload()).filter((record: any) => ['JourneyMarker', 'MarkerPhoto'].includes(record.recordType));
+  const deferred = await fresh.engine.ingestRemoteRecords(markerRecords);
+  assert.equal(deferred.deferredCount, 2);
+  assert.equal(fresh.load(resolve(src, 'journey-marker-store.ts')).getMarkerIncludingDeleted(fresh.user.id, marker.id), null);
+
+  const allRecords = await phone.engine.preparePushPayload();
+  await fresh.engine.ingestRemoteRecords(allRecords);
+  const forged = structuredClone(markerRecords.find((record: any) => record.recordType === 'JourneyMarker'));
+  forged.fields.sessionId = 'different_session';
+  forged.fields.syncRevision = 2;
+  forged.fields.updatedAt = '2026-09-01T12:12:00Z';
+  const collision = await fresh.engine.ingestRemoteRecords([forged]);
+  assert.equal(collision.deferredCount, 1);
+  assert.equal(fresh.load(resolve(src, 'journey-marker-store.ts')).getMarkerIncludingDeleted(fresh.user.id, marker.id).sessionId, 'native_recording_fixture');
+});
+
+test('missing or length-mismatched Marker photo assets fail safely without blocking Marker metadata', async () => {
+  const phone = device(); seed(phone);
+  const marker = seedMarker(phone);
+  files.delete(marker.path);
+  const payload = await phone.engine.preparePushPayload();
+  assert.ok(payload.some((record: any) => record.recordName === `journey_marker_${marker.id}`));
+  assert.ok(!payload.some((record: any) => record.recordName === `marker_photo_${marker.photoId}`));
+  assert.equal(phone.engine.getPreparationFailureCount(), 1);
+  assert.ok(phone.engine.getIssueDetails().every(detail => !detail.includes(marker.photoId)), 'diagnostics do not expose Marker photo ids');
+  assert.equal(phone.db.prepare('SELECT synced_to_cloud FROM local_marker_media WHERE id=?').get(marker.photoId)?.synced_to_cloud, 0);
+
+  const source = device(), receiving = device(); seed(source); seedMarker(source);
+  const records = await source.engine.preparePushPayload();
+  const photo = records.find((record: any) => record.recordType === 'MarkerPhoto');
+  photo.fields.byteLength += 1;
+  await assert.rejects(receiving.engine.ingestRemoteRecords(records), /between 1 byte and 10 MB/);
+  assert.equal(receiving.db.prepare('SELECT COUNT(*) AS n FROM local_marker_media').get()?.n, 0);
 });
 
 test('out-of-order place uploads defer dependent journeys and restore them intact on retry', async () => {
@@ -740,14 +867,14 @@ test('a profile handoff during route-asset validation stops before replacing loc
   assert.equal(phone.store.getRouteArchive(phone.user.id, 'fixture-journey').syncedToCloud, 0);
 });
 
-test('schema-7 edits use a separate private zone and account deletion removes both zones', async () => {
+test('edits and Markers use separate private zones and account deletion removes every zone', async () => {
   const pushes: Array<{ scope: string; records: any[] }> = [], pulls: string[] = [], deleted: string[] = [];
   const overrides: Record<string, any> = {
     '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
     '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ nativeModuleAvailable: true, statusReliable: true, recording: false, paused: false, sessionId: null }) },
     '../modules/journeydeck-cloudkit': {
       isJourneyDeckCloudKitAvailable: true,
-      getCloudKitCapabilities: async () => ({ privateContentVersion: 4 }),
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 5 }),
       getCloudKitAccountStatus: async () => 'available',
       ensureCloudKitPrivateZone: async () => {},
       pullCloudKitChanges: async (scope: string) => { pulls.push(scope); return { records: [], deletedRecordNames: [] }; },
@@ -757,22 +884,28 @@ test('schema-7 edits use a separate private zone and account deletion removes bo
     },
     './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
   };
-  const phone = device(overrides); seed(phone); phone.store.setActiveLocalUserId(phone.user.id);
+  const phone = device(overrides); seed(phone); seedMarker(phone); phone.store.setActiveLocalUserId(phone.user.id);
   overrides['./auth'] = { getCurrentUser: () => phone.user };
   const editor = phone.load(resolve(src, 'journey-editor-store.ts'));
   const snapshot = editor.loadJourneyEditor(phone.user.id, 'fixture-journey');
   await editor.commitJourneyEdit(snapshot, { kind: 'split', atMs: Date.parse('2026-09-01T12:15:00Z') });
   const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
   const base = await coordinator.privateCloudProfileScope(phone.user), edits = await coordinator.privateCloudEditorScope(phone.user);
-  assert.notEqual(base, edits);
+  const markers = await coordinator.privateCloudMarkerScope(phone.user);
+  assert.notEqual(base, edits); assert.notEqual(base, markers); assert.notEqual(edits, markers);
   const synced = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
   assert.equal(synced.failedUploads, 0);
-  assert.deepEqual(pulls, [base, edits]);
+  assert.deepEqual(pulls, [base, edits, markers]);
   assert.ok(pushes.some(batch => batch.scope === edits && batch.records.some(record => record.recordType === 'JourneyEdit')));
-  assert.ok(pushes.every(batch => batch.records.every(record => (record.recordType === 'JourneyEdit') === (batch.scope === edits))));
+  assert.ok(pushes.some(batch => batch.scope === markers && batch.records.some(record => record.recordType === 'JourneyMarker')));
+  assert.ok(pushes.every(batch => batch.records.every(record => {
+    if (record.recordType === 'JourneyEdit') return batch.scope === edits;
+    if (record.recordType === 'JourneyMarker' || record.recordType === 'MarkerPhoto') return batch.scope === markers;
+    return batch.scope === base;
+  })));
   assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 0);
   await coordinator.deletePrivateCloudDataForUser(phone.user);
-  assert.deepEqual(deleted, [base, edits]);
+  assert.deepEqual(deleted, [base, edits, markers]);
 });
 
 test('immutable edit assets round-trip out of order and physical deletion requeues the recovery copy', async () => {

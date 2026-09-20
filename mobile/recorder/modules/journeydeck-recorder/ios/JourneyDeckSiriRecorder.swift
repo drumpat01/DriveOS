@@ -13,6 +13,18 @@ public enum JourneyDeckSiriCommandResult: String {
 }
 
 public enum JourneyDeckSiriRecorder {
+  public static func createMarker() async -> String {
+    guard Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3" else { return "unavailable" }
+    let recorder = JourneyDeckNativeRecorder.shared
+    let status = await recorder.status()
+    guard status["statusReliable"] as? Bool == true else { return "unavailable" }
+    guard status["recording"] as? Bool == true,
+          let session = status["sessionId"] as? String,
+          let token = status["controlToken"] as? String else { return "no_active_journey" }
+    let result = await recorder.createMarker(operationID: UUID().uuidString, sessionID: session, expectedToken: token)
+    return result["errorCode"] as? String ?? (result["id"] is String ? "saved" : "unavailable")
+  }
+
   public static func start() async -> JourneyDeckSiriCommandResult {
     let recorder = JourneyDeckNativeRecorder.shared
     let before = await recorder.status()

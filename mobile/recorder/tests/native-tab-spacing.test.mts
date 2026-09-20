@@ -11,7 +11,7 @@ test('native spacing guard matches both the installed and cloud lockfile version
   const installed = require('react-native-screens/package.json').version;
   const locked = require('../package-lock.json').packages['node_modules/react-native-screens'].version;
   const plugin = readFileSync(new URL('../plugins/with-even-native-tabs.js', import.meta.url), 'utf8');
-  assert.equal(installed, '4.26.2');
+  assert.equal(installed, '4.27.0');
   assert.equal(locked, installed);
   assert.ok(plugin.includes("version !== '" + installed + "'"));
 });

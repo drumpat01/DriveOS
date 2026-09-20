@@ -5,6 +5,11 @@ import type { NativeRecorderInboxExport, NativeRecorderStatus, NativeRecorderSta
 import { createLatestNativeRecorderConfiguration } from './src/LatestNativeRecorderConfiguration';
 import { subscribeRecorderStatusEvents } from './src/RecorderStatusEvents';
 
+export {
+  isNativeDisplayLayoutObserverAvailable, JourneyDeckDisplayLayoutObserver,
+  type NativeDisplayLayoutMetrics, type NativeLayoutRect,
+} from './src/JourneyDeckDisplayLayoutObserver';
+
 export type {
   NativeMapKitPointOfInterest, NativeRecorderAuthorization, NativeRecorderInboxExport,
   NativeRecorderInboxPoint, NativeRecorderInboxSession, NativeRecorderStatus,
@@ -129,4 +134,17 @@ export async function lookupNearbyMapKitPointsOfInterest(latitude: number, longi
 
 export function isNativeAutomaticSession(sessionId: string | null | undefined) {
   return typeof sessionId === 'string' && sessionId.startsWith('native_recording_');
+}
+
+export async function captureNativeJourneyMarker(sessionId: string, operationId = randomUUID()) {
+  if (!JourneyDeckRecorderModule?.createMarkerAsync) throw new Error('Install the new JourneyDeck build to create markers.');
+  if (manualProfileTransition) throw new Error('Wait for the profile change to finish.');
+  const status = await JourneyDeckRecorderModule.getStatusAsync();
+  if (!status.statusReliable || !status.recording || status.sessionId !== sessionId || !status.controlToken) {
+    throw new Error('Start or resume a journey before creating a marker.');
+  }
+  const result = await JourneyDeckRecorderModule.createMarkerAsync(operationId, sessionId, status.controlToken);
+  if (result.errorCode === 'marker_location_unavailable') throw new Error('Waiting for a recent GPS location. Try again in a moment.');
+  if (result.errorCode || !result.id) throw new Error('The marker was not confirmed. Check the active journey and try again.');
+  return result.id;
 }

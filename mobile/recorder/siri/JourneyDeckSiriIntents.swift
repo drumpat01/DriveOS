@@ -44,5 +44,6 @@ struct JourneyDeckAppShortcuts: AppShortcutsProvider {
       "Stop my journey in \(.applicationName)",
       "Stop my \(.applicationName) journey"
     ], shortTitle: "Stop Journey", systemImageName: "stop.circle.fill")
+    // JOURNEYDECK_V3_APP_SHORTCUTS
   }
 }

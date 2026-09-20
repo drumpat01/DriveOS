@@ -1,3 +1,5 @@
+import * as markerModel from '../../src/journey-marker-model.ts';
+import { JOURNEY_MARKER_SCHEMA_SQL, JOURNEY_MARKER_SYNC_SCHEMA_SQL } from '../../src/journey-marker-schema.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -19,6 +21,10 @@ export function fixture(path = ':memory:') {
     CREATE TABLE IF NOT EXISTS local_places(id TEXT PRIMARY KEY,user_id TEXT,created_at TEXT);`);
   database.exec(UNIFIED_DATABASE_SCHEMA_SQL.slice(UNIFIED_DATABASE_SCHEMA_SQL.indexOf('CREATE TABLE IF NOT EXISTS local_migration_state')));
   database.exec(RECORDER_DATABASE_HARDENING_SQL);
+  if (!database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='local_journey_markers'").get()) {
+    database.exec(JOURNEY_MARKER_SCHEMA_SQL);
+    database.exec(JOURNEY_MARKER_SYNC_SCHEMA_SQL);
+  }
   const hooks = { before: (_sql: string) => {}, after: (_sql: string) => {}, archive: () => {} };
   const db = {
     execSync: (sql: string) => database.exec(sql),
@@ -49,6 +55,7 @@ export function fixture(path = ':memory:') {
     './database-hardening': { SQLITE_CONNECTION_HARDENING_SQL },
     './unified-data-migration': { migrateLegacyRecorderIntoUnifiedDatabase() {} },
     './native-recorder-inbox-model': inboxModel,
+    './journey-marker-model': markerModel,
     './music-observations': { normalizeMusicObservation: (value: any) => value },
     './music-playback-dedupe': { findDuplicatePlayback: () => null },
   };

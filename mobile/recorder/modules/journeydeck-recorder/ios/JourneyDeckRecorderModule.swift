@@ -2,9 +2,79 @@ import CoreLocation
 import ExpoModulesCore
 import MapKit
 import SQLite3
+import UIKit
+
+private final class JourneyDeckDisplayLayoutObserver: ExpoView {
+  let onDisplayLayoutChange = EventDispatcher()
+  private var lastSignature = ""
+
+  required init(appContext: AppContext? = nil) {
+    super.init(appContext: appContext)
+    isUserInteractionEnabled = false
+    backgroundColor = .clear
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    publishLayoutIfChanged()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    publishLayoutIfChanged()
+  }
+
+  override func safeAreaInsetsDidChange() {
+    super.safeAreaInsetsDidChange()
+    publishLayoutIfChanged()
+  }
+
+  override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    super.traitCollectionDidChange(previousTraitCollection)
+    publishLayoutIfChanged()
+  }
+
+  private func sizeClassName(_ sizeClass: UIUserInterfaceSizeClass) -> String {
+    switch sizeClass {
+    case .compact: return "compact"
+    case .regular: return "regular"
+    default: return "unspecified"
+    }
+  }
+
+  private func rectPayload(_ rect: CGRect) -> [String: Double] {
+    ["x": rect.minX, "y": rect.minY, "width": rect.width, "height": rect.height]
+  }
+
+  private func publishLayoutIfChanged() {
+    var divisionRegions: [[String: Double]] = []
+    var occlusionRegions: [[String: Double]] = []
+
+#if JOURNEYDECK_DUO_RESERVED_REGIONS
+    if #available(iOS 27.1, *) {
+      divisionRegions = reservedRegions(kind: .division).map { rectPayload($0.frame) }
+      occlusionRegions = reservedRegions(kind: .occlusion).map { rectPayload($0.frame) }
+    }
+#endif
+
+    let horizontal = sizeClassName(traitCollection.horizontalSizeClass)
+    let vertical = sizeClassName(traitCollection.verticalSizeClass)
+    let signature = "\(bounds.width):\(bounds.height):\(horizontal):\(vertical):\(divisionRegions):\(occlusionRegions)"
+    guard signature != lastSignature else { return }
+    lastSignature = signature
+    onDisplayLayoutChange([
+      "width": bounds.width,
+      "height": bounds.height,
+      "horizontalSizeClass": horizontal,
+      "verticalSizeClass": vertical,
+      "divisionRegions": divisionRegions,
+      "occlusionRegions": occlusionRegions,
+    ])
+  }
+}
 
 private let nativeInboxApplicationID: Int32 = 0x4a444e31
-private let nativeInboxSchemaVersion: Int32 = 3
+private let nativeInboxSchemaVersion: Int32 = 4
 private let driveStartSpeedMetersPerSecond = 6.7
 private let driveStartSampleCount = 3
 private let driveStartMinimumSpan: TimeInterval = 20
@@ -164,6 +234,21 @@ final class NativeRecorderDatabase {
       try transaction {
         try execute(RecorderStateMachine.checkpointSchema)
         try execute("PRAGMA user_version=3;")
+      }
+    }
+    if schemaVersion < 4 {
+      try transaction {
+        try execute("""
+          CREATE TABLE native_journey_markers(
+            id TEXT PRIMARY KEY NOT NULL,
+            session_id TEXT NOT NULL REFERENCES native_recording_sessions(id) ON DELETE CASCADE,
+            captured_at TEXT NOT NULL, location_at TEXT NOT NULL,
+            latitude REAL NOT NULL CHECK(latitude BETWEEN -90 AND 90),
+            longitude REAL NOT NULL CHECK(longitude BETWEEN -180 AND 180),
+            accuracy_meters REAL NOT NULL CHECK(accuracy_meters BETWEEN 0 AND 100)
+          );
+        """)
+        try execute("PRAGMA user_version=4;")
       }
     }
     #if os(iOS)
@@ -629,6 +714,47 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     await legacyCommand(action: "finish", expectedSessionID: expectedSessionID)
   }
 
+  // This queue also serializes recorder commands, profile switches and GPS writes.
+  // Capture uses a recent durable fix; it never invents a location or starts a trip.
+  func createMarker(operationID: String, sessionID: String, expectedToken: String) async -> [String: Any] {
+    await withCheckedContinuation { continuation in
+      workQueue.async {
+        do {
+          guard Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3",
+                UUID(uuidString: operationID) != nil,
+                let identity = self.configuredIdentity(),
+                self.defaults.string(forKey: RecorderDefaults.manualOwner) == identity.owner,
+                !expectedToken.isEmpty,
+                expectedToken == self.defaults.string(forKey: RecorderDefaults.controlToken) else {
+            continuation.resume(returning: ["errorCode": "refresh_required"]); return
+          }
+          let database = try NativeRecorderDatabase()
+          let id = "marker_" + operationID.lowercased()
+          if let existing = try database.firstRow("SELECT m.id FROM native_journey_markers m JOIN native_recording_sessions s ON s.id=m.session_id WHERE m.id=? AND s.id=? AND s.owner_user_id=?;", bindings: [id, sessionID, identity.owner]), existing[0] != nil {
+            continuation.resume(returning: ["id": id, "errorCode": NSNull()]); return
+          }
+          guard let session = try self.activeSession(ownerUserID: identity.owner), session.id == sessionID, session.status == "recording" else {
+            continuation.resume(returning: ["errorCode": "no_active_journey"]); return
+          }
+          let capturedAt = Date()
+          guard let point = try database.firstRow("SELECT recorded_at,latitude,longitude,accuracy_meters FROM native_recording_points WHERE session_id=? ORDER BY sequence DESC LIMIT 1;", bindings: [session.id]),
+                let at = point[0], let date = self.parseISO(at),
+                let latText = point[1], let lat = Double(latText),
+                let lngText = point[2], let lng = Double(lngText),
+                let accuracyText = point[3], let accuracy = Double(accuracyText),
+                accuracy >= 0, accuracy <= 100, date >= session.startedAt,
+                capturedAt.timeIntervalSince(date) >= -5, capturedAt.timeIntervalSince(date) <= 30 else {
+            continuation.resume(returning: ["errorCode": "marker_location_unavailable"]); return
+          }
+          try database.execute("INSERT INTO native_journey_markers(id,session_id,captured_at,location_at,latitude,longitude,accuracy_meters) VALUES(?,?,?,?,?,?,?);", bindings: [id, session.id, self.iso(capturedAt), at, lat, lng, accuracy])
+          continuation.resume(returning: ["id": id, "errorCode": NSNull()])
+        } catch {
+          continuation.resume(returning: ["errorCode": self.safeCode(error)])
+        }
+      }
+    }
+  }
+
   func exportInbox(afterSequences: [String: Int], preferredSessionID: String? = nil) async -> [String: Any] {
     await withCheckedContinuation { continuation in
       workQueue.async {
@@ -676,7 +802,11 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
                 "headingDegrees": point[6], "speedMps": point[7]
               ]
             }
+            let markers = try database.rows("SELECT id,captured_at,location_at,latitude,longitude,accuracy_meters FROM native_journey_markers WHERE session_id=? ORDER BY captured_at,id;", bindings: [id]).map { marker -> [String: Any] in
+              ["id": marker[0], "capturedAt": marker[1], "locationAt": marker[2], "latitude": marker[3], "longitude": marker[4], "accuracyMeters": marker[5]]
+            }
             return [
+              "markers": markers,
               "id": id, "ownerUserId": owner, "deviceId": device, "status": status,
               "startedAt": startedAt, "endedAt": row[5], "nextSequence": nextSequence,
               "createdAt": createdAt, "updatedAt": updatedAt, "points": points
@@ -1333,6 +1463,33 @@ public final class JourneyDeckRecorderModule: Module {
     Name("JourneyDeckRecorder")
     Events("recorderStatusChanged")
 
+    AsyncFunction("askJourneyDeckAsync") { (question: String, userID: String, contextToken: String?) async -> [String: Any] in
+      await JourneyDeckAskService.shared.answer(question: question, expectedUserID: userID, contextToken: contextToken)
+    }
+
+    AsyncFunction("resolveJourneyDeckAnswerAsync") { (ticket: String, userID: String) async -> [String: Any] in
+      await JourneyDeckAskService.shared.resolve(ticket: ticket, expectedUserID: userID)
+    }
+
+    AsyncFunction("journeyDeckAIStatusAsync") { () async -> [String: Any] in
+      await JourneyDeckAskService.shared.aiStatus()
+    }
+    AsyncFunction("journeyDeckEvaluationCasesAsync") { () async -> [[String: Any]] in
+      await JourneyDeckAskService.shared.evaluationCases()
+    }
+    AsyncFunction("evaluateJourneyDeckCaseAsync") { (id: String) async -> [String: Any] in
+      await JourneyDeckAskService.shared.evaluateCase(id: id)
+    }
+    AsyncFunction("cancelJourneyDeckEvaluationAsync") { () async in
+      await JourneyDeckAskService.shared.cancelEvaluation()
+    }
+
+    Constant("displayLayoutObserverAvailable") { true }
+
+    View(JourneyDeckDisplayLayoutObserver.self) {
+      Events("onDisplayLayoutChange")
+    }
+
     OnCreate {
       self.transitionObserverToken = JourneyDeckNativeRecorder.shared.setTransitionObserver { [weak self] event in
         self?.sendEvent("recorderStatusChanged", event.payload)
@@ -1356,6 +1513,10 @@ public final class JourneyDeckRecorderModule: Module {
     }
     AsyncFunction("getCommandOutcomeAsync") { (operationID: String) async -> [String: Any] in
       await JourneyDeckNativeRecorder.shared.commandOutcome(operationID: operationID)
+    }
+
+    AsyncFunction("createMarkerAsync") { (operationID: String, sessionID: String, token: String) async -> [String: Any] in
+      await JourneyDeckNativeRecorder.shared.createMarker(operationID: operationID, sessionID: sessionID, expectedToken: token)
     }
 
     AsyncFunction("getStatusAsync") { () async -> [String: Any] in

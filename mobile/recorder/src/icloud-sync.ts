@@ -46,6 +46,11 @@ export async function privateCloudEditorScope(user: LocalUser): Promise<string> 
   return (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-editing-v1:${await privateCloudProfileScope(user)}`)).slice(0, 48);
 }
 
+/** Separate zone prevents pre-Marker binaries from encountering unknown record types. */
+export async function privateCloudMarkerScope(user: LocalUser): Promise<string> {
+  return (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `journeydeck-markers-v1:${await privateCloudProfileScope(user)}`)).slice(0, 48);
+}
+
 export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<void> {
   if (!isJourneyDeckCloudKitAvailable) throw new Error('Private iCloud deletion requires the next JourneyDeck native build.');
   const existing = activeDeletions.get(user.id);
@@ -68,6 +73,7 @@ export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<vo
       await deleteCloudKitPrivateZone(scope);
       const capabilities = await getCloudKitCapabilities();
       if (capabilities.privateContentVersion >= 4) await deleteCloudKitPrivateZone(await privateCloudEditorScope(user));
+      if (capabilities.privateContentVersion >= 5) await deleteCloudKitPrivateZone(await privateCloudMarkerScope(user));
       recentSyncs.delete(user.appleSubject ?? user.id);
     } catch (error) {
       if (!alreadyPending && !deleteDispatched) setPrivateCloudDeletionPending(user.id, false);
@@ -114,6 +120,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     privateContentV2: capabilities.privateContentVersion >= 2,
     privateRouteAssets: capabilities.privateContentVersion >= 3,
     privateJourneyEdits: capabilities.privateContentVersion >= 4,
+    privateMarkers: capabilities.privateContentVersion >= 5,
   });
   const activity = beginNetworkActivity({
     category: 'private_icloud',
@@ -140,6 +147,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     await ensureCloudKitPrivateZone(profileScope);
     assertSyncProfileCurrent(user);
     const pulled = await pullCloudKitChanges(profileScope);
+    const deletedRecordNames = [...pulled.deletedRecordNames];
     assertSyncProfileCurrent(user);
     engine.ingestRemoteDeletions(pulled.deletedRecordNames);
     const ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
@@ -157,10 +165,24 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       const edits = await pullCloudKitChanges(editorScope);
       assertSyncProfileCurrent(user);
       engine.ingestRemoteDeletions(edits.deletedRecordNames);
+      deletedRecordNames.push(...edits.deletedRecordNames);
       const restored = await engine.ingestRemoteRecords(edits.records, () => assertSyncProfileCurrent(user));
       downloaded += restored.updatedCount;
       failedUploads += restored.deferredCount;
       if (!restored.deferredCount) await commitCloudKitChangeToken(editorScope);
+    }
+    const markerScope = capabilities.privateContentVersion >= 5 ? await privateCloudMarkerScope(user) : null;
+    if (markerScope) {
+      assertSyncProfileCurrent(user);
+      await ensureCloudKitPrivateZone(markerScope);
+      const markers = await pullCloudKitChanges(markerScope);
+      assertSyncProfileCurrent(user);
+      engine.ingestRemoteDeletions(markers.deletedRecordNames);
+      deletedRecordNames.push(...markers.deletedRecordNames);
+      const restored = await engine.ingestRemoteRecords(markers.records, () => assertSyncProfileCurrent(user));
+      downloaded += restored.updatedCount;
+      failedUploads += restored.deferredCount;
+      if (!restored.deferredCount) await commitCloudKitChangeToken(markerScope);
     }
     let retryAfterSeconds: number | null = null;
     for (let batch = 0; batch < 5; batch++) {
@@ -169,8 +191,9 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
       assertSyncProfileCurrent(user);
       if (!pending.length) break;
       const batches = [
-        { scope: profileScope, records: pending.filter(record => record.recordType !== 'JourneyEdit') },
+        { scope: profileScope, records: pending.filter(record => !['JourneyEdit', 'JourneyMarker', 'MarkerPhoto'].includes(record.recordType)) },
         { scope: editorScope, records: pending.filter(record => record.recordType === 'JourneyEdit') },
+        { scope: markerScope, records: pending.filter(record => record.recordType === 'JourneyMarker' || record.recordType === 'MarkerPhoto') },
       ].filter(item => item.scope && item.records.length);
       let savedThisBatch = 0, failedThisBatch = 0;
       for (const item of batches) {
@@ -202,7 +225,7 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     if (failedUploads) engine.setSyncError(new Error('private_cloud_partial'));
     else engine.setSyncCompleted();
     activity.finish({ outcome: failedUploads ? 'failed' : 'succeeded' });
-    return result(true, accountStatus, downloaded, uploaded, failedUploads, retryAfterSeconds, pulled.deletedRecordNames, engine, capabilities.privateContentVersion);
+    return result(true, accountStatus, downloaded, uploaded, failedUploads, retryAfterSeconds, [...new Set(deletedRecordNames)], engine, capabilities.privateContentVersion);
   } catch (error) {
     activity.finish({ outcome: 'failed' });
     engine.setSyncError(error);

@@ -60,6 +60,7 @@ export type NativeRecorderInboxSession = {
   createdAt: string;
   updatedAt: string;
   points: NativeRecorderInboxPoint[];
+  markers?: import('../../../src/journey-marker-model').CapturedJourneyMarker[];
 };
 
 export type NativeRecorderInboxExport = {

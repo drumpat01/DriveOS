@@ -1,3 +1,4 @@
+import { validCapturedMarker } from './journey-marker-model';
 import * as Crypto from 'expo-crypto';
 import type { LocationObject } from 'expo-location';
 import { normalizeMusicObservation, type MusicObservation } from './music-observations';
@@ -144,6 +145,7 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
     : [];
   if (!sessions.length) return [];
   const completed: string[] = [];
+  let importedMarkers = false;
   db.withTransactionSync(() => {
     // Native exports put the newest active journey first. A Watch can finish
     // one journey and start another before JS runs again, so retire the prior
@@ -193,6 +195,18 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
         valid(point.accuracyMeters, 0, 10_000), valid(point.altitudeMeters, -1_000, 100_000),
         valid(point.headingDegrees, 0, 360), valid(point.speedMps, 0, 150));
       }
+      // Import in the same transaction as route points, BEFORE inbox acknowledgement.
+      // Reject malformed marker payloads rather than acknowledging and losing them.
+      for (const marker of session.markers ?? []) {
+        if (!validCapturedMarker(marker, session.startedAt, session.endedAt)) throw new Error('Invalid native marker payload.');
+        const inserted = db.runSync(`INSERT OR IGNORE INTO local_journey_markers(
+          id,user_id,session_id,root_journey_id,captured_at,location_at,latitude,longitude,accuracy_meters,
+          synced_to_cloud,sync_revision,created_at,updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,0,1,?,?);`, marker.id, ownerUserId, session.id, archivedJourneyIdForSession(session.id),
+        marker.capturedAt, marker.locationAt, marker.latitude, marker.longitude, marker.accuracyMeters,
+        marker.capturedAt, marker.capturedAt);
+        importedMarkers ||= inserted.changes > 0;
+      }
       const importedRoute = db.getFirstSync<{ pointCount: number; nextPointSequence: number }>(`
         SELECT COUNT(*) AS pointCount,COALESCE(MAX(sequence)+1,0) AS nextPointSequence
         FROM recording_points WHERE session_id=?;
@@ -215,7 +229,7 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
       }
     }
   });
-  if (completed.length > 0) notifyLocalArchiveChanged();
+  if (completed.length > 0 || importedMarkers) notifyLocalArchiveChanged();
   return completed;
 }
 

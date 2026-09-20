@@ -37,6 +37,14 @@ export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'acc
   if (isCustomTheme(mode)) {
     const p = themeCatalog[mode].palette, light = themeCatalog[mode].mode === 'light';
     const hi = Math.max(r, g, b), lo = Math.min(r, g, b), chroma = hi - lo;
+    if (mode === 'midnight-canopy') {
+      // Test 4 keeps yellow frames separate from orange actions and red controls.
+      if (role === 'border') return alpha(p.line, a === 0 ? 0 : 1);
+      // Reading copy stays white; saturated legacy icon/value colors keep emphasis.
+      if (role === 'text') return alpha(chroma > 45 ? (r > g && g > b * 1.25 ? p.amber : p.accent) : p.text, a);
+      if (role === 'shadow') return alpha(p.glow ?? p.accent, a);
+      if (role === 'surface') return alpha(hi < 18 ? p.page : p.card, a);
+    }
     const colored = chroma > 45;
     const ink = r > g * 1.18 && r > b * 1.12 ? (g > b * 1.35 && g > r * 0.52 ? p.amber : p.coral)
       : g > r * 1.15 ? (b > g * 1.12 ? p.blue : p.teal)
@@ -72,6 +80,9 @@ export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'acc
 
 /** Surface fades keep their original alpha and geometry; vivid action gradients keep color. */
 export function themedGradient<T extends readonly string[]>(colors: T, mode: ThemeId): T {
+  // Autumn's shared gradients decorate surfaces: warm tones belong to explicit
+  // highlights/buttons, never large background washes. Preserve fade alpha.
+  if (mode === 'midnight-canopy') return colors.map(color => themedColor(color, mode, 'surface')) as unknown as T;
   return colors.map(color => themedColor(color, mode, 'accent')) as unknown as T;
 }
 
@@ -79,10 +90,28 @@ export function themedStyleSheet<T extends Record<string, any>>(styles: T, mode:
   if (mode === 'dark') return styles;
   return Object.fromEntries(Object.entries(styles).map(([name, style]) => {
     if (preserve.includes(name)) return [name, style];
-    return [name, Object.fromEntries(Object.entries(style).map(([key, value]) => {
+    const mapped = Object.fromEntries(Object.entries(style).map(([key, value]) => {
       if (typeof value !== 'string' || !/color$/i.test(key)) return [key, value];
       const role: ColorRole = /shadow/i.test(key) ? 'shadow' : /border/i.test(key) ? 'border' : /background/i.test(key) ? 'surface' : 'text';
       return [key, themedColor(value, mode, role)];
-    }))];
+    }));
+    if (mode === 'midnight-canopy') {
+      const p = themeCatalog[mode].palette;
+      // These legacy dark surfaces share similar RGB values with the page, so
+      // their component roles must win over brightness-based translation.
+      if (['homeRecorderCard', 'approvedLatestMemory', 'approvedLatestSong'].includes(name)) mapped.backgroundColor = p.card;
+      if (['approvedLatestMemoryMore', 'approvedLatestSongArrow', 'approvedLatestSongFallback', 'sectionActionButton', 'cinematicHeroMoreButton', 'bottomNavFallback', 'navSurfaceTint', 'navGlidingFill'].includes(name)) mapped.backgroundColor = p.inset;
+      if (['cardTitle', 'sectionTitle', 'metricLabel', 'approvedLatestMemoryLabel', 'approvedLatestSongKicker'].includes(name)) mapped.color = p.teal;
+      // Explicit existing element roles, never broad card/page background matching.
+      if (['sectionAccent', 'cardAccent'].includes(name)) mapped.backgroundColor = p.rose;
+      if (name === 'settingsHubIcon') { mapped.backgroundColor = p.rose; mapped.borderColor = p.line; }
+      if (name === 'homeRecorderPulseCore') { mapped.backgroundColor = p.rose; mapped.shadowColor = p.glow ?? p.accent; }
+      if (name === 'homeRecorderPulseOuter') { mapped.borderColor = alpha(p.rose, 0.5); mapped.backgroundColor = alpha(p.rose, 0.06); mapped.shadowColor = p.glow ?? p.accent; }
+      if (name === 'homeRecorderPulseMiddle') { mapped.borderColor = p.rose; mapped.backgroundColor = alpha(p.rose, 0.12); }
+      if (name === 'homeRecorderPulsePaused') mapped.borderColor = p.amber;
+      if (name === 'homeRecorderPulseCorePaused') { mapped.backgroundColor = p.amber; mapped.shadowColor = p.amber; }
+      if (['metricValue', 'tourValue', 'weekTotalValue', 'settingsHubChevron', 'settingsDataHealthKicker'].includes(name)) mapped.color = p.amber;
+    }
+    return [name, mapped];
   })) as T;
 }

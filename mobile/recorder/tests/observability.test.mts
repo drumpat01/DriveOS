@@ -9,7 +9,7 @@ test('Build 13 compiles EAS Observe with source maps and a root performance boun
   const [app, packageJson, eas, observability] = await Promise.all([
     source('App.tsx'), source('package.json'), source('eas.json'), source('src/observability.ts'),
   ]);
-  assert.equal(JSON.parse(packageJson).dependencies['expo-observe'], '~57.0.21');
+  assert.equal(JSON.parse(packageJson).dependencies['expo-observe'], '~58.0.5');
   assert.equal(JSON.parse(eas).build.production.uploadSourceMaps, true);
   assert.match(app, /ObserveRoot\.wrap\(App\)/);
   assert.match(app, /configureJourneyDeckObservability\(\)/);

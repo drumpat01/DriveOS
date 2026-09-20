@@ -1,8 +1,10 @@
+import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
+import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, InteractionManager, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
+  ActivityIndicator, I18nManager, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -44,6 +46,7 @@ import { buildSongRouteMoments } from './route-moments';
 import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
 import { deriveLiveMotionMetrics } from './core-experience-motion';
 import { haptics } from './haptics';
+import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
 export type MoreDestination = 'menu' | 'health';
@@ -61,6 +64,11 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
   const styles = useThemedStyles(darkStyles);
 
   const insets = useSafeAreaInsets();
+  const adaptiveLayout = useAdaptiveLayout();
+  const centeredTitleColumns = verticalFoldContentColumns(adaptiveLayout.fold, 20);
+  const centeredTitleStyle = centeredTitleColumns
+    ? { width: I18nManager.isRTL ? centeredTitleColumns.afterWidth : centeredTitleColumns.beforeWidth, alignSelf: I18nManager.isRTL ? 'flex-end' as const : 'flex-start' as const }
+    : undefined;
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const refreshFromGesture = async () => {
     if (manualRefreshing) return;
@@ -82,7 +90,7 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
     <LinearGradient colors={theme.gradient(pageTone === 'black' ? ['#060309', '#030106', '#020104'] : ['#19051f', '#07020a', '#020104'])} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
     <LinearGradient colors={theme.gradient(headerSpill)} locations={[0, 0.54, 1]} style={styles.headerSpill} />
     <ScrollView
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 17, paddingBottom: insets.bottom + 28 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + adaptiveLayout.occlusionInsets.top + 17, paddingBottom: insets.bottom + adaptiveLayout.occlusionInsets.bottom + 28 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
@@ -90,9 +98,9 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
     >
       {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
       {headerImage
-        ? <>{headerPresentation === 'centered' && <Text style={styles.statsPageTitle}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
+        ? <>{headerPresentation === 'centered' && <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
         : headerPresentation === 'centered'
-          ? <Text style={styles.statsPageTitle}>{title}</Text>
+          ? <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>
           : <><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></>}
       {children}
     </ScrollView>
@@ -208,6 +216,7 @@ export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
       minimumBoundsSpan={0.055}
       emptyMessage={automaticMode ? 'Your route will appear when JourneyDeck detects your next drive.' : 'Start recording to see your route and current location here.'}
       songMoments={visibleSongMoments}
+      markers={V3_MARKERS_PROTOTYPE_ENABLED ? snapshot.session ? listSessionMarkers(getCurrentUser().id, snapshot.session.id) : latestDetail ? listJourneyMarkers(getCurrentUser().id, latestDetail.id) : [] : []}
     />
     {TESSIE_INTEGRATION_ENABLED && tessieConnected && <>
       <SectionTitle title="Connected vehicle" detail="Optional Tessie enhancement" />
@@ -273,6 +282,8 @@ function LiveMotionMetric({ value, unit, label, animate }: { value: string; unit
 export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const adaptiveLayout = useAdaptiveLayout();
+  const { fontScale } = useWindowDimensions();
 
   const data = state.data;
   const [window, setWindow] = useState<AtlasInsightWindow>('30d');
@@ -285,8 +296,8 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="" title="ATLAS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
-    <DataNotice state={state} />
+  const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, 20);
+  const commandAndInsights = <>
     <View style={styles.atlasCommandHeader}>
       <View style={styles.atlasPrivacyBadge}><SymbolView name="lock.fill" tintColor={theme.color("#ff8b70", 'text')} size={11} /><Text style={styles.atlasPrivacyText}>PRIVATE · ON DEVICE</Text></View>
       <View style={styles.atlasWindowRail} accessibilityRole="tablist">
@@ -295,8 +306,10 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
     </View>
     <AtlasPulseCard insights={insights} />
     <Text style={styles.atlasSectionLabel}>YOUR PRIVATE INTELLIGENCE</Text>
-    <AtlasInsightGrid insights={insights} />
+    <AtlasInsightGrid insights={insights} singleColumn={Boolean(foldColumns) && fontScale >= 1.3} />
     <SoundtrackIntelligenceCard insight={insights.soundtrack} />
+  </>;
+  const mapAndLibrary = <>
     <SectionTitle title="Your Atlas map" detail={`${routes.length} mapped journeys`} />
     <View style={styles.atlasMapFrame}><NeonWidgetOutline radius={24} /><PrimaryMobilityMap routes={routes} places={mapPlaces} height={330} emptyMessage="Recorded route geometry will build your long-term Atlas." /></View>
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
@@ -318,6 +331,12 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
     </View></View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
     <SectionTitle title="Recent mapped journeys" detail={`${routes.length} routes cached`} />
     {(data?.details ?? []).slice(0, 8).map(journey => <JourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)}
+  </>;
+  return <ScreenScaffold eyebrow="" title="ATLAS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
+    <View testID="atlas-duo-layout" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : undefined}>
+      <View testID="atlas-duo-intelligence" style={foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined}><DataNotice state={state} />{commandAndInsights}</View>
+      <View testID="atlas-duo-map" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>{mapAndLibrary}</View>
+    </View>
   </ScreenScaffold>;
 }
 
@@ -356,7 +375,7 @@ function AtlasPulseMetric({ value, label }: { value: string; label: string }) {
 
 const AtlasInsightMeasurement = createContext<((height: number) => void) | null>(null);
 
-function AtlasInsightGrid({ insights }: { insights: AtlasInsights }) {
+function AtlasInsightGrid({ insights, singleColumn = false }: { insights: AtlasInsights; singleColumn?: boolean }) {
   const styles = useThemedStyles(darkStyles);
   const [heights, setHeights] = useState<Record<string, number>>({});
   const height = Math.max(230, ...Object.values(heights));
@@ -366,8 +385,9 @@ function AtlasInsightGrid({ insights }: { insights: AtlasInsights }) {
     { id: 'exploration', content: <ExplorationCard insight={insights.exploration} /> },
     { id: 'places', content: <PlaceRelationshipsCard insight={insights.placeRelationships} /> },
   ];
-  return <View testID="atlas-insight-grid">{[0, 2].map(start => <View key={start} style={styles.atlasInsightRow}>
-    {cards.slice(start, start + 2).map(card => <View key={card.id} testID={`atlas-cell-${card.id}`} style={[styles.atlasInsightCell, { minHeight: height }]}>
+  const stride = singleColumn ? 1 : 2;
+  return <View testID="atlas-insight-grid">{cards.filter((_, index) => index % stride === 0).map((_, row) => <View key={row} style={styles.atlasInsightRow}>
+    {cards.slice(row * stride, row * stride + stride).map(card => <View key={card.id} testID={`atlas-cell-${card.id}`} style={[styles.atlasInsightCell, { minHeight: height }]}>
       <AtlasInsightMeasurement.Provider value={measured => {
         if (Number.isFinite(measured) && measured > 0) setHeights(current => current[card.id] === measured ? current : { ...current, [card.id]: measured });
       }}>{card.content}</AtlasInsightMeasurement.Provider>
@@ -896,7 +916,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   useEffect(() => {
     if (!active) return;
     setRetentionPreviewState('loading');
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = requestIdleCallback(() => {
       try {
         setRetentionPreview(previewLocalRetention(getCurrentUser().id, { retentionDays }));
         setRetentionPreviewState('ready');
@@ -905,7 +925,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         setRetentionPreviewState('error');
       }
     });
-    return () => task.cancel();
+    return () => cancelIdleCallback(task);
   }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
   const forceArtworkRefresh = async () => {
     if (artworkRefreshState === 'running') return;

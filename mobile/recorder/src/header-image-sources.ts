@@ -22,6 +22,7 @@ const journeyArtwork = new Set([require('../assets/cinematic-journey-photo-v1.jp
 /** Theme app-owned artwork; unknown sources and dark mode remain untouched. */
 export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): ImageSourcePropType {
   if (typeof source === 'number' && customArtwork.has(source)) {
+    if (mode === 'midnight-canopy' && source === require('../assets/cinematic-home-main-photo-v1.jpg')) return require('../assets/theme-autumn-home-road-v1.jpg');
     // Keep replacement registration conditional, matching the device-proven OTA.
     if (mode === 'redline') {
       if (source === require('../assets/cinematic-home-main-photo-v1.jpg')) return require('../assets/theme-grand-touring-home-v2.png');

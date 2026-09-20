@@ -1,6 +1,6 @@
 # Recreated medallion faces
 
-These 40 front-facing designs replace the photographed, angled source medals.
+These 50 front-facing designs replace the photographed, angled source medals.
 All source PNGs are 1254 x 1254. Journey, music and memory generation notes record
 their prompts, theme palettes and generated source paths.
 
@@ -19,3 +19,13 @@ against the originals; no resizing or invented detail occurs in this step.
 Most generated images have an opaque checkerboard outside the circle. Always
 apply the shared frame and circular clip through `MedallionArtworkImage` or the
 3D renderer. The raw PNGs are provenance, not directly displayed app assets.
+
+## Autumn Drive faces
+
+The ten `*-midnight-canopy.png` files were generated on 2026-09-18 with the
+built-in image editor from their matching Redline faces. The shared edit prompt
+preserved each title, subtitle, symbols and circular composition while applying
+Autumn Drive's forest greens (`#162F13`, `#206722`), polished gold, sunset and
+neon oranges (`#FFA600`, `#FF7600`), bright yellow (`#FFD000`) and restrained
+burgundy (`#590000`). The generated source files are retained under
+`C:\Users\patri\.codex\generated_images\01a0afbf-5acf-7622-ad63-c7693e1c6374`.

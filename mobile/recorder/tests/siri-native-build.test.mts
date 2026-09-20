@@ -10,6 +10,21 @@ const xcode = require('xcode');
 const plugin = require('../plugins/with-journeydeck-siri.js');
 const root = fileURLToPath(new URL('../', import.meta.url));
 
+test('V3 marker intent is appended once and coexists with Start, Stop and Ask in one provider', () => {
+  const source = readFileSync(join(root, 'siri/JourneyDeckSiriIntents.swift'), 'utf8');
+  const marker = readFileSync(join(root, 'siri/JourneyDeckMarkerIntent.swift'), 'utf8');
+  const output = plugin.addMarkerShortcutToSiriSource(plugin.addAskShortcutToSiriSource(source), marker);
+  assert.equal(plugin.addMarkerShortcutToSiriSource(output, marker), output);
+  assert.equal((output.match(/struct JourneyDeckAppShortcuts:/g) ?? []).length, 1);
+  for (const intent of ['CreateJourneyMarkerIntent', 'StartJourneyIntent', 'StopJourneyIntent', 'AskJourneyDeckIntent']) {
+    assert.ok(output.includes(`AppShortcut(intent: ${intent}()`));
+  }
+  assert.ok(output.includes('"Create a marker in \\(.applicationName)"'));
+  assert.match(output, /await JourneyDeckSiriRecorder.createMarker\(\)/);
+  assert.doesNotMatch(source, /CreateJourneyMarkerIntent/);
+  assert.doesNotMatch(marker, /latitude|longitude|ownerUserId|controlToken/);
+});
+
 test('Siri intents are compiled in the app target exactly once', () => {
   const project = xcode.project(join(root, 'node_modules/react-native-view-shot/ios/RNViewShot.xcodeproj/project.pbxproj'));
   project.parseSync();

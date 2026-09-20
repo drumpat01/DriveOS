@@ -28,6 +28,7 @@ function controls(native: any) {
     if (name === './src/JourneyDeckRecorderModule') return { __esModule: true, default: native };
     if (name === './src/LatestNativeRecorderConfiguration') return { createLatestNativeRecorderConfiguration };
     if (name === './src/RecorderStatusEvents') return { subscribeRecorderStatusEvents };
+    if (name === './src/JourneyDeckDisplayLayoutObserver') return {};
     throw new Error(`unexpected dependency: ${name}`);
   } });
   return exports;

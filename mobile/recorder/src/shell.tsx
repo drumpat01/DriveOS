@@ -9,6 +9,13 @@ import { useAppIconChoice } from './app-icon-preference';
 import { ThemePicker } from './theme-picker';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import { isIpad } from './device-layout';
+import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
+import { HomeGridCell, HomeLayoutEditorSheet, useHomeWidgetLayout } from './home-widget-grid';
+import { selectHomePresentation, type HomeWidgetId, type HomeWidgetPlacement } from './home-widget-layout';
+import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
+import { FiftyStatesHomeWidget } from './fifty-states-ui';
+import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
+import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -83,7 +90,7 @@ import {
   SAVED_PLACE_SLOTS, type CustomSavedPlace, type SavedPlaceSlot,
 } from './saved-places';
 import { observeJourneyDeckEvent } from './observability';
-import { InteractiveRouteMap } from './interactive-route-map';
+import { JourneyMarkerRoute } from './journey-markers';
 import { journeyDeckMapPalette } from './journey-map-theme';
 import { buildSongRouteMoments } from './route-moments';
 import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
@@ -108,6 +115,7 @@ import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
 import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress } from './first-run-onboarding';
 import { FirstRunOnboardingScreen } from './first-run-onboarding-screen';
+import { V3_FIFTY_STATES_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import {
   AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
@@ -291,6 +299,7 @@ export function JourneyDeckShell({ recorder, children }: { recorder: RecorderCom
 function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, children }: { recorder: RecorderComponent; onProfileChanged: () => void; children: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const adaptiveLayout = useAdaptiveLayout();
 
   const membershipStore = useJourneyDeckMembership();
   const membership = membershipStore.state.entitlements;
@@ -798,6 +807,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, []);
   const openJourney = (id: string) => router.navigate({ pathname: '/journey/[id]', params: { id } });
   const openMemory = (id: string) => router.navigate({ pathname: '/memory/[id]', params: { id } });
+  const openFiftyStates = () => { router.push('/fifty-states'); void haptics.selection(); };
   const openTab = (next: Tab) => {
     if (navigationReady) router.navigate(tabPaths[next]);
   };
@@ -893,19 +903,19 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   />;
 
   const navigationContent = {
-    tabs: isIpad() ? {
+    tabs: adaptiveLayout.isRegular ? {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
-      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
       statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
-      home: <IpadHomeScreen memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
-        onMemory={openMemory} onJourney={openJourney}
+      home: <IpadHomeScreen userId={currentUser.id} memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
+        onMemory={openMemory} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
         recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
     } : {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
-      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      home: <HomeScreen recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+      journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
+      home: <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
       statistics: <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
     },
@@ -1182,13 +1192,15 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: theme.color(color, 'border') }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJourney, recorder }: { primary: PrimaryDataState; recorderActive: boolean; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; recorder: ReactNode }) {
+function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatistics, onJourney, onFiftyStates, recorder }: { userId: string; primary: PrimaryDataState; recorderActive: boolean; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; onFiftyStates?: () => void; recorder: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const { ambientMotionEnabled, reduceMotion } = useMotionPreferences();
 
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const [editingLayout, setEditingLayout] = useState(false);
+  const gridLayout = useHomeWidgetLayout('compact', Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED);
   const cameraDrift = useSharedValue(0);
   const recorderFocus = useSharedValue(recorderActive ? 1 : 0);
   const latestSummary = primary.data?.journeys[0] ?? null;
@@ -1199,6 +1211,12 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
   const latestDate = latestJourney ? new Date(latestJourney.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Ready when you are';
   const latestImage = headerImageSource(homeHeroImageFor(latestJourney?.startedAt), theme.id);
   const latestTrack = primary.data?.music.recentSelections[0] ?? null;
+  const metricWidgets: Record<Extract<HomeWidgetId, 'miles' | 'listening' | 'songs' | 'streak'>, { title: string; value: string; icon: SFSymbol }> = {
+    miles: { title: 'Miles with music', value: primary.data?.music.metrics.milesWithMusic.toLocaleString(undefined, { maximumFractionDigits: 1 }) ?? '—', icon: 'road.lanes' },
+    listening: { title: 'Listening hours', value: primary.data?.music.metrics.listeningHours.toLocaleString(undefined, { maximumFractionDigits: 1 }) ?? '—', icon: 'headphones' },
+    songs: { title: 'Songs on the road', value: primary.data?.music.metrics.songsOnRoad.toLocaleString() ?? '—', icon: 'music.note' },
+    streak: { title: 'Current streak', value: primary.data?.music.metrics.currentStreak.toLocaleString() ?? '—', icon: 'flame' },
+  };
   const backdropStyle = useAnimatedStyle(() => {
     const drift = cameraDrift.get();
     const focus = recorderFocus.get();
@@ -1228,42 +1246,80 @@ function HomeScreen({ primary, recorderActive, onSoundtracks, onStatistics, onJo
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [recorderActive]);
+  const homeColors = journeyDeckSemanticColors(theme.id, theme.palette);
+  const presentation = selectHomePresentation(gridLayout.placements);
+  const openEditor = () => setEditingLayout(true);
+  const placementWidth = (placement: HomeWidgetPlacement) => `${(placement.span / 12) * 100}%` as `${number}%`;
+  const renderLatestMemory = (editing = false) => <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
+    <TouchPressable disabled={editing || !latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} onLongPress={editing ? undefined : openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestMemory, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+      <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={homeColors.accent} size={15} /><Text style={[styles.approvedLatestMemoryKicker, { color: homeColors.accent }]}>Latest memory</Text></View>
+      <View style={styles.approvedLatestMemoryRow}>
+        <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor="#fff" size={13} /></View>}</View>
+        <View style={styles.flex}><Text style={[styles.approvedLatestMemoryTitle, { color: homeColors.text }]} numberOfLines={1}>{latestTitle}</Text><View style={styles.approvedLatestMemoryMeta}><SymbolView name="mappin.and.ellipse" tintColor={homeColors.textSecondary} size={13} /><Text style={[styles.approvedLatestMemoryMetaText, { color: homeColors.textSecondary }]} numberOfLines={1}>{latestRoute}</Text></View><View style={styles.approvedLatestMemoryMeta}><SymbolView name="calendar" tintColor={homeColors.textSecondary} size={13} /><Text style={[styles.approvedLatestMemoryMetaText, { color: homeColors.textSecondary }]}>{latestDate}</Text></View></View>
+        <View style={[styles.approvedLatestMemoryMore, { borderColor: homeColors.separator, backgroundColor: homeColors.surfaceInset }]}><Text style={[styles.approvedLatestMemoryMoreText, { color: homeColors.textSecondary }]}>•••</Text></View>
+      </View>
+    </TouchPressable>
+  </CardDetailLink>;
+  const renderLatestSoundtrack = (editing = false) => <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} disabled={editing} onPress={onSoundtracks} onLongPress={editing ? undefined : openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestSong, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+    {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={[styles.approvedLatestSongFallback, { backgroundColor: homeColors.surfaceInset, borderColor: homeColors.separator }]}><SymbolView name="music.note" tintColor={homeColors.accent} size={25} /></View>}
+    <View style={styles.flex}>
+      <Text style={[styles.approvedLatestSongKicker, { color: homeColors.accent }]}>LATEST SONG PLAYED</Text>
+      <Text style={[styles.approvedLatestSongTitle, { color: homeColors.text }]} numberOfLines={1}>{latestTrack?.track ?? 'Your soundtrack starts here'}</Text>
+      <Text style={[styles.approvedLatestSongMeta, { color: homeColors.textSecondary }]} numberOfLines={1}>{latestTrack ? `${latestTrack.artist}${formatTrackTime(latestTrack.playedAt)}` : 'The most recent song from a journey will appear here.'}</Text>
+    </View>
+    <View style={[styles.approvedLatestSongArrow, { backgroundColor: homeColors.surfaceInset, borderColor: homeColors.separator }]}><SymbolView name="chevron.right" tintColor={homeColors.accent} size={15} weight="semibold" /></View>
+  </TouchPressable>;
+  const renderEditorPlacement = (placement: HomeWidgetPlacement) => {
+    const shared = { placement, editing: true, width: placementWidth(placement), onMove: (offset: number) => gridLayout.move(placement.id, offset), onStartEditing: openEditor, onResize: (span?: number) => gridLayout.resize(placement.id, span), onToggle: () => gridLayout.toggle(placement.id) };
+    if (placement.id in metricWidgets) {
+      const metric = metricWidgets[placement.id as keyof typeof metricWidgets];
+      return <HomeGridCell key={placement.id} {...shared} title={metric.title}><View style={[styles.compactHomeMetric, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}><SymbolView name={metric.icon} tintColor={homeColors.accent} size={20} /><Text style={[styles.compactHomeMetricLabel, { color: homeColors.textSecondary }]}>{metric.title}</Text><Text style={[styles.compactHomeMetricValue, { color: homeColors.text }]}>{metric.value}</Text></View></HomeGridCell>;
+    }
+    if (placement.id === 'fiftyStates' && onFiftyStates) return <HomeGridCell key={placement.id} {...shared} title="50 States"><FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense disabled /></HomeGridCell>;
+    if (placement.id === 'askJourneyDeck' && V3_ASK_JOURNEYDECK_ENABLED) return <HomeGridCell key={placement.id} {...shared} title="Ask JourneyDeck"><AskJourneyDeckWidget onPress={() => router.push('/ask-journeydeck')} disabled /></HomeGridCell>;
+    if (placement.id === 'memories') return <HomeGridCell key={placement.id} {...shared} title="Latest memory">{renderLatestMemory(true)}</HomeGridCell>;
+    if (placement.id === 'journeys') return <HomeGridCell key={placement.id} {...shared} title="Journey library"><View style={[styles.compactHomeJourneySummary, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}><View><Text style={[styles.compactHomeMetricLabel, { color: homeColors.textSecondary }]}>JOURNEY LIBRARY</Text><Text style={[styles.compactHomeJourneyValue, { color: homeColors.text }]}>{primary.data?.journeys.length.toLocaleString() ?? '—'} journeys</Text></View><SymbolView name="chevron.right" tintColor={homeColors.accent} size={17} /></View></HomeGridCell>;
+    return <HomeGridCell key={placement.id} {...shared} title="Latest soundtrack">{renderLatestSoundtrack(true)}</HomeGridCell>;
+  };
+  const contextualWidget = presentation.context?.id === 'fiftyStates' && onFiftyStates
+    ? <FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense onLongPress={openEditor} />
+    : presentation.context?.id === 'askJourneyDeck'
+      ? <AskJourneyDeckWidget onPress={() => router.push('/ask-journeydeck')} onLongPress={openEditor} />
+      : presentation.context?.id === 'soundtrack' ? renderLatestSoundtrack() : null;
   return <View style={styles.approvedHomeSafe}>
     <Reanimated.View pointerEvents="none" style={[styles.approvedHomeBackdrop, backdropStyle]}>
       <JourneyImage key={`home-header-${theme.id}`} imageIdentity={`home-header-${theme.id}`} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Reanimated.View>
     <CinematicPhotoGrade />
     <LinearGradient colors={theme.isCustom ? [`${theme.palette.page}28`, `${theme.palette.page}12`, `${theme.palette.page}b8`, theme.palette.page] : theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
-    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
       <PhoneTabTitle title="Home"
         leading={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></TouchPressable>}
-        trailing={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Soundtracks" onPress={onSoundtracks} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="music.note" tintColor={theme.color("#d3b5e4", 'text')} size={23} /></TouchPressable>} />
+        trailing={<NativeActionMenu compact label="Home actions" actions={[
+          { id: 'soundtracks', title: 'Soundtracks', onSelect: onSoundtracks },
+          { id: 'edit-home', title: 'Edit Home', onSelect: openEditor },
+        ]} />} />
       <View style={[styles.approvedHomeScenicSpace, recorderActive && styles.approvedHomeScenicSpaceActive]} />
       <View style={styles.approvedHomePanels}>
-        {recorder}
-        {/* Keep the Home stack geometry stable when the journey finishes loading.
-            The compound context-menu host adds native layout space after an ID appears. */}
-        <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
-        <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} style={({ pressed }) => [styles.approvedLatestMemory, pressed && styles.pressed]}>
-          <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={theme.color("#c990ff", 'text')} size={15} /><Text style={styles.approvedLatestMemoryKicker}>Latest memory</Text></View>
-          <View style={styles.approvedLatestMemoryRow}>
-            <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor={theme.color("#fff", 'text')} size={13} /></View>}</View>
-            <View style={styles.flex}><Text style={styles.approvedLatestMemoryTitle} numberOfLines={1}>{latestTitle}</Text><View style={styles.approvedLatestMemoryMeta}><SymbolView name="mappin.and.ellipse" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText} numberOfLines={1}>{latestRoute}</Text></View><View style={styles.approvedLatestMemoryMeta}><SymbolView name="calendar" tintColor={theme.color("#9e91a5", 'text')} size={13} /><Text style={styles.approvedLatestMemoryMetaText}>{latestDate}</Text></View></View>
-            <View style={styles.approvedLatestMemoryMore}><Text style={styles.approvedLatestMemoryMoreText}>•••</Text></View>
-          </View>
-        </TouchPressable>
-        </CardDetailLink>
-        <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} style={({ pressed }) => [styles.approvedLatestSong, pressed && styles.pressed]}>
-          {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={styles.approvedLatestSongFallback}><SymbolView name="music.note" tintColor={theme.color("#cf91ff", 'text')} size={25} /></View>}
-          <View style={styles.flex}>
-            <Text style={styles.approvedLatestSongKicker}>LATEST SONG PLAYED</Text>
-            <Text style={styles.approvedLatestSongTitle} numberOfLines={1}>{latestTrack?.track ?? 'Your soundtrack starts here'}</Text>
-            <Text style={styles.approvedLatestSongMeta} numberOfLines={1}>{latestTrack ? `${latestTrack.artist}${formatTrackTime(latestTrack.playedAt)}` : 'The most recent song from a journey will appear here.'}</Text>
-          </View>
-          <View style={styles.approvedLatestSongArrow}><SymbolView name="chevron.right" tintColor={theme.color("#d5a4f3", 'text')} size={15} weight="semibold" /></View>
-        </TouchPressable>
+        <View testID="home-fixed-recorder">{recorder}</View>
+        <View testID="compact-home-widget-grid" style={styles.homeCuratedStack}>
+          {presentation.memory ? renderLatestMemory() : null}
+          {contextualWidget}
+          {presentation.summary.length ? <TouchPressable testID="home-road-summary" accessibilityRole="button" accessibilityLabel="Open road summary in Statistics" accessibilityHint="Long press to edit Home" onPress={onStatistics} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.homeRoadSummary, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+            <View style={styles.homeRoadSummaryHeader}><View><Text style={[styles.homeRoadSummaryKicker, { color: homeColors.accent }]}>ROAD SUMMARY</Text><Text style={[styles.homeRoadSummaryTitle, { color: homeColors.text }]}>Along the way</Text></View><SymbolView name="chevron.right" tintColor={homeColors.accent} size={17} /></View>
+            <View style={styles.homeRoadSummaryGrid}>{presentation.summary.map((placement, index) => {
+              const metric = placement.id === 'journeys' ? { title: 'Journeys', value: primary.data?.journeys.length.toLocaleString() ?? '—', icon: 'books.vertical' as SFSymbol } : metricWidgets[placement.id as keyof typeof metricWidgets];
+              const isLastOdd = presentation.summary.length % 2 === 1 && index === presentation.summary.length - 1;
+              const fullWidth = placement.span === 12 || isLastOdd;
+              return <View key={placement.id} style={[styles.homeRoadSummaryItem, { width: fullWidth ? '100%' : '50%', borderColor: homeColors.separator }]}><SymbolView name={metric.icon} tintColor={homeColors.accent} size={19} /><View style={styles.flex}><Text style={[styles.homeRoadSummaryLabel, { color: homeColors.textSecondary }]}>{metric.title}</Text><Text style={[styles.homeRoadSummaryValue, { color: homeColors.text }]}>{metric.value}</Text></View></View>;
+            })}</View>
+          </TouchPressable> : null}
+        </View>
       </View>
     </ScrollView>
+    <HomeLayoutEditorSheet visible={editingLayout} onClose={() => setEditingLayout(false)} onReset={gridLayout.reset}>
+      <View testID="home-layout-editor-grid" style={styles.compactHomeGrid}>{gridLayout.placements.map(renderEditorPlacement)}</View>
+    </HomeLayoutEditorSheet>
   </View>;
 }
 
@@ -1938,14 +1994,15 @@ function memoryDraftSignature(draft: MemoryEditorDraft) {
   return JSON.stringify({ name: draft.name.trim(), notes: draft.notes.trim(), journeyIds: [...new Set(draft.journeyIds)].sort(), coverPhotoId: draft.coverPhotoId });
 }
 
-function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, detailId, detailReady, studio = false }: {
+function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade, onJourney, onMemory, onRefresh, onFiftyStates, detailId, detailReady, studio = false }: {
   catalog: LoadState<MemoriesCatalog>; journeys: LoadState<JourneySummary[]>; details: JourneyDetail[];
-  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; detailId?: string; detailReady?: () => void; studio?: boolean;
+  historyLimited: boolean; onUpgrade: () => void; onJourney: (id: string) => void; onMemory: (id: string) => void; onRefresh: () => void; onFiftyStates?: () => void; detailId?: string; detailReady?: () => void; studio?: boolean;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
   const insets = useSafeAreaInsets();
+  const adaptiveLayout = useAdaptiveLayout();
   const { width } = useWindowDimensions();
   const cardWidth = Math.max(260, width - 74), cardStep = cardWidth + 14;
   const scrollX = useRef(new Animated.Value(0)).current;
@@ -1992,6 +2049,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
     if (!memoryDraft.id && !memoryDraft.journeyIds.length) return Alert.alert('Choose a journey', 'A Memory needs at least one journey.');
     setSaving(true);
     try {
+      const wasNew = !memoryDraft.id;
       const saved = await appDataClient.saveMemory({ id: memoryDraft.id, name: memoryDraft.name, notes: memoryDraft.notes, journeyIds: memoryDraft.journeyIds, previousJourneyIds: memoryDraft.previousJourneyIds, coverPhotoId: memoryDraft.coverPhotoId, artworkKey: studio ? studioArtworkKey.current : (memoryOverview ?? selectedMemory)?.artworkKey ?? 'road-trips' });
       const next = { ...memoryDraft, id: saved.id, name: saved.name, notes: saved.notes, journeyIds: saved.journeyIds, previousJourneyIds: saved.journeyIds, coverPhotoId: saved.coverPhotoId, photos: saved.photos };
       setMemoryDraft(next);
@@ -1999,6 +2057,8 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       setMemorySaveVersion(version => version + 1);
       void haptics.success();
       onRefresh();
+      afterEditorDismiss.current = wasNew ? () => onMemory(saved.id) : null;
+      setMemoryDraft(null);
     } catch (error) { Alert.alert('Memory not saved', error instanceof Error ? error.message : 'JourneyDeck could not save this memory.'); }
     finally { setSaving(false); }
   };
@@ -2058,7 +2118,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   };
 
   return <View style={styles.safe}>
-    {studio && !detailId && <IpadMemoriesScreen presentation={isIpad() ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
+    {studio && !detailId && <IpadMemoriesScreen presentation={adaptiveLayout.isRegular ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
       renderArtwork={memory => <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />}
       onCreate={ids => { editMemory(null); setMemoryDraft(draft => draft ? { ...draft, journeyIds: [...new Set(ids)] } : draft); }}
       onAdd={async (id, ids) => { await appDataClient.addJourneysToMemory(id, ids); onRefresh(); }}
@@ -2067,7 +2127,7 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
         if (latest) editMemory(latest);
         else Alert.alert('Memory unavailable', 'This Memory is no longer in your library.');
       }).catch(() => Alert.alert('Memory unavailable', 'Your library could not be read. Please try again.')); }}
-      onShare={openMemoryShare} onMemory={onMemory} onJourney={onJourney} onRefresh={onRefresh}
+      onShare={openMemoryShare} onMemory={onMemory} onJourney={onJourney} onRefresh={onRefresh} onFiftyStates={onFiftyStates}
       loading={catalog.status === 'loading' || journeys.status === 'loading'} error={catalog.status === 'error' || journeys.status === 'error' ? catalog.message ?? journeys.message ?? 'Your library could not refresh.' : undefined}
       historyLimited={historyLimited} onUpgrade={onUpgrade} busy={Boolean(memoryDraft || shareCard) || saving} />}
     {!studio && !detailId && <ScrollView
@@ -2153,16 +2213,21 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       onReady={detailReady}
     />
 
-    <NativeSheet dirty={memoryDraftDirty} busy={saving || photoBusy} onDismiss={() => { const next = afterEditorDismiss.current; afterEditorDismiss.current = null; next?.(); }} visible={Boolean(memoryDraft)} kicker={memoryDraft?.id ? 'EDIT MEMORY' : 'NEW MEMORY'} title={memoryDraft?.id ? 'Shape this chapter' : 'Create a Memory'} onClose={() => setMemoryDraft(null)}>
+    <NativeSheet dirty={memoryDraftDirty} busy={saving || photoBusy} onDismiss={() => { const next = afterEditorDismiss.current; afterEditorDismiss.current = null; next?.(); }} visible={Boolean(memoryDraft)} kicker={memoryDraft?.id ? 'EDIT MEMORY' : 'NEW MEMORY'} title={memoryDraft?.id ? 'Edit Memory' : 'Create a Memory'} onClose={() => setMemoryDraft(null)} footer={memoryDraft ? <View style={styles.editorActions}>
+      <Pressable onPress={() => requestSheetClose(memoryDraftDirty, saving || photoBusy, () => setMemoryDraft(null))} disabled={saving || photoBusy} style={styles.editorCancel}><Text style={styles.editorCancelText}>Cancel</Text></Pressable>
+      <TouchPressable onPress={() => void saveMemory()} disabled={saving || photoBusy || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><MemorySaveLabel saving={saving} dirty={memoryDraftDirty} successVersion={memorySaveVersion} style={styles.editorSaveText} /></TouchPressable>
+    </View> : undefined}>
       {memoryDraft && <View style={styles.modalEditorBody}>
+        <Text style={styles.editorInstruction}>MEMORY NAME</Text>
         <TextInput editable={!saving} value={memoryDraft.name} onChangeText={name => setMemoryDraft(current => current ? { ...current, name } : current)} placeholder="Memory name" placeholderTextColor={theme.color("#716879", 'text')} maxLength={80} style={styles.editorInput} />
+        <Text style={styles.editorInstruction}>STORY</Text>
         <TextInput editable={!saving} value={memoryDraft.notes} onChangeText={notes => setMemoryDraft(current => current ? { ...current, notes } : current)} placeholder="What makes this chapter special?" placeholderTextColor={theme.color("#716879", 'text')} maxLength={1200} multiline style={[styles.editorInput, styles.editorNotes]} />
-        <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>MEMORY PHOTOS</Text><Text style={styles.photoEditorHelp}>Add a photo and choose one as this Memory’s cover.</Text></View><Pressable onPress={() => void uploadMemoryPhoto()} disabled={photoBusy || !memoryDraft.id} style={[styles.photoAddButton, (!memoryDraft.id || photoBusy) && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add'}</Text></Pressable></View>
-        {!memoryDraft.id && <Text style={styles.photoSaveFirst}>Save the Memory once before adding its own photos.</Text>}
-        {availableMemoryPhotos.length ? <View style={styles.photoGrid}>{availableMemoryPhotos.map(photo => <PhotoTile key={photo.id} photo={photo} selected={memoryDraft.coverPhotoId === photo.id} label="MEMORY" onPress={() => setMemoryDraft(current => current ? { ...current, coverPhotoId: photo.id } : current)} onRemove={() => removePhoto(photo)} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Add a photo after saving this Memory.</Text></View>}
+        {memoryDraft.id ? <>
+          <View style={styles.photoEditorHeader}><View style={styles.flex}><Text style={styles.editorInstruction}>MEMORY PHOTOS</Text><Text style={styles.photoEditorHelp}>Choose one photo as this Memory’s cover.</Text></View><Pressable onPress={() => void uploadMemoryPhoto()} disabled={photoBusy} style={[styles.photoAddButton, photoBusy && styles.photoAddDisabled]}><Text style={styles.photoAddText}>{photoBusy ? 'Working…' : '+ Add photo'}</Text></Pressable></View>
+          {availableMemoryPhotos.length ? <View style={styles.photoGrid}>{availableMemoryPhotos.map(photo => <PhotoTile key={photo.id} photo={photo} selected={memoryDraft.coverPhotoId === photo.id} label="MEMORY" onPress={() => setMemoryDraft(current => current ? { ...current, coverPhotoId: photo.id } : current)} onRemove={() => removePhoto(photo)} />)}</View> : <View style={styles.photoEmpty}><Text style={styles.photoEmptyTitle}>No photos yet</Text><Text style={styles.photoEmptyBody}>Add a photo to give this Memory a cover.</Text></View>}
+        </> : <Text style={styles.photoSaveFirst}>You can add a cover and more photos after creating the Memory.</Text>}
         <MemoryJourneyEditor journeys={journeys.data.map(journey => ({ id: journey.id, title: locationPair(journey), detail: `${formatCompactDate(journey.startedAt)}  •  ${formatMiles(journey.miles)}` }))} selectedIds={memoryDraft.journeyIds} disabled={saving || photoBusy} onToggle={id => { toggleMemoryJourney(id); void haptics.selection(); }} />
         {memoryDraft.id && <Pressable onPress={deleteMemory} disabled={saving} style={styles.editorDelete}><Text style={styles.editorDeleteText}>Delete Memory</Text></Pressable>}
-        <View style={styles.editorActions}><Pressable onPress={() => requestSheetClose(memoryDraftDirty, saving || photoBusy, () => setMemoryDraft(null))} disabled={saving || photoBusy} style={styles.editorCancel}><Text style={styles.editorCancelText}>{memoryDraftDirty ? 'Cancel' : 'Done'}</Text></Pressable><TouchPressable onPress={() => void saveMemory()} disabled={saving || photoBusy || !memoryDraftDirty} style={[styles.editorSave, !memoryDraftDirty && styles.editorSaveSaved, saving && styles.pressed]}><MemorySaveLabel saving={saving} dirty={memoryDraftDirty} successVersion={memorySaveVersion} style={styles.editorSaveText} /></TouchPressable></View>
       </View>}
     </NativeSheet>
 
@@ -2191,6 +2256,8 @@ function MemoryDetailScreen({
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const { reduceMotion } = useMotionPreferences();
+  const adaptiveLayout = useAdaptiveLayout();
+  const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, 20);
   const detailScrollY = useRef(new Animated.Value(0)).current;
   const photographicDepth = reduceMotion ? undefined : {
     transform: [
@@ -2209,7 +2276,7 @@ function MemoryDetailScreen({
   ]} />}><View style={styles.safe}>
     <LinearGradient colors={theme.gradient(['#2b172b', '#120d1a', '#08070c'] as const)} locations={[0, 0.36, 1]} style={StyleSheet.absoluteFill} />
         <Animated.ScrollView
-          contentContainerStyle={[styles.memoryDetailContent, { paddingTop: 16, paddingBottom: insets.bottom + 38 }]}
+          contentContainerStyle={[styles.memoryDetailContent, { paddingTop: 16 + adaptiveLayout.occlusionInsets.top, paddingBottom: insets.bottom + adaptiveLayout.occlusionInsets.bottom + 38 }]}
           showsVerticalScrollIndicator={false}
           contentInsetAdjustmentBehavior="never"
           automaticallyAdjustContentInsets={false}
@@ -2217,22 +2284,29 @@ function MemoryDetailScreen({
           onScroll={reduceMotion ? undefined : Animated.event([{ nativeEvent: { contentOffset: { y: detailScrollY } } }], { useNativeDriver: true })}
           scrollEventThrottle={16}
         >
-          <Animated.View style={[styles.memoryDetailHero, photographicDepth]}>
-            <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} onReady={onReady} /> : <MemoryArtwork artworkKey={memory.artworkKey} onReady={onReady} />}</View>
-            <LinearGradient colors={theme.gradient(['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const)} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
-            <View style={styles.memoryDetailHeroGlowOne} /><View style={styles.memoryDetailHeroGlowTwo} />
-            <View style={styles.memoryDetailHeroContent}><Text style={styles.memoryDetailKicker}>MEMORY</Text><Text style={styles.memoryDetailTitle}>{memory.name}</Text><Text style={styles.memoryDetailMeta}>{journeys.length} {journeys.length === 1 ? 'journey' : 'journeys'}  ·  {memory.photos.length} photos</Text></View>
-          </Animated.View>
-          <Reanimated.View style={styles.memoryDetailBreadcrumb}><Text style={styles.memoryDetailBreadcrumbActive}>Memory</Text><Text style={styles.memoryDetailBreadcrumbArrow}>›</Text><Text style={styles.memoryDetailBreadcrumbMuted}>Journeys</Text></Reanimated.View>
-          {memory.notes ? <Reanimated.Text style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text> : null}
-          <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/memory-photos/[id]', params: { id: memory.id } })}
-            style={{ padding: 20, gap: 6, marginVertical: 16, borderRadius: 22, borderWidth: 1, borderColor: theme.palette.line, backgroundColor: theme.palette.card }}>
-            <Text style={{ color: theme.palette.accent, fontSize: 17, fontWeight: '800' }}>Find matching photos ↗</Text>
-            <Text style={{ color: theme.palette.muted, fontSize: 13 }}>Suggestions from your photo dates and locations. Review before adding. Free for everyone.</Text>
-          </Pressable>
-          <Reanimated.Text style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
-          <View style={styles.memoryJourneyList}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
-          {!journeys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
+          <View testID="memory-detail-duo-layout" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : undefined}>
+            <View testID="memory-detail-story-pane" style={foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
+              <Animated.View style={[styles.memoryDetailHero, photographicDepth]}>
+                <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} onReady={onReady} /> : <MemoryArtwork artworkKey={memory.artworkKey} onReady={onReady} />}</View>
+                <LinearGradient colors={theme.gradient(['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const)} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
+                <View style={styles.memoryDetailHeroGlowOne} /><View style={styles.memoryDetailHeroGlowTwo} />
+                <View style={styles.memoryDetailHeroContent}><Text style={styles.memoryDetailKicker}>MEMORY</Text><Text style={styles.memoryDetailTitle}>{memory.name}</Text><Text style={styles.memoryDetailMeta}>{journeys.length} {journeys.length === 1 ? 'journey' : 'journeys'}  ·  {memory.photos.length} photos</Text></View>
+              </Animated.View>
+              {memory.notes ? <View style={styles.memoryStory}><Text style={styles.memoryDetailSection}>STORY</Text><Reanimated.Text style={styles.memoryDetailNotes}>{memory.notes}</Reanimated.Text></View> : null}
+              <View style={styles.memoryPhotoHeader}><Text style={styles.memoryDetailSection}>PHOTOS · {memory.photos.length}</Text><Pressable accessibilityRole="button" onPress={onEdit} style={styles.memoryPhotoHeaderAction}><Text style={styles.memoryPhotoHeaderActionText}>{memory.photos.length ? 'Manage' : 'Add photos'}</Text></Pressable></View>
+              {memory.photos.length > 1 ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.memoryPhotoStrip}>{memory.photos.map(photo => <Pressable key={photo.id} accessibilityRole="button" accessibilityLabel={photo.id === memory.coverPhotoId ? 'Cover photo' : 'Set as cover in Edit Memory'} onPress={onEdit} style={[styles.memoryPhotoThumb, photo.id === memory.coverPhotoId && styles.memoryPhotoThumbCover]}><JourneyPhotoImage photo={photo} style={styles.memoryPhotoThumbImage} /></Pressable>)}</ScrollView> : null}
+              <Pressable accessibilityRole="button" accessibilityLabel="Find photos matching this Memory" onPress={() => router.push({ pathname: '/memory-photos/[id]', params: { id: memory.id } })} style={styles.memoryPhotoMatchRow}>
+                <SymbolView name="photo.badge.magnifyingglass" tintColor={theme.palette.accent} style={styles.memoryPhotoMatchIcon} />
+                <View style={styles.flex}><Text style={styles.memoryPhotoMatchTitle}>Find matching photos</Text><Text style={styles.memoryPhotoMatchBody}>Suggestions from journey dates and locations</Text></View>
+                <Text style={styles.memoryPhotoMatchChevron}>›</Text>
+              </Pressable>
+            </View>
+            <View testID="memory-detail-journeys-pane" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
+              <Reanimated.Text style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
+              <View style={styles.memoryJourneyList}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
+              {!journeys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
+            </View>
+          </View>
         </Animated.ScrollView>
   </View></DetailScreenFrame>;
 }
@@ -2391,6 +2465,9 @@ export function NativeJourneyScreen() {
 function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void> }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const adaptiveLayout = useAdaptiveLayout();
+  const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, 16);
+  const journeyScrollRef = useRef<ScrollView>(null);
 
   const journey = state.data;
   const replayPhotos = useMemo(() => journey && visible ? loadReplayPhotos(getCurrentUser().id, journey.id) : [], [journey, visible]);
@@ -2406,6 +2483,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   const [locationsSignature, setLocationsSignature] = useState('');
   const locationsDirty = JSON.stringify([startingName.trim(), endingName.trim()]) !== locationsSignature;
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
+  const [showAllTracks, setShowAllTracks] = useState(false);
   const [journeyCityLabel, setJourneyCityLabel] = useState<string | null>(null);
   const songMoments = useMemo(() => journey ? buildSongRouteMoments(
     journey.soundtrack,
@@ -2415,7 +2493,7 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   ) : [], [journey]);
 
   useEffect(() => {
-    if (!visible) { setEditingLocations(false); setSelectedSongIndex(null); return; }
+    if (!visible) { setEditingLocations(false); setSelectedSongIndex(null); setShowAllTracks(false); return; }
     if (!journey || editingLocations) return;
     setSelectedSongIndex(null);
     setStartingName(journey.startingLocation && journey.startingLocation !== rawStartingLocation ? journey.startingLocation : '');
@@ -2436,6 +2514,11 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   }, [journey, visible]);
 
   const displayTitle = journey ? journeyDisplayTitle(journey, journeyCityLabel) : 'Drive details';
+  const visibleSoundtrack = journey ? (showAllTracks ? journey.soundtrack : journey.soundtrack.slice(0, 5)) : [];
+  const revealSongOnMap = (index: number) => {
+    setSelectedSongIndex(index);
+    if (!foldColumns) journeyScrollRef.current?.scrollTo({ y: 300, animated: true });
+  };
 
   const openJourneyShare = () => {
     if (!journey) return;
@@ -2496,12 +2579,18 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   };
 
   return <>
-    <DetailScreenFrame title="Journey" onBack={onClose}>
-    <ScrollView style={styles.safe} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} contentContainerStyle={[styles.overlayContent, { paddingBottom: 40 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <DetailScreenFrame title="Journey" onBack={onClose} actions={journey ? <NativeActionMenu compact label="Journey actions" actions={[
+      { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: openJourneyShare },
+      { id: 'locations', title: 'Edit locations', image: 'mappin.and.ellipse', onSelect: openLocationEditor },
+      { id: 'trim', title: 'Trim & split', image: 'scissors', onSelect: () => router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } }) },
+    ]} /> : undefined}>
+    <ScrollView ref={journeyScrollRef} style={styles.safe} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} contentContainerStyle={[styles.overlayContent, { paddingTop: 16 + adaptiveLayout.occlusionInsets.top, paddingBottom: 40 + adaptiveLayout.occlusionInsets.bottom }]} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       {state.status === 'loading' ? <LoadingCard /> : state.status === 'error' || !journey ? <InlineNotice message={state.message ?? 'Journey unavailable.'} onRetry={onRetry} /> : <>
+          <View testID="journey-detail-duo-layout" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : undefined}>
+            <View testID="journey-detail-map-pane" style={foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
             <JourneyCinematicHero journey={journey} title={displayTitle} />
             <SectionHeading title="Route" />
-            <InteractiveRouteMap key={journey.id}
+            <JourneyMarkerRoute key={journey.id} journeyId={journey.id}
               coordinates={journey.route?.coordinates ?? []}
               routeSamples={journey.route?.points}
               photos={replayPhotos}
@@ -2517,8 +2606,10 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
               onSelectSong={setSelectedSongIndex}
               fallback={<RouteSketch expanded coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} />}
             />
-            <SectionHeading title="Soundtrack" action={`${journey.songCount} songs`} />
-            {journey.soundtrack.length ? journey.soundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} selected={selectedSongIndex === index + 1} onPress={() => setSelectedSongIndex(index + 1)} />) : <EmptyCard title="No songs yet" body="Identify songs while recording." />}
+            </View>
+            <View testID="journey-detail-story-pane" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
+            <SectionHeading title="Soundtrack" action={journey.soundtrack.length > 5 ? (showAllTracks ? 'Show less' : `View all ${journey.soundtrack.length}`) : `${journey.songCount} songs`} onAction={journey.soundtrack.length > 5 ? () => setShowAllTracks(value => !value) : undefined} />
+            {visibleSoundtrack.length ? visibleSoundtrack.map((track, index) => <TrackRow key={`${track.source}-${track.playedAt ?? track.track}-${index}`} track={track} index={index + 1} selected={selectedSongIndex === index + 1} onPress={() => revealSongOnMap(index + 1)} />) : <EmptyCard title="No songs yet" body="Identify songs while recording." />}
             {(journey.vehicleName || journey.startingBatteryPercent != null || journey.energyUsedKwh != null) && <>
               <SectionHeading title="Vehicle" />
               <View style={styles.infoCard}>
@@ -2527,11 +2618,8 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
                 {journey.energyUsedKwh != null && <InfoRow label="ENERGY USED" value={`${journey.energyUsedKwh.toFixed(1)} kWh`} />}
               </View>
             </>}
-            {!editingLocations && <View style={styles.journeyActions}>
-              <Pressable onPress={openJourneyShare} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Create share card</Text></Pressable>
-              <Pressable onPress={openLocationEditor} style={styles.journeyEditButton}><Text style={styles.journeyEditButtonText}>Edit locations</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } })} style={styles.journeyShareButton}><Text style={styles.journeyShareButtonText}>Trim & split · Plus</Text></Pressable>
-            </View>}
+            </View>
+          </View>
           </>}
     </ScrollView>
     </DetailScreenFrame>
@@ -2551,14 +2639,16 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
 type SettingsDestination =
   | { kind: 'overview' }
   | { kind: 'category'; category: SettingsCategoryId }
+  | { kind: 'appearance-picker'; picker: 'theme' | 'icon' }
   | { kind: 'profile' }
   | { kind: 'saved-place'; slot: SavedPlaceSlot }
   | { kind: 'custom-place'; placeId?: string };
 
-function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
+function SettingsEditorScaffold({ eyebrow, title, onBack, backLabel = 'Settings', backDisabled = false, primaryAction, children }: {
   eyebrow: string;
   title: string;
   onBack: () => void;
+  backLabel?: string;
   backDisabled?: boolean;
   primaryAction?: { label: string; onPress: () => void; disabled?: boolean };
   children: ReactNode;
@@ -2585,8 +2675,8 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
       >
         <AtmosphericBackdrop variant="settings" />
         <View style={styles.settingsEditorNavigation}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back to Settings" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={[styles.settingsEditorBack, backDisabled && styles.pressed]}>
-            <Text style={styles.settingsEditorBackText}>‹  Settings</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={[styles.settingsEditorBack, backDisabled && styles.pressed]}>
+            <Text style={styles.settingsEditorBackText}>‹  {backLabel}</Text>
           </Pressable>
           {primaryAction && <Pressable accessibilityRole="button" accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled} onPress={primaryAction.onPress} style={[styles.settingsEditorHeaderAction, primaryAction.disabled && styles.pressed]}><Text style={styles.settingsEditorHeaderActionText}>{primaryAction.label}</Text></Pressable>}
         </View>
@@ -2752,6 +2842,7 @@ function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { 
   const [busy, setBusy] = useState(false);
   const operationGeneration = useRef(0);
   useEffect(() => () => { operationGeneration.current += 1; }, []);
+
   const save = async () => {
     const trimmedName = name.trim(), trimmedAddress = address.trim();
     if (!trimmedName || !trimmedAddress) return;
@@ -2777,6 +2868,7 @@ function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { 
       Alert.alert('Location not saved', error instanceof Error ? error.message : 'JourneyDeck could not save that place.');
     }
   };
+
   const remove = () => {
     if (!place) return;
     removeCustomSavedPlace(currentUser.id, place.id);
@@ -2785,6 +2877,7 @@ function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { 
     onBack();
   };
   const disabled = busy || !name.trim() || !address.trim();
+
   return <SettingsEditorScaffold eyebrow="CUSTOM SAFE PLACE" title={place ? `Edit ${place.label}` : 'Add a safe place'} onBack={onBack} backDisabled={busy}>
     <View style={styles.settingsEditorPanel}>
       <Text style={styles.settingsEditorBody}>Give this place a name and address. JourneyDeck will use the name for journeys and protect the location when you share.</Text>
@@ -2842,6 +2935,7 @@ function ConnectionsScreen({
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const adaptiveLayout = useAdaptiveLayout();
 
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
   const [savedPlaces, setSavedPlaces] = useState(() => loadSavedPlaces(currentUser.id));
@@ -2897,8 +2991,18 @@ function ConnectionsScreen({
   if (destination.kind === 'custom-place') {
     return <SettingsCustomPlaceEditor currentUser={currentUser} place={customSavedPlaces.find(place => place.id === destination.placeId)} onChanged={refreshSavedPlaces} onBack={closeEditor} />;
   }
+  if (destination.kind === 'appearance-picker') {
+    const choosingTheme = destination.picker === 'theme';
+    return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} backLabel="Appearance" onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
+      <View style={styles.settingsCategoryStack}>
+        {choosingTheme
+          ? <ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} />
+          : <AppIconPicker membershipTier={membershipTier} onUpgrade={onMembership} />}
+      </View>
+    </SettingsEditorScaffold>;
+  }
 
-  if (isIpad()) return <IpadSettingsScreen
+  if (adaptiveLayout.isRegular) return <IpadSettingsScreen
     displayName={profileAppearance.displayName} avatar={profileAppearance.avatarDataUri} initials={profileInitialsFor(profileAppearance.displayName)}
     appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
@@ -2911,8 +3015,10 @@ function ConnectionsScreen({
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
-    internalDiagnostics={internalTesting} advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
+    internalDiagnostics={internalTesting}
+    advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
+    onMarkersPrototype={V3_MARKERS_PROTOTYPE_ENABLED ? () => router.push('/time-capsule-prototype') : undefined}
   />;
 
   const profileCard = <>
@@ -2925,11 +3031,11 @@ function ConnectionsScreen({
     {appleIdentityStatus !== 'authorized' && !signingInWithApple && <AppleAuthentication.AppleAuthenticationButton buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE} buttonStyle={theme.isLight ? AppleAuthentication.AppleAuthenticationButtonStyle.BLACK : AppleAuthentication.AppleAuthenticationButtonStyle.WHITE} cornerRadius={12} style={styles.appleSignInButton} onPress={onAppleSignIn} />}
     {signingInWithApple && <View style={styles.appleSignInProgress}><ActivityIndicator color={theme.color('#a88aff', 'text')} /><Text style={styles.connectionDetail}>Finishing Apple sign-in…</Text></View>}
     {appleIdentityStatus === 'revoked' && <Text style={styles.appleIdentityWarning}>Apple access was revoked. Your local journeys remain untouched; sign in again to relink this profile.</Text>}
-    <View style={styles.accountActions}>
-      {Boolean(currentUser.appleSubject) && <TouchPressable disabled={accountActionPending} onPress={onSignOut} style={[styles.accountSecondaryButton, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></TouchPressable>}
-      <TouchPressable disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.accountDeleteButton, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></TouchPressable>
-    </View>
   </>;
+  const accountActions = <View style={styles.settingsDangerGroup}>
+    {Boolean(currentUser.appleSubject) && <TouchPressable accessibilityRole="button" disabled={accountActionPending} onPress={onSignOut} style={[styles.settingsDangerRow, accountActionPending && styles.pressed]}><Text style={styles.accountSecondaryText}>Sign out of JourneyDeck</Text></TouchPressable>}
+    <TouchPressable accessibilityRole="button" disabled={accountActionPending} onPress={onDeleteAccount} style={[styles.settingsDangerRow, Boolean(currentUser.appleSubject) && styles.settingsHubRowBorder, accountActionPending && styles.pressed]}><Text style={styles.accountDeleteText}>{accountActionPending ? 'Finishing account change…' : 'Delete JourneyDeck account'}</Text></TouchPressable>
+  </View>;
   const cloudCard = <>
     <SectionHeading title="iCloud Backup" />
     <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#4598ff', 'border') }]}>
@@ -2937,7 +3043,7 @@ function ConnectionsScreen({
       <View style={styles.flex}><Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text><Text style={styles.connectionName}>iCloud Backup</Text><Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text></View>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Sync iCloud now" onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Update app' : 'Sync'}</Text></TouchPressable>
     </View>
-    <View style={styles.privateCloudCard}><Text style={styles.privateCloudBody}>Your JourneyDeck library stays private in your iCloud account.</Text><TouchPressable accessibilityRole="link" accessibilityHint="Opens JourneyDeck’s public privacy policy in Safari" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')}><Text style={styles.privateCloudLearn}>Read Privacy Policy</Text></TouchPressable></View>
+    <Text style={styles.settingsDetailFootnote}>Your JourneyDeck library stays private in your iCloud account.</Text>
   </>;
   const membershipCard = <>
     <SectionHeading title="Membership" />
@@ -2986,15 +3092,36 @@ function ConnectionsScreen({
     <View style={styles.settingsSupportLinks}><TouchPressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => void Linking.openURL('https://journeydeck.me/privacy')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Privacy Policy ↗</Text></TouchPressable><TouchPressable accessibilityRole="link" accessibilityLabel="Support Page" onPress={() => void Linking.openURL('https://journeydeck.me/support')} style={styles.settingsSupportLink}><Text style={styles.privateCloudLearn}>Support Page ↗</Text></TouchPressable></View>
   </>;
 
+  const compactActionRow = ({ label, detail, symbol, value, accessibilityLabel, onPress, border = false }: {
+    label: string; detail: string; symbol: SFSymbol; value?: string; accessibilityLabel: string; onPress: () => void; border?: boolean;
+  }) => <TouchPressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} onPress={onPress} style={({ pressed }) => [styles.settingsCompactRow, border && styles.settingsHubRowBorder, pressed && styles.pressed]}>
+    <View style={styles.settingsCompactIcon}><SymbolView name={symbol} tintColor={theme.palette.accent} size={19} /></View>
+    <View style={styles.flex}><Text style={styles.settingsCompactTitle}>{label}</Text><Text numberOfLines={2} style={styles.settingsCompactDetail}>{detail}</Text></View>
+    {value && <Text numberOfLines={1} style={styles.settingsCompactValue}>{value}</Text>}
+    <Text style={styles.settingsCompactChevron}>›</Text>
+  </TouchPressable>;
+
   if (destination.kind === 'category') {
     const category = settingsCategories.find(item => item.id === destination.category)!;
     const categoryContent: Record<SettingsCategoryId, ReactNode> = {
-      appearance: <><ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} /><AppIconPicker membershipTier={membershipTier} onUpgrade={onMembership} /></>,
+      appearance: <>
+        <Text style={styles.settingsDetailIntro}>Your current look stays selected until you choose another. Theme changes apply throughout JourneyDeck.</Text>
+        <View style={styles.settingsCompactList}>
+          {compactActionRow({ label: 'Theme', detail: 'Colors, artwork, and interface style', value: theme.name, symbol: 'paintbrush.fill', accessibilityLabel: 'Choose theme', onPress: () => setDestination({ kind: 'appearance-picker', picker: 'theme' }) })}
+          {compactActionRow({ label: 'App icon', detail: 'The icon shown on your Home Screen', value: appIconCatalog[appIconId].name, symbol: 'app.fill', accessibilityLabel: 'Choose app icon', onPress: () => setDestination({ kind: 'appearance-picker', picker: 'icon' }), border: true })}
+        </View>
+      </>,
       achievements: <AchievementsOverview journeys={journeys} memories={memories} />,
-      recording: <><View style={styles.settingsEditorPanel}><View style={styles.settingsCategoryFeature}><View style={styles.settingsHubIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={22} /></View><View style={styles.flex}><Text style={styles.connectionName}>Manual recording</Text><Text style={styles.connectionDetail}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View><View style={styles.privateCloudCard}><Text style={styles.privateCloudTitle}>LOCATION PRIVACY</Text><Text style={styles.privateCloudBody}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text><PlaceDataCredits /></View></>,
-      music: <>{providerCard}{internalMusicControls}<View style={[styles.securityCard, styles.staticWidgetGlow]}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey on this iPhone.</Text></View></>,
-      account: <>{profileCard}{cloudCard}</>,
-      places: <><SectionHeading title="Saved Places" />{placesCard}</>,
+      recording: <>
+        <View style={styles.settingsCompactList}>
+          <View style={styles.settingsInfoRow}><View style={styles.settingsCompactIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>Manual recording</Text><Text style={styles.settingsCompactDetail}>Journeys begin only after you tap Start Journey.</Text></View><Text style={styles.settingsStatusText}>On</Text></View>
+          <View style={[styles.settingsInfoRow, styles.settingsHubRowBorder]}><View style={styles.settingsCompactIcon}><SymbolView name="location.fill" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>Location privacy</Text><Text style={styles.settingsCompactDetail}>Routes stay local and in your private iCloud account. Saved places are masked when sharing.</Text></View></View>
+        </View>
+        <View style={styles.settingsInsetNote}><Text style={styles.privateCloudTitle}>PLACE DATA</Text><PlaceDataCredits /></View>
+      </>,
+      music: <>{providerCard}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
+      account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
+      places: <><Text style={styles.settingsDetailIntro}>Name familiar places automatically and protect their exact locations when sharing.</Text>{placesCard}</>,
       membership: <>{membershipCard}{supportCard}</>,
     };
     return <SettingsEditorScaffold eyebrow="SETTINGS" title={category.title} onBack={closeEditor}><View style={styles.settingsCategoryStack}>{categoryContent[destination.category]}</View></SettingsEditorScaffold>;
@@ -3007,15 +3134,32 @@ function ConnectionsScreen({
     account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} saved`,
     membership: membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Help and privacy',
   };
-  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+  const renderCategoryRow = (categoryId: SettingsCategoryId, border: boolean) => {
+    const category = settingsCategories.find(item => item.id === categoryId)!;
+    return <TouchPressable key={category.id} accessibilityRole="button" accessibilityLabel={`Open ${category.title} settings`} onPress={() => openCategory(category.id)} style={({ pressed }) => [styles.settingsHubRow, border && styles.settingsHubRowBorder, pressed && styles.pressed]}>
+      <View style={styles.settingsHubIcon}><SymbolView name={category.symbol as SFSymbol} tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>{category.title}</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>{categorySummary[category.id]}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+    </TouchPressable>;
+  };
+  const renderCategoryGroup = (label: string, categoryIds: readonly SettingsCategoryId[]) => <View style={styles.settingsHubSection}>
+    <Text style={styles.settingsSectionLabel}>{label}</Text>
+    <View style={styles.settingsHubList}>{categoryIds.map((categoryId, index) => renderCategoryRow(categoryId, index > 0))}</View>
+  </View>;
+  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 112 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
     <AtmosphericBackdrop variant="settings" /><PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
     <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.settingsHubProfile, pressed && styles.pressed]}>
       <View style={[styles.settingsHubAvatar, { backgroundColor: theme.palette.inset }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
-      <View style={styles.flex}><Text style={styles.settingsHubProfileName}>{profileAppearance.displayName}</Text><Text style={styles.settingsHubProfileDetail}>Primary driver · Edit profile</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+      <View style={styles.flex}><Text style={styles.settingsHubProfileName}>{profileAppearance.displayName}</Text><Text style={styles.settingsHubProfileDetail}>Primary driver · {membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free plan'}</Text></View><Text style={styles.settingsHubAction}>Edit</Text>
     </TouchPressable>
-    <View style={styles.settingsHubList}>{settingsCategories.map((category, index) => <TouchPressable key={category.id} accessibilityRole="button" accessibilityLabel={`Open ${category.title} settings`} onPress={() => openCategory(category.id)} style={({ pressed }) => [styles.settingsHubRow, index > 0 && styles.settingsHubRowBorder, pressed && styles.pressed]}>
-      <View style={styles.settingsHubIcon}><SymbolView name={category.symbol as SFSymbol} tintColor={theme.palette.accent} size={21} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>{category.title}</Text><Text numberOfLines={2} style={styles.settingsHubSummary}>{categorySummary[category.id]}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
-    </TouchPressable>)}</View>
+    <View style={styles.settingsHubSection}>
+      <Text style={styles.settingsSectionLabel}>YOUR JOURNEY</Text>
+      <View style={styles.settingsHubList}>
+        {V3_MARKERS_PROTOTYPE_ENABLED && <TouchPressable testID="markers-prototype-entry" accessibilityRole="button" accessibilityLabel="Open saved journey markers" onPress={() => router.push('/time-capsule-prototype')} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}><View style={styles.settingsHubIcon}><SymbolView name="hourglass" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Markers</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>Notes and photos from your drives</Text></View><Text style={styles.settingsHubChevron}>›</Text></TouchPressable>}
+        {renderCategoryRow('achievements', V3_MARKERS_PROTOTYPE_ENABLED)}
+        {renderCategoryRow('places', true)}
+      </View>
+    </View>
+    {renderCategoryGroup('PREFERENCES', ['appearance', 'music', 'recording'])}
+    {renderCategoryGroup('ACCOUNT & SUPPORT', ['account', 'membership'])}
   </SettingsScrollView>;
 }
 
@@ -3295,7 +3439,7 @@ function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySu
 
   const track = journey.soundtrackPreview?.[0];
   if (compact) return (
-    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCardCompact, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={16} />
+    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCardCompact, pressed && styles.pressed]}>
       <View style={styles.journeyCompactTop}>
         <View style={styles.flex}>
           <Text style={styles.journeyDateCompact}>{formatFullDate(journey.startedAt)}</Text>
@@ -3328,9 +3472,10 @@ function Artwork({ track, size }: { track: { artworkUrl?: string | null; track: 
 }
 
 function TrackRow({ track, index, selected = false, onPress }: { track: { artworkUrl?: string | null; track: string; artist: string }; index: number; selected?: boolean; onPress?: () => void }) {
+  const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  return <Pressable accessibilityLabel={`Show ${track.track} on the journey map`} onPress={onPress} style={({ pressed }) => [styles.trackRow, selected && styles.trackRowSelected, pressed && styles.pressed]}><Text style={[styles.trackIndex, selected && styles.trackIndexSelected]}>{String(index).padStart(2, '0')}</Text><Artwork track={track} size={48} /><View style={styles.flex}><Text style={styles.trackTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text></View><Text style={[styles.trackMapLink, selected && styles.trackMapLinkSelected]}>{selected ? 'ON MAP' : 'MAP'}</Text></Pressable>;
+  return <Pressable accessibilityLabel={`Show ${track.track} on the journey map`} accessibilityState={{ selected }} onPress={onPress} style={({ pressed }) => [styles.trackRow, selected && styles.trackRowSelected, pressed && styles.pressed]}><Text style={[styles.trackIndex, selected && styles.trackIndexSelected]}>{String(index).padStart(2, '0')}</Text><Artwork track={track} size={48} /><View style={styles.flex}><Text style={styles.trackTitle} numberOfLines={1}>{track.track}</Text><Text style={styles.trackArtist} numberOfLines={1}>{track.artist}</Text></View><SymbolView name={selected ? 'map.fill' : 'map'} tintColor={selected ? theme.palette.accent : theme.palette.muted} style={styles.trackMapIcon} /></Pressable>;
 }
 
 function EmptyCard({ title, body }: { title: string; body: string }) {
@@ -3575,14 +3720,14 @@ const darkStyles = StyleSheet.create({
   memorySectionHeader: { marginHorizontal: 20, marginTop: 5, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }, memoryLevel: { color: '#a88aff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8 }, memorySectionTitle: { color: '#f5f0fb', fontSize: 19, fontWeight: '900', marginTop: 4 }, memoryHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, memoryHeaderAction: { color: '#ff8767', fontSize: 11, fontWeight: '900' },
   memoryCarouselContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 14 }, memoryHeroCard: { height: 244, borderRadius: 26, overflow: 'hidden', backgroundColor: '#14101e', borderWidth: 1, borderColor: '#4c375d', padding: 20, justifyContent: 'flex-end', shadowColor: '#9b7cff', shadowOpacity: 0.25, shadowRadius: 18 }, memoryEmptyHero: { marginHorizontal: 20 }, memoryCardShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 92 }, memoryHeroShade: { position: 'absolute', left: 0, right: 0, top: 100, bottom: 0, backgroundColor: '#09071099' }, memoryHeroKicker: { color: '#ff9b7c', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, memoryHeroTitle: { color: '#fff8ff', fontSize: 29, lineHeight: 34, fontWeight: '900', marginTop: 7, letterSpacing: -0.7 }, memoryCardTitle: { marginTop: 0, textShadowColor: '#08040dcc', textShadowRadius: 8 }, memoryHeroMeta: { color: '#c2b7ca', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryCardMeta: { marginTop: 2, textShadowColor: '#08040ddd', textShadowRadius: 6 }, memoryDots: { minHeight: 8, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }, memoryDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#403748' }, memoryDotActive: { width: 24, backgroundColor: '#ff795b' },
   memoryArtwork: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: '#241433', overflow: 'hidden' }, memoryArtworkNight: { backgroundColor: '#0b1630' },
-  memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, marginTop: 3 }, editorDelete: { minHeight: 42, borderRadius: 12, borderWidth: 1, borderColor: '#6f303b', backgroundColor: '#261116', alignItems: 'center', justifyContent: 'center', marginTop: 4 }, editorDeleteText: { color: '#ff8f9d', fontSize: 12, fontWeight: '900' }, editorActions: { flexDirection: 'row', gap: 9, marginTop: 4 }, editorCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 46, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveSaved: { backgroundColor: '#43e6ae' }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900', letterSpacing: 0.55 },
+  memoryEditor: { marginHorizontal: 20, backgroundColor: '#121019', borderRadius: 22, borderWidth: 1, borderColor: '#604779', padding: 16, gap: 10 }, collectionEditor: { marginHorizontal: 20, backgroundColor: '#111018', borderRadius: 20, borderWidth: 1, borderColor: '#4a365c', padding: 15, gap: 10 }, editorKicker: { color: '#b693ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }, editorInput: { minHeight: 48, borderRadius: 13, borderWidth: 1, borderColor: '#3b3148', backgroundColor: '#0c0a11', color: '#f5f0f8', fontSize: 14, paddingHorizontal: 13, paddingVertical: 11 }, editorNotes: { minHeight: 76, textAlignVertical: 'top' }, editorInstruction: { color: '#8e8497', fontSize: 11, fontWeight: '800', letterSpacing: 1.1, marginTop: 3 }, editorDelete: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: '#6f303b', backgroundColor: '#261116', alignItems: 'center', justifyContent: 'center', marginTop: 10 }, editorDeleteText: { color: '#ff8f9d', fontSize: 12, fontWeight: '900' }, editorActions: { flexDirection: 'row', gap: 9 }, editorCancel: { flex: 1, minHeight: 50, borderRadius: 13, borderWidth: 1, borderColor: '#3b3345', alignItems: 'center', justifyContent: 'center' }, editorCancelText: { color: '#b5acbd', fontSize: 12, fontWeight: '800' }, editorSave: { flex: 1.4, minHeight: 50, borderRadius: 13, backgroundColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, editorSaveSaved: { opacity: 0.42 }, editorSaveText: { color: '#1b0b07', fontSize: 12, fontWeight: '900', letterSpacing: 0.55 },
   photoEditorHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, photoEditorHelp: { color: '#8e8497', fontSize: 10, lineHeight: 15, marginTop: 4 }, photoAddButton: { minHeight: 36, borderRadius: 999, backgroundColor: '#281b39', borderWidth: 1, borderColor: '#684b8c', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' }, photoAddDisabled: { opacity: 0.42 }, photoAddText: { color: '#c5a5ff', fontSize: 9, fontWeight: '900' }, photoSaveFirst: { color: '#ffad7f', fontSize: 10, lineHeight: 14 }, photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 }, photoTile: { width: '31%', aspectRatio: 0.86, borderRadius: 14, overflow: 'visible', borderWidth: 2, borderColor: 'transparent' }, photoTileSelected: { borderColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 0.4, shadowRadius: 8 }, photoTileImage: { width: '100%', height: '100%', borderRadius: 12, overflow: 'hidden' }, photoTileShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 38, backgroundColor: '#08060bbb' }, photoTileLabel: { position: 'absolute', left: 7, right: 7, bottom: 8, color: '#fff5fb', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 }, photoRemove: { position: 'absolute', right: -7, top: -7, width: 24, height: 24, borderRadius: 12, backgroundColor: '#32151b', borderWidth: 1, borderColor: '#ff795b', alignItems: 'center', justifyContent: 'center' }, photoRemoveText: { color: '#ff9c89', fontSize: 18, lineHeight: 20, fontWeight: '700' }, photoLoading: { backgroundColor: '#1b1524', alignItems: 'center', justifyContent: 'center' }, photoEmpty: { minHeight: 72, borderRadius: 14, borderWidth: 1, borderStyle: 'dashed', borderColor: '#3b3148', backgroundColor: '#0c0a11', padding: 12, justifyContent: 'center' }, photoEmptyTitle: { color: '#d3c6dc', fontSize: 11, fontWeight: '800' }, photoEmptyBody: { color: '#7f7488', fontSize: 9, lineHeight: 14, marginTop: 4 },
   membershipRow: { minHeight: 58, borderRadius: 14, borderWidth: 1, borderColor: '#302839', backgroundColor: '#0d0b12', flexDirection: 'row', alignItems: 'center', gap: 10, padding: 11 }, membershipRowSelected: { borderColor: '#6e4f91', backgroundColor: '#191124' }, membershipCheck: { width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#5c5067', alignItems: 'center', justifyContent: 'center' }, membershipCheckSelected: { borderColor: '#43e6ae', backgroundColor: '#123128' }, membershipCheckText: { color: '#a995ba', fontWeight: '900' }, membershipTitle: { color: '#f0eaf5', fontSize: 12, fontWeight: '800' }, membershipDetail: { color: '#7e7487', fontSize: 9, marginTop: 3 }, membershipAction: { color: '#9d7de3', fontSize: 9, fontWeight: '900' }, membershipActionRemove: { color: '#ff9a7b' },
   memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
   memoryRoadThreadAligned: { position: 'absolute', zIndex: 0, left: 0, top: 0, width: 32 },
   memoryDetailChaptersAligned: { gap: 18, paddingLeft: 44 },
   memoryDetailRoadPinAligned: { position: 'absolute', zIndex: 4, left: -40, top: 40, shadowColor: '#ff7357', shadowOpacity: 0.9, shadowRadius: 10 },
-  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryDetailBreadcrumb: { flexDirection: 'row', alignSelf: 'flex-start', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#49324d', borderRadius: 999, backgroundColor: '#130d18', paddingHorizontal: 11, paddingVertical: 8, marginTop: 5 }, memoryDetailBreadcrumbMuted: { color: '#95889a', fontSize: 9, fontWeight: '700' }, memoryDetailBreadcrumbActive: { color: '#ff977d', fontSize: 9, fontWeight: '900' }, memoryDetailBreadcrumbArrow: { color: '#6d546f', fontSize: 15, lineHeight: 13 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 12, lineHeight: 18, marginTop: 1 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.4, marginTop: 8 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
+  memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryStory: { gap: 7, paddingTop: 2 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 14, lineHeight: 21 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.1, marginTop: 8 }, memoryPhotoHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryPhotoHeaderAction: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, memoryPhotoHeaderActionText: { color: '#c6a7ff', fontSize: 12, fontWeight: '800' }, memoryPhotoStrip: { gap: 10, paddingVertical: 2 }, memoryPhotoThumb: { width: 84, height: 84, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#49364f' }, memoryPhotoThumbCover: { borderWidth: 2, borderColor: '#ff987c' }, memoryPhotoThumbImage: { width: '100%', height: '100%' }, memoryPhotoMatchRow: { minHeight: 64, borderRadius: 18, borderWidth: 1, borderColor: '#3a3044', backgroundColor: '#120d19', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 }, memoryPhotoMatchIcon: { width: 23, height: 23 }, memoryPhotoMatchTitle: { color: '#f4edf7', fontSize: 14, fontWeight: '800' }, memoryPhotoMatchBody: { color: '#938797', fontSize: 11, marginTop: 3 }, memoryPhotoMatchChevron: { color: '#c6a7ff', fontSize: 24 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, brandWordmark: { color: '#f8f4ff', fontSize: 16, fontWeight: '900', letterSpacing: -0.25 }, wordmarkJourney: { color: '#f7f2fc' }, wordmarkDeck: { color: '#ff7b5c' }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
   pageHeader: { minHeight: 143, gap: 5, marginBottom: 4, overflow: 'hidden', borderRadius: 24, borderWidth: 1, borderColor: '#40274f', backgroundColor: '#100a19', paddingHorizontal: 18, paddingVertical: 18, justifyContent: 'center', shadowColor: '#7f47c4', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 } }, pageHeaderGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, right: -76, top: -100, backgroundColor: '#6b2557', opacity: 0.48 }, pageHeaderRail: { position: 'absolute', left: 18, top: 13, width: 50, height: 3, borderRadius: 3, backgroundColor: '#402350', overflow: 'hidden' }, pageHeaderRailCore: { width: '55%', height: '100%', borderRadius: 3, backgroundColor: '#ff795b', shadowColor: '#ff795b', shadowOpacity: 1, shadowRadius: 6 }, pageEyebrow: { color: '#c1a2ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 4 }, pageTitle: { color: '#f8f5ff', fontSize: 34, lineHeight: 39, fontWeight: '900', letterSpacing: -1 }, pageBody: { color: '#ada3b4', fontSize: 13, lineHeight: 20, maxWidth: 330 },
   openRoad: { height: 132, marginHorizontal: -20, marginTop: -20, marginBottom: 8, backgroundColor: '#0d0a16', overflow: 'hidden', borderTopLeftRadius: 25, borderTopRightRadius: 25 },
@@ -3609,7 +3754,7 @@ const darkStyles = StyleSheet.create({
   inlineNotice: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#21180f', borderWidth: 1, borderColor: '#714c25', borderRadius: 15, padding: 12 }, noticeDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ffb15c' }, inlineNoticeText: { color: '#c1af9a', fontSize: 11, lineHeight: 16, flex: 1 }, retryText: { color: '#ffb15c', fontSize: 11, fontWeight: '900' }, loadingLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, minHeight: 28 }, loadingLineText: { color: '#8f8799', fontSize: 12 }, loadingCard: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 13, backgroundColor: '#111018', borderRadius: 20 },
   detailDate: { color: '#a88aff', fontSize: 10, fontWeight: '900', letterSpacing: 1.3 }, detailTitle: { color: '#f8f4ff', fontSize: 25, lineHeight: 31, fontWeight: '900', letterSpacing: -0.5 }, backButton: { alignSelf: 'flex-start', paddingVertical: 6 }, backButtonText: { color: '#aa8cff', fontSize: 14, fontWeight: '800' }, routeSketch: { height: 190, borderRadius: 22, overflow: 'hidden', backgroundColor: '#10121a', borderWidth: 1, borderColor: '#252c3b' }, routeSketchHero: { height: 236, borderWidth: 0, borderRadius: 0 }, routeSketchExpanded: { height: 430, borderWidth: 0, borderRadius: 0 }, routeGlow: { position: 'absolute', width: 180, height: 180, borderRadius: 90, backgroundColor: '#171d32', right: -35, top: -30 }, routeLine: { position: 'absolute', height: 4, borderRadius: 2, backgroundColor: '#9b7cff' }, routeStart: { position: 'absolute', width: 12, height: 12, borderRadius: 6, backgroundColor: '#43e6ae' }, routeEnd: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#ff7b54' }, routeCaption: { position: 'absolute', color: '#70798d', fontSize: 10, bottom: 12, left: 16 }, detailMetrics: { flexDirection: 'row', paddingVertical: 17, borderRadius: 18, backgroundColor: '#121019' },
   journeyHeroCard: { overflow: 'hidden', borderRadius: 25, backgroundColor: '#100c16', borderWidth: 1, borderColor: '#4c3659', shadowColor: '#7c4da4', shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } }, journeyHeroIntro: { position: 'relative', minHeight: 125, overflow: 'hidden', justifyContent: 'flex-end', paddingHorizontal: 18, paddingTop: 26, paddingBottom: 19 }, journeyHeroCopy: { position: 'relative' }, journeyHeroDate: { color: '#ff9b7d', fontSize: 9, fontWeight: '900', letterSpacing: 1.35, textShadowColor: '#170b1a', textShadowRadius: 7 }, journeyHeroRoute: { color: '#fff8ff', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.65, marginTop: 5, textShadowColor: '#170b1a', textShadowRadius: 11 }, journeyHeroMetrics: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', backgroundColor: '#17101e', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#45334f', paddingHorizontal: 6 }, journeyHeroMetric: { flex: 1, minWidth: 0, alignItems: 'center', gap: 4 }, journeyHeroMetricValue: { color: '#f8f1fb', fontSize: 16, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroMetricLabel: { color: '#9c879f', fontSize: 8, fontWeight: '900', letterSpacing: 0.8 }, journeyHeroMetricDivider: { width: StyleSheet.hairlineWidth, height: 33, backgroundColor: '#55405d' }, journeyHeroSoundtrack: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#120d1a' }, journeyHeroArtworkFallback: { width: 54, height: 54, borderRadius: 13, backgroundColor: '#2b1c3c', alignItems: 'center', justifyContent: 'center' }, journeyHeroArtworkNote: { color: '#d3b9ff', fontSize: 23, fontWeight: '900' }, journeyHeroSoundtrackLabel: { color: '#bd9dff', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, journeyHeroTrack: { color: '#f9f2fb', fontSize: 15, fontWeight: '900', marginTop: 4 }, journeyHeroArtist: { color: '#a096a9', fontSize: 11, fontWeight: '700', marginTop: 3 }, journeyHeroSongCount: { minWidth: 35, alignItems: 'center', gap: 2 }, journeyHeroSongCountValue: { color: '#ff9677', fontSize: 17, fontWeight: '900', fontVariant: ['tabular-nums'] }, journeyHeroSongCountLabel: { color: '#8f788f', fontSize: 7, fontWeight: '900', letterSpacing: 0.7 },
-  trackRow: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapLink: { color: '#6d6074', fontSize: 8, fontWeight: '900', letterSpacing: 0.7 }, trackMapLinkSelected: { color: '#d797f4' }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
+  trackRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 8, paddingHorizontal: 8, marginHorizontal: -8, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' }, trackRowSelected: { backgroundColor: '#201329', borderColor: '#6e3c79' }, trackIndex: { width: 21, color: '#696272', fontSize: 10, fontWeight: '700', fontVariant: ['tabular-nums'] }, trackIndexSelected: { color: '#ff967a' }, trackTitle: { color: '#eee9f3', fontSize: 13, fontWeight: '800' }, trackArtist: { color: '#837b8c', fontSize: 11, marginTop: 4 }, trackMapIcon: { width: 20, height: 20 }, infoCard: { backgroundColor: '#121019', borderRadius: 18, paddingHorizontal: 16 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#302a38' }, infoLabel: { color: '#776f81', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, infoValue: { color: '#ece6f1', fontSize: 13, fontWeight: '700' },
   selectedProvider: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#15101e', borderWidth: 1, borderRadius: 21, padding: 15, shadowColor: '#673a87', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } }, membershipSettingsIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }, membershipSettingsLogo: { width: 46, height: 46, borderRadius: 14 }, membershipSettingsIconText: { color: '#fff8fb', fontSize: 17, fontWeight: '900' }, connectionTile: { position: 'relative', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#121019', borderWidth: 1, borderColor: '#34283f', borderRadius: 18, padding: 14, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } }, connectionEdge: { position: 'absolute', left: 0, top: 13, bottom: 13, width: 3, borderTopRightRadius: 3, borderBottomRightRadius: 3, opacity: 0.9 }, connectionIcon: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.34, shadowRadius: 9, shadowOffset: { width: 0, height: 4 } }, icloudMark: { width: 46, height: 46, borderRadius: 13, backgroundColor: '#f7fbff', borderWidth: 1, borderColor: '#b9dcff', alignItems: 'center', justifyContent: 'center', shadowColor: '#1687ff', shadowOpacity: 0.42, shadowRadius: 11, shadowOffset: { width: 0, height: 4 } }, connectionIconText: { color: '#fff', fontSize: 16, fontWeight: '900' }, connectionKicker: { color: '#9b8ba8', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, connectionName: { color: '#f7f0fa', fontSize: 16, fontWeight: '900', marginTop: 2 }, connectionDetail: { color: '#9c90a4', fontSize: 11, lineHeight: 16, marginTop: 3 }, connectionStatus: { color: '#a195aa', fontSize: 10, fontWeight: '800', marginTop: 5 }, goodStatus: { color: '#55e9b5' }, connectionAction: { borderWidth: 1, borderColor: '#49335d', backgroundColor: '#21162e', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 8 }, connectionActionText: { color: '#c7a9ff', fontSize: 9, fontWeight: '900' }, changeButton: { borderWidth: 1, borderColor: '#503766', paddingHorizontal: 11, paddingVertical: 8, borderRadius: 10, backgroundColor: '#241831' }, changeButtonText: { color: '#c7a9ff', fontSize: 11, fontWeight: '900' }, privateCloudCard: { backgroundColor: '#17121f', borderWidth: 1, borderColor: '#352746', borderRadius: 14, padding: 14, marginTop: 9 }, privateCloudTitle: { color: '#c7a9ff', fontSize: 9, fontWeight: '900', letterSpacing: 1.1 }, privateCloudBody: { color: '#a99eae', fontSize: 11, lineHeight: 17, marginTop: 5 }, privateCloudLearn: { color: '#c7a9ff', fontSize: 11, fontWeight: '900', marginTop: 9 }, appleSignInButton: { width: '100%', height: 46, marginTop: 10 }, appleSignInProgress: { height: 46, marginTop: 10, borderRadius: 12, backgroundColor: '#17121f', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 }, appleIdentityWarning: { color: '#ffb38e', fontSize: 11, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 }, accountActions: { gap: 8, marginTop: 10 }, accountSecondaryButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#503766', backgroundColor: '#17121f', alignItems: 'center', justifyContent: 'center' }, accountSecondaryText: { color: '#c7a9ff', fontSize: 12, fontWeight: '900' }, accountDeleteButton: { minHeight: 44, borderRadius: 12, borderWidth: 1, borderColor: '#6e2d36', backgroundColor: '#241116', alignItems: 'center', justifyContent: 'center' }, accountDeleteText: { color: '#ff8c98', fontSize: 12, fontWeight: '900' }, securityCard: { backgroundColor: '#17121b', borderLeftWidth: 3, borderLeftColor: '#ff795b', borderRadius: 14, padding: 15, marginTop: 5 }, securityTitle: { color: '#ffc0ac', fontSize: 9, fontWeight: '900', letterSpacing: 1.2 }, securityBody: { color: '#a99eae', fontSize: 12, lineHeight: 18, marginTop: 5 },
   savedPlacesCard: { overflow: 'hidden', borderRadius: 19, borderWidth: 1, borderColor: '#553449', backgroundColor: '#141018' },
   savedPlacesHint: { color: '#a99eae', fontSize: 11, lineHeight: 16, paddingHorizontal: 15, paddingTop: 13, paddingBottom: 9 },
@@ -3684,7 +3829,22 @@ const darkStyles = StyleSheet.create({
   approvedHomeHeaderButton: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(24,15,35,0.52)', borderWidth: 1, borderColor: 'rgba(191,149,218,0.24)' },
   approvedHomeScenicSpace: { height: 70 },
   approvedHomeScenicSpaceActive: { height: 85 },
-  approvedHomePanels: { gap: 16 },
+  approvedHomePanels: { gap: 14 },
+  homeCuratedStack: { gap: journeyDeckSpacing[4] },
+  homeRoadSummary: { borderRadius: journeyDeckRadius.feature, borderCurve: 'continuous', borderWidth: 1, overflow: 'hidden', ...journeyDeckElevation.raised },
+  homeRoadSummaryHeader: { minHeight: 72, paddingHorizontal: journeyDeckSpacing[5], paddingVertical: journeyDeckSpacing[4], flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: journeyDeckSpacing[3] },
+  homeRoadSummaryKicker: { ...journeyDeckTypography.kicker },
+  homeRoadSummaryTitle: { ...journeyDeckTypography.title, marginTop: 3 },
+  homeRoadSummaryGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: journeyDeckSpacing[3], paddingBottom: journeyDeckSpacing[3] },
+  homeRoadSummaryItem: { minHeight: 78, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: journeyDeckSpacing[3], paddingVertical: journeyDeckSpacing[3], flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3] },
+  homeRoadSummaryLabel: { ...journeyDeckTypography.kicker, letterSpacing: 0.4 },
+  homeRoadSummaryValue: { ...journeyDeckTypography.metric, marginTop: 2 },
+  compactHomeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
+  compactHomeMetric: { minHeight: 116, borderRadius: 20, borderWidth: 1, padding: 14, gap: 7 },
+  compactHomeMetricLabel: { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
+  compactHomeMetricValue: { fontSize: 25, lineHeight: 30, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  compactHomeJourneySummary: { minHeight: 116, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  compactHomeJourneyValue: { fontSize: 20, lineHeight: 26, fontWeight: '800', fontVariant: ['tabular-nums'], marginTop: 4 },
   approvedLatestMemory: { minHeight: 145, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(165,132,180,0.34)', backgroundColor: 'rgba(9,8,14,0.88)', padding: 15, shadowColor: '#bc6aff', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   approvedLatestMemoryHeader: { height: 24, flexDirection: 'row', alignItems: 'center', gap: 7 },
   approvedLatestMemoryKicker: { color: '#bf8aeb', fontSize: 12, fontWeight: '600' },
@@ -3724,21 +3884,37 @@ const darkStyles = StyleSheet.create({
   settingsEditorBackText: { color: '#d0a6ff', fontSize: 15, fontWeight: '900' },
   settingsEditorHeaderAction: { minWidth: 68, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,121,91,0.5)', backgroundColor: 'rgba(255,96,91,0.14)', paddingHorizontal: 14 },
   settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
-  settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.8, marginTop: 16 },
-  settingsEditorTitle: { color: '#fff8ff', fontSize: 31, lineHeight: 36, fontWeight: '900', letterSpacing: -0.8, marginTop: 6 },
-  settingsCategoryStack: { gap: 16, marginTop: 20 },
-  settingsCategoryFeature: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingsHubProfile: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 21, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#15101e', padding: 13 },
-  settingsHubAvatar: { width: 50, height: 50, borderRadius: 17, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginTop: 10 },
+  settingsEditorTitle: { color: '#fff8ff', fontSize: 28, lineHeight: 33, fontWeight: '900', letterSpacing: -0.65, marginTop: 5 },
+  settingsCategoryStack: { gap: 14, marginTop: 18 },
+  settingsHubProfile: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#15101e', paddingHorizontal: 13, paddingVertical: 10 },
+  settingsHubAvatar: { width: 46, height: 46, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   settingsHubProfileName: { color: '#fff8ff', fontSize: 16, fontWeight: '900' },
   settingsHubProfileDetail: { color: '#9f92a7', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  settingsHubAction: { color: '#c7a9ff', fontSize: 13, fontWeight: '900' },
+  settingsHubSection: { gap: 8 },
+  settingsSectionLabel: { color: '#a993b2', fontSize: 9, lineHeight: 13, fontWeight: '900', letterSpacing: 1.55, marginLeft: 4, marginTop: 4 },
   settingsHubList: { overflow: 'hidden', borderRadius: 23, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#141018' },
-  settingsHubRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 11 },
+  settingsHubRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 9 },
   settingsHubRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#3d2d46' },
-  settingsHubIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: '#291735', borderWidth: 1, borderColor: '#49304f' },
-  settingsHubTitle: { color: '#fff8ff', fontSize: 15, fontWeight: '900' },
-  settingsHubSummary: { color: '#9f92a7', fontSize: 11, lineHeight: 15, marginTop: 3 },
-  settingsHubChevron: { color: '#c7a9ff', fontSize: 28, lineHeight: 30 },
+  settingsHubIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#291735', borderWidth: 1, borderColor: '#49304f' },
+  settingsHubTitle: { color: '#fff8ff', fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  settingsHubSummary: { color: '#9f92a7', fontSize: 10.5, lineHeight: 14, marginTop: 2 },
+  settingsHubChevron: { color: '#c7a9ff', fontSize: 24, lineHeight: 26 },
+  settingsDetailIntro: { color: '#aa9ead', fontSize: 13, lineHeight: 19, marginHorizontal: 2, marginBottom: 2 },
+  settingsDetailFootnote: { color: '#9f92a7', fontSize: 12, lineHeight: 18, marginHorizontal: 4, marginTop: -5 },
+  settingsCompactList: { overflow: 'hidden', borderRadius: 20, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#141018' },
+  settingsCompactRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 10 },
+  settingsInfoRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 13, paddingVertical: 11 },
+  settingsCompactIcon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#291735', borderWidth: 1, borderColor: '#49304f' },
+  settingsCompactTitle: { color: '#fff8ff', fontSize: 14, lineHeight: 18, fontWeight: '900' },
+  settingsCompactDetail: { color: '#9f92a7', fontSize: 10.5, lineHeight: 15, marginTop: 2 },
+  settingsCompactValue: { maxWidth: 105, color: '#c7a9ff', fontSize: 11, fontWeight: '800', textAlign: 'right' },
+  settingsCompactChevron: { color: '#c7a9ff', fontSize: 23, lineHeight: 25 },
+  settingsStatusText: { color: '#79d9bd', fontSize: 11, fontWeight: '900' },
+  settingsInsetNote: { gap: 7, borderRadius: 18, borderWidth: 1, borderColor: '#49304f', backgroundColor: '#110d17', padding: 15 },
+  settingsDangerGroup: { overflow: 'hidden', borderRadius: 18, borderWidth: 1, borderColor: '#5b3a69', backgroundColor: '#141018' },
+  settingsDangerRow: { minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 11 },
   settingsSupportLinks: { flexDirection: 'row', gap: 10 },
   settingsSupportLink: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: '#49304f', backgroundColor: '#17121f' },
   settingsEditorPanel: { width: '100%', overflow: 'hidden', gap: 14, borderRadius: 24, borderWidth: 1, borderColor: '#5b3a69', backgroundColor: '#130d19', padding: 20, marginTop: 22, shadowColor: '#8d51aa', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },

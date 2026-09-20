@@ -9,6 +9,8 @@ type JourneyDeckRecorderEvents = {
 };
 
 declare class JourneyDeckRecorderModule extends NativeModule<JourneyDeckRecorderEvents> {
+  createMarkerAsync?(id: string, sessionId: string, token: string): Promise<{ id?: string; errorCode: string | null }>;
+  readonly displayLayoutObserverAvailable?: boolean;
   executeCommandAsync?(id: string, action: 'start' | 'pause' | 'resume' | 'finish', sessionId: string, token: string, expiresAt: number): Promise<NativeRecorderStatus>;
   getCommandOutcomeAsync?(id: string): Promise<RecorderCommandOutcome>;
   configureAsync(enabled: boolean, ownerUserId: string, deviceId: string): Promise<NativeRecorderStatus>;

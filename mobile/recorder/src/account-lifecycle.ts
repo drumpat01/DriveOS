@@ -1,3 +1,4 @@
+import { deleteMarkerMediaForProfile } from './journey-marker-store';
 import * as FileSystem from 'expo-file-system/legacy';
 import { File } from 'expo-file-system';
 
@@ -5,7 +6,7 @@ import { finalizeActiveProfileDeletion, getCurrentUser, signOutToFreshLocalProfi
 import { resetAutomaticDriveState } from './automatic-drive-state';
 import { deleteCurrentProfileConnection, loadOrCreateDeviceId } from './credentials';
 import { deletePrivateCloudDataForUser } from './icloud-sync';
-import { listPhotosIncludingDeleted, type LocalUser } from './local-store';
+import { listPhotosIncludingDeleted, setAskProfileBlocked, type LocalUser } from './local-store';
 import { deleteCurrentProfileMusicSecrets } from './music-preferences';
 import { deleteCurrentProfileSpotifySecrets } from './spotify-direct';
 import { activeSession, deleteCurrentProfileRecorderData } from './storage';
@@ -16,6 +17,7 @@ import { configureNativeAutomaticRecorder, configureNativeManualRecorder, setNat
 import { syncNativeRecorderInbox } from './native-recorder-inbox';
 
 async function stopProfileBackgroundWork(): Promise<void> {
+  setAskProfileBlocked(true);
   setNativeManualProfileTransition(true);
   await configureNativeManualRecorder(false, getCurrentUser().id, false);
   await syncNativeRecorderInbox();
@@ -30,13 +32,14 @@ async function stopProfileBackgroundWork(): Promise<void> {
 
 export async function prepareForProfileSwitch(): Promise<void> {
   try {
+    setAskProfileBlocked(true);
     await syncNativeRecorderInbox();
     if (activeSession()) throw new Error('Finish or discard the active journey before switching profiles.');
     await stopProfileBackgroundWork();
   } catch (error) { finishProfileSwitch(); throw error; }
 }
 
-export function finishProfileSwitch(): void { setNativeManualProfileTransition(false); }
+export function finishProfileSwitch(): void { setNativeManualProfileTransition(false); setAskProfileBlocked(false); }
 
 export async function signOutOfJourneyDeck(): Promise<LocalUser> {
   try {
@@ -47,6 +50,7 @@ export async function signOutOfJourneyDeck(): Promise<LocalUser> {
 
 export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
   try {
+  setAskProfileBlocked(true);
   const user = getCurrentUser();
   await syncNativeRecorderInbox();
   if (activeSession()) throw new Error('Finish or discard the active journey before deleting this account.');
@@ -58,6 +62,7 @@ export async function deleteCurrentJourneyDeckAccount(): Promise<LocalUser> {
   // from leaving an inaccessible cloud copy behind.
   await stopProfileBackgroundWork();
   await deletePrivateCloudDataForUser(user);
+  await deleteMarkerMediaForProfile(user.id);
   await deletePrivateRouteStagingAssets(user.id);
   for (const uri of [...new Set(localPhotoUris)]) {
     // Do not orphan private photos after claiming account deletion succeeded.

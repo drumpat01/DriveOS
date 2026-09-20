@@ -18,6 +18,7 @@ const scrolls: { id: string; y: number }[] = [];
 let light: boolean | string = true;
 let focused = true, reduced = false, appState: (state: string) => void = () => {};
 let dimensions = { width: 1200, height: 900, fontScale: 1 };
+let adaptiveFold: any = null;
 const alerts: any[] = [];
 const journeyActions: any[] = [];
 let deferAnimations = false;
@@ -75,7 +76,8 @@ const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   './header-artwork': { HeaderArtwork: ({ source }: any) => React.createElement('Image', { source: `${testTheme(light).id}:${source}` }) },
   './theme-material': { ThemeMaterial: host('ThemeMaterial') },
   './app-theme': { useAppTheme: () => testTheme(light) }, './ipad-page-header': { IpadPageHeader: host('Header') },
-  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle') },
+  './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }) },
+  './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle'), AutumnTitleAccent: host('AutumnTitleAccent') },
   './first-journey-keepsake': { FirstJourneyKeepsake: host('FirstJourneyKeepsake') },
   './card-detail-link': { CardDetailLink: host('CardDetailLink') }, './library-model': load('library-model.ts'),
   './native-action-menu': { NativeActionMenu: host('Menu') }, './journey-card-action': { openJourneyCardAction: (...args: any[]) => journeyActions.push(args) },
@@ -85,6 +87,23 @@ const journeys = [1, 2, 3].map(i => ({ id: `j${i}`, startingLocation: `Start ${i
 const memories = [{ id: 'm1', name: 'Coast days', notes: '', journeyIds: ['j1'], photos: [] }];
 const press = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
 const tick = () => { for (const frame of frames) frame({ timeSincePreviousFrame: 16 }); };
+
+test('Duo fold keeps both Memory Studio panels inside their physical panes', async () => {
+  adaptiveFold = { axis: 'vertical', frame: { x: 654, y: 24, width: 27, height: 895 }, before: { x: 20, y: 24, width: 634, height: 895 }, after: { x: 681, y: 24, width: 634, height: 895 } };
+  const props = { memories, journeys, renderArtwork: () => null, onCreate() {}, onAdd: async () => {}, onEdit() {}, onShare() {}, onMemory() {}, onJourney() {}, onRefresh() {}, loading: false, historyLimited: false, onUpgrade() {} };
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(IpadMemoriesScreen, props), { createNodeMock: el => ({ id: el.props.testID }) }); });
+    await act(() => tree.root.findByProps({ testID: 'ipad-memories-canvas' }).props.onLayout({ nativeEvent: { layout: { width: 1287 } } }));
+    const workspace = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-memory-studio');
+    assert.equal(workspace.props.style[1].gap, 27);
+    assert.equal(workspace.children[0].props.style[2].width, 610);
+    assert.equal(workspace.children[1].props.style[2].width, 610);
+  } finally {
+    adaptiveFold = null;
+    await act(() => tree?.unmount());
+  }
+});
 
 test('drop intent validates live IDs, avoids self drops and distinguishes append from creation', () => {
   assert.deepEqual(memoryStudioDrop('j1', 'journey:j2', ['j1', 'j2'], []), { kind: 'create', journeyIds: ['j2', 'j1'] });
@@ -115,7 +134,7 @@ test('Memory studio retains selection/search through resizing and themes, with a
     onEdit() {}, onShare() {}, onMemory() {}, onJourney() {}, onRefresh() {}, loading: false, historyLimited: false, onUpgrade() {} };
   const render = () => React.createElement(IpadMemoriesScreen, props);
   await act(() => { tree = create(render(), { createNodeMock: el => ({ id: el.props.testID }) }); });
-  await act(() => press(tree, 'Select Start 2 → Coast').props.onPress());
+  await act(() => press(tree, 'Add Start 2 → Coast to selection').props.onPress());
   const search = tree.root.findAllByType('TextInput').find((n: any) => n.props.accessibilityLabel === 'Search journeys');
   await act(() => search.props.onChangeText('Start 2'));
   for (const width of [1150, 760, 400, 1150]) {
@@ -127,7 +146,7 @@ test('Memory studio retains selection/search through resizing and themes, with a
       assert.equal(tree.root.findByProps({ testID: 'ipad-memory-library-panel' }).props.style[2].width, gridLayout.ipadGridSpan(width, 2));
     }
     assert.equal(search.props.value, 'Start 2');
-    assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+    assert.equal(press(tree, 'Remove Start 2 → Coast from selection').props.accessibilityState.checked, true);
   }
   dimensions = { width: 1200, height: 900, fontScale: 2 };
   await act(() => tree.update(render()));
@@ -139,7 +158,7 @@ test('Memory studio retains selection/search through resizing and themes, with a
     light = mode; await act(() => tree.update(render()));
     assert.equal(tree.root.findByType('SafeAreaView').props.style.backgroundColor, testTheme(mode).palette.page);
     assert.equal(search.props.value, 'Start 2');
-    assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+    assert.equal(press(tree, 'Remove Start 2 → Coast from selection').props.accessibilityState.checked, true);
   }
   light = true;
   await act(() => tree.root.findAllByType('Pressable').find((n: any) => n.findAllByType('Text').some((t: any) => t.children.join('') === 'Create with 1 selected')).props.onPress());
@@ -151,10 +170,10 @@ test('Memory studio retains selection/search through resizing and themes, with a
   await act(() => settle());
   assert.equal(press(tree, 'Add selected journeys to Coast days'), undefined);
   fail = true;
-  await act(() => press(tree, 'Select Start 2 → Coast').props.onPress());
+  await act(() => press(tree, 'Add Start 2 → Coast to selection').props.onPress());
   await act(() => { press(tree, 'Add selected journeys to Coast days').props.onPress(); });
   assert.equal(alerts.at(-1)[0], 'Memory not updated');
-  assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true, 'failure preserves selection for retry');
+  assert.equal(press(tree, 'Remove Start 2 → Coast from selection').props.accessibilityState.checked, true, 'failure preserves selection for retry');
   await act(() => tree.unmount());
 });
 
@@ -207,9 +226,8 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     assert.equal(tree.root.findByType('KeyboardAvoidingView').props.behavior, 'padding');
     assert.equal(tree.root.findAllByType('FirstJourneyKeepsake').length, 0, 'earned badges no longer occupy the Memories screen');
     const journeyLink = press(tree, 'Open journey Start 2 → Coast');
-    assert.equal(journeyLink.props.accessibilityRole, 'link');
-    assert.equal(journeyLink.findByType('Text').children.join(''), 'View ›');
-    const journeyLine = press(tree, 'Select Start 2 → Coast').findAllByType('Text').find((node: any) => node.props.ellipsizeMode === 'tail');
+    assert.equal(journeyLink.props.accessibilityRole, 'button');
+    const journeyLine = journeyLink.findAllByType('Text').find((node: any) => node.props.ellipsizeMode === 'tail');
     assert.equal(journeyLine.props.numberOfLines, 1, 'journey details stay on one line');
     const root = tree.root.findByProps({ testID: 'studio-drag-root' });
     await act(() => root.props.onLayout({ nativeEvent: { layout: { width: 369, height: 680 } } }));
@@ -219,10 +237,9 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     const newMemoryButton = press(tree, 'New Memory');
     const refreshButton = press(tree, 'Refresh Memories');
     assert.equal(refreshButton.parent.props.style.paddingHorizontal, newMemoryButton.parent.props.style.paddingHorizontal, 'refresh and plus centers share the same horizontal inset');
-    await act(() => press(tree, 'Select Start 2 → Coast').props.onPress());
+    await act(() => press(tree, 'Add Start 2 → Coast to selection').props.onPress());
     const input = tree.root.findAllByType('TextInput').find((n: any) => n.props.accessibilityLabel === 'Search journeys');
     await act(() => input.props.onChangeText('Start 2'));
-    await act(() => press(tree, 'Collapse journey library').props.onPress());
     assert.equal(tree.root.findByProps({ testID: 'iphone-journey-tray-body' }).props.pointerEvents, 'none');
     assert.equal(tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue(), phoneStudioLayout(369, 680).collapsedTray);
     await act(() => press(tree, 'Expand journey library').props.onPress());
@@ -240,7 +257,7 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     await act(() => grabber.props.onResponderRelease({}, { vy: -0.7 }));
     assert.equal(press(tree, 'Collapse journey library').props.accessibilityState.expanded, true, 'an upward flick expands');
     assert.equal(input.props.value, 'Start 2');
-    assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+    assert.equal(press(tree, 'Remove Start 2 → Coast from selection').props.accessibilityState.checked, true);
     for (const [width, height, fontScale] of [[369, 680, 1], [296, 450, 1], [750, 250, 1], [369, 680, 1.6], [369, 680, 1]]) {
       dimensions = { width, height: height + 150, fontScale };
       await act(() => tree.update(render()));
@@ -257,7 +274,7 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
       assert.equal(tree.root.findAllByType('Image').length, 0, 'the phone tab title has no decorative header artwork');
       assert.equal(tree.root.findByType('PhoneTabTitle').props.title, 'Memories');
       assert.equal(input.props.value, 'Start 2');
-      assert.equal(press(tree, 'Select Start 2 → Coast').props.accessibilityState.checked, true);
+      assert.equal(press(tree, 'Remove Start 2 → Coast from selection').props.accessibilityState.checked, true);
     }
     await act(() => press(tree, 'New Memory').props.onPress());
     assert.deepEqual(Array.from(created[0]), ['j2']);
@@ -288,7 +305,7 @@ test('iPhone uses real shared drag handlers for create and add, with tray collap
     const pan = () => tree.root.findAllByType('GestureDetector').find((node: any) => node.findAllByProps({ testID: 'studio-source-j1' }).length)?.props.gesture;
     const drag = async (x: number, y: number) => {
       await act(() => pan().Start({ absoluteX: 100, absoluteY: 520 }));
-      assert.equal(press(tree, 'Collapse journey library').props.disabled, true);
+      assert.equal(press(tree, 'Expand journey library').props.disabled, true);
       await act(() => { pan().Update({ absoluteX: x, absoluteY: y }); tick(); });
       await act(() => pan().End({ absoluteX: x, absoluteY: y }));
     };
@@ -341,7 +358,7 @@ test('an old phone tray responder cannot restore portrait dimensions after rotat
     dimensions = { width: 852, height: 393, fontScale: 1 };
     await act(() => tree.update(render()));
     await act(() => tree.root.findByProps({ testID: 'studio-drag-root' }).props.onLayout({ nativeEvent: { layout: { width: 820, height: 250 } } }));
-    const expected = phoneStudioLayout(820, 250).expandedTray;
+    const expected = phoneStudioLayout(820, 250).collapsedTray;
     const height = () => tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue();
     assert.equal(height(), expected);
     await act(() => { oldResponder.onResponderMove({}, { dy: -30 }); oldResponder.onResponderRelease({}, { vy: -0.7 }); });

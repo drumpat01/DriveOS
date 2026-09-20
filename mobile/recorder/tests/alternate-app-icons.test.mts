@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,13 +17,16 @@ test('app icon choices keep stable persisted IDs and distinct native names', () 
   assert.equal(parseAppIconId('rosewater'), 'rosewater');
   assert.equal(parseAppIconId('grand-touring'), 'grand-touring');
   assert.equal(parseAppIconId('warm-ivory'), 'warm-ivory');
+  assert.equal(parseAppIconId('midnight-canopy'), 'midnight-canopy');
   assert.equal(parseAppIconId('unknown'), 'grand-touring');
   assert.equal(appIconIdForNativeName(null), 'grand-touring');
   assert.equal(appIconIdForNativeName('JourneyDeckCinematic'), 'original');
   assert.equal(appIconIdForNativeName('JourneyDeckWarmIvory'), 'warm-ivory');
   assert.equal(appIconIdForNativeName('JourneyDeckRosewater'), 'rosewater');
   assert.equal(appIconIdForNativeName('JourneyDeckGrandTouring'), 'grand-touring');
-  assert.equal(new Set(Object.values(appIconCatalog).map(icon => icon.nativeName)).size, 4);
+  assert.equal(appIconIdForNativeName('JourneyDeckMidnightCanopy'), 'midnight-canopy');
+  assert.equal(appIconCatalog['midnight-canopy'].name, 'Autumn Drive');
+  assert.equal(new Set(Object.values(appIconCatalog).map(icon => icon.nativeName)).size, 5);
   assert.deepEqual(FREE_APP_ICON_IDS, ['grand-touring', 'warm-ivory']);
   assert.deepEqual(PLUS_APP_ICON_IDS, ['original', 'rosewater']);
   assert.deepEqual(APP_ICON_GRID_ORDER, ['grand-touring', 'warm-ivory', 'original', 'rosewater']);
@@ -40,7 +43,7 @@ test('iOS host target declares every alternate app icon set', () => {
   const list = project.pbxXCConfigurationList()[host.buildConfigurationList];
   for (const { value } of list.buildConfigurations) {
     const settings = project.pbxXCBuildConfigurationSection()[value].buildSettings;
-    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring JourneyDeckCinematic"');
+    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring JourneyDeckCinematic JourneyDeckMidnightCanopy"');
     assert.equal(settings.ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS, 'YES');
   }
 });
@@ -64,6 +67,8 @@ test('alternate icon assets are build-ready 1024px opaque iOS app icon sets', as
         assert.equal(decoded.data[alpha], 255, `${icon.name} must be opaque`);
       }
     }
+    await plugin.writeAlternateIconAssets(root, directory, plugin.iconsForConfig({ extra: { features: { midnightCanopy: false } } }));
+    assert.equal(existsSync(join(directory, 'JourneyDeckMidnightCanopy.appiconset')), false, 'a reused non-V3 prebuild removes the V3-only icon set');
   } finally {
     const resolved = resolve(directory);
     assert.ok(resolved.startsWith(resolve(tmpdir()) + require('node:path').sep));

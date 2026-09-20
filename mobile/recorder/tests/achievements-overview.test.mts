@@ -32,6 +32,8 @@ vm.runInNewContext(code, {
     'react-native-gesture-handler': { Gesture: { Pan: gesture }, GestureDetector: host('GestureDetector') },
     'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, useReducedMotion: () => false, useSharedValue: (initial: any) => { let value = initial; return { get: () => value, set: (next: any) => { value = typeof next === 'function' ? next(value) : next; } }; }, useAnimatedStyle: (fn: any) => fn(), withSpring: (value: any) => value },
     './touch-feedback': touchFeedbackMock,
+    './fifty-states-store': { useFiftyStates: () => ({ completedAt: null }) },
+    './release-features': { V3_FIFTY_STATES_ENABLED: false },
     './app-theme': { useAppTheme: () => ({ id: 'redline', palette }) },
     './medallion-artwork-image': { MedallionArtworkImage: host('MedallionArtworkImage') },
     './medallion-artwork': {
@@ -45,6 +47,17 @@ vm.runInNewContext(code, {
 });
 
 const { AchievementsOverview, buildAchievements } = module.exports;
+test('All 50 is V3 opt-in and uses the persisted completion date', () => {
+  assert.equal(buildAchievements([]).length, 10);
+  const locked = buildAchievements([], [], { completedAt: null }).at(-1);
+  assert.equal(locked.id, 'all-fifty');
+  assert.equal(locked.earned, false);
+  const completedAt = '2026-09-18T12:00:00Z';
+  const earned = buildAchievements([], [], { completedAt }).at(-1);
+  assert.equal(earned.earned, true);
+  assert.equal(earned.earnedAt, completedAt);
+  assert.equal(buildAchievements([], [], { completedAt: 'invalid' }).at(-1).earned, false);
+});
 const journeys = Array.from({ length: 10 }, (_, index) => ({
   id: `j${index + 1}`,
   startedAt: `2026-09-${String(index + 1).padStart(2, '0')}T12:00:00Z`,

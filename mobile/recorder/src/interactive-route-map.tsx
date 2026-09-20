@@ -1,3 +1,5 @@
+import type { JourneyMarker } from './journey-marker-store';
+import { SymbolView } from 'expo-symbols';
 import { JourneyReplayStage, ReplayPosition } from './journey-replay-stage';
 import { JourneyReplayMarker, REPLAY_TICK_MS } from './journey-replay-marker';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
@@ -23,6 +25,8 @@ import { AdaptiveGlassSurface } from './delight-ui';
 import { useCoreMotion } from './use-core-motion';
 
 type InteractiveRouteMapProps = {
+  markers?: JourneyMarker[];
+  onSelectMarker?: (marker: JourneyMarker) => void;
   coordinates: RouteCoordinate[];
   routeSamples?: TimedRouteSample[];
   photos?: ReplayPhoto[];
@@ -47,6 +51,7 @@ const REPLAY_CHASE_PITCH = 52;
 
 export function InteractiveRouteMap({
   coordinates,
+  markers = [], onSelectMarker,
   routeSamples,
   photos = EMPTY_PHOTOS,
   songMoments,
@@ -323,6 +328,13 @@ export function InteractiveRouteMap({
           setTerminalSelection('end');
           onSelectSong?.(null);
         }}><TerminalMarker kind="end" /></Marker>}
+        {markers.filter(marker => !replayEngaged || Date.parse(marker.capturedAt) <= replayTimestamp).map((marker, index) => <Marker
+          id={`saved-marker-${marker.id}`} key={marker.id} lngLat={[marker.longitude, marker.latitude]} anchor="bottom"
+          onPress={event => { event.stopPropagation(); settleReplay(); onSelectMarker?.(marker); }}>
+          <View accessibilityLabel={`Saved marker ${index + 1}`} style={{ width: 38, height: 44, borderRadius: 6, borderWidth: 2, borderColor: mapPalette.routeLine, backgroundColor: theme.palette.card, alignItems: 'center', justifyContent: 'center', shadowColor: mapPalette.routeGlow, shadowOpacity: 0.95, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } }}>
+            <SymbolView name="photo" tintColor={theme.palette.accent} size={24} />
+          </View>
+        </Marker>)}
         {songMoments.filter(moment => !replayEngaged || Date.parse(moment.playedAt) <= replayTimestamp).map(moment => <Marker
           id={`journey-song-${moment.index}`}
           key={`${moment.index}-${moment.playedAt}`}
@@ -369,19 +381,6 @@ export function InteractiveRouteMap({
           onPhotoError={() => { if (currentPhoto) setFailedPhotos(ids => ids.includes(currentPhoto.id) ? ids : [...ids, currentPhoto.id]); }} />
       </View>}
     </View>
-
-    <View style={styles.attributionRow}>
-      <Text style={styles.attribution}>Built with </Text><AttributionLink label="MapLibre" url="https://maplibre.org/" />
-      <Text style={styles.attribution}> · </Text><AttributionLink label="OpenFreeMap" url="https://openfreemap.org/" />
-      <Text style={styles.attribution}> · © </Text><AttributionLink label="OpenStreetMap" url="https://www.openstreetmap.org/copyright" />
-    </View>
-    <View style={styles.legend}>
-      <LegendItem color={theme.color('#ff765c', 'accent')} label="Exact recorded route" line />
-      <LegendItem color={theme.color('#a565ff', 'accent')} label="Song start" numbered />
-      <LegendItem color={journeyStartColor} label="Start" />
-      <LegendItem color={journeyEndColor} label="End" />
-    </View>
-    <Text style={styles.mapHint} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{replayCameraMode === 'chase' ? 'Tap map for music · Pinch to zoom · 3D follows' : 'Tap ▲ to follow the replay'}</Text>
 
     {queryCoordinate && <View style={styles.nearbyPanel}>
       <View style={styles.nearbyHeader}><View><Text style={styles.panelKicker}>NEARBY MUSIC</Text><Text style={styles.panelTitle}>{nearbySongs.length ? `${nearbySongs.length} soundtrack moment${nearbySongs.length === 1 ? '' : 's'}` : 'No songs in this radius'}</Text></View><Pressable onPress={() => setQueryCoordinate(null)}><Text style={styles.closeText}>×</Text></Pressable></View>
@@ -433,6 +432,16 @@ export function InteractiveRouteMap({
       </View>
       <Text style={styles.replayFootnote}>{routeSamples && routeSamples.length >= 2 ? 'Replay uses recorded journey location and speed.' : 'Replay timing, speed, and heading are estimated from this saved route.'}</Text>
     </AdaptiveGlassSurface>}
+    <View style={styles.mapMetaRow}>
+      <Text style={styles.mapHint} numberOfLines={1}>{replayCameraMode === 'chase' ? 'Tap map for music · Pinch to zoom' : 'Tap ▲ to follow replay'}</Text>
+      <View style={styles.legendCompact}>
+        <LegendItem color={mapPalette.routeLine} label="Route" line />
+        <LegendItem color={theme.color('#a565ff', 'accent')} label="Songs" numbered />
+      </View>
+    </View>
+    <View style={styles.attributionRow}>
+      <AttributionLink label="MapLibre" url="https://maplibre.org/" /><Text style={styles.attribution}> · </Text><AttributionLink label="OpenFreeMap" url="https://openfreemap.org/" /><Text style={styles.attribution}> · © </Text><AttributionLink label="OpenStreetMap" url="https://www.openstreetmap.org/copyright" />
+    </View>
   </View>;
 }
 
@@ -524,16 +533,17 @@ const darkStyles = StyleSheet.create({
   queryMarkerCore: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#fff5f0' },
   carMarker: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#09050f', borderWidth: 2, borderColor: '#ff765c', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff5f67', shadowOpacity: 0.8, shadowRadius: 8 },
   carMarkerText: { color: '#ff765c', fontSize: 16, fontWeight: '900' },
+  mapMetaRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 4 },
   attributionRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 4 },
   attribution: { color: '#6f6577', fontSize: 9 },
   attributionLink: { color: '#a780bf', fontSize: 9, textDecorationLine: 'underline' },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingHorizontal: 4 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', paddingHorizontal: 4 }, legendCompact: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   legendItem: { flexDirection: 'row', gap: 5, alignItems: 'center' },
   legendLine: { width: 25, height: 3, borderRadius: 2 },
   legendDot: { width: 13, height: 13, borderRadius: 7, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#f7edff' },
   legendNumber: { color: '#13051b', fontSize: 7, fontWeight: '900' },
   legendText: { color: '#8d8094', fontSize: 9, fontWeight: '700' },
-  mapHint: { color: '#c77bf2', fontSize: 11, textAlign: 'center', fontWeight: '800' },
+  mapHint: { flex: 1, color: '#9e8aa9', fontSize: 10, fontWeight: '700' },
   nearbyPanel: { borderRadius: 18, borderWidth: 1, borderColor: '#45264f', backgroundColor: '#0b0710', padding: 14, gap: 10 },
   nearbyHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   panelKicker: { color: '#c799ff', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 },

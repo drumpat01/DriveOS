@@ -5,6 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView } from 'expo-symbols';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { themeCatalog, type ThemeId, type ThemePalette } from './theme-catalog';
+import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
 import { headerImageSource } from './header-image-sources';
 import { buildYearOnRoadRecap, recapRoutePath, type RecapRank, type YearOnRoadData, type YearOnRoadRecap } from './year-on-road-model';
 import { useYearOnRoadAudio } from './year-on-road-audio';
@@ -26,6 +27,7 @@ export type YearOnRoadViewerProps = {
 const CHAPTERS = ['Your year', 'The miles', 'Your rhythm', 'The long way', 'Your soundtrack', 'On repeat', 'The memories', 'Keep going'];
 const CHAPTER_DURATION_MS = 10_000;
 const THEMES: ThemeId[] = ['dark', 'light', 'redline', 'sakura'];
+if (V3_MIDNIGHT_CANOPY_ENABLED) THEMES.push('midnight-canopy');
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const alpha = (hex: string, opacity: number) => `${hex}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`;
 const number = (value: number, decimals = 0) => value.toLocaleString(undefined, { maximumFractionDigits: decimals });

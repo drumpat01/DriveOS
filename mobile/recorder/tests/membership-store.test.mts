@@ -32,6 +32,7 @@ async function harness(overrides: Record<string, any> = {}) {
   const mocks = {
     'react-native': { AppState: { addEventListener: (_event: string, handler: any) => { appStateListener = handler; return { remove() { appStateListener = null; } }; } } },
     './membership-entitlements': entitlements,
+    './release-features': { PREVIEW_ATLAS_UNLOCKED: false },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
       getMembershipStatus: async () => free,

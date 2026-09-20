@@ -65,6 +65,7 @@ function harness() {
     './app-theme': { useAppTheme: () => testTheme('redline') },
     './delight-ui': { AdaptiveGlassSurface: 'GlassSurface' },
     './use-core-motion': { useCoreMotion: () => ({ reduceTransparency: false }) },
+    './adaptive-layout': { useAdaptiveLayout: () => ({ fold: null }), verticalFoldContentColumns: () => null },
     './theme-palette': load('theme-palette.ts'), './ipad-page-header': { IpadPageHeader: 'Header' },
     './card-detail-link': { CardDetailLink: ({ children }: any) => children }, './journey-title': load('journey-title.ts'),
     './ipad-statistics-model': load('ipad-statistics-model.ts'),
@@ -195,20 +196,24 @@ test('real Statistics range and calendar actions drive the motion while preservi
   try {
     await act(() => { tree = create(React.createElement(h.screen.IpadStatisticsScreen, props)); });
     assert.ok(totals().includes('82 mi'));
+    assert.equal(tree.root.findAllByType('Pressable').filter((n: any) => n.props.accessibilityLabel?.includes(':00:')).length, 0, 'secondary charts stay behind Insights');
+    await act(() => button('Insights').props.onPress());
     const hourly = tree.root.findAllByType('Pressable').filter((n: any) => n.props.accessibilityLabel?.includes(':00:'));
     assert.equal(hourly.length, 24);
     assert.ok(hourly.every((n: any) => flatten(n.props.style).backgroundColor === undefined), 'nonselectable hourly bars do not inherit a date highlight');
+    await act(() => button('Overview').props.onPress());
     const lines = tree.root.findAllByType('Polyline');
     await act(() => button('7D').props.onPress());
     assert.ok(totals().includes('2 mi'));
-    assert.equal(h.state.haptics, 1);
+    assert.equal(h.state.haptics, 3);
     assert.ok(h.state.animations.length > 0);
     assert.equal(tree.root.findAllByType('Polyline')[0], lines[0], 'existing chart instance survives range changes');
     h.step(.4);
     await act(() => button('30D').props.onPress()); h.step(1);
     assert.ok(totals().includes('82 mi'));
     await act(() => button('90D · Plus').props.onPress());
-    assert.equal(upgrades, 1); assert.equal(h.state.haptics, 2, 'locked range does not run the data-change haptic');
+    assert.equal(upgrades, 1); assert.equal(h.state.haptics, 4, 'locked range does not run the data-change haptic');
+    await act(() => button('Days').props.onPress());
     const dayButtons = tree.root.findAllByType('Pressable').filter((n: any) => n.props.testID?.startsWith('day-') && !n.props.disabled);
     const empty = dayButtons.find((n: any) => n.props.accessibilityLabel.includes('0 journeys'));
     await act(() => empty.props.onPress());

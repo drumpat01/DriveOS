@@ -1,4 +1,4 @@
-# JourneyDeck Mobile Subsystem (iOS / Expo SDK 57)
+# JourneyDeck Mobile Subsystem (iOS / Expo SDK 58 beta)
 
 ## V2 complete and frozen — September 15, 2026
 
@@ -16,11 +16,11 @@ Before changing a widget flip or expanded-details interaction, read only the [At
 
 ## Core architecture invariants
 
-1. **Expo SDK 57:** Submitted Build 31 targets production runtime `2.0.0-watch.9` and preview runtime `2.0.0-preview.14`. Expo SDK 57, React 19, and React Native 0.86 remain fixed. `app.config.js` is authoritative; `app.json` is historical. Consult the relevant versioned Expo documentation only when changing native modules or framework behavior.
+1. **Expo SDK 58 on V3:** This V3 branch uses Expo SDK 58 beta, React 19, and React Native 0.88 RC for iOS 27 development. Submitted V2 Build 31 remains frozen on Expo SDK 57 at commit `dee86fa`; do not rebuild or update V2 from this branch. `app.config.js` is authoritative; `app.json` is historical. Until SDK 58 reaches stable, `.npmrc` permits Expo's prerelease peer set and `tsconfig.json` retains the documented legacy deep-import condition for dependencies that have not finished the Strict TypeScript API migration. Remove both bridges when the stable dependency set supports it. Consult the relevant versioned Expo documentation when changing native modules or framework behavior.
 2. **Local-first:** On-device SQLite in `src/local-store.ts` is the primary store. Migrations remain additive through `PRAGMA user_version`.
 3. **Analytics:** `src/local-atlas.ts` and `localAtlasClient` in `src/app-data.ts` provide local statistics.
 4. **Privacy:** `src/privacy-masker.ts` must preserve the 300 m Home/Work safety boundary before exports or share cards.
-5. **Private sync:** `src/cloudkit-sync.ts` uses the private `iCloud.com.journeydeck.recorder` container.
+5. **Private sync:** `src/cloudkit-sync.ts` uses the selected app variant's private CloudKit container. Capability-5 Journey Marker metadata/photos use their own profile-scoped zone so older binaries never receive unknown record types.
 6. **Edge:** Cloudflare Workers live in `cloudflare/`; cloud connectivity must not become a prerequisite for local use.
 
 ## Validation policy

@@ -59,7 +59,8 @@ test('Monday-first calendar and local day iteration work across month and DST bo
 });
 
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
-let light: boolean | 'sakura' | 'redline' = false, fontScale = 1;
+let light: boolean | 'sakura' | 'redline' | 'midnight-canopy' = false, fontScale = 1;
+let adaptiveFold: any = null;
 const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, useWindowDimensions: () => ({ fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])) };
 const gridLayout = load('device-layout.ts', { 'react-native': native });
@@ -79,11 +80,63 @@ const ui = load('ipad-statistics-screen.tsx', {
   './app-theme': { useAppTheme: () => testTheme(light) }, './theme-palette': load('theme-palette.ts'),
   './ipad-page-header': { IpadPageHeader: host('Header') }, './card-detail-link': { CardDetailLink: host('DetailLink') },
   './journey-title': load('journey-title.ts'), './ipad-statistics-model': model, './device-layout': gridLayout,
+  './theme-material': { ThemeMaterial: host('ThemeMaterial') },
+  './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }), verticalFoldContentColumns: (fold: any, padding: number) => fold?.axis === 'vertical' ? { beforeWidth: fold.before.width - padding, afterWidth: fold.after.width - padding, gap: fold.frame.width } : null },
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((n: any) => n.children.join('')).join('|');
 const button = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
 
-test('Atlas takes the top feature position and Year on the Road follows the statistics in every theme and form factor', async () => {
+test('Autumn iPad metric highlights form complete card borders and never use background greens', async () => {
+  let tree: any;
+  const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  try {
+    light = 'midnight-canopy';
+    const p = testTheme(light).palette;
+    await act(() => { tree = create(React.createElement(ui.IpadStatisticsScreen, { compact: false, state: { status: 'ready', data: { journeys: [], details: [] } }, historyDays: 45, onRefresh() {}, onJourney() {}, onUpgrade() {} })); });
+    for (const key of ['miles', 'journeys', 'drivingMinutes', 'plays', 'listeningMinutes', 'activeDays']) {
+      const card = tree.root.findByProps({ testID: `statistics-metric-${key}` });
+      const borderColor = flatten(card.props.style).borderColor;
+      assert.ok([p.accent, p.amber].includes(borderColor));
+      assert.equal(card.findAllByProps({ testID: `statistics-highlight-${key}` }).length, 0);
+      assert.equal(card.findAllByType('GlassSurface').length, 0);
+      assert.equal(card.findByType('Symbol').props.tintColor, p.text);
+      assert.equal(card.findByType('Sparkline').props.color, borderColor);
+    }
+  } finally { light = false; await act(() => tree?.unmount()); }
+});
+
+test('Statistics moves its live selection into Duo panes without resetting it', async () => {
+  const current = new Date().toISOString();
+  const state = { status: 'ready', data: { journeys: [journey('duo', current)], details: [{ ...journey('duo', current), soundtrack: [song()] }] } };
+  const props = { state, historyDays: null, onRefresh() {}, onJourney() {}, onUpgrade() {} };
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(ui.IpadStatisticsScreen, props)); });
+    await act(() => tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-statistics-canvas').props.onLayout({ nativeEvent: { layout: { width: 1247 } } }));
+    await act(() => button(tree, '7D').props.onPress());
+    assert.equal(button(tree, '7D').props.accessibilityState.selected, true);
+
+    adaptiveFold = { axis: 'vertical', frame: { width: 27 }, before: { width: 634 }, after: { width: 634 } };
+    await act(() => tree.update(React.createElement(ui.IpadStatisticsScreen, props)));
+    const calendar = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'statistics-calendar-layout');
+    const analysis = tree.root.findAllByType('View').find((node: any) => node.props.testID === 'statistics-analysis-row');
+    assert.equal(calendar.props.style.gap, 27);
+    assert.equal(analysis.props.style.gap, 27);
+    assert.equal(button(tree, '7D').props.accessibilityState.selected, true, 'range state survives the pose transition');
+    assert.equal(tree.root.findByType('Header').props.split.gap, 27);
+
+    fontScale = 1.6;
+    await act(() => tree.update(React.createElement(ui.IpadStatisticsScreen, props)));
+    const metricWidgets = tree.root.findByProps({ testID: 'statistics-widgets' });
+    assert.ok(metricWidgets.findAllByType('View').some((node: any) => node.props.style?.flat?.().some((style: any) => style?.width === 299)), 'accessibility text sizes reduce each physical pane to two metric columns');
+  } finally {
+    adaptiveFold = null;
+    fontScale = 1;
+    await act(() => tree?.unmount());
+  }
+});
+
+test('iPad leads with Atlas while compact Statistics leads with data and keeps both Plus features', async () => {
   let tree: any, atlas = 0, year = 0, upgrades = 0;
   try {
     for (const theme of [false, true, 'sakura', 'redline'] as const) for (const compact of [false, true]) {
@@ -94,8 +147,8 @@ test('Atlas takes the top feature position and Year on the Road follows the stat
       });
       await act(() => { if (tree) tree.update(render(() => atlas++)); else tree = create(render(() => atlas++)); });
       const content = text(tree);
-      assert.ok(content.indexOf('Atlas ↗') < content.indexOf('Total miles'));
-      assert.ok(content.indexOf('Your Year on the Road ↗') > content.indexOf('Activity split'));
+      assert.equal(content.indexOf('Atlas ↗') < content.indexOf('Total miles'), !compact);
+      assert.ok(content.indexOf('Your Year on the Road ↗') > content.indexOf(compact ? 'Record book' : 'Activity split'));
       const top = button(tree, 'Open Atlas'), bottom = button(tree, 'Your Year on the Road. JourneyDeck Plus');
       assert.deepEqual(top.props.style({ pressed: false }), bottom.props.style({ pressed: false }));
       top.props.onPress(); bottom.props.onPress();

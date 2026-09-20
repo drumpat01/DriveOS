@@ -138,6 +138,7 @@ test('mounted replay reveals moments in order, rewinds them, pauses, and settles
   const api = load('interactive-route-map.tsx', {
     './journey-replay-stage': { JourneyReplayStage: host('ReplayStage'), ReplayPosition: host('ReplayPosition') },
     './journey-replay-marker': { JourneyReplayMarker: host('ReplayMarker'), REPLAY_TICK_MS: 100 },
+    'expo-symbols': { SymbolView: host('SymbolView') },
     'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-router': { useIsFocused: () => focused },
     'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, FadeIn: { duration: () => 'fade' }, FadeInDown: { duration: () => 'enter' } },
     '@maplibre/maplibre-react-native': Object.fromEntries(['Map', 'Camera', 'Marker', 'Layer', 'GeoJSONSource'].map(n => [n, host(n)])),
@@ -148,17 +149,25 @@ test('mounted replay reveals moments in order, rewinds them, pauses, and settles
     './use-core-motion': { useCoreMotion: () => ({ animate: false, reduceTransparency: true }) },
   }, { Date: Clock, fetch: () => {}, setInterval: (fn: () => void) => { timers.add(fn); return fn; }, clearInterval: (fn: () => void) => timers.delete(fn) });
   const song = (index: number, second: number) => ({ index, playedAt: iso(second), coordinate: samples[0].coordinate, track: `Song ${index}`, artist: 'Artist', durationMs: 30_000 });
-  const props = { coordinates: samples.map(p => p.coordinate), routeSamples: samples, songMoments: [song(1, 60), song(2, 150)], totalSongCount: 2, startedAt: iso(0), endedAt: iso(180), startingBatteryPercent: null, endingBatteryPercent: null, startLabel: 'Start', endLabel: 'End', photos: [{ id: 'p', uri: 'file:///p.jpg', capturedAt: iso(90) }] };
+  let selectedMarker: string | null = null;
+  const savedMarker = { id: 'saved-test', capturedAt: iso(90), locationAt: iso(90), latitude: 32.5, longitude: -97.5, accuracyMeters: 5, notes: '', sessionId: 'session' };
+  const props = { markers: [savedMarker], onSelectMarker: (marker: any) => { selectedMarker = marker.id; }, coordinates: samples.map(p => p.coordinate), routeSamples: samples, songMoments: [song(1, 60), song(2, 150)], totalSongCount: 2, startedAt: iso(0), endedAt: iso(180), startingBatteryPercent: null, endingBatteryPercent: null, startLabel: 'Start', endLabel: 'End', photos: [{ id: 'p', uri: 'file:///p.jpg', capturedAt: iso(90) }] };
   let tree: any;
   const button = (label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
   const markers = () => tree.root.findAllByType('Marker').map((n: any) => n.props.id);
   await act(async () => { tree = create(React.createElement(api.InteractiveRouteMap, props)); });
   assert.ok(markers().includes('journey-song-2'), 'overview retains all song exploration');
+  const savedPin = tree.root.findAllByType('Marker').find((node: any) => node.props.id === 'saved-marker-saved-test');
+  assert.deepEqual(Array.from(savedPin.props.lngLat), [-97.5, 32.5]);
+  await act(() => savedPin.props.onPress({ stopPropagation() {} }));
+  assert.equal(selectedMarker, savedMarker.id);
   await act(() => button('Play replay').props.onPress());
+  assert.ok(!markers().includes('saved-marker-saved-test'));
   assert.ok(!markers().includes('journey-song-1')); assert.ok(!markers().includes('journey-end'));
   await act(() => { now += 20_000; [...timers].forEach(fn => fn()); });
   assert.ok(markers().includes('journey-song-1')); assert.ok(!markers().includes('journey-song-2'));
   await act(() => { now += 5000; [...timers].forEach(fn => fn()); });
+  assert.ok(markers().includes('saved-marker-saved-test'));
   assert.ok(markers().includes('replay-photo-p'));
   assert.equal(tree.root.findByType('ReplayStage').props.photo.uri, 'file:///p.jpg');
   await act(() => button('Pause replay').props.onPress()); assert.equal(timers.size, 0);

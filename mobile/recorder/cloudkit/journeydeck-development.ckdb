@@ -162,6 +162,51 @@ RECORD TYPE Photo (
     GRANT READ TO "_world"
 );
 
+RECORD TYPE JourneyMarker (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    accuracyMeters DOUBLE,
+    capturedAt STRING,
+    createdAt STRING,
+    deletedAt STRING,
+    id STRING,
+    latitude DOUBLE,
+    locationAt STRING,
+    longitude DOUBLE,
+    notes STRING,
+    rootJourneyId STRING,
+    sessionId STRING,
+    syncRevision INT64,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE MarkerPhoto (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    asset ASSET,
+    byteLength INT64,
+    contentType STRING,
+    createdAt STRING,
+    deletedAt STRING,
+    fileName STRING,
+    id STRING,
+    markerId STRING,
+    syncRevision INT64,
+    updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
 RECORD TYPE PrivatePreference (
     "___createTime" TIMESTAMP,
     "___createdBy" REFERENCE,

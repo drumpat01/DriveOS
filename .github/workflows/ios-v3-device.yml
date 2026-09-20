@@ -1,0 +1,145 @@
+name: JourneyDeck V3 registered iPhone
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: journeydeck-v3-device
+  cancel-in-progress: false
+jobs:
+  build:
+    # Standard public-repository runner only. No larger runner or EAS Build.
+    if: github.event.repository.private == false
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      APP_VARIANT: v3-preview
+      EAS_BUILD_PROFILE: v3-preview
+      EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING: '1'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Locate mobile project
+        shell: bash
+        run: |
+          if [ -f mobile/recorder/package-lock.json ]; then
+            echo 'MOBILE_DIR=mobile/recorder' >> "$GITHUB_ENV"
+          elif [ -f package-lock.json ]; then
+            echo 'MOBILE_DIR=.' >> "$GITHUB_ENV"
+          else
+            echo '::error::Mobile snapshot is missing'; exit 1
+          fi
+      - name: Require signing inputs before compiling
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_V3_PROFILE_BASE64: ${{ secrets.IOS_V3_PROFILE_BASE64 }}
+          IOS_V3_WATCH_PROFILE_BASE64: ${{ secrets.IOS_V3_WATCH_PROFILE_BASE64 }}
+          IOS_TEST_DEVICE_UDID: ${{ secrets.IOS_TEST_DEVICE_UDID }}
+          IOS_ARTIFACT_PASSWORD: ${{ secrets.IOS_ARTIFACT_PASSWORD }}
+        run: |
+          python3 "$MOBILE_DIR/scripts/prepare-ios-signing.py" preflight
+      - name: Check native Siri service before the full build
+        run: |
+          xcrun swiftc -typecheck -swift-version 5 -target arm64-apple-ios17.0 \
+            -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" \
+            "$MOBILE_DIR/modules/journeydeck-recorder/ios/JourneyDeckAIPlanner.swift" \
+            "$MOBILE_DIR/modules/journeydeck-recorder/ios/JourneyDeckAskService.swift"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Cache downloaded dependencies only
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            ~/Library/Caches/CocoaPods
+          key: ios-v3-dependencies-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+      - name: Install and check source
+        working-directory: ${{ env.MOBILE_DIR }}
+        run: |
+          npm ci
+          npm run typecheck
+          # Config tests intentionally exercise V2 and V3 with their own environment.
+          unset APP_VARIANT EAS_BUILD_PROFILE EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING
+          export TZ=America/Chicago
+          if [ "$MOBILE_DIR" = "." ]; then
+            # The public mobile snapshot has no sibling server/Cloudflare repository.
+            # Those three integration suites run in the complete primary checkout.
+            # One screenshot-hash checkpoint uses private local .cache images.
+            # Its runtime/theme tests still run; the checkpoint passed locally.
+            node -e "const fs=require('fs');const cp=require('child_process');const external=new Set(['cloudflare-workers.test.mts','overture-places.test.mts','public-release-integrity.test.mts']);const files=fs.readdirSync('tests').filter(f=>f.endsWith('.test.mts')&&!external.has(f)).map(f=>'tests/'+f);const result=cp.spawnSync(process.execPath,['--experimental-strip-types','--test','--test-skip-pattern=^the recovered shader and timing are locked',...files],{stdio:'inherit'});process.exit(result.status??1)"
+          else
+            npm test
+          fi
+      - name: Generate full iOS and Watch projects
+        working-directory: ${{ env.MOBILE_DIR }}
+        run: |
+          npx expo prebuild --platform ios --no-install
+          npx pod-install ios
+      - name: Install and validate signing assets
+        working-directory: ${{ env.MOBILE_DIR }}
+        env:
+          IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
+          IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
+          IOS_V3_PROFILE_BASE64: ${{ secrets.IOS_V3_PROFILE_BASE64 }}
+          IOS_V3_WATCH_PROFILE_BASE64: ${{ secrets.IOS_V3_WATCH_PROFILE_BASE64 }}
+          IOS_TEST_DEVICE_UDID: ${{ secrets.IOS_TEST_DEVICE_UDID }}
+          IOS_ARTIFACT_PASSWORD: ${{ secrets.IOS_ARTIFACT_PASSWORD }}
+        run: |
+          python3 scripts/prepare-ios-signing.py install
+          node scripts/configure-ios-device-build.cjs
+      - name: Compile signed device archive
+        timeout-minutes: 60
+        working-directory: ${{ env.MOBILE_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE=$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)
+          [ -n "$WORKSPACE" ]
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild -version
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/JourneyDeckV3.xcarchive" \
+            -derivedDataPath "$RUNNER_TEMP/JourneyDeckDerivedData" -quiet archive
+      - name: Export and encrypt installation file
+        working-directory: ${{ env.MOBILE_DIR }}
+        env:
+          IOS_ARTIFACT_PASSWORD: ${{ secrets.IOS_ARTIFACT_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/JourneyDeckV3.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/journeydeck-signing/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/JourneyDeckExport" -quiet
+          IPA=$(find "$RUNNER_TEMP/JourneyDeckExport" -maxdepth 1 -name '*.ipa' -print -quit)
+          [ -n "$IPA" ]
+          export IPA
+          python3 - <<'PY'
+          import os, plistlib, zipfile
+          expected = str(100000 + int(os.environ['GITHUB_RUN_NUMBER']))
+          with zipfile.ZipFile(os.environ['IPA']) as archive:
+              names = [name for name in archive.namelist() if name.startswith('Payload/') and name.endswith('.app/Info.plist')]
+              records = [plistlib.loads(archive.read(name)) for name in names]
+          bundles = {item.get('CFBundleIdentifier'): str(item.get('CFBundleVersion')) for item in records}
+          required = {'com.journeydeck.recorder.v3', 'com.journeydeck.recorder.v3.watchkitapp'}
+          if not required.issubset(bundles) or any(bundles[bundle] != expected for bundle in required):
+              raise SystemExit('Exported app/Watch bundle identity or build number is incorrect')
+          print('Exported V3 app and Watch build numbers verified.')
+          PY
+          mkdir -p "$RUNNER_TEMP/JourneyDeckEncrypted"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -md sha256 \
+            -pass env:IOS_ARTIFACT_PASSWORD -in "$IPA" \
+            -out "$RUNNER_TEMP/JourneyDeckEncrypted/JourneyDeckV3.ipa.enc"
+          shasum -a 256 "$RUNNER_TEMP/JourneyDeckEncrypted/JourneyDeckV3.ipa.enc" > "$RUNNER_TEMP/JourneyDeckEncrypted/SHA256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: journeydeck-v3-device-encrypted
+          path: ${{ runner.temp }}/JourneyDeckEncrypted/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove temporary signing assets
+        if: always()
+        run: python3 "$MOBILE_DIR/scripts/prepare-ios-signing.py" cleanup

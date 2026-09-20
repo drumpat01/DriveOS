@@ -15,18 +15,24 @@ import { useThemeChoice } from './app-theme';
 import {
   FREE_THEME_IDS,
   PLUS_THEME_IDS,
-  THEME_GRID_ORDER,
   themeCatalog,
   themeRequiresPlus,
   type ThemeId,
 } from './theme-catalog';
+import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
 
 const previews: Record<ThemeId, number> = {
   dark: require('../assets/cinematic-home-main-photo-v1.jpg'),
   light: require('../assets/home-header-light-v1.png'),
   sakura: require('../assets/theme-rosewater-road-v1.png'),
   redline: require('../assets/theme-grand-touring-home-v2.png'),
+  'midnight-canopy': require('../assets/theme-midnight-canopy-v1.png'),
 };
+
+const visibleFreeThemeIds: readonly ThemeId[] = V3_MIDNIGHT_CANOPY_ENABLED
+  ? [...FREE_THEME_IDS, 'midnight-canopy']
+  : FREE_THEME_IDS;
+const visibleThemeIds: readonly ThemeId[] = [...visibleFreeThemeIds, ...PLUS_THEME_IDS];
 
 type ThemePickerProps = {
   embedded?: boolean;
@@ -49,13 +55,13 @@ function ThemeCard({ id, selected, locked, isPlus, compact, onSelect, register }
   const choice = themeCatalog[id];
   const palette = choice.palette;
   const swatches = choice.swatches ?? [palette.coral, palette.amber, palette.teal, palette.blue, palette.rose];
-  const position = THEME_GRID_ORDER.indexOf(id) + 1;
+  const position = visibleThemeIds.indexOf(id) + 1;
 
   return <Pressable
     ref={view => register(id, view)}
     testID={`theme-card-${id}`}
     accessibilityRole="radio"
-    accessibilityLabel={`${choice.name}, theme ${position} of ${THEME_GRID_ORDER.length}. ${choice.mode === 'light' ? 'Light' : 'Dark'} appearance. ${choice.description}. ${isPlus ? 'JourneyDeck Plus' : 'Free'}${locked ? '. Requires JourneyDeck Plus' : ''}`}
+    accessibilityLabel={`${choice.name}, theme ${position} of ${visibleThemeIds.length}. ${choice.mode === 'light' ? 'Light' : 'Dark'} appearance. ${choice.description}. ${isPlus ? 'JourneyDeck Plus' : 'Free'}${locked ? '. Requires JourneyDeck Plus' : ''}`}
     accessibilityHint={locked ? 'Opens JourneyDeck Plus' : selected ? 'Selected theme' : 'Applies this theme'}
     accessibilityState={{ checked: selected, selected }}
     pressRetentionOffset={16}
@@ -85,7 +91,7 @@ function ThemeCard({ id, selected, locked, isPlus, compact, onSelect, register }
   </Pressable>;
 }
 
-/** Two free themes above two Plus themes. Selection occurs only through a direct card activation. */
+/** Standard Free and Plus sections, with two cards per row and animated activation. */
 export function ThemePicker({ embedded = false, compact = false, membershipTier = 'free', onUpgrade }: ThemePickerProps = {}) {
   const { theme, setTheme, transitionTheme } = useThemeChoice();
   const cards = useRef(new Map<ThemeId, View>());
@@ -123,12 +129,12 @@ export function ThemePicker({ embedded = false, compact = false, membershipTier 
     else applyFromCenter(id);
   };
 
-  const renderRow = (label: string, ids: readonly ThemeId[], isPlus: boolean) => <View testID={`theme-row-${isPlus ? 'plus' : 'free'}`} style={styles.tierGroup}>
+  const renderRow = (label: string, ids: readonly ThemeId[], isPlus: boolean, group: 'free' | 'plus') => <View testID={`theme-row-${group}`} style={styles.tierGroup}>
     <View style={styles.tierHeading}>
       <Text style={[styles.tierLabel, { color: isPlus ? colors.accent : colors.muted }]}>{label}</Text>
       {isPlus && <SymbolView name="crown.fill" tintColor={colors.accent} size={13} />}
     </View>
-    <View style={styles.gridRow}>{ids.map(id => <ThemeCard
+    {Array.from({ length: Math.ceil(ids.length / 2) }, (_, row) => <View key={row} style={styles.gridRow}>{ids.slice(row * 2, row * 2 + 2).map(id => <ThemeCard
       key={id}
       id={id}
       selected={id === committedId}
@@ -137,15 +143,15 @@ export function ThemePicker({ embedded = false, compact = false, membershipTier 
       compact={compact}
       onSelect={selectTheme}
       register={(cardId, view) => { if (view) cards.current.set(cardId, view); else cards.current.delete(cardId); }}
-    />)}</View>
+    />)}{row * 2 + 1 >= ids.length && <View accessible={false} style={styles.emptyCell} />}</View>)}
   </View>;
 
   return <View ref={host} testID="theme-picker" style={[styles.panel, embedded && styles.embedded, { backgroundColor: embedded ? 'transparent' : colors.card, borderColor: embedded ? 'transparent' : colors.line }]}>
     <Text accessibilityRole="header" style={[embedded ? styles.sectionTitle : styles.title, { color: embedded ? colors.accent : colors.text }]}>{embedded ? 'THEME' : 'Theme'}</Text>
     <Text style={[styles.detail, { color: colors.muted }]}>Choose the colors and artwork used throughout JourneyDeck.</Text>
     <View accessibilityRole="radiogroup" style={styles.grid}>
-      {renderRow('FREE', FREE_THEME_IDS, false)}
-      {renderRow('JOURNEYDECK PLUS', PLUS_THEME_IDS, true)}
+      {renderRow('FREE', visibleFreeThemeIds, false, 'free')}
+      {renderRow('JOURNEYDECK PLUS', PLUS_THEME_IDS, true, 'plus')}
     </View>
   </View>;
 }
@@ -161,6 +167,7 @@ const styles = StyleSheet.create({
   tierHeading: { minHeight: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
   tierLabel: { fontSize: 10, lineHeight: 14, fontWeight: '900', letterSpacing: 1.5 },
   gridRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  emptyCell: { flex: 1, minWidth: 0 },
   themeCard: { flex: 1, minWidth: 0, borderRadius: 19, borderWidth: 1.5, overflow: 'hidden', shadowOpacity: .18, shadowRadius: 12, shadowOffset: { width: 0, height: 7 } },
   compactThemeCard: { borderRadius: 21 },
   artwork: { width: '100%', aspectRatio: 1.45, minHeight: 84, overflow: 'hidden' },
