@@ -8,7 +8,7 @@ import type { NetworkActivityReason } from './network-activity';
 
 type JourneyDeckConnection = { serverUrl: string; token: string };
 type RequestOptions = { timeoutMs?: number; timeoutMessage?: string };
-type EdgeRequestOptions = RequestOptions & { operation?: string; reason?: NetworkActivityReason };
+type EdgeRequestOptions = RequestOptions & { operation?: string; reason?: NetworkActivityReason; maxResponseBytes?: number };
 
 export class JourneyDeckNetworkBlockedError extends Error {
   constructor() {
@@ -110,7 +110,15 @@ export async function requestPrivacyEdgeJson<T>(
       headers: { accept: 'application/json', 'content-type': 'application/json', 'x-journeydeck-version': '1.7' },
     });
     const downloadBytes = reportedDownloadBytes(response);
-    const payload = await response.json().catch(() => null) as { error?: string } | null;
+    if (options.maxResponseBytes && downloadBytes > options.maxResponseBytes) throw new Error('Public directory response is too large.');
+    let payload: { error?: string } | null;
+    if (options.maxResponseBytes) {
+      const bytes = await response.arrayBuffer();
+      if (bytes.byteLength > options.maxResponseBytes) throw new Error('Public directory response is too large.');
+      payload = await new Response(bytes).json() as { error?: string } | null;
+    } else {
+      payload = await response.json().catch(() => null) as { error?: string } | null;
+    }
     activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
     if (!response.ok) throw new Error(payload?.error || `JourneyDeck privacy edge returned ${response.status}.`);
     return payload as T;
@@ -150,6 +158,29 @@ export async function requestExternalProviderJson<T>(
   } catch (error) {
     activity.finish({ outcome: 'failed' });
     if (error instanceof Error && error.name === 'AbortError') throw new Error(options.timeoutMessage || 'Spotify took too long to respond.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function requestAppleCatalogJson<T>(url: string, options: EdgeRequestOptions = {}): Promise<T> {
+  if (!/^https:\/\/itunes\.apple\.com\/(?:search|lookup)\?/.test(url)) throw new Error('Unapproved Apple catalog URL.');
+  const activity = beginNetworkActivity({
+    category: 'privacy_edge', reason: 'external_import', operation: options.operation ?? 'Apple artwork lookup', method: 'GET', uploadBytes: 0,
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 8_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, headers: { accept: 'application/json' } });
+    const downloadBytes = reportedDownloadBytes(response);
+    const payload = await response.json().catch(() => null) as T | null;
+    activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
+    if (!response.ok || !payload) throw new Error(`Apple catalog returned ${response.status}.`);
+    return payload;
+  } catch (error) {
+    activity.finish({ outcome: 'failed' });
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(options.timeoutMessage || 'Apple artwork lookup took too long.');
     throw error;
   } finally {
     clearTimeout(timeout);

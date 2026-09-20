@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">JourneyDeck route mark</title>
+  <desc id="desc">Two layered map cards crossed by a glowing route between two points.</desc>
+  <defs>
+    <linearGradient id="surface" x1="24" y1="20" x2="222" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13394e"/><stop offset="1" stop-color="#071d31"/>
+    </linearGradient>
+    <linearGradient id="route" x1="58" y1="204" x2="205" y2="59" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4ce4d0"/><stop offset=".56" stop-color="#9bf1c5"/><stop offset="1" stop-color="#ffd08a"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="256" height="256" rx="63" fill="url(#surface)"/>
+  <path d="M45 66 133 38l77 43-89 28z" fill="#194c62" opacity=".8"/>
+  <path d="M41 91 129 63l82 44-89 29z" fill="#0d3045" stroke="#4bdbc9" stroke-opacity=".38" stroke-width="3"/>
+  <path d="M42 91v80l80 44v-79zM122 136v79l89-40v-68z" fill="#0b263a" stroke="#4bdbc9" stroke-opacity=".3" stroke-width="3"/>
+  <path d="M61 183c20-12 14-55 44-58 27-2 24 37 53 30 19-5 20-31 39-49" fill="none" stroke="url(#route)" stroke-width="10" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M61 183c20-12 14-55 44-58 27-2 24 37 53 30 19-5 20-31 39-49" fill="none" stroke="url(#route)" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="61" cy="183" r="11" fill="#5ee7d1" stroke="#d9fff0" stroke-width="4"/>
+  <circle cx="197" cy="106" r="12" fill="#ffd08a" stroke="#fff3d9" stroke-width="4"/>
+</svg>

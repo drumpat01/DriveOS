@@ -265,7 +265,9 @@ public final class JourneyDeckMusicModule: Module {
         if let value = song.lastPlayedDate { item["lastPlayedAt"] = iso8601(value) }
         if let value = song.isrc { item["isrc"] = value }
         if let value = song.url { item["appleMusicUrl"] = value.absoluteString }
-        if let value = song.artwork?.url(width: 512, height: 512) {
+        // JourneyDeck renders covers as compact cards. A 256 px source keeps the
+        // persistent Expo disk cache small while remaining sharp on iPhone.
+        if let value = song.artwork?.url(width: 256, height: 256) {
           item["artworkUrl"] = value.absoluteString
         }
         return item

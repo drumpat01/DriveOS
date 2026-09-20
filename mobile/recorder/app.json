@@ -3,10 +3,8 @@
     "name": "JourneyDeck",
     "slug": "journeydeck",
     "owner": "journeydeck",
-    "version": "1.7.0",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "version": "1.9.0",
+    "runtimeVersion": "1.9.0-build13",
     "updates": {
       "url": "https://u.expo.dev/ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4",
       "checkAutomatically": "ON_LOAD",
@@ -40,7 +38,7 @@
       },
       "infoPlist": {
         "NSAppleMusicUsageDescription": "JourneyDeck reads your Apple Music activity to build the soundtrack for journeys you record.",
-        "NSMicrophoneUsageDescription": "JourneyDeck briefly listens for music you choose to recognize. Audio is never saved."
+        "NSMicrophoneUsageDescription": "When you tap Identify Song, JourneyDeck briefly uses the microphone to recognize that song. Audio is never recorded or saved."
       },
       "config": {
         "usesNonExemptEncryption": false
@@ -72,7 +70,7 @@
         {
           "photosPermission": "JourneyDeck accesses photos you choose so you can add them to Collections and Memories.",
           "cameraPermission": false,
-          "microphonePermission": false
+          "microphonePermission": "When you tap Identify Song, JourneyDeck briefly uses the microphone to recognize that song. Audio is never recorded or saved."
         }
       ],
       "expo-sqlite",
@@ -84,11 +82,11 @@
     ],
     "extra": {
       "release": {
-        "label": "Closure Bundle D — server-independent core",
-        "sequence": "P3.D"
+        "label": "Native Runtime 1.9 — Build 13 observability",
+        "sequence": "N1.9-B13"
       },
       "edge": {
-        "url": "https://journeydeck-edge-preview.patrickbstewart.workers.dev"
+        "url": "https://journeydeck-edge.patrickbstewart.workers.dev"
       },
       "eas": {
         "projectId": "ea19ed01-7b62-49e9-a9e3-8058f1e6cbd4"

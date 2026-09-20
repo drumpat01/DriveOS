@@ -5,7 +5,9 @@ import {
   navigationGeometry,
   navigationIndexAtX,
   navigationIndicatorX,
+  navigationProgressAtX,
   navigationTabX,
+  tabPageMotion,
 } from '../src/navigation-motion.ts';
 
 const width = 390;
@@ -45,4 +47,18 @@ test('release snap positions align with each tab', () => {
   [6, 82.4, 158.8, 235.2, 311.6].forEach((expected, index) => {
     assertClose(navigationTabX(index, width, count, padding, gap), expected);
   });
+});
+
+test('continuous navigation progress follows the pager between tabs', () => {
+  assertClose(navigationProgressAtX(42.2, width, count, padding, gap), 0);
+  assertClose(navigationProgressAtX(118.6, width, count, padding, gap), 1);
+  assertClose(navigationProgressAtX(156.8, width, count, padding, gap), 1.5);
+  assertClose(navigationProgressAtX(347.8, width, count, padding, gap), 4);
+});
+
+test('tab motion remains subtle and respects Reduce Motion', () => {
+  assert.deepEqual(tabPageMotion(2, 2, false), { opacity: 1, scale: 1 });
+  assert.deepEqual(tabPageMotion(1.5, 2, false), { opacity: 0.96, scale: 0.9925 });
+  assert.deepEqual(tabPageMotion(0, 2, false), { opacity: 0.92, scale: 0.985 });
+  assert.deepEqual(tabPageMotion(0, 2, true), { opacity: 1, scale: 1 });
 });

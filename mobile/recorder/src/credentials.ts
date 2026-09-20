@@ -17,12 +17,20 @@ function profileKey(base: string) {
 }
 
 /** A local recorder identity exists even when no legacy JourneyDeck server is configured. */
-export async function loadOrCreateDeviceId(): Promise<string> {
-  const savedDeviceId = await SecureStore.getItemAsync(DEVICE_KEY, secureOptions);
-  if (savedDeviceId) return savedDeviceId;
-  const deviceId = `iphone_${Crypto.randomUUID()}`;
-  await SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions);
-  return deviceId;
+let deviceIdLoad: Promise<string> | null = null;
+export function loadOrCreateDeviceId(): Promise<string> {
+  if (deviceIdLoad) return deviceIdLoad;
+  const pending = (async () => {
+    const savedDeviceId = await SecureStore.getItemAsync(DEVICE_KEY, secureOptions);
+    if (savedDeviceId) return savedDeviceId;
+    const deviceId = `iphone_${Crypto.randomUUID()}`;
+    await SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions);
+    return deviceId;
+  })();
+  deviceIdLoad = pending;
+  const clear = () => { if (deviceIdLoad === pending) deviceIdLoad = null; };
+  void pending.then(clear, clear);
+  return pending;
 }
 
 export async function loadConnection(): Promise<Connection | null> {
@@ -54,4 +62,20 @@ export async function saveConnection(value: Omit<Connection, 'deviceId'>): Promi
     SecureStore.setItemAsync(CONNECTION_OWNER_KEY, getCurrentUser().id, secureOptions), SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions),
   ]);
   return { ...value, deviceId };
+}
+
+export async function deleteCurrentProfileConnection(): Promise<void> {
+  const currentUserId = getCurrentUser().id;
+  const ownerId = await SecureStore.getItemAsync(CONNECTION_OWNER_KEY, secureOptions);
+  await Promise.all([
+    SecureStore.deleteItemAsync(profileKey(SERVER_KEY), secureOptions),
+    SecureStore.deleteItemAsync(profileKey(TOKEN_KEY), secureOptions),
+  ]);
+  if (ownerId === currentUserId) {
+    await Promise.all([
+      SecureStore.deleteItemAsync(SERVER_KEY, secureOptions),
+      SecureStore.deleteItemAsync(TOKEN_KEY, secureOptions),
+      SecureStore.deleteItemAsync(CONNECTION_OWNER_KEY, secureOptions),
+    ]);
+  }
 }

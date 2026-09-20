@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JourneyDeck — GPS method screen mockups</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #05030b; color: #faf7ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 50% -12%, #28122f 0, #09050e 38%, #030207 78%); }
+    header { max-width: 1120px; margin: 0 auto; padding: 52px 22px 30px; text-align: center; }
+    .eyebrow { margin: 0 0 10px; color: #ff8768; font-size: 11px; font-weight: 900; letter-spacing: .22em; }
+    h1 { margin: 0; font-size: clamp(34px, 5vw, 58px); letter-spacing: -.05em; }
+    .intro { max-width: 680px; margin: 16px auto 0; color: #b8adbe; line-height: 1.6; }
+    main { width: min(430px, calc(100% - 28px)); margin: 0 auto; padding-bottom: 64px; }
+    article { padding: 16px; border: 1px solid rgba(230, 142, 255, .23); border-radius: 28px; background: linear-gradient(155deg, rgba(28, 12, 35, .94), rgba(7, 4, 12, .96)); box-shadow: 0 28px 80px rgba(0,0,0,.52); }
+    .phone { position: relative; overflow: hidden; width: 100%; aspect-ratio: 480 / 1040; border-radius: 36px; background: #000; cursor: zoom-in; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08), 0 18px 42px rgba(0,0,0,.5); }
+    .phone img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    .dynamic-island { position: absolute; z-index: 2; top: 13px; left: 50%; width: 28%; height: 3%; transform: translateX(-50%); border-radius: 999px; background: #000; pointer-events: none; }
+    .meta { padding: 18px 4px 3px; }
+    .number { color: #ff8768; font-size: 10px; font-weight: 900; letter-spacing: .19em; }
+    h2 { margin: 7px 0 7px; font-size: 23px; letter-spacing: -.025em; }
+    .description { margin: 0; min-height: 44px; color: #a99fad; font-size: 13px; line-height: 1.5; }
+    button { width: 100%; min-height: 43px; margin-top: 14px; border: 1px solid rgba(255, 126, 96, .38); border-radius: 14px; background: rgba(255, 104, 84, .09); color: #fff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+    button:hover { background: rgba(255, 104, 84, .17); }
+    dialog { width: min(95vw, 480px); max-height: 96vh; margin: auto; padding: 0; border: 0; border-radius: 40px; background: #000; box-shadow: 0 30px 130px #000; }
+    dialog::backdrop { background: rgba(2,1,5,.91); backdrop-filter: blur(18px); }
+    dialog img { display: block; max-width: 100%; max-height: 96vh; aspect-ratio: 480 / 1040; object-fit: contain; }
+    .close { position: absolute; z-index: 4; top: 14px; right: 14px; width: 42px; min-height: 42px; margin: 0; border-radius: 999px; background: rgba(0,0,0,.75); }
+    @media (max-width: 900px) { header { padding-top: 34px; } .description { min-height: 0; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p class="eyebrow">ONBOARDING · SCREEN 02</p>
+    <h1>Approved GPS-method screen.</h1>
+    <p class="intro">Expanded Choices is the selected direction for JourneyDeck’s second first-launch screen.</p>
+  </header>
+  <main>
+    <article><div class="phone" data-image="selected-option-2-expanded-choices.png"><span class="dynamic-island"></span><img src="selected-option-2-expanded-choices.png" alt="Approved Expanded Choices GPS-method UI mockup"></div><div class="meta"><span class="number">APPROVED</span><h2>Expanded Choices</h2><p class="description">Both methods stay visible. Tapping the compact method expands its details; Continue advances to Apple Music setup.</p><button>View full-screen mockup</button></div></article>
+  </main>
+  <dialog id="viewer"><button class="close" aria-label="Close">×</button><img alt="Full-screen GPS method UI mockup"></dialog>
+  <script>
+    const viewer = document.querySelector('#viewer');
+    const image = viewer.querySelector('img');
+    const open = card => { image.src = card.querySelector('.phone').dataset.image; viewer.showModal(); };
+    document.querySelectorAll('article').forEach(card => {
+      card.querySelector('.phone').addEventListener('click', () => open(card));
+      card.querySelector('button').addEventListener('click', () => open(card));
+    });
+    viewer.querySelector('.close').addEventListener('click', () => viewer.close());
+    viewer.addEventListener('click', event => { if (event.target === viewer) viewer.close(); });
+  </script>
+</body>
+</html>

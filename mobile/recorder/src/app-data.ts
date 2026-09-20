@@ -3,12 +3,26 @@ import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import { loadConnection } from './credentials';
-import { activeSession, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
+import { activeSession, archivedJourneyIdForSession, recentCompletedSessionIds, getSessionSummary, readAppCache, totalQueuedMusicObservationCount, totalQueuedPointCount, writeAppCache } from './storage';
 import type { ApiMusicProvider } from './music-preferences';
 import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
 import { requestJourneyDeckJson } from './network-request';
 import { syncTessieDirect, tessieDirectStatus, type TessieSnapshot } from './tessie-direct';
+import { refreshAllAppleMusicArtwork } from './music-capture';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import {
+  coordinateFromPlaceAliasIdentity,
+  coordinatePlaceAliasIdentity,
+  GEOCODED_PLACE_MATCH_RADIUS_METERS,
+  SAVED_PLACE_MATCH_RADIUS_METERS,
+} from './place-matching';
+import { notifyLocalArchiveChanged } from './local-archive-events';
+import { DIRECT_JOURNEY_MEMORY_ID_PREFIX, isDirectJourneyMemoryId, mergeMemoryJourneySelection } from './memory-model';
+import { loadSavedPlaces } from './saved-places';
+import { resolvePrivatePhotoFile } from './private-photo-file';
+import { hiddenJourneyAnchor, isVisibleJourney, visibleJourneys } from './journey-visibility';
+import { journeyVisibilityChoice, saveJourneyVisibilityChoice, type JourneyVisibilityChoice } from './journey-visibility-preference';
 
 export type ConnectionHealth = 'not_connected' | 'connected' | 'needs_attention';
 export type ShazamHealth = 'not_enabled' | 'enabled' | 'permission_denied';
@@ -41,6 +55,7 @@ export type SoundtrackTrack = {
 
 export type JourneySummary = {
   id: string;
+  showInMemories?: boolean;
   legacyDriveId: string | null;
   provider: string | null;
   vehicleName: string | null;
@@ -116,13 +131,85 @@ function localPlaceAliasKey(location: string) {
   return `place.alias.${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+function savedPlaceAliasId(userId: string, location: string) {
+  return `saved-${localPlaceAliasKey(`${userId}\0${location}`).slice('place.alias.'.length)}`;
+}
+
+function primeCoordinatePlaceAlias(
+  userId: string,
+  location: string,
+  label: string | null | undefined,
+  coordinate?: { latitude: number; longitude: number } | null,
+  forceRename = false,
+) {
+  const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
+  if (!resolved || !label?.trim()) return;
+  // Old builds stored a separate preference for each journey endpoint. Once a
+  // canonical place exists those legacy aliases must never rename it while a
+  // list is merely being read; only an explicit user save may change it.
+  if (!forceRename && findNamedPlace(userId, resolved.latitude, resolved.longitude)) return;
+  upsertPlace({
+    id: savedPlaceAliasId(userId, location), userId, kind: 'custom', label: label.trim(), lat: resolved.latitude, lng: resolved.longitude,
+    radiusMeters: SAVED_PLACE_MATCH_RADIUS_METERS, foursquareId: null, osmId: null, cachedUntil: null,
+  });
+}
+
+function primeSavedPlaceAliases(journeys: JourneySummary[]) {
+  const userId = getCurrentUser().id;
+  for (const journey of journeys) {
+    const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation || `journey:${journey.id}:start`;
+    const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation || `journey:${journey.id}:end`;
+    primeCoordinatePlaceAlias(userId, startKey, getPrivatePreference<string>(userId, localPlaceAliasKey(startKey)));
+    primeCoordinatePlaceAlias(userId, endKey, getPrivatePreference<string>(userId, localPlaceAliasKey(endKey)));
+  }
+}
+
+function applyLocalPlaceAliasesToJourneys<T extends JourneySummary>(journeys: T[]) {
+  loadSavedPlaces(getCurrentUser().id);
+  primeSavedPlaceAliases(journeys);
+  return journeys.map(applyLocalPlaceAliases);
+}
+
+function routeEndpointCoordinate(journey: JourneySummary, endpoint: 'start' | 'end') {
+  const route = 'route' in journey ? (journey as JourneyDetail).route : null;
+  const pair = endpoint === 'start' ? route?.coordinates[0] : route?.coordinates[route.coordinates.length - 1];
+  return pair && Number.isFinite(pair[0]) && Number.isFinite(pair[1])
+    ? { latitude: pair[1], longitude: pair[0] }
+    : null;
+}
+
 function applyLocalPlaceAliases<T extends JourneySummary>(journey: T): T {
   const userId = getCurrentUser().id;
-  const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation;
-  const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation;
-  const start = startKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(startKey)) : null;
-  const end = endKey ? getPrivatePreference<string>(userId, localPlaceAliasKey(endKey)) : null;
-  return { ...journey, startingLocation: start || journey.startingLocation, endingLocation: end || journey.endingLocation };
+  const rawStartingLocation = journey.rawStartingLocation || journey.startingLocation || 'Recorded start';
+  const rawEndingLocation = journey.rawEndingLocation || journey.endingLocation || 'Recorded destination';
+  const startKey = journey.startingLocationKey || journey.rawStartingLocation || journey.startingLocation || `journey:${journey.id}:start`;
+  const endKey = journey.endingLocationKey || journey.rawEndingLocation || journey.endingLocation || `journey:${journey.id}:end`;
+  const exactStart = getPrivatePreference<string>(userId, localPlaceAliasKey(startKey));
+  const exactEnd = getPrivatePreference<string>(userId, localPlaceAliasKey(endKey));
+  const startCoordinate = coordinateFromPlaceAliasIdentity(startKey) ?? routeEndpointCoordinate(journey, 'start');
+  const endCoordinate = coordinateFromPlaceAliasIdentity(endKey) ?? routeEndpointCoordinate(journey, 'end');
+  primeCoordinatePlaceAlias(userId, startKey, exactStart, startCoordinate);
+  primeCoordinatePlaceAlias(userId, endKey, exactEnd, endCoordinate);
+  const start = startCoordinate
+    ? findNamedPlace(userId, startCoordinate.latitude, startCoordinate.longitude)?.label
+      ?? exactStart
+      ?? findCachedPlace(userId, startCoordinate.latitude, startCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
+    : exactStart;
+  const end = endCoordinate
+    ? findNamedPlace(userId, endCoordinate.latitude, endCoordinate.longitude)?.label
+      ?? exactEnd
+      ?? findCachedPlace(userId, endCoordinate.latitude, endCoordinate.longitude, GEOCODED_PLACE_MATCH_RADIUS_METERS)?.label
+    : exactEnd;
+  return {
+    ...journey,
+    showInMemories: journeyVisibilityChoice(userId, journey.id) === 'show',
+    rawStartingLocation,
+    rawEndingLocation,
+    startingLocationKey: startKey,
+    endingLocationKey: endKey,
+    startingLocation: start || journey.startingLocation,
+    endingLocation: end || journey.endingLocation,
+  };
 }
 
 function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail | null): JourneyDetail {
@@ -137,6 +224,12 @@ function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail
   const remotePointCount = remote.route?.coordinates.length ?? 0;
   return {
     ...remote,
+    startingLocation: remote.startingLocation ?? local.startingLocation,
+    endingLocation: remote.endingLocation ?? local.endingLocation,
+    rawStartingLocation: remote.rawStartingLocation ?? remote.startingLocation ?? local.rawStartingLocation,
+    rawEndingLocation: remote.rawEndingLocation ?? remote.endingLocation ?? local.rawEndingLocation,
+    startingLocationKey: local.startingLocationKey ?? remote.startingLocationKey,
+    endingLocationKey: local.endingLocationKey ?? remote.endingLocationKey,
     soundtrack,
     songCount: Math.max(remote.songCount, soundtrack.length),
     route: localPointCount >= remotePointCount ? local.route : remote.route,
@@ -159,15 +252,20 @@ function mergeLocalJourneyPage(
     const remote = cachedByIdentity.get(journey.id) ?? (journey.legacyDriveId ? cachedByIdentity.get(journey.legacyDriveId) : undefined);
     if (!remote) return journey;
     represented.add(remote.id);
+    if (isEditorManagedJourney(getCurrentUser().id, journey.id)) return journey;
     return {
       ...remote,
       ...journey,
       startingLocation: journey.startingLocation ?? remote.startingLocation,
       endingLocation: journey.endingLocation ?? remote.endingLocation,
+      rawStartingLocation: remote.rawStartingLocation ?? remote.startingLocation ?? journey.rawStartingLocation,
+      rawEndingLocation: remote.rawEndingLocation ?? remote.endingLocation ?? journey.rawEndingLocation,
+      startingLocationKey: journey.startingLocationKey ?? remote.startingLocationKey,
+      endingLocationKey: journey.endingLocationKey ?? remote.endingLocationKey,
       soundtrackPreview: journey.soundtrackPreview.length ? journey.soundtrackPreview : remote.soundtrackPreview,
     };
   });
-  for (const journey of cached.items) if (!represented.has(journey.id)) merged.push(journey);
+  for (const journey of cached.items) if (!represented.has(journey.id) && !isEditorManagedJourney(getCurrentUser().id, journey.id)) merged.push(journey);
   merged.sort((left, right) => Date.parse(right.startedAt) - Date.parse(left.startedAt));
   return { items: merged.slice(0, limit), nextCursor: local.nextCursor ?? cached.nextCursor };
 }
@@ -177,25 +275,12 @@ export type ConnectionCapabilities = {
   tessieConfigured: boolean;
 };
 
-export type JourneyCollection = {
-  id: string;
-  name: string;
-  description: string;
-  driveIds: string[];
-  createdAtUtc: string;
-  updatedAtUtc: string;
-  photos: JourneyPhoto[];
-};
-
 export type JourneyPhoto = {
   id: string;
   fileName: string;
   contentType: 'image/jpeg' | 'image/png' | 'image/webp';
   byteLength: number;
   createdAtUtc: string;
-  source: 'collection' | 'memory';
-  collectionId: string | null;
-  memoryId: string | null;
 };
 
 export type JourneyMemory = {
@@ -205,16 +290,14 @@ export type JourneyMemory = {
   artworkKey: string;
   coverPhotoId: string | null;
   photos: JourneyPhoto[];
-  collectionIds: string[];
+  journeyIds: string[];
   createdAtUtc: string;
   updatedAtUtc: string;
 };
 
 export type MemoriesCatalog = {
   memories: JourneyMemory[];
-  collections: JourneyCollection[];
   deletedMemoryIds?: string[];
-  deletedCollectionIds?: string[];
   deletedPhotoIds?: string[];
 };
 
@@ -265,75 +348,43 @@ const JOURNEYS_CACHE_KEY = 'app.journeys.v1';
 const WEEKLY_JOURNEYS_CACHE_KEY = 'app.weekly-journeys.v1';
 const MEMORIES_CACHE_KEY = 'app.memories.v1';
 const MUSIC_DASHBOARD_CACHE_KEY = 'app.music-dashboard.v1';
-
-function mergeMemoriesCatalog(remote: MemoriesCatalog, local: MemoriesCatalog, cached?: MemoriesCatalog | null): MemoriesCatalog {
-  const cachedCollections = new Map((cached?.collections ?? []).map(item => [item.id, item]));
-  const cachedMemories = new Map((cached?.memories ?? []).map(item => [item.id, item]));
-  const deletedCollections = new Set(local.deletedCollectionIds ?? []), deletedMemories = new Set(local.deletedMemoryIds ?? []), deletedPhotos = new Set(local.deletedPhotoIds ?? []);
-  const cleanPhotos = (photos: JourneyPhoto[]) => photos.filter(photo => !deletedPhotos.has(photo.id));
-  const collections = new Map(remote.collections.filter(item => !deletedCollections.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
-  local.collections.forEach(item => {
-    const remoteItem = collections.get(item.id);
-    const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    const inherited = [...item.photos, ...(cachedCollections.get(item.id)?.photos ?? []), ...(remoteItem?.photos ?? [])];
-    collections.set(item.id, { ...winner, photos: cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index)) });
-  });
-  const memories = new Map(remote.memories.filter(item => !deletedMemories.has(item.id)).map(item => [item.id, { ...item, photos: cleanPhotos(item.photos) }]));
-  local.memories.forEach(item => {
-    const cachedItem = cachedMemories.get(item.id);
-    const remoteItem = memories.get(item.id);
-    const winner = !remoteItem || Date.parse(item.updatedAtUtc) >= Date.parse(remoteItem.updatedAtUtc) ? item : remoteItem;
-    const inherited = [...item.photos, ...(cachedItem?.photos ?? []), ...(remoteItem?.photos ?? [])];
-    const photos = cleanPhotos(inherited.filter((photo, index) => inherited.findIndex(candidate => candidate.id === photo.id) === index));
-    const requestedCover = winner.coverPhotoId ?? cachedItem?.coverPhotoId ?? remoteItem?.coverPhotoId ?? null;
-    memories.set(item.id, { ...winner, coverPhotoId: requestedCover && photos.some(photo => photo.id === requestedCover) ? requestedCover : null, photos });
-  });
-  return {
-    collections: [...collections.values()].filter(item => !deletedCollections.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
-    memories: [...memories.values()].filter(item => !deletedMemories.has(item.id)).sort((a, b) => Date.parse(b.updatedAtUtc) - Date.parse(a.updatedAtUtc)),
-    deletedCollectionIds: [...deletedCollections], deletedMemoryIds: [...deletedMemories], deletedPhotoIds: [...deletedPhotos],
-  };
-}
-
-function cacheCollection(collection: JourneyCollection) {
-  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-  writeAppCache(MEMORIES_CACHE_KEY, { ...current, collections: [collection, ...current.collections.filter(item => item.id !== collection.id)] });
-}
-
 function cacheMemory(memory: JourneyMemory) {
-  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+  const current = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
   writeAppCache(MEMORIES_CACHE_KEY, { ...current, memories: [memory, ...current.memories.filter(item => item.id !== memory.id)] });
 }
 const vehicleIntelligenceCacheKey = (userId: string) => `app.vehicle-intelligence.${userId}.v1`;
 const journeyCacheKey = (id: string) => `app.journey.${id}.v1`;
 const photoCacheKey = (id: string) => `app.photo.${id}.v1`;
 
-async function savePrivatePhoto(source: JourneyPhoto['source'], ownerId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
+async function savePrivateMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
   const userId = getCurrentUser().id, base = FileSystem.documentDirectory;
+  const assertPhotoOwner = () => {
+    const memory = getMemoryIncludingDeleted(userId, memoryId);
+    if (getCurrentUser().id !== userId || !memory || memory.deletedAt) throw new Error('The profile or Memory changed. Reopen the Memory before adding photos.');
+  };
+  assertPhotoOwner();
   if (!base) throw new Error('JourneyDeck cannot access its private photo folder on this device.');
   const byteLength = Math.ceil(input.dataBase64.length * 0.75);
   if (!byteLength || byteLength > 1_572_864) throw new Error('Choose a photo smaller than 1.5 MB after compression.');
   const id = `local_${Crypto.randomUUID()}`, directory = `${base}journeydeck-private-photos/${encodeURIComponent(userId)}/`;
   const extension = input.contentType === 'image/png' ? 'png' : input.contentType === 'image/webp' ? 'webp' : 'jpg';
   const localUri = `${directory}${id}.${extension}`, createdAtUtc = new Date().toISOString();
-  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
-  await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
   try {
+    await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+    assertPhotoOwner();
+    await FileSystem.writeAsStringAsync(localUri, input.dataBase64, { encoding: FileSystem.EncodingType.Base64 });
+    assertPhotoOwner();
     upsertPhoto({
-      id, userId, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null,
+      id, userId, source: 'memory', collectionId: null, memoryId,
       fileName: input.fileName, contentType: input.contentType, byteLength, localUri,
     });
   } catch (error) {
     await FileSystem.deleteAsync(localUri, { idempotent: true }).catch(() => undefined);
     throw error;
   }
-  const photo: JourneyPhoto = { id, fileName: input.fileName, contentType: input.contentType, byteLength, createdAtUtc, source, collectionId: source === 'collection' ? ownerId : null, memoryId: source === 'memory' ? ownerId : null };
-  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-  if (source === 'collection') {
-    cached.collections = cached.collections.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
-  } else {
-    cached.memories = cached.memories.map(item => item.id === ownerId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
-  }
+  const photo: JourneyPhoto = { id, fileName: input.fileName, contentType: input.contentType, byteLength, createdAtUtc };
+  const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
+  cached.memories = cached.memories.map(item => item.id === memoryId ? { ...item, photos: [...item.photos.filter(existing => existing.id !== id), photo] } : item);
   writeAppCache(MEMORIES_CACHE_KEY, cached);
   return photo;
 }
@@ -343,7 +394,6 @@ function removeCachedPhoto(photoId: string): void {
   if (!cached) return;
   writeAppCache(MEMORIES_CACHE_KEY, {
     ...cached,
-    collections: cached.collections.map(item => ({ ...item, photos: item.photos.filter(photo => photo.id !== photoId) })),
     memories: cached.memories.map(item => ({ ...item, coverPhotoId: item.coverPhotoId === photoId ? null : item.coverPhotoId, photos: item.photos.filter(photo => photo.id !== photoId) })),
     deletedPhotoIds: [...new Set([...(cached.deletedPhotoIds ?? []), photoId])],
   });
@@ -368,7 +418,7 @@ function localPlaceId(label: string) {
 
 function localVehicleIntelligence(userId: string): VehicleIntelligenceData {
   const localPage = localAtlasClient.journeys(userId, 50);
-  const journeys = localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []);
+  const journeys = visibleJourneys(localPage.items.length ? localPage.items : (readAppCache<{ items: JourneySummary[] }>(JOURNEYS_CACHE_KEY)?.items ?? []));
   const places = new Map<string, SavedPlaceIntelligence>();
   const addPlace = (labelValue: string | null, journey: JourneySummary, arrival: boolean) => {
     const label = labelValue?.trim(); if (!label) return;
@@ -529,50 +579,47 @@ function localDashboardWithCachedContext(connected: boolean): AppDashboard {
     recorder: localRecorderHealth(connected), weeklyJourneys: cachedWeekly };
 }
 
-async function loadWeeklyJourneys(connection: Connection): Promise<JourneySummary[]> {
-  const journeys: JourneySummary[] = [];
-  let cursor: string | undefined;
-  const cutoff = weeklyCutoff();
-
-  // A busy week may contain more journeys than the dashboard preview. Follow the
-  // existing history cursor until the first journey outside the visible week.
-  for (let pageNumber = 0; pageNumber < 20; pageNumber += 1) {
-    const query = new URLSearchParams({ limit: '50' });
-    if (cursor) query.set('cursor', cursor);
-    const page = await request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, `/api/recorder/journeys?${query.toString()}`);
-    journeys.push(...page.items);
-    const oldest = page.items.at(-1);
-    if (!page.nextCursor || !oldest || Date.parse(oldest.startedAt) < cutoff) break;
-    cursor = page.nextCursor;
-  }
-
-  const weekly = journeysInsideWeeklyWindow(journeys);
-  writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weekly);
-  return weekly;
-}
-
 export const appDataClient = {
   async dashboard(_refreshRemote = false): Promise<AppDashboard> {
     const connection = await loadConnection();
     const dashboard = localDashboardWithCachedContext(Boolean(connection));
-    return { ...dashboard, latestJourney: dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null,
-      recentJourneys: dashboard.recentJourneys.map(applyLocalPlaceAliases), weeklyJourneys: dashboard.weeklyJourneys.map(applyLocalPlaceAliases) };
+    loadSavedPlaces(getCurrentUser().id);
+    primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
+    const latestJourney = dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null;
+    const recentJourneys = visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys));
+    return { ...dashboard, latestJourney: latestJourney && isVisibleJourney(latestJourney) ? latestJourney : recentJourneys[0] ?? null,
+      recentJourneys, weeklyJourneys: visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys)) };
   },
 
   async localDashboard(): Promise<AppDashboard> {
     const connection = await loadConnection();
-    return localDashboardWithCachedContext(Boolean(connection));
+    const dashboard = localDashboardWithCachedContext(Boolean(connection));
+    loadSavedPlaces(getCurrentUser().id);
+    primeSavedPlaceAliases([...(dashboard.latestJourney ? [dashboard.latestJourney] : []), ...dashboard.recentJourneys, ...dashboard.weeklyJourneys]);
+    const latestJourney = dashboard.latestJourney ? applyLocalPlaceAliases(dashboard.latestJourney) : null;
+    const recentJourneys = visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.recentJourneys));
+    return {
+      ...dashboard,
+      latestJourney: latestJourney && isVisibleJourney(latestJourney) ? latestJourney : recentJourneys[0] ?? null,
+      recentJourneys,
+      weeklyJourneys: visibleJourneys(applyLocalPlaceAliasesToJourneys(dashboard.weeklyJourneys)),
+    };
   },
 
   async journeys(limit = 25, cursor?: string, _refreshRemote = false): Promise<{ items: JourneySummary[]; nextCursor: string | null }> {
     const local = localAtlasClient.journeys(getCurrentUser().id, limit, cursor);
     const cached = !cursor ? readAppCache<{ items: JourneySummary[]; nextCursor: string | null }>(JOURNEYS_CACHE_KEY) : null;
     const page = local.items.length || cached ? mergeLocalJourneyPage(local, cached, limit) : local;
-    return { ...page, items: page.items.map(applyLocalPlaceAliases) };
+    return { ...page, items: visibleJourneys(applyLocalPlaceAliasesToJourneys(page.items)) };
   },
 
   async journey(id: string, _refreshRemote = false): Promise<JourneyDetail> {
+    loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
+    if (isEditorManagedJourney(getCurrentUser().id, local?.id ?? id)) {
+      if (!local) throw new Error('This journey part was restored or replaced. Open the original journey.');
+      return applyLocalPlaceAliases(local);
+    }
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     if (local && cached) return applyLocalPlaceAliases(mergeJourneyWithLocalDetail(cached, local));
     if (local) return applyLocalPlaceAliases(local);
@@ -581,7 +628,9 @@ export const appDataClient = {
   },
 
   localOrCachedJourney(id: string): JourneyDetail | null {
+    loadSavedPlaces(getCurrentUser().id);
     const local = localAtlasClient.journey(getCurrentUser().id, id);
+    if (isEditorManagedJourney(getCurrentUser().id, local?.id ?? id)) return local ? applyLocalPlaceAliases(local) : null;
     const cached = readAppCache<JourneyDetail>(journeyCacheKey(id));
     const detail = local && cached ? mergeJourneyWithLocalDetail(cached, local) : (local ?? cached);
     return detail ? applyLocalPlaceAliases(detail) : null;
@@ -589,6 +638,7 @@ export const appDataClient = {
 
   async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
+    if (!TESSIE_INTEGRATION_ENABLED) return localVehicleIntelligence(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
     if (!refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
     try {
@@ -602,6 +652,7 @@ export const appDataClient = {
   },
 
   async syncVehicleIntelligence(): Promise<VehicleIntelligenceData> {
+    if (!TESSIE_INTEGRATION_ENABLED) return localVehicleIntelligence(getCurrentUser().id);
     return refreshVehicleIntelligenceFromTessie(getCurrentUser().id);
   },
 
@@ -614,20 +665,30 @@ export const appDataClient = {
     return local;
   },
 
-  async savePlaceAlias(location: string, label: string): Promise<{ location: string; label: string; removed: boolean }> {
+  async savePlaceAlias(location: string, label: string, coordinate?: { latitude: number; longitude: number } | null): Promise<{ location: string; label: string; removed: boolean }> {
     const normalized = label.trim();
-    upsertPrivatePreference(getCurrentUser().id, localPlaceAliasKey(location), normalized);
+    const userId = getCurrentUser().id;
+    upsertPrivatePreference(userId, localPlaceAliasKey(location), normalized);
+    if (normalized) primeCoordinatePlaceAlias(userId, location, normalized, coordinate, true);
+    else {
+      deletePlace(userId, savedPlaceAliasId(userId, location));
+      const resolved = coordinate ?? coordinateFromPlaceAliasIdentity(location);
+      const nearby = resolved ? findNamedPlace(userId, resolved.latitude, resolved.longitude) : null;
+      if (nearby?.kind === 'custom') deletePlace(userId, nearby.id);
+    }
+    notifyLocalArchiveChanged();
     return { location, label: normalized, removed: !normalized };
   },
 
   async memories(_refreshRemote = false): Promise<MemoriesCatalog> {
     const local = localAtlasClient.memories(getCurrentUser().id);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY);
-    return local.memories.length || local.collections.length ? mergeMemoriesCatalog(cached ?? local, local, cached) : (cached ?? local);
+    writeAppCache(MEMORIES_CACHE_KEY, local);
+    return local;
   },
 
   async musicDashboard(refreshRemote = false, details: JourneyDetail[] = []): Promise<MusicDashboardData> {
     const userId = getCurrentUser().id;
+    if (refreshRemote) await refreshAllAppleMusicArtwork();
     const local = localAtlasClient.musicDashboard(userId);
     const cities = await loadMusicCitySummary(userId, refreshRemote, details);
     const data = { ...local, cities };
@@ -635,41 +696,47 @@ export const appDataClient = {
     return data;
   },
 
-  async saveCollection(input: { id?: string | null; name: string; description?: string | null; driveIds: string[] }): Promise<JourneyCollection> {
+  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; journeyIds: string[]; previousJourneyIds?: string[] }): Promise<JourneyMemory> {
     const userId = getCurrentUser().id;
-    const id = input.id ?? `collection_${Crypto.randomUUID()}`;
-    const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.collections.find(item => item.id === id);
-    const localExisting = getCollectionIncludingDeleted(userId, id);
-    const timestamp = new Date().toISOString();
-    const local: JourneyCollection = { id, name: input.name.trim(), description: input.description?.trim() ?? '', driveIds: [...new Set(input.driveIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp, photos: existing?.photos ?? [] };
-    upsertCollection({ id, userId, name: local.name, description: local.description, journeyIds: JSON.stringify(local.driveIds) });
-    cacheCollection(local);
-    return local;
-  },
-
-  async saveMemory(input: { id?: string | null; name: string; notes?: string | null; artworkKey?: string | null; coverPhotoId?: string | null; collectionIds: string[] }): Promise<JourneyMemory> {
-    const userId = getCurrentUser().id;
-    const id = input.id ?? `memory_${Crypto.randomUUID()}`;
+    const id = input.id ?? `${DIRECT_JOURNEY_MEMORY_ID_PREFIX}${Crypto.randomUUID()}`;
     const existing = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY)?.memories.find(item => item.id === id);
     const localExisting = getMemoryIncludingDeleted(userId, id);
+    if (input.id && (!localExisting || localExisting.deletedAt)) throw new Error('This Memory is no longer available.');
+    const journeyIds = localExisting && input.previousJourneyIds
+      ? mergeMemoryJourneySelection(JSON.parse(localExisting.journeyIds), input.previousJourneyIds, input.journeyIds)
+      : [...new Set(input.journeyIds)];
     const timestamp = new Date().toISOString();
-    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], collectionIds: [...new Set(input.collectionIds)], createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
-    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, collectionIds: JSON.stringify(local.collectionIds) });
+    const local: JourneyMemory = { id, name: input.name.trim(), notes: input.notes?.trim() ?? '', artworkKey: input.artworkKey ?? 'road-trips', coverPhotoId: input.coverPhotoId ?? null, photos: existing?.photos ?? [], journeyIds, createdAtUtc: existing?.createdAtUtc ?? localExisting?.createdAt ?? timestamp, updatedAtUtc: timestamp };
+    // `collection_ids` is retained as an additive-schema compatibility column,
+    // but from V1 forward it stores the Memory's direct journey membership.
+    upsertMemory({ id, userId, name: local.name, notes: local.notes, artworkKey: local.artworkKey, coverPhotoId: local.coverPhotoId, coverPhotoLocalPath: null, journeyIds: JSON.stringify(local.journeyIds) });
     cacheMemory(local);
     return local;
   },
 
-  async uploadCollectionPhoto(collectionId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    return savePrivatePhoto('collection', collectionId, input);
+  async addJourneysToMemory(memoryId: string, journeyIds: string[]): Promise<void> {
+    const userId = getCurrentUser().id;
+    // Read the full local record at drop time, not a filtered/stale gallery card.
+    const memory = getMemoryIncludingDeleted(userId, memoryId);
+    if (!memory || memory.deletedAt || !isDirectJourneyMemoryId(memoryId)) throw new Error('This Memory is no longer available.');
+    if (!journeyIds.length || journeyIds.some(id => !getJourney(userId, id))) throw new Error('One of these journeys is no longer available.');
+    const existing: string[] = JSON.parse(memory.journeyIds);
+    const merged = [...new Set([...existing, ...journeyIds])];
+    if (merged.length === existing.length) return;
+    upsertMemory({ ...memory, journeyIds: JSON.stringify(merged) });
   },
 
   async uploadMemoryPhoto(memoryId: string, input: { fileName: string; contentType: JourneyPhoto['contentType']; dataBase64: string }): Promise<JourneyPhoto> {
-    return savePrivatePhoto('memory', memoryId, input);
+    return savePrivateMemoryPhoto(memoryId, input);
   },
 
   async photoDataUrl(photo: JourneyPhoto): Promise<string> {
     const local = getPhotoIncludingDeleted(getCurrentUser().id, photo.id);
-    if (local && !local.deletedAt) return local.localUri;
+    if (local && !local.deletedAt) {
+      const file = await resolvePrivatePhotoFile(local);
+      if (file.status === 'available') return file.localUri;
+      throw new Error('This saved photo is unavailable on this device.');
+    }
     const cached = readAppCache<string>(photoCacheKey(photo.id));
     if (cached) return cached;
     const connection = await loadConnection();
@@ -693,17 +760,10 @@ export const appDataClient = {
     removeCachedPhoto(photoId);
   },
 
-  async deleteCollection(collectionId: string): Promise<void> {
-    const userId = getCurrentUser().id;
-    softDeleteCollection(userId, collectionId);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
-    writeAppCache(MEMORIES_CACHE_KEY, { ...cached, collections: cached.collections.filter(item => item.id !== collectionId), deletedCollectionIds: [...new Set([...(cached.deletedCollectionIds ?? []), collectionId])] });
-  },
-
   async deleteMemory(memoryId: string): Promise<void> {
     const userId = getCurrentUser().id;
     softDeleteMemory(userId, memoryId);
-    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [], collections: [] };
+    const cached = readAppCache<MemoriesCatalog>(MEMORIES_CACHE_KEY) ?? { memories: [] };
     writeAppCache(MEMORIES_CACHE_KEY, { ...cached, memories: cached.memories.filter(item => item.id !== memoryId), deletedMemoryIds: [...new Set([...(cached.deletedMemoryIds ?? []), memoryId])] });
   },
 
@@ -718,27 +778,10 @@ export const appDataClient = {
     return local;
   },
 
-  /** Explicit owner-only bridge for importing the retained legacy JourneyDeck archive. */
-  async importLegacyOwnerArchive(): Promise<{ journeys: number; memories: number; collections: number }> {
-    const connection = await loadConnection();
-    if (!connection) throw new Error('Connect the optional owner backup before importing legacy data.');
-    const [dashboard, weeklyJourneys, journeyPage, remoteMemories] = await Promise.all([
-      request<DashboardData>(connection, `/api/recorder/dashboard?deviceId=${encodeURIComponent(connection.deviceId)}`),
-      loadWeeklyJourneys(connection),
-      request<{ items: JourneySummary[]; nextCursor: string | null }>(connection, '/api/recorder/journeys?limit=50'),
-      request<MemoriesCatalog>(connection, '/api/recorder/memories'),
-    ]);
-    writeAppCache(DASHBOARD_CACHE_KEY, dashboard);
-    writeAppCache(WEEKLY_JOURNEYS_CACHE_KEY, weeklyJourneys);
-    writeAppCache(JOURNEYS_CACHE_KEY, journeyPage);
-    writeAppCache(MEMORIES_CACHE_KEY, remoteMemories);
-    return { journeys: journeyPage.items.length, memories: remoteMemories.memories.length, collections: remoteMemories.collections.length };
-  },
-
   async connectionCapabilities(): Promise<ConnectionCapabilities> {
     const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
     const lastFmConfigured = typeof edge?.url === 'string' && /^https:\/\//.test(edge.url);
-    return { lastFmConfigured, tessieConfigured: await tessieDirectStatus() === 'connected' };
+    return { lastFmConfigured, tessieConfigured: TESSIE_INTEGRATION_ENABLED && await tessieDirectStatus() === 'connected' };
   },
 };
 
@@ -761,26 +804,27 @@ import {
   ensureLocalUser,
   listJourneys,
   getJourney,
+  isEditorManagedJourney,
   getJourneyByLegacyDriveId,
   getJourneyRoute,
   getJourneyRouteSamples,
   listMusicEntries,
   listMusicEntriesForJourney,
-  listCollections,
   listMemories,
-  listCollectionsIncludingDeleted,
   listMemoriesIncludingDeleted,
   listPhotos,
   listPhotosIncludingDeleted,
   getPhotoIncludingDeleted,
-  getCollectionIncludingDeleted,
   getMemoryIncludingDeleted,
-  upsertCollection,
   upsertMemory,
   upsertPhoto,
-  softDeleteCollection,
   softDeleteMemory,
   softDeletePhoto,
+  upsertPlace,
+  findCachedPlace,
+  findNamedPlace,
+  getPlace,
+  deletePlace,
   getPrivatePreference,
   upsertPrivatePreference,
   readAtlasSnapshot,
@@ -803,8 +847,13 @@ import { loadMusicCitySummary } from './music-city-summary';
 const ATLAS_STALE_MS = 5 * 60_000;
 
 function localJourneyToSummary(j: import('./local-store').LocalJourney): JourneySummary {
+  const startingLocationKey = j.startPlaceId ?? coordinatePlaceAliasIdentity(j.startLat, j.startLng) ?? `journey:${j.id}:start`;
+  const endingLocationKey = j.endPlaceId ?? coordinatePlaceAliasIdentity(j.endLat, j.endLng) ?? `journey:${j.id}:end`;
+  const startingPlace = j.startPlaceId ? getPlace(j.userId, j.startPlaceId) : null;
+  const endingPlace = j.endPlaceId ? getPlace(j.userId, j.endPlaceId) : null;
   return {
     id: j.id,
+    showInMemories: journeyVisibilityChoice(j.userId, j.id) === 'show',
     legacyDriveId: j.legacyDriveId,
     provider: j.provider,
     vehicleName: j.vehicleName,
@@ -812,13 +861,39 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
     endedAt: j.endedAt,
     durationMinutes: j.durationMinutes,
     miles: j.miles,
-    startingLocation: j.startPlaceId ?? null,
-    endingLocation: j.endPlaceId ?? null,
+    startingLocation: startingPlace?.label ?? null,
+    endingLocation: endingPlace?.label ?? null,
+    rawStartingLocation: startingPlace?.label ?? 'Recorded start',
+    rawEndingLocation: endingPlace?.label ?? 'Recorded destination',
+    startingLocationKey,
+    endingLocationKey,
     averageSpeedMph: j.averageSpeedMph,
     maxSpeedMph: j.maxSpeedMph,
     songCount: j.songCount,
     soundtrackPreview: [],
   };
+}
+
+export type HiddenJourneyChoice = { userId: string; journeyId: string; anchor: 'Home' | 'Work' };
+
+export function pendingHiddenJourneyChoice(): HiddenJourneyChoice | null {
+  const userId = getCurrentUser().id;
+  const sessionId = recentCompletedSessionIds(1)[0];
+  if (!sessionId) return null;
+  const journeyId = archivedJourneyIdForSession(sessionId);
+  const journey = getJourney(userId, journeyId);
+  if (!journey || journeyVisibilityChoice(userId, journeyId)) return null;
+  loadSavedPlaces(userId);
+  const anchor = hiddenJourneyAnchor(applyLocalPlaceAliases(localJourneyToSummary(journey)));
+  return anchor ? { userId, journeyId, anchor } : null;
+}
+
+export function decideHiddenJourney(pending: HiddenJourneyChoice, choice: JourneyVisibilityChoice) {
+  if (getCurrentUser().id !== pending.userId || !getJourney(pending.userId, pending.journeyId)) {
+    throw new Error('That journey is no longer available in this profile.');
+  }
+  saveJourneyVisibilityChoice(pending.userId, pending.journeyId, choice);
+  notifyLocalArchiveChanged();
 }
 
 export const localAtlasClient = {
@@ -916,6 +991,7 @@ export const localAtlasClient = {
     }));
     return {
       ...localJourneyToSummary(j),
+      songCount: soundtrack.length,
       startingBatteryPercent: null,
       endingBatteryPercent: null,
       energyUsedKwh: null,
@@ -973,41 +1049,27 @@ export const localAtlasClient = {
     };
   },
 
-  /**
-   * Returns the local MemoriesCatalog (collections + memories) from on-device SQLite.
-   */
+  /** Returns Memories with direct journey membership from on-device SQLite. */
   memories(userId: LocalUserId): MemoriesCatalog {
     initializeLocalStore();
     const localPhotos = listPhotos(userId);
     const toPhoto = (photo: import('./local-store').LocalPhoto): JourneyPhoto => ({
       id: photo.id, fileName: photo.fileName, contentType: photo.contentType, byteLength: photo.byteLength,
-      createdAtUtc: photo.createdAt, source: photo.source, collectionId: photo.collectionId, memoryId: photo.memoryId,
+      createdAtUtc: photo.createdAt,
     });
-    const collections = listCollections(userId).map(c => ({
-      id: c.id,
-      name: c.name,
-      description: c.description ?? '',
-      driveIds: JSON.parse(c.journeyIds) as string[],
-      createdAtUtc: c.createdAt,
-      updatedAtUtc: c.updatedAt,
-      photos: localPhotos.filter(photo => photo.collectionId === c.id).map(toPhoto),
-    } satisfies JourneyCollection));
-
-    const memories = listMemories(userId).map(m => {
-      const collectionIds = JSON.parse(m.collectionIds) as string[];
-      const photos = localPhotos.filter(photo => photo.memoryId === m.id || (photo.collectionId && collectionIds.includes(photo.collectionId))).map(toPhoto)
-        .filter((photo, index, all) => all.findIndex(candidate => candidate.id === photo.id) === index);
+    const memories = listMemories(userId).filter(memory => isDirectJourneyMemoryId(memory.id)).map(m => {
+      const journeyIds = [...new Set(JSON.parse(m.journeyIds) as string[])];
+      const photos = localPhotos.filter(photo => photo.memoryId === m.id).map(toPhoto);
       return {
         id: m.id, name: m.name, notes: m.notes ?? '', artworkKey: m.artworkKey ?? '',
         coverPhotoId: m.coverPhotoId && photos.some(photo => photo.id === m.coverPhotoId) ? m.coverPhotoId : null,
-        photos, collectionIds, createdAtUtc: m.createdAt, updatedAtUtc: m.updatedAt,
+        photos, journeyIds, createdAtUtc: m.createdAt, updatedAtUtc: m.updatedAt,
       } satisfies JourneyMemory;
     });
 
     return {
-      memories, collections,
-      deletedCollectionIds: listCollectionsIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
-      deletedMemoryIds: listMemoriesIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
+      memories,
+      deletedMemoryIds: listMemoriesIncludingDeleted(userId).filter(item => item.deletedAt && isDirectJourneyMemoryId(item.id)).map(item => item.id),
       deletedPhotoIds: listPhotosIncludingDeleted(userId).filter(item => item.deletedAt).map(item => item.id),
     };
   },

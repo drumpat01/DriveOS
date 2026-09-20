@@ -5,6 +5,11 @@ import test from 'node:test';
 const projectRoot = new URL('../', import.meta.url);
 const packageJson = JSON.parse(await readFile(new URL('package.json', projectRoot), 'utf8'));
 const appJson = JSON.parse(await readFile(new URL('app.json', projectRoot), 'utf8'));
+const membershipModule = await readFile(new URL('modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift', projectRoot), 'utf8');
+const membershipConfig = JSON.parse(await readFile(new URL('modules/journeydeck-membership/expo-module.config.json', projectRoot), 'utf8'));
+const recorderModule = await readFile(new URL('modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift', projectRoot), 'utf8');
+const recorderPodspec = await readFile(new URL('modules/journeydeck-recorder/ios/JourneyDeckRecorder.podspec', projectRoot), 'utf8');
+const displayObserver = await readFile(new URL('modules/journeydeck-recorder/src/JourneyDeckDisplayLayoutObserver.tsx', projectRoot), 'utf8');
 
 const requiredCapabilities = [
   '@expo/ui',
@@ -18,6 +23,7 @@ const requiredCapabilities = [
   'expo-image',
   'expo-linear-gradient',
   'expo-mesh-gradient',
+  'expo-observe',
   'expo-apple-authentication',
   'expo-splash-screen',
   'expo-symbols',
@@ -32,10 +38,10 @@ const requiredCapabilities = [
   'react-native-worklets',
 ] as const;
 
-test('the 1.7 native runtime contains the complete native foundation', () => {
-  assert.equal(packageJson.version, '1.7.0');
-  assert.equal(appJson.expo.version, '1.7.0');
-  assert.deepEqual(appJson.expo.runtimeVersion, { policy: 'appVersion' });
+test('the 1.9 native runtime contains the complete native foundation', () => {
+  assert.equal(packageJson.version, '1.9.0');
+  assert.equal(appJson.expo.version, '1.9.0');
+  assert.equal(appJson.expo.runtimeVersion, '1.9.0-build13');
   assert.equal(appJson.expo.experiments?.reactCompiler, true);
 
   for (const dependency of requiredCapabilities) {
@@ -53,4 +59,27 @@ test('future design capabilities do not add unrelated privacy permissions', () =
     'NSAppleMusicUsageDescription',
     'NSMicrophoneUsageDescription',
   ]);
+});
+
+test('Build 13 retains the fail-closed StoreKit membership verifier', () => {
+  assert.deepEqual(membershipConfig.apple?.modules, ['JourneyDeckMembershipModule']);
+  assert.match(membershipModule, /Transaction\.currentEntitlements/);
+  assert.match(membershipModule, /case \.verified\(let transaction\)/);
+  assert.match(membershipModule, /Transaction\.updates/);
+  assert.match(membershipModule, /try await AppStore\.sync\(\)/);
+  assert.match(membershipModule, /com\.journeydeck\.recorder\.pro\.monthly/);
+  assert.match(membershipModule, /com\.journeydeck\.recorder\.pro\.annual/);
+});
+
+test('Duo reserved regions use a guarded native view and fail safely on older builds', () => {
+  assert.match(recorderModule, /View\(JourneyDeckDisplayLayoutObserver\.self\)/);
+  assert.match(recorderModule, /reservedRegions\(kind: \.division\)/);
+  assert.match(recorderModule, /reservedRegions\(kind: \.occlusion\)/);
+  assert.match(recorderModule, /#if JOURNEYDECK_DUO_RESERVED_REGIONS/);
+  assert.match(recorderModule, /#available\(iOS 27\.1, \*\)/);
+  assert.match(recorderModule, /Events\("onDisplayLayoutChange"\)/);
+  assert.match(recorderPodspec, /xcrun --sdk iphoneos --show-sdk-version/);
+  assert.match(recorderPodspec, /JOURNEYDECK_DUO_RESERVED_REGIONS/);
+  assert.match(displayObserver, /displayLayoutObserverAvailable === true/);
+  assert.match(displayObserver, /if \(!isNativeDisplayLayoutObserverAvailable\) return null/);
 });

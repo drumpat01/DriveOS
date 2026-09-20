@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+/dist-*/
 web-build/
 expo-env.d.ts
 
@@ -39,3 +40,9 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+.env.eas-simulator
+__pycache__/
+*.ipa
+*.ipa.enc
+.env*
+*.log

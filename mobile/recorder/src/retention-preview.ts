@@ -24,11 +24,10 @@ export type LocalRetentionPreview = {
     routePoints: RetentionCount;
     songs: RetentionCount;
     memories: RetentionCount;
-    collections: RetentionCount;
   };
   safeguards: {
     nativeJourneyDeckJourneys: number;
-    collectionProtectedJourneys: number;
+    memoryProtectedJourneys: number;
     recentGoogleTimelineJourneys: number;
     oldUnmatchedSpotifySongs: number;
   };
@@ -40,7 +39,6 @@ export type BuildRetentionPreviewInput = {
   totalSongCount: number;
   oldUnmatchedSpotifySongCount: number;
   memoryCount: number;
-  collectionCount: number;
   now?: Date;
   retentionDays?: number;
 };
@@ -64,23 +62,23 @@ export function buildRetentionPreview(input: BuildRetentionPreviewInput): LocalR
   let removableMatchedSongs = 0;
   let totalRoutePoints = 0;
   let nativeJourneyDeckJourneys = 0;
-  let collectionProtectedJourneys = 0;
+  let memoryProtectedJourneys = 0;
   let recentGoogleTimelineJourneys = 0;
 
   for (const journey of input.journeys) {
     totalRoutePoints += Math.max(0, journey.routePointCount);
     if (normalized(journey.provider) === 'native_recorder') nativeJourneyDeckJourneys += 1;
 
-    const protectedByCollection = input.protectedJourneyIds.has(journey.id)
+    const protectedByMemory = input.protectedJourneyIds.has(journey.id)
       || Boolean(journey.legacyDriveId && input.protectedJourneyIds.has(journey.legacyDriveId));
-    if (protectedByCollection) collectionProtectedJourneys += 1;
+    if (protectedByMemory) memoryProtectedJourneys += 1;
 
     const startedAt = Date.parse(journey.startedAt);
     const oldEnough = Number.isFinite(startedAt) && startedAt < cutoff.getTime();
     const googleTimeline = isGoogleTimelineJourney(journey);
     if (googleTimeline && !oldEnough) recentGoogleTimelineJourneys += 1;
 
-    if (!googleTimeline || !oldEnough || protectedByCollection) continue;
+    if (!googleTimeline || !oldEnough || protectedByMemory) continue;
     removableJourneys += 1;
     removableRoutePoints += Math.max(0, journey.routePointCount);
     removableMatchedSongs += Math.max(0, journey.matchedSongCount);
@@ -104,11 +102,10 @@ export function buildRetentionPreview(input: BuildRetentionPreviewInput): LocalR
       routePoints: count(totalRoutePoints, removableRoutePoints),
       songs: count(totalSongs, removableSongs),
       memories: count(Math.max(0, input.memoryCount), 0),
-      collections: count(Math.max(0, input.collectionCount), 0),
     },
     safeguards: {
       nativeJourneyDeckJourneys,
-      collectionProtectedJourneys,
+      memoryProtectedJourneys,
       recentGoogleTimelineJourneys,
       oldUnmatchedSpotifySongs,
     },

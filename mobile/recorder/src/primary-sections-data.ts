@@ -11,7 +11,12 @@ import {
   type VehicleIntelligenceData,
 } from './app-data';
 import { getCurrentUser } from './auth';
+import {
+  currentMembershipEntitlements, membershipCanAccessDate, type JourneyDeckMembershipEntitlements,
+} from './membership-entitlements';
 import { getLiveRecorderSnapshot, readAppCache, writeAppCache, type LiveRecorderSnapshot } from './storage';
+import { enrichJourneyEndpointPlaces } from './journey-place-enrichment';
+import { isVisibleJourney } from './journey-visibility';
 
 export type TimelineItem = {
   id: string;
@@ -27,18 +32,24 @@ export type TimelineItem = {
 export type TimelineDay = { key: string; label: string; items: TimelineItem[]; routes: { id: string; coordinates: [number, number][] }[] };
 export type StatisticMetric = { value: number; previous: number; changePercent: number | null };
 export type StatisticsData = {
+  windowDays: number;
   score: number | null;
   scoreDetail: string;
   current: { miles: StatisticMetric; energyKwh: StatisticMetric; journeys: StatisticMetric; songs: StatisticMetric; efficiencyWhPerMile: StatisticMetric };
-  dailyMiles: { date: string; label: string; miles: number }[];
+  dailyMiles: { date: string; label: string; miles: number; songs: number }[];
   streakDays: number;
+  story: {
+    longestDrive: { miles: number; label: string; journeyId: string } | null;
+    topArtist: { artist: string; plays: number; artworkUrl: string | null } | null;
+    favoriteTime: { label: string; journeys: number } | null;
+  };
   highlights: { label: string; value: string; journeyId?: string }[];
   monthlyArchive: { key: string; label: string; miles: number; journeys: number; energyKwh: number; songs: number }[];
 };
 
 export type SearchRecord = {
   id: string;
-  kind: 'journey' | 'song' | 'artist' | 'place' | 'collection' | 'memory';
+  kind: 'journey' | 'song' | 'artist' | 'place' | 'memory';
   title: string;
   subtitle: string;
   keywords: string;
@@ -65,7 +76,6 @@ export type PrimarySectionsData = {
 };
 
 const patternReviewKey = (userId: string) => `primary.atlas-pattern-reviews.${userId}.v1`;
-const primarySectionsCacheKey = (userId: string) => `primary.sections.${userId}.v1`;
 
 function safeEpoch(value: string) {
   const epoch = Date.parse(value);
@@ -182,20 +192,22 @@ function periodTotals(journeys: JourneySummary[], detailById: Map<string, Journe
 }
 
 export function buildStatistics(journeys: JourneySummary[], details: JourneyDetail[], now = new Date()): StatisticsData {
+  const windowDays = 45;
   const detailById = new Map(details.map(detail => [detail.id, detail]));
-  const currentStart = now.getTime() - 30 * 86_400_000;
-  const previousStart = currentStart - 30 * 86_400_000;
+  const currentStart = now.getTime() - windowDays * 86_400_000;
+  const previousStart = currentStart - windowDays * 86_400_000;
   const currentJourneys = journeys.filter(journey => safeEpoch(journey.startedAt) >= currentStart);
   const previousJourneys = journeys.filter(journey => safeEpoch(journey.startedAt) >= previousStart && safeEpoch(journey.startedAt) < currentStart);
   const current = periodTotals(currentJourneys, detailById);
   const previous = periodTotals(previousJourneys, detailById);
 
-  const dailyMiles = Array.from({ length: 30 }, (_, index) => {
+  const dailyMiles = Array.from({ length: windowDays }, (_, index) => {
     const date = new Date(now);
     date.setHours(12, 0, 0, 0);
-    date.setDate(date.getDate() - (29 - index));
+    date.setDate(date.getDate() - (windowDays - 1 - index));
     const key = localDayKey(date.toISOString());
-    return { date: key, label: date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1), miles: sum(journeys.filter(journey => localDayKey(journey.startedAt) === key), journey => journey.miles) };
+    const dayJourneys = currentJourneys.filter(journey => localDayKey(journey.startedAt) === key);
+    return { date: key, label: date.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 1), miles: sum(dayJourneys, journey => journey.miles), songs: sum(dayJourneys, journey => journey.songCount) };
   });
 
   const drivenDays = new Set(journeys.map(journey => localDayKey(journey.startedAt)));
@@ -212,9 +224,32 @@ export function buildStatistics(journeys: JourneySummary[], details: JourneyDeta
   const captureScore = currentJourneys.length ? Math.min(20, (details.filter(detail => currentJourneys.some(journey => journey.id === detail.id)).length / currentJourneys.length) * 20) : 0;
   const score = speedConsistency.length || current.efficiencyWhPerMile > 0 ? Math.round(consistencyScore + efficiencyScore + captureScore) : null;
 
-  const longest = [...journeys].sort((a, b) => b.miles - a.miles)[0];
-  const musical = [...journeys].sort((a, b) => b.songCount - a.songCount)[0];
-  const efficient = details.filter(detail => detail.energyUsedKwh && detail.miles > 0).sort((a, b) => (a.energyUsedKwh! / a.miles) - (b.energyUsedKwh! / b.miles))[0];
+  const longest = [...currentJourneys].sort((a, b) => b.miles - a.miles)[0];
+  const musical = [...currentJourneys].sort((a, b) => b.songCount - a.songCount)[0];
+  const efficient = details.filter(detail => safeEpoch(detail.startedAt) >= currentStart && detail.energyUsedKwh && detail.miles > 0).sort((a, b) => (a.energyUsedKwh! / a.miles) - (b.energyUsedKwh! / b.miles))[0];
+  const artists = new Map<string, { artist: string; plays: number; artworkUrl: string | null }>();
+  for (const journey of currentJourneys) {
+    const tracks = detailById.get(journey.id)?.soundtrack ?? journey.soundtrackPreview;
+    for (const track of tracks) {
+      const key = track.artist.trim().toLocaleLowerCase();
+      if (!key) continue;
+      const existing = artists.get(key);
+      artists.set(key, existing
+        ? { ...existing, plays: existing.plays + 1, artworkUrl: existing.artworkUrl ?? track.artworkUrl }
+        : { artist: track.artist, plays: 1, artworkUrl: track.artworkUrl });
+    }
+  }
+  const topArtist = [...artists.values()].sort((a, b) => b.plays - a.plays || a.artist.localeCompare(b.artist))[0] ?? null;
+  const timeBuckets = new Map<string, number>();
+  for (const journey of currentJourneys) {
+    const started = new Date(journey.startedAt);
+    if (!Number.isFinite(started.getTime())) continue;
+    const hour = started.getHours();
+    const period = hour < 5 ? 'late nights' : hour < 12 ? 'mornings' : hour < 17 ? 'afternoons' : hour < 21 ? 'evenings' : 'nights';
+    const key = `${started.toLocaleDateString(undefined, { weekday: 'long' })} ${period}`;
+    timeBuckets.set(key, (timeBuckets.get(key) ?? 0) + 1);
+  }
+  const favoriteTimeEntry = [...timeBuckets.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
   const monthly = new Map<string, { key: string; label: string; miles: number; journeys: number; energyKwh: number; songs: number }>();
   for (const journey of journeys) {
     const key = monthKey(journey.startedAt), existing = monthly.get(key);
@@ -224,6 +259,7 @@ export function buildStatistics(journeys: JourneySummary[], details: JourneyDeta
   }
 
   return {
+    windowDays,
     score,
     scoreDetail: 'Efficiency, speed consistency, and capture quality · not a safety rating',
     current: {
@@ -233,12 +269,58 @@ export function buildStatistics(journeys: JourneySummary[], details: JourneyDeta
     },
     dailyMiles,
     streakDays,
+    story: {
+      longestDrive: longest ? { miles: longest.miles, label: routeLabel(longest), journeyId: longest.id } : null,
+      topArtist,
+      favoriteTime: favoriteTimeEntry ? { label: favoriteTimeEntry[0], journeys: favoriteTimeEntry[1] } : null,
+    },
     highlights: [
       ...(longest ? [{ label: 'Longest drive', value: `${longest.miles.toFixed(1)} mi · ${routeLabel(longest)}`, journeyId: longest.id }] : []),
       ...(musical?.songCount ? [{ label: 'Most musical', value: `${musical.songCount} songs · ${routeLabel(musical)}`, journeyId: musical.id }] : []),
       ...(efficient ? [{ label: 'Most efficient', value: `${Math.round((efficient.energyUsedKwh! * 1_000) / efficient.miles)} Wh/mi · ${routeLabel(efficient)}`, journeyId: efficient.id }] : []),
     ],
     monthlyArchive: [...monthly.values()].sort((a, b) => b.key.localeCompare(a.key)).map(value => ({ ...value, miles: Math.round(value.miles * 10) / 10, energyKwh: Math.round(value.energyKwh * 10) / 10 })),
+  };
+}
+
+export function buildAccessibleMusicDashboard(
+  journeys: JourneySummary[],
+  details: JourneyDetail[],
+  fallback: MusicDashboardData,
+  now = new Date(),
+): MusicDashboardData {
+  const journeyById = new Map(journeys.map(journey => [journey.id, journey]));
+  const tracks = details.flatMap(detail => detail.soundtrack.map(track => ({ track, journey: journeyById.get(detail.id) })))
+    .filter((entry): entry is { track: SoundtrackTrack; journey: JourneySummary } => Boolean(entry.journey))
+    .sort((left, right) => safeEpoch(right.track.playedAt ?? right.journey.startedAt) - safeEpoch(left.track.playedAt ?? left.journey.startedAt));
+  const artistCounts = new Map<string, { artist: string; plays: number; artworkUrl: string | null }>();
+  for (const { track } of tracks) {
+    const key = track.artist.trim().toLocaleLowerCase();
+    const current = artistCounts.get(key);
+    if (current) {
+      current.plays += 1;
+      current.artworkUrl ||= track.artworkUrl;
+    } else artistCounts.set(key, { artist: track.artist, plays: 1, artworkUrl: track.artworkUrl });
+  }
+  const recentCutoff = now.getTime() - 7 * 86_400_000;
+  const recentJourneys = journeys.filter(journey => safeEpoch(journey.startedAt) >= recentCutoff);
+  const statistics = buildStatistics(journeys, details, now);
+  return {
+    ...fallback,
+    generatedAt: now.toISOString(),
+    metrics: {
+      milesWithMusic: sum(journeys.filter(journey => journey.songCount > 0), journey => journey.miles),
+      listeningHours: sum(tracks, entry => entry.track.durationMs ?? 0) / 3_600_000,
+      songsOnRoad: tracks.length,
+      currentStreak: statistics.streakDays,
+    },
+    recentSelections: tracks.slice(0, 20).map(entry => entry.track),
+    topArtists: [...artistCounts.values()].sort((left, right) => right.plays - left.plays || left.artist.localeCompare(right.artist)).slice(0, 10),
+    tour: { miles: sum(recentJourneys, journey => journey.miles), changePercent: null },
+    mood: [],
+    cities: [],
+    daily: [],
+    week: { total: sum(recentJourneys, journey => journey.songCount), changePercent: null },
   };
 }
 
@@ -264,8 +346,7 @@ export function buildSearchRecords(journeys: JourneySummary[], details: JourneyD
     tracks.forEach(track => pushTrack(records, seen, track, journey.id));
   }
   for (const place of places) records.push({ id: `place:${place.id}`, kind: 'place', title: place.name, subtitle: `${place.visitCount} visits · ${place.category}`, keywords: `${place.name} ${place.category}` });
-  for (const collection of memories.collections) records.push({ id: `collection:${collection.id}`, kind: 'collection', title: collection.name, subtitle: `${collection.driveIds.length} journeys`, keywords: `${collection.name} ${collection.description}` });
-  for (const memory of memories.memories) records.push({ id: `memory:${memory.id}`, kind: 'memory', title: memory.name, subtitle: memory.notes || 'Memory', keywords: `${memory.name} ${memory.notes}` });
+  for (const memory of memories.memories) records.push({ id: `memory:${memory.id}`, kind: 'memory', title: memory.name, subtitle: memory.notes || `${memory.journeyIds.length} ${memory.journeyIds.length === 1 ? 'journey' : 'journeys'}`, keywords: `${memory.name} ${memory.notes}` });
   return records;
 }
 
@@ -317,39 +398,77 @@ export function saveAtlasPatternReview(patternId: string, review: Exclude<AtlasP
   writeAppCache(key, { ...reviews, [patternId]: review });
 }
 
-async function loadJourneyArchive(maxPages = 8, refreshRemote = false) {
+async function loadJourneyArchive(membership: JourneyDeckMembershipEntitlements, refreshRemote = false) {
   const journeys: JourneySummary[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page += 1) {
+  const seenCursors = new Set<string>();
+  while (true) {
     const result = await appDataClient.journeys(50, cursor, refreshRemote);
     const existing = new Set(journeys.map(journey => journey.id));
     journeys.push(...result.items.filter(journey => !existing.has(journey.id)));
-    if (!result.nextCursor || result.items.length === 0) break;
+    if (!result.nextCursor) break;
+    if (membership.timelineHistoryDays !== null && result.items.some(journey => !membershipCanAccessDate(membership, journey.startedAt))) break;
+    if (seenCursors.has(result.nextCursor)) break;
+    seenCursors.add(result.nextCursor);
     cursor = result.nextCursor;
   }
   return journeys;
 }
 
-export async function loadPrimarySectionsData(forceRefresh = false): Promise<PrimarySectionsData> {
-  const cacheKey = primarySectionsCacheKey(getCurrentUser().id);
+export async function loadPrimarySectionsData(
+  forceRefresh = false,
+  membership: JourneyDeckMembershipEntitlements = currentMembershipEntitlements(),
+): Promise<PrimarySectionsData> {
   const [dashboard, journeys, memories, music, vehicle] = await Promise.all([
     appDataClient.dashboard(forceRefresh).catch(() => appDataClient.localDashboard()),
-    loadJourneyArchive(8, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(false), appDataClient.vehicleIntelligence(false),
+    loadJourneyArchive(membership, forceRefresh), appDataClient.memories(forceRefresh), appDataClient.musicDashboard(false), appDataClient.vehicleIntelligence(false),
   ]);
-  const detailCandidates = journeys.slice(0, 18);
+  const accessibleJourneys = journeys.filter(journey => isVisibleJourney(journey) && membershipCanAccessDate(membership, journey.startedAt));
+  const detailCandidates = accessibleJourneys;
   const details = (await Promise.all(detailCandidates.map(journey => {
     const local = appDataClient.localOrCachedJourney(journey.id);
     return local ? Promise.resolve(local) : appDataClient.journey(journey.id).catch(() => null);
   })))
     .filter((detail): detail is JourneyDetail => Boolean(detail));
-  const data: PrimarySectionsData = {
-    loadedAt: new Date().toISOString(), dashboard, journeys, details, memories, music, vehicle,
-    live: getLiveRecorderSnapshot(),
-    timeline: buildTimeline(journeys, details, vehicle.chargingSessions),
-    statistics: buildStatistics(journeys, details),
-    search: buildSearchRecords(journeys, details, memories, vehicle.places),
-    atlasPatterns: buildAtlasPatterns(journeys, vehicle),
+  const accessibleChargingSessions = vehicle.chargingSessions.filter(session => membershipCanAccessDate(membership, session.startedAt));
+  const accessibleMusic = membership.timelineHistoryDays === null ? music : buildAccessibleMusicDashboard(accessibleJourneys, details, music);
+  const recentCutoff = Date.now() - 7 * 86_400_000;
+  const last7DaysJourneys = accessibleJourneys.filter(journey => safeEpoch(journey.startedAt) >= recentCutoff);
+  const accessibleDashboard = {
+    ...dashboard,
+    latestJourney: accessibleJourneys[0] ?? null,
+    recentJourneys: accessibleJourneys.slice(0, 10),
+    weeklyJourneys: last7DaysJourneys,
+    summary: {
+      ...dashboard.summary,
+      allTime: accessibleJourneys.reduce((total, journey) => ({
+        journeyCount: total.journeyCount + 1,
+        miles: total.miles + journey.miles,
+        minutes: total.minutes + journey.durationMinutes,
+      }), { journeyCount: 0, miles: 0, minutes: 0 }),
+      last7Days: last7DaysJourneys.reduce((total, journey) => ({
+        journeyCount: total.journeyCount + 1,
+        miles: total.miles + journey.miles,
+        minutes: total.minutes + journey.durationMinutes,
+        songCount: total.songCount + journey.songCount,
+      }), { journeyCount: 0, miles: 0, minutes: 0, songCount: 0 }),
+    },
   };
-  writeAppCache(cacheKey, data);
+  const accessibleJourneyIds = new Set(accessibleJourneys.map(journey => journey.id));
+  const accessibleMemories: MemoriesCatalog = {
+    ...memories,
+    memories: memories.memories.map(memory => ({ ...memory, journeyIds: memory.journeyIds.filter(id => accessibleJourneyIds.has(id)) })),
+  };
+  const data: PrimarySectionsData = {
+    loadedAt: new Date().toISOString(), dashboard: accessibleDashboard, journeys: accessibleJourneys, details, memories: accessibleMemories, music: accessibleMusic, vehicle,
+    live: getLiveRecorderSnapshot(),
+    timeline: buildTimeline(accessibleJourneys, details, accessibleChargingSessions),
+    statistics: buildStatistics(accessibleJourneys, details),
+    search: buildSearchRecords(accessibleJourneys, details, accessibleMemories, vehicle.places),
+    atlasPatterns: membership.atlasAccess ? buildAtlasPatterns(accessibleJourneys, vehicle) : [],
+  };
+  // This view is rebuilt from the local archive; no consumer reads a cached
+  // copy. Duplicating full routes here can exceed the recorder cache limit.
+  void enrichJourneyEndpointPlaces(getCurrentUser().id, details).catch(() => undefined);
   return data;
 }

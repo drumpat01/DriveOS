@@ -2,21 +2,34 @@ export type CloudKitAccountStatus = 'available' | 'no_account' | 'restricted' | 
 
 export type CloudTransportRecord = {
   recordName: string;
-  recordType: 'Journey' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference';
+  recordType: 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto';
   fields: Record<string, string | number | boolean | null>;
   assetFilePath?: string;
   modificationDate?: string;
 };
 
-export type CloudKitCapabilities = { privateContentVersion: number };
+export type CloudKitCapabilities = {
+  privateContentVersion: number;
+  transportVersion?: number;
+  retryMetadata?: boolean;
+};
+
+export type CloudKitRecordFailure = {
+  recordName: string;
+  code: string;
+  retryable: boolean;
+  retryAfterSeconds: number | null;
+};
 
 export type CloudKitPushResult = {
   savedRecordNames: string[];
   remoteRecords: CloudTransportRecord[];
   failedRecordNames: string[];
+  failedRecords?: CloudKitRecordFailure[];
 };
 
 export type CloudKitPullResult = {
   records: CloudTransportRecord[];
   deletedRecordNames: string[];
+  changeTokenStaged?: boolean;
 };

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#080b12">
+    <meta name="description" content="A private visual lab for exploring JourneyDeck layouts on a simulated folding iPhone Duo.">
+    <link rel="canonical" href="https://journeydeck-duo-layout-lab.drumpat01.chatgpt.site/">
+    <title>JourneyDeck · Duo Layout Lab</title>
+    <link rel="icon" href="./assets/favicon.png">
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <img src="./assets/journeydeck-mark.svg" alt="" width="34" height="34">
+          <div>
+            <span class="eyebrow">JourneyDeck V3</span>
+            <h1>Duo Layout Lab</h1>
+          </div>
+        </div>
+        <div class="status-pill"><span></span> Visual prototype</div>
+      </header>
+
+      <section class="workspace" aria-label="Duo layout simulator">
+        <div class="stage-card">
+          <canvas id="duo-canvas" tabindex="0" aria-label="Interactive 3D Duo model. Drag to rotate, scroll or pinch to zoom, and use arrow keys to orbit."></canvas>
+          <div id="webgl-fallback" class="webgl-fallback" hidden>
+            <div class="fallback-device"><img src="./assets/screens/home.webp" alt="JourneyDeck Home"></div>
+            <p>3D preview is unavailable in this browser. The layout controls remain usable.</p>
+          </div>
+          <div class="stage-overlay stage-overlay-top">
+            <span id="posture-readout">Open book · 118°</span>
+            <span id="pane-readout">2 panes</span>
+          </div>
+          <div class="stage-overlay stage-overlay-bottom">
+            <span class="mouse-icon" aria-hidden="true"></span>
+            Drag to orbit · wheel or pinch to zoom · double-click to reset
+          </div>
+          <button id="reset-camera" class="icon-button" type="button" aria-label="Reset 3D camera" title="Reset camera">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.9 6.3A8 8 0 1 1 4 15.7M4.9 6.3V2.8m0 3.5h3.5"/></svg>
+          </button>
+        </div>
+
+        <aside class="control-panel" aria-label="Simulator controls">
+          <div class="panel-heading">
+            <div>
+              <span class="eyebrow">Device controls</span>
+              <h2>Explore the fold</h2>
+            </div>
+            <button id="auto-orbit" class="text-button" type="button" aria-pressed="false">Auto orbit</button>
+          </div>
+
+          <fieldset class="control-group posture-group">
+            <legend>Posture</legend>
+            <div class="segmented" id="posture-buttons">
+              <button type="button" data-posture="closed">Closed</button>
+              <button type="button" data-posture="book" class="active">Book</button>
+              <button type="button" data-posture="flat">Flat</button>
+              <button type="button" data-posture="flatPortrait">Portrait</button>
+              <button type="button" data-posture="flex">Flex</button>
+              <button type="button" data-posture="tent">Tent</button>
+            </div>
+          </fieldset>
+
+          <div class="control-group range-group">
+            <div class="control-label-row">
+              <label for="fold-angle">Fold angle</label>
+              <output id="angle-output" for="fold-angle">118°</output>
+            </div>
+            <input id="fold-angle" type="range" min="0" max="180" value="118" step="1">
+            <div class="range-labels"><span>Closed</span><span>Flat</span></div>
+          </div>
+
+          <div class="control-group screen-group">
+            <div class="screen-select">
+              <label for="left-screen">Left inside screen</label>
+              <select id="left-screen">
+                <option value="home">Home</option>
+                <option value="memories">Memories</option>
+                <option value="soundtracks">Soundtracks</option>
+                <option value="statistics">Statistics</option>
+              </select>
+            </div>
+            <button id="swap-screens" class="swap-button" type="button" aria-label="Swap left and right screens" title="Swap screens">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7-3 3 3 3M4 10h13M17 17l3-3-3-3m3 3H7"/></svg>
+            </button>
+            <div class="screen-select">
+              <label for="right-screen">Right inside screen</label>
+              <select id="right-screen">
+                <option value="home">Home</option>
+                <option value="memories" selected>Memories</option>
+                <option value="soundtracks">Soundtracks</option>
+                <option value="statistics">Statistics</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="control-group toggle-list">
+            <label class="toggle-row">
+              <span><strong>Safe areas</strong><small>Show protected content insets</small></span>
+              <input id="safe-areas" type="checkbox"><i aria-hidden="true"></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Hinge region</strong><small>Highlight the reserved division</small></span>
+              <input id="hinge-region" type="checkbox" checked><i aria-hidden="true"></i>
+            </label>
+            <label class="toggle-row">
+              <span><strong>Studio floor</strong><small>Keep depth and shadow cues</small></span>
+              <input id="studio-floor" type="checkbox" checked><i aria-hidden="true"></i>
+            </label>
+          </div>
+
+          <dl class="metrics" aria-label="Simulated layout metrics">
+            <div><dt>Presentation</dt><dd id="metric-presentation">Expanded book</dd></div>
+            <div><dt>Display regions</dt><dd id="metric-panes">2</dd></div>
+            <div><dt>Division</dt><dd id="metric-division">Vertical</dd></div>
+            <div><dt>Reserved gap</dt><dd id="metric-gap">22 pt</dd></div>
+          </dl>
+        </aside>
+      </section>
+
+      <section class="review-strip" aria-labelledby="review-title">
+        <div class="review-copy">
+          <span class="eyebrow">Review guide</span>
+          <h2 id="review-title">What this prototype can reveal</h2>
+          <p>Use the device as a visual stress test for pane balance, hinge clearance, navigation position, and whether a screen still reads well as the fold changes.</p>
+        </div>
+        <div class="check-grid">
+          <label><input type="checkbox"><span><strong>Hinge clearance</strong>No key content crosses the division.</span></label>
+          <label><input type="checkbox"><span><strong>Inside displays</strong>Both app surfaces face into the fold.</span></label>
+          <label><input type="checkbox"><span><strong>Exterior faces</strong>One outer screen and one camera back remain distinct.</span></label>
+          <label><input type="checkbox"><span><strong>Closed mode</strong>The outer display still works as one column.</span></label>
+          <label><input type="checkbox"><span><strong>Flat mode</strong>One iPad layout spans both inside panes.</span></label>
+          <label><input type="checkbox"><span><strong>Flat portrait</strong>A Duo-specific two-pane layout respects the vertical hinge.</span></label>
+          <label><input type="checkbox"><span><strong>Tent mode</strong>A glanceable landscape dashboard stays upright while folded.</span></label>
+        </div>
+        <p class="disclaimer">Visual approximation only. This does not emulate iOS, run JourneyDeck code, or replace testing on Apple’s eventual iPhone Duo simulator or hardware.</p>
+      </section>
+    </main>
+
+    <script type="importmap">
+      {"imports":{"three":"./vendor/three.module.js"}}
+    </script>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

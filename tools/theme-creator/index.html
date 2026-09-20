@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>JourneyDeck Theme Creator</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <header class="topbar"><div class="brand"><span class="brand-icon">J<span>↗</span></span><div><h1>JourneyDeck <span>Theme Creator</span></h1><p>Your journeys. Your colors.</p></div></div><div class="top-actions"><span class="local-badge">● Local workspace</span><button id="export">Export palette ↗</button><label class="button" for="import">Import<input type="file" id="import" accept="application/json,.json" hidden></label></div></header>
+  <main>
+    <aside>
+      <div class="section-heading"><h2>Palette studio</h2><span>10 color roles</span></div>
+      <p class="intro">Select a role. Watch it change across every screen.</p>
+      <section class="builtin-presets" aria-label="App theme presets"><div class="section-heading"><h2>App themes</h2><span>One-click presets</span></div><div id="builtin-list"></div><p class="footnote">Start with an app theme, then save your own variation.</p></section>
+      <div id="categories" class="categories"></div>
+      <section class="picker" aria-label="Full-range color picker">
+        <div class="section-heading"><h3 id="picker-title">Base background</h3><span id="current-chip"></span></div>
+        <div id="sv" tabindex="0" role="slider" aria-label="Saturation and brightness; arrow keys adjust saturation and brightness" aria-valuemin="0" aria-valuemax="100"><span id="sv-handle"></span></div>
+        <label class="sr-only" for="hue">Hue</label><input id="hue" class="hue" type="range" min="0" max="360" step="0.1" value="218">
+        <div class="color-fields"><label>HEX<input id="hex" maxlength="7" spellcheck="false" value="#081832"></label><label>R<input id="r" type="number" min="0" max="255"></label><label>G<input id="g" type="number" min="0" max="255"></label><label>B<input id="b" type="number" min="0" max="255"></label></div>
+        <p id="role-description"></p>
+      </section>
+      <section class="presets"><div class="section-heading"><h2>Saved looks</h2><button id="reset" class="text-button">Reset palette</button></div><form id="save-form"><label class="sr-only" for="preset-name">Preset name</label><input id="preset-name" placeholder="Give your palette a name…" maxlength="60" required><button class="primary" type="submit">Save</button></form><div id="preset-list"></div><p class="footnote">Saved in this browser. Export a palette to keep a portable backup.</p></section>
+      <p id="notice" role="status" aria-live="polite"></p>
+    </aside>
+    <section class="workspace">
+      <div class="preview-heading"><div><div class="eyebrow">THE PREVIEW WALL</div><h2>One palette. Every moment.</h2><p>Five live recreations of your screenshots, with original photo and music artwork.</p></div><div class="preview-tools"><label>Size <input id="zoom" type="range" min="240" max="470" value="300"></label><button id="compare" aria-pressed="false">View originals</button></div></div>
+      <div class="preview-note"><span>↗ Changes appear instantly</span><span>▧ Photos & album artwork preserved</span><span>◉ Home uses the base background</span></div>
+      <div id="screens" class="screens"></div>
+      <details class="mapping"><summary>What does each color category control?</summary><div id="mapping"></div><p>These are design previews, not the running iOS app. Layouts and icons are recreated; map colors are approximated from the supplied map screenshot. Photo crops retain their original colors. Exported roles are a design specification and are not automatically installed as an app theme.</p></details>
+    </section>
+  </main><script type="module" src="app.js"></script>
+</body></html>

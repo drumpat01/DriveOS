@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(resolve(__dir, '../src/app-data.ts'), 'utf8');
+const placeMatchingSrc = readFileSync(resolve(__dir, '../src/place-matching.ts'), 'utf8');
 
 // ============================================================
 // 1. localAtlasClient is exported
@@ -31,7 +32,6 @@ assert.match(src, /ensureLocalUser/, 'imports ensureLocalUser');
 assert.match(src, /listJourneys/, 'imports listJourneys');
 assert.match(src, /getJourney/, 'imports getJourney');
 assert.match(src, /listMusicEntries/, 'imports listMusicEntries');
-assert.match(src, /listCollections/, 'imports listCollections');
 assert.match(src, /listMemories/, 'imports listMemories');
 assert.match(src, /readAtlasSnapshot/, 'imports readAtlasSnapshot');
 assert.match(src, /localStoreDiagnostics/, 'imports localStoreDiagnostics');
@@ -65,8 +65,9 @@ assert.match(src, /: AppDashboard \{/, 'dashboard() returns AppDashboard');
 assert.match(src, /: JourneyDetail \| null/, 'journey() returns JourneyDetail | null');
 assert.match(src, /: MusicDashboardData \{/, 'musicDashboard() returns MusicDashboardData');
 assert.match(src, /: MemoriesCatalog \{/, 'memories() returns MemoriesCatalog');
-assert.match(src, /satisfies JourneyCollection/, 'collections mapped to JourneyCollection');
 assert.match(src, /satisfies JourneyMemory/, 'memories mapped to JourneyMemory');
+assert.match(src, /JSON\.parse\(m\.journeyIds\)/, 'Memories read direct Journey membership');
+assert.doesNotMatch(src, /JourneyCollection/, 'Collections are not part of the V1 product data model');
 
 // ============================================================
 // 5. Offline-first behaviour
@@ -83,8 +84,16 @@ assert.match(src, /recorder: localRecorderHealth\(false\)/, 'dashboard reports c
 
 assert.match(src, /function localJourneyToSummary/, 'localJourneyToSummary mapper exists');
 assert.match(src, /soundtrackPreview: \[\]/, 'soundtrackPreview defaults to empty array (no server needed)');
-assert.match(src, /startingLocation: j\.startPlaceId/, 'maps startPlaceId → startingLocation');
-assert.match(src, /endingLocation: j\.endPlaceId/, 'maps endPlaceId → endingLocation');
+assert.match(src, /const startingPlace = j\.startPlaceId \? getPlace/, 'resolves startPlaceId through the canonical place table');
+assert.match(src, /const endingPlace = j\.endPlaceId \? getPlace/, 'resolves endPlaceId through the canonical place table');
+assert.match(src, /startingLocation: startingPlace\?\.label/, 'maps the canonical start label into the journey');
+assert.match(src, /endingLocation: endingPlace\?\.label/, 'maps the canonical destination label into the journey');
+assert.match(src, /coordinatePlaceAliasIdentity/, 'creates a stable local identity for GPS-only endpoints');
+assert.match(placeMatchingSrc, /latitude\.toFixed\(3\).*longitude\.toFixed\(3\)/, 'coarsens the exact endpoint identity');
+assert.match(src, /findNamedPlace/, 'resolves user-named places by nearby GPS distance');
+assert.match(src, /startingLocationKey,\s*endingLocationKey,/, 'includes stable endpoint keys in local journey summaries');
+assert.match(src, /startingLocationKey: startKey/, 'rehydrates the same start key when local aliases are applied');
+assert.match(src, /endingLocationKey: endKey/, 'rehydrates the same destination key when local aliases are applied');
 
 // ============================================================
 // 7. MusicDashboard offline fields
@@ -117,7 +126,7 @@ assert.match(src, /coordinateAtRecordedTime\(samples, entry\.playedAt\)/, 'song 
 
 assert.match(src, /export const appDataClient/, 'original appDataClient still exported');
 assert.match(src, /async dashboard\(_refreshRemote = false\)/, 'appDataClient.dashboard() stays local even when the user refreshes');
-assert.match(src, /async importLegacyOwnerArchive\(\)/, 'legacy server reads require an explicit owner import action');
+assert.doesNotMatch(src, /importLegacyOwnerArchive/, 'the retired hierarchy import is not exposed in V1');
 assert.match(src, /localAtlasClient[\s\S]*dashboard\(userId/, 'localAtlasClient.dashboard is sync (local-first)');
 assert.match(src, /localAtlasClient\.dashboard\(getCurrentUser\(\)\.id\)/, 'live dashboard falls back to the on-device Atlas client');
 assert.match(src, /localAtlasClient\.journeys\(getCurrentUser\(\)\.id/, 'live journey history falls back to the on-device store');

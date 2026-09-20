@@ -1,20 +1,29 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
+import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { CardDetailLink } from './card-detail-link';
+import { useAppTheme, useThemedStyles } from './app-theme';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, InteractionManager, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, I18nManager, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { HeaderArtwork, HeaderEdgeBleed, HeaderEdgeFeather, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
+import { headerImageSource } from './header-image-sources';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
-import Svg, { Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient as SvgGradient, Path, Stop } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
+import { UpdateDiagnostics } from './update-diagnostics';
+import Reanimated, { Easing, Extrapolation, cancelAnimation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 
 import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
-import { getLiveRecorderSnapshot, type LiveRecorderSnapshot } from './storage';
+import { getLiveRecorderSnapshot, recorderDatabaseIntegrityReport, type LiveRecorderSnapshot } from './storage';
 import {
   saveAtlasPatternReview, searchPrimarySections, type AtlasPattern, type PrimarySectionsData,
-  type SearchRecord, type StatisticsData, type TimelineDay,
+  type SearchRecord, type StatisticsData, type TimelineDay, type TimelineItem,
 } from './primary-sections-data';
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import {
@@ -22,159 +31,654 @@ import {
   type NetworkActivityEvent,
 } from './network-activity';
 import { getCurrentUser, isIsolationTestProfile } from './auth';
-import { localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
+import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
+import { isInternalTestingBuild } from './internal-testing';
+import { statisticsPresentationKey, shouldAnimateStatistics } from './delight-policy';
+import { MOTION_DURATIONS, motionEasing, useMotionPreferences } from './motion';
+import { useCoreMotion } from './use-core-motion';
+import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
+import { loadRecordingModePreferences } from './recording-mode';
+import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
+import { buildSongRouteMoments } from './route-moments';
+import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
+import { deriveLiveMotionMetrics } from './core-experience-motion';
+import { haptics } from './haptics';
+import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
 
 export type PrimaryDataState = { status: 'loading' | 'ready' | 'error'; data: PrimarySectionsData | null; message?: string };
-export type MoreDestination = 'menu' | 'search' | 'timeline' | 'statistics' | 'music' | 'record' | 'health' | 'settings';
+export type MoreDestination = 'menu' | 'health';
 
 const accentForKind: Record<SearchRecord['kind'], string> = {
-  journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', collection: '#f0b75f', memory: '#8ba6ff',
+  journey: '#ff6d55', song: '#b86cff', artist: '#ff5e91', place: '#67d6bd', memory: '#8ba6ff',
 };
+const ATLAS_RHYTHM_MORPH_EASING = Easing.bezier(0.77, 0, 0.175, 1);
 
-function ScreenScaffold({ eyebrow, title, subtitle, refreshing, onRefresh, children }: {
-  eyebrow: string; title: string; subtitle: string; refreshing: boolean; onRefresh: () => void; children: ReactNode;
+function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, leadingAction, headerPresentation = 'default', pageTone = 'default', headerTone = 'default', children }: {
+  eyebrow: string; title: string; subtitle: string; headerImage?: number; onRefresh: () => void | Promise<void>; leadingAction?: { label: string; onPress: () => void };
+  headerPresentation?: 'default' | 'centered'; pageTone?: 'default' | 'black'; headerTone?: 'default' | 'live' | 'atlas' | 'statistics'; children: ReactNode;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const insets = useSafeAreaInsets();
+  const adaptiveLayout = useAdaptiveLayout();
+  const centeredTitleColumns = verticalFoldContentColumns(adaptiveLayout.fold, 20);
+  const centeredTitleStyle = centeredTitleColumns
+    ? { width: I18nManager.isRTL ? centeredTitleColumns.afterWidth : centeredTitleColumns.beforeWidth, alignSelf: I18nManager.isRTL ? 'flex-end' as const : 'flex-start' as const }
+    : undefined;
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const refreshFromGesture = async () => {
+    if (manualRefreshing) return;
+    setManualRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setManualRefreshing(false);
+    }
+  };
+  const headerSpill = headerTone === 'live'
+    ? ['rgba(13,43,72,0.34)', 'rgba(77,17,55,0.18)', 'rgba(3,1,5,0)'] as const
+    : headerTone === 'atlas'
+      ? ['rgba(62,14,65,0.3)', 'rgba(18,32,65,0.17)', 'rgba(3,1,5,0)'] as const
+      : headerTone === 'statistics'
+        ? ['rgba(55,13,57,0.27)', 'rgba(11,27,54,0.18)', 'rgba(3,1,5,0)'] as const
+        : ['rgba(79,14,91,0.22)', 'rgba(28,8,35,0.12)', 'rgba(3,1,5,0)'] as const;
   return <View style={styles.screen}>
-    <LinearGradient colors={['#19051f', '#07020a', '#020104']} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
-    <View style={styles.topBloom} />
+    <LinearGradient colors={theme.gradient(pageTone === 'black' ? ['#060309', '#030106', '#020104'] : ['#19051f', '#07020a', '#020104'])} locations={[0, 0.34, 1]} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.gradient(headerSpill)} locations={[0, 0.54, 1]} style={styles.headerSpill} />
     <ScrollView
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 17 }]}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + adaptiveLayout.occlusionInsets.top + 17, paddingBottom: insets.bottom + adaptiveLayout.occlusionInsets.bottom + 28 }]}
       showsVerticalScrollIndicator={false}
       contentInsetAdjustmentBehavior="never"
       automaticallyAdjustContentInsets={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#b889ff" />}
+      refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={theme.color("#b889ff", 'text')} />}
     >
-      <Text style={styles.eyebrow}>{eyebrow}</Text>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.subtitle}>{subtitle}</Text>
+      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
+      {headerImage
+        ? <>{headerPresentation === 'centered' && <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
+        : headerPresentation === 'centered'
+          ? <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>
+          : <><Text style={styles.eyebrow}>{eyebrow}</Text><Text style={styles.title}>{title}</Text><Text style={styles.subtitle}>{subtitle}</Text></>}
       {children}
     </ScrollView>
   </View>;
 }
 
 function DataNotice({ state }: { state: PrimaryDataState }) {
-  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><ActivityIndicator color="#b989ff" /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
-  if (state.status === 'error') return <View style={styles.warningCard}><Text style={styles.warningTitle}>USING SAVED DATA</Text><Text style={styles.noticeText}>{state.message || 'Some sources could not refresh. Existing local data remains available.'}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  if (state.status === 'loading' && !state.data) return <View style={styles.loadingCard}><NeonWidgetOutline radius={18} /><ActivityIndicator color={theme.color("#b989ff", 'text')} /><Text style={styles.noticeText}>Building this view from your JourneyDeck archive…</Text></View>;
+  if (state.status === 'error') return <View style={styles.warningCard}><NeonWidgetOutline radius={18} /><Text style={styles.warningTitle}>USING SAVED DATA</Text><Text style={styles.noticeText}>{state.message || 'Some sources could not refresh. Existing local data remains available.'}</Text></View>;
   return null;
 }
 
 export function LiveScreen({ state, active, onRefresh, onRecord, onJourney }: {
   state: PrimaryDataState; active: boolean; onRefresh: () => void; onRecord: () => void; onJourney: (id: string) => void;
 }) {
+  const styles = useThemedStyles(darkStyles);
+  const motion = useCoreMotion(active);
+
   const [snapshot, setSnapshot] = useState<LiveRecorderSnapshot>(() => state.data?.live ?? getLiveRecorderSnapshot());
+  const [tessieVehicle, setTessieVehicle] = useState<TessieVehicleSnapshot | null>(null);
+  const [tessieConnected, setTessieConnected] = useState(false);
+  const [tessieState, setTessieState] = useState<'idle' | 'loading' | 'unavailable' | 'error'>('idle');
+  const data = state.data;
+  const automaticMode = loadRecordingModePreferences().mode === 'automatic';
+  const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   useEffect(() => { if (state.data) setSnapshot(state.data.live); }, [state.data]);
   useEffect(() => {
-    if (!active) return;
+    if (!motion.active) return;
     const refresh = () => setSnapshot(getLiveRecorderSnapshot());
     refresh();
     const timer = setInterval(refresh, 4_000);
     return () => clearInterval(timer);
-  }, [active]);
-  const data = state.data;
+  }, [motion.active]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!active || !TESSIE_INTEGRATION_ENABLED) return;
+    const loadTessie = async () => {
+      const connection = await tessieDirectStatus().catch(() => 'not_connected' as const);
+      if (connection !== 'connected') {
+        if (!cancelled) { setTessieVehicle(null); setTessieConnected(false); setTessieState('unavailable'); }
+        return;
+      }
+      if (!cancelled) { setTessieConnected(true); setTessieState('loading'); }
+      try {
+        const result = await syncTessieDirect();
+        if (cancelled) return;
+        setTessieVehicle(result.vehicles.find(vehicle => vehicle.name === vehicleName) ?? result.vehicles[0] ?? null);
+        setTessieState(result.vehicles.length ? 'idle' : 'unavailable');
+      } catch {
+        if (!cancelled) { setTessieVehicle(null); setTessieState('error'); }
+      }
+    };
+    void loadTessie();
+    return () => { cancelled = true; };
+  }, [active, vehicleName]);
   const lastPoint = snapshot.lastPoint;
-  const speed = Math.max(0, (lastPoint?.speedMps ?? 0) * 2.23694);
+  const liveMetrics = deriveLiveMotionMetrics({ startedAt: snapshot.session?.startedAt, points: snapshot.route, now: Date.now() });
+  const speed = liveMetrics.speedMph;
   const driving = Boolean(snapshot.session && snapshot.session.status === 'recording' && speed >= 3);
-  const vehicleName = data?.dashboard.latestJourney?.vehicleName || data?.journeys.find(journey => journey.vehicleName)?.vehicleName || 'Your vehicle';
   const latestDetail = data?.details.find(detail => detail.id === data.dashboard.latestJourney?.id) ?? data?.details[0];
   const parkedRoute = latestDetail?.route?.coordinates ?? [];
-  const visibleRoute = snapshot.route.length > 1 ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number]) : parkedRoute;
+  const visibleRoute = useMemo(() => snapshot.route.length > 1
+    ? snapshot.route.map(point => [point.longitude, point.latitude] as [number, number])
+    : parkedRoute, [parkedRoute, snapshot.route]);
   const visibleCoordinate = lastPoint ? [lastPoint.longitude, lastPoint.latitude] as [number, number] : parkedRoute.at(-1) ?? null;
-  const battery = latestDetail?.endingBatteryPercent;
-  const elapsedMinutes = snapshot.session ? Math.max(0, (Date.now() - Date.parse(snapshot.session.startedAt)) / 60_000) : 0;
-  const miles = routeMiles(snapshot.route.map(point => [point.longitude, point.latitude]));
+  const visibleSoundtrack = snapshot.session ? snapshot.music : latestDetail?.soundtrack ?? [];
+  const visibleSongMoments = buildSongRouteMoments(
+    visibleSoundtrack,
+    visibleRoute,
+    snapshot.session?.startedAt ?? latestDetail?.startedAt ?? new Date().toISOString(),
+    snapshot.session?.endedAt ?? latestDetail?.endedAt ?? new Date().toISOString(),
+  );
+  const battery = tessieVehicle?.batteryPercent ?? latestDetail?.endingBatteryPercent;
+  const range = tessieVehicle?.rangeMiles ?? null;
+  const vehicleNote = tessieVehicle
+    ? `Tessie ${tessieVehicle.status || 'vehicle'} · updated ${relativeTime(tessieVehicle.updatedAt ?? undefined)}`
+    : tessieState === 'loading' ? 'Refreshing Tessie live vehicle data…'
+      : tessieState === 'error' ? 'Tessie could not refresh right now. Your iPhone recorder is unaffected.'
+        : 'Tessie is connected. Vehicle data will appear after the next successful refresh.';
+  const elapsedMinutes = liveMetrics.elapsedSeconds / 60;
+  const miles = liveMetrics.distanceMiles;
   const liveTrack = snapshot.music.at(-1) ?? data?.music.recentSelections[0];
-  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="Live" subtitle="Your vehicle, recorder, route, and soundtrack—read from this iPhone first." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const liveKicker = driving ? 'DRIVING · IPHONE RECORDER' : snapshot.session ? `${snapshot.session.status.toUpperCase()} · IPHONE RECORDER` : automaticMode ? 'WATCHING · ON THIS IPHONE' : 'READY · ON THIS IPHONE';
+  const liveTitle = driving ? 'Your journey is live' : snapshot.session ? 'Journey in progress' : automaticMode ? 'Ready for your next drive' : 'Your next journey starts here';
+  const liveCopy = snapshot.session
+    ? 'Your route and time are being captured privately. Apple Music is automatic; for any other source, open the recorder and tap Identify Song for each track.'
+    : automaticMode
+      ? 'JourneyDeck is ready to recognize driving. Apple Music builds soundtracks automatically after each journey.'
+      : 'Start a journey to capture its route and time. Apple Music adds the automatic soundtrack.';
+  return <ScreenScaffold eyebrow="NOW ON THE ROAD" title="LIVE" subtitle={automaticMode ? 'Tessie-powered automatic routes and Apple Music soundtracks, captured privately.' : 'Start and finish each route yourself. Apple Music builds the soundtrack while you record.'} headerImage={require('../assets/cinematic-home-main-photo-v1.jpg')} headerPresentation="centered" pageTone="black" headerTone="live" onRefresh={onRefresh}>
     <DataNotice state={state} />
-    <View style={styles.liveHero}>
-      <View style={styles.rowBetween}><View><Text style={styles.cardEyebrow}>{driving ? 'DRIVING' : snapshot.session ? 'PARKED / PAUSED' : 'PARKED'}</Text><Text style={styles.heroTitle}>{vehicleName}</Text></View><View style={[styles.liveDot, driving && styles.liveDotActive]} /></View>
-      <View style={styles.metricRow}>
-        <Metric value={`${Math.round(speed)}`} unit="mph" label="SPEED" />
-        <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label="LAST BATTERY" />
-        <Metric value="—" label="LIVE RANGE" />
-      </View>
-      <Text style={styles.honestNote}>{battery === null || battery === undefined ? 'Live battery and range will appear when the vehicle provider supplies them.' : 'Battery is the latest archived reading. Live range needs a current vehicle-provider reading.'}</Text>
-    </View>
+    {(snapshot.session || !automaticMode) && <View style={styles.liveHero}><NeonWidgetOutline radius={24} tone="hero" />
+      <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>{liveKicker}</Text><Text style={styles.heroTitle}>{liveTitle}</Text></View><View style={[styles.liveDot, snapshot.session && styles.liveDotActive]} /></View>
+      <Text style={styles.liveStateCopy}>{liveCopy}</Text>
+      {snapshot.session && <View style={styles.metricRow}>
+        <LiveMotionMetric value={`${Math.round(speed)}`} unit="mph" label="SPEED" animate={motion.animate} />
+        <LiveMotionMetric value={miles.toFixed(1)} unit="mi" label="DISTANCE" animate={motion.animate} />
+        <LiveMotionMetric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" animate={motion.animate} />
+      </View>}
+      <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
+    </View>}
     <PrimaryMobilityMap
       routes={visibleRoute.length > 1 ? [{ id: snapshot.session?.id ?? latestDetail?.id ?? 'last-known', coordinates: visibleRoute }] : []}
+      animateLiveRoute={Boolean(snapshot.session) && motion.animate}
       currentCoordinate={visibleCoordinate}
       currentHeading={lastPoint?.headingDegrees}
       height={310}
-      emptyMessage="Start recording to see your route and current location here."
+      cameraPitch={45}
+      cameraPadding={58}
+      minimumBoundsSpan={0.055}
+      emptyMessage={automaticMode ? 'Your route will appear when JourneyDeck detects your next drive.' : 'Start recording to see your route and current location here.'}
+      songMoments={visibleSongMoments}
+      markers={V3_MARKERS_PROTOTYPE_ENABLED ? snapshot.session ? listSessionMarkers(getCurrentUser().id, snapshot.session.id) : latestDetail ? listJourneyMarkers(getCurrentUser().id, latestDetail.id) : [] : []}
     />
-    <SectionTitle title="Current journey" detail={snapshot.session ? 'Recording on this iPhone' : 'No active journey'} />
-    <View style={styles.card}>
-      <View style={styles.metricRow}><Metric value={miles.toFixed(1)} unit="mi" label="DISTANCE" /><Metric value={`${Math.round(elapsedMinutes)}`} unit="min" label="ELAPSED" /><Metric value={`${snapshot.session?.pointCount ?? 0}`} label="GPS POINTS" /></View>
-      <Pressable onPress={onRecord} style={styles.primaryButton}><Text style={styles.primaryButtonText}>{snapshot.session ? 'Open recorder' : 'Start a journey'}</Text></Pressable>
-    </View>
-    <SectionTitle title="Live soundtrack" detail={snapshot.music.length ? `${snapshot.music.length} captured` : 'Latest known music'} />
-    {liveTrack ? <Pressable style={styles.trackCard} onPress={() => data?.dashboard.latestJourney && onJourney(data.dashboard.latestJourney.id)}>
-      {liveTrack.artworkUrl ? <Image source={{ uri: liveTrack.artworkUrl }} style={styles.artwork} /> : <View style={[styles.artwork, styles.artworkBlank]}><Text style={styles.artworkNote}>♪</Text></View>}
+    {TESSIE_INTEGRATION_ENABLED && tessieConnected && <>
+      <SectionTitle title="Connected vehicle" detail="Optional Tessie enhancement" />
+      <View style={styles.tessieCard}><NeonWidgetOutline radius={20} />
+        <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.cardEyebrow}>TESSIE VEHICLE</Text><Text style={styles.itemTitle}>{tessieVehicle?.name || vehicleName}</Text></View><Text style={styles.tessieStatus}>{tessieVehicle?.chargingState || tessieVehicle?.status || 'CONNECTED'}</Text></View>
+        <View style={styles.metricRow}>
+          <Metric value={battery === null || battery === undefined ? '—' : `${Math.round(battery)}%`} label="BATTERY" />
+          <Metric value={range === null || range === undefined ? '—' : `${Math.round(range)}`} unit={range === null || range === undefined ? undefined : 'mi'} label="RANGE" />
+        </View>
+        <Text style={styles.honestNote}>{vehicleNote}</Text>
+      </View>
+    </>}
+    <SectionTitle title="Live soundtrack" detail={snapshot.music.length ? `${snapshot.music.length} captured` : 'Apple Music automatic · Shazam manual'} />
+    {liveTrack ? <Pressable style={styles.trackCard} onPress={() => data?.dashboard.latestJourney && onJourney(data.dashboard.latestJourney.id)}><NeonWidgetOutline radius={18} />
+      {liveTrack.artworkUrl ? <Image source={{ uri: liveTrack.artworkUrl }} style={styles.artwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.artwork, styles.artworkBlank]}><Text style={styles.artworkNote}>♪</Text></View>}
       <View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{liveTrack.track}</Text><Text style={styles.itemDetail} numberOfLines={1}>{liveTrack.artist}</Text></View>
       <Text style={styles.chevron}>›</Text>
-    </Pressable> : <EmptyCard text="Music captured during a journey will appear here." />}
-    <View style={styles.healthStrip}><Text style={styles.healthStripTitle}>{snapshot.session ? snapshot.session.status.toUpperCase() : 'READY'}</Text><Text style={styles.healthStripText}>{snapshot.session?.queuedCount ?? data?.dashboard.recorder.queuedPoints ?? 0} GPS · {snapshot.session?.musicQueuedCount ?? data?.dashboard.recorder.queuedMusic ?? 0} music queued safely</Text></View>
+    </Pressable> : <EmptyCard text="Apple Music appears automatically. For radio, Spotify, CDs, or another phone, open the recorder and tap Identify Song for each track." />}
+    <View style={styles.healthStrip}><Text style={styles.healthStripTitle}>{snapshot.session ? snapshot.session.status.toUpperCase() : automaticMode ? 'WATCHING' : 'READY'}</Text><Text style={styles.healthStripText}>{snapshot.session ? `${snapshot.session.pointCount} GPS captured · ${snapshot.session.queuedCount} waiting safely` : automaticMode ? 'Automatic recording mode is selected.' : 'The on-device recorder is ready.'}</Text></View>
   </ScreenScaffold>;
 }
 
-export function AtlasScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+function LiveMotionMetric({ value, unit, label, animate }: { value: string; unit?: string; label: string; animate: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+  const progress = useSharedValue(1);
+  const previousValue = useRef(value);
+  const [transition, setTransition] = useState({ from: value, to: value, direction: 1 });
+  useEffect(() => {
+    const from = previousValue.current;
+    previousValue.current = value;
+    cancelAnimation(progress);
+    if (!animate || from === value) {
+      setTransition({ from: value, to: value, direction: 1 });
+      progress.set(1);
+      return;
+    }
+    const previousNumber = Number.parseFloat(from);
+    const nextNumber = Number.parseFloat(value);
+    setTransition({ from, to: value, direction: Number.isFinite(previousNumber) && Number.isFinite(nextNumber) && nextNumber < previousNumber ? -1 : 1 });
+    progress.set(0);
+    progress.set(withTiming(1, { duration: MOTION_DURATIONS.settle, easing: motionEasing.enter }));
+    return () => cancelAnimation(progress);
+  }, [animate, progress, value]);
+  const outgoingStyle = useAnimatedStyle(() => ({
+    opacity: 1 - progress.get(),
+    transform: [{ translateY: -transition.direction * progress.get() * 18 }],
+  }));
+  const incomingStyle = useAnimatedStyle(() => ({
+    opacity: progress.get(),
+    transform: [{ translateY: transition.direction * (1 - progress.get()) * 18 }],
+  }));
+  const renderValue = (displayValue: string) => <>{displayValue}{unit ? <Text style={styles.metricUnit}> {unit}</Text> : null}</>;
+  return <View style={styles.metric} accessible accessibilityLabel={`${label}, ${value}${unit ? ` ${unit}` : ''}`}>
+    <View style={styles.liveMetricViewport}>
+      <Text aria-hidden style={[styles.metricValue, styles.liveMetricMeasure]}>{renderValue(transition.to)}</Text>
+      {transition.from !== transition.to && <Reanimated.Text style={[styles.metricValue, styles.liveMetricLayer, outgoingStyle]}>{renderValue(transition.from)}</Reanimated.Text>}
+      <Reanimated.Text style={[styles.metricValue, styles.liveMetricLayer, incomingStyle]}>{renderValue(transition.to)}</Reanimated.Text>
+    </View>
+    <Text style={styles.metricLabel}>{label}</Text>
+  </View>;
+}
+
+export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const adaptiveLayout = useAdaptiveLayout();
+  const { fontScale } = useWindowDimensions();
+
   const data = state.data;
+  const [window, setWindow] = useState<AtlasInsightWindow>('30d');
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Record<string, AtlasPattern['review']>>({});
+  const insights = useMemo(() => buildAtlasInsights(data?.journeys ?? [], data?.details ?? [], window), [data?.details, data?.journeys, window]);
   const places = useMemo(() => data?.vehicle.places ?? [], [data?.vehicle.places]);
   const selectedPlace = useMemo(() => places.find(place => place.id === selectedPlaceId) ?? places[0], [places, selectedPlaceId]);
   const routes = useMemo(() => (data?.details ?? []).filter(detail => detail.route?.coordinates.length).map(detail => ({ id: detail.id, coordinates: detail.route!.coordinates })), [data?.details]);
   const mapPlaces = useMemo(() => places.filter(place => place.latitude !== null && place.longitude !== null).map(place => ({ id: place.id, name: place.name, coordinate: [place.longitude!, place.latitude!] as [number, number], count: place.visitCount })), [places]);
   const patterns = useMemo(() => (data?.atlasPatterns ?? []).filter(pattern => (reviews[pattern.id] ?? pattern.review) !== 'dismissed'), [data?.atlasPatterns, reviews]);
   const reviewPattern = (id: string, review: 'confirmed' | 'dismissed') => { saveAtlasPatternReview(id, review); setReviews(current => ({ ...current, [id]: review })); };
-  return <ScreenScaffold eyebrow="YOUR MOBILITY UNIVERSE" title="Atlas" subtitle="Places, representative routes, and recurring patterns from your private journey archive." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
-    <DataNotice state={state} />
-    <PrimaryMobilityMap routes={routes} places={mapPlaces} height={355} emptyMessage="Recorded route geometry will build your long-term Atlas." />
+  const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, 20);
+  const commandAndInsights = <>
+    <View style={styles.atlasCommandHeader}>
+      <View style={styles.atlasPrivacyBadge}><SymbolView name="lock.fill" tintColor={theme.color("#ff8b70", 'text')} size={11} /><Text style={styles.atlasPrivacyText}>PRIVATE · ON DEVICE</Text></View>
+      <View style={styles.atlasWindowRail} accessibilityRole="tablist">
+        {([['30d', '30 DAYS'], ['90d', '90 DAYS'], ['all', 'ALL TIME']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: window === value }} onPress={() => setWindow(value)} style={[styles.atlasWindowChip, window === value && styles.atlasWindowChipActive]}><Text style={[styles.atlasWindowText, window === value && styles.atlasWindowTextActive]}>{label}</Text></Pressable>)}
+      </View>
+    </View>
+    <AtlasPulseCard insights={insights} />
+    <Text style={styles.atlasSectionLabel}>YOUR PRIVATE INTELLIGENCE</Text>
+    <AtlasInsightGrid insights={insights} singleColumn={Boolean(foldColumns) && fontScale >= 1.3} />
+    <SoundtrackIntelligenceCard insight={insights.soundtrack} />
+  </>;
+  const mapAndLibrary = <>
+    <SectionTitle title="Your Atlas map" detail={`${routes.length} mapped journeys`} />
+    <View style={styles.atlasMapFrame}><NeonWidgetOutline radius={24} /><PrimaryMobilityMap routes={routes} places={mapPlaces} height={330} emptyMessage="Recorded route geometry will build your long-term Atlas." /></View>
     <View style={styles.mapLegend}><Text style={styles.legendLine}>━  Recorded routes</Text><Text style={styles.legendPlace}>●  Frequently visited places</Text></View>
-    <SectionTitle title="Frequent places" detail={`${places.length} discovered`} />
+    <SectionTitle title="Place deep dive" detail={`${places.length} discovered`} />
     {places.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalCards}>
-      {places.slice(0, 12).map(place => <Pressable key={place.id} onPress={() => setSelectedPlaceId(place.id)} style={[styles.placeChip, selectedPlace?.id === place.id && styles.placeChipActive]}>
+      {places.slice(0, 12).map(place => <Pressable key={place.id} onPress={() => setSelectedPlaceId(place.id)} style={[styles.placeChip, selectedPlace?.id === place.id && styles.placeChipActive]}>{selectedPlace?.id === place.id && <NeonWidgetOutline radius={19} tone="selected" />}
         <Text style={styles.placeCategory}>{place.category.toUpperCase()}</Text><Text style={styles.placeName} numberOfLines={1}>{place.name}</Text><Text style={styles.placeVisits}>{place.visitCount} visits</Text>
       </Pressable>)}
-    </ScrollView> : <EmptyCard text="Places are discovered from journey starts and destinations." />}
-    {selectedPlace && <PlaceDetails place={selectedPlace} onJourney={onJourney} />}
-    <SectionTitle title="Recurring patterns" detail="Confirm what feels meaningful" />
-    {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}>
-      <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{pattern.startLabel} → {pattern.endLabel}</Text>
+    </ScrollView> : <EmptyCard text="Place relationships form from the named starts and destinations in your journeys." />}
+    {selectedPlace && <View style={styles.placeDetailsWrap}><PlaceDetails place={selectedPlace} onJourney={onJourney} /></View>}
+    <SectionTitle title="Route DNA review" detail="Confirm what feels meaningful" />
+    {patterns.length ? patterns.slice(0, 8).map(pattern => <View key={pattern.id} style={styles.patternCard}><NeonWidgetOutline radius={18} /><View style={styles.patternContent}>
+      <Text style={styles.cardEyebrow}>{pattern.trips} REPEATED TRIPS</Text><Text style={styles.itemTitle}>{formatAtlasPatternRoute(pattern.startLabel, pattern.endLabel)}</Text>
       <Text style={styles.itemDetail}>{pattern.miles.toFixed(1)} mi total{pattern.averageWhPerMile > 0 ? ` · ${Math.round(pattern.averageWhPerMile)} Wh/mi average` : ' · energy appears when vehicle telemetry is available'}</Text>
       <View style={styles.inlineButtons}>
-        <Pressable onPress={() => reviewPattern(pattern.id, 'confirmed')} style={[styles.smallButton, (reviews[pattern.id] ?? pattern.review) === 'confirmed' && styles.smallButtonActive]}><Text style={styles.smallButtonText}>✓ Confirm</Text></Pressable>
-        <Pressable onPress={() => reviewPattern(pattern.id, 'dismissed')} style={styles.smallButton}><Text style={styles.smallButtonText}>Dismiss</Text></Pressable>
+        <PatternAction symbol="✓" label="Confirm" active={(reviews[pattern.id] ?? pattern.review) === 'confirmed'} onPress={() => reviewPattern(pattern.id, 'confirmed')} />
+        <PatternAction symbol="×" label="Dismiss" onPress={() => reviewPattern(pattern.id, 'dismissed')} />
       </View>
-    </View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
-    <SectionTitle title="Representative routes" detail={`${routes.length} routes cached`} />
+    </View></View>) : <EmptyCard text="Recurring routes will appear after JourneyDeck sees the same place-to-place pattern at least twice." />}
+    <SectionTitle title="Recent mapped journeys" detail={`${routes.length} routes cached`} />
     {(data?.details ?? []).slice(0, 8).map(journey => <JourneyRow key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)}
+  </>;
+  return <ScreenScaffold eyebrow="" title="ATLAS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="atlas" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Statistics', onPress: onBack } : undefined}>
+    <View testID="atlas-duo-layout" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : undefined}>
+      <View testID="atlas-duo-intelligence" style={foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined}><DataNotice state={state} />{commandAndInsights}</View>
+      <View testID="atlas-duo-map" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>{mapAndLibrary}</View>
+    </View>
   </ScreenScaffold>;
 }
 
-function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJourney: (id: string) => void }) {
-  return <View style={styles.card}>
-    <Text style={styles.cardEyebrow}>PLACE DETAILS · {place.category.toUpperCase()}</Text><Text style={styles.heroTitle}>{place.name}</Text>
-    <Text style={styles.itemDetail}>{place.arrivals} arrivals · {place.departures} departures · last seen {new Date(place.lastSeenAt).toLocaleDateString()}</Text>
-    {place.soundtrack[0] && <Text style={styles.placeSoundtrack}>♪ {place.soundtrack[0].track} · {place.soundtrack[0].artist}</Text>}
-    {place.relatedJourneys.slice(0, 3).map(journey => <Pressable key={journey.id} onPress={() => onJourney(journey.id)} style={styles.compactRow}><Text style={styles.compactTitle} numberOfLines={1}>{journey.startingLocation} → {journey.endingLocation}</Text><Text style={styles.compactValue}>{journey.miles.toFixed(1)} mi ›</Text></Pressable>)}
+function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  const windowLabel = insights.window === '30d' ? 'the last 30 days' : insights.window === '90d' ? 'the last 90 days' : 'your complete history';
+  return <View style={styles.atlasPulseCard}>
+    <NeonWidgetOutline radius={28} tone="selected" />
+    <Image pointerEvents="none" source={headerImageSource(require('../assets/cinematic-atlas-photo-v1.jpg'), theme.id)} style={styles.atlasPulseBackdrop} contentFit="cover" />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(255,91,78,0.18)', 'rgba(129,49,179,0.1)', 'rgba(7,3,11,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasPulseOrb}>
+      <View style={styles.atlasPulseRingOuter}><View style={styles.atlasPulseRingInner}><View style={styles.atlasPulseCore} /></View></View>
+    </View>
+    <View style={styles.atlasPulseCopy}>
+      <Text style={styles.atlasPulseEyebrow}>ATLAS PULSE</Text>
+      <Text style={styles.atlasPulseTitle}>{insights.journeyCount ? `${insights.journeyCount} ${insights.journeyCount === 1 ? 'journey is' : 'journeys are'} shaping your Atlas.` : 'Your Atlas is ready to learn.'}</Text>
+      <Text style={styles.atlasPulseDetail}>{insights.journeyCount ? `${insights.miles.toFixed(1)} miles across ${insights.activeDays} active ${insights.activeDays === 1 ? 'day' : 'days'} in ${windowLabel}.` : 'Complete a journey to begin building private drive intelligence.'}</Text>
+    </View>
+    <View style={styles.atlasPulseMetrics}>
+      <AtlasPulseMetric value={String(insights.mappedJourneyCount)} label="MAPPED" />
+      <View style={styles.atlasPulseDivider} />
+      <AtlasPulseMetric value={String(insights.routePointCount)} label="GPS POINTS" />
+      <View style={styles.atlasPulseDivider} />
+      <AtlasPulseMetric value={String(insights.songCount)} label="SONGS" />
+    </View>
   </View>;
 }
 
-export function TimelineScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+function AtlasPulseMetric({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.atlasPulseMetric}><Text style={styles.atlasPulseMetricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text><Text style={styles.atlasPulseMetricLabel}>{label}</Text></View>;
+}
+
+const AtlasInsightMeasurement = createContext<((height: number) => void) | null>(null);
+
+function AtlasInsightGrid({ insights, singleColumn = false }: { insights: AtlasInsights; singleColumn?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+  const [heights, setHeights] = useState<Record<string, number>>({});
+  const height = Math.max(230, ...Object.values(heights));
+  const cards = [
+    { id: 'route', content: <RouteDnaCard insight={insights.routeDna} /> },
+    { id: 'rhythm', content: <DrivingRhythmsCard insight={insights.drivingRhythms} /> },
+    { id: 'exploration', content: <ExplorationCard insight={insights.exploration} /> },
+    { id: 'places', content: <PlaceRelationshipsCard insight={insights.placeRelationships} /> },
+  ];
+  const stride = singleColumn ? 1 : 2;
+  return <View testID="atlas-insight-grid">{cards.filter((_, index) => index % stride === 0).map((_, row) => <View key={row} style={styles.atlasInsightRow}>
+    {cards.slice(row * stride, row * stride + stride).map(card => <View key={card.id} testID={`atlas-cell-${card.id}`} style={[styles.atlasInsightCell, { minHeight: height }]}>
+      <AtlasInsightMeasurement.Provider value={measured => {
+        if (Number.isFinite(measured) && measured > 0) setHeights(current => current[card.id] === measured ? current : { ...current, [card.id]: measured });
+      }}>{card.content}</AtlasInsightMeasurement.Provider>
+    </View>)}
+  </View>)}</View>;
+}
+
+function AtlasInsightShell({ symbol, title, accent = '#ff7967', showNeonOutline = true, children, footer }: { symbol: SFSymbol; title: string; accent?: string; showNeonOutline?: boolean; children: ReactNode; footer?: ReactNode }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const measureContent = useContext(AtlasInsightMeasurement);
+
+  return <View style={styles.atlasInsightCard}>
+    {showNeonOutline && <NeonWidgetOutline radius={20} />}
+    <LinearGradient pointerEvents="none" colors={theme.gradient([`${accent}24`, 'rgba(8,4,12,0)'])} start={{ x: 0, y: 0 }} end={{ x: 0.9, y: 0.8 }} style={StyleSheet.absoluteFill} />
+    {/* Measure intrinsic content, not the stretched cell. This also lets the
+        whole grid shrink again after rotation or a Dynamic Type change. */}
+    <View style={[styles.atlasInsightContent, Boolean(footer) && styles.atlasInsightWithFooter]} onLayout={showNeonOutline && measureContent ? event => measureContent(Math.ceil(event.nativeEvent.layout.height + StyleSheet.hairlineWidth * 2)) : undefined}>
+      <View style={styles.atlasInsightHeading}><View style={[styles.atlasInsightIcon, { borderColor: theme.color(`${accent}99`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(accent, 'text')} size={18} /></View><Text style={styles.atlasInsightTitle}>{title}</Text></View>
+      {children}
+    </View>
+    {Boolean(footer) && <View style={styles.atlasInsightFooter}>{footer}</View>}
+  </View>;
+}
+
+function RouteDnaCard({ insight }: { insight: AtlasInsights['routeDna'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <AtlasInsightShell symbol="point.topleft.down.to.point.bottomright.curvepath.fill" title="Route DNA">
+    <View style={styles.atlasRoutePreview}>{insight.ready && insight.route.length >= 2 ? <TimelineRouteThumbnail coordinates={insight.route} /> : <SymbolView name="road.lanes.curved.right" tintColor={theme.color("#654164", 'text')} size={37} />}</View>
+    {insight.ready ? <>
+      <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} {insight.bidirectional ? '↔' : '→'} {insight.endLabel}</Text>
+      <Text style={styles.atlasInsightDetail}>{insight.trips} {insight.trips === 1 ? 'trip' : 'trips'} · {insight.averageMinutes === null ? 'time unavailable' : `${Math.round(insight.averageMinutes)} min avg`}{insight.averageMiles === null ? '' : ` · ${insight.averageMiles.toFixed(1)} mi`}</Text>
+      <Text style={styles.atlasInsightCallout}>{!insight.established ? 'First signal captured · repeat this route to compare timing' : insight.durationSpreadMinutes === null ? 'Timing will appear when journey duration is available' : insight.durationSpreadMinutes >= 1 ? `${Math.round(insight.durationSpreadMinutes)} min fastest-to-slowest spread` : 'Your timing is remarkably consistent'}</Text>
+    </> : <AtlasLearningCopy text="Complete a journey to reveal its route shape and timing." />}
+  </AtlasInsightShell>;
+}
+
+function DrivingRhythmsCompactFace({ insight, moving = false }: { insight: AtlasInsights['drivingRhythms']; moving?: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const maximum = Math.max(1, ...insight.weekdays.map(day => day.journeys));
+
+  return <AtlasInsightShell symbol="chart.bar.xaxis" title="Driving Rhythms" accent="#bd72ff" showNeonOutline={!moving} footer={<Text style={styles.atlasRhythmOpenHint}>TAP FOR DETAILS ↗</Text>}>
+    <View style={styles.atlasRhythmChart}>{insight.weekdays.map(day => <View key={day.label} style={styles.atlasRhythmColumn}><View style={styles.atlasRhythmTrack}><LinearGradient colors={theme.gradient(day.journeys ? ['#ff7767', '#ad5eff'] : ['#2d2132', '#211925'])} style={[styles.atlasRhythmBar, { height: Math.max(4, Math.round((day.journeys / maximum) * 48)) }]} /></View><Text style={styles.atlasRhythmDay}>{day.label.slice(0, 1)}</Text></View>)}</View>
+    {insight.ready ? <><Text style={styles.atlasInsightValue}>{insight.leadingDay} leads</Text><Text style={styles.atlasInsightDetail}>{insight.leadingDayJourneys} journeys · {insight.leadingTime?.toLocaleLowerCase()} drives are most common</Text></> : <AtlasLearningCopy text="Three journeys unlock your weekly and time-of-day rhythm." />}
+  </AtlasInsightShell>;
+}
+
+function DrivingRhythmsCard({ insight }: { insight: AtlasInsights['drivingRhythms'] }) {
+  const styles = useThemedStyles(darkStyles);
+  const cardRef = useRef<View>(null);
+  const openingRef = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const [presented, setPresented] = useState(false);
+  const [sourceFrame, setSourceFrame] = useState({ x: 20, y: 220, width: 170, height: 230 });
+
+  const open = () => {
+    if (openingRef.current || !cardRef.current) return;
+    openingRef.current = true;
+    cardRef.current.measureInWindow((x, y, width, height) => {
+      if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+        openingRef.current = false;
+        return;
+      }
+      setSourceFrame({ x, y, width, height });
+      setExpanded(true);
+    });
+  };
+  return <>
+    <Pressable ref={cardRef} collapsable={false} accessibilityRole="button" accessibilityLabel="Driving Rhythms. Open expanded details." onPress={open} style={[styles.atlasRhythmPressable, presented && styles.atlasRhythmSourceHidden]}>
+      <DrivingRhythmsCompactFace insight={insight} />
+    </Pressable>
+  {expanded && <DrivingRhythmsExpanded insight={insight} sourceFrame={sourceFrame} onPresented={() => setPresented(true)} onClosed={() => {
+    setPresented(false);
+    setExpanded(false);
+    openingRef.current = false;
+  }} />}
+  </>;
+}
+
+function DrivingRhythmsExpanded({ insight, sourceFrame, onPresented, onClosed }: {
+  insight: AtlasInsights['drivingRhythms']; sourceFrame: { x: number; y: number; width: number; height: number }; onPresented: () => void; onClosed: () => void;
+}) {
+  const styles = useThemedStyles(darkStyles);
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { reduceMotion } = useMotionPreferences();
+  const progress = useSharedValue(0);
+  const startedRef = useRef(false);
+  const closingRef = useRef(false);
+  const targetWidth = Math.min(width - 24, 620);
+  const targetHeight = Math.min(height - insets.top - insets.bottom - 28, 720);
+  const targetX = (width - targetWidth) / 2;
+  const targetY = insets.top + Math.max(10, (height - insets.top - insets.bottom - targetHeight) / 2);
+  const sourceCenterX = sourceFrame.x + sourceFrame.width / 2;
+  const sourceCenterY = sourceFrame.y + sourceFrame.height / 2;
+  const targetCenterX = targetX + targetWidth / 2;
+  const targetCenterY = targetY + targetHeight / 2;
+  useEffect(() => () => cancelAnimation(progress), [progress]);
+  const start = () => {
+    if (startedRef.current || closingRef.current) return;
+    startedRef.current = true;
+    // Keep the source visible until UIKit has actually presented its duplicate.
+    // Starting in a mount effect hid the card during the modal's presentation gap.
+    onPresented();
+    progress.set(withTiming(1, { duration: reduceMotion ? 180 : 650, easing: ATLAS_RHYTHM_MORPH_EASING }));
+    void haptics.softImpact();
+  };
+  const dismiss = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    progress.set(withTiming(0, { duration: reduceMotion ? 150 : 520, easing: ATLAS_RHYTHM_MORPH_EASING }, finished => {
+      'worklet';
+      if (finished) scheduleOnRN(onClosed);
+    }));
+  };
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: interpolate(progress.get(), [0, 0.35, 1], [0, 0.7, 0.78]) }));
+  const frontStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? 0 : interpolate(progress.get(), [0, 0.46, 0.54], [1, 1, 0], Extrapolation.CLAMP),
+    transform: [
+      { perspective: 900 },
+      { translateX: interpolate(progress.get(), [0, 1], [0, targetCenterX - sourceCenterX]) },
+      { translateY: interpolate(progress.get(), [0, 1], [0, targetCenterY - sourceCenterY]) },
+      { rotateY: `${interpolate(progress.get(), [0, 1], [0, 180])}deg` },
+      { scaleX: interpolate(progress.get(), [0, 1], [1, targetWidth / sourceFrame.width]) },
+      { scaleY: interpolate(progress.get(), [0, 1], [1, targetHeight / sourceFrame.height]) },
+    ],
+  }));
+  const backStyle = useAnimatedStyle(() => ({
+    opacity: reduceMotion ? progress.get() : interpolate(progress.get(), [0, 0.46, 0.54, 1], [0, 0, 1, 1], Extrapolation.CLAMP),
+    transform: [
+      { perspective: 900 },
+      { translateX: reduceMotion ? 0 : interpolate(progress.get(), [0, 1], [sourceCenterX - targetCenterX, 0]) },
+      { translateY: reduceMotion ? 0 : interpolate(progress.get(), [0, 1], [sourceCenterY - targetCenterY, 0]) },
+      { rotateY: reduceMotion ? '0deg' : `${interpolate(progress.get(), [0, 1], [-180, 0])}deg` },
+      { scaleX: reduceMotion ? interpolate(progress.get(), [0, 1], [0.96, 1]) : interpolate(progress.get(), [0, 1], [sourceFrame.width / targetWidth, 1]) },
+      { scaleY: reduceMotion ? interpolate(progress.get(), [0, 1], [0.96, 1]) : interpolate(progress.get(), [0, 1], [sourceFrame.height / targetHeight, 1]) },
+    ],
+  }));
+  return <Modal visible transparent statusBarTranslucent animationType="none" onShow={start} onRequestClose={dismiss}>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+      <Reanimated.View pointerEvents="none" style={[styles.atlasRhythmBackdrop, backdropStyle]} />
+      {/* A real, untransformed native parent flattens the card scene above the
+          backdrop. Direct 3D siblings let their receding halves cross behind it.
+          collapsable=false is essential: Fabric otherwise removes this boundary. */}
+      <View collapsable={false} pointerEvents="box-none" style={styles.atlasRhythmForeground}>
+        {!reduceMotion && <Reanimated.View pointerEvents="none" style={[styles.atlasRhythmFlipFront, { left: sourceFrame.x, top: sourceFrame.y, width: sourceFrame.width, height: sourceFrame.height }, frontStyle]}>
+          <DrivingRhythmsCompactFace insight={insight} moving />
+        </Reanimated.View>}
+        <Reanimated.View style={[styles.atlasRhythmExpandedCard, { left: targetX, top: targetY, width: targetWidth, height: targetHeight }, backStyle]}>
+          <DrivingRhythmsDetails insight={insight} onClose={dismiss} />
+        </Reanimated.View>
+      </View>
+    </View>
+  </Modal>;
+}
+
+function formatRhythmHour(hour: number | null) {
+  if (hour === null) return '—';
+  const suffix = hour >= 12 ? 'PM' : 'AM';
+  const display = hour % 12 || 12;
+  return `${display}:00 ${suffix}`;
+}
+
+function DrivingRhythmsDetails({ insight, onClose }: { insight: AtlasInsights['drivingRhythms']; onClose: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const plum = theme.id === 'sakura' ? '#79566F' : theme.palette.accent;
+  const hot = theme.palette.coral;
+  const hourlyMaximum = Math.max(1, ...insight.twoHourBuckets);
+  const heatMaximum = Math.max(1, ...insight.weekdayTwoHourBuckets.flat());
+  const orderedHeatmapDays = [1, 2, 3, 4, 5, 6, 0];
+  return <View style={styles.atlasRhythmExpandedInner}>
+    <View style={styles.atlasRhythmExpandedHeader}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close Driving Rhythms details" hitSlop={8} onPress={onClose} style={styles.atlasRhythmClose}><Text style={styles.atlasRhythmCloseText}>×</Text></Pressable>
+      <View style={styles.atlasRhythmExpandedHeading}><Text style={styles.atlasRhythmExpandedEyebrow}>DRIVING RHYTHMS</Text><Text style={styles.atlasRhythmExpandedTitle}>Your road has a rhythm</Text></View>
+      <SymbolView name="rectangle.on.rectangle.angled" tintColor={theme.palette.accent} size={20} />
+    </View>
+    <View style={styles.atlasRhythmHeroRow}>
+      <View style={styles.atlasRhythmClock}>
+        <Svg width="100%" height="100%" viewBox="0 0 180 180">
+          <Circle cx="90" cy="90" r="70" fill="none" stroke={theme.palette.line} strokeWidth="18" opacity={0.22} />
+          {insight.twoHourBuckets.map((count, index) => <Circle key={index} cx="90" cy="90" r="70" fill="none" stroke={index >= 8 && index <= 10 ? hot : plum} strokeWidth="15" strokeLinecap="butt" strokeDasharray="29 411" rotation={-90 + index * 30} origin="90,90" opacity={count ? 0.25 + 0.75 * count / hourlyMaximum : 0.06} />)}
+        </Svg>
+        <View style={styles.atlasRhythmClockCopy}><Text style={styles.atlasRhythmClockValue}>{formatRhythmHour(insight.mostActiveHour)}</Text><Text style={styles.atlasRhythmClockLabel}>MOST ACTIVE</Text></View>
+      </View>
+      <View style={styles.atlasRhythmStats}>
+        <RhythmStat value={String(insight.journeyCount)} label="JOURNEYS" />
+        <RhythmStat value={String(Math.round(insight.miles))} label="MILES" />
+        <RhythmStat value={insight.averageMinutes === null ? '—' : String(Math.round(insight.averageMinutes))} label="MIN AVG" />
+      </View>
+    </View>
+    <View style={styles.atlasHeatmap}>
+      {orderedHeatmapDays.map(day => <View key={day} style={styles.atlasHeatmapRow}><Text style={styles.atlasHeatmapDay}>{['SUN','MON','TUE','WED','THU','FRI','SAT'][day]}</Text>{insight.weekdayTwoHourBuckets[day].map((count, bucket) => <View key={bucket} style={[styles.atlasHeatmapCell, { backgroundColor: bucket >= 8 && bucket <= 10 ? hot : plum, opacity: count ? 0.28 + 0.72 * count / heatMaximum : 0.08 }]} />)}</View>)}
+      <View style={styles.atlasHeatmapAxis}><Text style={styles.atlasHeatmapAxisText}>12 AM</Text><Text style={styles.atlasHeatmapAxisText}>6 AM</Text><Text style={styles.atlasHeatmapAxisText}>12 PM</Text><Text style={styles.atlasHeatmapAxisText}>6 PM</Text><Text style={styles.atlasHeatmapAxisText}>12 AM</Text></View>
+    </View>
+    <View style={styles.atlasRhythmInsight}><SymbolView name="chart.bar.fill" tintColor={theme.palette.accent} size={22} /><View style={{ flex: 1 }}><Text style={styles.atlasRhythmInsightTitle}>{insight.ready ? `${insight.leadingDay} is your strongest driving day` : 'Your driving rhythm is still forming'}</Text><Text style={styles.atlasRhythmInsightDetail}>{insight.ready ? `${insight.leadingDayJourneys} journeys · ${insight.leadingTime?.toLocaleLowerCase()} drives are most common` : 'Complete three journeys to unlock a reliable pattern.'}</Text></View></View>
+  </View>;
+}
+
+function RhythmStat({ value, label }: { value: string; label: string }) {
+  const styles = useThemedStyles(darkStyles);
+  return <View style={styles.atlasRhythmStat}><Text style={styles.atlasRhythmStatValue}>{value}</Text><Text style={styles.atlasRhythmStatLabel}>{label}</Text></View>;
+}
+
+function ExplorationCard({ insight }: { insight: AtlasInsights['exploration'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  const score = insight.score ?? 0;
+  const circumference = 175.93;
+  return <AtlasInsightShell symbol="safari.fill" title="Exploration Score" accent="#ff5a86">
+    <View style={styles.atlasGaugeWrap}><Svg width="86" height="86" viewBox="0 0 70 70"><Circle cx="35" cy="35" r="28" fill="none" stroke={theme.color("#2b1b31", 'accent')} strokeWidth="6" /><Circle cx="35" cy="35" r="28" fill="none" stroke={theme.color("#ff647d", 'accent')} strokeWidth="6" strokeLinecap="round" strokeDasharray={`${circumference} ${circumference}`} strokeDashoffset={circumference * (1 - score / 100)} rotation="-90" origin="35,35" /></Svg><Text style={styles.atlasGaugeValue}>{insight.ready ? `${score}%` : '—'}</Text></View>
+    {insight.ready ? <><Text style={styles.atlasInsightValue}>{score >= 65 ? 'Explorer' : score >= 35 ? 'Mixing it up' : 'Familiar roads'}</Text><Text style={styles.atlasInsightDetail}>{insight.oneJourneyAreas} of {insight.mappedAreas} mapped areas appeared on one journey.</Text></> : <AtlasLearningCopy text={`${Math.max(0, 2 - insight.mappedJourneys)} more mapped ${Math.max(0, 2 - insight.mappedJourneys) === 1 ? 'journey' : 'journeys'} needed for a reliable score.`} />}
+  </AtlasInsightShell>;
+}
+
+function PlaceRelationshipsCard({ insight }: { insight: AtlasInsights['placeRelationships'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <AtlasInsightShell symbol="point.3.connected.trianglepath.dotted" title="Place Relationships" accent="#b66cff">
+    {insight.ready ? <>
+      <View style={styles.atlasRelationshipGraph}><Svg pointerEvents="none" width="100%" height="100%" viewBox="0 0 150 68"><Path d="M 28 36 C 60 8, 91 60, 122 30" fill="none" stroke={theme.color("#b767ff", 'accent')} strokeWidth="2" opacity={0.72} /><Path d="M 28 36 C 60 63, 95 6, 122 30" fill="none" stroke={theme.color("#ff6c70", 'accent')} strokeWidth="1" opacity={0.34} /></Svg><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeLeft]}><View style={styles.atlasPlaceNodeCore} /></View><View style={[styles.atlasPlaceNode, styles.atlasPlaceNodeRight]}><View style={styles.atlasPlaceNodeCore} /></View></View>
+      <Text style={styles.atlasInsightValue} numberOfLines={2}>{insight.startLabel} → {insight.endLabel}</Text>
+      <Text style={styles.atlasInsightDetail}>{insight.trips} direct {insight.trips === 1 ? 'journey' : 'journeys'} · {insight.connections.length} strongest links mapped</Text>
+    </> : <AtlasLearningCopy text="Named starts and destinations reveal how your places connect." />}
+  </AtlasInsightShell>;
+}
+
+function SoundtrackIntelligenceCard({ insight }: { insight: AtlasInsights['soundtrack'] }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.atlasSoundtrackCard}>
+    <NeonWidgetOutline radius={22} tone="selected" />
+    <LinearGradient pointerEvents="none" colors={theme.gradient(['rgba(109,41,159,0.22)', 'rgba(255,77,103,0.12)', 'rgba(8,4,12,0)'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+    <View style={styles.atlasSoundtrackHeading}><View><Text style={styles.atlasSoundtrackEyebrow}>SOUNDTRACK INTELLIGENCE</Text><Text style={styles.atlasSoundtrackTitle}>{insight.ready ? 'The rhythm behind your roads.' : 'Your road sound is forming.'}</Text></View><SymbolView name="waveform" tintColor={theme.color("#ff6e86", 'text')} size={28} /></View>
+    <View style={styles.atlasSoundtrackBody}>
+      <View style={styles.atlasArtworkStack}>{insight.artworkUrls.length ? insight.artworkUrls.slice(0, 3).map((uri, index) => <Image key={uri} source={{ uri }} style={[styles.atlasSoundtrackArtwork, { marginLeft: index ? -11 : 0, zIndex: 3 - index }]} contentFit="cover" cachePolicy="memory-disk" />) : <View style={styles.atlasSoundtrackPlaceholder}><SymbolView name="music.note" tintColor={theme.color("#c16fff", 'text')} size={28} /></View>}</View>
+      <View style={styles.atlasSoundtrackCopy}>{insight.ready ? <><Text style={styles.atlasSoundtrackArtist} numberOfLines={1}>{insight.topArtist ?? 'Artist unavailable'}</Text><Text style={styles.atlasInsightDetail}>{insight.topArtist ? `${insight.topArtistPlays} plays` : `${insight.plays} road plays`} · {insight.uniqueSongs} unique songs</Text><Text style={styles.atlasInsightCallout}>{insight.journeyMatchPercent}% of journeys carried music{insight.leadingTime ? ` · ${insight.leadingTime.toLocaleLowerCase()} is most common` : ''}</Text></> : <AtlasLearningCopy text="Two matched songs unlock artists, variety, and listening patterns." />}</View>
+    </View>
+  </View>;
+}
+
+function AtlasLearningCopy({ text }: { text: string }) {
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.atlasLearning}><View style={styles.atlasLearningDot} /><Text style={styles.atlasLearningText}>{text}</Text></View>;
+}
+
+function PlaceDetails({ place, onJourney }: { place: SavedPlaceIntelligence; onJourney: (id: string) => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.card}><NeonWidgetOutline radius={22} />
+    <Text style={styles.cardEyebrow}>PLACE DETAILS · {place.category.toUpperCase()}</Text><Text style={styles.heroTitle}>{place.name}</Text>
+    <Text style={styles.itemDetail}>{place.arrivals} arrivals · {place.departures} departures · last seen {new Date(place.lastSeenAt).toLocaleDateString()}</Text>
+    {place.soundtrack[0] && <Text style={styles.placeSoundtrack}>♪ {place.soundtrack[0].track} · {place.soundtrack[0].artist}</Text>}
+    <View style={styles.placeRouteThread}><LinearGradient pointerEvents="none" colors={theme.gradient(['#ff7d62', '#b35cff', '#9d6cff'] as const)} style={styles.routeThreadRail} />
+      {place.relatedJourneys.slice(0, 3).map((journey, index) => <Pressable key={journey.id} onPress={() => onJourney(journey.id)} style={[styles.compactRow, index === 0 && styles.compactRowFirst]}>
+        <View style={[styles.routeThreadNode, index === 0 && styles.routeThreadNodeStart]} /><Text style={styles.compactTitle} numberOfLines={1}>{journey.startingLocation} → {journey.endingLocation}</Text><Text style={styles.compactValue}>{journey.miles.toFixed(1)} mi</Text>
+      </Pressable>)}
+    </View>
+  </View>;
+}
+
+function PatternAction({ symbol, label, active = false, onPress }: { symbol: string; label: string; active?: boolean; onPress: () => void }) {
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable accessibilityLabel={label} onPress={onPress} style={styles.patternAction}><View style={[styles.patternActionIcon, active && styles.patternActionIconActive]}><Text style={[styles.patternActionSymbol, active && styles.patternActionSymbolActive]}>{symbol}</Text></View><Text style={[styles.patternActionText, active && styles.patternActionTextActive]}>{label}</Text></Pressable>;
+}
+
+export function TimelineScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const days = state.data?.timeline ?? [];
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => { if (!selectedKey && days[0]) setSelectedKey(days[0].key); }, [days, selectedKey]);
   const selected = days.find(day => day.key === selectedKey) ?? days[0];
-  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="EVERY MOMENT IN ORDER" title="Timeline" subtitle="Journeys, songs, charging, vehicle readings, and real route maps in one daily chronology." headerImage={require('../assets/cinematic-statistics-photo-v1.jpg')} onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
     {days.length ? <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayRail}>{days.slice(0, 30).map(day => <Pressable key={day.key} onPress={() => setSelectedKey(day.key)} style={[styles.dayChip, selected?.key === day.key && styles.dayChipActive]}><Text style={styles.dayNumber}>{new Date(`${day.key}T12:00:00`).getDate()}</Text><Text style={styles.dayLabel}>{new Date(`${day.key}T12:00:00`).toLocaleDateString(undefined, { month: 'short' }).toUpperCase()}</Text></Pressable>)}</ScrollView>
       <Text style={styles.selectedDay}>{selected?.label}</Text>
       <PrimaryMobilityMap routes={selected?.routes ?? []} height={270} emptyMessage="This day has events but no route geometry cached yet." />
       <View style={styles.timelineList}>{selected?.items.map(item => <Pressable key={item.id} disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.timelineItem}>
-        <View style={[styles.timelineIcon, { backgroundColor: timelineColor(item.kind) }]}><Text style={styles.timelineIconText}>{timelineGlyph(item.kind)}</Text></View>
+        <View style={[styles.timelineIcon, { backgroundColor: theme.color(timelineColor(item.kind), 'surface') }]}><Text style={styles.timelineIconText}>{timelineGlyph(item.kind)}</Text></View>
         <View style={styles.flex}><Text style={styles.timelineTime}>{formatClock(item.occurredAt)} · {item.kind.toUpperCase()}</Text><Text style={styles.itemTitle}>{item.title}</Text><Text style={styles.itemDetail}>{item.detail}</Text></View>
         {item.journeyId && <Text style={styles.chevron}>›</Text>}
       </Pressable>)}</View>
@@ -182,43 +686,187 @@ export function TimelineScreen({ state, onRefresh, onJourney }: { state: Primary
   </ScreenScaffold>;
 }
 
-export function StatisticsScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+const presentedStatisticsKeys = new Set<string>();
+
+export function StatisticsScreen({ state, onRefresh, onJourney, onBack, onUpgrade, onAtlas, historyDays = 45 }: {
+  state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void; onUpgrade?: () => void; onAtlas?: () => void; historyDays?: number | null;
+}) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+  const motion = useCoreMotion(true);
+
   const statistics = state.data?.statistics;
-  return <ScreenScaffold eyebrow="30-DAY PERFORMANCE" title="Statistics" subtitle="Driving, energy, music, streaks, comparisons, and a monthly archive computed on-device." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const [statisticsAnimation, setStatisticsAnimation] = useState(0);
+  const statisticsKey = useMemo(() => statistics ? statisticsPresentationKey(statistics) : '', [statistics]);
+  useEffect(() => {
+    if (!shouldAnimateStatistics({ active: motion.active, reduceMotion: motion.reduceMotion, dataKey: statisticsKey, presentedKeys: presentedStatisticsKeys })) return;
+    presentedStatisticsKeys.add(statisticsKey);
+    setStatisticsAnimation(value => value + 1);
+  }, [motion.active, motion.reduceMotion, statisticsKey]);
+  const [visibleTimelineCount, setVisibleTimelineCount] = useState(10);
+  const timelineItems = useMemo(() => {
+    const cutoff = historyDays === null ? Number.NEGATIVE_INFINITY : Date.now() - historyDays * 86_400_000;
+    return (state.data?.timeline ?? [])
+      .flatMap(day => day.items)
+      .filter(item => timelineEpoch(item.occurredAt) >= cutoff)
+      .sort((a, b) => timelineEpoch(b.occurredAt) - timelineEpoch(a.occurredAt));
+  }, [historyDays, state.data?.timeline]);
+  useEffect(() => setVisibleTimelineCount(10), [historyDays, state.data?.loadedAt]);
+  const visibleTimeline = timelineItems.slice(0, visibleTimelineCount);
+  const hasMoreTimeline = visibleTimelineCount < timelineItems.length;
+  const longestRoute = statistics?.story.longestDrive
+    ? timelineItems.find(item => item.kind === 'journey' && item.journeyId === statistics.story.longestDrive?.journeyId)?.route
+    : undefined;
+  const earliestVisibleEpoch = timelineItems.length ? Math.min(...timelineItems.map(item => timelineEpoch(item.occurredAt)).filter(Boolean)) : Date.now();
+  const historyDay = statistics ? Math.min(statistics.windowDays, Math.max(1, Math.floor((Date.now() - earliestVisibleEpoch) / 86_400_000) + 1)) : 1;
+  return <ScreenScaffold eyebrow="" title="STATISTICS" subtitle="" headerPresentation="centered" pageTone="black" headerTone="statistics" onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
-    {statistics ? <>
-      <View style={styles.scoreCard}><View style={styles.scoreRing}><Text style={styles.scoreValue}>{statistics.score ?? '—'}</Text><Text style={styles.scoreUnit}>/ 100</Text></View><View style={styles.flex}><Text style={styles.cardEyebrow}>DRIVING SCORE</Text><Text style={styles.itemTitle}>{statistics.score === null ? 'More telemetry needed' : statistics.score >= 80 ? 'Excellent rhythm' : statistics.score >= 65 ? 'Good momentum' : 'Room to improve'}</Text><Text style={styles.itemDetail}>{statistics.scoreDetail}</Text></View></View>
-      <View style={styles.statGrid}>
-        <StatCard label="MILES" metric={statistics.current.miles} format={value => value.toFixed(1)} />
-        <StatCard label="ENERGY" metric={statistics.current.energyKwh} format={value => `${value.toFixed(1)} kWh`} />
-        <StatCard label="JOURNEYS" metric={statistics.current.journeys} format={value => `${Math.round(value)}`} />
-        <StatCard label="SONGS" metric={statistics.current.songs} format={value => `${Math.round(value)}`} />
+    {historyDays === null && onAtlas && <Pressable accessibilityRole="button" accessibilityLabel="Open Atlas private drive intelligence" onPress={onAtlas} style={styles.atlasGateway}>
+      <Image source={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)} style={StyleSheet.absoluteFill} contentFit="cover" />
+      <LinearGradient colors={theme.gradient(['rgba(8,3,12,0.18)', 'rgba(10,4,15,0.82)', 'rgba(16,5,17,0.98)'])} locations={[0, 0.58, 1]} start={{ x: 1, y: 0.3 }} end={{ x: 0, y: 0.7 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.atlasGatewayCopy}>
+        <Text style={styles.atlasGatewayKicker}>ATLAS · PRIVATE DRIVE INTELLIGENCE</Text>
+        <Text style={styles.atlasGatewayTitle}>Open your Atlas</Text>
+        <Text style={styles.atlasGatewayDetail}>Patterns, favorite places, repeated routes, and music moments.</Text>
       </View>
-      <SectionTitle title="Miles trend" detail="Last 30 days" /><MilesChart statistics={statistics} />
-      <View style={styles.card}><View style={styles.rowBetween}><View><Text style={styles.cardEyebrow}>CURRENT STREAK</Text><Text style={styles.streakValue}>{statistics.streakDays} days</Text></View><Text style={styles.streakFlame}>♨</Text></View></View>
-      <SectionTitle title="Highlights" detail="Your archive at a glance" />
-      {statistics.highlights.length ? statistics.highlights.map(highlight => <Pressable key={highlight.label} disabled={!highlight.journeyId} onPress={() => highlight.journeyId && onJourney(highlight.journeyId)} style={styles.highlightRow}><View><Text style={styles.cardEyebrow}>{highlight.label.toUpperCase()}</Text><Text style={styles.itemTitle}>{highlight.value}</Text></View>{highlight.journeyId && <Text style={styles.chevron}>›</Text>}</Pressable>) : <EmptyCard text="Highlights need a few completed journeys." />}
-      <SectionTitle title="Monthly archive" detail="All available history" />
-      {statistics.monthlyArchive.map(month => <View key={month.key} style={styles.monthRow}><View><Text style={styles.itemTitle}>{month.label}</Text><Text style={styles.itemDetail}>{month.journeys} journeys · {month.songs} songs · {month.energyKwh.toFixed(1)} kWh</Text></View><Text style={styles.monthMiles}>{month.miles.toFixed(1)} mi</Text></View>)}
+      <View style={styles.atlasGatewayAction}><SymbolView name="globe.americas.fill" tintColor={theme.color("#ff8a70", 'text')} size={24} /><Text style={styles.atlasGatewayArrow}>›</Text></View>
+    </Pressable>}
+    {statistics ? <>
+      <View style={styles.storyStatsHero}>
+        <HeaderEdgeBleed />
+        <Image source={headerImageSource(require('../assets/cinematic-statistics-photo-v1.jpg'), theme.id)} style={StyleSheet.absoluteFill} contentFit="cover" />
+        <LinearGradient colors={theme.gradient(['rgba(4,3,10,0.97)', 'rgba(8,4,15,0.74)', 'rgba(7,2,13,0.05)'])} locations={[0, 0.55, 1]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={StyleSheet.absoluteFill} />
+        <HeaderEdgeFeather />
+        <View style={styles.storyStatsHeroCopy}>
+          <Text style={styles.storyStatsKicker}>THE ROAD YOU’VE LIVED</Text>
+          <Text style={styles.storyStatsHeadline}>{statistics.current.miles.value.toFixed(1)} miles. {Math.round(statistics.current.songs.value)} songs.{`\n`}A month worth{`\n`}<Text style={styles.storyStatsHeroAccent}>remembering.</Text></Text>
+        </View>
+      </View>
+
+      <View style={styles.storyStatsCards}>
+        <View style={styles.storyStatsCell}>
+        <CardDetailLink kind="journey" id={statistics.story.longestDrive?.journeyId}>
+        <Pressable disabled={!statistics.story.longestDrive} onPress={() => statistics.story.longestDrive && onJourney(statistics.story.longestDrive.journeyId)} style={styles.storyStatsFeatureCard}>
+          <View style={styles.storyStatsInsightIcon}><TimelineRouteThumbnail coordinates={longestRoute ?? []} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Longest drive</Text><Text style={styles.storyStatsFeatureValue}>{statistics.story.longestDrive ? `${statistics.story.longestDrive.miles.toFixed(1)} mi` : '—'}</Text></View>
+        </Pressable>
+        </CardDetailLink>
+        </View>
+        <View style={styles.storyStatsCell}>
+        <View style={styles.storyStatsFeatureCard}>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconPurple]}><SymbolView name="music.note" tintColor={theme.color("#c17aff", 'text')} size={25} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Most-played</Text><Text style={styles.storyStatsFeatureValue} numberOfLines={2}>{statistics.story.topArtist?.artist ?? '—'}</Text></View>
+        </View>
+        </View>
+        <View style={styles.storyStatsCell}>
+        <View style={styles.storyStatsFeatureCard}>
+          <View style={[styles.storyStatsInsightIcon, styles.storyStatsInsightIconSun]}><SymbolView name="sun.horizon.fill" tintColor={theme.color("#ff8065", 'text')} size={25} /></View>
+          <View style={styles.flex}><Text style={styles.storyStatsInsightLabel}>Favorite time</Text><Text style={[styles.storyStatsFeatureValue, styles.storyStatsFeatureValueCompact]} numberOfLines={3} adjustsFontSizeToFit minimumFontScale={0.78}>{statistics.story.favoriteTime?.label ?? 'Still forming'}</Text></View>
+        </View>
+        </View>
+      </View>
+
+      <View style={styles.storyStatsRhythmCard}>
+        <Text style={styles.storyStatsRhythmLabel}>{historyDays === null ? 'COMPLETE HISTORY' : `FREE HISTORY  ·  ${statistics.windowDays} DAYS`}</Text>
+        <View style={styles.storyStatsHistoryRow}>
+          <View style={styles.storyStatsRhythmBars}>{statistics.dailyMiles.map((day, index) => <AnimatedStatisticsBar key={day.date} index={index} animation={statisticsAnimation} active={day.miles > 0 || day.songs > 0} reduceMotion={motion.reduceMotion} />)}</View>
+          <Text style={styles.storyStatsHistoryDay}>{historyDays === null ? `${timelineItems.length} MOMENTS` : `DAY ${historyDay} OF ${statistics.windowDays}`}</Text>
+        </View>
+        {historyDays !== null && onUpgrade && <Pressable accessibilityRole="button" accessibilityLabel="Unlock Atlas and complete history" onPress={onUpgrade} style={styles.storyStatsUnlock}><Text style={styles.storyStatsUnlockText}>UNLOCK ATLAS + COMPLETE HISTORY</Text><Text style={styles.storyStatsUnlockArrow}>›</Text></Pressable>}
+      </View>
+
+      <View style={styles.storyTimelineHeader}><Text style={styles.storyTimelineHeaderTitle}>RECENT TIMELINE</Text><Text style={styles.storyTimelineHeaderCount}>{Math.min(visibleTimelineCount, timelineItems.length)} MOMENTS</Text></View>
+      {visibleTimeline.length ? <View style={styles.storyTimelineList}>{visibleTimeline.map((item, index) => <StoryTimelineRow key={item.id} item={item} onJourney={onJourney} first={index === 0} last={index === visibleTimeline.length - 1} />)}</View> : <EmptyCard text="Journeys and songs will collect here as your story unfolds." />}
+      {hasMoreTimeline && <Pressable accessibilityRole="button" accessibilityLabel="Show 10 more timeline items" onPress={() => setVisibleTimelineCount(count => Math.min(count + 10, timelineItems.length))} style={styles.storyTimelineMore}><LinearGradient colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(['#ff6b57', '#f14f50'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.storyTimelineMoreFill}><Text style={[styles.storyTimelineMoreText, theme.isCustom && { color: theme.palette.onAccent }]}>SHOW 10 MORE</Text></LinearGradient></Pressable>}
     </> : <EmptyCard text="Statistics will be calculated locally from your journey archive." />}
   </ScreenScaffold>;
 }
 
-export function SearchScreen({ state, onRefresh, onJourney }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void }) {
+function AnimatedStatisticsBar({ index, animation, active, reduceMotion }: { index: number; animation: number; active: boolean; reduceMotion: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+  const reveal = useSharedValue(1);
+  useEffect(() => {
+    cancelAnimation(reveal);
+    if (!animation || reduceMotion) {
+      reveal.value = 1;
+      return;
+    }
+    reveal.value = 0.18;
+    reveal.value = withDelay(Math.min(index * 8, 180), withTiming(1, { duration: MOTION_DURATIONS.standard }));
+    return () => cancelAnimation(reveal);
+  }, [animation, index, reduceMotion, reveal]);
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: 0.42 + reveal.value * 0.58, transform: [{ scaleY: reveal.value }] }));
+  return <Reanimated.View style={[styles.storyStatsRhythmBar, active && styles.storyStatsRhythmBarActive, animatedStyle]} />;
+}
+
+function StoryTimelineRow({ item, onJourney, first, last }: { item: TimelineItem; onJourney: (id: string) => void; first: boolean; last: boolean }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  const song = item.kind === 'song';
+  return <View style={styles.storyTimelineShell}>
+    <View style={styles.storyTimelineRail}>
+      {!first && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorTop]} />}
+      {!last && <View style={[styles.storyTimelineConnector, styles.storyTimelineConnectorBottom]} />}
+      <View style={[styles.storyTimelineRailIcon, song && styles.storyTimelineRailIconSong]}><SymbolView name={song ? 'music.note' : item.kind === 'journey' ? 'mappin' : item.kind === 'charging' ? 'bolt.fill' : 'car.fill'} tintColor={theme.color(song ? '#c17aff' : '#ff8069', 'text')} size={17} /></View>
+    </View>
+    <CardDetailLink kind="journey" id={item.journeyId}><Pressable disabled={!item.journeyId} onPress={() => item.journeyId && onJourney(item.journeyId)} style={styles.storyTimelineCard}>
+      {song && item.artworkUrl
+        ? <Image source={{ uri: item.artworkUrl }} style={styles.storyTimelineArtwork} contentFit="cover" cachePolicy="memory-disk" />
+        : item.kind === 'journey'
+          ? <View style={styles.storyTimelineRoute}><TimelineRouteThumbnail coordinates={item.route ?? []} /></View>
+          : <View style={[styles.storyTimelineArtwork, styles.artworkBlank]}><Text style={styles.artworkNote}>{timelineGlyph(item.kind)}</Text></View>}
+      <View style={styles.storyTimelineCopy}><Text style={[styles.storyTimelineKind, song && styles.storyTimelineKindSong]}>{song ? 'Song' : item.kind === 'journey' ? 'Drive' : item.kind === 'charging' ? 'Charging' : 'Vehicle'}</Text><Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{item.detail}</Text></View>
+      <Text style={styles.storyTimelineClock}>{formatClock(item.occurredAt)}</Text>
+    </Pressable></CardDetailLink>
+  </View>;
+}
+
+function TimelineRouteThumbnail({ coordinates }: { coordinates: [number, number][] }) {
+  const theme = useAppTheme();
+
+  const path = compactRoutePath(coordinates);
+  return <Svg width="100%" height="100%" viewBox="0 0 92 58">
+    <Defs><SvgGradient id="timelineRoute" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={theme.color("#ff8b54", 'accent')} /><Stop offset="0.55" stopColor={theme.color("#ff5f70", 'accent')} /><Stop offset="1" stopColor={theme.color("#a66dff", 'accent')} /></SvgGradient></Defs>
+    {path ? <><Path d={path} fill="none" stroke={theme.color("#ff5f63", 'accent')} strokeWidth={7} opacity={0.16} strokeLinecap="round" strokeLinejoin="round" /><Path d={path} fill="none" stroke="url(#timelineRoute)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></> : <Path d="M 18 45 C 29 38, 36 42, 44 31 S 65 21, 75 11" fill="none" stroke={theme.color("#5b345f", 'accent')} strokeWidth={3} strokeLinecap="round" />}
+  </Svg>;
+}
+
+function compactRoutePath(coordinates: [number, number][]) {
+  const points = coordinates.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
+  if (points.length < 2) return '';
+  const longitudes = points.map(point => point[0]), latitudes = points.map(point => point[1]);
+  const minLongitude = Math.min(...longitudes), maxLongitude = Math.max(...longitudes), minLatitude = Math.min(...latitudes), maxLatitude = Math.max(...latitudes);
+  const rangeLongitude = Math.max(maxLongitude - minLongitude, 0.000001), rangeLatitude = Math.max(maxLatitude - minLatitude, 0.000001);
+  const scale = Math.min(80 / rangeLongitude, 46 / rangeLatitude);
+  const usedWidth = rangeLongitude * scale, usedHeight = rangeLatitude * scale;
+  const offsetX = (92 - usedWidth) / 2, offsetY = (58 - usedHeight) / 2;
+  return points.map(([longitude, latitude], index) => `${index ? 'L' : 'M'} ${(offsetX + (longitude - minLongitude) * scale).toFixed(1)} ${(offsetY + (maxLatitude - latitude) * scale).toFixed(1)}`).join(' ');
+}
+
+function timelineEpoch(value: string) {
+  const epoch = Date.parse(value);
+  return Number.isFinite(epoch) ? epoch : 0;
+}
+
+export function SearchScreen({ state, onRefresh, onJourney, onBack }: { state: PrimaryDataState; onRefresh: () => void; onJourney: (id: string) => void; onBack?: () => void }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const [query, setQuery] = useState('');
   const results = useMemo(() => searchPrimarySections(state.data?.search ?? [], query), [query, state.data?.search]);
-  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search journeys, songs, artists, places, Collections, and Memories from one private index." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  return <ScreenScaffold eyebrow="FIND ANYTHING" title="Search" subtitle="Search Journeys, Memories, songs, artists, and places from one private index." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
     <DataNotice state={state} />
-    <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor="#9b8ba4" size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor="#756d7c" autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
+    <View style={styles.searchBox}><SymbolView name="magnifyingglass" tintColor={theme.color("#9b8ba4", 'text')} size={20} /><TextInput value={query} onChangeText={setQuery} placeholder="Route, song, artist, place…" placeholderTextColor={theme.color("#756d7c", 'text')} autoCapitalize="none" autoCorrect={false} style={styles.searchInput} clearButtonMode="while-editing" /></View>
     <Text style={styles.resultCount}>{query.trim() ? `${results.length} RESULTS` : 'RECENT + FREQUENT'}</Text>
     {results.length ? results.map(record => <Pressable key={record.id} disabled={!record.journeyId} onPress={() => record.journeyId && onJourney(record.journeyId)} style={styles.searchResult}>
-      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} /> : <View style={[styles.searchKind, { backgroundColor: accentForKind[record.kind] }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
+      {record.artworkUrl ? <Image source={{ uri: record.artworkUrl }} style={styles.searchArtwork} cachePolicy="memory-disk" contentFit="cover" /> : <View style={[styles.searchKind, { backgroundColor: theme.color(accentForKind[record.kind], 'surface') }]}><Text style={styles.searchKindText}>{kindGlyph(record.kind)}</Text></View>}
       <View style={styles.flex}><Text style={styles.searchType}>{record.kind.toUpperCase()}</Text><Text style={styles.itemTitle} numberOfLines={1}>{record.title}</Text><Text style={styles.itemDetail} numberOfLines={1}>{record.subtitle}</Text></View>{record.journeyId && <Text style={styles.chevron}>›</Text>}
     </Pressable>) : <EmptyCard text="No JourneyDeck items match that search yet." />}
   </ScreenScaffold>;
 }
 
-export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile }: {
+export function DataHealthScreen({ active, state, dashboard, privateCloud, appleIdentityStatus, providerCapabilities, currentUser, profiles, onRefresh, onCloudSync, onCreateProfileTest, onSwitchProfile, onBack }: {
   active: boolean;
   state: PrimaryDataState;
   dashboard: AppDashboard;
@@ -231,7 +879,11 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   onCloudSync: () => void;
   onCreateProfileTest: () => void;
   onSwitchProfile: (userId: string) => void;
+  onBack?: () => void;
 }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const updates = Updates.useUpdates();
   const running = updates.currentlyRunning;
   const configuredRelease = Constants.expoConfig?.extra?.release as { label?: string; sequence?: string } | undefined;
@@ -243,22 +895,28 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const channel = running.channel ?? Updates.channel;
   const releaseLabel = configuredRelease?.label ?? 'JourneyDeck release';
   const provider = dashboard.providerPreferences;
-  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic;
   const [network, setNetwork] = useState(() => getNetworkActivitySnapshot());
   const [retentionDays, setRetentionDays] = useState<7 | 30>(30);
   const [retentionRefresh, setRetentionRefresh] = useState(0);
   const [retentionPreview, setRetentionPreview] = useState<LocalRetentionPreview | null>(null);
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [artworkRefreshState, setArtworkRefreshState] = useState<'idle' | 'running' | 'complete' | 'warning' | 'error'>('idle');
+  const [artworkRefreshDetail, setArtworkRefreshDetail] = useState('Re-check Apple Music and retry missing exact-match cover artwork on this iPhone.');
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
+  const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
+  const unifiedIntegrityIssueCount = masterIntegrity.foreignKeyViolationCount + masterIntegrity.ownershipViolationCount
+    + masterIntegrity.invalidValueCount + recorderIntegrity.duplicateActiveOwnerCount + recorderIntegrity.invalidValueCount;
+  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic + recorderIntegrity.pendingCompletionJobCount;
   const testProfile = isIsolationTestProfile(currentUser);
   const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
     && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
-    && profileDiagnostics.collectionCount === 0 && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
+    && dashboard.recorder.queuedPoints === 0 && dashboard.recorder.queuedMusic === 0;
   useEffect(() => active ? subscribeNetworkActivity(setNetwork) : undefined, [active]);
   useEffect(() => {
     if (!active) return;
     setRetentionPreviewState('loading');
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = requestIdleCallback(() => {
       try {
         setRetentionPreview(previewLocalRetention(getCurrentUser().id, { retentionDays }));
         setRetentionPreviewState('ready');
@@ -267,11 +925,30 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         setRetentionPreviewState('error');
       }
     });
-    return () => task.cancel();
+    return () => cancelIdleCallback(task);
   }, [active, retentionDays, retentionRefresh, state.data?.loadedAt]);
-  return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
+  const forceArtworkRefresh = async () => {
+    if (artworkRefreshState === 'running') return;
+    setArtworkRefreshState('running');
+    setArtworkRefreshDetail('Checking Apple Music history and retrying missing covers…');
+    try {
+      const report = await forceRefreshAllAppleMusicArtworkForDiagnostics();
+      const result = report.missingBefore === 0
+        ? `No covers were missing. ${report.enriched} stored artwork ${report.enriched === 1 ? 'record was' : 'records were'} refreshed.`
+        : `${report.enriched} artwork ${report.enriched === 1 ? 'record was' : 'records were'} updated. ${report.missingAfter} of ${report.missingBefore} missing ${report.missingBefore === 1 ? 'cover remains' : 'covers remain'}.`;
+      const catalogRetry = report.failed ? ` ${report.failed} catalog ${report.failed === 1 ? 'request needs' : 'requests need'} another retry.` : '';
+      setArtworkRefreshDetail(`${result}${catalogRetry}${report.historyWarning ? ` ${report.historyWarning}` : ''}`);
+      setArtworkRefreshState(report.historyWarning || report.failed ? 'warning' : 'complete');
+      onRefresh();
+    } catch (error) {
+      setArtworkRefreshDetail(error instanceof Error ? error.message : 'Apple Music artwork could not refresh yet.');
+      setArtworkRefreshState('error');
+    }
+  };
+  return <ScreenScaffold eyebrow="LOCAL-FIRST CONFIDENCE" title="Data Health" subtitle="A plain-language view of what is saved, fresh, queued, and safe to retry." onRefresh={onRefresh} leadingAction={onBack ? { label: 'Tools', onPress: onBack } : undefined}>
+    <UpdateDiagnostics />
     <SectionTitle title="Version & update" detail="What is running now" />
-    <View style={styles.releaseCard}>
+    <View style={styles.releaseCard}><NeonWidgetOutline radius={24} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.releaseSequence}>{configuredRelease?.sequence ?? 'RELEASE'}</Text><Text style={styles.releaseLabel}>{releaseLabel}</Text></View><View style={styles.releaseKindBadge}><Text style={styles.releaseKindText}>{launchKind.toUpperCase()}</Text></View></View>
       <View style={styles.releaseGrid}>
         <ReleaseMetric label="APP" value={nativeVersion} detail={`native build ${nativeBuild}`} />
@@ -282,15 +959,21 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
-    <View style={styles.healthHero}><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local items are waiting to sync. They remain safe on this iPhone.` : 'No recorder data is waiting for upload.'}</Text></View>
+    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local tasks are waiting to finish or sync. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
+    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} capabilities={providerCapabilities} />
+    <SectionTitle title="Apple Music artwork" detail="Manual diagnostic" />
+    <View style={styles.artworkRefreshCard}><NeonWidgetOutline radius={20} />
+      <View style={styles.flex}><Text style={styles.cardEyebrow}>FORCE ARTWORK REFRESH</Text><Text style={styles.artworkRefreshTitle}>Retry missing album covers</Text><Text style={[styles.artworkRefreshDetail, artworkRefreshState === 'warning' && styles.artworkRefreshWarning, artworkRefreshState === 'error' && styles.artworkRefreshError]}>{artworkRefreshDetail}</Text></View>
+      <Pressable accessibilityRole="button" accessibilityLabel="Force Apple Music artwork refresh" disabled={artworkRefreshState === 'running'} onPress={() => void forceArtworkRefresh()} style={[styles.artworkRefreshButton, artworkRefreshState === 'running' && styles.artworkRefreshButtonDisabled]}><Text style={styles.artworkRefreshButtonText}>{artworkRefreshState === 'running' ? 'Refreshing…' : 'Refresh artwork now'}</Text></Pressable>
+    </View>
     <SectionTitle title="Network boundary" detail="This app session" />
-    <View style={styles.networkCard}>
+    <View style={styles.networkCard}><NeonWidgetOutline radius={22} />
       <View style={styles.networkGrid}>
         <NetworkMetric label="JOURNEYDECK" value={`${Math.max(0, network.journeyDeckOperations - network.blockedOperations)}`} detail="server requests sent" />
         <NetworkMetric label="PRIVATE ICLOUD" value={`${network.privateICloudOperations}`} detail="sync attempts" />
@@ -307,7 +990,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       </View>
       {network.recentEvents.length ? <View style={styles.networkEvents}>{network.recentEvents.slice(0, 6).map(event => <NetworkEventRow key={event.id} event={event} />)}</View>
         : <Text style={styles.networkEmpty}>No observed JourneyDeck, private edge, or private iCloud activity since these counters started.</Text>}
-      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify and Tessie tokens stay in this iPhone Keychain; Tessie uses the stateless edge only during a bounded refresh, which strips VINs and precise coordinates. Native map tiles, artwork, Apple Music, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
+      <Text style={styles.networkNote}>Only privacy-safe categories, timing, status, and byte totals are retained in memory. Tokens, record contents, coordinates, URLs, and personal identifiers are never recorded. City labels use coordinates reduced on this iPhone to an approximately one-kilometer grid before transmission. Last.fm imports send only the public username and bounded journey time window. Direct Spotify tokens stay in this iPhone Keychain. When MusicKit omits a cover, JourneyDeck can send only its song title and artist directly to Apple's public catalog and cache an exact-match artwork URL on this iPhone. Native map tiles, normal MusicKit artwork, Shazam, and Expo updates bypass JourneyDeck and are not included in these byte totals.</Text>
     </View>
     <Pressable
       accessibilityRole="switch"
@@ -319,8 +1002,9 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Text style={styles.networkPolicyDetail}>{network.journeyDeckRequestsBlocked ? 'Server requests are blocked until restart or until you turn this off. Local fallbacks remain available.' : 'Temporarily block only JourneyDeck server requests. Private iCloud and external map/media services remain unchanged.'}</Text>
     </Pressable>
     <Pressable style={styles.networkReset} onPress={resetNetworkActivity}><Text style={styles.networkResetText}>Reset session counters</Text></Pressable>
-    <SectionTitle title="Profile Test Lab" detail="Temporary · non-destructive" />
-    <View style={styles.profileLabCard}>
+    {isInternalTestingBuild() && <>
+      <SectionTitle title="Profile Test Lab" detail="Internal · non-destructive" />
+      <View style={styles.profileLabCard}><NeonWidgetOutline radius={22} />
       <View style={styles.rowBetween}><View style={styles.flex}><Text style={styles.profileLabEyebrow}>{testProfile ? 'TEST PROFILE ACTIVE' : 'CURRENT PROFILE'}</Text><Text style={styles.profileLabTitle}>{currentUser.displayName || 'Unnamed local profile'}</Text></View>{testProfile && <Text style={[styles.profileLabResult, profileIsClean && styles.profileLabResultGood]}>{profileIsClean ? 'CLEAN' : 'HAS DATA'}</Text>}</View>
       <Text style={styles.profileLabDetail}>{testProfile ? 'Private iCloud is paused for this synthetic profile so the empty-profile check cannot download existing records.' : 'Create a separate local profile to verify that journeys, recorder state, screen caches, and owner backup do not carry over.'}</Text>
       <View style={styles.profileLabGrid}>
@@ -328,19 +1012,19 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
         <ProfileLabMetric label="GPS POINTS" value={profileDiagnostics.gpsPointCount} />
         <ProfileLabMetric label="SONGS" value={profileDiagnostics.musicEntryCount} />
         <ProfileLabMetric label="MEMORIES" value={profileDiagnostics.memoryCount} />
-        <ProfileLabMetric label="COLLECTIONS" value={profileDiagnostics.collectionCount} />
         <ProfileLabMetric label="RECORDER QUEUE" value={dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic} />
       </View>
       {testProfile ? <>
-        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Memories, Atlas, Search, Recorder, and Settings before returning.</Text>
+        <Text style={styles.profileLabNote}>A clean result means all six values are zero. Browse Home, Live, Memories, Atlas, Search, and Settings before returning.</Text>
         {profiles.filter(profile => !isIsolationTestProfile(profile)).map(profile => <Pressable key={profile.id} style={styles.profileLabPrimary} onPress={() => onSwitchProfile(profile.id)}><Text style={styles.profileLabPrimaryText}>Return to {profile.displayName || 'original profile'}</Text></Pressable>)}
       </> : <>
         <Pressable style={styles.profileLabPrimary} onPress={onCreateProfileTest}><Text style={styles.profileLabPrimaryText}>Create clean test profile</Text></Pressable>
         <Text style={styles.profileLabNote}>This never deletes, merges, or edits your current data. The test profile remains separate until this temporary lab is removed.</Text>
       </>}
-    </View>
+      </View>
+    </>}
     <SectionTitle title="Retention preview" detail="Read-only · this iPhone" />
-    <View style={styles.retentionCard}>
+    <View style={styles.retentionCard}><NeonWidgetOutline radius={22} />
       <View style={styles.retentionChoiceRow}>
         {([30, 7] as const).map(days => <Pressable
           key={days}
@@ -350,7 +1034,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
           style={[styles.retentionChoice, retentionDays === days && styles.retentionChoiceActive]}
         ><Text style={[styles.retentionChoiceText, retentionDays === days && styles.retentionChoiceTextActive]}>Keep {days} days</Text></Pressable>)}
       </View>
-      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color="#bb79ef" /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
+      {retentionPreviewState === 'loading' ? <View style={styles.retentionLoading}><ActivityIndicator color={theme.color("#bb79ef", 'text')} /><Text style={styles.retentionNote}>Counting local rows without changing them…</Text></View>
         : retentionPreviewState === 'error' || !retentionPreview ? <View style={styles.warningCard}><Text style={styles.warningTitle}>PREVIEW UNAVAILABLE</Text><Text style={styles.noticeText}>JourneyDeck could not read the local counts. No data was changed.</Text></View>
           : <>
             <View style={styles.retentionHeader}><View style={styles.flex}><Text style={styles.retentionTitle}>{retentionDays}-day detailed history</Text><Text style={styles.retentionCutoff}>Items before {formatRetentionDate(retentionPreview.cutoffAt)} are evaluated</Text></View><Text style={styles.readOnlyBadge}>READ ONLY</Text></View>
@@ -359,14 +1043,13 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
             <RetentionRow label="Route points" count={retentionPreview.counts.routePoints} />
             <RetentionRow label="Songs" count={retentionPreview.counts.songs} />
             <RetentionRow label="Memories" count={retentionPreview.counts.memories} />
-            <RetentionRow label="Collections" count={retentionPreview.counts.collections} />
-            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.collectionProtectedJourneys)} Collection-linked journeys protected</Text>
-            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, Collections, native recordings, recent history, and linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
+            <Text style={styles.retentionSafeguards}>{formatCount(retentionPreview.safeguards.nativeJourneyDeckJourneys)} native recordings protected · {formatCount(retentionPreview.safeguards.memoryProtectedJourneys)} Memory-linked journeys protected</Text>
+            <Text style={styles.retentionNote}>Only old Google Timeline journeys and old unmatched direct-Spotify plays qualify. Memories, native recordings, recent history, and Memory-linked journeys stay. These are exact counts for the active profile’s on-device master; private iCloud and the legacy JourneyDeck archive are unchanged and are not included in this card.</Text>
           </>}
       <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
     </View>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
-    <Text style={styles.privacyNote}>Safe retries never erase local data. Raw route coordinates, Home/Work locations, Apple credentials, and local photo paths stay on this iPhone.</Text>
+    <Text style={styles.privacyNote}>Safe retries never erase local data. Exact routes can be backed up only to your private iCloud database; they never go to JourneyDeck’s server or privacy edge. Saved-place labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
 }
 
@@ -381,18 +1064,26 @@ function formatReleaseDate(value: Date) {
 }
 
 function ReleaseMetric({ label, value, detail, wide = false }: { label: string; value: string; detail: string; wide?: boolean }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={[styles.releaseMetric, wide && styles.releaseMetricWide]}><Text style={styles.releaseMetricLabel}>{label}</Text><Text style={styles.releaseMetricValue}>{value}</Text><Text style={styles.releaseMetricDetail} numberOfLines={wide ? 1 : 2}>{detail}</Text></View>;
 }
 
 function NetworkMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.networkMetric}><Text style={styles.networkMetricLabel}>{label}</Text><Text style={styles.networkMetricValue}>{value}</Text><Text style={styles.networkMetricDetail}>{detail}</Text></View>;
 }
 
 function ProfileLabMetric({ label, value }: { label: string; value: number }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.profileLabMetric}><Text style={styles.profileLabMetricLabel}>{label}</Text><Text style={styles.profileLabMetricValue}>{Math.max(0, value).toLocaleString()}</Text></View>;
 }
 
 function RetentionRow({ label, count }: { label: string; count: RetentionCount }) {
+  const styles = useThemedStyles(darkStyles);
+
   return <View style={styles.retentionRow}><View style={styles.flex}><Text style={styles.retentionRowTitle}>{label}</Text><Text style={styles.retentionRowTotal}>{formatCount(count.total)} total</Text></View><View style={styles.retentionNumbers}><Text style={styles.retentionKept}>{formatCount(count.kept)}</Text><Text style={styles.retentionRemove}>{formatCount(count.removable)}</Text></View></View>;
 }
 
@@ -405,120 +1096,166 @@ function formatRetentionDate(value: string) {
 }
 
 function NetworkEventRow({ event }: { event: NetworkActivityEvent }) {
+  const styles = useThemedStyles(darkStyles);
+
   const outcome = event.outcome === 'succeeded' ? 'DONE' : event.outcome === 'active' ? 'ACTIVE' : event.outcome.toUpperCase();
   const source = event.category === 'private_icloud' ? 'Apple private service' : event.category === 'privacy_edge' ? 'JourneyDeck private edge' : event.reason.replaceAll('_', ' ');
   return <View style={styles.networkEventRow}><View style={styles.flex}><Text style={styles.compactTitle}>{event.operation}</Text><Text style={styles.networkEventDetail}>{source} · {event.method}{event.statusCode ? ` · ${event.statusCode}` : ''}</Text></View><Text style={[styles.networkEventOutcome, event.outcome === 'succeeded' && styles.networkEventOutcomeGood, event.outcome === 'blocked' && styles.networkEventOutcomeBlocked]}>{outcome}</Text></View>;
 }
 
 function ProviderHealth({ provider, capabilities }: { provider: ProviderPreferences | null; capabilities: { lastFmConfigured: boolean; tessieConfigured: boolean } }) {
+  const styles = useThemedStyles(darkStyles);
+
   const rows = [
-    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Auto Recognition', provider?.connections.shazam ?? 'not_enabled'],
-    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'], ['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected'],
+    ['Apple Music', provider?.connections.appleMusic ?? 'not_connected'], ['Manual Song Recognition', provider?.connections.shazam ?? 'not_enabled'],
+    ['Spotify history', capabilities.lastFmConfigured ? (provider?.connections.lastFm ?? 'ready') : 'not_connected'],
+    ...(TESSIE_INTEGRATION_ENABLED ? [['Tessie on this iPhone', capabilities.tessieConfigured ? 'connected' : 'not_connected']] : []),
   ];
   return <View style={styles.card}>{rows.map(([name, status]) => <View key={name} style={styles.providerRow}><Text style={styles.compactTitle}>{name}</Text><Text style={[styles.providerStatus, /connected|enabled/.test(status) && styles.providerStatusGood]}>{status.replaceAll('_', ' ')}</Text></View>)}</View>;
 }
 
 export function MoreScreen({
-  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync, onJourney,
-  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, music, recorder, settings,
+  active, requested, onRequestedChange, state, dashboard, privateCloud, appleIdentityStatus, onRefresh, onCloudSync,
+  providerCapabilities, currentUser, profiles, onCreateProfileTest, onSwitchProfile, onClose,
 }: {
   active: boolean; requested: MoreDestination; onRequestedChange: (destination: MoreDestination) => void; state: PrimaryDataState; dashboard: AppDashboard;
-  privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void; onJourney: (id: string) => void;
+  privateCloud: { status: string; detail: string }; appleIdentityStatus: string; onRefresh: () => void; onCloudSync: () => void;
   providerCapabilities: { lastFmConfigured: boolean; tessieConfigured: boolean };
   currentUser: LocalUser; profiles: LocalUser[]; onCreateProfileTest: () => void; onSwitchProfile: (userId: string) => void;
-  music: ReactNode; recorder: ReactNode; settings: ReactNode;
+  onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  // Data Health is an internal diagnostic surface. Public navigation falls
+  // back to Settings in the shell, and this guard prevents accidental render.
+  if (!isInternalTestingBuild()) return null;
+
   const destination = requested;
   let content: ReactNode;
   if (destination !== 'menu') {
-    const child = destination === 'search' ? <SearchScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-      : destination === 'timeline' ? <TimelineScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-        : destination === 'statistics' ? <StatisticsScreen state={state} onRefresh={onRefresh} onJourney={onJourney} />
-          : destination === 'health' ? <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} />
-            : destination === 'music' ? music : destination === 'settings' ? settings : null;
-    content = <>{child}<Pressable accessibilityLabel="Back to More" onPress={() => onRequestedChange('menu')} style={[styles.moreBack, { top: insets.top + 9 }]}><Text style={styles.moreBackText}>‹ More</Text></Pressable></>;
+    content = <DataHealthScreen active={active} state={state} dashboard={dashboard} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={providerCapabilities} currentUser={currentUser} profiles={profiles} onRefresh={onRefresh} onCloudSync={onCloudSync} onCreateProfileTest={onCreateProfileTest} onSwitchProfile={onSwitchProfile} onBack={onClose} />;
   } else {
-    content = <ScreenScaffold eyebrow="THE REST OF YOUR DECK" title="More" subtitle="Search, analysis, recording, music, data confidence, and app controls." refreshing={state.status === 'loading'} onRefresh={onRefresh}>
-      <Pressable onPress={() => onRequestedChange('search')} style={styles.moreSearch}><SymbolView name="magnifyingglass" tintColor="#f4eafa" size={22} /><Text style={styles.moreSearchText}>Search all JourneyDeck</Text><Text style={styles.chevron}>›</Text></Pressable>
+    content = <ScreenScaffold eyebrow="JOURNEYDECK UTILITIES" title="Tools" subtitle="Data confidence and app controls." onRefresh={onRefresh} leadingAction={{ label: 'Close', onPress: onClose }}>
       <View style={styles.moreGrid}>
-        <MoreTile symbol="clock" fallback="◷" title="Timeline" detail="Daily chronology" color="#ff6854" onPress={() => onRequestedChange('timeline')} />
-        <MoreTile symbol="chart.xyaxis.line" fallback="↗" title="Statistics" detail="Trends + score" color="#ad76ff" onPress={() => onRequestedChange('statistics')} />
-        <MoreTile symbol="music.note" fallback="♪" title="Music" detail="Road soundtrack" color="#ff5b96" onPress={() => onRequestedChange('music')} />
-        <MoreTile symbol="record.circle" fallback="●" title="Record" detail="Start or finish" color="#ff765c" onPress={() => onRequestedChange('record')} />
-        <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color="#58d5b6" onPress={() => onRequestedChange('health')} />
-        <MoreTile symbol="gearshape" fallback="⚙" title="Settings" detail="Accounts + app" color="#8ca4ff" onPress={() => onRequestedChange('settings')} />
+        <MoreTile symbol="checkmark.shield" fallback="✓" title="Data Health" detail="Sync confidence" color={theme.color("#58d5b6", 'text')} onPress={() => onRequestedChange('health')} />
       </View>
-      <View style={styles.localFirstCard}><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Maps, search, timeline grouping, statistics, pattern decisions, and active-drive status are rendered from local or cached data.</Text></View>
+      <View style={styles.localFirstCard}><NeonWidgetOutline radius={21} /><Text style={styles.cardEyebrow}>LOCAL-FIRST BY DESIGN</Text><Text style={styles.itemTitle}>Your iPhone does the everyday work.</Text><Text style={styles.itemDetail}>Data Health explains what is saved and safe to retry.</Text></View>
     </ScreenScaffold>;
   }
-  return <View style={styles.screen}>{content}<View pointerEvents={destination === 'record' ? 'auto' : 'none'} style={destination === 'record' ? styles.persistentRecorderVisible : styles.persistentRecorderHidden}>{recorder}</View></View>;
+  return <View style={styles.screen}>{content}</View>;
 }
 
 function MoreTile({ symbol, fallback, title, detail, color, onPress }: { symbol: SFSymbol; fallback: string; title: string; detail: string; color: string; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.moreTile}><View style={[styles.moreIcon, { backgroundColor: `${color}20`, borderColor: `${color}66` }]}><SymbolView name={symbol} tintColor={color} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <Pressable onPress={onPress} style={styles.moreTile}><NeonWidgetOutline radius={23} /><View style={[styles.moreIcon, { backgroundColor: theme.color(`${color}20`, 'surface'), borderColor: theme.color(`${color}66`, 'border') }]}><SymbolView name={symbol} tintColor={theme.color(color, 'text')} size={24} fallback={<Text style={{ color, fontSize: 22 }}>{fallback}</Text>} /></View><Text style={styles.moreTileTitle}>{title}</Text><Text style={styles.moreTileDetail}>{detail}</Text></Pressable>;
 }
 
 function HealthRow({ title, status, detail, healthy }: { title: string; status: string; detail: string; healthy: boolean }) {
-  return <View style={styles.healthRow}><View style={[styles.healthDot, healthy && styles.healthDotGood]} /><View style={styles.flex}><View style={styles.rowBetween}><Text style={styles.itemTitle}>{title}</Text><Text style={[styles.healthStatus, healthy && styles.healthStatusGood]}>{status.toUpperCase()}</Text></View><Text style={styles.itemDetail}>{detail}</Text></View></View>;
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.healthRow}><NeonWidgetOutline radius={19} /><View style={[styles.healthDot, healthy && styles.healthDotGood]} /><View style={styles.flex}><View style={styles.rowBetween}><Text style={styles.itemTitle}>{title}</Text><Text style={[styles.healthStatus, healthy && styles.healthStatusGood]}>{status.toUpperCase()}</Text></View><Text style={styles.itemDetail}>{detail}</Text></View></View>;
 }
 
 function MilesChart({ statistics }: { statistics: StatisticsData }) {
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
   const width = 330, height = 126, max = Math.max(1, ...statistics.dailyMiles.map(day => day.miles));
   const points = statistics.dailyMiles.map((day, index) => [10 + index * ((width - 20) / 29), height - 15 - (day.miles / max) * (height - 35)] as const);
   const line = points.map(([x, y], index) => `${index ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-  return <View style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor="#9e54ff" /><Stop offset="1" stopColor="#ff6b4f" /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill="#8e46de" opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></View>;
+  return <NeonWidget radius={20} style={styles.chartCard}><Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}><Defs><SvgGradient id="milesLine" x1="0" y1="0" x2="1" y2="0"><Stop offset="0" stopColor={theme.color("#9e54ff", 'accent')} /><Stop offset="1" stopColor={theme.color("#ff6b4f", 'accent')} /></SvgGradient></Defs><Path d={`${line} L ${width - 10} ${height - 10} L 10 ${height - 10} Z`} fill={theme.color("#8e46de", 'accent')} opacity={0.12} /><Path d={line} fill="none" stroke="url(#milesLine)" strokeWidth={4} strokeLinecap="round" strokeLinejoin="round" /></Svg><View style={styles.chartLabels}>{statistics.dailyMiles.filter((_, index) => index % 5 === 0).map(day => <Text key={day.date} style={styles.chartLabel}>{day.label}</Text>)}</View></NeonWidget>;
 }
 
 function StatCard({ label, metric: value, format }: { label: string; metric: StatisticsData['current']['miles']; format: (value: number) => string }) {
+  const styles = useThemedStyles(darkStyles);
+
   const change = value.changePercent;
-  return <View style={styles.statCard}><Text style={styles.cardEyebrow}>{label}</Text><Text style={styles.statValue}>{format(value.value)}</Text><Text style={[styles.change, change !== null && change < 0 && styles.changeDown]}>{change === null ? 'NEW' : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <Text style={styles.changePeriod}>vs prior 30d</Text></Text></View>;
+  return <QuietInset radius={17} accent="#a66cff" style={styles.statCard}><Text style={styles.cardEyebrow}>{label}</Text><Text style={styles.statValue}>{format(value.value)}</Text><Text style={[styles.change, change !== null && change < 0 && styles.changeDown]}>{change === null ? 'NEW' : `${change >= 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`} <Text style={styles.changePeriod}>vs prior 30d</Text></Text></QuietInset>;
 }
 
 function JourneyRow({ journey, onPress }: { journey: JourneySummary; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.journeyRow}><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable>;
+  const styles = useThemedStyles(darkStyles);
+
+  return <CardDetailLink kind="journey" id={journey.id}><Pressable onPress={onPress} style={styles.journeyRow}><NeonWidgetOutline radius={18} /><Text style={styles.routeGlyph}>⌁</Text><View style={styles.flex}><Text style={styles.itemTitle} numberOfLines={1}>{journey.startingLocation || 'Unknown start'} → {journey.endingLocation || 'Unknown destination'}</Text><Text style={styles.itemDetail}>{new Date(journey.startedAt).toLocaleDateString()} · {journey.miles.toFixed(1)} mi · {journey.songCount} songs</Text></View><Text style={styles.chevron}>›</Text></Pressable></CardDetailLink>;
 }
 
 function Metric({ value, unit, label }: { value: string; unit?: string; label: string }) {
-  return <View style={styles.metric}><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
+  const theme = useAppTheme();
+  const styles = useThemedStyles(darkStyles);
+
+  return <View style={styles.metric}><LinearGradient pointerEvents="none" colors={theme.gradient(['#ff7a61', '#bc66ff', '#5ca7ff'] as const)} style={styles.metricAccent} /><Text style={styles.metricValue}>{value}<Text style={styles.metricUnit}>{unit ? ` ${unit}` : ''}</Text></Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
-function SectionTitle({ title, detail }: { title: string; detail: string }) { return <View style={styles.sectionTitle}><Text style={styles.sectionHeading}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
-function EmptyCard({ text }: { text: string }) { return <View style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></View>; }
+function SectionTitle({ title, detail }: { title: string; detail: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <View style={styles.sectionTitle}><Text style={styles.sectionHeading}>{title}</Text><Text style={styles.sectionDetail}>{detail}</Text></View>; }
+function EmptyCard({ text }: { text: string }) {
+  const styles = useThemedStyles(darkStyles);
+ return <NeonWidget radius={18} style={styles.emptyCard}><Text style={styles.noticeText}>{text}</Text></NeonWidget>; }
 function timelineGlyph(kind: string) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'charging' ? 'ϟ' : '◉'; }
 function timelineColor(kind: string) { return kind === 'journey' ? '#ff6a54' : kind === 'song' ? '#a85cff' : kind === 'charging' ? '#5bd6b9' : '#678cff'; }
-function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : kind === 'collection' ? '▦' : '✦'; }
+function kindGlyph(kind: SearchRecord['kind']) { return kind === 'journey' ? '⌁' : kind === 'song' ? '♪' : kind === 'artist' ? '♬' : kind === 'place' ? '●' : '✦'; }
 function formatClock(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : 'Time unavailable'; }
 function relativeTime(value?: string) { if (!value) return 'from saved data'; const minutes = Math.max(0, Math.round((Date.now() - Date.parse(value)) / 60_000)); return minutes < 1 ? 'just now' : minutes < 60 ? `${minutes}m ago` : `${Math.round(minutes / 60)}h ago`; }
 function routeMiles(coordinates: [number, number][]) { let meters = 0; for (let index = 1; index < coordinates.length; index += 1) { const [aLng, aLat] = coordinates[index - 1], [bLng, bLat] = coordinates[index], rad = Math.PI / 180; const dLat = (bLat - aLat) * rad, dLng = (bLng - aLng) * rad; const chord = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLng / 2) ** 2; meters += 12_742_000 * Math.asin(Math.sqrt(chord)); } return meters / 1609.344; }
+const atlasStateNames = new Set([
+  'alabama', 'alaska', 'arizona', 'arkansas', 'california', 'colorado', 'connecticut', 'delaware', 'florida', 'georgia', 'hawaii', 'idaho', 'illinois', 'indiana', 'iowa', 'kansas', 'kentucky', 'louisiana', 'maine', 'maryland', 'massachusetts', 'michigan', 'minnesota', 'mississippi', 'missouri', 'montana', 'nebraska', 'nevada', 'new hampshire', 'new jersey', 'new mexico', 'new york', 'north carolina', 'north dakota', 'ohio', 'oklahoma', 'oregon', 'pennsylvania', 'rhode island', 'south carolina', 'south dakota', 'tennessee', 'texas', 'utah', 'vermont', 'virginia', 'washington', 'west virginia', 'wisconsin', 'wyoming', 'district of columbia',
+]);
+function compactAtlasPlaceLabel(value: string) { return value.replace(/,\s*(?:United States(?: of America)?|USA|US)\.?\s*$/i, '').replace(/\s+\d{5}(?:-\d{4})?(?=,|$)/g, '').replace(/\s+,/g, ',').replace(/\s{2,}/g, ' ').trim(); }
+function atlasPlaceParts(value: string) {
+  const parts = compactAtlasPlaceLabel(value).split(',').map(part => part.trim()).filter(Boolean);
+  const last = parts[parts.length - 1] ?? '';
+  return atlasStateNames.has(last.toLowerCase())
+    ? { place: parts.slice(0, -1).join(', '), state: last }
+    : { place: parts.join(', '), state: null };
+}
+function formatAtlasPatternRoute(start: string, end: string) {
+  const origin = atlasPlaceParts(start), destination = atlasPlaceParts(end);
+  if (origin.state && destination.state && origin.state.toLowerCase() === destination.state.toLowerCase()) return `${origin.place} → ${destination.place}`;
+  const format = ({ place, state }: { place: string; state: string | null }) => state ? `${place}, ${state}` : place;
+  return `${format(origin)} → ${format(destination)}`;
+}
 
-const styles = StyleSheet.create({
+const darkStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
-  topBloom: { position: 'absolute', top: -110, alignSelf: 'center', width: 420, height: 300, borderRadius: 210, backgroundColor: '#55106b', opacity: 0.25, transform: [{ scaleX: 1.5 }] },
-  content: { paddingHorizontal: 18, paddingBottom: 150 },
+  headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
+  content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22 },
+  utilityBack: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
+  utilityBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },
+  statsPageTitle: { position: 'relative', zIndex: 10, elevation: 10, width: '100%', alignSelf: 'center', color: '#fff', fontSize: 24, lineHeight: 29, fontWeight: '900', letterSpacing: 5.2, textAlign: 'center', marginBottom: 17, textShadowColor: 'rgba(255,255,255,0.32)', textShadowRadius: 8 },
   loadingCard: { minHeight: 100, borderRadius: 22, backgroundColor: '#0d0712', borderWidth: 1, borderColor: '#34203d', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 20, marginBottom: 16 },
   warningCard: { borderRadius: 19, backgroundColor: '#21120d', borderWidth: 1, borderColor: '#6f432e', padding: 16, marginBottom: 15 },
   warningTitle: { color: '#ff9b67', fontSize: 10, fontWeight: '900', letterSpacing: 1.4, marginBottom: 6 },
   noticeText: { color: '#9a8fa3', fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  liveHero: { borderRadius: 27, padding: 20, marginBottom: 13, backgroundColor: '#100816', borderWidth: 1, borderColor: '#4d295e', shadowColor: '#a73dff', shadowOpacity: 0.25, shadowRadius: 20 },
+  liveHero: { borderRadius: 27, padding: 20, marginBottom: 13, backgroundColor: '#100816', shadowColor: '#a73dff', shadowOpacity: 0.16, shadowRadius: 18 },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   cardEyebrow: { color: '#c493f6', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginBottom: 7 },
   heroTitle: { color: '#fff', fontSize: 23, fontWeight: '900', letterSpacing: -0.5 },
   liveDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#4b4350', borderWidth: 3, borderColor: '#211825' },
   liveDotActive: { backgroundColor: '#5be0ba', borderColor: '#244c42', shadowColor: '#5be0ba', shadowOpacity: 1, shadowRadius: 10 },
-  metricRow: { flexDirection: 'row', marginTop: 19 },
-  metric: { flex: 1, alignItems: 'center', paddingHorizontal: 3 },
-  metricValue: { color: '#fff', fontSize: 21, fontWeight: '900', letterSpacing: -0.4 },
+  metricRow: { flexDirection: 'row', gap: 8, marginTop: 19 },
+  metric: { flex: 1, minHeight: 70, borderRadius: 15, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, paddingTop: 13, paddingBottom: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: '#3a3043', backgroundColor: 'rgba(255,255,255,0.025)' },
+  liveMetricViewport: { width: '100%', height: 26, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+  liveMetricLayer: { position: 'absolute', top: 0, right: 0, left: 0 },
+  liveMetricMeasure: { opacity: 0 },
+  metricAccent: { position: 'absolute', top: 0, left: 16, right: 16, height: 1.5, borderRadius: 2, opacity: 0.8 },
+  metricValue: { color: '#fff', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.4, textAlign: 'center', fontVariant: ['tabular-nums'] },
   metricUnit: { color: '#b5a6bc', fontSize: 10, fontWeight: '800' },
-  metricLabel: { color: '#817489', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginTop: 5, textAlign: 'center' },
+  metricLabel: { color: '#a295aa', fontSize: 9, lineHeight: 11, fontWeight: '800', letterSpacing: 0.75, marginTop: 4, textAlign: 'center' },
+  liveStateCopy: { color: '#a89dad', fontSize: 13, lineHeight: 19, marginTop: 12 },
   honestNote: { color: '#746b7b', fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: 16 },
   sectionTitle: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, marginTop: 28, marginBottom: 12 },
   sectionHeading: { color: '#f8f4fa', fontSize: 20, fontWeight: '900', letterSpacing: -0.4 },
   sectionDetail: { color: '#806f88', fontSize: 10, fontWeight: '700', textAlign: 'right', flexShrink: 1 },
   card: { borderRadius: 22, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#35203e', padding: 17, marginBottom: 12 },
+  tessieCard: { borderRadius: 22, backgroundColor: '#071119', padding: 17, marginBottom: 12 },
+  tessieStatus: { color: '#69d8f5', fontSize: 9, fontWeight: '900', letterSpacing: 1.1, textTransform: 'uppercase', textAlign: 'right', maxWidth: 120 },
   primaryButton: { minHeight: 48, borderRadius: 16, backgroundColor: '#8c48e8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 17 },
   primaryButtonText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   secondaryButton: { minHeight: 48, borderRadius: 16, borderWidth: 1, borderColor: '#6d3e82', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 10 },
@@ -534,30 +1271,136 @@ const styles = StyleSheet.create({
   healthStrip: { marginTop: 13, borderRadius: 17, backgroundColor: '#091713', borderWidth: 1, borderColor: '#1d4d40', padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   healthStripTitle: { color: '#5ed9b9', fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   healthStripText: { color: '#79a99d', fontSize: 9, flex: 1, textAlign: 'right' },
+  atlasCommandHeader: { marginTop: -3, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 },
+  atlasPrivacyBadge: { minHeight: 30, borderRadius: 15, paddingHorizontal: 10, borderWidth: 1, borderColor: '#573243', backgroundColor: 'rgba(25,10,22,0.86)', flexDirection: 'row', alignItems: 'center', gap: 5, shadowColor: '#ff6e5b', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  atlasPrivacyText: { color: '#e7b3bd', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 0.9 },
+  atlasWindowRail: { flex: 1, maxWidth: 194, minHeight: 34, borderRadius: 17, padding: 3, flexDirection: 'row', backgroundColor: '#100814', borderWidth: 1, borderColor: '#35203e' },
+  atlasWindowChip: { flex: 1, minWidth: 0, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  atlasWindowChipActive: { backgroundColor: '#392036', shadowColor: '#ff6b69', shadowOpacity: 0.3, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  atlasWindowText: { color: '#7f7186', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 0.5 },
+  atlasWindowTextActive: { color: '#ffd2c9' },
+  atlasPulseCard: { position: 'relative', minHeight: 222, borderRadius: 28, overflow: 'hidden', backgroundColor: '#0b0610', borderWidth: StyleSheet.hairlineWidth, borderColor: '#633047', padding: 19, shadowColor: '#ff536d', shadowOpacity: 0.26, shadowRadius: 24, shadowOffset: { width: 0, height: 9 }, marginBottom: 20 },
+  atlasPulseBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.18 },
+  atlasPulseOrb: { position: 'absolute', width: 154, height: 154, right: -11, top: 4, alignItems: 'center', justifyContent: 'center' },
+  atlasPulseRingOuter: { width: 130, height: 130, borderRadius: 65, borderWidth: 1, borderColor: 'rgba(183,87,255,0.34)', backgroundColor: 'rgba(94,32,117,0.08)', alignItems: 'center', justifyContent: 'center', shadowColor: '#b54eff', shadowOpacity: 0.6, shadowRadius: 22, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseRingInner: { width: 90, height: 90, borderRadius: 45, borderWidth: 1, borderColor: 'rgba(255,104,104,0.65)', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff5d65', shadowOpacity: 0.75, shadowRadius: 17, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseCore: { width: 37, height: 37, borderRadius: 19, backgroundColor: '#ff7a63', borderWidth: 1, borderColor: '#ffc0a9', shadowColor: '#ff536b', shadowOpacity: 1, shadowRadius: 21, shadowOffset: { width: 0, height: 0 } },
+  atlasPulseCopy: { position: 'relative', zIndex: 2, width: '68%', minHeight: 124, justifyContent: 'center' },
+  atlasPulseEyebrow: { color: '#ff947e', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.65, marginBottom: 7 },
+  atlasPulseTitle: { color: '#fff9fd', fontSize: 24, lineHeight: 27, fontWeight: '900', letterSpacing: -0.75 },
+  atlasPulseDetail: { color: '#b7a8b7', fontSize: 10, lineHeight: 15, marginTop: 7, maxWidth: 240 },
+  atlasPulseMetrics: { minHeight: 58, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(152,84,159,0.3)', backgroundColor: 'rgba(8,4,12,0.7)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 },
+  atlasPulseMetric: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  atlasPulseMetricValue: { color: '#fff8fe', fontSize: 18, lineHeight: 21, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  atlasPulseMetricLabel: { color: '#9d819d', fontSize: 6.5, lineHeight: 8, fontWeight: '900', letterSpacing: 0.8, marginTop: 2 },
+  atlasPulseDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: '#4b304d' },
+  atlasSectionLabel: { color: '#bfa9c2', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.55, marginLeft: 3, marginBottom: 10 },
+  atlasInsightRow: { flexDirection: 'row', gap: 9, alignItems: 'stretch', marginBottom: 9 },
+  atlasInsightCell: { flex: 1, flexBasis: 0, minWidth: 0 },
+  atlasInsightCard: { position: 'relative', flex: 1, minWidth: 0, minHeight: 230, borderRadius: 20, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4a294f', backgroundColor: '#0b0610', shadowColor: '#a747b8', shadowOpacity: 0.16, shadowRadius: 12, shadowOffset: { width: 0, height: 5 } },
+  atlasInsightContent: { minHeight: 229, paddingHorizontal: 13, paddingVertical: 13 },
+  atlasInsightWithFooter: { paddingBottom: 36 },
+  atlasInsightFooter: { position: 'absolute', left: 13, right: 13, bottom: 13 },
+  atlasRhythmPressable: { flex: 1, minWidth: 0 },
+  atlasInsightHeading: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 9 },
+  atlasInsightIcon: { width: 32, height: 32, borderRadius: 11, borderWidth: 1, backgroundColor: 'rgba(31,12,31,0.84)', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  atlasInsightTitle: { color: '#f7edf8', fontSize: 11, lineHeight: 14, fontWeight: '900', flex: 1 },
+  atlasInsightValue: { color: '#fff8fd', fontSize: 15, lineHeight: 18, fontWeight: '900', letterSpacing: -0.25, marginTop: 7 },
+  atlasInsightDetail: { color: '#a597a7', fontSize: 9, lineHeight: 13, marginTop: 4 },
+  atlasInsightCallout: { color: '#ff9b8b', fontSize: 8, lineHeight: 12, fontWeight: '800', marginTop: 7 },
+  atlasRoutePreview: { height: 66, borderRadius: 13, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(21,10,24,0.7)', borderWidth: StyleSheet.hairlineWidth, borderColor: '#412546', padding: 4 },
+  atlasRhythmChart: { height: 78, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 3, paddingTop: 7, marginBottom: 2 },
+  atlasRhythmColumn: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'flex-end' },
+  atlasRhythmTrack: { height: 50, width: '100%', maxWidth: 12, borderRadius: 6, overflow: 'hidden', backgroundColor: 'rgba(46,31,52,0.6)', justifyContent: 'flex-end' },
+  atlasRhythmBar: { width: '100%', borderRadius: 6 },
+  atlasRhythmDay: { color: '#7e7184', fontSize: 7, lineHeight: 9, fontWeight: '800', marginTop: 4 },
+  atlasRhythmOpenHint: { color: '#8f7b98', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 0.8, marginTop: 'auto', textAlign: 'right' },
+  atlasRhythmSourceHidden: { opacity: 0 },
+  atlasRhythmBackdrop: { ...StyleSheet.absoluteFill, backgroundColor: '#08050dcc' },
+  atlasRhythmForeground: { ...StyleSheet.absoluteFill, zIndex: 1 },
+  atlasRhythmFlipFront: { position: 'absolute', backfaceVisibility: 'hidden' },
+  atlasRhythmExpandedCard: { position: 'absolute', backfaceVisibility: 'hidden', borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#6e3b74', backgroundColor: '#100916', shadowColor: '#dc69ea', shadowOpacity: 0.42, shadowRadius: 28, shadowOffset: { width: 0, height: 12 } },
+  atlasRhythmExpandedInner: { flex: 1, padding: 16, gap: 13 },
+  atlasRhythmExpandedHeader: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  atlasRhythmClose: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: '#49334f', backgroundColor: '#1d1224', alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmCloseText: { color: '#fff', fontSize: 29, lineHeight: 31, fontWeight: '300', marginTop: -2 },
+  atlasRhythmExpandedHeading: { flex: 1, alignItems: 'center' },
+  atlasRhythmExpandedEyebrow: { color: '#bd72ff', fontSize: 9, fontWeight: '900', letterSpacing: 2.4 },
+  atlasRhythmExpandedTitle: { color: '#fff7ff', fontSize: 22, lineHeight: 27, fontWeight: '900', marginTop: 4, letterSpacing: -0.45 },
+  atlasRhythmHeroRow: { flexDirection: 'row', alignItems: 'stretch', gap: 12, minHeight: 190 },
+  atlasRhythmClock: { flex: 1, minWidth: 0, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmClockCopy: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmClockValue: { color: '#fff9ff', fontSize: 24, lineHeight: 29, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  atlasRhythmClockLabel: { color: '#a893af', fontSize: 7, lineHeight: 10, fontWeight: '900', letterSpacing: 1.7, marginTop: 4 },
+  atlasRhythmStats: { width: '34%', gap: 8, justifyContent: 'center' },
+  atlasRhythmStat: { flex: 1, minHeight: 54, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#4b344f', backgroundColor: '#1a1020', alignItems: 'center', justifyContent: 'center' },
+  atlasRhythmStatValue: { color: '#fff7ff', fontSize: 25, lineHeight: 29, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  atlasRhythmStatLabel: { color: '#a48fa9', fontSize: 7, lineHeight: 9, fontWeight: '900', letterSpacing: 1.1 },
+  atlasHeatmap: { borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#49334f', backgroundColor: '#160d1c', padding: 10, gap: 4 },
+  atlasHeatmapRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  atlasHeatmapDay: { width: 31, color: '#9d899f', fontSize: 7, lineHeight: 10, fontWeight: '900' },
+  atlasHeatmapCell: { flex: 1, height: 13, borderRadius: 3 },
+  atlasHeatmapAxis: { marginLeft: 34, paddingTop: 2, flexDirection: 'row', justifyContent: 'space-between' },
+  atlasHeatmapAxisText: { color: '#8f7d95', fontSize: 6, lineHeight: 8, fontWeight: '800' },
+  atlasRhythmInsight: { minHeight: 74, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: '#58365f', backgroundColor: '#211226', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  atlasRhythmInsightTitle: { color: '#fff7ff', fontSize: 15, lineHeight: 20, fontWeight: '900' },
+  atlasRhythmInsightDetail: { color: '#a895ae', fontSize: 10, lineHeight: 14, fontWeight: '700', marginTop: 3 },
+  atlasGaugeWrap: { height: 91, alignItems: 'center', justifyContent: 'center' },
+  atlasGaugeValue: { position: 'absolute', color: '#fff8fd', fontSize: 22, lineHeight: 25, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  atlasRelationshipGraph: { height: 77, position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  atlasPlaceNode: { position: 'absolute', width: 27, height: 27, borderRadius: 14, borderWidth: 1, borderColor: '#b96cff', backgroundColor: '#201026', alignItems: 'center', justifyContent: 'center', shadowColor: '#b95dff', shadowOpacity: 0.9, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } },
+  atlasPlaceNodeLeft: { left: 13, top: 27 },
+  atlasPlaceNodeRight: { right: 12, top: 21, borderColor: '#ff766a', shadowColor: '#ff5c69' },
+  atlasPlaceNodeCore: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#ff8b78' },
+  atlasLearning: { minHeight: 78, flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 },
+  atlasLearningDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#8c547f', marginBottom: 9, shadowColor: '#cc67bd', shadowOpacity: 0.7, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  atlasLearningText: { color: '#958799', fontSize: 9, lineHeight: 14, textAlign: 'center' },
+  atlasSoundtrackCard: { position: 'relative', minHeight: 176, borderRadius: 22, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#693359', backgroundColor: '#0c0611', padding: 16, marginBottom: 4, shadowColor: '#cf4fba', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 7 } },
+  atlasSoundtrackHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  atlasSoundtrackEyebrow: { color: '#ff8c78', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.55 },
+  atlasSoundtrackTitle: { color: '#fff7fd', fontSize: 17, lineHeight: 21, fontWeight: '900', letterSpacing: -0.4, marginTop: 5 },
+  atlasSoundtrackBody: { minHeight: 86, flexDirection: 'row', alignItems: 'center', gap: 15, marginTop: 12 },
+  atlasArtworkStack: { minWidth: 96, height: 66, flexDirection: 'row', alignItems: 'center' },
+  atlasSoundtrackArtwork: { width: 58, height: 58, borderRadius: 13, borderWidth: 1, borderColor: '#82456e', shadowColor: '#dc5fff', shadowOpacity: 0.38, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+  atlasSoundtrackPlaceholder: { width: 66, height: 66, borderRadius: 18, borderWidth: 1, borderColor: '#6a3474', backgroundColor: '#23102e', alignItems: 'center', justifyContent: 'center' },
+  atlasSoundtrackCopy: { flex: 1, minWidth: 0 },
+  atlasSoundtrackArtist: { color: '#fff8fd', fontSize: 19, lineHeight: 22, fontWeight: '900', letterSpacing: -0.45 },
+  atlasMapFrame: { position: 'relative', borderRadius: 24, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4e2a55', backgroundColor: '#09050d', padding: 1, shadowColor: '#a845cb', shadowOpacity: 0.18, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } },
   mapLegend: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginTop: 9 },
   legendLine: { color: '#ff755f', fontSize: 9, fontWeight: '700' },
   legendPlace: { color: '#ad6df4', fontSize: 9, fontWeight: '700' },
-  horizontalCards: { gap: 10, paddingRight: 18 },
-  placeChip: { width: 145, minHeight: 101, borderRadius: 19, padding: 14, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#35203e' },
-  placeChipActive: { borderColor: '#aa63ed', backgroundColor: '#1a0b22' },
-  placeCategory: { color: '#b879ee', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 },
+  horizontalCards: { gap: 10, paddingRight: 20 },
+  placeDetailsWrap: { marginTop: 14 },
+  placeChip: { width: 145, minHeight: 101, borderRadius: 19, padding: 14, overflow: 'hidden', backgroundColor: '#0c0710', borderWidth: StyleSheet.hairlineWidth, borderColor: '#382340' },
+  placeChipActive: { backgroundColor: 'rgba(104, 41, 27, 0.62)', borderWidth: 0, shadowColor: '#ff713e', shadowOpacity: 0.38, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  placeCategory: { color: '#b79aca', fontSize: 9, fontWeight: '800', letterSpacing: 1.05 },
   placeName: { color: '#fff', fontSize: 15, fontWeight: '900', marginTop: 9 },
   placeVisits: { color: '#7d7185', fontSize: 10, marginTop: 5 },
   placeSoundtrack: { color: '#d49af3', fontSize: 11, marginTop: 13 },
-  compactRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#2e1c34', marginTop: 10, paddingTop: 10, gap: 8 },
-  compactTitle: { color: '#d9d0dc', fontSize: 11, fontWeight: '700', flex: 1 },
-  compactValue: { color: '#9f80ad', fontSize: 10, fontWeight: '800' },
+  placeRouteThread: { position: 'relative', marginTop: 14, paddingLeft: 19 },
+  routeThreadRail: { position: 'absolute', left: 5, top: 13, bottom: 13, width: 2, borderRadius: 2, opacity: 0.9 },
+  routeThreadNode: { position: 'absolute', left: -18, top: 17, width: 11, height: 11, borderRadius: 6, backgroundColor: '#ab67f5', borderWidth: 1, borderColor: '#d5a6ff', shadowColor: '#a95cff', shadowOpacity: 0.85, shadowRadius: 7, shadowOffset: { width: 0, height: 0 } },
+  routeThreadNodeStart: { backgroundColor: '#ff8066', borderColor: '#ffb09a', shadowColor: '#ff735a' },
+  compactRow: { minHeight: 51, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(179, 135, 205, 0.2)', gap: 8 },
+  compactRowFirst: { borderTopWidth: 0 },
+  compactTitle: { color: '#d9d0dc', fontSize: 11, fontWeight: '700', flex: 1, paddingRight: 6 },
+  compactValue: { color: '#b99ad0', fontSize: 10, fontWeight: '800', minWidth: 38, textAlign: 'right' },
   patternCard: { borderRadius: 20, backgroundColor: '#100817', borderWidth: 1, borderColor: '#452353', padding: 17, marginBottom: 10 },
-  inlineButtons: { flexDirection: 'row', gap: 9, marginTop: 14 },
-  smallButton: { borderRadius: 13, borderWidth: 1, borderColor: '#563064', paddingHorizontal: 14, paddingVertical: 9 },
-  smallButtonActive: { backgroundColor: '#203b31', borderColor: '#54bca0' },
-  smallButtonText: { color: '#d8c8de', fontSize: 10, fontWeight: '800' },
+  patternContent: { zIndex: 1 },
+  inlineButtons: { flexDirection: 'row', gap: 23, marginTop: 15, alignItems: 'center' },
+  patternAction: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 32 },
+  patternActionIcon: { width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: '#393044', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(11, 8, 16, 0.72)' },
+  patternActionIconActive: { borderColor: '#2e735f', backgroundColor: 'rgba(13, 43, 35, 0.8)' },
+  patternActionSymbol: { color: '#a79ba9', fontSize: 16, lineHeight: 18, fontWeight: '700' },
+  patternActionSymbolActive: { color: '#77d8bd' },
+  patternActionText: { color: '#928598', fontSize: 11, fontWeight: '800' },
+  patternActionTextActive: { color: '#b6d7cc' },
   journeyRow: { minHeight: 72, borderRadius: 18, backgroundColor: '#0b070e', borderWidth: 1, borderColor: '#302038', padding: 12, marginBottom: 9, flexDirection: 'row', alignItems: 'center', gap: 11 },
   routeGlyph: { width: 42, height: 42, borderRadius: 13, backgroundColor: '#25122d', color: '#d474ff', textAlign: 'center', textAlignVertical: 'center', fontSize: 25 },
   emptyCard: { borderRadius: 19, borderWidth: 1, borderColor: '#302037', backgroundColor: '#0a060d', padding: 22, marginBottom: 10 },
   dayRail: { gap: 8, paddingRight: 18, marginBottom: 17 },
   dayChip: { width: 58, height: 69, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#34203c' },
-  dayChipActive: { backgroundColor: '#36184a', borderColor: '#b165ec' },
+  dayChipActive: { backgroundColor: '#2a1517', borderColor: '#ff824e', shadowColor: '#ff713e', shadowOpacity: 0.58, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   dayNumber: { color: '#fff', fontSize: 20, fontWeight: '900' },
   dayLabel: { color: '#9e8aa8', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginTop: 3 },
   selectedDay: { color: '#eee6f1', fontSize: 16, fontWeight: '800', marginBottom: 11 },
@@ -566,12 +1409,66 @@ const styles = StyleSheet.create({
   timelineIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   timelineIconText: { color: '#fff', fontSize: 18, fontWeight: '900' },
   timelineTime: { color: '#b17fce', fontSize: 8, fontWeight: '900', letterSpacing: 1.3, marginBottom: 5 },
-  scoreCard: { borderRadius: 25, padding: 17, backgroundColor: '#12081a', borderWidth: 1, borderColor: '#542763', flexDirection: 'row', alignItems: 'center', gap: 16 },
+  storyStatsHero: { width: '100%', alignSelf: 'center', aspectRatio: HEADER_ARTWORK_ASPECT_RATIO, overflow: 'visible', justifyContent: 'center', marginBottom: 9 },
+  atlasGateway: { position: 'relative', minHeight: 104, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#a84761', backgroundColor: '#170917', marginBottom: 12, paddingHorizontal: 15, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', shadowColor: '#ff526c', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 7 } },
+  atlasGatewayCopy: { flex: 1, paddingRight: 12 },
+  atlasGatewayKicker: { color: '#ff9a7a', fontSize: 8, lineHeight: 10, fontWeight: '900', letterSpacing: 1.35 },
+  atlasGatewayTitle: { color: '#fff8fd', fontSize: 21, lineHeight: 24, fontWeight: '900', letterSpacing: -0.55, marginTop: 4 },
+  atlasGatewayDetail: { color: '#c2b2c3', fontSize: 10, lineHeight: 14, marginTop: 4, maxWidth: 265 },
+  atlasGatewayAction: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: '#8a425b', backgroundColor: 'rgba(36,10,25,0.82)', alignItems: 'center', justifyContent: 'center' },
+  atlasGatewayArrow: { position: 'absolute', right: 3, bottom: -2, color: '#ffd0c0', fontSize: 18, lineHeight: 19, fontWeight: '700' },
+  storyStatsHeroCopy: { width: '72%', paddingHorizontal: 17, paddingVertical: 14 },
+  storyStatsKicker: { color: '#ff8069', fontSize: 8, fontWeight: '900', letterSpacing: 1.7, marginBottom: 8 },
+  storyStatsHeadline: { color: '#fff8ff', fontFamily: 'Georgia', fontSize: 22, lineHeight: 25, fontWeight: '700', letterSpacing: -0.75 },
+  storyStatsHeroAccent: { color: '#ff7b6c' },
+  // Three exact thirds with symmetric inner padding keep every visible gutter at
+  // 10pt, even when the first cell contains a native Link/menu host.
+  storyStatsCards: { flexDirection: 'row', marginHorizontal: -5, marginBottom: 9 },
+  storyStatsCell: { width: '33.333333%', minWidth: 0, paddingHorizontal: 5 },
+  storyStatsFeatureCard: { flex: 1, width: '100%', minWidth: 0, minHeight: 87, borderRadius: 17, backgroundColor: '#0e0915', borderWidth: 1, borderColor: '#35233e', paddingHorizontal: 8, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 7, overflow: 'hidden' },
+  storyStatsInsightIcon: { width: 36, height: 36, flexShrink: 0, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1b1021', borderWidth: 1, borderColor: '#ff6e62', padding: 2 },
+  storyStatsInsightIconPurple: { borderColor: '#9659d4', backgroundColor: '#20102b' },
+  storyStatsInsightIconSun: { borderColor: '#ff7c69', backgroundColor: '#231016' },
+  storyStatsInsightLabel: { color: '#a89baa', fontSize: 8, lineHeight: 11, fontWeight: '700' },
+  storyStatsFeatureValue: { color: '#fff8ff', fontSize: 13, lineHeight: 16, fontWeight: '900', letterSpacing: -0.3, marginTop: 3 },
+  storyStatsFeatureValueCompact: { fontSize: 11, lineHeight: 13, letterSpacing: -0.2 },
+  storyStatsRhythmCard: { minHeight: 58, borderRadius: 17, backgroundColor: '#0c0710', borderWidth: 1, borderColor: '#382140', paddingHorizontal: 12, paddingVertical: 10, marginBottom: 22 },
+  storyStatsHistoryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  storyStatsUnlock: { minHeight: 39, borderRadius: 12, borderWidth: 1, borderColor: '#7a4053', backgroundColor: '#271018', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, marginTop: 10 },
+  storyStatsUnlockText: { color: '#ff9b7d', fontSize: 8, fontWeight: '900', letterSpacing: 1.25 },
+  storyStatsUnlockArrow: { color: '#ff9b7d', fontSize: 20, lineHeight: 21 },
+  storyStatsRhythmBars: { flex: 1, height: 15, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  storyStatsRhythmBar: { flex: 1, height: 10, minWidth: 1.4, borderRadius: 3, backgroundColor: '#28212f' },
+  storyStatsRhythmBarActive: { backgroundColor: '#ff6e61', shadowColor: '#ff675a', shadowOpacity: 0.75, shadowRadius: 3, shadowOffset: { width: 0, height: 0 } },
+  storyStatsRhythmLabel: { color: '#9d8fa3', fontSize: 8, fontWeight: '800', letterSpacing: 1.25 },
+  storyStatsHistoryDay: { color: '#97889e', fontSize: 8, fontWeight: '800', letterSpacing: 0.5, flexShrink: 0 },
+  storyTimelineHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 9, paddingHorizontal: 3 },
+  storyTimelineHeaderTitle: { color: '#fff', fontSize: 17, lineHeight: 22, fontWeight: '900', letterSpacing: 2.2 },
+  storyTimelineHeaderCount: { color: '#81728a', fontSize: 9, fontWeight: '800', letterSpacing: 1.1 },
+  storyTimelineList: { backgroundColor: 'transparent' },
+  storyTimelineShell: { minHeight: 78, flexDirection: 'row' },
+  storyTimelineRail: { width: 36, alignItems: 'center', justifyContent: 'center' },
+  storyTimelineConnector: { position: 'absolute', left: 17, width: 2, backgroundColor: '#43344e' },
+  storyTimelineConnectorTop: { top: 0, bottom: '50%' },
+  storyTimelineConnectorBottom: { top: '50%', bottom: 0 },
+  storyTimelineRailIcon: { zIndex: 1, width: 27, height: 27, borderRadius: 14, backgroundColor: '#321824', borderWidth: 1, borderColor: '#6c3447', alignItems: 'center', justifyContent: 'center', shadowColor: '#ff625d', shadowOpacity: 0.35, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  storyTimelineRailIconSong: { backgroundColor: '#24132f', borderColor: '#583174', shadowColor: '#a95cff' },
+  storyTimelineCard: { flex: 1, minHeight: 70, borderRadius: 14, backgroundColor: '#0d0912', borderWidth: StyleSheet.hairlineWidth, borderColor: '#2d2334', padding: 7, marginVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 9, overflow: 'hidden' },
+  storyTimelineArtwork: { width: 70, height: 54, borderRadius: 9, backgroundColor: '#25122d' },
+  storyTimelineRoute: { width: 70, height: 54, borderRadius: 9, backgroundColor: '#170c1d', borderWidth: 1, borderColor: '#42294a', overflow: 'hidden', padding: 2 },
+  storyTimelineCopy: { flex: 1, minWidth: 0 },
+  storyTimelineKind: { color: '#ff7b69', fontSize: 9, lineHeight: 12, fontWeight: '800' },
+  storyTimelineKindSong: { color: '#c27aff' },
+  storyTimelineClock: { color: '#8c7e93', fontSize: 10, flexShrink: 0, paddingHorizontal: 3 },
+  storyTimelineMore: { minHeight: 50, borderRadius: 15, overflow: 'hidden', marginTop: 11, marginLeft: 36, marginBottom: 7 },
+  storyTimelineMoreFill: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 15 },
+  storyTimelineMoreText: { color: '#fff', fontSize: 13, fontWeight: '900', letterSpacing: 0.4 },
+  scoreCard: { borderRadius: 25, padding: 17, backgroundColor: '#12081a', flexDirection: 'row', alignItems: 'center', gap: 16 },
   scoreRing: { width: 94, height: 94, borderRadius: 47, borderWidth: 7, borderColor: '#a95feb', backgroundColor: '#0a050e', alignItems: 'center', justifyContent: 'center' },
   scoreValue: { color: '#fff', fontSize: 31, fontWeight: '900', letterSpacing: -1 },
   scoreUnit: { color: '#8d7d95', fontSize: 8, fontWeight: '800' },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-  statCard: { width: '48.5%', minHeight: 112, borderRadius: 20, backgroundColor: '#0d0711', borderWidth: 1, borderColor: '#34203d', padding: 15 },
+  statCard: { width: '48.5%', minHeight: 112, borderRadius: 20, padding: 15 },
   statValue: { color: '#fff', fontSize: 23, fontWeight: '900', marginTop: 3 },
   change: { color: '#56d1ad', fontSize: 10, fontWeight: '900', marginTop: 9 },
   changeDown: { color: '#ff806c' },
@@ -618,6 +1515,14 @@ const styles = StyleSheet.create({
   providerStatusGood: { color: '#59d4b3' },
   safeActions: { marginTop: 6 },
   privacyNote: { color: '#6f6675', fontSize: 10, lineHeight: 16, marginTop: 18, textAlign: 'center' },
+  artworkRefreshCard: { borderRadius: 20, backgroundColor: '#100917', borderWidth: 1, borderColor: '#684075', padding: 15, gap: 13 },
+  artworkRefreshTitle: { color: '#fff5ff', fontSize: 16, fontWeight: '900', marginTop: 5 },
+  artworkRefreshDetail: { color: '#a89bae', fontSize: 11, lineHeight: 17, marginTop: 5 },
+  artworkRefreshWarning: { color: '#f0bd7d' },
+  artworkRefreshError: { color: '#ffab91' },
+  artworkRefreshButton: { minHeight: 45, borderRadius: 14, backgroundColor: '#8c48e8', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },
+  artworkRefreshButtonDisabled: { opacity: 0.55 },
+  artworkRefreshButtonText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   networkCard: { borderRadius: 22, backgroundColor: '#09060d', borderWidth: 1, borderColor: '#392343', padding: 13, marginBottom: 10 },
   networkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   networkMetric: { width: '48.5%', minHeight: 88, borderRadius: 16, backgroundColor: '#120b18', borderWidth: 1, borderColor: '#2f1d39', padding: 11 },
@@ -687,8 +1592,4 @@ const styles = StyleSheet.create({
   moreTileTitle: { color: '#fff', fontSize: 16, fontWeight: '900', marginTop: 13 },
   moreTileDetail: { color: '#776d7e', fontSize: 10, marginTop: 4 },
   localFirstCard: { borderRadius: 21, backgroundColor: '#10170f', borderWidth: 1, borderColor: '#344e31', padding: 18, marginTop: 13 },
-  moreBack: { position: 'absolute', left: 14, zIndex: 500, minHeight: 39, minWidth: 75, paddingHorizontal: 12, borderRadius: 18, backgroundColor: 'rgba(12,5,17,0.94)', borderWidth: 1, borderColor: '#663774', alignItems: 'center', justifyContent: 'center' },
-  moreBackText: { color: '#e4c9ed', fontSize: 12, fontWeight: '900' },
-  persistentRecorderVisible: { ...StyleSheet.absoluteFill, zIndex: 50 },
-  persistentRecorderHidden: { ...StyleSheet.absoluteFill, opacity: 0, zIndex: -1 },
 });

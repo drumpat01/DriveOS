@@ -1,0 +1,7 @@
+{
+  "platforms": ["apple"],
+  "apple": {
+    "modules": ["JourneyDeckRecorderModule"],
+    "appDelegateSubscribers": ["JourneyDeckRecorderAppDelegateSubscriber"]
+  }
+}

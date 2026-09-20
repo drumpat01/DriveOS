@@ -26,16 +26,14 @@ test('previews a conservative 30-day cleanup without removing protected content'
     totalSongCount: 16,
     oldUnmatchedSpotifySongCount: 2,
     memoryCount: 4,
-    collectionCount: 3,
   });
 
   assert.deepEqual(preview.counts.journeys, { total: 5, kept: 4, removable: 1 });
   assert.deepEqual(preview.counts.routePoints, { total: 385, kept: 285, removable: 100 });
   assert.deepEqual(preview.counts.songs, { total: 16, kept: 11, removable: 5 });
   assert.deepEqual(preview.counts.memories, { total: 4, kept: 4, removable: 0 });
-  assert.deepEqual(preview.counts.collections, { total: 3, kept: 3, removable: 0 });
   assert.equal(preview.safeguards.nativeJourneyDeckJourneys, 1);
-  assert.equal(preview.safeguards.collectionProtectedJourneys, 1);
+  assert.equal(preview.safeguards.memoryProtectedJourneys, 1);
   assert.equal(preview.safeguards.recentGoogleTimelineJourneys, 1);
   assert.equal(preview.safeguards.oldUnmatchedSpotifySongs, 2);
   assert.equal(preview.cutoffAt, '2026-07-28T12:00:00.000Z');
@@ -52,7 +50,6 @@ test('invalid dates and non-Google journeys fail closed and stay kept', () => {
     totalSongCount: 2,
     oldUnmatchedSpotifySongCount: 0,
     memoryCount: 0,
-    collectionCount: 0,
   });
   assert.equal(preview.counts.journeys.removable, 0);
   assert.equal(preview.counts.routePoints.removable, 0);

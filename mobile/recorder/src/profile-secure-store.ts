@@ -32,3 +32,16 @@ export async function saveProfileSecret(base: string, value: string): Promise<vo
 export async function deleteProfileSecret(base: string): Promise<void> {
   await SecureStore.deleteItemAsync(profileKey(base), secureOptions);
 }
+
+/** Used only by explicit account deletion; also removes a legacy value owned by this profile. */
+export async function deleteProfileSecretAndOwnedLegacy(base: string): Promise<void> {
+  const ownerKey = `${base}.legacy-owner-v1`;
+  const ownerId = await SecureStore.getItemAsync(ownerKey, secureOptions);
+  await SecureStore.deleteItemAsync(profileKey(base), secureOptions);
+  if (ownerId === getCurrentUser().id) {
+    await Promise.all([
+      SecureStore.deleteItemAsync(base, secureOptions),
+      SecureStore.deleteItemAsync(ownerKey, secureOptions),
+    ]);
+  }
+}

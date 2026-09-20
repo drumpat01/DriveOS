@@ -10,13 +10,13 @@
  * and return fully-typed value objects -- making them straightforward to unit test.
  */
 
-import * as SQLite from 'expo-sqlite';
 import type { LocalUserId, LocalAtlasSnapshot } from './local-store';
 import { writeAtlasSnapshot } from './local-store';
+import { getMasterDatabase } from './database-owner';
 
 // --- Internal helpers --------------------------------------------------------
 
-const db = SQLite.openDatabaseSync('journeydeck-local.db');
+const database = () => getMasterDatabase();
 
 function q7DaysCutoff(): string {
   const d = new Date();
@@ -50,7 +50,7 @@ export type AllTimeSummary = {
 };
 
 export function computeAllTime(userId: LocalUserId): AllTimeSummary {
-  const row = db.getFirstSync<{ jc: number; miles: number; minutes: number }>(
+  const row = database().getFirstSync<{ jc: number; miles: number; minutes: number }>(
     'SELECT COUNT(*) AS jc, COALESCE(SUM(miles),0) AS miles, COALESCE(SUM(duration_minutes),0) AS minutes FROM local_journeys WHERE user_id=?;',
     userId,
   );
@@ -67,7 +67,7 @@ export type Last7DaysSummary = AllTimeSummary & { songCount: number };
 
 export function computeLast7Days(userId: LocalUserId): Last7DaysSummary {
   const cutoff = q7DaysCutoff();
-  const row = db.getFirstSync<{ jc: number; miles: number; minutes: number; songs: number }>(
+  const row = database().getFirstSync<{ jc: number; miles: number; minutes: number; songs: number }>(
     `SELECT COUNT(*) AS jc, COALESCE(SUM(j.miles),0) AS miles, COALESCE(SUM(j.duration_minutes),0) AS minutes,
       COALESCE(SUM(j.song_count),0) AS songs
      FROM local_journeys j WHERE j.user_id=? AND j.started_at >= ?;`,
@@ -92,11 +92,11 @@ export function computeWeeklyTour(userId: LocalUserId): WeeklyTour {
   const weekStart = qWeekCutoff();
   const prevStart = qPrevWeekCutoff();
 
-  const thisWeek = db.getFirstSync<{ miles: number }>(
+  const thisWeek = database().getFirstSync<{ miles: number }>(
     'SELECT COALESCE(SUM(miles),0) AS miles FROM local_journeys WHERE user_id=? AND started_at >= ?;',
     userId, weekStart,
   );
-  const prevWeek = db.getFirstSync<{ miles: number }>(
+  const prevWeek = database().getFirstSync<{ miles: number }>(
     'SELECT COALESCE(SUM(miles),0) AS miles FROM local_journeys WHERE user_id=? AND started_at >= ? AND started_at < ?;',
     userId, prevStart, weekStart,
   );
@@ -118,7 +118,7 @@ export function computeWeeklyTour(userId: LocalUserId): WeeklyTour {
  */
 export function computeDrivingStreak(userId: LocalUserId): number {
   // Pull distinct calendar days with journeys, newest first
-  const rows = db.getAllSync<{ day: string }>(
+  const rows = database().getAllSync<{ day: string }>(
     `SELECT DISTINCT DATE(started_at) AS day FROM local_journeys WHERE user_id=? ORDER BY day DESC LIMIT 365;`,
     userId,
   );
@@ -149,11 +149,11 @@ export type MusicMetrics = {
 };
 
 export function computeMusicMetrics(userId: LocalUserId): MusicMetrics {
-  const durRow = db.getFirstSync<{ total_ms: number }>(
+  const durRow = database().getFirstSync<{ total_ms: number }>(
     'SELECT COALESCE(SUM(duration_ms),0) AS total_ms FROM local_music_entries WHERE user_id=? AND duration_ms IS NOT NULL;',
     userId,
   );
-  const roadRow = db.getFirstSync<{ total: number }>(
+  const roadRow = database().getFirstSync<{ total: number }>(
     'SELECT COUNT(*) AS total FROM local_music_entries WHERE user_id=? AND journey_id IS NOT NULL;',
     userId,
   );
@@ -172,7 +172,7 @@ export type ArtistStat = {
 };
 
 export function computeTopArtists(userId: LocalUserId, limit = 10): ArtistStat[] {
-  return db.getAllSync<{ artist: string; plays: number; artwork_url: string | null }>(
+  return database().getAllSync<{ artist: string; plays: number; artwork_url: string | null }>(
     `SELECT artist, COUNT(*) AS plays,
       (SELECT artwork_url FROM local_music_entries m2 WHERE m2.user_id=m.user_id AND m2.artist=m.artist AND m2.artwork_url IS NOT NULL ORDER BY played_at DESC LIMIT 1) AS artwork_url
      FROM local_music_entries m WHERE user_id=? GROUP BY LOWER(artist) ORDER BY plays DESC LIMIT ?;`,
@@ -198,7 +198,7 @@ export type MoodStat = {
 
 export function computeMoodBreakdown(userId: LocalUserId): MoodStat[] {
   // Hour extraction: SQLite strftime('%H', ...) returns 00–23 as text
-  const rows = db.getAllSync<{ hour: number; count: number }>(
+  const rows = database().getAllSync<{ hour: number; count: number }>(
     `SELECT CAST(strftime('%H', played_at) AS INTEGER) AS hour, COUNT(*) AS count
      FROM local_music_entries WHERE user_id=? AND journey_id IS NOT NULL
      GROUP BY hour;`,
