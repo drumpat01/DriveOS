@@ -4,7 +4,7 @@ import type { RecordingMode } from './recording-mode';
 
 const FIRST_RUN_KEY = 'onboarding.first-run-v2';
 
-export type FirstRunStage = 'welcome' | 'recording' | 'location' | 'music' | 'instructions' | 'complete';
+export type FirstRunStage = 'welcome' | 'recording' | 'location' | 'music' | 'membership' | 'instructions' | 'complete';
 
 export type FirstRunProgress = {
   stage: FirstRunStage;
@@ -16,6 +16,7 @@ function isStage(value: unknown): value is FirstRunStage {
     || value === 'recording'
     || value === 'location'
     || value === 'music'
+    || value === 'membership'
     || value === 'instructions'
     || value === 'complete';
 }

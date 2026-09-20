@@ -52,6 +52,7 @@ test('content exits before the next step enters while artwork stays mounted; Red
       './motion': { useMotionPreferences: () => ({ reduceMotion: reduced, isAppActive: true }) },
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 54, bottom: 34 }) },
       'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
+      'expo-symbols': { SymbolView: host('Symbol') },
       './first-run-welcome-screen': { FirstRunWelcomeScreen: host('Welcome'), FIRST_RUN_ARTWORK: { redline: 'road' } },
       'react-native-worklets': { scheduleOnRN: (fn: any, ...args: any[]) => fn(...args) },
       'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, Easing: { bezier: () => {} },
@@ -60,19 +61,19 @@ test('content exits before the next step enters while artwork stays mounted; Red
         withTiming: (value: number, _config: any, done: any) => { pending.push(() => done(true)); return value; },
       },
     }).FirstRunOnboardingScreen;
-    const props = { onWelcomeComplete() {}, async onRecordingContinue() {}, async onLocationContinue() {}, async onConnectAppleMusic() {}, onFinish() {} };
+    const props = { onWelcomeComplete() {}, async onRecordingContinue() {}, async onLocationContinue() {}, async onConnectAppleMusic() {}, onSkipMusic() {}, onFinish() {} };
     let tree: any;
     await act(() => { tree = create(React.createElement(Screen, { ...props, stage: 'recording' })); });
     const artwork = tree.root.findByType('Image');
     await act(() => tree.update(React.createElement(Screen, { ...props, stage: 'location' })));
     if (!reduced) {
-      assert.equal(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 5' }).length, 0);
+      assert.equal(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 6' }).length, 0);
       assert.equal(tree.root.findByType('AnimatedView').props.pointerEvents, 'none');
       await act(() => pending.shift()!());
-      assert.ok(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 5' }).length);
+      assert.ok(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 6' }).length);
       await act(() => pending.shift()!());
     }
-    assert.ok(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 5' }).length);
+    assert.ok(tree.root.findAllByProps({ accessibilityLabel: 'Step 3 of 6' }).length);
     assert.equal(tree.root.findByType('Image'), artwork);
     assert.equal(tree.root.findByType('AnimatedView').props.pointerEvents, 'auto');
     assert.equal(pending.length, 0);
