@@ -55,9 +55,16 @@ function alpha(hex: string, opacity: number) {
   return /^#[0-9a-f]{6}$/i.test(hex) ? `${hex}${value}` : hex;
 }
 
-export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onPurchase, onRestore }: {
+export type MembershipPaywallInsight = {
+  journeyCount: number;
+  milesLabel: string;
+  topTrack: { track: string; artist: string } | null;
+};
+
+export function MembershipPaywall({ visible, state, insight, onClose, onLoadProducts, onPurchase, onRestore }: {
   visible: boolean;
   state: JourneyDeckMembershipState;
+  insight?: MembershipPaywallInsight | null;
   onClose: () => void;
   onLoadProducts: () => Promise<boolean>;
   onPurchase: (productId: string) => Promise<void>;
@@ -72,6 +79,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [productsFresh, setProductsFresh] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const loadProductsRef = useRef(onLoadProducts);
   const openGeneration = useRef(0);
   const purchaseInFlight = useRef(false);
@@ -84,6 +92,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
     if (!visible) {
       openGeneration.current += 1;
       setProductsFresh(false);
+      setConfirmingClose(false);
       return;
     }
 
@@ -122,7 +131,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
     }
   }
 
-  return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+  return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setConfirmingClose(true)}>
     <View style={[styles.safe, { backgroundColor: colors.page }]}>
       <ScrollView bounces={false} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.hero, { height: heroHeight, paddingTop: insets.top }]}>
@@ -141,8 +150,8 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
             accessibilityRole="button"
             accessibilityLabel="Close membership"
             hitSlop={8}
-            onPress={onClose}
-            style={({ pressed }) => [styles.close, { top: 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
+            onPress={() => setConfirmingClose(true)}
+            style={({ pressed }) => [styles.close, { top: insets.top + 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
           >
             <SymbolView name="xmark" tintColor={colors.text} size={14} weight="bold" />
           </Pressable>
@@ -152,6 +161,28 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Atlas finds the patterns, places, routes, and music hidden across every journey.</Text>
           </View>
         </View>
+
+        {insight && <View style={styles.insightArea}>
+          <Text style={[styles.insightKicker, { color: colors.accent }]}>ATLAS ALREADY SEES</Text>
+          <View style={[styles.insightCard, { backgroundColor: colors.surface, borderColor: alpha(colors.separator, 0.7) }]}>
+            <View style={styles.insightRow}>
+              <Text style={[styles.insightValue, { color: colors.text }]}>{insight.journeyCount.toLocaleString()}</Text>
+              <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>{insight.journeyCount === 1 ? 'JOURNEY' : 'JOURNEYS'}</Text>
+            </View>
+            <View style={[styles.insightDivider, { backgroundColor: alpha(colors.separator, 0.6) }]} />
+            <View style={styles.insightRow}>
+              <Text style={[styles.insightValue, { color: colors.text }]}>{insight.milesLabel}</Text>
+              <Text style={[styles.insightLabel, { color: colors.textSecondary }]}>DRIVEN</Text>
+            </View>
+            {insight.topTrack && <>
+              <View style={[styles.insightDivider, { backgroundColor: alpha(colors.separator, 0.6) }]} />
+              <View style={styles.insightTrackRow}>
+                <SymbolView name="music.note" tintColor={colors.accent} size={14} />
+                <Text numberOfLines={1} style={[styles.insightTrackText, { color: colors.textSecondary }]}>Last on the road: <Text style={{ color: colors.text, fontWeight: '700' }}>{insight.topTrack.track}</Text> · {insight.topTrack.artist}</Text>
+              </View>
+            </>}
+          </View>
+        </View>}
 
         <View style={styles.benefits}>
           <BenefitRow icon="chart.line.uptrend.xyaxis" title="Pattern Intelligence" description="See when and where you drive." colors={colors} />
@@ -233,6 +264,18 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
         </View>
         <Text style={[styles.legal, { color: colors.textSecondary }]}>Subscriptions renew automatically unless cancelled at least 24 hours before the current period ends.</Text>
       </ScrollView>
+      {confirmingClose && <View style={styles.confirmOverlay}>
+        <View style={[styles.confirmCard, { backgroundColor: colors.surface, borderColor: alpha(colors.separator, 0.7) }]}>
+          <Text style={[styles.confirmTitle, { color: colors.text }]}>Keep exploring free?</Text>
+          <Text style={[styles.confirmBody, { color: colors.textSecondary }]}>You'll always keep your last 45 days of journeys and soundtracks, free.</Text>
+          <Pressable accessibilityRole="button" onPress={() => setConfirmingClose(false)} style={({ pressed }) => [styles.confirmPrimary, { backgroundColor: colors.accent }, pressed && styles.pressed]}>
+            <Text style={[styles.confirmPrimaryText, { color: colors.onAccent }]}>See plans again</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Not now, keep the free plan" onPress={onClose} style={({ pressed }) => [styles.confirmSecondary, pressed && styles.pressed]}>
+            <Text style={[styles.confirmSecondaryText, { color: colors.textSecondary }]}>Not now</Text>
+          </Pressable>
+        </View>
+      </View>}
     </View>
   </Modal>;
 }
@@ -258,6 +301,15 @@ const styles = StyleSheet.create({
   eyebrow: { ...journeyDeckTypography.kicker, marginBottom: journeyDeckSpacing[2] },
   title: { fontFamily: 'Georgia', fontSize: 32, lineHeight: 37, fontWeight: '700', letterSpacing: -0.6 },
   subtitle: { ...journeyDeckTypography.body, marginTop: journeyDeckSpacing[2], maxWidth: 420 },
+  insightArea: { paddingHorizontal: journeyDeckSpacing[6], paddingTop: journeyDeckSpacing[5] },
+  insightKicker: { ...journeyDeckTypography.kicker, marginBottom: journeyDeckSpacing[2] },
+  insightCard: { borderRadius: journeyDeckRadius.card, borderWidth: 1, paddingHorizontal: journeyDeckSpacing[4], paddingVertical: journeyDeckSpacing[3] },
+  insightRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingVertical: journeyDeckSpacing[2] },
+  insightValue: { fontFamily: 'Georgia', fontSize: 20, fontWeight: '700' },
+  insightLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6 },
+  insightDivider: { height: StyleSheet.hairlineWidth },
+  insightTrackRow: { flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[2], paddingTop: journeyDeckSpacing[3] },
+  insightTrackText: { flex: 1, fontSize: 12.5, lineHeight: 17 },
   benefits: { paddingHorizontal: journeyDeckSpacing[6], paddingTop: journeyDeckSpacing[5] },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3], paddingVertical: journeyDeckSpacing[3] },
   benefitIcon: { width: 38, height: 38, borderRadius: journeyDeckRadius.compact, alignItems: 'center', justifyContent: 'center' },
@@ -284,4 +336,12 @@ const styles = StyleSheet.create({
   footerLinkUnderline: { textDecorationLine: 'underline' },
   footerDot: { fontSize: 12 },
   legal: { fontSize: 10.5, lineHeight: 14, textAlign: 'center', paddingHorizontal: journeyDeckSpacing[6] },
+  confirmOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: journeyDeckSpacing[6] },
+  confirmCard: { width: '100%', maxWidth: 360, borderRadius: journeyDeckRadius.card, borderWidth: 1, padding: journeyDeckSpacing[5], gap: journeyDeckSpacing[3] },
+  confirmTitle: { fontFamily: 'Georgia', fontSize: 20, fontWeight: '700', textAlign: 'center' },
+  confirmBody: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  confirmPrimary: { minHeight: 48, borderRadius: journeyDeckRadius.control, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', marginTop: journeyDeckSpacing[2] },
+  confirmPrimaryText: { fontSize: 15, fontWeight: '800' },
+  confirmSecondary: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  confirmSecondaryText: { fontSize: 13, fontWeight: '700' },
 });
