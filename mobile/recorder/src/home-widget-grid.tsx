@@ -5,7 +5,7 @@ import Reanimated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSpring 
 import { scheduleOnRN } from 'react-native-worklets';
 import { SymbolView } from 'expo-symbols';
 import { useAppTheme } from './app-theme';
-import { cycleHomeWidgetSpan, defaultHomeWidgetLayout, homeWidgetMoveOffset, homeWidgetResizeSpan, resizeHomeWidget, loadHomeWidgetLayouts, moveHomeWidget, saveHomeWidgetLayouts, toggleHomeWidget, type HomeLayoutClass, type HomeWidgetId, type HomeWidgetPlacement, type StoredHomeLayouts } from './home-widget-layout';
+import { cycleHomeWidgetSpan, defaultHomeWidgetLayout, homeWidgetMoveOffset, homeWidgetResizeSpan, resizeHomeWidget, loadHomeWidgetLayouts, moveHomeSummaryWidget, moveHomeWidget, saveHomeWidgetLayouts, selectHomeContextWidget, toggleHomeWidget, type HomeLayoutClass, type HomeWidgetId, type HomeWidgetPlacement, type StoredHomeLayouts } from './home-widget-layout';
 import { journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { NativeSheet } from './native-sheet';
 
@@ -27,6 +27,8 @@ export function useHomeWidgetLayout(layoutClass: HomeLayoutClass, includeFiftySt
     move: (id: HomeWidgetId, offset: number) => offset && update(moveHomeWidget(placements, id, offset)),
     resize: (id: HomeWidgetId, span?: number) => update(span === undefined ? cycleHomeWidgetSpan(placements, id) : resizeHomeWidget(placements, id, span)),
     toggle: (id: HomeWidgetId) => update(toggleHomeWidget(placements, id)),
+    selectContext: (id: HomeWidgetId) => update(selectHomeContextWidget(placements, id)),
+    moveSummary: (id: HomeWidgetId, offset: -1 | 1) => update(moveHomeSummaryWidget(placements, id, offset)),
     reset: () => update(defaultHomeWidgetLayout(layoutClass, includeFiftyStates, includeAsk)),
   };
 }

@@ -10,8 +10,8 @@ import { ThemePicker } from './theme-picker';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import { isIpad } from './device-layout';
 import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
-import { HomeGridCell, HomeLayoutEditorSheet, useHomeWidgetLayout } from './home-widget-grid';
-import { selectHomePresentation, type HomeWidgetId, type HomeWidgetPlacement } from './home-widget-layout';
+import { HomeLayoutEditorSheet, useHomeWidgetLayout } from './home-widget-grid';
+import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from './home-widget-layout';
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
@@ -1281,9 +1281,8 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
   const homeColors = journeyDeckSemanticColors(theme.id, theme.palette);
   const presentation = selectHomePresentation(gridLayout.placements);
   const openEditor = () => setEditingLayout(true);
-  const placementWidth = (placement: HomeWidgetPlacement) => `${(placement.span / 12) * 100}%` as `${number}%`;
-  const renderLatestMemory = (editing = false) => <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
-    <TouchPressable disabled={editing || !latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} onLongPress={editing ? undefined : openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestMemory, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+  const renderLatestMemory = () => <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
+    <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestMemory, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
       <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={homeColors.accent} size={15} /><Text style={[styles.approvedLatestMemoryKicker, { color: homeColors.accent }]}>Latest memory</Text></View>
       <View style={styles.approvedLatestMemoryRow}>
         <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor="#fff" size={13} /></View>}</View>
@@ -1292,7 +1291,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
       </View>
     </TouchPressable>
   </CardDetailLink>;
-  const renderLatestSoundtrack = (editing = false) => <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} disabled={editing} onPress={onSoundtracks} onLongPress={editing ? undefined : openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestSong, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+  const renderLatestSoundtrack = () => <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestSong, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
     {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={[styles.approvedLatestSongFallback, { backgroundColor: homeColors.surfaceInset, borderColor: homeColors.separator }]}><SymbolView name="music.note" tintColor={homeColors.accent} size={25} /></View>}
     <View style={styles.flex}>
       <Text style={[styles.approvedLatestSongKicker, { color: homeColors.accent }]}>LATEST SONG PLAYED</Text>
@@ -1301,17 +1300,51 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
     </View>
     <View style={[styles.approvedLatestSongArrow, { backgroundColor: homeColors.surfaceInset, borderColor: homeColors.separator }]}><SymbolView name="chevron.right" tintColor={homeColors.accent} size={15} weight="semibold" /></View>
   </TouchPressable>;
-  const renderEditorPlacement = (placement: HomeWidgetPlacement) => {
-    const shared = { placement, editing: true, width: placementWidth(placement), onMove: (offset: number) => gridLayout.move(placement.id, offset), onStartEditing: openEditor, onResize: (span?: number) => gridLayout.resize(placement.id, span), onToggle: () => gridLayout.toggle(placement.id) };
-    if (placement.id in metricWidgets) {
-      const metric = metricWidgets[placement.id as keyof typeof metricWidgets];
-      return <HomeGridCell key={placement.id} {...shared} title={metric.title}><View style={[styles.compactHomeMetric, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}><SymbolView name={metric.icon} tintColor={homeColors.accent} size={20} /><Text style={[styles.compactHomeMetricLabel, { color: homeColors.textSecondary }]}>{metric.title}</Text><Text style={[styles.compactHomeMetricValue, { color: homeColors.text }]}>{metric.value}</Text></View></HomeGridCell>;
-    }
-    if (placement.id === 'fiftyStates' && onFiftyStates) return <HomeGridCell key={placement.id} {...shared} title="50 States"><FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense disabled /></HomeGridCell>;
-    if (placement.id === 'askJourneyDeck' && V3_ASK_JOURNEYDECK_ENABLED) return <HomeGridCell key={placement.id} {...shared} title="Ask JourneyDeck"><AskJourneyDeckWidget onPress={() => router.push('/ask-journeydeck')} disabled /></HomeGridCell>;
-    if (placement.id === 'memories') return <HomeGridCell key={placement.id} {...shared} title="Latest memory">{renderLatestMemory(true)}</HomeGridCell>;
-    if (placement.id === 'journeys') return <HomeGridCell key={placement.id} {...shared} title="Journey library"><View style={[styles.compactHomeJourneySummary, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}><View><Text style={[styles.compactHomeMetricLabel, { color: homeColors.textSecondary }]}>JOURNEY LIBRARY</Text><Text style={[styles.compactHomeJourneyValue, { color: homeColors.text }]}>{primary.data?.journeys.length.toLocaleString() ?? '—'} journeys</Text></View><SymbolView name="chevron.right" tintColor={homeColors.accent} size={17} /></View></HomeGridCell>;
-    return <HomeGridCell key={placement.id} {...shared} title="Latest soundtrack">{renderLatestSoundtrack(true)}</HomeGridCell>;
+  // Home only ever shows Latest Memory, one featured context widget, and the visible
+  // Road Summary metrics (selectHomePresentation) -- so customizing it means choosing
+  // among those three things, not laying out a free 12-column grid.
+  const contextChoiceCandidates: ({ id: HomeWidgetId; label: string; icon: SFSymbol } | null)[] = [
+    onFiftyStates ? { id: 'fiftyStates', label: '50 States', icon: 'map' } : null,
+    V3_ASK_JOURNEYDECK_ENABLED ? { id: 'askJourneyDeck', label: 'Ask JourneyDeck', icon: 'sparkles' } : null,
+    { id: 'soundtrack', label: 'Latest Soundtrack', icon: 'music.note' },
+  ];
+  const contextChoices = contextChoiceCandidates.filter((choice): choice is { id: HomeWidgetId; label: string; icon: SFSymbol } => choice !== null);
+  const summaryLabels: Record<string, string> = { miles: 'Miles with music', listening: 'Listening hours', songs: 'Songs on the road', streak: 'Current streak', journeys: 'Journey library' };
+  const renderCustomizeSheet = () => {
+    const memoryPlacement = gridLayout.placements.find(item => item.id === 'memories');
+    const selectedContextId = presentation.context?.id ?? null;
+    const summaryOrder = gridLayout.placements.filter(item => HOME_SUMMARY_WIDGETS.includes(item.id)).sort((left, right) => left.order - right.order);
+    return <View style={styles.customizeSheet}>
+      <View style={styles.customizeSection}>
+        <Text style={[styles.customizeSectionTitle, { color: homeColors.textSecondary }]}>LATEST MEMORY</Text>
+        <View style={[styles.customizeRow, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}>
+          <Text style={[styles.customizeRowLabel, { color: homeColors.text }]}>Show on Home</Text>
+          <Switch accessibilityLabel="Show Latest Memory on Home" value={!memoryPlacement?.hidden} onValueChange={() => gridLayout.toggle('memories')} />
+        </View>
+      </View>
+      <View style={styles.customizeSection}>
+        <Text style={[styles.customizeSectionTitle, { color: homeColors.textSecondary }]}>FEATURED WIDGET</Text>
+        {contextChoices.map(choice => <TouchPressable key={choice.id} accessibilityRole="radio" accessibilityState={{ checked: selectedContextId === choice.id }}
+          onPress={() => gridLayout.selectContext(choice.id)} style={({ pressed }) => [styles.customizeRow, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+          <SymbolView name={choice.icon} tintColor={homeColors.accent} size={18} />
+          <Text style={[styles.customizeRowLabel, styles.flex, { color: homeColors.text }]}>{choice.label}</Text>
+          {selectedContextId === choice.id && <SymbolView name="checkmark" tintColor={homeColors.accent} size={17} weight="bold" />}
+        </TouchPressable>)}
+      </View>
+      <View style={styles.customizeSection}>
+        <Text style={[styles.customizeSectionTitle, { color: homeColors.textSecondary }]}>ROAD SUMMARY</Text>
+        {summaryOrder.map((item, index) => <View key={item.id} style={[styles.customizeRow, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}>
+          <Text style={[styles.customizeRowLabel, styles.flex, { color: homeColors.text }]}>{summaryLabels[item.id]}</Text>
+          <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${summaryLabels[item.id]} earlier`} disabled={index === 0} hitSlop={6} onPress={() => gridLayout.moveSummary(item.id, -1)}>
+            <SymbolView name="chevron.up" tintColor={index === 0 ? homeColors.separator : homeColors.accent} size={16} />
+          </TouchPressable>
+          <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${summaryLabels[item.id]} later`} disabled={index === summaryOrder.length - 1} hitSlop={6} onPress={() => gridLayout.moveSummary(item.id, 1)}>
+            <SymbolView name="chevron.down" tintColor={index === summaryOrder.length - 1 ? homeColors.separator : homeColors.accent} size={16} />
+          </TouchPressable>
+          <Switch accessibilityLabel={`Show ${summaryLabels[item.id]} in Road Summary`} value={!item.hidden} onValueChange={() => gridLayout.toggle(item.id)} />
+        </View>)}
+      </View>
+    </View>;
   };
   const contextualWidget = presentation.context?.id === 'fiftyStates' && onFiftyStates
     ? <FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense onLongPress={openEditor} />
@@ -1360,7 +1393,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
       </View>
     </ScrollView>
     <HomeLayoutEditorSheet visible={editingLayout} onClose={() => setEditingLayout(false)} onReset={gridLayout.reset}>
-      <View testID="home-layout-editor-grid" style={styles.compactHomeGrid}>{gridLayout.placements.map(renderEditorPlacement)}</View>
+      <View testID="home-layout-editor-grid">{renderCustomizeSheet()}</View>
     </HomeLayoutEditorSheet>
   </View>;
 }
@@ -3881,12 +3914,11 @@ const darkStyles = StyleSheet.create({
   homeRoadSummaryItem: { minHeight: 78, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: journeyDeckSpacing[3], paddingVertical: journeyDeckSpacing[3], flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3] },
   homeRoadSummaryLabel: { ...journeyDeckTypography.kicker, letterSpacing: 0.4 },
   homeRoadSummaryValue: { ...journeyDeckTypography.metric, marginTop: 2 },
-  compactHomeGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -6 },
-  compactHomeMetric: { minHeight: 116, borderRadius: 20, borderWidth: 1, padding: 14, gap: 7 },
-  compactHomeMetricLabel: { fontSize: 11, lineHeight: 15, fontWeight: '800', letterSpacing: 0.7, textTransform: 'uppercase' },
-  compactHomeMetricValue: { fontSize: 25, lineHeight: 30, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  compactHomeJourneySummary: { minHeight: 116, borderRadius: 20, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  compactHomeJourneyValue: { fontSize: 20, lineHeight: 26, fontWeight: '800', fontVariant: ['tabular-nums'], marginTop: 4 },
+  customizeSheet: { gap: journeyDeckSpacing[5] },
+  customizeSection: { gap: journeyDeckSpacing[2] },
+  customizeSectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2 },
+  customizeRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3], borderRadius: 14, borderWidth: 1, paddingHorizontal: journeyDeckSpacing[4] },
+  customizeRowLabel: { fontSize: 14, fontWeight: '600' },
   approvedLatestMemory: { minHeight: 145, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(165,132,180,0.34)', backgroundColor: 'rgba(9,8,14,0.88)', padding: 15, shadowColor: '#bc6aff', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   approvedLatestMemoryHeader: { height: 24, flexDirection: 'row', alignItems: 'center', gap: 7 },
   approvedLatestMemoryKicker: { color: '#bf8aeb', fontSize: 12, fontWeight: '600' },
