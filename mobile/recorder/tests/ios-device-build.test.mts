@@ -40,7 +40,8 @@ test('device workflow is manual, public standard runner only, and exports only a
   assert.equal(w.jobs.build['runs-on'], 'macos-26');
   assert.match(w.jobs.build.if, /private == false/);
   assert.doesNotMatch(text, /eas build|simctl|serve-sim|\.p12\s*\n.*upload/);
-  const upload = w.jobs.build.steps.find((s: any) => s.uses?.startsWith('actions/upload-artifact'));
+  const upload = w.jobs.build.steps.find((s: any) => s.with?.name === 'journeydeck-v3-device-encrypted');
   assert.match(upload.with.path, /JourneyDeckEncrypted/);
   assert.equal(upload.with['retention-days'], 1);
+  assert.equal(upload.if, "env.NATIVE_REBUILD == 'true'");
 });

@@ -7,6 +7,7 @@ module.exports = ({ config }) => {
   const v3 = process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator'].includes(process.env.EAS_BUILD_PROFILE);
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
+  const channel = v3 ? 'v3-preview' : preview ? 'v2-preview' : 'production';
   if (markerOtaCompat && (!v3 || process.env.EAS_BUILD === 'true')) throw new Error('Marker compatibility mode is only for V3 OTA updates, never native builds.');
   // Keys are public Apple SDK keys; each bundle must use its own RevenueCat app.
   const revenueCatAppleKey = (preview || v3 ? process.env.REVENUECAT_PREVIEW_APPLE_API_KEY : process.env.REVENUECAT_PRODUCTION_APPLE_API_KEY) || '';
@@ -23,6 +24,13 @@ module.exports = ({ config }) => {
     icon: './assets/icon-grand-touring-v2.png',
     // Marker capture/Siri and schema 9 require a new V3 binary; never OTA to older builds.
     runtimeVersion: markerOtaCompat ? '3.0.0-preview.2' : v3 ? '3.0.0-preview.4' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    updates: {
+      ...config.updates,
+      requestHeaders: {
+        ...(config.updates?.requestHeaders || {}),
+        'expo-channel-name': channel,
+      },
+    },
     plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
       microphonePermission,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
