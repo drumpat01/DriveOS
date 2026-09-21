@@ -15,6 +15,7 @@ const ipadHome = await readFile(new URL('ipad-home.tsx', sourceRoot), 'utf8');
 const musicCapture = await readFile(new URL('music-capture.ts', sourceRoot), 'utf8');
 const appleArtworkLookup = await readFile(new URL('apple-artwork-lookup.ts', sourceRoot), 'utf8');
 const shareCard = await readFile(new URL('share-card-modal.tsx', sourceRoot), 'utf8');
+const membershipPaywall = await readFile(new URL('membership-paywall.tsx', sourceRoot), 'utf8');
 const shareRoutePrivacy = await readFile(new URL('share-route-privacy.ts', sourceRoot), 'utf8');
 const interactiveRouteMap = await readFile(new URL('interactive-route-map.tsx', sourceRoot), 'utf8');
 const memoryEditMotion = await readFile(new URL('memory-edit-motion.tsx', sourceRoot), 'utf8');
@@ -86,6 +87,13 @@ test('iPhone and iPad share the data-rich Statistics dashboard and retain paid A
   assert.match(shell, /<MembershipPaywall/);
   assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
   assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\('instructions'\); return; \}/);
+  assert.match(shell, /insight=\{dashboard\.data\.summary\.allTime\.journeyCount > 0 \? \{/);
+  assert.match(shell, /primarySections\.data\?\.music\.recentSelections\[0\]/);
+  assert.match(membershipPaywall, /ATLAS ALREADY SEES/);
+  assert.match(membershipPaywall, /Last on the road:/);
+  assert.match(membershipPaywall, /onPress=\{\(\) => setConfirmingClose\(true\)\}/);
+  assert.match(membershipPaywall, /Keep exploring free\?/);
+  assert.match(membershipPaywall, /accessibilityLabel="Not now, keep the free plan" onPress=\{onClose\}/);
 });
 
 test('primary layouts adapt to usable space without treating device identity as layout', () => {

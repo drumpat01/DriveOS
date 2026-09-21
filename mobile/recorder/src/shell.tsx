@@ -996,6 +996,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       <MembershipPaywall
         visible={membershipPaywallVisible || firstRunStage === 'membership'}
         state={membershipStore.state}
+        insight={dashboard.data.summary.allTime.journeyCount > 0 ? {
+          journeyCount: dashboard.data.summary.allTime.journeyCount,
+          milesLabel: formatMiles(dashboard.data.summary.allTime.miles),
+          topTrack: primarySections.data?.music.recentSelections[0]
+            ? { track: primarySections.data.music.recentSelections[0].track, artist: primarySections.data.music.recentSelections[0].artist }
+            : null,
+        } : null}
         onClose={() => {
           if (firstRunStage === 'membership') { advanceFirstRun('instructions'); return; }
           setMembershipPaywallVisible(false);

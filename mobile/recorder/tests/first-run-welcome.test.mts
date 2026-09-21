@@ -25,6 +25,7 @@ function load(themeId: 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canop
     if (id === 'react-native') return native;
     if (id === 'expo-image') return { Image: host('Image') };
     if (id === 'expo-linear-gradient') return { LinearGradient: host('Gradient') };
+    if (id === 'expo-symbols') return { SymbolView: host('SymbolView') };
     if (id === 'react-native-safe-area-context') return { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) };
     if (id === './app-theme') return { useAppTheme: () => testTheme(themeId) };
     return require(id);
@@ -53,6 +54,9 @@ test('static welcome makes the private route, music, and memory value clear with
       assert.ok(labels.includes('JOURNEYDECK'));
       assert.ok(labels.includes('Your drives,\nremembered.'));
       assert.ok(labels.includes('Record the route, match the music you played, and keep the moments in one private road archive.'));
+      assert.ok(labels.includes("WHAT YOU'LL GET"), 'onboarding demonstrates the drive+soundtrack memory before asking the user to set anything up');
+      assert.ok(labels.includes('Sunday Coast Drive'));
+      assert.ok(labels.includes('Nightfall Radio'));
       assert.ok(labels.includes('Private by design. Your roads stay on this iPhone and in your iCloud.'));
       assert.equal(labels.filter((label: string) => label === 'Set up JourneyDeck').length, 1);
       assert.equal(tree.root.findAllByType('Pressable').length, 1);
