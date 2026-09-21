@@ -84,6 +84,8 @@ test('iPhone and iPad share the data-rich Statistics dashboard and retain paid A
   assert.match(statisticsScreen, /accessibilityLabel="Open Atlas"/);
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
+  assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
+  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\('instructions'\); return; \}/);
 });
 
 test('primary layouts adapt to usable space without treating device identity as layout', () => {
@@ -297,10 +299,11 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /advanceFirstRun\('location', mode\)/);
   assert.match(shell, /await requestJourneyLocationAccess\(\);\s+advanceFirstRun\('music'\)/);
   assert.match(shell, /onConnectAppleMusic=\{async \(\) =>/);
-  assert.match(shell, /await connectAppleMusic\('apple-music'\);\s+advanceFirstRun\('instructions'\)/);
+  assert.match(shell, /await connectAppleMusic\('apple-music'\);\s+advanceFirstRun\('membership'\)/);
+  assert.match(shell, /onSkipMusic=\{\(\) => advanceFirstRun\('membership'\)\}/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'instructions' \| 'complete'/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'instructions' \| 'complete'/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
   assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);
@@ -317,7 +320,8 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(firstRunScreen, /Bring your music along\./);
   assert.match(firstRunScreen, /accessibilityLabel="Connect Apple Music"/);
   assert.match(firstRunScreen, /accessibilityLabel="Let the Journey Begin" onPress=\{onFinish\}/);
-  assert.match(firstRunScreen, /accessibilityLabel="Step 5 of 5"/);
+  assert.match(firstRunScreen, /`Step \$\{step\} of \$\{TOTAL_STEPS\}`/);
+  assert.match(firstRunScreen, /instructions: 6/);
   assert.doesNotMatch(firstRunScreen, /04A \/ 04|04B \/ 04/);
   assert.match(welcomeIntro, /onboarding\.welcome-intro/);
 });

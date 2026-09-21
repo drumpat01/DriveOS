@@ -113,8 +113,18 @@ import { completeWelcomeIntro, hasCompletedWelcomeIntro } from './welcome-intro'
 import { membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
-import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress } from './first-run-onboarding';
+import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress, type FirstRunStage } from './first-run-onboarding';
 import { FirstRunOnboardingScreen } from './first-run-onboarding-screen';
+
+function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'complete'>): FirstRunProgress['stage'] {
+  switch (stage) {
+    case 'recording': return 'welcome';
+    case 'location': return 'recording';
+    case 'music': return 'location';
+    case 'membership': return 'music';
+    case 'instructions': return 'membership';
+  }
+}
 import { V3_FIFTY_STATES_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import {
   AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
@@ -955,12 +965,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           onConnectAppleMusic={async () => {
             await chooseProvider('apple-music');
             await connectAppleMusic('apple-music');
-            advanceFirstRun('instructions');
+            advanceFirstRun('membership');
           }}
+          onSkipMusic={() => advanceFirstRun('membership')}
           onFinish={() => {
             setFirstRunProgress(completeFirstRun(firstRunRecordingMode));
             openTab('home');
           }}
+          onBack={firstRunStage === 'welcome' ? undefined : () => advanceFirstRun(previousFirstRunStage(firstRunStage as Exclude<FirstRunStage, 'welcome' | 'complete'>))}
         />}
         {!firstRunStage && recordingPreferences && !activeRecordingPreferences && <RecordingModePicker
           initial={recordingPreferences.mode ?? 'manual'}
@@ -981,12 +993,17 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         {navigationReady && <View style={[styles.primaryTabHost, !appVisible && { display: 'none' }]}>{children}</View>}
       </View>
       <MembershipPaywall
-        visible={membershipPaywallVisible}
+        visible={membershipPaywallVisible || firstRunStage === 'membership'}
         state={membershipStore.state}
-        onClose={() => setMembershipPaywallVisible(false)}
+        onClose={() => {
+          if (firstRunStage === 'membership') { advanceFirstRun('instructions'); return; }
+          setMembershipPaywallVisible(false);
+        }}
         onLoadProducts={membershipStore.loadProducts}
         onPurchase={async productId => membershipStore.purchase(productId).then(outcome => {
-          if (outcome === 'purchased') setMembershipPaywallVisible(false);
+          if (outcome !== 'purchased') return;
+          if (firstRunStage === 'membership') { advanceFirstRun('instructions'); return; }
+          setMembershipPaywallVisible(false);
         })}
         onRestore={membershipStore.restore}
       />
