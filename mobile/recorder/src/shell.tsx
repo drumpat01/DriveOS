@@ -1319,7 +1319,9 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
         <Text style={[styles.customizeSectionTitle, { color: homeColors.textSecondary }]}>LATEST MEMORY</Text>
         <View style={[styles.customizeRow, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}>
           <Text style={[styles.customizeRowLabel, styles.flex, { color: homeColors.text }]}>Show on Home</Text>
-          <Switch accessibilityLabel="Show Latest Memory on Home" value={!memoryPlacement?.hidden} onValueChange={() => gridLayout.toggle('memories')} trackColor={{ false: homeColors.separator, true: homeColors.accent }} />
+          <View style={styles.customizeRowSwitch}>
+            <Switch accessibilityLabel="Show Latest Memory on Home" value={!memoryPlacement?.hidden} onValueChange={() => gridLayout.toggle('memories')} trackColor={{ false: homeColors.separator, true: homeColors.accent }} style={styles.customizeRowSwitchControl} />
+          </View>
         </View>
       </View>
       <View style={styles.customizeSection}>
@@ -1341,7 +1343,9 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
           <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${summaryLabels[item.id]} later`} disabled={index === summaryOrder.length - 1} hitSlop={6} onPress={() => gridLayout.moveSummary(item.id, 1)} style={styles.customizeRowChevron}>
             <SymbolView name="chevron.down" tintColor={index === summaryOrder.length - 1 ? homeColors.separator : homeColors.accent} size={16} />
           </TouchPressable>
-          <Switch accessibilityLabel={`Show ${summaryLabels[item.id]} in Road Summary`} value={!item.hidden} onValueChange={() => gridLayout.toggle(item.id)} trackColor={{ false: homeColors.separator, true: homeColors.accent }} />
+          <View style={styles.customizeRowSwitch}>
+            <Switch accessibilityLabel={`Show ${summaryLabels[item.id]} in Road Summary`} value={!item.hidden} onValueChange={() => gridLayout.toggle(item.id)} trackColor={{ false: homeColors.separator, true: homeColors.accent }} style={styles.customizeRowSwitchControl} />
+          </View>
         </View>)}
       </View>
     </View>;
@@ -3921,6 +3925,11 @@ const darkStyles = StyleSheet.create({
   customizeRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: journeyDeckSpacing[3], borderRadius: 14, borderWidth: 1, paddingHorizontal: journeyDeckSpacing[4] },
   customizeRowLabel: { fontSize: 14, fontWeight: '600' },
   customizeRowChevron: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  // iOS Switch has no reliable intrinsic centering, so it gets the same fixed,
+  // explicitly centered box as the chevrons -- that keeps every trailing control
+  // on one vertical centre line inside the row.
+  customizeRowSwitch: { height: 32, alignItems: 'center', justifyContent: 'center' },
+  customizeRowSwitchControl: { alignSelf: 'center' },
   approvedLatestMemory: { minHeight: 145, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(165,132,180,0.34)', backgroundColor: 'rgba(9,8,14,0.88)', padding: 15, shadowColor: '#bc6aff', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } },
   approvedLatestMemoryHeader: { height: 24, flexDirection: 'row', alignItems: 'center', gap: 7 },
   approvedLatestMemoryKicker: { color: '#bf8aeb', fontSize: 12, fontWeight: '600' },
