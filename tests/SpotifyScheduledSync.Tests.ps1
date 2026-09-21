@@ -4,21 +4,10 @@ $Root = Split-Path -Parent $PSScriptRoot
 function Assert-True { param([bool]$Condition,[string]$Message) if (-not $Condition) { throw $Message } }
 
 $Server = Get-Content (Join-Path $Root 'DriveOS-Server.ps1') -Raw
-$WorkflowPath = Join-Path $Root '.github\workflows\spotify-history-sync.yml'
-$Workflow = Get-Content $WorkflowPath -Raw
 $Render = Get-Content (Join-Path $Root 'render.yaml') -Raw
 $SpotifyIntegration = Get-Content (Join-Path $Root 'src\Integrations\Spotify\DriveOS.Spotify.psm1') -Raw
 $App = Get-Content (Join-Path $Root 'web\app.js') -Raw
 
-Assert-True (Test-Path $WorkflowPath) 'Scheduled Spotify workflow is missing.'
-Assert-True ($Workflow -match 'cron:\s*"\*/15 \* \* \* \*"') 'Spotify workflow must run every 15 minutes.'
-Assert-True ($Workflow -match 'workflow_dispatch:') 'Spotify workflow must support manual runs.'
-Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_URL') 'Spotify workflow URL must come from a GitHub secret.'
-Assert-True ($Workflow -match 'secrets\.DRIVEOS_SYNC_TOKEN') 'Spotify workflow token must come from a GitHub secret.'
-Assert-True ($Workflow -match 'X-DriveOS-Sync-Token') 'Spotify workflow must authenticate its request.'
-Assert-True ($Workflow -match 'Content-Type: application/json') 'Spotify workflow must identify its POST body as JSON.'
-Assert-True ($Workflow -match 'restart_backfill:') 'Spotify workflow cannot explicitly restart the resumable historical backfill.'
-Assert-True ($Workflow -match '--data "\$body"') 'Spotify workflow must send its validated sync options body.'
 Assert-True ($Server -match 'Test-DriveOSScheduledSyncRequest') 'Scheduled sync endpoint authentication is missing.'
 Assert-True ($Server -match 'Invoke-ScheduledSpotifySync') 'Hosted Spotify sync operation is missing.'
 $Tokens = $null

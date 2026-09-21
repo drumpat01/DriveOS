@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "animate-expo": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/animate-expo/SKILL.md",
+      "computedHash": "3e914b8abdff154a289dcabc63817b6b5d649272a0d054e7e799f37e4bb1c471"
+    },
     "appllama-app-design-skill": {
       "source": "appllama/appllama-skills",
       "sourceType": "github",
@@ -12,6 +18,12 @@
       "sourceType": "github",
       "skillPath": "skills/appllama-usage/SKILL.md",
       "computedHash": "9b9ecf34e1585ad0e77d749e5e5178270ea1b73147459ef53db7340aa16eb4e2"
+    },
+    "review-animations": {
+      "source": "emilkowalski/skills",
+      "sourceType": "github",
+      "skillPath": "skills/review-animations/SKILL.md",
+      "computedHash": "8c2befeb28bb484bf2de7b2fc228774857e266d32a65d76895e78651a536d8cf"
     }
   }
 }

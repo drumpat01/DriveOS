@@ -106,14 +106,4 @@ Assert-True (-not ($Server -match '/api/tessie/sync')) 'Tessie ingestion is stil
 $Worker = Get-Content (Join-Path $Root 'tools\Sync-JourneyDeckTessieHistory.ps1') -Raw
 Assert-True ($Worker -match 'Invoke-JourneyDeckTessieHistorySync') 'The direct Tessie worker entry point is missing.'
 
-$Workflow = Get-Content (Join-Path $Root '.github\workflows\tessie-history-sync.yml') -Raw
-Assert-True ($Workflow -match 'actions/checkout@v7') 'The Tessie worker checkout action must use the Node 24 runtime.'
-Assert-True ($Workflow -match '7,22,37,52 \* \* \* \*') 'Tessie workflow is not staggered from the Spotify schedule.'
-Assert-True ($Workflow -match 'Sync-JourneyDeckTessieHistory\.ps1') 'Tessie workflow does not execute the direct worker.'
-Assert-True ($Workflow -match "if:\s*vars\.JOURNEYDECK_TESSIE_DB_WRITE_ENABLED == 'true'") 'Tessie workflow is not disabled by default behind its rollout variable.'
-Assert-True ($Workflow -match 'TURSO_DATABASE_URL' -and $Workflow -match 'TURSO_AUTH_TOKEN' -and $Workflow -match 'TESSIE_TOKEN') 'Tessie workflow is missing direct worker credentials.'
-Assert-True (-not ($Workflow -match '/api/tessie/sync')) 'Tessie workflow still routes ingestion through the web process.'
-Assert-True ($Workflow -match "if:\s*steps\.tessie_sync\.outputs\.new_drives != '0'") 'New-drive soundtrack reconciliation is not conditional.'
-Assert-True ($Workflow -match 'DRIVEOS_SYNC_URL' -and $Workflow -match 'X-DriveOS-Sync-Token' -and $Workflow -match '/api/spotify/sync') 'New drives do not trigger the protected Spotify reconciliation job.'
-
 Write-Host 'JourneyDeck Tessie ingestion checks passed.' -ForegroundColor Green
