@@ -1,5 +1,6 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import { SymbolView } from 'expo-symbols';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
@@ -36,6 +37,24 @@ export function FirstRunWelcomeScreen({ onStart, contentOnly = false }: { onStar
           <Text style={[styles.eyebrow, { color: palette.accent }]}>JOURNEYDECK</Text>
           <Text accessibilityRole="header" style={[styles.headline, { color: palette.text }]}>Your drives,{`\n`}remembered.</Text>
           <Text style={[styles.valueProposition, { color: palette.muted }]}>Record the route, match the music you played, and keep the moments in one private road archive.</Text>
+          <View accessibilityLabel="Example memory: Sunday Coast Drive, 12.4 miles, 28 minutes, matched with Nightfall Radio, 3 songs."
+            style={[styles.sampleMemoryCard, { backgroundColor: alpha(palette.card, theme.isLight ? 0.88 : 0.72), borderColor: alpha(palette.line, 0.72) }]}>
+            <Text style={[styles.sampleMemoryKicker, { color: palette.accent }]}>WHAT YOU'LL GET</Text>
+            <View style={styles.sampleMemoryRow}>
+              <View style={[styles.sampleMemoryIcon, { backgroundColor: alpha(palette.accent, 0.16) }]}><SymbolView name="mappin.and.ellipse" tintColor={palette.accent} size={16} /></View>
+              <View style={styles.sampleMemoryText}>
+                <Text style={[styles.sampleMemoryTitle, { color: palette.text }]}>Sunday Coast Drive</Text>
+                <Text style={[styles.sampleMemoryMeta, { color: palette.muted }]}>12.4 mi · 28 min</Text>
+              </View>
+            </View>
+            <View style={styles.sampleMemoryRow}>
+              <View style={[styles.sampleMemoryIcon, { backgroundColor: alpha(palette.accent, 0.16) }]}><SymbolView name="music.note" tintColor={palette.accent} size={16} /></View>
+              <View style={styles.sampleMemoryText}>
+                <Text style={[styles.sampleMemoryTitle, { color: palette.text }]}>Nightfall Radio</Text>
+                <Text style={[styles.sampleMemoryMeta, { color: palette.muted }]}>3 songs matched automatically</Text>
+              </View>
+            </View>
+          </View>
           <View accessibilityLabel="Private by design. Your roads stay on this iPhone and in your iCloud."
             style={[styles.privacyCard, { backgroundColor: alpha(palette.card, theme.isLight ? 0.88 : 0.72), borderColor: alpha(palette.line, 0.72) }]}>
             <View style={[styles.privacyDot, { backgroundColor: palette.accent }]} />
@@ -64,6 +83,13 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 11, lineHeight: 15, fontWeight: '900', letterSpacing: 2.4, marginBottom: 10 },
   headline: { fontFamily: 'Georgia', fontSize: 42, lineHeight: 47, fontWeight: '700', letterSpacing: -1.25, flexShrink: 1 },
   valueProposition: { maxWidth: 480, fontSize: 16, lineHeight: 23, marginTop: 14 },
+  sampleMemoryCard: { maxWidth: 480, borderRadius: 18, borderWidth: 1, padding: 14, gap: 10, marginTop: 18 },
+  sampleMemoryKicker: { fontSize: 10, lineHeight: 14, fontWeight: '900', letterSpacing: 1.6 },
+  sampleMemoryRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sampleMemoryIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  sampleMemoryText: { flex: 1 },
+  sampleMemoryTitle: { fontSize: 14, fontWeight: '700' },
+  sampleMemoryMeta: { fontSize: 11.5, lineHeight: 15, marginTop: 2 },
   privacyCard: { maxWidth: 480, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, marginTop: 18 },
   privacyDot: { width: 7, height: 7, borderRadius: 4 },
   privacyText: { flex: 1, fontSize: 12, lineHeight: 18, fontWeight: '600' },
