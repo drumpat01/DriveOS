@@ -8,3 +8,7 @@ description = "Synthetic scheduled-sync token used only by WebRequest.Tests.ps1"
 condition = "AND"
 paths = ['''tests/WebRequest\.Tests\.ps1''']
 regexes = ['''0123456789abcdef0123456789abcdef''']
+
+[[allowlists]]
+description = "Historical EAS submission UUID in the handoff notes, not an API key. Matched by value instead of commit:file:line so it stays allowlisted under GitHub's ephemeral pull-request merge-preview commits, which .gitleaksignore's fingerprint format cannot cover."
+regexes = ['''408363e3-5fe2-4afd-b5d8-9434c2a10f0f''']
