@@ -16,6 +16,8 @@ function harness() {
   const mocks: any = {
     'react-native': { View: 'View', Text: 'Text', StyleSheet: { create: (value: any) => value } },
     'react-native-reanimated': { __esModule: true, default: { View: 'AnimatedView', Text: 'AnimatedText' }, FadeInDown: builder('enter'), FadeOut: builder('exit'), LinearTransition: builder('layout') },
+    // expo-symbols 58's Node entry imports a missing materialImageSource file; keep this harness off the real package.
+    'expo-symbols': { SymbolView: 'SymbolView' },
     './app-theme': { useThemedStyles: (styles: any) => styles },
     './motion': { useMotionPreferences: () => prefs, MOTION_DURATIONS: { quick: 180, standard: 260, exit: 150 }, motionEasing: { enter: 'enter', standard: 'standard' } },
     './touch-feedback': { TouchPressable: 'Pressable' },
