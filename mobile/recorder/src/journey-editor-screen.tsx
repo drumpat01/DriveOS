@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from './app-theme';
@@ -22,41 +25,54 @@ function StudioButton({ title, onPress, disabled = false, primary = false }: { t
   </Pressable>;
 }
 
-function RangeHandle({ handle, value, bounds, range, width, disabled, reducedMotion, onChange }: {
-  handle: EditorHandle; value: number; bounds: EditorRange; range: EditorRange; width: number;
+function triggerHandleHaptic() { void Haptics.selectionAsync().catch(() => {}); }
+
+/**
+ * The knob and the accent fill (owned by Editor via `dragValue`) move on the
+ * UI thread for every frame of the drag. React state — and with it the map
+ * preview and time labels — only updates once, on release, matching the
+ * existing drag-to-reorder pattern in home-widget-grid.tsx.
+ */
+function RangeHandle({ handle, value, dragValue, bounds, range, width, disabled, reducedMotion, onChange }: {
+  handle: EditorHandle; value: number; dragValue: SharedValue<number>; bounds: EditorRange; range: EditorRange; width: number;
   disabled: boolean; reducedMotion: boolean; onChange: (value: number) => void;
 }) {
   const c = useAppTheme().palette;
-  const scale = useRef(new Animated.Value(1)).current;
-  const current = useRef({ value, bounds, range, width, disabled, onChange, reducedMotion });
-  current.current = { value, bounds, range, width, disabled, onChange, reducedMotion };
-  const start = useRef(value), gestureWidth = useRef(width);
-  const responder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => !current.current.disabled,
-    onMoveShouldSetPanResponder: () => !current.current.disabled,
-    onPanResponderGrant: () => {
-      start.current = current.current.value; gestureWidth.current = current.current.width;
-      if (!current.current.reducedMotion) Animated.spring(scale, { toValue: 1.18, useNativeDriver: true, speed: 30 }).start();
-      void Haptics.selectionAsync().catch(() => {});
-    },
-    onPanResponderMove: (_, gesture) => {
-      const now = current.current;
-      if (now.disabled || gestureWidth.current !== now.width) return;
-      now.onChange(moveEditorHandle(handle, start.current, gesture.dx, gestureWidth.current, now.bounds, now.range));
-    },
-    onPanResponderRelease: () => { Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start(); void Haptics.selectionAsync().catch(() => {}); },
-    onPanResponderTerminate: () => { scale.setValue(1); },
-    onPanResponderTerminationRequest: () => false,
-  }), [handle, scale]);
-  const progress = (value - bounds.startMs) / Math.max(1, bounds.endMs - bounds.startMs);
-  return <Animated.View {...responder.panHandlers} accessible accessibilityRole="adjustable"
-    accessibilityLabel={handle === 'split' ? 'Split time' : `${handle === 'start' ? 'Start' : 'End'} trim time`}
-    accessibilityValue={{ text: time(value), min: bounds.startMs, max: bounds.endMs, now: value }}
-    accessibilityActions={[{ name: 'increment', label: 'Later by ten seconds' }, { name: 'decrement', label: 'Earlier by ten seconds' }]}
-    onAccessibilityAction={event => { if (!disabled) onChange(moveEditorHandle(handle, value, event.nativeEvent.actionName === 'increment' ? 10_000 : -10_000, bounds.endMs - bounds.startMs, bounds, range)); }}
-    style={[styles.handle, { left: progress * width - 22, backgroundColor: c.accent, borderColor: c.page, transform: [{ scale }] }]}>
-    <View style={{ width: 3, height: 23, backgroundColor: c.onAccent, borderRadius: 2 }} />
-  </Animated.View>;
+  const scale = useSharedValue(1);
+  const startAt = useSharedValue(value);
+  const gesture = useMemo(() => Gesture.Pan()
+    .enabled(!disabled)
+    .minDistance(1)
+    .maxPointers(1)
+    .onBegin(() => {
+      startAt.set(dragValue.get());
+      if (!reducedMotion) scale.set(withSpring(1.18, { duration: 200, dampingRatio: 1 }));
+      scheduleOnRN(triggerHandleHaptic);
+    })
+    .onUpdate(event => {
+      dragValue.set(moveEditorHandle(handle, startAt.get(), event.translationX, width, bounds, range));
+    })
+    .onEnd(() => {
+      scheduleOnRN(onChange, dragValue.get());
+      scheduleOnRN(triggerHandleHaptic);
+    })
+    .onFinalize(() => {
+      scale.set(withSpring(1, { duration: 200, dampingRatio: 1 }));
+    }), [handle, width, bounds, range, disabled, reducedMotion, onChange, dragValue, scale, startAt]);
+  const animatedStyle = useAnimatedStyle(() => {
+    const progress = (dragValue.get() - bounds.startMs) / Math.max(1, bounds.endMs - bounds.startMs);
+    return { left: progress * width - 22, transform: [{ scale: scale.get() }] };
+  });
+  return <GestureDetector gesture={gesture}>
+    <Reanimated.View accessible accessibilityRole="adjustable"
+      accessibilityLabel={handle === 'split' ? 'Split time' : `${handle === 'start' ? 'Start' : 'End'} trim time`}
+      accessibilityValue={{ text: time(value), min: bounds.startMs, max: bounds.endMs, now: value }}
+      accessibilityActions={[{ name: 'increment', label: 'Later by ten seconds' }, { name: 'decrement', label: 'Earlier by ten seconds' }]}
+      onAccessibilityAction={event => { if (!disabled) onChange(moveEditorHandle(handle, value, event.nativeEvent.actionName === 'increment' ? 10_000 : -10_000, bounds.endMs - bounds.startMs, bounds, range)); }}
+      style={[styles.handle, animatedStyle, { backgroundColor: c.accent, borderColor: c.page }]}>
+      <View style={{ width: 3, height: 23, backgroundColor: c.onAccent, borderRadius: 2 }} />
+    </Reanimated.View>
+  </GestureDetector>;
 }
 
 function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEditorSnapshot; onSaved: (id: string) => Promise<void>; onBack: () => void; premium: boolean }) {
@@ -69,8 +85,25 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
   const saving = useRef(false);
   const conflicts = useMemo(() => getJourneyEditConflictChoices(snapshot.userId, snapshot.journeyId), [snapshot]);
   const wide = width / fontScale >= 900;
+  // Visual drag position, kept off React state so a trim/split drag never re-renders
+  // the map preview mid-gesture. Synced back whenever the committed value changes
+  // from elsewhere (release, +/-10s buttons, reset, mode switch).
+  const startDragMs = useSharedValue(range.startMs);
+  const endDragMs = useSharedValue(range.endMs);
+  const splitDragMs = useSharedValue(splitMs);
+  useEffect(() => { startDragMs.set(range.startMs); }, [range.startMs, startDragMs]);
+  useEffect(() => { endDragMs.set(range.endMs); }, [range.endMs, endDragMs]);
+  useEffect(() => { splitDragMs.set(splitMs); }, [splitMs, splitDragMs]);
   useEffect(() => { let active = true; void AccessibilityInfo.isReduceMotionEnabled().then(value => { if (active) setReducedMotion(value); }).catch(() => undefined);
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion); return () => { active = false; sub.remove(); }; }, []);
+  const trackFillStyle = useAnimatedStyle(() => {
+    if (mode === 'split') return { left: 0, width: trackWidth };
+    const total = Math.max(1, bounds.endMs - bounds.startMs);
+    return {
+      left: (startDragMs.get() - bounds.startMs) / total * trackWidth,
+      width: (endDragMs.get() - startDragMs.get()) / total * trackWidth,
+    };
+  });
   const points = useMemo(() => clipEditorRoute(sampleEditorRoute(snapshot.original.points.map(p => ({ latitude: p.latitude, longitude: p.longitude, time: Date.parse(p.recordedAt) }))), bounds), [snapshot, bounds]);
   const selection: JourneyEditSelection = mode === 'trim' ? { kind: 'trim', ...range } : { kind: 'split', atMs: splitMs };
   const changed = mode === 'split' || range.startMs !== bounds.startMs || range.endMs !== bounds.endMs;
@@ -140,8 +173,11 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
       <View style={styles.row}><Text style={{ color: c.muted, flex: 1 }}>{time(bounds.startMs)}</Text><Text style={{ color: c.muted }}>{time(bounds.endMs)}</Text></View>
       <View style={styles.trackArea} onLayout={event => setTrackWidth(Math.max(1, event.nativeEvent.layout.width))}>
         <View style={[styles.track, { backgroundColor: c.line }]} />
-        <View pointerEvents="none" style={[styles.track, { backgroundColor: c.accent, left: mode === 'split' ? 0 : (range.startMs - bounds.startMs) / (bounds.endMs - bounds.startMs) * trackWidth, width: mode === 'split' ? trackWidth : (range.endMs - range.startMs) / (bounds.endMs - bounds.startMs) * trackWidth }]} />
-        {(mode === 'trim' ? ['start', 'end'] as const : ['split'] as const).map(handle => <RangeHandle key={handle} handle={handle} value={handle === 'start' ? range.startMs : handle === 'end' ? range.endMs : splitMs} bounds={bounds} range={range} width={trackWidth} disabled={busy || !premium} reducedMotion={reducedMotion}
+        <Reanimated.View pointerEvents="none" style={[styles.track, { backgroundColor: c.accent }, trackFillStyle]} />
+        {(mode === 'trim' ? ['start', 'end'] as const : ['split'] as const).map(handle => <RangeHandle key={handle} handle={handle}
+          value={handle === 'start' ? range.startMs : handle === 'end' ? range.endMs : splitMs}
+          dragValue={handle === 'start' ? startDragMs : handle === 'end' ? endDragMs : splitDragMs}
+          bounds={bounds} range={range} width={trackWidth} disabled={busy || !premium} reducedMotion={reducedMotion}
           onChange={value => { setReview(null); if (handle === 'split') setSplitMs(value); else setRange(current => ({ ...current, [handle === 'start' ? 'startMs' : 'endMs']: value })); }} />)}
       </View><Text style={{ color: c.muted, fontSize: 12, textAlign: 'center' }}>{mode === 'trim' ? 'Pull either edge inward. Release to keep your selection.' : 'Drag the line to choose where the next chapter begins.'}</Text>
     </View>

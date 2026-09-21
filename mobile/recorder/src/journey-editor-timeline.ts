@@ -1,9 +1,14 @@
 export type EditorRange = { startMs: number; endMs: number };
 export type EditorHandle = 'start' | 'end' | 'split';
 
-/** Gesture deltas use the measured track, never a coordinate relative to a moving handle. */
+/**
+ * Gesture deltas use the measured track, never a coordinate relative to a
+ * moving handle. Called from the drag handle's UI-thread worklet as well as
+ * plain JS, so it stays a worklet-safe pure function.
+ */
 export function moveEditorHandle(handle: EditorHandle, initial: number, deltaX: number, width: number,
   bounds: EditorRange, range: EditorRange, minimumMs = 10_000): number {
+  'worklet';
   if (!Number.isFinite(deltaX) || !Number.isFinite(width) || width <= 0) return initial;
   const next = initial + deltaX / width * (bounds.endMs - bounds.startMs);
   const min = handle === 'end' ? range.startMs + minimumMs : handle === 'split' ? bounds.startMs + minimumMs : bounds.startMs;
