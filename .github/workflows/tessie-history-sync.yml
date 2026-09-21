@@ -1,6 +1,9 @@
 name: Sync Tessie history
 
 on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+      timezone: "America/Chicago"
   workflow_dispatch:
 
 permissions:
