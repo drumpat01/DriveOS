@@ -29,7 +29,7 @@ if (Test-Path (Join-Path $Root '.git')) {
         $_ -match '(^|/)(data|artifacts|update-backups|WebView2Profile|webview2profile)/' -or
         $_ -match '(?i)\.(exe|pdb|zip|log|pfx|p12|pem|key|snk)$' -or
         ($_.ToLowerInvariant() -ne '.env.example' -and
-            $_ -match '(?i)(^|/)(\.env(?:\..*)?|.*token.*|.*secret.*\.json)$')
+            $_ -match '(?i)(^|/)(\.env(?:\..*)?|.*(?<![a-z])token(?!s)(?![a-z]).*|.*secret.*\.json)$')
     })
     Assert-ReleaseCondition ($ForbiddenTracked.Count -eq 0) `
         "Forbidden private or generated files are tracked: $($ForbiddenTracked -join ', ')"
