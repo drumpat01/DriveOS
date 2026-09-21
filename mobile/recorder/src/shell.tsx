@@ -1318,8 +1318,8 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
       <View style={styles.customizeSection}>
         <Text style={[styles.customizeSectionTitle, { color: homeColors.textSecondary }]}>LATEST MEMORY</Text>
         <View style={[styles.customizeRow, { backgroundColor: homeColors.surface, borderColor: homeColors.separator }]}>
-          <Text style={[styles.customizeRowLabel, { color: homeColors.text }]}>Show on Home</Text>
-          <Switch accessibilityLabel="Show Latest Memory on Home" value={!memoryPlacement?.hidden} onValueChange={() => gridLayout.toggle('memories')} />
+          <Text style={[styles.customizeRowLabel, styles.flex, { color: homeColors.text }]}>Show on Home</Text>
+          <Switch accessibilityLabel="Show Latest Memory on Home" value={!memoryPlacement?.hidden} onValueChange={() => gridLayout.toggle('memories')} trackColor={{ false: homeColors.separator, true: homeColors.accent }} />
         </View>
       </View>
       <View style={styles.customizeSection}>
@@ -1341,7 +1341,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
           <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${summaryLabels[item.id]} later`} disabled={index === summaryOrder.length - 1} hitSlop={6} onPress={() => gridLayout.moveSummary(item.id, 1)}>
             <SymbolView name="chevron.down" tintColor={index === summaryOrder.length - 1 ? homeColors.separator : homeColors.accent} size={16} />
           </TouchPressable>
-          <Switch accessibilityLabel={`Show ${summaryLabels[item.id]} in Road Summary`} value={!item.hidden} onValueChange={() => gridLayout.toggle(item.id)} />
+          <Switch accessibilityLabel={`Show ${summaryLabels[item.id]} in Road Summary`} value={!item.hidden} onValueChange={() => gridLayout.toggle(item.id)} trackColor={{ false: homeColors.separator, true: homeColors.accent }} />
         </View>)}
       </View>
     </View>;
@@ -1392,7 +1392,8 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
         </View>
       </View>
     </ScrollView>
-    <HomeLayoutEditorSheet visible={editingLayout} onClose={() => setEditingLayout(false)} onReset={gridLayout.reset}>
+    <HomeLayoutEditorSheet visible={editingLayout} onClose={() => setEditingLayout(false)} onReset={gridLayout.reset}
+      noteIcon="sparkles" note="Choose what Home features, reorder your Road Summary, and hide anything you do not want.">
       <View testID="home-layout-editor-grid">{renderCustomizeSheet()}</View>
     </HomeLayoutEditorSheet>
   </View>;
