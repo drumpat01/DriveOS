@@ -2,34 +2,43 @@
 
 ## Current objective
 
-Expo CI and EAS Update path assessment for JourneyDeck V3 (iOS-only, Expo 58 beta, Free EAS). Draft PR `cursor/expo-ci-update-path-ec81`. Do not merge to main, deploy, or submit.
+Wire 1Password `load-secrets-action` into `ios-v3-device.yml` so signing blobs
+are not stored in the GitHub Secrets UI. Draft PR only. Do not merge, dispatch,
+or submit to TestFlight/App Store.
 
 ## Material changes
 
-- Pinned `@expo/fingerprint` **balanced** in `mobile/recorder/fingerprint.config.js`.
-- GHA `.github/workflows/ios-v3-device.yml` now compares iOS fingerprint delta and skips native archive when unchanged (`force_native` override). Missing hash fails closed.
-- `app.config.js` embeds `updates.requestHeaders['expo-channel-name']` per variant.
-- Assessment, feel-loop, and release plan: `mobile/recorder/docs/expo-ci-update-path.md`.
+- `.github/workflows/ios-v3-device.yml` loads the six existing `IOS_*` names
+  from `op://JourneyDeck-CI/ios-v3-device/...` via
+  `1password/load-secrets-action@v5` (`export-env: true`) after the fingerprint
+  decision and only when `NATIVE_REBUILD` is true.
+- The only GitHub secret this job may use is `OP_SERVICE_ACCOUNT_TOKEN`.
+  `${{ secrets.IOS_* }}` bindings are removed from preflight/install/encrypt.
+- Docs: `mobile/recorder/docs/ios-github-device-build.md` secrets section,
+  new Key Master note `mobile/recorder/docs/ios-1password-ci.md` (ad hoc
+  profiles required; store file blobs as already-base64 text).
+- Fingerprint delta, `force_native`, no EAS Build, and `runtimeVersion` string
+  policy are unchanged.
 
 ## Active tree
 
-- Branch: `cursor/expo-ci-update-path-ec81` off `main`.
-- V3 runtime remains string `3.0.0-preview.4` on channel `v3-preview`. Do not switch `runtimeVersion` to fingerprint policy while preview.4 binaries are installed.
-- V2 remains frozen. Production channel/bundle stay untouched.
+- Branch: `cursor/ios-v3-1password-secrets-5e2e` off `main`.
+- V3 runtime remains string `3.0.0-preview.4` on channel `v3-preview`.
 
 ## Verification
 
-- Targeted: `node --experimental-strip-types --test tests/ios-fingerprint-delta.test.mts tests/ios-device-build.test.mts` (run from `mobile/recorder`).
-- No EAS Update published, no native archive, no App Store/TestFlight submit.
+- Targeted: `node --experimental-strip-types --test tests/ios-fingerprint-delta.test.mts tests/ios-device-build.test.mts` (from `mobile/recorder`).
+- No workflow dispatch. No native archive. No App Store/TestFlight submit.
 
 ## Unresolved
 
-- `native-fingerprint.ios.json` hash is still null until the next successful V3 native archive; then commit that hash so JS-only GHA runs skip Xcode.
-- Physical-device / tunnel feel-loop is documented only.
-- Siri AI remains paused pending Apple Small Business Program / Private Cloud Compute confirmation.
+- Key Master must create vault `JourneyDeck-CI`, item `ios-v3-device`, and
+  GitHub secret `OP_SERVICE_ACCOUNT_TOKEN` before a native archive can succeed.
+- `native-fingerprint.ios.json` hash is still null until the next successful
+  V3 native archive.
 
 ## Next steps
 
 1. Review the draft PR; do not merge.
-2. After the next needed native V3 archive, record the iOS fingerprint hash.
-3. JS-only V3 work continues via authorized `eas update --channel v3-preview --environment preview --platform ios`.
+2. Populate 1Password fields and the thin GitHub token secret.
+3. Do not re-dispatch this workflow as part of the secrets wiring.
