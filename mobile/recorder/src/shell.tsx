@@ -46,7 +46,7 @@ import { useJourneyDetail } from './use-journey-detail';
 import { NativeSheet, requestSheetClose } from './native-sheet';
 import { CardDetailLink, useCardDetailDismissal } from './card-detail-link';
 import { MemoryFlipImageContext } from './memory-flip';
-import { useJourneyCardAction } from './journey-card-action';
+import { openJourneyCardAction, useJourneyCardAction } from './journey-card-action';
 import { NativeActionMenu } from './native-action-menu';
 import { DetailScreenFrame, useDetailViewportInsets } from './detail-screen-frame';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Polyline, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
@@ -110,6 +110,7 @@ import { buildAccessibleMusicDashboard, loadPrimarySectionsData } from './primar
 import { subscribeLocalArchiveChanges } from './local-archive-events';
 import { forceAppleMusicArtworkRefreshAfterUpdate } from './music-capture';
 import { completeWelcomeIntro, hasCompletedWelcomeIntro } from './welcome-intro';
+import { lastPromptedShareJourneyId, markShareJourneyPrompted } from './share-prompt';
 import { membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
@@ -1230,6 +1231,13 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
   const latestSummary = primary.data?.journeys[0] ?? null;
   const latestDetail = latestSummary ? primary.data?.details.find(detail => detail.id === latestSummary.id) ?? null : null;
   const latestJourney = latestDetail ?? latestSummary;
+  const [promptedShareJourneyId, setPromptedShareJourneyId] = useState<string | null>(() => lastPromptedShareJourneyId());
+  const showSharePrompt = Boolean(latestJourney && latestJourney.id !== promptedShareJourneyId);
+  const dismissSharePrompt = () => {
+    if (!latestJourney) return;
+    markShareJourneyPrompted(latestJourney.id);
+    setPromptedShareJourneyId(latestJourney.id);
+  };
   const latestTitle = latestJourney ? homeHeroTitle(latestJourney) : 'Your first road memory';
   const latestRoute = latestJourney ? homeRouteContext(latestJourney) : 'Your next completed journey will appear here.';
   const latestDate = latestJourney ? new Date(latestJourney.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Ready when you are';
@@ -1328,6 +1336,16 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
         <View testID="home-fixed-recorder">{recorder}</View>
         <View testID="compact-home-widget-grid" style={styles.homeCuratedStack}>
           {presentation.memory ? renderLatestMemory() : null}
+          {presentation.memory && showSharePrompt && latestJourney && <View style={[styles.sharePrompt, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }]}>
+            <SymbolView name="square.and.arrow.up" tintColor={homeColors.accent} size={16} />
+            <Text style={[styles.sharePromptText, { color: homeColors.text }]}>Your drive is ready to share.</Text>
+            <TouchPressable accessibilityRole="button" accessibilityLabel="Share this drive" onPress={() => { markShareJourneyPrompted(latestJourney.id); setPromptedShareJourneyId(latestJourney.id); openJourneyCardAction(latestJourney.id, 'share'); }} style={({ pressed }) => [styles.sharePromptAction, { backgroundColor: homeColors.accent }, pressed && styles.pressed]}>
+              <Text style={[styles.sharePromptActionText, { color: homeColors.onAccent }]}>Share</Text>
+            </TouchPressable>
+            <TouchPressable accessibilityRole="button" accessibilityLabel="Dismiss share prompt" hitSlop={8} onPress={dismissSharePrompt} style={({ pressed }) => [styles.sharePromptDismiss, pressed && styles.pressed]}>
+              <SymbolView name="xmark" tintColor={homeColors.textSecondary} size={11} weight="bold" />
+            </TouchPressable>
+          </View>}
           {contextualWidget}
           {presentation.summary.length ? <TouchPressable testID="home-road-summary" accessibilityRole="button" accessibilityLabel="Open road summary in Statistics" accessibilityHint="Long press to edit Home" onPress={onStatistics} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.homeRoadSummary, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
             <View style={styles.homeRoadSummaryHeader}><View><Text style={[styles.homeRoadSummaryKicker, { color: homeColors.accent }]}>ROAD SUMMARY</Text><Text style={[styles.homeRoadSummaryTitle, { color: homeColors.text }]}>Along the way</Text></View><SymbolView name="chevron.right" tintColor={homeColors.accent} size={17} /></View>
@@ -3880,6 +3898,11 @@ const darkStyles = StyleSheet.create({
   approvedLatestMemoryMetaText: { flex: 1, color: '#9e92a4', fontSize: 10.5 },
   approvedLatestMemoryMore: { width: 39, height: 39, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(166,142,177,0.36)', backgroundColor: 'rgba(27,20,34,0.72)', alignItems: 'center', justifyContent: 'center' },
   approvedLatestMemoryMoreText: { color: '#d0c3d6', fontSize: 13, letterSpacing: 1 },
+  sharePrompt: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 16, borderWidth: 1, paddingVertical: 11, paddingHorizontal: 13 },
+  sharePromptText: { flex: 1, fontSize: 12.5, fontWeight: '600' },
+  sharePromptAction: { borderRadius: 12, paddingHorizontal: 13, paddingVertical: 7 },
+  sharePromptActionText: { fontSize: 12.5, fontWeight: '800' },
+  sharePromptDismiss: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center' },
   approvedLatestSong: { minHeight: 90, borderRadius: 21, borderWidth: 1, borderColor: 'rgba(139,83,181,0.38)', backgroundColor: 'rgba(11,7,18,0.92)', paddingHorizontal: 14, paddingVertical: 13, flexDirection: 'row', alignItems: 'center', gap: 16, shadowColor: '#9f52e8', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 7 } },
   approvedLatestSongFallback: { width: 58, height: 58, borderRadius: 13, borderWidth: 1, borderColor: 'rgba(173,105,221,0.34)', backgroundColor: 'rgba(69,31,91,0.58)', alignItems: 'center', justifyContent: 'center' },
   approvedLatestSongKicker: { color: '#c98cff', fontSize: 8, fontWeight: '900', letterSpacing: 1.25 },

@@ -345,6 +345,11 @@ test('Home and navigation reproduce the approved manual-recorder composition', (
   assert.match(shell, /<CardDetailLink kind="journey" id=\{latestJourney\?\.id\} actions=\{\[\]\}>/);
   assert.match(shell, /latestTrack \? <Artwork track=\{latestTrack\} size=\{58\}/);
   assert.match(shell, /onJourney\(latestJourney\.id\)/);
+  assert.match(shell, /const showSharePrompt = Boolean\(latestJourney && latestJourney\.id !== promptedShareJourneyId\)/);
+  assert.match(shell, /Your drive is ready to share\./);
+  assert.match(shell, /openJourneyCardAction\(latestJourney\.id, 'share'\)/);
+  assert.match(shell, /accessibilityLabel="Dismiss share prompt"/);
+  assert.match(shell, /markShareJourneyPrompted\(latestJourney\.id\)/);
   assert.match(nativeNavigation, /home-tab-orange\.png/);
   assert.match(nativeNavigation, /renderingMode="original"/);
   assert.match(shell, /recorderActive && styles\.approvedHomeScenicSpaceActive/);
