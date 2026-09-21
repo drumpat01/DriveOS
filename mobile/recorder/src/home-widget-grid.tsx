@@ -3,9 +3,9 @@ import { Alert, I18nManager, Pressable, StyleSheet, Text, View, type ViewStyle }
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { ReduceMotion, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { SymbolView } from 'expo-symbols';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useAppTheme } from './app-theme';
-import { cycleHomeWidgetSpan, defaultHomeWidgetLayout, homeWidgetMoveOffset, homeWidgetResizeSpan, resizeHomeWidget, loadHomeWidgetLayouts, moveHomeWidget, saveHomeWidgetLayouts, toggleHomeWidget, type HomeLayoutClass, type HomeWidgetId, type HomeWidgetPlacement, type StoredHomeLayouts } from './home-widget-layout';
+import { cycleHomeWidgetSpan, defaultHomeWidgetLayout, homeWidgetMoveOffset, homeWidgetResizeSpan, resizeHomeWidget, loadHomeWidgetLayouts, moveHomeSummaryWidget, moveHomeWidget, saveHomeWidgetLayouts, selectHomeContextWidget, toggleHomeWidget, type HomeLayoutClass, type HomeWidgetId, type HomeWidgetPlacement, type StoredHomeLayouts } from './home-widget-layout';
 import { journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { NativeSheet } from './native-sheet';
 
@@ -27,11 +27,15 @@ export function useHomeWidgetLayout(layoutClass: HomeLayoutClass, includeFiftySt
     move: (id: HomeWidgetId, offset: number) => offset && update(moveHomeWidget(placements, id, offset)),
     resize: (id: HomeWidgetId, span?: number) => update(span === undefined ? cycleHomeWidgetSpan(placements, id) : resizeHomeWidget(placements, id, span)),
     toggle: (id: HomeWidgetId) => update(toggleHomeWidget(placements, id)),
+    selectContext: (id: HomeWidgetId) => update(selectHomeContextWidget(placements, id)),
+    moveSummary: (id: HomeWidgetId, offset: -1 | 1) => update(moveHomeSummaryWidget(placements, id, offset)),
     reset: () => update(defaultHomeWidgetLayout(layoutClass, includeFiftyStates, includeAsk)),
   };
 }
 
-export function HomeLayoutEditorSheet({ visible, onClose, onReset, children }: { visible: boolean; onClose: () => void; onReset: () => void; children: ReactNode }) {
+export function HomeLayoutEditorSheet({ visible, onClose, onReset, children, noteIcon = 'hand.draw', note = 'Drag to reorder. Pull either edge to resize. Hide anything you do not want on Home.' }: {
+  visible: boolean; onClose: () => void; onReset: () => void; children: ReactNode; noteIcon?: SFSymbol; note?: string;
+}) {
   const theme = useAppTheme();
   const colors = journeyDeckSemanticColors(theme.id, theme.palette);
   const reset = () => Alert.alert('Reset Home layout?', 'This restores every widget, size, and position to the JourneyDeck default.', [
@@ -43,8 +47,8 @@ export function HomeLayoutEditorSheet({ visible, onClose, onReset, children }: {
     <Pressable accessibilityRole="button" accessibilityLabel="Finish editing Home layout" onPress={onClose} style={[styles.sheetButton, { backgroundColor: colors.accent }]}><Text style={[styles.sheetButtonText, { color: colors.onAccent }]}>Done</Text></Pressable>
   </View>}>
     <View style={[styles.sheetNote, { backgroundColor: colors.surfaceInset, borderColor: colors.separator }]}>
-      <SymbolView name="hand.draw" tintColor={colors.accent} size={21} />
-      <Text style={[styles.sheetNoteText, { color: colors.textSecondary }]}>Drag to reorder. Pull either edge to resize. Hide anything you do not want on Home.</Text>
+      <SymbolView name={noteIcon} tintColor={colors.accent} size={21} />
+      <Text style={[styles.sheetNoteText, { color: colors.textSecondary }]}>{note}</Text>
     </View>
     {children}
   </NativeSheet>;

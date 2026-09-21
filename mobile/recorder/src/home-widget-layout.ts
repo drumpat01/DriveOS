@@ -97,6 +97,30 @@ export function homeWidgetResizeSpan(id: HomeWidgetId, span: number, cellWidth: 
   return allowed[id].reduce((best, size) => Math.abs(size - requested) < Math.abs(best - requested) ? size : best, span);
 }
 
+/**
+ * Home's curated phone layout only ever shows the first visible context
+ * widget (see selectHomePresentation), so "choosing" one just means making
+ * it the only visible candidate -- no reordering needed.
+ */
+export function selectHomeContextWidget(layout: HomeWidgetPlacement[], id: HomeWidgetId): HomeWidgetPlacement[] {
+  if (!HOME_CONTEXT_WIDGETS.includes(id)) return layout;
+  return layout.map(item => HOME_CONTEXT_WIDGETS.includes(item.id) ? { ...item, hidden: item.id !== id } : item);
+}
+
+/** Reorders one summary metric relative to the others, leaving memory/context placements untouched. */
+export function moveHomeSummaryWidget(layout: HomeWidgetPlacement[], id: HomeWidgetId, offset: -1 | 1): HomeWidgetPlacement[] {
+  const summarySlots = layout.filter(item => HOME_SUMMARY_WIDGETS.includes(item.id)).sort((left, right) => left.order - right.order);
+  const from = summarySlots.findIndex(item => item.id === id);
+  if (from < 0) return layout;
+  const to = Math.max(0, Math.min(summarySlots.length - 1, from + offset));
+  if (to === from) return layout;
+  const reordered = [...summarySlots];
+  const [moved] = reordered.splice(from, 1);
+  reordered.splice(to, 0, moved!);
+  const orderById = new Map(reordered.map((item, index) => [item.id, summarySlots[index]!.order]));
+  return layout.map(item => orderById.has(item.id) ? { ...item, order: orderById.get(item.id)! } : item);
+}
+
 export type HomeWidgetRow = { pane: number; placements: HomeWidgetPlacement[]; usedColumns: number };
 
 /** Packs logical spans into rows. A vertical fold is represented as two independent
