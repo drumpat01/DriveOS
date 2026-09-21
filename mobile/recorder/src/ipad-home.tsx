@@ -20,6 +20,8 @@ import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { router } from 'expo-router';
 import { JourneyImage } from './journey-image';
 import { journeyDeckSemanticColors } from './journeydeck-design-tokens';
+import { openJourneyCardAction } from './journey-card-action';
+import { lastPromptedShareJourneyId, markShareJourneyPrompted } from './share-prompt';
 
 function ipadHomeColumns(width: number) {
   return { songs: width >= 1050 ? 4 : width >= 700 ? 3 : width >= 420 ? 2 : 1 };
@@ -90,8 +92,17 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
   const insets = useSafeAreaInsets();
   const adaptiveLayout = useAdaptiveLayout();
   const elementTheme = useAppTheme();
+  const homeColors = journeyDeckSemanticColors(elementTheme.id, elementTheme.palette);
   const [width, setWidth] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [promptedShareJourneyId, setPromptedShareJourneyId] = useState<string | null>(() => lastPromptedShareJourneyId());
+  const latestJourney = journeys[0] ?? null;
+  const showSharePrompt = Boolean(latestJourney && latestJourney.id !== promptedShareJourneyId);
+  const dismissSharePrompt = () => {
+    if (!latestJourney) return;
+    markShareJourneyPrompted(latestJourney.id);
+    setPromptedShareJourneyId(latestJourney.id);
+  };
   const layoutClass = adaptiveLayout.isCompact || (width > 0 && width < 700) ? 'compact' : 'regular';
   const gridLayout = useHomeWidgetLayout(layoutClass, Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED);
   const placements = gridLayout.placements;
@@ -129,6 +140,16 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
     <View testID="ipad-home-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
       <IpadPageHeader title="Home" width={width} artwork={require('../assets/cinematic-home-main-photo-v1.jpg')} subtitle="Your roads. Your memories. Your music." split={headerFoldColumns} />
       <View testID="home-fixed-recorder" style={{ marginTop: 24 }}>{recorder}</View>
+      {showSharePrompt && latestJourney && <View style={[styles.sharePrompt, { backgroundColor: c.card, borderColor: c.line }]}>
+        <SymbolView name="square.and.arrow.up" tintColor={c.accent} style={styles.icon} />
+        <Text style={[styles.cardTitle, styles.sharePromptText, { color: c.text }]}>Your drive is ready to share.</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Share this drive" onPress={() => { markShareJourneyPrompted(latestJourney.id); setPromptedShareJourneyId(latestJourney.id); openJourneyCardAction(latestJourney.id, 'share'); }} style={[styles.sharePromptAction, { backgroundColor: c.accent }]}>
+          <Text style={[styles.sharePromptActionText, { color: homeColors.onAccent }]}>Share</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Dismiss share prompt" hitSlop={8} onPress={dismissSharePrompt} style={styles.sharePromptDismiss}>
+          <SymbolView name="xmark" tintColor={c.muted} style={styles.sharePromptDismissIcon} />
+        </Pressable>
+      </View>}
       {error ? <Text accessibilityRole="alert" style={{ color: c.muted }}>{error}</Text> : null}
       {loading && !music ? <ActivityIndicator accessibilityLabel="Loading your library" color={c.accent} /> : null}
       {foldColumns ? <View testID="ipad-home-fold-grid" style={{ flexDirection: 'row', gap: foldColumns.gap }}><View testID="ipad-home-fold-before" style={[styles.widgetGrid, { width: foldColumns.beforeWidth }]}>{foldRows.filter(row => row.pane === 0).flatMap(row => row.placements).map(renderPlacement)}</View><View testID="ipad-home-fold-after" style={[styles.widgetGrid, { width: foldColumns.afterWidth }]}>{foldRows.filter(row => row.pane === 1).flatMap(row => row.placements).map(renderPlacement)}</View></View> : <View testID="ipad-home-widgets" style={styles.widgetGrid}>{placements.map(renderPlacement)}</View>}
@@ -184,6 +205,12 @@ const styles = StyleSheet.create({
   memoryRow: { flexDirection: 'row', gap: IPAD_GRID_GAP }, memory: { flex: 1, gap: 7 }, memoryPhoto: { width: '100%', aspectRatio: 1.55, borderRadius: 16 },
   cardTitle: { fontSize: 15, fontWeight: '600', lineHeight: 21 }, meta: { fontSize: 12, lineHeight: 18, marginTop: 3 },
   journey: { flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center', paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth }, journeyIcon: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  sharePrompt: { marginTop: 16, borderRadius: 20, borderWidth: 1, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sharePromptText: { flex: 1, marginTop: 0, fontWeight: '600' },
+  sharePromptAction: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 9 },
+  sharePromptActionText: { fontWeight: '800', fontSize: 14 },
+  sharePromptDismiss: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  sharePromptDismissIcon: { width: 14, height: 14 },
   empty: { fontSize: 15, lineHeight: 23, minHeight: 70, paddingVertical: 18 }, song: { flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center' }, album: { width: 64, height: 76, borderRadius: 12 }, albumFallback: { alignItems: 'center', justifyContent: 'center' },
   recorder: { gap: IPAD_GRID_GAP, flexShrink: 1 }, recorderRow: { flexDirection: 'row', flexWrap: 'wrap', gap: IPAD_GRID_GAP, alignItems: 'center' }, status: { fontSize: 12, fontWeight: '700', letterSpacing: 1 },
   start: { minHeight: 48, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 16, borderWidth: 1, flexDirection: 'row', gap: IPAD_GRID_GAP, alignItems: 'center' }, startText: { fontSize: 16, fontWeight: '600' }, secondaryAction: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', paddingHorizontal: 12 },

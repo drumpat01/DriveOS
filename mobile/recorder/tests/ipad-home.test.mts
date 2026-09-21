@@ -38,6 +38,7 @@ const homeWidgetGrid = {
   HomeLayoutEditorSheet: ({ visible, children }: any) => visible ? React.createElement('View', { testID: 'home-layout-editor-sheet' }, children) : null,
   HomeGridCell: ({ placement, title, editing, width, children, onMove, onResize, onToggle }: any) => React.createElement('View', { testID: `home-grid-${placement.id}`, style: [{ width }], accessibilityLabel: `${title}, ${placement.span} of 12 columns${placement.hidden ? ', hidden' : ''}`, accessibilityActions: editing ? [{ name: 'moveEarlier', label: 'Move earlier' }, { name: 'moveLater', label: 'Move later' }, { name: 'resize', label: 'Resize' }, { name: placement.hidden ? 'show' : 'hide', label: placement.hidden ? 'Show' : 'Hide' }] : undefined, onAccessibilityAction: (event: any) => event.nativeEvent.actionName === 'moveEarlier' ? onMove(-1) : event.nativeEvent.actionName === 'moveLater' ? onMove(1) : event.nativeEvent.actionName === 'resize' ? onResize() : onToggle() }, children),
 };
+let shareState: { prompted: string | null; opened: string[] } = { prompted: null, opened: [] };
 const theme = () => testTheme(mode);
 const phoneTabTitle = load('phone-tab-title.tsx', { 'react-native': native, './app-theme': { useAppTheme: theme } });
 const header = load('ipad-page-header.tsx', {
@@ -63,6 +64,8 @@ const ui = load('ipad-home.tsx', {
   './header-image-sources': { headerImageSource: (source: string, appearance: string) => `${appearance}:${source}` },
   './app-data': { appDataClient: { photoDataUrl: async () => null } },
   './journey-title': { journeyDisplayTitle: (journey: any) => journey.title },
+  './journey-card-action': { openJourneyCardAction: (id: string, action: string) => { if (action === 'share') shareState.opened.push(id); } },
+  './share-prompt': { lastPromptedShareJourneyId: () => shareState.prompted, markShareJourneyPrompted: (id: string) => { shareState.prompted = id; } },
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|');
 
@@ -335,5 +338,29 @@ test('recorder controls retain permission, start, finish and resume actions with
     }
     await act(() => tree.update(React.createElement(ui.IpadRecorderControls, { ...props, status: 'ready', busy: true })));
     assert.equal(tree.root.findAllByType('Pressable')[0].props.disabled, true);
+  } finally { await act(() => tree?.unmount()); }
+});
+
+test('iPad Home surfaces the same dismissible share prompt as phone, once per newly completed journey', async () => {
+  shareState = { prompted: null, opened: [] };
+  const journeys = [{ id: 'journey-1', title: 'Coast Drive', miles: 10, durationMinutes: 20 }];
+  const props = { memories: [], journeys, music: { metrics: {}, recentSelections: [] }, recorder: React.createElement('recorder'), onMemory() {}, onJourney() {} };
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(ui.IpadHomeScreen, props)); });
+    assert.ok(tree.root.findByProps({ accessibilityLabel: 'Share this drive' }));
+    const dismiss = tree.root.findByProps({ accessibilityLabel: 'Dismiss share prompt' });
+    await act(() => dismiss.props.onPress());
+    assert.equal(shareState.prompted, 'journey-1');
+    assert.deepEqual(shareState.opened, []);
+    await act(() => tree.update(React.createElement(ui.IpadHomeScreen, props)));
+    assert.equal(tree.root.findAllByProps({ accessibilityLabel: 'Share this drive' }).length, 0, 'the prompt does not reappear for an already-handled journey');
+
+    shareState = { prompted: null, opened: [] };
+    await act(() => { tree.unmount(); tree = create(React.createElement(ui.IpadHomeScreen, props)); });
+    const share = tree.root.findByProps({ accessibilityLabel: 'Share this drive' });
+    await act(() => share.props.onPress());
+    assert.deepEqual(shareState.opened, ['journey-1']);
+    assert.equal(shareState.prompted, 'journey-1');
   } finally { await act(() => tree?.unmount()); }
 });
