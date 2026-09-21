@@ -1225,7 +1225,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
   const latestDetail = latestSummary ? primary.data?.details.find(detail => detail.id === latestSummary.id) ?? null : null;
   const latestJourney = latestDetail ?? latestSummary;
   const [promptedShareJourneyId, setPromptedShareJourneyId] = useState<string | null>(() => lastPromptedShareJourneyId());
-  const showSharePrompt = Boolean(latestJourney && latestJourney.songCount > 0 && latestJourney.id !== promptedShareJourneyId);
+  const showSharePrompt = Boolean(latestJourney && latestJourney.id !== promptedShareJourneyId);
   const dismissSharePrompt = () => {
     if (!latestJourney) return;
     markShareJourneyPrompted(latestJourney.id);
