@@ -35,6 +35,15 @@ The build retains the V3 identity and CloudKit container, runtime preview.4, int
 testing flag and v3-preview OTA channel. It must not target the old marker-compatible
 runtime preview.2. The old V2 App Store identity remains frozen.
 
+After source checks, the workflow computes an iOS `@expo/fingerprint` **balanced**
+hash and compares it with `native-fingerprint.ios.json`. An unchanged hash skips
+prebuild/archive/export and prints the EAS Update command instead of compiling.
+There is no committed hash yet, so the first run still archives (fail closed).
+Pass `force_native` to archive anyway. After a successful archive, commit the
+hash from the `journeydeck-v3-ios-fingerprint` artifact so later JS-only runs
+skip Xcode. The workflow never publishes an update or invokes EAS Build.
+See [expo-ci-update-path.md](expo-ci-update-path.md).
+
 Device validation starts at Ask JourneyDeck → Open Siri AI testing → Run 13-question
 sample, followed by the complete 100-question suite. Then check real archive answers,
 Siri invocation/replies, follow-ups, profile switching, locking during inference,

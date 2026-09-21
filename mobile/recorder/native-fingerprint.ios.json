@@ -1,0 +1,9 @@
+{
+  "platform": "ios",
+  "preset": "balanced",
+  "runtimeVersion": "3.0.0-preview.4",
+  "channel": "v3-preview",
+  "hash": null,
+  "recordedAt": null,
+  "note": "Commit hash after the next successful V3 native iOS archive. Until then the delta script fails closed and prefers a native rebuild over skipping."
+}

@@ -1,0 +1,6 @@
+# Baseline hash is a CI decision record, not a native input.
+native-fingerprint.ios.json
+
+# Documentation and local diagnostics must not force a native rebuild.
+docs/**/*
+.ai/**/*
