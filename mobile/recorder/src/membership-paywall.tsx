@@ -142,7 +142,7 @@ export function MembershipPaywall({ visible, state, onClose, onLoadProducts, onP
             accessibilityLabel="Close membership"
             hitSlop={8}
             onPress={onClose}
-            style={({ pressed }) => [styles.close, { top: 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.close, { top: insets.top + 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
           >
             <SymbolView name="xmark" tintColor={colors.text} size={14} weight="bold" />
           </Pressable>
