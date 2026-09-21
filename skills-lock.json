@@ -7,6 +7,12 @@
       "skillPath": "skills/animate-expo/SKILL.md",
       "computedHash": "3e914b8abdff154a289dcabc63817b6b5d649272a0d054e7e799f37e4bb1c471"
     },
+    "app-store-preflight-skills": {
+      "source": "truongduy2611/app-store-preflight-skills",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "d8453567aa7081c056a5db0cbf4ba3bc83539fe20b45b5c378f14854f64cd390"
+    },
     "appllama-app-design-skill": {
       "source": "appllama/appllama-skills",
       "sourceType": "github",
@@ -19,11 +25,47 @@
       "skillPath": "skills/appllama-usage/SKILL.md",
       "computedHash": "9b9ecf34e1585ad0e77d749e5e5178270ea1b73147459ef53db7340aa16eb4e2"
     },
+    "audit-xcode-security-settings": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "audit-xcode-security-settings/SKILL.md",
+      "computedHash": "ffca62ba2f37b4478cd9a30fce9d3977035ca62efab9eed0cb0d164bbba08ef6"
+    },
+    "c-bounds-safety": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "c-bounds-safety/SKILL.md",
+      "computedHash": "847a9c14836afa5bae7ee985d0046fe3f0a11b0813a6e64222a0ef7b9d69cadd"
+    },
+    "device-interaction": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "device-interaction/SKILL.md",
+      "computedHash": "0c5227ece0491ae5b960a30f38d6416ea9e789aa936147cc671de66537e2c5e4"
+    },
     "review-animations": {
       "source": "emilkowalski/skills",
       "sourceType": "github",
       "skillPath": "skills/review-animations/SKILL.md",
       "computedHash": "8c2befeb28bb484bf2de7b2fc228774857e266d32a65d76895e78651a536d8cf"
+    },
+    "swiftui-whats-new-27": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "swiftui-whats-new-27/SKILL.md",
+      "computedHash": "5c9ec68f54790aefb9055341b48fb5031246207439c53daf69c7a7af863933cf"
+    },
+    "test-modernizer": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "test-modernizer/SKILL.md",
+      "computedHash": "d3f20ce87c81690a4d133b5f63e731650fde4b61907e035cbb185ffc83e6ebd7"
+    },
+    "uikit-app-modernization": {
+      "source": "superagents-lab/xcode27-skills",
+      "sourceType": "github",
+      "skillPath": "uikit-app-modernization/SKILL.md",
+      "computedHash": "91bbc8aa9a92540c40d566e4403985feabfa2bd1dd9fdf6416417326fd7562de"
     }
   }
 }
