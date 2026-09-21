@@ -37,17 +37,23 @@ const snapshot: any = { userId: 'owner', rootJourneyId: 'trip', journeyId: 'trip
     points: Array.from({ length: 11 }, (_, sequence) => ({ journeyId: 'trip', sequence, latitude: 40 + sequence / 1000, longitude: 10, recordedAt: new Date(startMs + sequence * 60_000).toISOString() })), songs: [] } };
 function fixture() {
   let theme: keyof typeof themeCatalog = 'redline', calls = 0, resolveSave: (() => void) | null = null;
-  const responders: any[] = [];
-  class Value { value: number; constructor(value: number) { this.value = value; } setValue(n: number) { this.value = n; } }
+  const gestures: any[] = [];
   const module = { exports: {} as any };
   const source = readFileSync(new URL('../src/journey-editor-screen.tsx', import.meta.url), 'utf8');
   const mocks: Record<string, any> = {
     'react-native': { View: host('view'), Text: host('text'), Pressable: host('button'), ScrollView: host('scroll'), ActivityIndicator: host('loading'),
       StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, Alert: { alert() {} },
       useWindowDimensions: () => ({ width: 1200, height: 850, fontScale: 1 }),
-      AccessibilityInfo: { isReduceMotionEnabled: async () => true, addEventListener: () => ({ remove() {} }) },
-      Animated: { Value, View: host('animated'), spring: () => ({ start() {} }) },
-      PanResponder: { create: (config: any) => { responders.push(config); return { panHandlers: config }; } } },
+      AccessibilityInfo: { isReduceMotionEnabled: async () => true, addEventListener: () => ({ remove() {} }) } },
+    'react-native-gesture-handler': { GestureDetector: host('detector'), Gesture: { Pan: () => {
+      const config: any = {};
+      const builder: any = new Proxy({}, { get: (_, name) => (...args: any[]) => { config[name] = args[0]; return builder; } });
+      gestures.push(config); return builder;
+    } } },
+    'react-native-reanimated': { __esModule: true, default: { View: host('animated') },
+      useSharedValue: (initial: number) => React.useMemo(() => { let value = initial; return { get: () => value, set: (next: number) => { value = next; } }; }, []),
+      useAnimatedStyle: (fn: any) => fn(), withSpring: (v: any) => v },
+    'react-native-worklets': { scheduleOnRN: (fn: any, ...args: any[]) => fn(...args) },
     'expo-router': { router: { back() {}, replace() {} }, useLocalSearchParams: () => ({ id: 'trip' }) },
     'expo-haptics': { selectionAsync: async () => {} },
     './app-theme': { useAppTheme: () => ({ ...themeCatalog[theme], id: theme }) },
@@ -62,20 +68,26 @@ function fixture() {
   };
   vm.runInNewContext(ts.transpileModule(source + '\nexports.Editor = Editor;', { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 } }).outputText,
     { exports: module.exports, module, require: (id: string) => mocks[id] ?? require(id), setTimeout, clearTimeout });
-  return { Editor: module.exports.Editor, responders, setTheme: (id: keyof typeof themeCatalog) => { theme = id; }, calls: () => calls, finish: () => resolveSave?.() };
+  return { Editor: module.exports.Editor, gestures, setTheme: (id: keyof typeof themeCatalog) => { theme = id; }, calls: () => calls, finish: () => resolveSave?.() };
 }
 const label = (node: any): string => node.findAllByType('text').map((t: any) => t.props.children).flat().join('');
 function button(tree: any, text: string) { return tree.root.findAllByType('button').find((node: any) => label(node) === text); }
 
-test('actual editor follows a drag, retains preview through all themes, and commits only once after review', async () => {
+test('actual editor tracks a drag visually without committing, then commits once on release, retaining preview through all themes', async () => {
   const f = fixture(); let tree: any, saved = 0;
   const props = { snapshot, premium: true, onBack() {}, onSaved: async () => { saved++; } };
   await act(() => { tree = create(React.createElement(f.Editor, props)); });
   const layout = tree.root.findAllByType('view').find((v: any) => v.props.onLayout);
   await act(() => layout.props.onLayout({ nativeEvent: { layout: { width: 600 } } }));
-  const handle = tree.root.findAllByType('animated').find((v: any) => v.props.accessibilityLabel === 'Start trim time');
-  await act(() => { handle.props.onPanResponderGrant(); handle.props.onPanResponderMove({}, { dx: 120 }); });
-  assert.equal(tree.root.findByType('map').props.range.startMs, startMs + 120_000);
+  // The width change re-renders both handles, recreating their memoized gesture
+  // (it depends on width); ['start', 'end'] mount in order, so the current
+  // start-handle gesture is the second-to-last one created.
+  const startGesture = f.gestures.at(-2);
+  await act(() => { startGesture.onBegin(); startGesture.onUpdate({ translationX: 120 }); });
+  assert.equal(tree.root.findByType('map').props.range.startMs, startMs, 'a live drag must not touch React state or re-render the map preview');
+  assert.equal(f.calls(), 0);
+  await act(() => { startGesture.onEnd(); });
+  assert.equal(tree.root.findByType('map').props.range.startMs, startMs + 120_000, 'releasing commits the dragged value once');
   assert.equal(f.calls(), 0);
   for (const id of ['dark', 'light', 'sakura', 'redline'] as const) {
     f.setTheme(id); await act(() => tree.update(React.createElement(f.Editor, props)));
