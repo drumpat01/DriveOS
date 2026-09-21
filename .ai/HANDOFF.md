@@ -1,5 +1,16 @@
 # Current Handoff State: Zero-Cost Multi-User Local-First Architecture
 
+## CI cleanup, PR #151/#152 merge, and skill installs — September 20, 2026
+
+- Diagnosed why PRs #151 (`fix/restore-v3-handoff-notes`) and #152 (`feat/onboarding-redesign`) kept failing CI across repeated pushes: an earlier bad merge had dropped/altered cron schedules in three GitHub Actions workflows (`spotify-history-sync.yml`, `tessie-history-sync.yml`, `turso-restore-rehearsal.yml`), and separately a historical EAS submission UUID (`408363e3-5fe2-4afd-b5d8-9434c2a10f0f`) was tripping gitleaks' full-history scan. Each push had fixed one failing assertion at a time while another was still broken, producing a different failure on almost every run.
+- User confirmed those three scheduled workflows exist only to support the retired web app and should not run at all. Deleted all three workflow files outright (kept `tessie-readiness-audit.yml`, which is already on-demand only) and removed the now-stale Pester assertions that required those schedules to exist from `tests/TessieIngestion.Tests.ps1`, `tests/TursoRestoreWorkflow.Tests.ps1`, and `tests/SpotifyScheduledSync.Tests.ps1` — kept the rest of each file intact since they also cover real unit-test logic (Tessie sync windowing, restore-tool safety checks, scheduled-sync server auth) unrelated to scheduling. Updated `tests/ReleaseWorkflow.Tests.ps1` to stop referencing a workflow path that no longer exists.
+- Discovered and discarded uncommitted local edits that had been re-adding the deleted schedule blocks (the wrong direction once the "no schedules should run" decision was made).
+- After merging main into `feat/onboarding-redesign`, CI surfaced a new, unrelated failure: `tools/Test-ReleasePreflight.ps1`'s forbidden-tracked-file check used a bare `.*token.*` regex that false-flagged the legitimate `mobile/recorder/src/journeydeck-design-tokens.ts` source file and its test as a leaked secret. Tightened the regex to require "token" as a standalone word (`(?<![a-z])token(?!s)(?![a-z])`) so it still catches credential-shaped names (`auth-token.json`, `access_token.txt`) but not "design-tokens". Verified locally against both real and false-positive cases before committing.
+- Installed the `animate-expo` and `review-animations` skills from `emilkowalski/skills` (via `npx skills@latest add`) alongside the existing `appllama-app-design-skill`/`appllama-usage` skills, for Expo/Reanimated motion work and animation-quality audits. Files live under `.claude/skills/` and `.agents/skills/`, tracked in `skills-lock.json`.
+- PR #151 committed (`42ac442` schedule/test cleanup, `540c962` skill install, `cb78e92` preflight regex fix), pushed, CI green, merged to `main` (`48aa763`), branch deleted.
+- PR #152 merged `main` in (`337c080`) to inherit both fixes, CI green, merged to `main` (`fea177e`), branch deleted. No open PRs remained after this session.
+- Housekeeping: archived a stale duplicate Claude Code session ("Claude code identification") that was pointed at this same working directory with an already-merged PR (#150), at the user's confirmation, to stop the two sessions from conflicting.
+
 ## V3 mobile app redesign snapshot — September 19, 2026
 
 ### Current objective
