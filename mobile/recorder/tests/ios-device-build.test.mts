@@ -44,4 +44,16 @@ test('device workflow is manual, public standard runner only, and exports only a
   assert.match(upload.with.path, /JourneyDeckEncrypted/);
   assert.equal(upload.with['retention-days'], 1);
   assert.equal(upload.if, "env.NATIVE_REBUILD == 'true'");
+  const load = w.jobs.build.steps.find((s: any) => s.uses === '1password/load-secrets-action@v5');
+  assert.equal(load.with['export-env'], true);
+  assert.equal(load.if, "env.NATIVE_REBUILD == 'true'");
+  assert.equal(load.env.OP_SERVICE_ACCOUNT_TOKEN, '${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}');
+  for (const name of [
+    'IOS_DISTRIBUTION_P12_BASE64', 'IOS_DISTRIBUTION_P12_PASSWORD',
+    'IOS_V3_PROFILE_BASE64', 'IOS_V3_WATCH_PROFILE_BASE64',
+    'IOS_TEST_DEVICE_UDID', 'IOS_ARTIFACT_PASSWORD',
+  ]) {
+    assert.equal(load.env[name], `op://JourneyDeck-CI/ios-v3-device/${name}`);
+  }
+  assert.doesNotMatch(text, /secrets\.IOS_/);
 });

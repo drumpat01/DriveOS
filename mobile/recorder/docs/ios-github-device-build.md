@@ -6,16 +6,27 @@ snapshot repository. It never invokes EAS Build or starts a simulator/video stre
 It allows 60 minutes for Xcode compilation within a 90-minute job. Dependency caches
 are reused; signed apps, certificates and provisioning profiles are never cached.
 
-Required GitHub Actions secrets (values must never enter source or workflow inputs):
+Signing blobs are **not** stored in the GitHub Secrets UI. At archive time the
+workflow injects the six existing environment names from 1Password with
+`1password/load-secrets-action@v5` (`export-env: true`). The only GitHub secret
+allowed for this job is `OP_SERVICE_ACCOUNT_TOKEN`. Do not add `.p12` files,
+provisioning profiles, UDIDs, or the artifact password to GitHub Secrets.
 
-| Secret | Purpose |
+The injected names are unchanged; `prepare-ios-signing.py` still reads them as
+environment variables:
+
+| Environment name | Purpose |
 | --- | --- |
 | IOS_DISTRIBUTION_P12_BASE64 | Existing distribution certificate with private key |
 | IOS_DISTRIBUTION_P12_PASSWORD | Certificate password |
-| IOS_V3_PROFILE_BASE64 | Ad hoc profile for com.journeydeck.recorder.v3 |
-| IOS_V3_WATCH_PROFILE_BASE64 | Matching .watchkitapp ad hoc profile |
+| IOS_V3_PROFILE_BASE64 | **Ad hoc** profile for com.journeydeck.recorder.v3 |
+| IOS_V3_WATCH_PROFILE_BASE64 | Matching .watchkitapp **ad hoc** profile |
 | IOS_TEST_DEVICE_UDID | Registered iPhone identifier, used only for validation |
 | IOS_ARTIFACT_PASSWORD | At least 32 cryptographically random characters |
+
+App Store / App Store Connect profiles will fail the signing preflight. Store
+already-base64 text in 1Password (not GitHub). Key Master setup:
+[ios-1password-ci.md](ios-1password-ci.md).
 
 The existing V3 profiles were checked through the authenticated EAS credential
 reader and already include the user's iPhone. No new Apple certificate or device

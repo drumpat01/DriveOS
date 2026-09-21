@@ -82,7 +82,7 @@ Patrick has no Mac. Prefer the physical iPhone. Do not start from an Android emu
 
 Extend the tools that already exist. Do not add a new CI product.
 
-**V3 internal device (current):** `.github/workflows/ios-v3-device.yml` on `macos-26` with the existing six signing secrets. Fingerprint skip applies. Encrypted IPA artifact, local decrypt, temporary HTTPS install. Not TestFlight.
+**V3 internal device (current):** `.github/workflows/ios-v3-device.yml` on `macos-26`. The six signing names are injected from 1Password at archive time; GitHub holds only `OP_SERVICE_ACCOUNT_TOKEN`. Fingerprint skip applies. Encrypted IPA artifact, local decrypt, temporary HTTPS install. Not TestFlight. See [ios-1password-ci.md](ios-1password-ci.md).
 
 **V2 / public iOS (frozen):** EAS Build `production` + `eas submit --platform ios --profile production` from Windows. `eas.json` already has `submit.production.ios.ascAppId = 6806502526`. Reuse existing EAS Apple credentials / ASC API key. Do not add the `.p8` to git.
 
