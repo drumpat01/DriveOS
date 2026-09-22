@@ -6,6 +6,12 @@ TestFlight only — never App Store review submit from that stream. Never
 point it at isolated V3 preview `6814695593`. See
 [docs/ios-v3-testflight.md](./docs/ios-v3-testflight.md).
 
+**Existing-app rule:** do not create a new App Store Connect app for V3.
+Do not create an app named `V3` or `JourneyDeck V3`. V3 TestFlight must go
+to the existing live JourneyDeck listing (`6806502526`) with bundle
+`com.journeydeck.recorder`, profile `v3-testflight`, and
+`APP_VARIANT=v3-store`.
+
 
 This checklist is deliberately conservative. A green JavaScript test suite proves the repository is internally consistent; it does not by itself make a location-recording app ready for App Review.
 

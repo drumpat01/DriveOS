@@ -27,6 +27,25 @@ Before changing a widget flip or expanded-details interaction, read only the [At
 
 Run commands individually and keep output scoped.
 
+## OTA publishing
+
+Before any EAS Update / OTA work, read [docs/OTA_RUNBOOK.md](docs/OTA_RUNBOOK.md).
+Use `npm run ota:publish -- --target <target> --message "..."` instead of
+composing raw `eas update` commands. The wrapper defaults to dry-run and
+requires `--execute` for an authorized publish.
+
+## V3 TestFlight
+
+Before any V3 TestFlight / EAS Build / EAS Submit work, read
+[docs/ios-v3-testflight.md](docs/ios-v3-testflight.md) and
+[APP_STORE_RELEASE.md](APP_STORE_RELEASE.md). V3 TestFlight updates the
+existing live JourneyDeck App Store Connect app (`ascAppId` `6806502526`,
+bundle `com.journeydeck.recorder`) using profile `v3-testflight` and
+`APP_VARIANT=v3-store`. Never create a new App Store Connect app, never use
+the isolated `.v3` bundle or ascAppId `6814695593`, and never submit this
+stream to App Review. Run `npm run testflight:gate` before any authorized
+build/submit.
+
 ### Default: targeted validation
 
 - Run `npm run typecheck` when TypeScript types may be affected.

@@ -95,6 +95,8 @@
     "test:server-independence": "node --experimental-strip-types --test tests/server-independence.test.mts",
     "test:auth": "node --experimental-strip-types tests/auth.test.mts",
     "preflight:public-release": "node scripts/public-release-preflight.mjs",
+    "ota:publish": "node scripts/publish-ota.mjs",
+    "testflight:gate": "node scripts/v3-testflight-gate.mjs",
     "doctor": "npx expo-doctor",
     "fingerprint:ios": "node scripts/ios-fingerprint-delta.mjs",
     "build:ios:development": "eas build --platform ios --profile development",
