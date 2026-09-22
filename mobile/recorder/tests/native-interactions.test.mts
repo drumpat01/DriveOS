@@ -6,17 +6,22 @@ import vm from 'node:vm';
 import React from 'react';
 import { act, create } from 'react-test-renderer';
 import ts from 'typescript';
+import { nativeSheetModalProps } from '../src/navy-frost-policy.ts';
 
 const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 let prompt: any[] = [], keyboardDismissals = 0;
 const platform = { OS: 'ios' };
+const motion = { reduceMotion: false, reduceTransparency: false };
 const mocks: Record<string, unknown> = {
   'react-native': { Modal: host('modal'), View: host('view'), Text: host('text'), Pressable: host('button'), ScrollView: host('scroll'), KeyboardAvoidingView: host('keyboard-view'),
-    StyleSheet: { create: (styles: unknown) => styles }, Platform: platform,
+    StyleSheet: { create: (styles: unknown) => styles, absoluteFill: { position: 'absolute' } }, Platform: platform,
     Alert: { alert: (...args: any[]) => { prompt = args; } }, Keyboard: { dismiss: () => keyboardDismissals++ } },
   './app-theme': { useAppTheme: () => ({ color: (value: string) => value }), useThemedStyles: (styles: unknown) => styles },
+  './use-core-motion': { useCoreMotion: () => motion },
+  './navy-frost': { NavyFrostSurface: host('frost') },
+  './navy-frost-policy': { NAVY_FROST: { edge: '#8eb4e8', ink: '#f4f1ea', accent: '#8eb4e8' }, nativeSheetModalProps },
   '@expo/ui/community/menu': { MenuView: host('menu') },
   'expo-symbols': { SymbolView: host('symbol') },
 };
@@ -104,6 +109,32 @@ test('follow-up presentations wait for native iOS dismissal, with Android fallba
   assert.equal(dismissed, 2);
   await act(() => tree.unmount());
   platform.OS = 'ios';
+});
+
+test('frost sheets are transparent over imagery; Reduce Motion and Record skip chrome motion', async () => {
+  let tree: any, closed = 0;
+  motion.reduceMotion = false;
+  motion.reduceTransparency = false;
+  await act(() => { tree = create(React.createElement(NativeSheet, {
+    visible: true, title: 'Remember this moment', kicker: 'JOURNEY MARKER', surface: 'frost', onClose: () => closed++,
+  })); });
+  const modal = tree.root.findByType('modal');
+  assert.equal(modal.props.presentationStyle, 'overFullScreen');
+  assert.equal(modal.props.transparent, true);
+  assert.equal(modal.props.animationType, 'slide');
+  assert.equal(tree.root.findByType('frost').props.reduceTransparency, false);
+  motion.reduceMotion = true;
+  await act(() => tree.update(React.createElement(NativeSheet, {
+    visible: true, title: 'Remember this moment', kicker: 'JOURNEY MARKER', surface: 'frost', onClose: () => closed++,
+  })));
+  assert.equal(tree.root.findByType('modal').props.animationType, 'none');
+  motion.reduceMotion = false;
+  await act(() => tree.update(React.createElement(NativeSheet, {
+    visible: true, title: 'Remember this moment', kicker: 'JOURNEY MARKER', surface: 'frost', animateChrome: false, onClose: () => closed++,
+  })));
+  assert.equal(tree.root.findByType('modal').props.animationType, 'none');
+  assert.equal(tree.root.findByType('modal').props.allowSwipeDismissal, false);
+  await act(() => tree.unmount());
 });
 
 test('system menu preserves checkmarks and only invokes valid enabled actions', async () => {
