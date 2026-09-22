@@ -12,6 +12,14 @@
       "env": { "APP_VARIANT": "v3-preview", "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "1" },
       "ios": { "simulator": false }
     },
+    "v3-testflight": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "channel": "v3-preview",
+      "environment": "preview",
+      "env": { "APP_VARIANT": "v3-preview", "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "1" },
+      "ios": { "simulator": false }
+    },
     "v3-development-simulator": {
       "developmentClient": true,
       "distribution": "internal",
@@ -82,6 +90,11 @@
     "production": {
       "ios": {
         "ascAppId": "6806502526"
+      }
+    },
+    "v3-testflight": {
+      "ios": {
+        "ascAppId": "TBD-V3-ASC-APP-ID"
       }
     }
   }

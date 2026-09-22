@@ -1,5 +1,10 @@
 # JourneyDeck iOS public-release checklist
 
+V3 TestFlight is a different App Store Connect record from this V2 listing.
+Do not use `ascAppId` `6806502526` or the production submit profile for V3.
+See [docs/ios-v3-testflight.md](./docs/ios-v3-testflight.md).
+
+
 This checklist is deliberately conservative. A green JavaScript test suite proves the repository is internally consistent; it does not by itself make a location-recording app ready for App Review.
 
 ## Completed in the public-release code path
