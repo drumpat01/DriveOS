@@ -2,15 +2,15 @@ name: JourneyDeck V3 TestFlight
 
 # Skeleton only. Does not invoke EAS Build or EAS Submit.
 # V3 TestFlight is a separate App Store Connect record from V2 (6806502526).
-# Submit stays fail-closed until a real V3 ascAppId replaces TBD-V3-ASC-APP-ID
-# and Patrick/CoS give written clear.
+# Wired V3 ascAppId is 6814695593. Submit still requires Patrick/CoS written
+# clear. This skeleton never invokes EAS.
 #
 # Required later (not read by this workflow):
 #   EXPO_TOKEN — Expo account token for eas-cli
 # Credentials: prefer EAS-managed iOS credentials for com.journeydeck.recorder.v3
 # (`eas credentials`). Do not reuse ios-v3-device.yml ad hoc .p12 / profile secrets.
 #
-# Intended commands after a real V3 ascAppId and written clear (run elsewhere):
+# Intended commands after written Patrick/CoS clear (run elsewhere):
 #   npx eas-cli build --platform ios --profile v3-testflight --non-interactive
 #   npx eas-cli submit --platform ios --profile v3-testflight --non-interactive
 
@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       authorize_eas_build_and_submit:
-        description: Requires written Patrick/CoS clear and a real V3 ascAppId. Default stays blocked. This skeleton still will not invoke EAS.
+        description: Requires written Patrick/CoS clear. V3 ascAppId 6814695593 is already wired. Default stays blocked. This skeleton still will not invoke EAS.
         type: boolean
         default: false
 
@@ -51,7 +51,7 @@ jobs:
           else
             echo '::error::Mobile snapshot is missing'; exit 1
           fi
-      - name: Document wiring and fail closed while V3 ascAppId is TBD
+      - name: Document wiring and fail closed without Patrick/CoS clear
         env:
           AUTHORIZE_EAS_BUILD_AND_SUBMIT: ${{ github.event.inputs.authorize_eas_build_and_submit }}
         run: node "$MOBILE_DIR/scripts/v3-testflight-gate.mjs"

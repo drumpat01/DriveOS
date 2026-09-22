@@ -9,7 +9,7 @@ const configureApp = require('../app.config.js');
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8'));
 const {
   V2_ASC_APP_ID,
-  V3_ASC_APP_ID_TBD,
+  V3_ASC_APP_ID,
   evaluateV3TestflightGate,
   formatGateReport,
   isRealV3AscAppId,
@@ -51,9 +51,11 @@ test('v3-testflight is store distribution on the V3 preview channel and does not
   assert.equal(profile.ios.simulator, false);
   assert.equal(profile.autoIncrement, true);
   assert.equal(eas.submit.production.ios.ascAppId, V2_ASC_APP_ID);
-  assert.equal(eas.submit['v3-testflight'].ios.ascAppId, V3_ASC_APP_ID_TBD);
+  assert.equal(eas.submit.production.ios.ascAppId, '6806502526');
+  assert.equal(eas.submit['v3-testflight'].ios.ascAppId, V3_ASC_APP_ID);
+  assert.equal(eas.submit['v3-testflight'].ios.ascAppId, '6814695593');
   assert.notEqual(eas.submit['v3-testflight'].ios.ascAppId, V2_ASC_APP_ID);
-  assert.equal(isRealV3AscAppId(eas.submit['v3-testflight'].ios.ascAppId), false);
+  assert.equal(isRealV3AscAppId(eas.submit['v3-testflight'].ios.ascAppId), true);
 });
 
 test('V3 TestFlight config selects the V3 bundle and keeps the preview.4 runtime string', () => {
@@ -65,23 +67,30 @@ test('V3 TestFlight config selects the V3 bundle and keeps the preview.4 runtime
   });
 });
 
-test('the V3 TestFlight gate stays blocked on TBD and forbids the V2 App Store id', () => {
+test('the V3 TestFlight gate accepts the wired V3 id and still requires CoS clear', () => {
   const current = evaluateV3TestflightGate(eas, { authorize: false });
   assert.equal(current.blocked, true);
-  assert.equal(current.readyId, false);
-  assert.match(formatGateReport(current), /TBD-V3-ASC-APP-ID/);
+  assert.equal(current.readyId, true);
+  assert.match(formatGateReport(current), /6814695593/);
+  assert.match(formatGateReport(current), /Patrick\/CoS clear/);
   assert.match(formatGateReport(current), /EXPO_TOKEN/);
+  assert.doesNotMatch(formatGateReport(current), /TBD-V3-ASC-APP-ID/);
   assert.doesNotMatch(JSON.stringify(eas.submit['v3-testflight']), /6806502526/);
+  assert.equal(eas.submit.production.ios.ascAppId, '6806502526');
 
   const stolenV2 = structuredClone(eas);
   stolenV2.submit['v3-testflight'].ios.ascAppId = V2_ASC_APP_ID;
   const stolen = evaluateV3TestflightGate(stolenV2, { authorize: true });
   assert.equal(stolen.blocked, true);
-  assert.match(stolen.reasons.join('\n'), /never use V2 ascAppId 6806502526/);
+  assert.match(stolen.reasons.join('\n'), /never use V2/);
 
-  const ready = structuredClone(eas);
-  ready.submit['v3-testflight'].ios.ascAppId = '9990001112';
-  const open = evaluateV3TestflightGate(ready, { authorize: true });
+  const leftoverTbd = structuredClone(eas);
+  leftoverTbd.submit['v3-testflight'].ios.ascAppId = 'TBD-V3-ASC-APP-ID';
+  const tbd = evaluateV3TestflightGate(leftoverTbd, { authorize: true });
+  assert.equal(tbd.blocked, true);
+  assert.match(tbd.reasons.join('\n'), /6814695593/);
+
+  const open = evaluateV3TestflightGate(eas, { authorize: true });
   assert.equal(open.blocked, false);
   assert.equal(open.readyId, true);
 });
@@ -93,7 +102,10 @@ test('gate CLI fails closed on the committed eas.json and never calls eas', () =
   assert.equal(status, 1);
   assert.match(report, /npx eas-cli build --platform ios --profile v3-testflight/);
   assert.match(report, /npx eas-cli submit --platform ios --profile v3-testflight/);
+  assert.match(report, /6814695593/);
+  assert.match(report, /Patrick\/CoS clear/);
   assert.match(report, /BLOCKED/);
+  assert.doesNotMatch(report, /TBD-V3-ASC-APP-ID/);
 });
 
 test('V3 TestFlight workflow is dispatch-only, free-runner, and does not invoke EAS', () => {
@@ -112,7 +124,8 @@ test('V3 TestFlight workflow is dispatch-only, free-runner, and does not invoke 
   assert.match(text, /^\s+runs-on: ubuntu-latest$/m);
   assert.doesNotMatch(text, /runs-on: (macos-|windows-)/);
   assert.match(text, /EXPO_TOKEN/);
-  assert.match(text, /TBD-V3-ASC-APP-ID/);
+  assert.match(text, /6814695593/);
+  assert.doesNotMatch(text, /TBD-V3-ASC-APP-ID/);
   assert.match(text, /npx eas-cli build --platform ios --profile v3-testflight/);
   assert.match(text, /scripts\/v3-testflight-gate\.mjs/);
   assert.doesNotMatch(text, /IOS_DISTRIBUTION_P12|IOS_V3_PROFILE_BASE64/);

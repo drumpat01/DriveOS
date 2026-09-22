@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PROJECT = join(SCRIPT_DIR, '..');
 export const V2_ASC_APP_ID = '6806502526';
-export const V3_ASC_APP_ID_TBD = 'TBD-V3-ASC-APP-ID';
+export const V3_ASC_APP_ID = '6814695593';
 
 export const INTENDED_COMMANDS = [
   'npx eas-cli build --platform ios --profile v3-testflight --non-interactive',
@@ -18,7 +18,7 @@ export const REQUIRED_SECRETS = [
 ];
 
 export function isRealV3AscAppId(value) {
-  return typeof value === 'string' && /^\d+$/.test(value) && value !== V2_ASC_APP_ID;
+  return value === V3_ASC_APP_ID;
 }
 
 export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
@@ -45,7 +45,7 @@ export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
     reasons.push('v3-testflight must never use V2 ascAppId 6806502526');
   }
   if (!isRealV3AscAppId(ascAppId)) {
-    reasons.push(`submit.v3-testflight.ios.ascAppId is TBD/blocked (${ascAppId ?? 'missing'}); set a real V3 App Store Connect Apple ID before submit`);
+    reasons.push(`submit.v3-testflight.ios.ascAppId must be the wired V3 id ${V3_ASC_APP_ID} (got ${ascAppId ?? 'missing'}); never use V2 ${V2_ASC_APP_ID}`);
   }
   if (!authorize) {
     reasons.push('no Patrick/CoS clear; authorize_eas_build_and_submit remains false');
@@ -67,7 +67,7 @@ export function formatGateReport(result) {
     'V3 TestFlight is not the V2 App Store listing. Bundle com.journeydeck.recorder.v3.',
     'Prefer EAS-managed iOS credentials (eas credentials). Do not reuse ios-v3-device.yml ad hoc secrets.',
     `Required later: ${REQUIRED_SECRETS.join(' ')}`,
-    'Intended commands after a real V3 ascAppId and written Patrick/CoS clear (not invoked here):',
+    'Intended commands after written Patrick/CoS clear (not invoked here):',
     ...result.commands.map(command => `  ${command}`),
     `ascAppId: ${result.ascAppId ?? 'missing'}`,
     result.blocked ? `BLOCKED:\n${result.reasons.map(reason => `- ${reason}`).join('\n')}` : 'Gate open for a later authorized job. This skeleton still does not invoke eas build or eas submit.',

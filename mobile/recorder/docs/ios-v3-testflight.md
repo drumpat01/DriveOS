@@ -9,15 +9,13 @@ the EAS profile and a fail-closed GitHub skeleton.
 | Bundle | `com.journeydeck.recorder.v3` | `com.journeydeck.recorder` |
 | EAS build profile | `v3-testflight` (store / App Store) | `production` |
 | EAS submit profile | `v3-testflight` | `production` |
-| `ascAppId` | **TBD** (`TBD-V3-ASC-APP-ID`) | `6806502526` |
+| `ascAppId` | `6814695593` | `6806502526` |
 | Channel | `v3-preview` | `production` |
 | Runtime | manual string `3.0.0-preview.4` | V2 production runtime |
 | `APP_VARIANT` | `v3-preview` | unset / production |
 
-`submit.v3-testflight.ios.ascAppId` is an explicit non-numeric placeholder so
-it cannot be mistaken for production and cannot upload to the V2 app. Replace
-it with the real V3 App Store Connect Apple ID only after that record exists.
-**Never** copy `6806502526` into the V3 submit profile.
+`submit.v3-testflight.ios.ascAppId` is the V3 App Store Connect Apple ID
+`6814695593`. **Never** copy `6806502526` into the V3 submit profile.
 
 ## How this differs from the ad hoc path
 
@@ -31,12 +29,11 @@ reuse the ad hoc `.p12` / provisioning-profile secrets.
 
 `.github/workflows/ios-v3-testflight.yml` is **JourneyDeck V3 TestFlight**.
 `workflow_dispatch` only. Standard `ubuntu-latest` runner. It documents
-`EXPO_TOKEN` and the intended commands, then fails closed while `ascAppId`
-is TBD or the authorize box is unchecked. It never runs `eas build` or
-`eas submit`.
+`EXPO_TOKEN` and the intended commands, then fails closed while the
+authorize box is unchecked. It never runs `eas build` or `eas submit`.
 
-Intended commands after a real V3 `ascAppId` and written clear (Windows,
-from `mobile/recorder`):
+Intended commands after written Patrick/CoS clear (Windows, from
+`mobile/recorder`):
 
 ```powershell
 $env:APP_VARIANT = 'v3-preview'
