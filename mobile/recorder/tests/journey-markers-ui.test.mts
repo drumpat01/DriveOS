@@ -52,6 +52,8 @@ test('marker editor offers notes and photos without voice recording', async () =
   await act(() => { tree = create(React.createElement(f.api.MarkerEditor, { userId: 'owner', marker, onClose() {} })); });
   assert.ok(button(tree, 'Save notes'));
   assert.ok(button(tree, 'Add photo'));
+  assert.equal(tree.root.findByType('Sheet').props.surface, 'frost');
+  assert.equal(tree.root.findByType('Sheet').props.animateChrome, true);
   assert.doesNotMatch(text(tree.root), /voice memo/i);
   await act(() => tree.unmount());
 });
@@ -65,6 +67,15 @@ test('recording button prevents double tap and only confirms a durable capture',
   f.state.failCapture = true;
   await act(async () => { tree.root.findByType('Pressable').props.onPress(); await flush(); });
   assert.match(text(tree.root), /Waiting for GPS/); assert.equal(f.state.imports, 1);
+  await act(() => tree.unmount());
+});
+
+test('frost chrome stays still while a journey is still recording', async () => {
+  const f = fixture(); f.state.recording = true; let tree: any;
+  await act(() => { tree = create(React.createElement(f.api.MarkerEditor, { userId: 'owner', marker, onClose() {} })); });
+  assert.equal(tree.root.findByType('Sheet').props.surface, 'frost');
+  assert.equal(tree.root.findByType('Sheet').props.animateChrome, false);
+  assert.match(text(tree.root), /Finish your journey before adding details/);
   await act(() => tree.unmount());
 });
 

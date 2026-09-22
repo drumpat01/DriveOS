@@ -583,7 +583,12 @@ test('Memory detail directly groups Journeys with the approved cinematic present
 
 test('Native Memory sheet keeps keyboard handling inside its own presentation', async () => {
   const sheet = await readFile(new URL('../src/native-sheet.tsx', import.meta.url), 'utf8');
-  assert.match(sheet, /presentationStyle="pageSheet"/);
+  assert.match(sheet, /presentationStyle=\{modal\.presentationStyle\}/);
+  assert.match(sheet, /surface = 'opaque'/);
+  assert.match(sheet, /nativeSheetModalProps/);
+  const frostPolicy = await readFile(new URL('../src/navy-frost-policy.ts', import.meta.url), 'utf8');
+  assert.match(frostPolicy, /overFullScreen/);
+  assert.match(frostPolicy, /pageSheet/);
   assert.match(sheet, /automaticallyAdjustKeyboardInsets=\{!footer\}/);
   assert.match(sheet, /keyboardDismissMode="interactive"/);
   assert.match(sheet, /allowSwipeDismissal=\{false\}/);

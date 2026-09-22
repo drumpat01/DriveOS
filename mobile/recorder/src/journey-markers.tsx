@@ -86,7 +86,7 @@ function MarkerEditor({ userId, marker, onClose }: { userId: string; marker: Jou
     try { await addMarkerMedia(userId, marker.id, 'photo', image.uri); }
     finally { await FileSystem.deleteAsync(image.uri, { idempotent: true }); }
   });
-  return <NativeSheet visible kicker="JOURNEY MARKER" title="Remember this moment" onClose={onClose} busy={busy} dirty={notes !== savedNotes}
+  return <NativeSheet surface="frost" animateChrome={!editingBlocked} visible kicker="JOURNEY MARKER" title="Remember this moment" onClose={onClose} busy={busy} dirty={notes !== savedNotes}
     footer={<Pressable accessibilityRole="button" disabled={busy || editingBlocked} style={[styles.saveButton, { backgroundColor: theme.palette.accent }, (busy || editingBlocked) && { opacity: 0.55 }]} onPress={() => void perform(() => { saveMarkerNotes(userId, marker.id, notes); setSavedNotes(notes); })}><Text style={[styles.title, { color: theme.palette.onAccent }]}>Save notes</Text></Pressable>}>
     <Text style={styles.body}>{new Date(marker.capturedAt).toLocaleString()}</Text>
     <Text style={styles.body}>Location accuracy: ±{Math.round(marker.accuracyMeters)} m · GPS fix {Math.max(0, Math.round((Date.parse(marker.capturedAt) - Date.parse(marker.locationAt)) / 1000))} seconds before capture</Text>
