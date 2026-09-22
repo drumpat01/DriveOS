@@ -43,7 +43,7 @@ module.exports = config => {
     const sourcePath = path.join(mod.modRequest.projectRoot, 'siri', sourceName);
     const source = fs.readFileSync(sourcePath, 'utf8');
     let output = config.extra?.features?.askJourneyDeck === true ? addAskShortcutToSiriSource(source) : source;
-    if (config.ios?.bundleIdentifier === 'com.journeydeck.recorder.v3' && config.extra?.features?.markerPrototype === true) {
+    if (config.extra?.features?.markerPrototype === true) {
       output = addMarkerShortcutToSiriSource(output, fs.readFileSync(path.join(mod.modRequest.projectRoot, 'siri', 'JourneyDeckMarkerIntent.swift'), 'utf8'));
     }
     fs.writeFileSync(path.join(sourceRoot, sourceName), output);

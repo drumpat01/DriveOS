@@ -5,8 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_PROJECT = join(SCRIPT_DIR, '..');
-export const V2_ASC_APP_ID = '6806502526';
-export const V3_ASC_APP_ID = '6814695593';
+export const LIVE_ASC_APP_ID = '6806502526';
+export const V2_ASC_APP_ID = LIVE_ASC_APP_ID;
+export const FORBIDDEN_V3_PREVIEW_ASC_APP_ID = '6814695593';
 
 export const INTENDED_COMMANDS = [
   'npx eas-cli build --platform ios --profile v3-testflight --non-interactive',
@@ -17,8 +18,8 @@ export const REQUIRED_SECRETS = [
   'EXPO_TOKEN — Expo account token for eas-cli. This skeleton never reads it and never invokes EAS.',
 ];
 
-export function isRealV3AscAppId(value) {
-  return value === V3_ASC_APP_ID;
+export function isLiveListingAscAppId(value) {
+  return value === LIVE_ASC_APP_ID;
 }
 
 export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
@@ -31,21 +32,23 @@ export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
   if (!build) reasons.push('missing build.v3-testflight');
   else {
     if (build.distribution !== 'store') reasons.push('v3-testflight must use store/App Store distribution, not internal');
-    if (build.channel !== 'v3-preview') reasons.push('v3-testflight channel must remain v3-preview');
-    if (build.environment !== 'preview') reasons.push('v3-testflight environment must remain preview');
-    if (build.env?.APP_VARIANT !== 'v3-preview') reasons.push('v3-testflight APP_VARIANT must be v3-preview');
+    if (build.channel !== 'production') reasons.push('v3-testflight channel must be production');
+    if (build.environment !== 'production') reasons.push('v3-testflight environment must be production');
+    if (build.env?.APP_VARIANT !== 'v3-store') reasons.push('v3-testflight APP_VARIANT must be v3-store so V3 features stay on the live identity');
+    if (build.env?.APP_VARIANT === 'v3-preview') reasons.push('v3-testflight must never use APP_VARIANT=v3-preview (that forces the .v3 bundle)');
+    if (build.env?.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING !== '0') reasons.push('v3-testflight INTERNAL_TESTING must be 0 for live-store TestFlight');
     if (build.ios?.simulator !== false) reasons.push('v3-testflight ios.simulator must be false');
     if (build.autoIncrement !== true) reasons.push('v3-testflight autoIncrement must be true');
   }
 
-  if (productionId !== V2_ASC_APP_ID) {
-    reasons.push('submit.production.ios.ascAppId must remain the frozen V2 listing id');
+  if (productionId !== LIVE_ASC_APP_ID) {
+    reasons.push('submit.production.ios.ascAppId must remain the live listing id 6806502526');
   }
-  if (ascAppId === V2_ASC_APP_ID) {
-    reasons.push('v3-testflight must never use V2 ascAppId 6806502526');
+  if (ascAppId === FORBIDDEN_V3_PREVIEW_ASC_APP_ID) {
+    reasons.push('v3-testflight must never use isolated V3 preview ascAppId 6814695593');
   }
-  if (!isRealV3AscAppId(ascAppId)) {
-    reasons.push(`submit.v3-testflight.ios.ascAppId must be the wired V3 id ${V3_ASC_APP_ID} (got ${ascAppId ?? 'missing'}); never use V2 ${V2_ASC_APP_ID}`);
+  if (!isLiveListingAscAppId(ascAppId)) {
+    reasons.push(`submit.v3-testflight.ios.ascAppId must be the live listing ${LIVE_ASC_APP_ID} (got ${ascAppId ?? 'missing'}); never use isolated V3 preview ${FORBIDDEN_V3_PREVIEW_ASC_APP_ID}`);
   }
   if (!authorize) {
     reasons.push('no Patrick/CoS clear; authorize_eas_build_and_submit remains false');
@@ -55,7 +58,7 @@ export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
     blocked: reasons.length > 0,
     authorize,
     ascAppId: ascAppId ?? null,
-    readyId: isRealV3AscAppId(ascAppId),
+    readyId: isLiveListingAscAppId(ascAppId),
     reasons,
     commands: INTENDED_COMMANDS,
   };
@@ -64,13 +67,16 @@ export function evaluateV3TestflightGate(eas, { authorize = false } = {}) {
 export function formatGateReport(result) {
   return [
     'JourneyDeck V3 TestFlight EAS wiring gate',
-    'V3 TestFlight is not the V2 App Store listing. Bundle com.journeydeck.recorder.v3.',
+    'V3 TestFlight targets the LIVE App Store listing. Bundle com.journeydeck.recorder.',
+    'Watch com.journeydeck.recorder.watchkitapp. iCloud iCloud.com.journeydeck.recorder.',
+    'Production CloudKit is shared with the live app. TestFlight only — NEVER App Store review submit from this stream.',
+    'Never use com.journeydeck.recorder.v3, iCloud.com.journeydeck.recorder.v3, or ascAppId 6814695593.',
     'Prefer EAS-managed iOS credentials (eas credentials). Do not reuse ios-v3-device.yml ad hoc secrets.',
     `Required later: ${REQUIRED_SECRETS.join(' ')}`,
     'Intended commands after written Patrick/CoS clear (not invoked here):',
     ...result.commands.map(command => `  ${command}`),
     `ascAppId: ${result.ascAppId ?? 'missing'}`,
-    result.blocked ? `BLOCKED:\n${result.reasons.map(reason => `- ${reason}`).join('\n')}` : 'Gate open for a later authorized job. This skeleton still does not invoke eas build or eas submit.',
+    result.blocked ? `BLOCKED:\n${result.reasons.map(reason => `- ${reason}`).join('\n')}` : 'Gate open for a later authorized job. This skeleton still does not invoke eas build or eas submit. TestFlight only — never submit this stream for App Store review.',
   ].join('\n');
 }
 

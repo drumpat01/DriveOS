@@ -246,12 +246,14 @@ test('V3 native intent metadata is added once to the app target and excluded fro
   assert.match(once, /AskJourneyDeckIntent.swift in Sources/);
   assert.match(once, /AppIntents.framework/);
   const configSource = readFileSync(resolve(root, 'app.config.js'), 'utf8');
-  for (const variant of ['v3-preview', 'v2-preview', 'production']) {
+  for (const variant of ['v3-preview', 'v3-store', 'v2-preview', 'production']) {
     const module = { exports: {} as any };
     vm.runInNewContext(configSource, { module, process: { env: { APP_VARIANT: variant } } });
     const config = module.exports({ config: { name: 'JourneyDeck', ios: { bundleIdentifier: 'com.journeydeck.recorder', infoPlist: {} } } });
-    assert.equal(config.extra.features.askJourneyDeck, variant === 'v3-preview');
-    assert.equal(config.extra.features.midnightCanopy, variant === 'v3-preview');
-    assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), variant === 'v3-preview');
+    const v3Features = variant === 'v3-preview' || variant === 'v3-store';
+    assert.equal(config.extra.features.askJourneyDeck, v3Features);
+    assert.equal(config.extra.features.midnightCanopy, v3Features);
+    assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), v3Features);
+    assert.equal(config.ios.bundleIdentifier, variant === 'v3-preview' ? 'com.journeydeck.recorder.v3' : 'com.journeydeck.recorder');
   }
 });
