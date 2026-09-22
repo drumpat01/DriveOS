@@ -2,82 +2,56 @@
 
 ## Current objective
 
-Teach future agents the safe JourneyDeck OTA and V3 TestFlight paths. Added a
-canonical OTA runbook, dry-run-first OTA wrapper, and stronger existing-app
-TestFlight instructions; no OTA, build, or submit was performed.
+Keep agents pointed at the safe OTA and V3 TestFlight paths now on `main`.
+Refresh this handoff again after material Eng or Release process changes.
+Do not invent process.
 
 ## Repository state
 
-- `HEAD` is detached at `origin/main`.
-- Current commit: `4e11d28` — `Draft: soft navy frost on stop/review sheets over imagery (#163)`.
-- Working tree has local documentation/tooling changes for OTA guidance plus
-  this handoff update.
-- No staging, commit, push, deploy, EAS, TestFlight, or App Store action was
-  performed in this session.
+- On `main` at `8078d05` (PR #166 merged).
+- Clean remote `main` for this purpose. Do not treat this file as a local
+  session journal.
 
-## Local changes from this task
+## Now on main via #166
 
-- `mobile/recorder/docs/OTA_RUNBOOK.md`: canonical target matrix, authorization
-  rules, OTA-safe vs native-change boundary, raw fallback commands, preflight,
-  and post-publish checklist.
-- `mobile/recorder/scripts/publish-ota.mjs`: guarded `eas update` wrapper.
-  Defaults to dry-run; requires `--execute` to publish.
-- `mobile/recorder/package.json`: adds `npm run ota:publish`.
-- `mobile/recorder/package.json`: adds `npm run testflight:gate`.
-- `mobile/recorder/AGENTS.md`: points OTA work to the runbook/wrapper and V3
-  TestFlight work to the live-listing docs/gate.
-- `mobile/recorder/docs/ios-v3-testflight.md`: adds the explicit existing-app
-  rule. Agents must not create a new ASC app, use `.v3`, use ascAppId
-  `6814695593`, or submit this stream to App Review.
-- `mobile/recorder/APP_STORE_RELEASE.md`: repeats the existing-app rule at the
-  top of the release checklist.
+- OTA runbook: `mobile/recorder/docs/OTA_RUNBOOK.md`
+- Dry-run-first wrapper: `mobile/recorder/scripts/publish-ota.mjs`
+  (`npm run ota:publish`). Defaults to dry-run; `--execute` is required to
+  publish after explicit authorization.
+- V3 TestFlight live-listing docs: `mobile/recorder/docs/ios-v3-testflight.md`
+- Gate: `mobile/recorder/scripts/v3-testflight-gate.mjs`
+  (`npm run testflight:gate`)
+- Pointers in `mobile/recorder/AGENTS.md` and this handoff.
+- Release checklist also repeats the existing-app rule in
+  `mobile/recorder/APP_STORE_RELEASE.md`.
 
-## Recent changes now on main
+## Locked V3 TestFlight facts
 
-### #163 — Soft navy frost sheets
+Preserve exactly. Do not invent alternatives.
 
-- Added soft navy Skia frost / `BackdropBlur` presentation for stop and review
-  sheets over imagery.
-- `mobile/recorder/src/navy-frost-policy.ts` defines the navy frost recipe,
-  Reduce Transparency solid navy fallback, and frost vs opaque policy.
-- `mobile/recorder/src/navy-frost.tsx` provides live `BlurView`, Skia stills,
-  and solid fallback surfaces.
-- `NativeSheet` supports transparent `surface="frost"` over imagery while the
-  default opaque sheet stays `pageSheet`.
-- Wired into journey marker review and Relive stop/review over-map flows.
+- ASC `6806502526`
+- Bundle `com.journeydeck.recorder`
+- EAS profile `v3-testflight`
+- `APP_VARIANT=v3-store`
+- Channel/environment `production` / `production` for the TestFlight OTA
+  target
+- TestFlight only — never App Review from this stream
+- Forbid a new ASC app, isolated preview ascAppId `6814695593`, and the
+  `.v3` bundle for this TestFlight stream
+- Preview OTA remains `v3-preview` / `preview` / `APP_VARIANT=v3-preview`
+- Publish, build, and submit require explicit Patrick authorization.
+  Wrappers dry-run / fail closed by default.
 
-### #164 — Reanimated list skeletons
+## Recent merges on main
 
-- Added shared list skeleton bones and shared list enter/exit/layout motion.
-- Reduce Motion and background state disable animation.
-- Applied to Soundtracks archive, Journeys list empty load, Memories empty
-  initial load, and JourneyCard row motion.
+- #166 — guarded OTA and V3 TestFlight agent process docs
+- #165 — V3 TestFlight live listing
+- #164 — Reanimated list skeletons
+- #163 — soft navy frost
 
-### #165 — V3 TestFlight live listing
+## Next steps
 
-- `APP_VARIANT=v3-store` with EAS profile `v3-testflight` targets the live App
-  Store listing for TestFlight without changing bundle, Watch, or CloudKit
-  identity.
-- `v3-preview` remains isolated on separate identifiers.
-- Gate fails closed without Patrick/CoS clearance. TestFlight only; no App
-  Store review submit from that stream.
-
-## Verification known from prior handoff
-
-- Prior targeted checks for #163 included navy-frost, native-interactions,
-  journey-markers-ui, journey-replay-stage, tab-runtime, and typecheck.
-- `npm run ota:publish -- --target v3-preview --message "Dry run validation only"`
-  passed dry-run and did not publish.
-- `npm run ota:publish -- --target v3-testflight --message "Dry run validation only"`
-  passed dry-run and did not publish.
-- `npm run testflight:gate` intentionally failed closed because
-  `AUTHORIZE_EAS_BUILD_AND_SUBMIT` was not set, while confirming ascAppId
-  `6806502526`.
-- No device stills, EAS, OTA, or release actions are recorded here.
-
-## Next useful steps
-
-1. Review and commit the OTA runbook/wrapper if accepted.
-2. For visual review, capture native stills with `NavyFrostStill` over journey
-   photo/map frames.
-3. Keep V2 frozen except urgent customer bugs; route new non-urgent work to V3.
+1. Keep this handoff current after material Eng or Release process changes.
+2. Do not invent process.
+3. Docs work does not authorize OTA publish, EAS build, TestFlight submit,
+   or App Review.
