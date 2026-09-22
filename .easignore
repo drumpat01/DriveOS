@@ -60,4 +60,5 @@ yarn-error.*
 
 # Local design artifacts and deployment caches are not build inputs.
 /.ai/
+/.claude/
 .wrangler/
