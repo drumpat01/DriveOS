@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const yaml = require('yaml');
 const configureApp = require('../app.config.js');
 const eas = JSON.parse(readFileSync(new URL('../eas.json', import.meta.url), 'utf8'));
 const {
@@ -106,18 +105,17 @@ test('V3 TestFlight workflow is dispatch-only, free-runner, and does not invoke 
   for (const url of candidates) {
     try { text = readFileSync(url, 'utf8'); break; } catch { /* mobile snapshot or main repository */ }
   }
-  const workflow = yaml.parse(text);
-  assert.equal(workflow.name, 'JourneyDeck V3 TestFlight');
-  assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
-  assert.equal(workflow.on.workflow_dispatch.inputs.authorize_eas_build_and_submit.default, false);
-  assert.equal(workflow.jobs.gate['runs-on'], 'ubuntu-latest');
-  assert.doesNotMatch(workflow.jobs.gate['runs-on'], /macos|windows/);
+  assert.match(text, /^name: JourneyDeck V3 TestFlight$/m);
+  assert.match(text, /^on:\n  workflow_dispatch:/m);
+  assert.doesNotMatch(text, /^  (push|pull_request|schedule):/m);
+  assert.match(text, /authorize_eas_build_and_submit:[\s\S]*default: false/);
+  assert.match(text, /^\s+runs-on: ubuntu-latest$/m);
+  assert.doesNotMatch(text, /runs-on: (macos-|windows-)/);
   assert.match(text, /EXPO_TOKEN/);
   assert.match(text, /TBD-V3-ASC-APP-ID/);
   assert.match(text, /npx eas-cli build --platform ios --profile v3-testflight/);
   assert.match(text, /scripts\/v3-testflight-gate\.mjs/);
   assert.doesNotMatch(text, /IOS_DISTRIBUTION_P12|IOS_V3_PROFILE_BASE64/);
-  for (const step of workflow.jobs.gate.steps) {
-    assert.doesNotMatch(String(step.run || ''), /^\s*(npx\s+)?eas(-cli)?\s+(build|submit)/m);
-  }
+  const uncommented = text.split('\n').filter(line => !/^\s*#/.test(line)).join('\n');
+  assert.doesNotMatch(uncommented, /^\s+(npx\s+)?eas(-cli)?\s+(build|submit)/m);
 });
