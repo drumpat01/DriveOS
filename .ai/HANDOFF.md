@@ -2,15 +2,18 @@
 
 ## Current objective
 
-Keep agents pointed at the safe OTA and V3 TestFlight paths now on `main`.
-Refresh this handoff again after material Eng or Release process changes.
-Do not invent process.
+V3 version 3.0.0 build 35 was built and submitted to TestFlight on the
+existing JourneyDeck App Store Connect app. Apple reports the build VALID and
+IN_BETA_TESTING. Confirm individual tester access on device if needed.
 
 ## Repository state
 
-- On `main` at `8078d05` (PR #166 merged).
-- Clean remote `main` for this purpose. Do not treat this file as a local
-  session journal.
+- Build 35 was produced from `ca464d1` (PR #167 merged) plus the EAS
+  archive and post-install fixes carried on `codex/work-from-main-ca464d1`.
+- `.easignore` excludes `/.claude/` to avoid a Windows junction error
+  during EAS archive creation. `package.json` invokes
+  `scripts/diagnose-expo-modules-jsi.mjs` in the EAS post-install hook for
+  `v3-testflight`, removing `-quiet` from the nested Xcode command.
 
 ## Now on main via #166
 
@@ -51,7 +54,21 @@ Preserve exactly. Do not invent alternatives.
 
 ## Next steps
 
-1. Keep this handoff current after material Eng or Release process changes.
-2. Do not invent process.
-3. Docs work does not authorize OTA publish, EAS build, TestFlight submit,
-   or App Review.
+1. EAS build `dd07903d-29dc-44e7-be78-4f0f2ba361c6` FINISHED:
+   version `3.0.0` build `35`, profile `v3-testflight`, live bundle
+   `com.journeydeck.recorder`, source commit `ca464d1`. The post-install hook
+   ran and the Watch policy test passed on the Mac worker.
+2. EAS submission `9ae714d7-c12c-45c9-bbb6-20a5ca6f7503` FINISHED.
+   `eas submit:status` reports ASC `6806502526`, processing `VALID`, internal
+   state `IN_BETA_TESTING`, runtime `3.0.0-preview.4`. Existing public live
+   version remains 2.0 build 31. No App Review submission or new ASC app.
+3. Earlier build 34 failed because the nested ExpoModulesJSI Xcode command
+   emitted `error: the following command failed with exit code 0 but produced
+   no further output` despite reporting a built framework. Removing `-quiet`
+   for build 35 produced a successful archive. Do not resubmit build 34.
+4. Release checks: `npm run typecheck` and `npx expo export --platform ios`
+   passed. `npm test` has a Windows CRLF-only assertion failure in
+   `tests/v3-testflight-eas.test.mts`; targeted native release tests pass.
+   `expo-doctor` reports 32 SDK 58 beta version mismatches.
+5. Verify TestFlight installation on an internal tester device; EAS status
+   does not prove access for a specific tester.

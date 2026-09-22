@@ -67,7 +67,7 @@
   "scripts": {
     "start": "expo start",
     "typecheck": "tsc --noEmit",
-    "eas-build-post-install": "node scripts/test-watch-native-policy.mjs",
+    "eas-build-post-install": "node scripts/diagnose-expo-modules-jsi.mjs && node scripts/test-watch-native-policy.mjs",
     "test": "node --experimental-strip-types --test tests/*.test.mts",
     "test:recovery": "node --experimental-strip-types tests/recovery.test.mts",
     "test:sync-status": "node --experimental-strip-types tests/sync-status.test.mts",
