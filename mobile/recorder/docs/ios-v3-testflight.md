@@ -6,6 +6,34 @@ only** — never submit this stream for App Store review. Do not build or
 submit until Patrick or CoS give written clear. This repository only wires
 the EAS profile and a fail-closed GitHub skeleton.
 
+## Existing-app rule
+
+V3 TestFlight is an update to the existing JourneyDeck app in App Store
+Connect. It is not a new app.
+
+Agents must stop immediately if their plan includes any of these actions:
+
+- Creating a new App Store Connect app.
+- Creating an app named `V3`, `JourneyDeck V3`, or similar in App Store
+  Connect.
+- Changing the live bundle id away from `com.journeydeck.recorder`.
+- Using `com.journeydeck.recorder.v3` for this TestFlight stream.
+- Using isolated V3 preview ascAppId `6814695593`.
+- Pointing `submit.v3-testflight.ios.ascAppId` anywhere except `6806502526`.
+- Setting `APP_VARIANT=v3-preview` for `v3-testflight`.
+- Submitting the resulting build to App Review.
+
+Correct target:
+
+- Existing App Store Connect app: JourneyDeck live listing.
+- App Store Connect app id: `6806502526`.
+- Bundle id: `com.journeydeck.recorder`.
+- EAS build profile: `v3-testflight`.
+- EAS submit profile: `v3-testflight`.
+- `APP_VARIANT`: `v3-store`.
+- EAS channel/environment: `production` / `production`.
+- Destination: TestFlight only.
+
 Production CloudKit (`iCloud.com.journeydeck.recorder`) is shared with the
 live app. That is accepted for this stream.
 
@@ -54,6 +82,7 @@ Intended commands after written Patrick/CoS clear (Windows, from
 **Never** promote this stream to App Store review:
 
 ```powershell
+npm run testflight:gate
 $env:APP_VARIANT = 'v3-store'
 $env:EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING = '0'
 npx eas-cli build --platform ios --profile v3-testflight --non-interactive
