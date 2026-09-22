@@ -1,16 +1,20 @@
 name: JourneyDeck V3 TestFlight
 
 # Skeleton only. Does not invoke EAS Build or EAS Submit.
-# V3 TestFlight is a separate App Store Connect record from V2 (6806502526).
-# Wired V3 ascAppId is 6814695593. Submit still requires Patrick/CoS written
-# clear. This skeleton never invokes EAS.
+# V3 TestFlight targets the LIVE App Store listing (6806502526),
+# bundle com.journeydeck.recorder, channel production, APP_VARIANT=v3-store.
+# TestFlight only — NEVER App Store review submit from this stream.
+# Never use isolated V3 preview ascAppId 6814695593 or the .v3 bundle.
+# Submit still requires Patrick/CoS written clear. This skeleton never
+# invokes EAS.
 #
 # Required later (not read by this workflow):
 #   EXPO_TOKEN — Expo account token for eas-cli
-# Credentials: prefer EAS-managed iOS credentials for com.journeydeck.recorder.v3
+# Credentials: prefer EAS-managed iOS credentials for com.journeydeck.recorder
 # (`eas credentials`). Do not reuse ios-v3-device.yml ad hoc .p12 / profile secrets.
 #
 # Intended commands after written Patrick/CoS clear (run elsewhere):
+#   $env:APP_VARIANT = 'v3-store'
 #   npx eas-cli build --platform ios --profile v3-testflight --non-interactive
 #   npx eas-cli submit --platform ios --profile v3-testflight --non-interactive
 
@@ -18,7 +22,7 @@ on:
   workflow_dispatch:
     inputs:
       authorize_eas_build_and_submit:
-        description: Requires written Patrick/CoS clear. V3 ascAppId 6814695593 is already wired. Default stays blocked. This skeleton still will not invoke EAS.
+        description: Requires written Patrick/CoS clear. Live listing ascAppId 6806502526. TestFlight only — never App Store review. Default stays blocked. This skeleton still will not invoke EAS.
         type: boolean
         default: false
 

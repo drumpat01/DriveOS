@@ -96,9 +96,9 @@ Suggested authorized sequence when a native V3 cut is actually approved:
 4. Only with explicit submit authorization: `eas submit --platform ios` against the correct ASC app record for that bundle ID, then `asc` for processing/TestFlight checks.
 5. Never auto-submit from this workflow.
 
-V3 bundle `com.journeydeck.recorder.v3` is not the production App Store listing (`com.journeydeck.recorder`). Do not submit V3 to ascAppId `6806502526`.
+Internal V3 preview (`v3-preview` / `com.journeydeck.recorder.v3`) is not the production App Store listing. Do not submit that isolated bundle to the live listing.
 
-**V3 TestFlight (wiring only):** EAS profile `v3-testflight` is store distribution on channel `v3-preview`. Submit `ascAppId` is `6814695593` (never `6806502526`). Manual skeleton: `.github/workflows/ios-v3-testflight.yml`. See [ios-v3-testflight.md](ios-v3-testflight.md). No build/submit without Patrick/CoS clear. This is not the `ios-v3-device.yml` ad hoc path.
+**V3 TestFlight (wiring only):** EAS profile `v3-testflight` is store distribution on channel `production` with `APP_VARIANT=v3-store` (V3 features, live identity). Submit `ascAppId` is the live listing `6806502526` (never isolated preview `6814695593`). TestFlight only — never App Store review submit from this stream. Manual skeleton: `.github/workflows/ios-v3-testflight.yml`. See [ios-v3-testflight.md](ios-v3-testflight.md). No build/submit without Patrick/CoS clear. This is not the `ios-v3-device.yml` ad hoc path.
 
 ## Gaps vs the priority spec
 

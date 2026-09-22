@@ -1,29 +1,46 @@
-# JourneyDeck V3 TestFlight (wiring only)
+# JourneyDeck V3 TestFlight (live listing, wiring only)
 
-V3 TestFlight is **not** the frozen V2 App Store listing. Do not build or
+V3 TestFlight targets the **LIVE** App Store listing
+(`com.journeydeck.recorder`, ascAppId `6806502526`). It is **TestFlight
+only** — never submit this stream for App Store review. Do not build or
 submit until Patrick or CoS give written clear. This repository only wires
 the EAS profile and a fail-closed GitHub skeleton.
 
-| Item | V3 TestFlight | V2 listing (frozen) |
-| --- | --- | --- |
-| Bundle | `com.journeydeck.recorder.v3` | `com.journeydeck.recorder` |
-| EAS build profile | `v3-testflight` (store / App Store) | `production` |
-| EAS submit profile | `v3-testflight` | `production` |
-| `ascAppId` | `6814695593` | `6806502526` |
-| Channel | `v3-preview` | `production` |
-| Runtime | manual string `3.0.0-preview.4` | V2 production runtime |
-| `APP_VARIANT` | `v3-preview` | unset / production |
+Production CloudKit (`iCloud.com.journeydeck.recorder`) is shared with the
+live app. That is accepted for this stream.
 
-`submit.v3-testflight.ios.ascAppId` is the V3 App Store Connect Apple ID
-`6814695593`. **Never** copy `6806502526` into the V3 submit profile.
+| Item | V3 TestFlight (this stream) | Isolated V3 preview (do not use here) |
+| --- | --- | --- |
+| Bundle | `com.journeydeck.recorder` | `com.journeydeck.recorder.v3` |
+| Watch | `com.journeydeck.recorder.watchkitapp` | `com.journeydeck.recorder.v3.watchkitapp` |
+| iCloud | `iCloud.com.journeydeck.recorder` | `iCloud.com.journeydeck.recorder.v3` |
+| EAS build profile | `v3-testflight` (store / App Store) | `v3-preview` (internal) |
+| EAS submit profile | `v3-testflight` | n/a |
+| `ascAppId` | `6806502526` | `6814695593` — **never** this stream |
+| Channel | `production` | `v3-preview` |
+| Environment | `production` | `preview` |
+| Runtime | manual string `3.0.0-preview.4` | manual string `3.0.0-preview.4` |
+| `APP_VARIANT` | `v3-store` (V3 features, live identity) | `v3-preview` (forces `.v3` identity) |
+| `INTERNAL_TESTING` | `0` | `1` |
+
+`submit.v3-testflight.ios.ascAppId` is the live listing Apple ID
+`6806502526`. **Never** copy `6814695593` into this submit profile.
+**Never** set `APP_VARIANT=v3-preview` on this profile; that forces the
+`.v3` bundle, Watch container, and CloudKit container.
+
+V3 product features stay **on** via `APP_VARIANT=v3-store`. That split does
+not switch bundle, Watch, or iCloud identity.
 
 ## How this differs from the ad hoc path
 
 `.github/workflows/ios-v3-device.yml` (PR #161 path) signs an ad hoc IPA on
-`macos-26` with local distribution secrets. Leave that workflow alone.
+`macos-26` with local distribution secrets for `com.journeydeck.recorder.v3`.
+Leave that workflow alone.
 
-V3 TestFlight uses **EAS-managed credentials** for store distribution. Do not
-reuse the ad hoc `.p12` / provisioning-profile secrets.
+V3 TestFlight uses **EAS-managed credentials** for store distribution onto
+the live listing. Do not reuse the ad hoc `.p12` / provisioning-profile
+secrets. Do not use the internal `v3-preview` distribution profile for this
+stream.
 
 ## GitHub skeleton
 
@@ -33,11 +50,12 @@ reuse the ad hoc `.p12` / provisioning-profile secrets.
 authorize box is unchecked. It never runs `eas build` or `eas submit`.
 
 Intended commands after written Patrick/CoS clear (Windows, from
-`mobile/recorder`):
+`mobile/recorder`). These land a TestFlight build on the live listing.
+**Never** promote this stream to App Store review:
 
 ```powershell
-$env:APP_VARIANT = 'v3-preview'
-$env:EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING = '1'
+$env:APP_VARIANT = 'v3-store'
+$env:EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING = '0'
 npx eas-cli build --platform ios --profile v3-testflight --non-interactive
 npx eas-cli submit --platform ios --profile v3-testflight --non-interactive
 ```
