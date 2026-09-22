@@ -28,8 +28,11 @@ polish PRs #163/#164 or `ios-v3-device.yml`.
 
 ## Verification
 
-- Targeted: `tests/v3-testflight-eas.test.mts` and Ask config coverage
-  (run from `mobile/recorder`).
+- Targeted from `mobile/recorder`: `v3-testflight-eas` 7/7,
+  `ask-journeydeck` 12/12, `time-capsule-prototype` 3/3,
+  `siri-native-build` 3/3.
+- Resolved `EAS_BUILD_PROFILE=v3-testflight`: live bundle + CloudKit +
+  Watch, submit `6806502526`, channel `production`, V3 features on.
 - No EAS Build, no EAS Submit, no App Store/TestFlight upload.
 
 ## Unresolved

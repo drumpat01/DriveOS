@@ -254,6 +254,6 @@ test('V3 native intent metadata is added once to the app target and excluded fro
     assert.equal(config.extra.features.askJourneyDeck, v3Features);
     assert.equal(config.extra.features.midnightCanopy, v3Features);
     assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), v3Features);
-    assert.equal(config.ios.bundleIdentifier, variant === 'v3-preview' ? 'com.journeydeck.recorder.v3' : 'com.journeydeck.recorder');
+    assert.equal(config.ios.bundleIdentifier, variant === 'v3-preview' ? 'com.journeydeck.recorder.v3' : variant === 'v2-preview' ? 'com.journeydeck.recorder.v2' : 'com.journeydeck.recorder');
   }
 });
