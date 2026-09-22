@@ -74,6 +74,7 @@
     "test:music-observations": "node --experimental-strip-types tests/music-observations.test.mts",
     "test:drive-detection": "node --experimental-strip-types tests/drive-detection.test.mts",
     "test:navigation-motion": "node --experimental-strip-types tests/navigation-motion.test.mts",
+    "test:list-skeleton": "node --experimental-strip-types --test tests/list-skeleton.test.mts",
     "test:motion-system": "node --experimental-strip-types --test tests/motion-system.test.mts",
     "test:haptics": "node --experimental-strip-types --test tests/haptics.test.mts",
     "test:core-experience-motion": "node --experimental-strip-types --test tests/core-experience-motion.test.mts",

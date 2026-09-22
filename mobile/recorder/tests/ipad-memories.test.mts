@@ -82,6 +82,7 @@ const { IpadMemoriesScreen } = load('ipad-memories-screen.tsx', {
   './card-detail-link': { CardDetailLink: host('CardDetailLink') }, './library-model': load('library-model.ts'),
   './native-action-menu': { NativeActionMenu: host('Menu') }, './journey-card-action': { openJourneyCardAction: (...args: any[]) => journeyActions.push(args) },
   './memory-studio-model': { clampStudioTrayHeight, memoryStudioDrop, containsStudioPoint, phoneStudioLayout, settleStudioTrayExpanded, studioEdgeVelocity }, './device-layout': gridLayout,
+  './list-skeleton': { MemoryListSkeleton: host('MemoryListSkeleton') },
 });
 const journeys = [1, 2, 3].map(i => ({ id: `j${i}`, startingLocation: `Start ${i}`, endingLocation: 'Coast', startedAt: '2026-09-05T10:00:00Z', miles: 12, durationMinutes: 30, songCount: 2, soundtrackPreview: [] }));
 const memories = [{ id: 'm1', name: 'Coast days', notes: '', journeyIds: ['j1'], photos: [] }];

@@ -59,6 +59,8 @@ import { ObserveInteractiveMarker } from 'expo-observe';
 import { haptics } from './haptics';
 import { MOTION_SPRINGS, motionEasing, useMotionPreferences } from './motion';
 import { JourneyCardEntryTracker } from './core-experience-motion';
+import { useListRowMotion } from './list-motion';
+import { JourneyListSkeleton } from './list-skeleton';
 
 import {
   appDataClient, type AppDashboard, type ConnectionCapabilities, type JourneyDetail,
@@ -2277,7 +2279,9 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
       <View style={styles.memoryJourneyList}>{visibleJourneys.map(journey => <View key={journey.id} style={styles.libraryJourneyWrap}><JourneyCard journey={journey} compact onPress={() => onJourney(journey.id)} /><Pressable onPress={() => setAssignJourneyId(journey.id)} style={styles.libraryAddButton}><NeonWidgetOutline radius={11} /><Text style={styles.libraryAddText}>+ Memory</Text></Pressable></View>)}</View>
       {!journeys.data.length && journeys.status !== 'loading' && <EmptyCard title="No journeys yet" body="Finish a recording and it will appear here, ready to organize." />}
       </>}
-      {(catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
+      {(catalog.status === 'loading' || journeys.status === 'loading') && !catalog.data.memories.length && !journeys.data.length
+        ? <JourneyListSkeleton compact label="Refreshing memories…" />
+        : (catalog.status === 'loading' || journeys.status === 'loading') && <LoadingLine label="Refreshing memories…" />}
     </ScrollView>}
 
     {detailId && !memoryOverview && <View onLayout={detailReady}><InlineNotice message={catalog.status === 'loading' ? 'Loading Memory…' : 'This Memory is no longer available.'} onRetry={onRefresh} /></View>}
@@ -2459,7 +2463,7 @@ function JourneysScreen({ state, hasMore, loadingMore, onJourney, onRefresh, onL
         <AtmosphericBackdrop variant="memories" />
         <PageHeader eyebrow="YOUR STORY ON THE ROAD" title="Journeys" body="Routes, vehicle moments, and every soundtrack in one place." />
         {state.status === 'error' && <InlineNotice message={state.message!} onRetry={onRefresh} />}
-        {state.status === 'loading' && state.data.length === 0 ? <LoadingCard /> : state.data.length
+        {state.status === 'loading' && state.data.length === 0 ? <JourneyListSkeleton /> : state.data.length
           ? state.data.map(journey => <JourneyCard key={journey.id} journey={journey} onPress={() => onJourney(journey.id)} />)
           : <EmptyCard title="Your timeline starts here" body="Finish your first recording and it will appear here automatically. Recording still works offline." />}
         {hasMore && <Pressable onPress={onLoadMore} disabled={loadingMore} style={[styles.loadMoreButton, loadingMore && styles.pressed]}>{loadingMore ? <ActivityIndicator color={theme.color("#b59cff", 'text')} /> : <Text style={styles.loadMoreText}>Load more journeys</Text>}</Pressable>}
@@ -3508,18 +3512,18 @@ const journeyCardEntryTracker = new JourneyCardEntryTracker();
 
 function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySummary; onPress: () => void; compact?: boolean }) {
   const styles = useThemedStyles(darkStyles);
-  const { isAppActive, reduceMotion } = useMotionPreferences();
+  const { reduceMotion } = useMotionPreferences();
   const [firstPresentation] = useState(() => journeyCardEntryTracker.shouldAnimate(journey.id));
   const scale = useSharedValue(1);
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
   const settle = (pressed: boolean) => {
     scale.value = reduceMotion ? 1 : withSpring(pressed ? 0.985 : 1, MOTION_SPRINGS.responsive);
   };
-  const entering = firstPresentation && isAppActive && !reduceMotion ? FadeInDown.duration(220) : undefined;
+  const motion = useListRowMotion({ enter: firstPresentation, variant: 'down' });
 
   const track = journey.soundtrackPreview?.[0];
   if (compact) return (
-    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCardCompact, pressed && styles.pressed]}>
+    <Reanimated.View entering={motion.entering} exiting={motion.exiting} layout={motion.layout} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCardCompact, pressed && styles.pressed]}>
       <View style={styles.journeyCompactTop}>
         <View style={styles.flex}>
           <Text style={styles.journeyDateCompact}>{formatFullDate(journey.startedAt)}</Text>
@@ -3536,7 +3540,7 @@ function JourneyCard({ journey, onPress, compact = false }: { journey: JourneySu
     </Pressable></CardDetailLink></Reanimated.View>
   );
   return (
-    <Reanimated.View entering={entering} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
+    <Reanimated.View entering={motion.entering} exiting={motion.exiting} layout={motion.layout} style={animatedStyle}><CardDetailLink kind="journey" id={journey.id}><Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${locationPair(journey)}`} onPress={onPress} onPressIn={() => settle(true)} onPressOut={() => settle(false)} style={({ pressed }) => [styles.journeyCard, styles.staticWidgetGlow, pressed && styles.pressed]}><NeonWidgetOutline radius={20} />
       <View style={styles.journeyTop}><View><Text style={styles.journeyDate}>{formatFullDate(journey.startedAt)}</Text><Text style={styles.journeyRoute} numberOfLines={2}>{locationPair(journey)}</Text></View><Text style={styles.journeyChevron}>›</Text></View>
       <View style={styles.journeyStats}><Text style={styles.journeyStat}>{formatMiles(journey.miles)}</Text><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{formatDuration(journey.durationMinutes)}</Text>{journey.vehicleName && <><Text style={styles.journeyStatDot}>•</Text><Text style={styles.journeyStat}>{journey.vehicleName}</Text></>}</View>
       <View style={styles.journeySoundtrack}>{track ? <Artwork track={track} size={42} /> : <View style={styles.miniArtwork}><Text style={styles.miniArtworkText}>♪</Text></View>}<View style={styles.flex}><Text style={styles.journeySong} numberOfLines={1}>{track?.track ?? (journey.songCount ? `${journey.songCount} soundtrack songs` : 'No soundtrack matched')}</Text><Text style={styles.journeyArtist} numberOfLines={1}>{track?.artist ?? 'Music can be added after the journey'}</Text></View>{journey.songCount > 0 && <Text style={styles.songCount}>{journey.songCount}</Text>}</View>
@@ -3575,9 +3579,8 @@ function LoadingLine({ label }: { label: string }) {
   const styles = useThemedStyles(darkStyles);
  return <View style={styles.loadingLine}><ActivityIndicator color={theme.color("#9b7cff", 'text')} /><Text style={styles.loadingLineText}>{label}</Text></View>; }
 function LoadingCard() {
-  const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
- return <View style={styles.loadingCard}><ActivityIndicator color={theme.color("#9b7cff", 'text')} size="large" /><Text style={styles.loadingLineText}>Loading your journeys…</Text></View>; }
+  return <JourneyListSkeleton />;
+}
 
 function RouteSketch({ coordinates, soundtrack, startedAt, endedAt, startLabel, endLabel, cinematic = false, expanded = false }: { coordinates: [number, number][]; soundtrack: JourneyDetail['soundtrack']; startedAt: string; endedAt: string; startLabel: string | null; endLabel: string | null; cinematic?: boolean; expanded?: boolean }) {
   const theme = useAppTheme();

@@ -35,11 +35,15 @@ const header = load('ipad-page-header.tsx', {
   './app-theme': theme, './header-artwork': { HeaderArtworkLayers: ({ source }: any) => React.createElement('Image', { source: `${light ? 'light' : 'dark'}:${source}` }), HEADER_ARTWORK_ASPECT_RATIO: 1672 / 941 },
   './phone-tab-title': { PhoneTabTitle: host('PhoneTabTitle'), AutumnTitleAccent: host('AutumnTitleAccent') }, './device-layout': gridLayout,
 });
+const listMotion = { useListRowMotion: () => ({ entering: undefined, exiting: undefined, layout: undefined }) };
+const listSkeleton = { MusicArchiveSkeleton: (props: any) => React.createElement('MusicArchiveSkeleton', props) };
 const ui = load('ipad-music-screen.tsx', {
   './album-carousel': carousel,
   './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   './ipad-page-header': header,
+  './list-motion': listMotion, './list-skeleton': listSkeleton,
   'react-native': native, 'expo-image': { Image: host('Image') }, 'expo-symbols': { SymbolView: host('Symbol') },
+  'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') } },
   'react-native-safe-area-context': { SafeAreaView: host('SafeAreaView'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   './app-theme': theme, './theme-palette': load('theme-palette.ts'),
   './header-image-sources': { headerImageSource: (source: string, mode: string) => `${mode}:${source}` }, './device-layout': gridLayout,
@@ -51,8 +55,10 @@ const music = load('music-screen.tsx', {
   './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
   './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './ipad-music-data': dataHelpers,
   './adaptive-layout': { useAdaptiveLayout: () => ({ isRegular: true, fold: adaptiveFold }) },
+  './list-motion': listMotion, './list-skeleton': listSkeleton,
   'expo-symbols': { SymbolView: host('Symbol') },
   'react-native': { ...native, Alert: { alert: () => {} }, Linking: { openURL: async (url: string) => { links.push(url); } } },
+  'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') } },
   'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
   'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') }, 'react-native-svg': {},
   './music-destination': { musicTrackDestination: (track: any) => track.externalUrl }, './library-model': model,
@@ -167,7 +173,8 @@ test('Music initial load, error and empty archive are honest without fake sample
   const render = (state: any) => React.createElement(music.MusicScreen, { state, provider: 'apple-music', journeys: [], details: [], onJourney: () => {}, onRefresh: async () => {} });
   try {
     await act(() => { tree = create(render({ status: 'loading', data: null })); });
-    assert.equal(tree.root.findAllByType('ActivityIndicator').length, 1);
+    assert.equal(tree.root.findAllByType('MusicArchiveSkeleton').length, 1);
+    assert.equal(tree.root.findAllByType('ActivityIndicator').length, 0);
     assert.match(text(tree), /—/);
     assert.doesNotMatch(text(tree), /216\.3|Connected/);
     await act(() => tree.update(render({ status: 'error', data: null, message: 'Offline archive error' })));
