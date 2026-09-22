@@ -98,6 +98,8 @@ Suggested authorized sequence when a native V3 cut is actually approved:
 
 V3 bundle `com.journeydeck.recorder.v3` is not the production App Store listing (`com.journeydeck.recorder`). Do not submit V3 to ascAppId `6806502526`.
 
+**V3 TestFlight (wiring only):** EAS profile `v3-testflight` is store distribution on channel `v3-preview`. Submit `ascAppId` is `6814695593` (never `6806502526`). Manual skeleton: `.github/workflows/ios-v3-testflight.yml`. See [ios-v3-testflight.md](ios-v3-testflight.md). No build/submit without Patrick/CoS clear. This is not the `ios-v3-device.yml` ad hoc path.
+
 ## Gaps vs the priority spec
 
 | Spec | Gap | This PR |

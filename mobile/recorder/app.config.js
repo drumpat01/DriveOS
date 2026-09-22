@@ -1,10 +1,10 @@
 // Only the internal preview gets a second identity. The public V2 release updates
 // the existing App Store app and retains its data, CloudKit container and products.
 module.exports = ({ config }) => {
-  if (process.env.EAS_BUILD_PROFILE && !['development-simulator', 'v2-preview', 'v3-preview', 'v3-development-simulator', 'production'].includes(process.env.EAS_BUILD_PROFILE)) {
+  if (process.env.EAS_BUILD_PROFILE && !['development-simulator', 'v2-preview', 'v3-preview', 'v3-development-simulator', 'v3-testflight', 'production'].includes(process.env.EAS_BUILD_PROFILE)) {
     throw new Error('Use a declared V2, V3, simulator, or production build profile.');
   }
-  const v3 = process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator'].includes(process.env.EAS_BUILD_PROFILE);
+  const v3 = process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator', 'v3-testflight'].includes(process.env.EAS_BUILD_PROFILE);
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
   const channel = v3 ? 'v3-preview' : preview ? 'v2-preview' : 'production';
