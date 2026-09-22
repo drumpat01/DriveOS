@@ -1,6 +1,7 @@
 import { TouchPressable as Pressable } from './touch-feedback';
 import { useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
@@ -14,6 +15,8 @@ import { AlbumCarousel } from './album-carousel';
 import { useAdaptiveLayout } from './adaptive-layout';
 import { JourneyImage } from './journey-image';
 import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
+import { useListRowMotion } from './list-motion';
+import { MusicArchiveSkeleton } from './list-skeleton';
 
 function useColors() {
   const theme = useAppTheme();
@@ -59,6 +62,22 @@ function ListeningChart({ daily }: { daily: MusicDashboardData['daily'] }) {
   </View>;
 }
 
+function HistoryRow({ entry, table, colors: c, canOpenTracks, onTrack, onJourney }: {
+  entry: MusicArchiveEntry; table: boolean; colors: ReturnType<typeof useColors>;
+  canOpenTracks: boolean; onTrack: (track: SoundtrackTrack) => void; onJourney: (id: string) => void;
+}) {
+  const motion = useListRowMotion();
+  return <Animated.View entering={motion.entering} exiting={motion.exiting} layout={motion.layout} style={[styles.historyRow, { borderColor: c.line, flexDirection: table ? 'row' : 'column' }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${entry.track} by ${entry.artist}`} disabled={!canOpenTracks} onPress={() => onTrack(entry)} style={[styles.track, table ? styles.songCell : undefined]}>
+      <Artwork uri={entry.artworkUrl} size={38} /><View style={styles.flex}><Text numberOfLines={2} style={[styles.songTitle, { color: c.text }]}>{entry.track}</Text><Text numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{entry.artist}</Text>{!table ? <Text testID={`listening-history-album-${entry.key}`} numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{entry.album?.trim() || 'Album unavailable'}</Text> : null}</View>
+    </Pressable>
+    {table ? <Text testID={`listening-history-album-${entry.key}`} numberOfLines={2} style={[styles.albumCell, styles.meta, { color: c.muted }]}>{entry.album?.trim() || 'Album unavailable'}</Text> : null}
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${entry.routeLabel}`} onPress={() => onJourney(entry.journeyId)} style={[styles.action, table ? styles.routeCell : undefined]}>
+      <Text numberOfLines={2} style={[styles.meta, { color: c.accent }]}>{entry.routeLabel} ›</Text>
+    </Pressable><Text style={[styles.meta, table ? styles.timeCell : undefined, { color: c.muted }]}>{playedDate(entry)}</Text>
+  </Animated.View>;
+}
+
 function playedDate(entry: MusicArchiveEntry) {
   const date = new Date(entry.playedAt ?? entry.journeyStartedAt);
   return Number.isNaN(date.valueOf()) ? 'Time unavailable' : date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -102,7 +121,7 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}>
       <View testID="ipad-music-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
         <IpadPageHeader title="Soundtracks" width={width} subtitle={`${providerName} · Your journey soundtrack`} />
-        {state.status === 'loading' && !data ? <ActivityIndicator accessibilityLabel="Loading your music archive" color={c.accent} /> : null}
+        {state.status === 'loading' && !data ? <MusicArchiveSkeleton label="Loading your music archive" /> : null}
         {state.status === 'error' ? <View accessibilityRole="alert" style={styles.notice}><Text style={[styles.body, { color: c.muted }]}>{state.message || 'Your music archive is temporarily unavailable.'}</Text>
           <Pressable accessibilityRole="button" onPress={onRefresh} disabled={refreshing} style={styles.action}><Text style={{ color: c.accent }}>Try again</Text></Pressable></View> : null}
         <View testID="ipad-music-artists-row" style={[styles.row, { flexDirection: verticalFold ? 'row' : 'column', gap: verticalFold ? verticalFold.frame.width : 16 }]}>
@@ -130,15 +149,7 @@ export function IpadMusicScreen({ state, daily, provider, archive, query, onQuer
             <TextInput accessibilityLabel="Search listening history" value={query} onChangeText={onQueryChange} placeholder="Search songs, artists, albums, or places" placeholderTextColor={c.muted}
               autoCorrect={false} clearButtonMode="while-editing" style={[styles.search, { color: c.text, backgroundColor: c.page, borderColor: c.line }]} />
             {table && archive.length > 0 ? <View testID="listening-history-heading" style={styles.tableHeading}><Text style={[styles.songCell, styles.meta, { color: c.muted }]}>Song / Artist</Text><Text style={[styles.albumCell, styles.meta, { color: c.muted }]}>Album</Text><Text style={[styles.routeCell, styles.meta, { color: c.muted }]}>Journey</Text><Text style={[styles.timeCell, styles.meta, { color: c.muted }]}>Time</Text></View> : null}
-            {archive.slice(0, historyCount).map(entry => <View key={entry.key} style={[styles.historyRow, { borderColor: c.line, flexDirection: table ? 'row' : 'column' }]}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Open ${entry.track} by ${entry.artist}`} disabled={!canOpenTracks} onPress={() => onTrack(entry)} style={[styles.track, table ? styles.songCell : undefined]}>
-                <Artwork uri={entry.artworkUrl} size={38} /><View style={styles.flex}><Text numberOfLines={2} style={[styles.songTitle, { color: c.text }]}>{entry.track}</Text><Text numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{entry.artist}</Text>{!table ? <Text testID={`listening-history-album-${entry.key}`} numberOfLines={1} style={[styles.meta, { color: c.muted }]}>{entry.album?.trim() || 'Album unavailable'}</Text> : null}</View>
-              </Pressable>
-              {table ? <Text testID={`listening-history-album-${entry.key}`} numberOfLines={2} style={[styles.albumCell, styles.meta, { color: c.muted }]}>{entry.album?.trim() || 'Album unavailable'}</Text> : null}
-              <Pressable accessibilityRole="button" accessibilityLabel={`Open journey ${entry.routeLabel}`} onPress={() => onJourney(entry.journeyId)} style={[styles.action, table ? styles.routeCell : undefined]}>
-                <Text numberOfLines={2} style={[styles.meta, { color: c.accent }]}>{entry.routeLabel} ›</Text>
-              </Pressable><Text style={[styles.meta, table ? styles.timeCell : undefined, { color: c.muted }]}>{playedDate(entry)}</Text>
-            </View>)}
+            {archive.slice(0, historyCount).map(entry => <HistoryRow key={entry.key} entry={entry} table={table} colors={c} canOpenTracks={canOpenTracks} onTrack={onTrack} onJourney={onJourney} />)}
             {!archive.length ? <Empty>{query ? 'No listening moments match that search.' : 'Songs matched to journeys will build your searchable archive here.'}</Empty> : null}
             {archive.length > historyCount ? <Pressable accessibilityRole="button" onPress={() => setHistoryCount(count => count + 12)} style={styles.action}><Text style={[styles.songTitle, { color: c.accent }]}>Show more listening history</Text></Pressable> : null}
         </Panel></View>

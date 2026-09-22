@@ -19,6 +19,7 @@ import { clampStudioTrayHeight, containsStudioPoint, memoryStudioDrop, phoneStud
 import type { JourneyMemory, JourneySummary } from './app-data';
 import { useAdaptiveLayout } from './adaptive-layout';
 import { IPAD_GRID_GAP, ipadGridColumns, ipadGridSpan } from './device-layout';
+import { MemoryListSkeleton } from './list-skeleton';
 
 type DragState = {
   compact: boolean;
@@ -294,7 +295,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
         <View style={styles.phoneSectionHeading}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Your Memories</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Refresh Memories" disabled={disabled || loading} onPress={onRefresh} style={styles.phoneRefresh}><SymbolView name="arrow.clockwise" tintColor={c.accent} style={styles.smallIcon} /></Pressable>
         </View>
-        {loading && <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} />}
+        {loading && !memories.length ? <MemoryListSkeleton /> : loading ? <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} /> : null}
         {error && <Text accessibilityRole="alert" style={[styles.phoneNotice, { color: c.accent }]}>{error}</Text>}
         <View testID="iphone-memory-grid" style={styles.grid}>{visibleMemories.slice(0, memoryLimit).map(memory => <Animated.View key={memory.id}
           layout={reduceMotion ? undefined : LinearTransition.springify().damping(24)} style={{ width: phoneLayout.columns === 2 ? '50%' : '100%', padding: 5 }}>
@@ -365,7 +366,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
           <View style={styles.toolbar}><Text accessibilityLiveRegion="polite" style={[styles.hint, { color: c.muted }]}>{saving ? 'Saving your Memory…' : message}</Text>
             <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onRefresh} style={styles.action}><Text style={{ color: c.accent }}>Refresh</Text></Pressable></View>
           {error ? <Text accessibilityRole="alert" style={{ color: c.accent }}>{error}</Text> : null}
-          {loading && <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} />}
+          {loading && !memories.length ? <MemoryListSkeleton /> : loading ? <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} /> : null}
           {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock your complete history  ›</Text></Pressable>}
           <View testID="ipad-memory-studio" style={[styles.workspace, { flexDirection: wide ? 'row' : 'column', gap: verticalFold ? verticalFold.frame.width : 18 }]}>
             <View testID="ipad-memory-gallery-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && memoryPanelLayout]}>

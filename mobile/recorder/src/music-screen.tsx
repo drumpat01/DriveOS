@@ -8,18 +8,21 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import {
-  ActivityIndicator, Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
+  Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, RadialGradient as SvgRadialGradient, Rect, Stop } from 'react-native-svg';
 
 import type { JourneyDetail, JourneySummary, MusicDashboardData, SoundtrackTrack } from './app-data';
 import type { MusicProvider } from './music-preferences';
 import { musicTrackDestination } from './music-destination';
-import { buildMusicArchive, filterMusicArchive, topArchiveTracks } from './library-model';
+import { buildMusicArchive, filterMusicArchive, topArchiveTracks, type MusicArchiveEntry } from './library-model';
 import { NeonWidget, QuietInset } from './neon-widget-outline';
 import { PhoneTabTitle } from './phone-tab-title';
 import { JourneyImage } from './journey-image';
+import { useListRowMotion } from './list-motion';
+import { MusicArchiveSkeleton } from './list-skeleton';
 
 export type MusicDashboardState = {
   status: 'loading' | 'ready' | 'error';
@@ -86,7 +89,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
         <Text style={styles.sourceGuidanceText}>{provider === 'apple-music' ? 'JourneyDeck checks your authorized Apple Music history during and after each journey. Some song locations may be estimated.' : provider === 'shazam' ? 'JourneyDeck does not listen automatically. During an active journey, open the recorder and tap Identify Song for every track you want to save.' : 'This music source is available only in internal testing.'}</Text>
       </View>
 
-      {state.status === 'loading' && !data ? <View style={styles.loading}><ActivityIndicator color={theme.color(colors.pink, 'text')} /><Text style={styles.loadingText}>Building your soundtrack…</Text></View> : null}
+      {state.status === 'loading' && !data ? <Panel title="Listening history" kicker="LOADING"><MusicArchiveSkeleton /></Panel> : null}
       {state.status === 'error' ? <View style={styles.notice}><Text style={styles.noticeTitle}>Music archive unavailable</Text><Text style={styles.noticeBody}>{state.message}</Text><Pressable onPress={() => void onRefresh()} style={styles.retry}><Text style={styles.retryText}>Try again</Text></Pressable></View> : null}
 
       {data ? <>
@@ -103,13 +106,7 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
 
         <Panel title="Listening history" kicker={`${archive.length} JOURNEY PLAYS`}>
           <TextInput value={archiveQuery} onChangeText={setArchiveQuery} placeholder="Search songs, artists, albums, or places" placeholderTextColor={theme.color("#746a7c", 'text')} style={styles.archiveSearch} />
-          {visibleArchive.slice(0, historyLimit).map(entry => <View key={entry.key} style={styles.archiveRow}>
-            <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
-              {entry.artworkUrl ? <JourneyImage imageIdentity={`archive-${entry.key}`} source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
-              <View style={styles.archiveCopy}><Text style={styles.archiveTitle} numberOfLines={1}>{entry.track}</Text><Text style={styles.archiveArtist} numberOfLines={1}>{entry.artist}{entry.album ? `  •  ${entry.album}` : ''}</Text><Text style={styles.archiveRoute} numberOfLines={1}>{entry.routeLabel}</Text></View>
-            </Pressable>
-            <Pressable onPress={() => onJourney(entry.journeyId)} style={styles.archiveJourneyButton}><Text style={styles.archiveJourneyText}>Journey ›</Text></Pressable>
-          </View>)}
+          {visibleArchive.slice(0, historyLimit).map(entry => <ArchiveRow key={entry.key} entry={entry} canOpenTracks={canOpenTracks} provider={provider} onJourney={onJourney} />)}
           {!visibleArchive.length && <Empty text={archiveQuery ? 'No listening moments match that search.' : 'Songs matched to journeys will build your searchable archive here.'} />}
           {!archiveQuery.trim() && visibleArchive.length > 5 ? <Pressable accessibilityRole="button" onPress={() => setShowAllHistory(value => !value)} style={styles.sectionAction}><Text style={styles.sectionActionText}>{showAllHistory ? 'Show less' : `View all ${visibleArchive.length} plays`}</Text><SymbolView name={showAllHistory ? 'chevron.up' : 'chevron.down'} tintColor={theme.palette.accent} weight="semibold" style={styles.sectionActionIcon} /></Pressable> : null}
         </Panel>
@@ -161,6 +158,20 @@ function Metric({ symbol, label, value, detail, accent }: { symbol: SFSymbol; la
 
   const iconColor = theme.id === 'midnight-canopy' ? theme.palette.text : theme.color(accent, 'text');
   return <QuietInset radius={19} accent={accent} style={styles.metric}><View accessible={false} style={[styles.metricIconHalo, { borderColor: theme.color(`${accent}66`, 'border'), shadowColor: theme.color(accent, 'shadow') }]}><LinearGradient colors={theme.id === 'midnight-canopy' ? [symbol === 'flame.fill' ? theme.palette.rose : theme.palette.coral, symbol === 'flame.fill' ? theme.palette.rose : theme.palette.coral] : [theme.color(`${accent}66`, 'surface'), theme.color(`${accent}18`, 'surface')]} style={styles.metricIcon}><SymbolView name={symbol} tintColor={iconColor} type="hierarchical" weight="bold" style={styles.metricSymbol} /></LinearGradient></View><View style={styles.metricCopy}><Text style={styles.metricLabel}>{label}</Text><Text style={[styles.metricValue, theme.id === 'midnight-canopy' && { color: theme.palette.amber }]}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View></QuietInset>;
+}
+
+function ArchiveRow({ entry, canOpenTracks, provider, onJourney }: {
+  entry: MusicArchiveEntry; canOpenTracks: boolean; provider: MusicProvider; onJourney: (id: string) => void;
+}) {
+  const styles = useThemedStyles(darkStyles);
+  const motion = useListRowMotion();
+  return <Animated.View entering={motion.entering} exiting={motion.exiting} layout={motion.layout} style={styles.archiveRow}>
+    <Pressable disabled={!canOpenTracks} onPress={() => void openTrack(entry, provider)} style={styles.archiveTrackButton}>
+      {entry.artworkUrl ? <JourneyImage imageIdentity={`archive-${entry.key}`} source={{ uri: entry.artworkUrl }} style={styles.archiveArtwork} contentFit="cover" /> : <View style={styles.archiveArtworkFallback}><Text style={styles.archiveNote}>♪</Text></View>}
+      <View style={styles.archiveCopy}><Text style={styles.archiveTitle} numberOfLines={1}>{entry.track}</Text><Text style={styles.archiveArtist} numberOfLines={1}>{entry.artist}{entry.album ? `  •  ${entry.album}` : ''}</Text><Text style={styles.archiveRoute} numberOfLines={1}>{entry.routeLabel}</Text></View>
+    </Pressable>
+    <Pressable onPress={() => onJourney(entry.journeyId)} style={styles.archiveJourneyButton}><Text style={styles.archiveJourneyText}>Journey ›</Text></Pressable>
+  </Animated.View>;
 }
 
 function LatestSoundtrack({ track, enabled, onPress }: { track: SoundtrackTrack; enabled: boolean; onPress: () => void }) {

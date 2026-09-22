@@ -2,45 +2,43 @@
 
 ## Current objective
 
-Draft-only retarget of JourneyDeck V3 TestFlight onto the LIVE App Store
-listing. Do not merge. Do not run `eas build` / `eas submit`. Do not touch
-polish PRs #163/#164 or `ios-v3-device.yml`.
+Rebased Scout polish item 5 (PR #164) onto main after #165 merged.
+Keep Reanimated list skeletons + enter/exit intact. Do not squash-merge
+into main from this agent. Do not touch EAS / TestFlight / App Store submit.
 
 ## Material changes
 
-- `APP_VARIANT=v3-store` (and EAS profile `v3-testflight`) enables V3
-  product features without switching bundle, Watch, or CloudKit identity.
-- `mobile/recorder/eas.json` `v3-testflight`: store distribution, channel
-  `production`, environment `production`, `APP_VARIANT=v3-store`,
-  `INTERNAL_TESTING=0`. Submit `ascAppId` is live `6806502526`.
-- Isolated preview `APP_VARIANT=v3-preview` still forces
-  `com.journeydeck.recorder.v3` / `iCloud.com.journeydeck.recorder.v3` and
-  is not used by this profile.
-- Gate fails closed without Patrick/CoS clear. It accepts `6806502526` and
-  rejects isolated preview `6814695593`. TestFlight only — never App Store
-  review submit from this stream.
-- Ask/Siri plugins key off V3 feature flags, not the `.v3` bundle.
+- Shared Reanimated skeleton bones (`src/list-skeleton.tsx`) pulse opacity
+  only. Reduce Motion / background snaps to a static fill. No Moti.
+- Shared list enter/exit/layout (`src/list-motion.ts`) uses FadeIn /
+  FadeOut / LinearTransition and disables all three when Reduce Motion
+  is on or the app is backgrounded.
+- Applied to Soundtracks archive (phone + iPad), Journeys list empty
+  load, Memories empty initial load, and JourneyCard row motion.
+- Record-active UI in `App.tsx` is unchanged.
+- Main now includes #165 (V3 TestFlight live listing / `v3-store`). This
+  branch does not change that path.
 
 ## Active tree
 
-- Branch: `cursor/v3-testflight-live-listing-bf20` (draft PR, this change).
-- V3 store TF runtime stays `3.0.0-preview.4` on channel `production`.
+- Branch: `cursor/scout-list-skeletons-225f` (draft PR #164).
+- Rebased onto `origin/main` (`782a651`, #165).
 
 ## Verification
 
-- Targeted from `mobile/recorder`: `v3-testflight-eas` 7/7,
-  `ask-journeydeck` 12/12, `time-capsule-prototype` 3/3,
-  `siri-native-build` 3/3.
-- Resolved `EAS_BUILD_PROFILE=v3-testflight`: live bundle + CloudKit +
-  Watch, submit `6806502526`, channel `production`, V3 features on.
+- `npm run test:list-skeleton`
+- `tests/ipad-music.test.mts`
+- `tests/ipad-memories.test.mts`
+- `npm run test:tab-runtime`
+- `npm run typecheck`
 - No EAS Build, no EAS Submit, no App Store/TestFlight upload.
 
 ## Unresolved
 
-- Build/submit still require written Patrick/CoS clear. This skeleton never
-  invokes `eas build` or `eas submit`. Never promote this stream to review.
+- Device feel-check on iPhone/iPad with and without Reduce Motion.
+- Eng will squash-merge #164 after it is mergeable.
 
 ## Next steps
 
-1. Review the draft PR; do not merge.
-2. Do not dispatch a live EAS job from this skeleton.
+1. Confirm #164 is MERGEABLE against main.
+2. Eng squash-merges; this agent does not merge.
