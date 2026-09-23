@@ -49,6 +49,12 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(support.body, /JourneyDeck Support/i);
     assert.match(support.body, /mailto:journeydeckapp@gmail\.com/i);
     assert.match(support.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
+    const soundtrack = await runtime.app.inject({ method: "GET", url: "/apple-music-soundtrack" });
+    assert.equal(soundtrack.statusCode, 200, soundtrack.body);
+    assert.match(String(soundtrack.headers["content-type"]), /text\/html/);
+    assert.match(soundtrack.body, /records drives and builds an optional soundtrack from your authorized Apple Music listening history/i);
+    assert.match(soundtrack.body, /href="\/privacy"/);
+    assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
@@ -60,7 +66,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.equal(sitemap.statusCode, 200, sitemap.body);
     assert.match(String(sitemap.headers["content-type"]), /xml/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/terms<\/loc>/i);
-    assert.doesNotMatch(sitemap.body, /\/beta|\/app|\/login/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
+    assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
 
@@ -84,6 +91,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /property="og:url" content="https:\/\/journeydeck\.me\/"/);
     assert.match(landing.body, /href="\/login"/i);
     assert.match(landing.body, /href="#medallions"/);
+    assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
     assert.doesNotMatch(landing.body, /noindex|2\.0 PREVIEW|Coming soon for iPhone|Follow the launch|Tessie/);
