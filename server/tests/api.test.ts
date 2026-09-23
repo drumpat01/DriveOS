@@ -44,7 +44,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(privacy.body, /RevenueCat/i);
     assert.doesNotMatch(privacy.body, /Automatic Drive Detection|Tessie/i);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-2/);
+    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-3/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -57,6 +57,8 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /href="\/privacy"/);
     assert.match(soundtrack.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
+    assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg/);
+    assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
@@ -64,6 +66,7 @@ test("public information and discovery pages are accessible without an authentic
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
+      assert.match(page.body, /class="mobile-menu"/);
       assert.match(page.body, /Get the app/);
     }
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
@@ -87,7 +90,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(String(landing.headers["content-type"]), /text\/html/);
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 2\.0 · AVAILABLE NOW/);
-    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-3"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-4"/);
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
     assert.match(landing.body, /aria-label="1 of 5: Home"/);
@@ -101,14 +104,25 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /href="#medallions"/);
     assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/apple-music-soundtrack"/);
+    assert.match(landing.body, /id="replay"/);
+    assert.match(landing.body, /id="memories"/);
+    assert.match(landing.body, /id="membership"/);
+    assert.match(landing.body, /class="mobile-menu"/);
     assert.match(landing.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
     assert.match(landing.body, /Follow @JourneyDeck on X/i);
     assert.doesNotMatch(landing.body, /noindex|2\.0 PREVIEW|Coming soon for iPhone|Follow the launch|Tessie/);
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
 
     for (const [url, mime] of [
-      ["/beta.css?v=grand-tour-3", /text\/css/],
-      ["/public-page.css?v=grand-tour-2", /text\/css/],
+      ["/beta.css?v=grand-tour-4", /text\/css/],
+      ["/public-page.css?v=grand-tour-3", /text\/css/],
+      ["/site-mobile-nav.css?v=1", /text\/css/],
+      ["/v2-features.css?v=1", /text\/css/],
+      ["/soundtrack-v2.css?v=1", /text\/css/],
+      ["/assets/v2/route-replay.jpg", /image\/jpeg/],
+      ["/assets/v2/soundtrack.jpg", /image\/jpeg/],
+      ["/assets/v2/memory.jpg", /image\/jpeg/],
+      ["/assets/v2/themes.jpg", /image\/jpeg/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=grand-tour-1", /javascript/],
       ["/medallions/medallions.css?v=medallions-1", /text\/css/],
