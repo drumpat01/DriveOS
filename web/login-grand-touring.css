@@ -1,0 +1,34 @@
+:root { --navy: #081832; --surface: #10243e; --ivory: #f6f0e2; --gold: #d4b15a; --muted: #b6bfcc; }
+html { background: var(--navy); }
+body { color: var(--ivory); background: radial-gradient(ellipse 60% 55% at 92% 0%, #d4b15a1c, transparent 74%), linear-gradient(160deg, #0b203a, var(--navy) 65%); }
+main { border-color: #d4b15a8c; border-radius: 18px; background: linear-gradient(155deg, #142b46f5, #081832f8) padding-box; box-shadow: 0 30px 80px #0005, inset 0 1px #ffffff14; }
+.login-home { display: inline-flex; margin-bottom: 14px; color: #e9cf91; font-size: .82rem; font-weight: 650; text-decoration: none; }
+.login-home:hover { color: var(--ivory); }
+.brand-mark { border-radius: 18px; filter: none; }
+.brand-name { color: var(--ivory); background: none; -webkit-background-clip: initial; background-clip: initial; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 650; letter-spacing: -.06em; filter: none; }
+.eyebrow { color: var(--gold); }
+.tagline { color: var(--ivory); }
+.field { border-color: #b6bfcc66; background: #08183288; }
+.field:focus-within { border-color: var(--gold); box-shadow: 0 0 0 3px #d4b15a33; }
+.field-icon, .password-toggle, .password-toggle .eye-icon { color: var(--gold); }
+input { color: var(--ivory); }
+input::placeholder { color: var(--muted); }
+#submitButton { border: 1px solid #e9cf91; background: var(--gold); color: var(--navy); box-shadow: 0 12px 32px #0004; }
+#submitButton:hover { background: #e5c77e; }
+.passkey-button { border-color: #e9cf91; color: var(--ivory); background: #10243e; }
+.passkey-button:before { color: var(--gold); }
+.remember-row { color: var(--muted); }
+.remember-copy { color: #a6b4c4; }
+.checkmark { border-color: #d4b15a88; background: #10243e; }
+.remember input:checked+.checkmark { border-color: #e9cf91; background: var(--gold); box-shadow: none; }
+.remember input:checked+.checkmark:after { color: var(--navy); }
+.install-button, .privacy { border-color: #d4b15a66; color: var(--muted); background: #10243e77; }
+.privacy:hover, .install-button:hover { color: var(--ivory); background: #d4b15a18; }
+#message { color: #e9cf91; }
+dialog { border-color: #d4b15a88; color: var(--ivory); background: #10243e; }
+.dialog-inner h2 { color: var(--gold); }
+.dialog-inner p, .dialog-inner li { color: var(--muted); }
+.dialog-close { border: 1px solid #e9cf91; background: var(--gold); color: var(--navy); }
+.install-steps li:before { background: var(--gold); color: var(--navy); }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
