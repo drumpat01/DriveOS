@@ -17,7 +17,7 @@ import { loadTessieRouteCoordinates } from "./tessie-route.js";
 
 declare module "fastify" { interface FastifyRequest { principal: Principal | null } }
 
-const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico"]);
+const publicPaths = new Set(["/healthz", "/readyz", "/login", "/login.html", "/privacy", "/privacy.html", "/apple-music-soundtrack", "/support", "/support.html", "/terms", "/terms.html", "/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/favicon.ico"]);
 const publicAuthPaths = new Set(["/api/auth/login", "/api/auth/passkey/options", "/api/auth/passkey/verify"]);
 const scheduledSyncPath = "/api/spotify/sync";
 const securityHeaders = {
@@ -204,7 +204,7 @@ export async function createApp(overrides: CreateAppOverrides = {}) {
       app.get(legacyLandingPath, async (_req, reply) => reply.redirect("/"));
     }
   }
-  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
+  app.get("/", async (_req, reply) => reply.sendFile(cfg.mode === "web" ? "beta.html" : "index.html")); app.get("/app", async (_req, reply) => reply.sendFile("index.html")); app.get("/spotify-callback", async (_req, reply) => reply.sendFile("index.html")); app.get("/login", async (_req, reply) => reply.sendFile("login.html")); app.get("/privacy", async (_req, reply) => reply.sendFile("privacy.html")); app.get("/apple-music-soundtrack", async (_req, reply) => reply.sendFile("apple-music-soundtrack.html")); app.get("/support", async (_req, reply) => reply.sendFile("support.html")); app.get("/terms", async (_req, reply) => reply.sendFile("terms.html")); app.get("/wife", async (_req, reply) => reply.sendFile("wife.html"));
   app.setNotFoundHandler(async (req, reply) => {
     const requestPath = req.url.split("?")[0];
     if (cfg.mode === "web" && ["GET", "HEAD"].includes(req.method) && !requestPath.startsWith("/api/")) return reply.code(404).header("x-robots-tag", "noindex, nofollow").sendFile("404.html");
