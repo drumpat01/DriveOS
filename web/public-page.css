@@ -61,6 +61,6 @@ strong { color: var(--ivory); }
   .contact, .secondary-action { width: 100%; }
 }
 @media (max-width: 1000px) { .site-header { padding-inline: 36px; } .desktop-nav { gap: 17px; } }
-@media (max-width: 760px) { .site-header { min-height: 72px; padding: 13px 24px; } .desktop-nav { display: none; } .brand { font-size: 19px; } .brand img { width: 32px; height: 32px; } .header-actions { gap: 9px; } .button-small { min-height: 40px; padding: 10px 14px; font-size: 11px; } }
+@media (max-width: 800px) { .site-header { min-height: 72px; padding: 13px 24px; } .desktop-nav { display: none; } .brand { font-size: 19px; } .brand img { width: 32px; height: 32px; } .header-actions { gap: 9px; } .button-small { min-height: 40px; padding: 10px 14px; font-size: 11px; } }
 @media (max-width: 520px) { .brand { font-size: 18px; gap: 7px; } .brand img { width: 29px; height: 29px; } .header-actions { gap: 3px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

@@ -1,0 +1,25 @@
+.v2-showcase { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,400px); align-items:center; gap:clamp(36px,7vw,110px); }
+.v2-showcase-reverse { grid-template-columns:minmax(280px,400px) minmax(0,1fr); }
+.v2-showcase-reverse .showcase-visual { grid-column:1; grid-row:1; }
+.v2-showcase-reverse .showcase-copy { grid-column:2; grid-row:1; }
+.showcase-copy h2 { max-width:650px; margin:18px 0 24px; font-family:var(--serif,Georgia,serif); font-size:clamp(38px,5vw,70px); font-weight:400; line-height:1.05; letter-spacing:-.04em; }
+.showcase-copy > p:not(.eyebrow), .share-note p { max-width:590px; color:var(--muted,#b6bfcc); font-size:17px; line-height:1.75; }
+.showcase-detail { margin-top:20px; }
+.showcase-visual, .membership-visual { margin:0; text-align:center; }
+.showcase-visual img, .membership-visual img { display:block; width:min(100%,350px); height:auto; margin:auto; border:1px solid #d4b15a55; border-radius:12px; box-shadow:0 26px 70px #0006; }
+.showcase-visual figcaption, .membership-visual figcaption { margin-top:14px; color:var(--muted,#b6bfcc); font-size:12px; }
+.share-note { margin-top:32px; padding:20px 24px; border-left:2px solid #d4b15a; background:#d4b15a0c; }
+.share-note span { color:#d4b15a; font-weight:700; letter-spacing:.08em; text-transform:uppercase; font-size:11px; }
+.share-note p { margin:9px 0 0; font-size:15px; }
+.membership-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(220px,320px); gap:clamp(28px,5vw,70px); align-items:center; margin-top:45px; }
+.membership-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.membership-card { padding:clamp(22px,3vw,34px); border:1px solid #b6bfcc44; border-radius:12px; background:#ffffff08; }
+.membership-card-plus { border-color:#d4b15a99; background:#d4b15a0b; }
+.membership-card h3 { margin:18px 0 24px; font-family:var(--serif,Georgia,serif); font-size:clamp(23px,2.5vw,31px); font-weight:400; line-height:1.15; }
+.membership-card ul { margin:0; padding-left:19px; color:var(--muted,#b6bfcc); font-size:14px; line-height:1.7; }
+.membership-card li+li { margin-top:13px; }
+.membership-card li::marker { color:#d4b15a; }
+.membership-note { max-width:750px; margin-top:25px; color:var(--muted,#b6bfcc); font-size:13px; line-height:1.6; }
+.v2-showcase, .membership-section { scroll-margin-top:100px; }
+@media(max-width:950px) { .membership-layout { grid-template-columns:1fr; } .membership-visual img { width:min(100%,270px); } }
+@media(max-width:700px) { .v2-showcase,.v2-showcase-reverse { grid-template-columns:1fr; } .v2-showcase-reverse .showcase-copy,.v2-showcase-reverse .showcase-visual { grid-column:auto; grid-row:auto; } .showcase-visual img { width:min(100%,280px); } .membership-cards { grid-template-columns:1fr; } }
