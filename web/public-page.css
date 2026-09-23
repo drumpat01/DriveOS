@@ -15,13 +15,21 @@ body { min-height: 100svh; margin: 0; color: var(--ivory); background: radial-gr
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
 a { color: #e9cf91; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 a:hover { color: var(--ivory); }
-.page { width: min(100% - 40px, 940px); margin: 0 auto; padding: max(24px, env(safe-area-inset-top)) 0 max(52px, env(safe-area-inset-bottom)); }
-.top { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 78px; margin-bottom: 30px; border-bottom: 1px solid var(--line); }
-.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ivory); font-size: 1.08rem; font-weight: 680; letter-spacing: -.035em; text-decoration: none; }
-.brand-mark { width: 36px; height: 36px; border-radius: 9px; }
-.top nav { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: .82rem; }
-.top nav a { display: inline-flex; align-items: center; min-height: 42px; padding: 8px 12px; border: 1px solid transparent; border-radius: 7px; color: var(--muted); text-decoration: none; }
-.top nav a:hover, .top nav a[aria-current="page"] { border-color: var(--line); color: var(--ivory); background: #ffffff0b; }
+.site-header { position: sticky; top: 0; z-index: 30; min-height: 82px; padding: 16px max(32px, calc((100vw - 1240px)/2)); display: flex; align-items: center; justify-content: space-between; gap: 20px; background: #081832ed; border-bottom: 1px solid var(--line); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+.brand { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; color: var(--ivory); font-size: 20px; font-weight: 650; letter-spacing: -.8px; text-decoration: none; }
+.brand img { display: block; width: 36px; height: 36px; border-radius: 10px; }
+.gold { color: var(--gold); }
+.desktop-nav { display: flex; gap: 28px; }
+.desktop-nav a { color: var(--muted); font-size: 12px; text-decoration: none; transition: color .2s; }
+.desktop-nav a:hover, .desktop-nav a[aria-current="page"] { color: var(--ivory); }
+.desktop-nav a[aria-current="page"] { text-decoration: underline; text-decoration-color: var(--gold); text-underline-offset: 7px; }
+.header-actions { display: flex; align-items: center; gap: 20px; }
+.social-link { display: grid; place-items: center; width: 44px; height: 44px; color: var(--ivory); }
+.social-link svg { display: block; width: 17px; fill: currentColor; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: 28px; min-height: 54px; padding: 17px 24px; border: 1px solid #e9cf91; border-radius: 7px; background: var(--gold); color: var(--navy); font-size: 14px; font-weight: 650; line-height: 1.25; text-decoration: none; transition: background .25s, transform .25s, box-shadow .25s; }
+.button:hover { background: #e5c77e; color: var(--navy); transform: translateY(-2px); box-shadow: 0 8px 26px #0003; }
+.button-small { min-height: 42px; padding: 11px 18px; gap: 20px; font-size: 12px; }
+.page { width: min(100% - 40px, 940px); margin: 0 auto; padding: 30px 0 max(52px, env(safe-area-inset-bottom)); }
 .hero { position: relative; isolation: isolate; overflow: hidden; min-height: 310px; padding: clamp(30px, 6vw, 58px); border: 1px solid #d4b15a80; border-radius: 14px; background: linear-gradient(90deg, #081832f5 0%, #081832e8 52%, #0818328a 100%), url('/assets/beta/grand-touring-home.webp') center 55% / cover; box-shadow: 0 28px 70px #0004; }
 .hero::after { content: ""; position: absolute; z-index: 1; inset: auto 0 0; height: 5px; background: linear-gradient(90deg, var(--gold), #e9cf91 42%, transparent); pointer-events: none; }
 .eyebrow { margin: 0 0 16px; color: var(--gold); font-size: .68rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; }
@@ -45,13 +53,14 @@ strong { color: var(--ivory); }
 .page-actions .contact { margin-top: 0; }
 .secondary-action { border: 1px solid #e9cf9180; color: var(--ivory); }
 .secondary-action:hover { border-color: var(--gold); background: #d4b15a18; transform: translateY(-2px); }
-.error-page { display: grid; align-content: center; min-height: 100svh; }
+.error-page { display: grid; align-content: center; min-height: calc(100svh - 82px); }
 .error-hero { min-height: 430px; display: flex; flex-direction: column; justify-content: center; }
 @media (max-width: 620px) {
   .page { width: min(100% - 28px, 940px); }
-  .top { align-items: flex-start; flex-direction: column; gap: 6px; margin-bottom: 18px; padding-bottom: 12px; }
-  .top nav { margin-left: -11px; }
   .hero { min-height: 0; background: linear-gradient(90deg, #081832f5, #081832c9), url('/assets/beta/grand-touring-home.webp') center / cover; }
   .contact, .secondary-action { width: 100%; }
 }
+@media (max-width: 1000px) { .site-header { padding-inline: 36px; } .desktop-nav { gap: 17px; } }
+@media (max-width: 760px) { .site-header { min-height: 72px; padding: 13px 24px; } .desktop-nav { display: none; } .brand { font-size: 19px; } .brand img { width: 32px; height: 32px; } .header-actions { gap: 9px; } .button-small { min-height: 40px; padding: 10px 14px; font-size: 11px; } }
+@media (max-width: 520px) { .brand { font-size: 18px; gap: 7px; } .brand img { width: 29px; height: 29px; } .header-actions { gap: 3px; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

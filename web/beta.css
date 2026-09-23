@@ -39,8 +39,6 @@ figure, h1, h2, h3, p { margin: 0; }
 .desktop-nav { display: flex; gap: 28px; }
 .desktop-nav a { font-size: 12px; color: var(--muted); transition: color .2s; }
 .desktop-nav a:hover { color: var(--ivory); }
-.desktop-nav .nav-feature-link { padding: 9px 13px; border: 1px solid rgba(217, 179, 103, .7); border-radius: 6px; color: var(--gold); font-weight: 700; }
-.desktop-nav .nav-feature-link:hover { color: var(--navy); background: var(--gold); }
 .header-actions { display: flex; align-items: center; gap: 20px; }
 .social-link { display: grid; place-items: center; width: 44px; height: 44px; }
 .social-link svg { width: 17px; fill: currentColor; }
@@ -110,9 +108,9 @@ figure, h1, h2, h3, p { margin: 0; }
 .route-icon circle { fill: var(--navy); stroke: var(--gold); stroke-width: 1.5; }
 .feature-card h3 { font-weight: 450; font-size: 26px; line-height: 1.18; letter-spacing: -.04em; }
 .feature-card p { font-size: 13px; line-height: 1.85; color: var(--muted); margin-top: 17px; }
-.feature-cta { display: inline-flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; margin-top: 23px; padding: 12px 15px; border: 1px solid #e9cf91; border-radius: 7px; background: var(--gold); color: var(--navy); font-size: 12px; line-height: 1.35; font-weight: 700; transition: background .25s, transform .25s var(--ease), box-shadow .25s; }
-.feature-cta:hover { background: #e5c77e; color: var(--navy); transform: translateY(-2px); box-shadow: 0 8px 26px #0003; }
-.feature-cta span { font-size: 17px; line-height: 1; }
+.feature-cta { display: inline-flex; align-items: center; gap: 9px; width: fit-content; margin-top: 23px; padding-bottom: 4px; border-bottom: 1px solid var(--gold); color: var(--gold); font-size: 12px; line-height: 1.5; font-weight: 650; transition: color .2s; }
+.feature-cta:hover { color: var(--ivory); }
+.feature-cta span { font-size: 16px; line-height: 1; }
 .record-symbol { height: 118px; width: 118px; display: grid; place-items: center; margin-block: 22px; background: repeating-radial-gradient(circle,#d4b15a22 0 1px,transparent 2px 6px); border: 1px solid #d4b15a44; border-radius: 50%; }
 .record-symbol > div { width: 41px; height: 41px; background: var(--gold); border-radius: 50%; position: relative; }
 .record-symbol > div:after { content: ""; position: absolute; inset: 17px; background: var(--navy); border-radius: 50%; }
