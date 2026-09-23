@@ -44,7 +44,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(privacy.body, /RevenueCat/i);
     assert.doesNotMatch(privacy.body, /Automatic Drive Detection|Tessie/i);
     assert.match(privacy.body, /\/assets\/favicon\.png\?v=app-logo-1/i);
-    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-1/);
+    assert.match(privacy.body, /\/public-page\.css\?v=grand-tour-2/);
     assert.equal(support.statusCode, 200, support.body);
     assert.match(String(support.headers["content-type"]), /text\/html/);
     assert.match(support.body, /JourneyDeck Support/i);
@@ -60,6 +60,12 @@ test("public information and discovery pages are accessible without an authentic
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
+    for (const page of [privacy, support, soundtrack, terms]) {
+      assert.match(page.body, /class="site-header"/);
+      assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
+      assert.match(page.body, /href="\/apple-music-soundtrack"/);
+      assert.match(page.body, /Get the app/);
+    }
     const robots = await runtime.app.inject({ method: "GET", url: "/robots.txt" });
     assert.equal(robots.statusCode, 200, robots.body);
     assert.match(robots.body, /Sitemap: https:\/\/journeydeck\.me\/sitemap\.xml/i);
@@ -81,7 +87,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(String(landing.headers["content-type"]), /text\/html/);
     assert.match(landing.body, /GRAND TOURING/);
     assert.match(landing.body, /JOURNEYDECK 2\.0 · AVAILABLE NOW/);
-    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-2"/);
+    assert.match(landing.body, /href="\/beta\.css\?v=grand-tour-3"/);
     assert.match(landing.body, /id="medallion-theme"/);
     assert.match(landing.body, /data-theme="redline"/);
     assert.match(landing.body, /aria-label="1 of 5: Home"/);
@@ -101,8 +107,8 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.doesNotMatch(landing.body, /@JourneyDeckApp|x\.com\/JourneyDeckApp/i);
 
     for (const [url, mime] of [
-      ["/beta.css?v=grand-tour-2", /text\/css/],
-      ["/public-page.css?v=grand-tour-1", /text\/css/],
+      ["/beta.css?v=grand-tour-3", /text\/css/],
+      ["/public-page.css?v=grand-tour-2", /text\/css/],
       ["/login-grand-touring.css?v=grand-tour-1", /text\/css/],
       ["/beta.js?v=grand-tour-1", /javascript/],
       ["/medallions/medallions.css?v=medallions-1", /text\/css/],
