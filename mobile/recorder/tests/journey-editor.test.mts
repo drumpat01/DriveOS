@@ -29,6 +29,7 @@ function fixture() {
   const loaded = new Map<string, any>();
   const overrides: Record<string, any> = {
     'expo-crypto': { randomUUID },
+    'expo-constants': { __esModule: true, default: { expoConfig: { extra: { features: {} } } } },
     './auth': { getCurrentUser: () => ({ id: state.userId }) },
     './database-owner': { getMasterDatabase: () => db },
     './local-archive-events': { notifyLocalArchiveChanged: () => state.notices++ },
@@ -246,7 +247,7 @@ test('backup acknowledgements do not invalidate a preview and originals are data
     f.database.exec('UPDATE local_journeys SET synced_to_cloud=1,route_synced_to_cloud=1; UPDATE local_music_entries SET synced_to_cloud=1;');
     const edit = await f.editor.commitJourneyEdit(snapshot, { kind: 'trim', startMs: f.start + 60_000, endMs: f.start + 540_000 });
     assert.throws(() => f.database.prepare('UPDATE local_journey_edit_operations SET payload_json=\'{}\' WHERE id=?').run(edit.revision), /cannot be overwritten/);
-    assert.equal(f.database.prepare('PRAGMA user_version').get()?.user_version, 9);
+    assert.equal(f.database.prepare('PRAGMA user_version').get()?.user_version, 11);
     assert.deepEqual(f.database.prepare('PRAGMA foreign_key_check').all(), []);
   } finally { f.close(); }
 });

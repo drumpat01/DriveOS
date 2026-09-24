@@ -146,21 +146,110 @@ test('an older native build reports unavailable without requiring PhotoKit at st
   const module = { exports: {} as any };
   vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/photo-matching-library.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText, { module, exports: module.exports, require: (id: string) => id === 'expo-modules-core' ? { requireOptionalNativeModule: () => null } : require(id) });
+  }).outputText, { module, exports: module.exports, require: (id: string) =>
+    id === 'expo-modules-core' ? { requireOptionalNativeModule: () => null }
+      : id === './photo-matching-model' ? model : require(id) });
   assert.equal((await module.exports.photoMatchingLibrary.getStatus()).permission, 'unavailable');
   await module.exports.photoMatchingLibrary.cancel('old');
   assert.throws(() => module.exports.photoMatchingLibrary.scan('old', []), /next JourneyDeck app build/);
 });
 
-test('PhotoKit bridge enforces hidden/access/session/offline boundaries and strips image metadata', () => {
+test('Build 36 keeps its embedded photo scanner when Expo MediaLibrary is absent', async () => {
+  const module = { exports: {} as any };
+  let scanned = false;
+  const native = {
+    getStatusAsync: async () => ({ permission: 'full', sensitivityAvailable: true }),
+    requestPermissionAsync: async () => ({ permission: 'full', sensitivityAvailable: true }),
+    manageLimitedSelectionAsync: async () => {},
+    scanAsync: async (scanId: string) => { scanned = true; return { scanId, assets: [], truncated: false }; },
+    previewAsync: async () => ({}), exportAsync: async () => ({}), cancelAsync: async () => {},
+  };
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/photo-matching-library.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { module, exports: module.exports, require: (id: string) =>
+    id === 'expo-modules-core' ? { requireOptionalNativeModule: (name: string) => name === 'ExpoMediaLibrary' ? null : native }
+      : id === './photo-matching-model' ? model
+        : id === 'expo-media-library/legacy' ? (() => { throw Error('Expo library loaded on Build 36'); })() : require(id) });
+  assert.equal((await module.exports.photoMatchingLibrary.getStatus()).permission, 'full');
+  assert.equal((await module.exports.photoMatchingLibrary.scan('old-scan', [])).scanId, 'old-scan');
+  assert.equal(scanned, true);
+});
+
+test('Expo metadata scan filters screenshots, bounds work, and adopts only validated IDs', async () => {
+  const module = { exports: {} as any };
+  const start = Date.parse('2026-07-01T09:30:00Z'), end = Date.parse('2026-07-01T11:30:00Z');
+  const adopted: string[][] = [], requested: any[] = [];
+  const native = {
+    getStatusAsync: async () => ({ permission: 'limited', sensitivityAvailable: true }),
+    adoptScanAsync: async (_id: string, _windows: unknown, ids: string[]) => { adopted.push(ids); return ['a']; },
+    cancelAsync: async () => {}, previewAsync: async () => ({}), exportAsync: async () => ({}),
+  };
+  const media = {
+    getPermissionsAsync: async () => ({ accessPrivileges: 'limited', granted: true }),
+    requestPermissionsAsync: async () => ({ accessPrivileges: 'limited', granted: true }),
+    presentPermissionsPickerAsync: async () => {},
+    getAssetsAsync: async (options: any) => {
+      requested.push(options);
+      return { hasNextPage: false, assets: [
+        { id: 'a', creationTime: start, mediaSubtypes: [], width: 100, height: 80, location: { latitude: 20, longitude: 20 } },
+        { id: 'shot', creationTime: start + 1, mediaSubtypes: ['screenshot'], width: 100, height: 80 },
+        { id: 'b', creationTime: end, mediaSubtypes: [], width: 100, height: 80 },
+        { id: 'outside', creationTime: end + 2, mediaSubtypes: [], width: 100, height: 80 },
+      ] };
+    },
+  };
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/photo-matching-library.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { module, exports: module.exports, require: (id: string) =>
+    id === 'expo-modules-core' ? { requireOptionalNativeModule: (name: string) => name === 'ExpoMediaLibrary' ? {} : native }
+      : id === './photo-matching-model' ? model : id === 'expo-media-library/legacy' ? media : require(id) });
+  const library = module.exports.photoMatchingLibrary;
+  assert.deepEqual(JSON.parse(JSON.stringify(await library.getStatus())), { permission: 'limited', sensitivityAvailable: true });
+  const result = await library.scan('scan-1', [{ startMs: start, endMs: end }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(adopted)), [['a', 'b']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(result.assets.map((item: any) => item.id))), ['a']);
+  assert.equal(result.assets[0].latitude, 20);
+  assert.equal(requested[0].createdAfter, start - 1);
+  assert.equal(requested[0].createdBefore, end + 1);
+  await assert.rejects(() => library.scan('invalid', [{ startMs: end, endMs: start }]), /fresh search/);
+});
+
+test('closing a review cancels an in-flight Expo metadata scan before native adoption', async () => {
+  const module = { exports: {} as any }, pending = deferred<any>();
+  let adopted = false;
+  const native = {
+    adoptScanAsync: async () => { adopted = true; return []; },
+    cancelAsync: async () => {}, previewAsync: async () => ({}), exportAsync: async () => ({}),
+  };
+  const media = {
+    getPermissionsAsync: async () => ({ granted: true }),
+    getAssetsAsync: () => pending.promise,
+  };
+  vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/photo-matching-library.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { module, exports: module.exports, require: (id: string) =>
+    id === 'expo-modules-core' ? { requireOptionalNativeModule: (name: string) => name === 'ExpoMediaLibrary' ? {} : native }
+      : id === './photo-matching-model' ? model : id === 'expo-media-library/legacy' ? media : require(id) });
+  const library = module.exports.photoMatchingLibrary;
+  const scan = library.scan('canceled', [{ startMs: 1000, endMs: 2000 }]);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await library.cancel('canceled');
+  pending.resolve({ assets: [], hasNextPage: false });
+  await assert.rejects(scan, /review has ended/);
+  assert.equal(adopted, false);
+});
+
+test('PhotoKit export bridge validates Expo-selected IDs and retains offline sensitive-content protections', () => {
   const source = readFileSync(new URL('../modules/journeydeck-photo-library/ios/JourneyDeckPhotoLibraryModule.swift', import.meta.url), 'utf8');
   const podspec = readFileSync(new URL('../modules/journeydeck-photo-library/ios/JourneyDeckPhotoLibrary.podspec', import.meta.url), 'utf8');
-  assert.match(source, /^import PhotosUI$/m, 'limited-library picker extension requires PhotosUI');
-  assert.match(podspec, /s\.frameworks = .*'PhotosUI'/, 'links the picker framework in the native build');
-  assert.match(source, /requestAuthorization\(for: \.readWrite\)/);
+  assert.doesNotMatch(source, /^import PhotosUI$/m);
+  assert.doesNotMatch(podspec, /'PhotosUI'/);
+  assert.match(source, /AsyncFunction\("adoptScanAsync"\)/);
+  assert.doesNotMatch(source, /AsyncFunction\("scanAsync"\)/);
   assert.match(source, /includeHiddenAssets = false/); assert.match(source, /!asset\.isHidden/);
+  assert.match(source, /\.photoScreenshot/); assert.match(source, /ranges\.contains\(where:/);
   assert.match(source, /allowedAssets\.contains\(assetID\), canRead\(\)/);
-  assert.match(source, /isNetworkAccessAllowed = false/); assert.match(source, /fetchLimit = 401/);
+  assert.match(source, /isNetworkAccessAllowed = false/); assert.match(source, /assetIDs\.count <= 400/);
   assert.match(source, /processingImages < 12/);
   assert.match(source, /cancelImageRequest/); assert.match(source, /UIGraphicsImageRenderer/);
   assert.match(source, /guard sensitive != true/); assert.match(source, /analysisPolicy != \.disabled/);

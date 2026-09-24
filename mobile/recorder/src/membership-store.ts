@@ -11,8 +11,8 @@ import {
   type JourneyDeckMembershipProduct,
   type JourneyDeckMembershipStatus,
 } from '../modules/journeydeck-membership';
-import { entitlementsForVerifiedMembership, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
-import { PREVIEW_ATLAS_UNLOCKED } from './release-features';
+import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
 
 const unavailableStatus: JourneyDeckMembershipStatus = {
   nativeModuleAvailable: false,
@@ -172,7 +172,7 @@ export function useJourneyDeckMembership() {
   }, [refresh, status]);
 
   const entitlements = useMemo(
-    () => withPreviewAtlasAccess(entitlementsForVerifiedMembership(status), PREVIEW_ATLAS_UNLOCKED),
+    () => withPreviewAtlasAccess(entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED), PREVIEW_ATLAS_UNLOCKED),
     [status],
   );
   const state: JourneyDeckMembershipState = { phase, status, entitlements, products, productsLoading, purchasePending, message };

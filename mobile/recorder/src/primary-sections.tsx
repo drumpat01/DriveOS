@@ -1,10 +1,10 @@
 import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
-import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { TESTFLIGHT_DATA_HEALTH_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
-  ActivityIndicator, I18nManager, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
+  ActivityIndicator, I18nManager, KeyboardAvoidingView, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,8 +19,8 @@ import { UpdateDiagnostics } from './update-diagnostics';
 import Reanimated, { Easing, Extrapolation, cancelAnimation, interpolate, useAnimatedStyle, useSharedValue, withDelay, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import type { AppDashboard, JourneySummary, ProviderPreferences, SavedPlaceIntelligence } from './app-data';
-import { getLiveRecorderSnapshot, recorderDatabaseIntegrityReport, type LiveRecorderSnapshot } from './storage';
+import { appDataClient, type AppDashboard, type JourneySummary, type ProviderPreferences, type SavedPlaceIntelligence } from './app-data';
+import { getLiveRecorderSnapshot, readAppCache, recorderDatabaseIntegrityReport, writeAppCache, type LiveRecorderSnapshot } from './storage';
 import {
   saveAtlasPatternReview, searchPrimarySections, type AtlasPattern, type PrimarySectionsData,
   type SearchRecord, type StatisticsData, type TimelineDay, type TimelineItem,
@@ -44,6 +44,7 @@ import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 import { buildSongRouteMoments } from './route-moments';
 import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
+import { buildAtlasTravelStories, type AtlasTravelStories } from './atlas-travel-stories';
 import { deriveLiveMotionMetrics } from './core-experience-motion';
 import { haptics } from './haptics';
 import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
@@ -308,6 +309,7 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
     <Text style={styles.atlasSectionLabel}>YOUR PRIVATE INTELLIGENCE</Text>
     <AtlasInsightGrid insights={insights} singleColumn={Boolean(foldColumns) && fontScale >= 1.3} />
     <SoundtrackIntelligenceCard insight={insights.soundtrack} />
+    {TESSIE_INTEGRATION_ENABLED && <AtlasTravelStoriesCards key={getCurrentUser().id} data={data} window={window} onJourney={onJourney} onRefresh={onRefresh} />}
   </>;
   const mapAndLibrary = <>
     <SectionTitle title="Your Atlas map" detail={`${routes.length} mapped journeys`} />
@@ -338,6 +340,100 @@ export function AtlasScreen({ state, onRefresh, onJourney, onBack }: { state: Pr
       <View testID="atlas-duo-map" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>{mapAndLibrary}</View>
     </View>
   </ScreenScaffold>;
+}
+
+function AtlasTravelStoriesCards({ data, window, onJourney, onRefresh }: {
+  data: PrimarySectionsData | null; window: AtlasInsightWindow; onJourney: (id: string) => void; onRefresh: () => void;
+}) {
+  const styles = useThemedStyles(darkStyles);
+  const { reduceMotion } = useMotionPreferences();
+  const userId = getCurrentUser().id;
+  const dismissalKey = `atlas.remember-dismissed.${userId}.v1`;
+  const [dismissed, setDismissed] = useState<string[]>(() => readAppCache<string[]>(dismissalKey) ?? []);
+  const [selectedSongKey, setSelectedSongKey] = useState<string | null>(null);
+  const [rememberId, setRememberId] = useState<string | null>(null);
+  const [memoryName, setMemoryName] = useState('');
+  const [memoryNotes, setMemoryNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setNowMs(Date.now()), 60_000); return () => clearInterval(timer); }, []);
+  const stories = useMemo(() => {
+    const cutoff = window === 'all' ? -Infinity : nowMs - (window === '30d' ? 30 : 90) * 86_400_000;
+    const rows = data?.tessieAtlas ?? { drives: [], charges: [] };
+    const drives = rows.drives.filter(drive => Date.parse(drive.startedAt) >= cutoff);
+    const ids = new Set(drives.map(drive => drive.journeyId));
+    const saved = new Set((data?.memories.memories ?? []).flatMap(memory => memory.journeyIds));
+    return buildAtlasTravelStories(drives, rows.charges.filter(charge => ids.has(charge.journeyId)), data?.details ?? [], saved, new Set(dismissed), new Date(nowMs));
+  }, [data, dismissed, nowMs, window]);
+  const selectedSong = stories.songs.find(song => song.key === selectedSongKey) ?? stories.songs[0];
+  const dismiss = (id: string) => setDismissed(current => {
+    const next = [...new Set([...current, id])];
+    writeAppCache(dismissalKey, next);
+    return next;
+  });
+  const openRemember = (prompt: NonNullable<AtlasTravelStories['rememberDrive']>) => {
+    setRememberId(prompt.journeyId);
+    setMemoryName(`Drive to ${prompt.endLabel}`);
+    setMemoryNotes('');
+    setSaveError(null);
+  };
+  const save = async () => {
+    if (!rememberId || !memoryName.trim() || saving) return;
+    setSaving(true); setSaveError(null);
+    try {
+      await appDataClient.saveMemory({ name: memoryName, notes: memoryNotes, journeyIds: [rememberId] });
+      dismiss(rememberId);
+      setRememberId(null);
+      onRefresh();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'The Memory could not be saved.');
+    } finally { setSaving(false); }
+  };
+  const routePreview = (coordinates: [number, number][]) => coordinates.length >= 2
+    ? <View style={styles.atlasTravelRoute}><TimelineRouteThumbnail coordinates={coordinates} /></View> : null;
+  return <>
+    <SectionTitle title="A song’s travel history" detail="Apple Music + Last.fm" />
+    <View testID="atlas-song-travel" style={styles.atlasTravelCard}><NeonWidgetOutline radius={20} />
+      {selectedSong ? <>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.atlasTravelChips}>
+          {stories.songs.map(song => <Pressable key={song.key} accessibilityRole="button" accessibilityLabel={`${song.track} by ${song.artist}`} accessibilityState={{ selected: song.key === selectedSong.key }} onPress={() => setSelectedSongKey(song.key)} style={[styles.atlasTravelChip, song.key === selectedSong.key && styles.atlasTravelChipActive]}><Text style={styles.atlasTravelChipText}>{song.track}</Text></Pressable>)}
+        </ScrollView>
+        <Text style={styles.atlasTravelTitle}>{selectedSong.track}</Text><Text style={styles.atlasTravelMeta}>{selectedSong.artist} · {selectedSong.journeys.length} {selectedSong.journeys.length === 1 ? 'drive' : 'drives'} with a timestamped play</Text>
+        {selectedSong.journeys.slice().reverse().map(item => <Pressable key={item.journeyId} accessibilityRole="button" accessibilityLabel={`Open journey ${item.startLabel} to ${item.endLabel}`} onPress={() => onJourney(item.journeyId)} style={styles.atlasTravelRow}>
+          {routePreview(item.route)}<View style={styles.flex}><Text style={styles.atlasTravelRowTitle}>{item.startLabel} → {item.endLabel}</Text><Text style={styles.atlasTravelRowDetail}>{new Date(item.playedAt).toLocaleString()}</Text></View><Text style={styles.atlasTravelArrow}>›</Text>
+        </Pressable>)}
+      </> : <Text style={styles.atlasTravelEmpty}>Timestamped Apple Music or Last.fm songs on Tessie drives will appear here.</Text>}
+    </View>
+    <SectionTitle title="The drive home" detail="Outward + return" />
+    <View testID="atlas-drive-home" style={styles.atlasTravelCard}><NeonWidgetOutline radius={20} />
+      {stories.driveHome ? <>
+        <Text style={styles.atlasTravelTitle}>{stories.driveHome.outwardLabel} → {stories.driveHome.homeLabel}</Text>
+        <Text style={styles.atlasTravelMeta}>Two consecutive drives in the same vehicle, with reversed endpoints.</Text>
+        {([{ id: stories.driveHome.outwardId, label: 'Outward drive', route: stories.driveHome.outwardRoute }, { id: stories.driveHome.returnId, label: 'Drive home', route: stories.driveHome.returnRoute }]).map(item => <Pressable key={item.id} accessibilityRole="button" accessibilityLabel={`Open ${item.label}`} onPress={() => onJourney(item.id)} style={styles.atlasTravelRow}>{routePreview(item.route)}<Text style={[styles.atlasTravelRowTitle, styles.flex]}>{item.label}</Text><Text style={styles.atlasTravelArrow}>›</Text></Pressable>)}
+        {stories.driveHome.charge && <Text style={styles.atlasTravelCharge}>Supercharger stop between drives · {stories.driveHome.charge.location || 'Location unavailable'}</Text>}
+      </> : <Text style={styles.atlasTravelEmpty}>A return story appears when Tessie records a matching outward drive and the next drive home in the same vehicle.</Text>}
+    </View>
+    <SectionTitle title="Quiet moments" detail="Gaps in song history" />
+    <View testID="atlas-quiet-moments" style={styles.atlasTravelCard}><NeonWidgetOutline radius={20} />
+      <Text style={styles.atlasTravelMeta}>These are periods with no music recorded. Playback may have happened outside Apple Music or Last.fm.</Text>
+      {stories.quietMoments.length ? stories.quietMoments.map(item => <Pressable key={`${item.journeyId}:${item.startedAt}`} accessibilityRole="button" accessibilityLabel={`Open journey with ${Math.round(item.minutes)} minutes without a recorded song`} onPress={() => onJourney(item.journeyId)} style={styles.atlasTravelRow}>{routePreview(item.route)}<View style={styles.flex}><Text style={styles.atlasTravelRowTitle}>{Math.round(item.minutes)} min with no song recorded</Text><Text style={styles.atlasTravelRowDetail}>{item.entireDrive ? 'Entire recorded drive' : `${new Date(item.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}–${new Date(item.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`}</Text></View><Text style={styles.atlasTravelArrow}>›</Text></Pressable>) : <Text style={styles.atlasTravelEmpty}>No long gaps are visible in the recorded songs for this period.</Text>}
+    </View>
+    {stories.rememberDrive && <View testID="atlas-remember-drive" style={styles.atlasTravelCard}><NeonWidgetOutline radius={20} />
+      <Text style={styles.atlasTravelTitle}>Remember this drive?</Text><Text style={styles.atlasTravelMeta}>{stories.rememberDrive.startLabel} → {stories.rememberDrive.endLabel}</Text>
+      <Text style={styles.atlasTravelEmpty}>Keep it as a Memory if this journey matters to you.</Text>
+      <View style={styles.atlasRememberActions}><Pressable accessibilityRole="button" onPress={() => dismiss(stories.rememberDrive!.journeyId)} style={styles.atlasRememberSecondary}><Text style={styles.atlasRememberSecondaryText}>Dismiss</Text></Pressable><Pressable accessibilityRole="button" onPress={() => openRemember(stories.rememberDrive!)} style={styles.atlasRememberPrimary}><Text style={styles.atlasRememberPrimaryText}>Create Memory</Text></Pressable></View>
+    </View>}
+    <Modal visible={Boolean(rememberId)} transparent animationType={reduceMotion ? 'none' : 'slide'} onRequestClose={() => { if (!saving) setRememberId(null); }}>
+      <KeyboardAvoidingView behavior="padding" style={styles.atlasRememberBackdrop} accessibilityViewIsModal><ScrollView style={styles.atlasRememberScroll} contentContainerStyle={styles.atlasRememberScrollContent} keyboardShouldPersistTaps="handled"><View style={styles.atlasRememberSheet}>
+        <Text style={styles.atlasTravelTitle}>Create a Memory</Text><Text style={styles.atlasTravelMeta}>Only this journey is selected. Add words if you want to.</Text>
+        <TextInput accessibilityLabel="Memory name" value={memoryName} onChangeText={setMemoryName} maxLength={80} placeholder="Memory name" placeholderTextColor="#8e8293" style={styles.atlasRememberInput} />
+        <TextInput accessibilityLabel="Memory notes" value={memoryNotes} onChangeText={setMemoryNotes} maxLength={1200} multiline placeholder="What do you want to remember?" placeholderTextColor="#8e8293" style={[styles.atlasRememberInput, styles.atlasRememberNotes]} />
+        {saveError && <Text accessibilityRole="alert" style={styles.atlasRememberError}>{saveError}</Text>}
+        <View style={styles.atlasRememberActions}><Pressable accessibilityRole="button" disabled={saving} onPress={() => setRememberId(null)} style={styles.atlasRememberSecondary}><Text style={styles.atlasRememberSecondaryText}>Cancel</Text></Pressable><Pressable accessibilityRole="button" disabled={saving || !memoryName.trim()} onPress={() => void save()} style={styles.atlasRememberPrimary}><Text style={styles.atlasRememberPrimaryText}>{saving ? 'Saving…' : 'Save Memory'}</Text></Pressable></View>
+      </View></ScrollView></KeyboardAvoidingView>
+    </Modal>
+  </>;
 }
 
 function AtlasPulseCard({ insights }: { insights: AtlasInsights }) {
@@ -630,7 +726,7 @@ function SoundtrackIntelligenceCard({ insight }: { insight: AtlasInsights['sound
     <View style={styles.atlasSoundtrackHeading}><View><Text style={styles.atlasSoundtrackEyebrow}>SOUNDTRACK INTELLIGENCE</Text><Text style={styles.atlasSoundtrackTitle}>{insight.ready ? 'The rhythm behind your roads.' : 'Your road sound is forming.'}</Text></View><SymbolView name="waveform" tintColor={theme.color("#ff6e86", 'text')} size={28} /></View>
     <View style={styles.atlasSoundtrackBody}>
       <View style={styles.atlasArtworkStack}>{insight.artworkUrls.length ? insight.artworkUrls.slice(0, 3).map((uri, index) => <Image key={uri} source={{ uri }} style={[styles.atlasSoundtrackArtwork, { marginLeft: index ? -11 : 0, zIndex: 3 - index }]} contentFit="cover" cachePolicy="memory-disk" />) : <View style={styles.atlasSoundtrackPlaceholder}><SymbolView name="music.note" tintColor={theme.color("#c16fff", 'text')} size={28} /></View>}</View>
-      <View style={styles.atlasSoundtrackCopy}>{insight.ready ? <><Text style={styles.atlasSoundtrackArtist} numberOfLines={1}>{insight.topArtist ?? 'Artist unavailable'}</Text><Text style={styles.atlasInsightDetail}>{insight.topArtist ? `${insight.topArtistPlays} plays` : `${insight.plays} road plays`} · {insight.uniqueSongs} unique songs</Text><Text style={styles.atlasInsightCallout}>{insight.journeyMatchPercent}% of journeys carried music{insight.leadingTime ? ` · ${insight.leadingTime.toLocaleLowerCase()} is most common` : ''}</Text></> : <AtlasLearningCopy text="Two matched songs unlock artists, variety, and listening patterns." />}</View>
+      <View style={styles.atlasSoundtrackCopy}>{insight.ready ? <><Text style={styles.atlasSoundtrackArtist} numberOfLines={1}>{insight.topArtist ?? 'Artist unavailable'}</Text><Text style={styles.atlasInsightDetail}>{insight.topArtist ? `${insight.topArtistPlays} plays` : `${insight.plays} road plays`} · {insight.uniqueSongs} unique songs</Text><Text style={styles.atlasInsightCallout}>{insight.journeyMatchPercent}% of journeys have recorded songs{insight.leadingTime ? ` · ${insight.leadingTime.toLocaleLowerCase()} is most common` : ''}</Text></> : <AtlasLearningCopy text="Two matched songs unlock artists, variety, and listening patterns." />}</View>
     </View>
   </View>;
 }
@@ -1049,7 +1145,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Pressable style={styles.retentionRefresh} onPress={() => setRetentionRefresh(value => value + 1)}><Text style={styles.retentionRefreshText}>Recalculate preview</Text></Pressable>
     </View>
     <View style={styles.safeActions}><Pressable style={styles.primaryButton} onPress={onRefresh}><Text style={styles.primaryButtonText}>Refresh saved data</Text></Pressable><Pressable style={styles.secondaryButton} onPress={onCloudSync}><Text style={styles.secondaryButtonText}>Retry private iCloud sync</Text></Pressable></View>
-    <Text style={styles.privacyNote}>Safe retries never erase local data. Exact routes can be backed up only to your private iCloud database; they never go to JourneyDeck’s server or privacy edge. Saved-place labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
+    <Text style={styles.privacyNote}>Safe retries never erase local data. {TESSIE_INTEGRATION_ENABLED ? 'Phone-recorded routes are not uploaded to the privacy edge. Tessie car routes pass through the edge during import without being stored there. Saved routes can sync to your private iCloud.' : 'Exact routes can be backed up only to your private iCloud database; they never go to JourneyDeck’s server or privacy edge.'} Saved-place labels, Apple credentials, and local photo paths stay on this iPhone.</Text>
   </ScreenScaffold>;
 }
 
@@ -1129,7 +1225,7 @@ export function MoreScreen({
 
   // Data Health is an internal diagnostic surface. Public navigation falls
   // back to Settings in the shell, and this guard prevents accidental render.
-  if (!isInternalTestingBuild()) return null;
+  if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health')) return null;
 
   const destination = requested;
   let content: ReactNode;
@@ -1365,6 +1461,32 @@ const darkStyles = StyleSheet.create({
   atlasSoundtrackPlaceholder: { width: 66, height: 66, borderRadius: 18, borderWidth: 1, borderColor: '#6a3474', backgroundColor: '#23102e', alignItems: 'center', justifyContent: 'center' },
   atlasSoundtrackCopy: { flex: 1, minWidth: 0 },
   atlasSoundtrackArtist: { color: '#fff8fd', fontSize: 19, lineHeight: 22, fontWeight: '900', letterSpacing: -0.45 },
+  atlasTravelCard: { position: 'relative', borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: '#4a294f', backgroundColor: '#0b0610', padding: 15, gap: 9, marginBottom: 10, overflow: 'hidden' },
+  atlasTravelChips: { gap: 8, paddingBottom: 2 },
+  atlasTravelChip: { minHeight: 44, maxWidth: 170, justifyContent: 'center', borderRadius: 15, paddingHorizontal: 13, borderWidth: 1, borderColor: '#4a294f', backgroundColor: '#1b1021' },
+  atlasTravelChipActive: { borderColor: '#ff8b70', backgroundColor: '#321a26' },
+  atlasTravelChipText: { color: '#f7edf8', fontSize: 13, fontWeight: '700' },
+  atlasTravelTitle: { color: '#fff8fd', fontSize: 18, fontWeight: '800' },
+  atlasTravelMeta: { color: '#b4a5b7', fontSize: 13 },
+  atlasTravelEmpty: { color: '#9c8da1', fontSize: 13, paddingVertical: 7 },
+  atlasTravelRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 7, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#49334f' },
+  atlasTravelRoute: { width: 66, height: 43, borderRadius: 10, backgroundColor: '#1c1121', overflow: 'hidden' },
+  atlasTravelRowTitle: { color: '#f7edf8', fontSize: 14, fontWeight: '700' },
+  atlasTravelRowDetail: { color: '#9c8da1', fontSize: 12, marginTop: 2 },
+  atlasTravelArrow: { color: '#ff9b8b', fontSize: 24 },
+  atlasTravelCharge: { color: '#ffae97', fontSize: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#49334f', paddingTop: 10 },
+  atlasRememberActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 5 },
+  atlasRememberSecondary: { minHeight: 44, minWidth: 96, paddingHorizontal: 15, borderRadius: 14, borderWidth: 1, borderColor: '#65436b', alignItems: 'center', justifyContent: 'center' },
+  atlasRememberSecondaryText: { color: '#e2d2e6', fontSize: 14, fontWeight: '700' },
+  atlasRememberPrimary: { minHeight: 44, minWidth: 132, paddingHorizontal: 15, borderRadius: 14, backgroundColor: '#ff8b70', alignItems: 'center', justifyContent: 'center' },
+  atlasRememberPrimaryText: { color: '#220d0c', fontSize: 14, fontWeight: '800' },
+  atlasRememberBackdrop: { flex: 1, backgroundColor: 'rgba(3,2,6,0.78)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  atlasRememberScroll: { width: '100%' },
+  atlasRememberScrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 16 },
+  atlasRememberSheet: { width: '100%', maxWidth: 520, borderRadius: 22, borderWidth: 1, borderColor: '#65436b', backgroundColor: '#160e1c', padding: 20, gap: 12 },
+  atlasRememberInput: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: '#65436b', backgroundColor: '#0b0610', color: '#fff8fd', fontSize: 16, paddingHorizontal: 13, paddingVertical: 10 },
+  atlasRememberNotes: { minHeight: 92, textAlignVertical: 'top' },
+  atlasRememberError: { color: '#ffae97', fontSize: 13 },
   atlasMapFrame: { position: 'relative', borderRadius: 24, overflow: 'hidden', borderWidth: StyleSheet.hairlineWidth, borderColor: '#4e2a55', backgroundColor: '#09050d', padding: 1, shadowColor: '#a845cb', shadowOpacity: 0.18, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } },
   mapLegend: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginTop: 9 },
   legendLine: { color: '#ff755f', fontSize: 9, fontWeight: '700' },

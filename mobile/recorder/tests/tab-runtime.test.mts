@@ -86,7 +86,7 @@ test('iPhone and iPad share the data-rich Statistics dashboard and retain paid A
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
   assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
-  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\('instructions'\); return; \}/);
+  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\(TESSIE_INTEGRATION_ENABLED \? 'tessie' : 'instructions'\); return; \}/);
   assert.match(shell, /insight=\{dashboard\.data\.summary\.allTime\.journeyCount > 0 \? \{/);
   assert.match(shell, /primarySections\.data\?\.music\.recentSelections\[0\]/);
   assert.match(membershipPaywall, /ATLAS ALREADY SEES/);
@@ -192,8 +192,8 @@ test('Data Health can force a visible Apple Music artwork retry', () => {
   assert.match(appleArtworkLookup, /!options\.force && \(attempts\[identity\] \?\? 0\) > cutoff/);
 });
 
-test('version 1 is manual-only while dormant automatic code stays fail-closed', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+test('V2 is manual-only while V3 automatic code remains gated', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.tessieEnabled === true/);
   assert.match(app, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
   assert.match(primarySections, /loadRecordingModePreferences/);
   assert.match(primarySections, /Ready for your next drive/);
@@ -223,13 +223,13 @@ test('Home owns the single recorder instance while Settings omits redundant reco
   assert.match(shell, /useEffect\(\(\) => \{ void refreshMusicCapabilities\(\); \}, \[refreshMusicCapabilities\]\)/);
   assert.match(shell, /const storedAppleMusicConnected = dashboard\.data\.providerPreferences\?\.connections\.appleMusic === 'connected'/);
   assert.match(shell, /const appleMusicConnected = musicCapabilities === null[\s\S]*?storedAppleMusicConnected[\s\S]*?musicCapabilities\.appleMusicAuthorizationStatus === 'authorized'/);
-  assert.match(shell, /const showManualSongButton = activePreferences\?\.provider !== 'apple-music' \|\| !appleMusicConnected/);
+  assert.match(shell, /const showManualSongButton = isMusicProviderAvailable\('lastfm'\) \? activePreferences\?\.provider === 'shazam'/);
   assert.match(shell, /<Recorder presentation="home" showManualSongButton=\{showManualSongButton\}/);
   assert.doesNotMatch(shell, /<SectionHeading title="Recording" \/>/);
   assert.doesNotMatch(primarySections, /title="Record"|onRequestedChange\('record'\)|destination === 'record'/);
 });
 
-test('Settings is the fifth primary tab and limits Data Health to internal builds', () => {
+test('Settings is the fifth primary tab and exposes Data Health on TestFlight', () => {
   assert.match(nativeNavigation, /name="music"/);
   assert.match(nativeNavigation, /name="journeys"/);
   assert.match(nativeNavigation, /name="index"/);
@@ -239,13 +239,13 @@ test('Settings is the fifth primary tab and limits Data Health to internal build
   assert.match(shell, /onSoundtracks=\{\(\) => openTab\('music'\)\}/);
   assert.doesNotMatch(shell, /accessibilityLabel="Open tools and settings"/);
   assert.match(shell, /const internalTesting = isInternalTestingBuild\(\)/);
-  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /\{\(internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\) && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
   assert.match(shell, /onDataHealth=\{\(\) => openMore\('health'\)\}/);
   assert.match(shell, /accessibilityState=\{\{ expanded: advancedSupportVisible \}\}/);
   assert.match(shell, /<ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen active=\{utilityVisible\}/);
-  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\)\) return null;/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health'\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen active=\{utilityVisible\}/);
+  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
   assert.match(moreScreen, /onBack=\{onClose\}/);
@@ -311,7 +311,8 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /onSkipMusic=\{\(\) => advanceFirstRun\('membership'\)\}/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'instructions' \| 'complete'/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'instructions' \| 'complete'/);
+  assert.match(firstRunScreen, /const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED \? 7 : 6/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
   assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);
@@ -329,7 +330,7 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(firstRunScreen, /accessibilityLabel="Connect Apple Music"/);
   assert.match(firstRunScreen, /accessibilityLabel="Let the Journey Begin" onPress=\{onFinish\}/);
   assert.match(firstRunScreen, /`Step \$\{step\} of \$\{TOTAL_STEPS\}`/);
-  assert.match(firstRunScreen, /instructions: 6/);
+  assert.match(firstRunScreen, /instructions: TOTAL_STEPS/);
   assert.doesNotMatch(firstRunScreen, /04A \/ 04|04B \/ 04/);
   assert.match(welcomeIntro, /onboarding\.welcome-intro/);
 });
@@ -359,7 +360,7 @@ test('Home and navigation reproduce the approved manual-recorder composition', (
   assert.match(app, /const startupPending = !deviceId \|\| !recorderInitialized/);
   assert.match(app, /const showStartPortal = !active && !automaticMode && \(startupPending \|\| permissionsReady\)/);
   assert.match(app, /showStartPortal \? \([\s\S]*?<HomeRecorderStartPortal onPress=\{start\} disabled=\{busy \|\| startupPending\} showProgress=\{busy\} \/>/);
-  assert.match(app, /presentation === 'ipad-home'[\s\S]*?return <IpadRecorderControls status=\{tabletStatus\}[\s\S]*?startLabel=\{V3_FIFTY_STATES_ENABLED \? 'Record Journey' : 'Start Journey'\}/);
+  assert.match(app, /presentation === 'ipad-home'[\s\S]*?return <View><IpadRecorderControls status=\{tabletStatus\}[\s\S]*?startLabel=\{V3_FIFTY_STATES_ENABLED \? 'Record Journey' : 'Start Journey'\}/);
   assert.match(app, /homeRecorderStartPortalIpadFrame: \{ width: '100%', maxWidth: '100%', height: 190 \}/);
   assert.match(ipadHome, /testID="home-fixed-recorder"[^>]*>\{recorder\}<\/View>/);
   assert.match(ipadHome, /<HomeLayoutEditorSheet/);
@@ -493,28 +494,28 @@ test('music chooser and Settings use approved service marks with honest provider
   assert.match(musicScreen, /MANUAL · ONE SONG AT A TIME/);
   assert.match(shell, /ConnectionTile name="Spotify history"[\s\S]*?brand="spotify"/);
   assert.match(shell, /SPOTIFY HISTORY VIA LAST\.FM/);
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.tessieEnabled === true/);
   assert.doesNotMatch(shell, /Tessie Automatic Recording|Drive intelligence|function TessieMark/i);
   assert.doesNotMatch(shell, /name: 'Last\.fm for Spotify'/);
 });
 
-test('native dashboards use static cinematic lighting and Music has intentional artwork and mileage graphics', () => {
-  assert.match(musicScreen, /function RouteGlow\(\)[\s\S]*?<Svg/);
-  assert.match(musicScreen, /strokeDasharray="5 7"/);
+test('native dashboards use static cinematic lighting and Music shows data-backed road insights', () => {
+  assert.doesNotMatch(musicScreen, /function RouteGlow\(\)/);
+  assert.match(musicScreen, /<Panel title="Road insights" kicker="THIS WEEK">[\s\S]*?data\.tour\.miles[\s\S]*?data\.week\.total[\s\S]*?data\.tour\.changePercent/);
   assert.doesNotMatch(musicScreen, /routeLineOne|routeLineTwo/);
   assert.match(musicScreen, /function SoundtracksHeroHeader/);
   assert.match(musicScreen, /return <PhoneTabTitle title="Soundtracks" \/>/);
   assert.doesNotMatch(musicScreen, /cinematic-soundtracks-photo-v1\.jpg/);
   assert.doesNotMatch(musicScreen, /Animated\.loop|heroVinylMotionFrame|soundtracksSpinningVinyl|heroVinylDisc/);
   assert.doesNotMatch(musicScreen, /M100 100L26 26|M100 100L174 174/);
-  assert.match(musicScreen, /\{data \? <>\s*<Panel title="Latest road soundtrack"[\s\S]*?<ScrollView horizontal[\s\S]*?<Panel title="Listening history"[\s\S]*?<Panel title="Your sound"[\s\S]*?<CardHeader title="Road insights"/);
+  assert.match(musicScreen, /\{data \? <>\s*<Panel title="Latest road soundtrack"[\s\S]*?<ScrollView horizontal[\s\S]*?<Panel title="Listening history"[\s\S]*?<Panel title="Your sound"[\s\S]*?<Panel title="Road insights"/);
   assert.doesNotMatch(musicScreen, /YOUR LIFE HAS A|function VinylHeroRecord|styles\.hero\}/);
   assert.match(musicScreen, /<LatestSoundtrack track=\{data\.recentSelections\[0\]\} enabled=\{canOpenTracks\}/);
   assert.match(musicScreen, /visibleArchive\.slice\(0, historyLimit\)/);
   assert.match(musicScreen, /data\.topArtists\.slice\(0, 5\)/);
   assert.match(musicScreen, /topTracks\.slice\(0, 5\)/);
   assert.match(musicScreen, /paddingBottom: insets\.bottom \+ 112/);
-  assert.match(musicScreen, /data\.cities\.length \? <View style=\{styles\.insightCard\}>/);
+  assert.match(musicScreen, /data\.cities\.length \? <Panel title="Cities & sound" kicker="JOURNEY MATCHES">/);
   assert.match(musicScreen, /data\.daily\.some\(day => day\.minutes > 0\)/);
   assert.doesNotMatch(musicScreen, /<Panel title="Top artists"|<Panel title="Top tracks"|<CardHeader title="This week in sound"/);
   assert.match(musicScreen, /return <QuietInset radius=\{19\} accent=\{accent\} style=\{styles\.metric\}>/);
@@ -555,7 +556,7 @@ test('every native tab explicitly clears the Dynamic Island and owns its scroll 
   assert.match(shell, /function ConnectionsScreen[\s\S]*?useSafeAreaInsets\(\)/);
   assert.match(shell, /contentInsetAdjustmentBehavior="never"/);
   assert.match(shell, /automaticallyAdjustContentInsets=\{false\}/);
-  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange \}/);
+  assert.match(app, /function RecorderScreen\(\{ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange \}/);
   assert.match(app, /const insets = useSafeAreaInsets\(\)/);
   assert.match(app, /paddingTop: insets\.top \+ 14/);
   assert.match(app, /contentInsetAdjustmentBehavior="never"/);

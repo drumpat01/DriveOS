@@ -8,9 +8,8 @@ import {
 } from '../modules/journeydeck-music';
 import { Image } from 'expo-image';
 import { loadMusicPreferences } from './music-preferences';
-import { appleCurrentTrackObservation, appleRecentSongObservation, shazamMatchObservation, tessieMediaObservation, type MusicObservation } from './music-observations';
+import { appleCurrentTrackObservation, appleRecentSongObservation, shazamMatchObservation, type MusicObservation } from './music-observations';
 import { activeSession, archivedJourneyIdForSession, getSession, queueMusicObservation, readAppCache, recentCompletedSessionIds, refreshCompletedSessionLocalMirror, writeAppCache } from './storage';
-import { sampleTessieMedia } from './tessie-direct';
 import { getCurrentUser } from './auth';
 import {
   enrichMusicEntriesWithArtwork,
@@ -20,13 +19,10 @@ import {
 } from './local-store';
 import { notifyLocalArchiveChanged } from './local-archive-events';
 import { resolveMissingAppleMusicArtwork } from './apple-artwork-lookup';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 const APPLE_SAMPLE_INTERVAL_MS = 20_000;
-const TESSIE_SAMPLE_INTERVAL_MS = 30_000;
 const lastAppleSampleAttempt = new Map<string, number>();
 let appleSampleInFlight: Promise<MusicCaptureResult> | null = null;
-let tessieSampleInFlight: Promise<MusicCaptureResult> | null = null;
 let shazamInFlight: Promise<MusicCaptureResult> | null = null;
 let recentAppleSongsCache: { loadedAt: number; songs: AppleMusicRecentSong[] } | null = null;
 const FORCED_ARTWORK_REFRESH_KEY = 'apple-music.artwork-refresh.2026-09-10.v4';
@@ -106,39 +102,6 @@ export async function recognizeAndQueueActiveSessionMusic(durationMilliseconds =
   })();
   try { return await shazamInFlight; }
   finally { shazamInFlight = null; }
-}
-
-export async function sampleTessieMediaForActiveSession(options: { force?: boolean } = {}): Promise<MusicCaptureResult> {
-  if (!TESSIE_INTEGRATION_ENABLED) return { status: 'unavailable' };
-  const session = activeSession();
-  if (!session || session.status !== 'recording') return { status: 'skipped' };
-  const preferences = await loadMusicPreferences();
-  if (!preferences.onboardingCompleted || preferences.provider !== 'apple-music') return { status: 'skipped' };
-  const now = Date.now();
-  const cacheKey = `tessie-media-sample-attempt-${session.id}`;
-  const lastAttempt = readAppCache<number>(cacheKey) ?? 0;
-  if (!options.force && now - lastAttempt < TESSIE_SAMPLE_INTERVAL_MS) {
-    return { status: 'skipped' };
-  }
-  if (tessieSampleInFlight) return tessieSampleInFlight;
-  writeAppCache(cacheKey, now);
-
-  tessieSampleInFlight = (async () => {
-    try {
-      const sample = await sampleTessieMedia();
-      if (!sample) return { status: 'skipped' };
-      const observation = tessieMediaObservation(sample, session.started_at);
-      if (!observation) return { status: 'no_match' };
-      return { status: queueMusicObservation(session.id, observation) ? 'queued' : 'duplicate', observation };
-    } catch {
-      // Vehicle media is an optional enhancement. Network, Tessie, or vehicle
-      // availability must never escape into the background route recorder.
-      return { status: 'unavailable' };
-    }
-  })();
-
-  try { return await tessieSampleInFlight; }
-  finally { tessieSampleInFlight = null; }
 }
 
 function captureAppleMusicSongsForSession(sessionId: string, songs: AppleMusicRecentSong[]) {

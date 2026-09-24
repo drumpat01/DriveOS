@@ -38,6 +38,7 @@ function device(overrides: Record<string, any> = {}) {
     const require = (name: string): any => {
       if (name in overrides) return overrides[name];
       if (name === './database-owner') return { getMasterDatabase: () => adapter };
+      if (name === 'expo-constants') return { __esModule: true, default: { expoConfig: { extra: { features: {} } } } };
       if (name === 'expo-crypto') return {
         randomUUID, CryptoDigestAlgorithm: { SHA256: 'sha256' },
         digestStringAsync: async (_algorithm: string, text: string) => createHash('sha256').update(text).digest('hex'),

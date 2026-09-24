@@ -9,6 +9,8 @@ import { getCurrentUser } from './auth';
 import { coordinateAtRecordedTime, type TimedRouteSample } from './route-moments';
 import { requestJourneyDeckJson } from './network-request';
 import { syncTessieDirect, tessieDirectStatus, type TessieSnapshot } from './tessie-direct';
+import { readTessieLocalSnapshot } from './tessie-local-data';
+import { buildTessieStatistics, type TessieStatisticsRange } from './tessie-statistics-model';
 import { refreshAllAppleMusicArtwork } from './music-capture';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import {
@@ -51,6 +53,7 @@ export type SoundtrackTrack = {
   source: string;
   confidence: number | null;
   mapCoordinate?: [number, number] | null;
+  requiresTimedCoordinate?: boolean;
 };
 
 export type JourneySummary = {
@@ -218,12 +221,16 @@ function mergeJourneyWithLocalDetail(remote: JourneyDetail, local: JourneyDetail
   const soundtrack = remote.soundtrack.map(track => {
     const localTrack = localTracks.get(soundtrackKey(track));
     if (localTrack) localTracks.delete(soundtrackKey(track));
+    if (localTrack?.requiresTimedCoordinate) return { ...track, mapCoordinate: localTrack.mapCoordinate ?? null, requiresTimedCoordinate: true };
     return localTrack?.mapCoordinate ? { ...track, mapCoordinate: localTrack.mapCoordinate } : track;
   }).concat([...localTracks.values()]);
   const localPointCount = local.route?.coordinates.length ?? 0;
   const remotePointCount = remote.route?.coordinates.length ?? 0;
   return {
     ...remote,
+    startingBatteryPercent: local.startingBatteryPercent ?? remote.startingBatteryPercent,
+    endingBatteryPercent: local.endingBatteryPercent ?? remote.endingBatteryPercent,
+    energyUsedKwh: local.energyUsedKwh ?? remote.energyUsedKwh,
     startingLocation: remote.startingLocation ?? local.startingLocation,
     endingLocation: remote.endingLocation ?? local.endingLocation,
     rawStartingLocation: remote.rawStartingLocation ?? remote.startingLocation ?? local.rawStartingLocation,
@@ -528,6 +535,7 @@ async function refreshVehicleIntelligenceFromTessie(userId: string) {
   const cacheKey = vehicleIntelligenceCacheKey(userId);
   const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
   const data = vehicleIntelligenceFromTessie(await syncTessieDirect(), cached?.data ?? localVehicleIntelligence(userId));
+  if (getCurrentUser().id !== userId) throw new Error('Profile changed during vehicle refresh.');
   writeAppCache(cacheKey, { data, preferencesDirty: false } satisfies VehicleIntelligenceCache);
   return data;
 }
@@ -639,15 +647,18 @@ export const appDataClient = {
   async vehicleIntelligence(refreshRemote = false): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     if (!TESSIE_INTEGRATION_ENABLED) return localVehicleIntelligence(userId);
+    if (await tessieDirectStatus() !== 'connected') return localVehicleIntelligence(userId);
+    if (getCurrentUser().id !== userId) throw new Error('Profile changed during vehicle loading.');
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);
-    if (!refreshRemote) return cached?.data ?? localVehicleIntelligence(userId);
+    const local = localVehicleIntelligence(userId);
+    const savedSnapshot = readTessieLocalSnapshot();
+    const offlineData = cached?.data ?? (savedSnapshot ? vehicleIntelligenceFromTessie(savedSnapshot, local) : local);
+    if (!refreshRemote) return offlineData;
     try {
       return await refreshVehicleIntelligenceFromTessie(userId);
     } catch {
-      if (cached) return cached.data;
-      const local = localVehicleIntelligence(userId);
-      writeAppCache(cacheKey, { data: local, preferencesDirty: false } satisfies VehicleIntelligenceCache);
-      return local;
+      if (getCurrentUser().id !== userId) throw new Error('Profile changed during vehicle refresh.');
+      return offlineData;
     }
   },
 
@@ -808,6 +819,7 @@ import {
   getJourneyByLegacyDriveId,
   getJourneyRoute,
   getJourneyRouteSamples,
+  getTessieDriveMetadata,
   listMusicEntries,
   listMusicEntriesForJourney,
   listMemories,
@@ -828,6 +840,7 @@ import {
   getPrivatePreference,
   upsertPrivatePreference,
   readAtlasSnapshot,
+  readTessieStatisticsRows,
   localStoreDiagnostics,
 } from './local-store';
 import type { LocalUserId } from './local-store';
@@ -847,6 +860,7 @@ import { loadMusicCitySummary } from './music-city-summary';
 const ATLAS_STALE_MS = 5 * 60_000;
 
 function localJourneyToSummary(j: import('./local-store').LocalJourney): JourneySummary {
+  const tessie = j.provider === 'tessie' ? getTessieDriveMetadata(j.userId, j.id) : null;
   const startingLocationKey = j.startPlaceId ?? coordinatePlaceAliasIdentity(j.startLat, j.startLng) ?? `journey:${j.id}:start`;
   const endingLocationKey = j.endPlaceId ?? coordinatePlaceAliasIdentity(j.endLat, j.endLng) ?? `journey:${j.id}:end`;
   const startingPlace = j.startPlaceId ? getPlace(j.userId, j.startPlaceId) : null;
@@ -861,10 +875,10 @@ function localJourneyToSummary(j: import('./local-store').LocalJourney): Journey
     endedAt: j.endedAt,
     durationMinutes: j.durationMinutes,
     miles: j.miles,
-    startingLocation: startingPlace?.label ?? null,
-    endingLocation: endingPlace?.label ?? null,
-    rawStartingLocation: startingPlace?.label ?? 'Recorded start',
-    rawEndingLocation: endingPlace?.label ?? 'Recorded destination',
+    startingLocation: startingPlace?.label ?? tessie?.startingLocation ?? null,
+    endingLocation: endingPlace?.label ?? tessie?.endingLocation ?? null,
+    rawStartingLocation: tessie?.startingLocation ?? startingPlace?.label ?? 'Recorded start',
+    rawEndingLocation: tessie?.endingLocation ?? endingPlace?.label ?? 'Recorded destination',
     startingLocationKey,
     endingLocationKey,
     averageSpeedMph: j.averageSpeedMph,
@@ -897,6 +911,12 @@ export function decideHiddenJourney(pending: HiddenJourneyChoice, choice: Journe
 }
 
 export const localAtlasClient = {
+  /** Tessie-only, local historical measurements for the Phase 5 Statistics interface. */
+  tessieStatistics(userId: LocalUserId, range: TessieStatisticsRange) {
+    if (!TESSIE_INTEGRATION_ENABLED) return null;
+    const rows = readTessieStatisticsRows(userId, range.startInclusive, range.endExclusive);
+    return buildTessieStatistics(range, rows.drives, rows.charges);
+  },
   /**
    * Ensures a local user record exists (creates one if needed).
    * Pass an Apple subject ID once Sign in with Apple is implemented;
@@ -975,6 +995,7 @@ export const localAtlasClient = {
     initializeLocalStore();
     const j = getJourney(userId, journeyId) ?? getJourneyByLegacyDriveId(userId, journeyId);
     if (!j) return null;
+    const tessie = j.provider === 'tessie' ? getTessieDriveMetadata(userId, j.id) : null;
     const route = getJourneyRoute(userId, j.id);
     const samples = getJourneyRouteSamples(userId, j.id);
     const soundtrack = listMusicEntriesForJourney(userId, j.id).map(entry => ({
@@ -987,14 +1008,15 @@ export const localAtlasClient = {
       externalUrl: entry.externalUrl ?? null,
       source: entry.source,
       confidence: entry.confidence ?? null,
-      mapCoordinate: coordinateAtRecordedTime(samples, entry.playedAt),
+      mapCoordinate: coordinateAtRecordedTime(samples, entry.playedAt, j.provider === 'tessie' ? 120_000 : Infinity),
+      requiresTimedCoordinate: j.provider === 'tessie',
     }));
     return {
       ...localJourneyToSummary(j),
       songCount: soundtrack.length,
-      startingBatteryPercent: null,
-      endingBatteryPercent: null,
-      energyUsedKwh: null,
+      startingBatteryPercent: tessie?.startingBatteryPercent ?? null,
+      endingBatteryPercent: tessie?.endingBatteryPercent ?? null,
+      energyUsedKwh: tessie?.energyUsedKwh ?? null,
       tessieTag: null,
       driverProfile: null,
       soundtrack,

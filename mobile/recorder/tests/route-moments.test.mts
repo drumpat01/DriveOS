@@ -57,6 +57,21 @@ test('song moments preserve exact coordinates and interpolate legacy timestamp-o
   assert.deepEqual(moments[1]?.coordinate, [-97.3, 32.9]);
 });
 
+test('Tessie songs require a nearby timed breadcrumb and never fall back to invented route progress', () => {
+  const points = [
+    { recordedAt: '2026-08-26T12:00:00.000Z', coordinate: [-97.4, 32.8] as [number, number] },
+    { recordedAt: '2026-08-26T12:30:00.000Z', coordinate: [-97.3, 32.9] as [number, number] },
+  ];
+  assert.equal(coordinateAtRecordedTime(points, '2026-08-26T12:15:00.000Z', 120_000), null);
+  const nearby = coordinateAtRecordedTime(points, '2026-08-26T12:29:00.000Z', 120_000);
+  const moments = buildSongRouteMoments([
+    { playedAt: '2026-08-26T12:15:00.000Z', track: 'No GPS', artist: 'Artist', requiresTimedCoordinate: true },
+    { playedAt: '2026-08-26T12:29:00.000Z', track: 'GPS', artist: 'Artist', requiresTimedCoordinate: true, mapCoordinate: nearby },
+  ], points.map(p => p.coordinate), points[0].recordedAt, points[1].recordedAt);
+  assert.equal(moments.length, 1);
+  assert.deepEqual(moments[0].coordinate, [-97.3, 32.9]);
+});
+
 test('tracks without usable timestamps are omitted instead of inventing a location', () => {
   assert.deepEqual(buildSongRouteMoments([
     { playedAt: null, track: 'Unknown', artist: 'Artist' },

@@ -1,0 +1,65 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: xprem
+      POSTGRES_USER: xprem
+      POSTGRES_PASSWORD: ${XPREM_POSTGRES_PASSWORD:?Run setup.ps1 first}
+    volumes:
+      - xprem-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xprem -d xprem"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  init-updates:
+    image: postgres:16-alpine
+    user: "0"
+    entrypoint: ["chown", "-R", "100:101", "/updates"]
+    volumes:
+      - xprem-updates:/updates
+    restart: "no"
+
+  xprem:
+    image: ghcr.io/mercuretechnologies/xprem:v3.2.2
+    platform: linux/amd64
+    depends_on:
+      db:
+        condition: service_healthy
+      init-updates:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      BASE_URL: ${XPREM_BASE_URL:-http://localhost:3000}
+      DB_URL: postgresql://xprem:${XPREM_POSTGRES_PASSWORD}@db:5432/xprem?sslmode=disable
+      DB_KEYS_MASTER_KEY_B64: ${DB_KEYS_MASTER_KEY_B64:?Run setup.ps1 first}
+      JWT_SECRET: ${JWT_SECRET:?Run setup.ps1 first}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Run setup.ps1 first}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run setup.ps1 first}
+      STORAGE_MODE: local
+      LOCAL_BUCKET_BASE_PATH: /updates
+      CACHE_MODE: local
+      USE_DASHBOARD: "true"
+      DISABLE_DEVICE_TELEMETRY: "true"
+      DISABLE_TELEMETRY: "true"
+    volumes:
+      - xprem-updates:/updates
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [public]
+    depends_on:
+      xprem:
+        condition: service_started
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${XPREM_TUNNEL_TOKEN:?Create the Cloudflare Tunnel first}
+    restart: unless-stopped
+
+volumes:
+  xprem-db:
+  xprem-updates:

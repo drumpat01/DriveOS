@@ -30,10 +30,10 @@ function load(name: string, mocks: Record<string, unknown> = {}) {
 const layout = load('device-layout.ts', { 'react-native': native });
 const homeWidgetLayout = load('home-widget-layout.ts', { 'expo-secure-store': { getItem: () => null, setItem: () => undefined } });
 const homeWidgetGrid = {
-  useHomeWidgetLayout: (kind: string) => {
-    const [layouts, setLayouts] = React.useState(() => ({ compact: homeWidgetLayout.defaultHomeWidgetLayout('compact'), regular: homeWidgetLayout.defaultHomeWidgetLayout('regular') }));
+  useHomeWidgetLayout: (kind: string, includeFiftyStates = false, includeAsk = false, includeTessie = false) => {
+    const [layouts, setLayouts] = React.useState(() => ({ compact: homeWidgetLayout.defaultHomeWidgetLayout('compact', includeFiftyStates, includeAsk, includeTessie), regular: homeWidgetLayout.defaultHomeWidgetLayout('regular', includeFiftyStates, includeAsk, includeTessie) }));
     const update = (next: any) => setLayouts((value: any) => ({ ...value, [kind]: next }));
-    return { placements: layouts[kind], move: (id: string, offset: number) => update(homeWidgetLayout.moveHomeWidget(layouts[kind], id, offset)), resize: (id: string) => update(homeWidgetLayout.cycleHomeWidgetSpan(layouts[kind], id)), toggle: (id: string) => update(homeWidgetLayout.toggleHomeWidget(layouts[kind], id)), reset: () => update(homeWidgetLayout.defaultHomeWidgetLayout(kind)) };
+    return { placements: layouts[kind], move: (id: string, offset: number) => update(homeWidgetLayout.moveHomeWidget(layouts[kind], id, offset)), resize: (id: string) => update(homeWidgetLayout.cycleHomeWidgetSpan(layouts[kind], id)), toggle: (id: string) => update(homeWidgetLayout.toggleHomeWidget(layouts[kind], id)), reset: () => update(homeWidgetLayout.defaultHomeWidgetLayout(kind, includeFiftyStates, includeAsk, includeTessie)) };
   },
   HomeLayoutEditorSheet: ({ visible, children }: any) => visible ? React.createElement('View', { testID: 'home-layout-editor-sheet' }, children) : null,
   HomeGridCell: ({ placement, title, editing, width, children, onMove, onResize, onToggle }: any) => React.createElement('View', { testID: `home-grid-${placement.id}`, style: [{ width }], accessibilityLabel: `${title}, ${placement.span} of 12 columns${placement.hidden ? ', hidden' : ''}`, accessibilityActions: editing ? [{ name: 'moveEarlier', label: 'Move earlier' }, { name: 'moveLater', label: 'Move later' }, { name: 'resize', label: 'Resize' }, { name: placement.hidden ? 'show' : 'hide', label: placement.hidden ? 'Show' : 'Hide' }] : undefined, onAccessibilityAction: (event: any) => event.nativeEvent.actionName === 'moveEarlier' ? onMove(-1) : event.nativeEvent.actionName === 'moveLater' ? onMove(1) : event.nativeEvent.actionName === 'resize' ? onResize() : onToggle() }, children),
@@ -59,7 +59,8 @@ const ui = load('ipad-home.tsx', {
   './journeydeck-design-tokens': { journeyDeckSemanticColors: (_id: string, palette: any) => ({ accent: palette.coral ?? palette.accent, onAccent: palette.onAccent }) },
   './fifty-states-ui': { FiftyStatesHomeWidget: host('FiftyStatesHomeWidget') },
   './ask-journeydeck-widget': { AskJourneyDeckWidget: host('AskJourneyDeckWidget') },
-  './release-features': { V3_ASK_JOURNEYDECK_ENABLED: false },
+  './tessie-home-widgets': { YourCarWidget: host('YourCarWidget'), JourneyInProgressWidget: host('JourneyInProgressWidget'), ActiveJourneyDetailsSheet: () => null },
+  './release-features': { V3_ASK_JOURNEYDECK_ENABLED: false, TESSIE_INTEGRATION_ENABLED: true },
   'expo-router': { router: { push: () => undefined } },
   './header-image-sources': { headerImageSource: (source: string, appearance: string) => `${appearance}:${source}` },
   './app-data': { appDataClient: { photoDataUrl: async () => null } },
@@ -274,6 +275,26 @@ test('Home uses real zero values, honest empty states, responsive artwork and bo
       assert.equal(tree.root.findAllByType('Text').filter((node: any) => node.children.join('') === '0').length, 4);
       assert.equal(tree.root.findAllByType('recorder').length, 1);
     }
+  } finally { await act(() => tree?.unmount()); }
+});
+
+test('Tessie cards retain their grid cells across loading, connected and journey-recording states', async () => {
+  const vehicle = { vehicleKey: 'v1', name: 'Model Y', status: 'online', batteryPercent: 68, rangeMiles: 191, chargingState: null, odometerMiles: 10, updatedAt: '2026-09-22T16:00:00.000Z' };
+  const progress = { startedAt: '2026-09-22T15:30:00.000Z', status: 'recording', elapsed: '30 min', distanceMiles: 12.4, pointCount: 18 };
+  let tree: any;
+  const props = { memories: [], journeys: [], music: null, recorder: React.createElement('recorder'), vehicles: [], vehicleLoading: true, journeyProgress: null };
+  try {
+    await act(() => { tree = create(React.createElement(ui.IpadHomeScreen, props)); });
+    for (const id of ['yourCar', 'journeyInProgress']) assert.ok(tree.root.findByProps({ testID: `home-grid-${id}` }));
+    const yourCar = tree.root.findByType('YourCarWidget');
+    assert.equal(yourCar.props.loading, true);
+    const journeyCard = tree.root.findByType('JourneyInProgressWidget');
+    assert.equal(journeyCard.props.progress, null);
+
+    await act(() => tree.update(React.createElement(ui.IpadHomeScreen, { ...props, vehicleLoading: false, vehicles: [vehicle], journeyProgress: progress })));
+    assert.equal(tree.root.findByType('YourCarWidget').props.vehicles[0].batteryPercent, 68);
+    assert.equal(tree.root.findByType('JourneyInProgressWidget').props.progress.distanceMiles, 12.4);
+    assert.equal(tree.root.findByType('JourneyInProgressWidget').props.progress.pointCount, 18);
   } finally { await act(() => tree?.unmount()); }
 });
 

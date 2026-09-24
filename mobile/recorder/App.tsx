@@ -66,6 +66,7 @@ import { configureJourneyDeckObservability, observeJourneyDeckEvent, observeJour
 import { tessieAutomaticRecordingEligible } from './src/tessie-direct';
 import { manualRecordingFailsafeNotice } from './src/manual-recording-failsafe';
 import { recorderClockRunning, recorderDurationLabel, updateRecorderClock, type RecorderClock } from './src/recorder-clock';
+import type { ActiveJourneyProgress } from './src/tessie-home-widgets';
 import { acceptRecorderStatusEvent, recorderEventStopTime, recorderRefreshMayPublish, recorderStatusEventNeedsRefresh, recorderStatusEventStopsClock, type RecorderStatusEventState } from './src/recorder-status-events';
 import { waitForRecorderResponse } from './src/recorder-response';
 import { DatabaseStartupGate } from './src/database-startup-gate';
@@ -142,12 +143,13 @@ function completionMomentFromSnapshot(snapshot: LiveRecorderSnapshot, fallback: 
   };
 }
 
-function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange }: {
+function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange }: {
   onClose: () => void;
   presentation?: 'screen' | 'home' | 'ipad-home';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
+  onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -686,6 +688,13 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   }, 'Syncing to JourneyDeck…');
 
   const elapsedLabel = recorderDurationLabel(summary, recorderClock, Math.max(clockNow, recorderClock?.confirmedAtMs ?? 0));
+  const progressElapsedLabel = recorderDurationLabel(summary, recorderClock, Math.max(Math.floor(clockNow / 5_000) * 5_000, recorderClock?.confirmedAtMs ?? 0));
+  useEffect(() => {
+    const progress = summary && summary.status !== 'completed'
+      ? { startedAt: summary.startedAt, status: summary.status as ActiveJourneyProgress['status'], elapsed: progressElapsedLabel, distanceMiles, pointCount: summary.pointCount }
+      : null;
+    onProgressChange?.(progress);
+  }, [distanceMiles, onProgressChange, progressElapsedLabel, summary]);
   const metrics = [
     ['TIME', elapsedLabel], ['POINTS', String(summary?.pointCount ?? 0)], [connection ? 'GPS QUEUED' : 'GPS SAVED', String(summary?.queuedCount ?? 0)], [connection ? 'MUSIC QUEUED' : 'MUSIC SAVED', String(summary?.musicQueuedCount ?? 0)],
   ];
@@ -696,8 +705,9 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     const tabletStatus = startupPending ? 'loading' : summary?.status === 'finishing' ? 'finishing'
       : summary?.status === 'recording' ? 'recording' : summary?.status === 'paused' ? 'paused'
       : !permissionsReady ? 'permission' : automaticMode ? 'automatic' : 'ready';
-    return <IpadRecorderControls status={tabletStatus} busy={busy} startLabel={V3_FIFTY_STATES_ENABLED ? 'Record Journey' : 'Start Journey'} onStart={start} onEnable={enablePermissions}
-      onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />;
+    return <View><IpadRecorderControls status={tabletStatus} busy={busy} startLabel={V3_FIFTY_STATES_ENABLED ? 'Record Journey' : 'Start Journey'} onStart={start} onEnable={enablePermissions}
+      onEnd={finish} onResume={resume} onIdentify={showManualSongButton ? identifySong : undefined} notice={notice} />
+      {summary?.status === 'recording' && <CreateJourneyMarkerButton sessionId={summary.id} />}</View>;
   }
 
   if (presentation === 'home') {
@@ -720,7 +730,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
               <View style={styles.homeRecorderPulseOuter}><View style={[styles.homeRecorderPulseMiddle, paused && styles.homeRecorderPulsePaused]}><View style={[styles.homeRecorderPulseCore, paused && styles.homeRecorderPulseCorePaused]} /></View></View>
               <View style={styles.homeRecorderStatusCopy}>
                 <Text style={[styles.homeRecorderEyebrow, paused && styles.homeRecorderEyebrowPaused]}>{active ? paused ? 'PAUSED' : summary?.status === 'finishing' ? 'FINISHING' : clockTracking ? 'RECORDING' : 'CHECKING RECORDING' : automaticMode ? 'TESLA AUTOMATION' : 'READY'}</Text>
-                <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : summary?.status === 'finishing' ? 'Recording has stopped. Your journey is being saved.' : clockTracking ? 'Your journey is being remembered.' : 'Confirming recorder status. Saved GPS points are safe.' : automaticMode ? 'Waiting for Tessie to confirm your drive.' : 'Ready to remember your next drive.'}</Text>
+                <Text style={styles.homeRecorderBody}>{active ? paused ? 'Your journey is paused.' : summary?.status === 'finishing' ? 'Recording has stopped. Your journey is being saved.' : clockTracking ? 'Your journey is being remembered. Add a marker while you drive.' : 'Confirming recorder status. Saved GPS points are safe.' : automaticMode ? automaticDetectionActive ? 'Journeys are detected automatically. Your active drive will appear here.' : 'Automatic detection is paused. Check Always Allow location access.' : 'Ready to remember your next drive.'}</Text>
               </View>
               {busy && <ActivityIndicator color={theme.color("#ff795b", 'text')} size="small" />}
             </View>

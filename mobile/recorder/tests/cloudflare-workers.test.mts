@@ -36,7 +36,7 @@ assert.match(spotifySource, /user-read-recently-played|clientId|handleSpotifyCon
 assert.match(lastFmSource, /user\.getRecentTracks/, 'Last.fm broker uses bounded recent listening history');
 assert.match(lastFmSource, /LASTFM_RATE_LIMITER/, 'Last.fm requests have an edge rate limit');
 assert.match(lastFmSource, /nowplaying/, 'unstable now-playing rows are excluded');
-assert.doesNotMatch(lastFmSource, /\bimage\b|artwork/i, 'Last.fm artwork is not retained or relayed');
+assert.match(lastFmSource, /lastfm\.freetls\.fastly\.net/, 'Last.fm covers are limited to its image CDN');
 
 assert.match(tessieSource, /readBoundedJson/, 'Tessie bodies are size bounded');
 assert.match(tessieSource, /vehicleCount/, 'Tessie returns only the minimum verification result');
@@ -45,6 +45,7 @@ assert.match(tessieSource, /\/charges\?|\/drives\?/, 'Tessie history is fetched 
 assert.match(tessieSource, /endpoints=vehicle_state/, 'Tessie live reads request the vehicle-state block containing media metadata');
 assert.match(tessieSource, /\$\{encodedVin\}\/state/, 'Tessie media has a bounded native-state fallback');
 assert.match(indexSource, /\/api\/vehicle\/tessie\/media/, 'Tessie media has an explicit edge route');
+assert.match(indexSource, /\/api\/vehicle\/tessie\/route/, 'Tessie historical GPS has an explicit edge route');
 assert.doesNotMatch(tessieSource, /command\//, 'Tessie edge exposes no vehicle commands');
 
 assert.equal(config.compatibility_date, '2026-08-27');
@@ -100,7 +101,13 @@ globalThis.fetch = async input => {
   assert.equal(url.searchParams.get('limit'), '200');
   return new Response(JSON.stringify({ recenttracks: { track: [
     { name: 'Ignored live song', artist: { '#text': 'Artist' }, '@attr': { nowplaying: 'true' } },
-    { name: 'Road Song', artist: { '#text': 'Driver' }, album: { '#text': 'Night' }, url: 'https://www.last.fm/music/driver/road-song', date: { uts: '1787833500' }, image: [{ '#text': 'https://images.example/forbidden.jpg' }] },
+    { name: 'Road Song', artist: { '#text': 'Driver' }, album: { '#text': 'Night' }, url: 'https://www.last.fm/music/driver/road-song', date: { uts: '1787833500' }, image: [
+      { size: 'extralarge', '#text': 'https://images.example/forbidden.jpg' },
+      { size: 'large', '#text': 'https://lastfm.freetls.fastly.net/i/u/174s/real-cover.png' },
+    ] },
+    { name: 'No Cover', artist: { '#text': 'Driver' }, date: { uts: '1787833560' }, image: [
+      { size: 'large', '#text': 'https://lastfm.freetls.fastly.net/i/u/174s/2a96cbd8b46e442fc41c2b86b821562f.png' },
+    ] },
   ], '@attr': { totalPages: '1' } } }), { status: 200, headers: { 'content-type': 'application/json' } });
 };
 try {
@@ -110,9 +117,10 @@ try {
   assert.equal(response.status, 200);
   const payload = await response.json() as { tracks: Record<string, unknown>[]; attribution: string };
   assert.equal(lastFmCalls, 1);
-  assert.equal(payload.tracks.length, 1);
+  assert.equal(payload.tracks.length, 2);
   assert.equal(payload.tracks[0]?.track, 'Road Song');
-  assert.equal('artworkUrl' in (payload.tracks[0] ?? {}), false);
+  assert.equal(payload.tracks[0]?.artworkUrl, 'https://lastfm.freetls.fastly.net/i/u/174s/real-cover.png');
+  assert.equal(payload.tracks[1]?.artworkUrl, null);
   assert.match(payload.attribution, /Last\.fm/);
 } finally {
   globalThis.fetch = originalFetch;

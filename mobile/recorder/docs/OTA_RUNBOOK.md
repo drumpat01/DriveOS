@@ -32,14 +32,32 @@ runtime is the compatibility boundary for installed builds.
 
 | Target | Channel | Environment | `APP_VARIANT` | Notes |
 | --- | --- | --- | --- | --- |
-| `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Patrick's internal V3 preview device path. Runtime `3.0.0-preview.4`. |
-| `v3-testflight` | `production` | `production` | `v3-store` | V3 features on the live App Store identity for TestFlight only. Requires explicit authorization. |
+| `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Current source targets the next native runtime `3.0.0-preview.6`. |
+| `v3-testflight` | `production` | `production` | `v3-store` | Installed Build 36 uses `3.0.0-preview.5`; current source needs a new `3.0.0-preview.6` binary. Requires explicit authorization. |
+
+Phase 7 compatibility boundary: installed Build 35 uses `3.0.0-preview.4`
+and its native Ask reader accepts archive schema 9 only. This source migrates
+to schema 11 and updates that native reader; it must first ship in a new
+`3.0.0-preview.5` native build. Do not retag this tree as preview.4 or use the
+legacy marker compatibility override. See `tessie-v3-phase7.md` for the artifact
+audit and release gates. Preserve the installed Last.fm flow when releasing.
+
+The native-to-OTA Ask and Expo MediaLibrary changes advance the current source
+to `3.0.0-preview.6`. Do not publish this source as an OTA for Build 36's
+`3.0.0-preview.5` runtime.
 
 Do not use the legacy `preview` channel for V3. Do not publish V3 preview code
 to `production`. Do not publish V2 production OTA unless there is an urgent
 customer-reported bug and Patrick explicitly authorizes that V2 release action.
 
-## Preferred command
+## Existing Expo Updates builds
+
+Build 36 and earlier binaries still check Expo Updates. Use the existing
+`ota:publish` wrapper only for an explicitly authorized, runtime-compatible
+Expo target. This checkout's `3.0.0-preview.6` source is not compatible with
+Build 36's `3.0.0-preview.5` runtime.
+
+### Preferred command
 
 Use the guarded wrapper instead of composing raw EAS commands:
 
@@ -107,3 +125,30 @@ reopen the release build up to two times:
 2. The next cold launch can run the downloaded update.
 
 Never submit to App Review as part of OTA work.
+
+## Future V3 builds using local xprem
+
+New V3 preview and V3 TestFlight native builds made from this configuration use
+`https://ota.journeydeck.me/manifest` and verify xprem signatures with
+`certs/xprem-certificate.crt` (PEM-formatted public certificate). The `v3-preview` and `production` channels map
+to branches of the same names on the local xprem server. V2 builds retain the
+Expo Updates URL. Keep the computer, Docker Desktop, and the Cloudflare Tunnel
+running for those new builds to check for updates; installed builds can still
+launch their embedded bundle when the server is unavailable.
+
+After a new xprem-configured native build is installed, use the guarded xprem
+wrapper for its future compatible JavaScript updates. It defaults to dry-run:
+
+```powershell
+cd mobile/recorder
+npm run xprem:publish -- --target v3-preview --message "Describe the change"
+```
+
+For a separately authorized publish, set the app-scoped `EOO_TOKEN` in the
+process environment and add `--execute`. The wrapper requires a clean Git
+working tree, checks the selected app URL, channel, app ID, and signing
+certificate, and pins `eoas` to the server version `3.2.2`. Never print or
+commit the token. The local server's ignored
+`C:\Users\patri\JourneyDeckv3-current\tools\xprem-local\.env` contains the
+token; back it up with the Docker volumes. If the server version changes,
+review and update the pinned CLI version before publishing.

@@ -37,7 +37,7 @@ test('manual finish commits to the on-device archive before optional remote sync
 
 test('local completion invalidates the visible archive without a server refresh', () => {
   assert.match(storage, /notifyLocalArchiveChanged\(\)/);
-  assert.match(shell, /subscribeLocalArchiveChanges\(\(\) => \{ void refreshPrimarySections\(false\); \}\)/);
+  assert.match(shell, /subscribeLocalArchiveChanges\(\(\) => \{ void refreshPrimarySections\(false\); if \(tab === 'home'\) void refreshDashboard\(\); \}\)/);
   assert.match(localArchiveEvents, /const listeners = new Set<LocalArchiveListener>\(\)/);
 });
 
@@ -145,18 +145,18 @@ test('direct Spotify remains a local owner capability with PKCE and no JourneyDe
   assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
 });
 
-test('version 1 disables Tessie and automatic recording for every membership tier', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
-  assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
+test('V2 disables Tessie while V3 keeps verification and local-first transport', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.tessieEnabled === true/);
+  assert.match(tessie, /entitlementsForTestFlightMembership\(await getMembershipStatus\(\), TESTFLIGHT_PLUS_UNLOCKED, true\)\.tessieAccess/);
   assert.match(tessie, /TESSIE_VERIFIED_VEHICLE_KEY/);
   assert.match(tessie, /if \(vehicleCount < 1\) throw new Error\('Tessie did not find an active Tesla/);
   assert.match(tessie, /tessieDirectStatus[\s\S]*?tessieAutomaticRecordingEligible/);
   assert.match(tessie, /sampleTessieMedia[\s\S]*?if \(!\(await tessieAutomaticRecordingEligible\(\)\)\) return null/);
-  assert.match(musicCapture, /sampleTessieMediaForActiveSession[\s\S]*?if \(!TESSIE_INTEGRATION_ENABLED\) return \{ status: 'unavailable' \}/);
+  assert.doesNotMatch(musicCapture, /sampleTessieMediaForActiveSession|tessieMediaObservation/);
   assert.match(automaticDrive, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);
-  assert.match(locationTask, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
+  assert.doesNotMatch(locationTask, /sampleTessieMediaForActiveSession/);
   assert.match(appData, /if \(!TESSIE_INTEGRATION_ENABLED\) return localVehicleIntelligence\(userId\)/);
   assert.match(primarySections, /if \(!active \|\| !TESSIE_INTEGRATION_ENABLED\) return/);
-  assert.doesNotMatch(shell, /from '\.\/tessie-direct'|Tessie Automatic Recording|Drive intelligence/i);
+  assert.doesNotMatch(shell, /Tessie Automatic Recording|function TessieMark/i);
   assert.match(app, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
 });

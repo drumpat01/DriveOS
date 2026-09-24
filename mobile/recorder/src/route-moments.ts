@@ -39,6 +39,7 @@ type TimestampedTrack = {
   artworkUrl?: string | null;
   externalUrl?: string | null;
   mapCoordinate?: RouteCoordinate | null;
+  requiresTimedCoordinate?: boolean;
 };
 
 function validCoordinate(value: unknown): value is RouteCoordinate {
@@ -53,7 +54,7 @@ function validCoordinate(value: unknown): value is RouteCoordinate {
 }
 
 /** Finds the closest recorded GPS breadcrumb to a timestamp. */
-export function coordinateAtRecordedTime(samples: TimedRouteSample[], timestamp: string | null): RouteCoordinate | null {
+export function coordinateAtRecordedTime(samples: TimedRouteSample[], timestamp: string | null, maxDistanceMs = Infinity): RouteCoordinate | null {
   const target = timestamp ? Date.parse(timestamp) : Number.NaN;
   if (!Number.isFinite(target)) return null;
   let closest: RouteCoordinate | null = null;
@@ -67,7 +68,7 @@ export function coordinateAtRecordedTime(samples: TimedRouteSample[], timestamp:
       closestDistance = distance;
     }
   }
-  return closest;
+  return closestDistance <= maxDistanceMs ? closest : null;
 }
 
 /**
@@ -87,7 +88,9 @@ export function buildSongRouteMoments(
   const duration = ended - started;
 
   return tracks.flatMap((track, index) => {
-    if (!track.playedAt) return [];
+    // Explicit null means the timed archive could not locate this play. Only
+    // older rows without a coordinate field may use the geometry fallback.
+    if (!track.playedAt || (track.requiresTimedCoordinate && !validCoordinate(track.mapCoordinate))) return [];
     let coordinate = validCoordinate(track.mapCoordinate) ? track.mapCoordinate : null;
     const played = Date.parse(track.playedAt);
     if (!coordinate && Number.isFinite(played) && Number.isFinite(duration) && duration > 0) {

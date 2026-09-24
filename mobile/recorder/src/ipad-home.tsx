@@ -16,6 +16,9 @@ import { HomeGridCell, HomeLayoutEditorSheet, useHomeWidgetLayout } from './home
 import { packHomeWidgetRows, type HomeWidgetId, type HomeWidgetPlacement } from './home-widget-layout';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import { ActiveJourneyDetailsSheet, JourneyInProgressWidget, YourCarWidget, type ActiveJourneyProgress } from './tessie-home-widgets';
+import type { TessieVehicleSnapshot } from './tessie-contract';
 import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { router } from 'expo-router';
 import { JourneyImage } from './journey-image';
@@ -82,10 +85,12 @@ function MemoryPhoto({ photo }: { photo: JourneyPhoto | null }) {
   return <JourneyImage key={sourceKey} imageIdentity={sourceKey} source={source} contentFit="cover" style={styles.memoryPhoto} />;
 }
 
-export function IpadHomeScreen({ userId, memories, journeys, music, recorder, loading, error, onMemory, onJourney, onFiftyStates }: {
+export function IpadHomeScreen({ userId, memories, journeys, music, recorder, loading, error, journeyProgress, vehicles = [], vehicleLoading = false, vehicleError = false, onMemory, onJourney, onFiftyStates }: {
   userId: string;
   memories: JourneyMemory[]; journeys: JourneySummary[]; music: MusicDashboardData | null;
   recorder: ReactNode; loading?: boolean; error?: string;
+  journeyProgress?: ActiveJourneyProgress | null;
+  vehicles?: TessieVehicleSnapshot[]; vehicleLoading?: boolean; vehicleError?: boolean;
   onMemory: (id: string) => void; onJourney: (id: string) => void; onFiftyStates?: () => void;
 }) {
   const c = useColors();
@@ -95,6 +100,7 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
   const homeColors = journeyDeckSemanticColors(elementTheme.id, elementTheme.palette);
   const [width, setWidth] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [activeJourneyVisible, setActiveJourneyVisible] = useState(false);
   const [promptedShareJourneyId, setPromptedShareJourneyId] = useState<string | null>(() => lastPromptedShareJourneyId());
   const latestJourney = journeys[0] ?? null;
   const showSharePrompt = Boolean(latestJourney && latestJourney.id !== promptedShareJourneyId);
@@ -104,7 +110,7 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
     setPromptedShareJourneyId(latestJourney.id);
   };
   const layoutClass = adaptiveLayout.isCompact || (width > 0 && width < 700) ? 'compact' : 'regular';
-  const gridLayout = useHomeWidgetLayout(layoutClass, Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED);
+  const gridLayout = useHomeWidgetLayout(layoutClass, Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED, TESSIE_INTEGRATION_ENABLED);
   const placements = gridLayout.placements;
   const columns = ipadHomeColumns(width);
   const foldColumns = verticalFoldContentColumns(adaptiveLayout.fold, 24);
@@ -130,6 +136,8 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
     if (metric) return <EditableGridCell key={placement.id} {...common} title={metric.title}><View style={[styles.metric, { backgroundColor: c.card, borderColor: c.line }]}><View style={[styles.metricIcon, { backgroundColor: elementTheme.id === 'midnight-canopy' ? (metric.id === 'streak' ? elementTheme.palette.rose : elementTheme.palette.coral) : c.inset }]}><SymbolView name={metric.icon} tintColor={elementTheme.id === 'midnight-canopy' ? c.text : c.accent} style={styles.icon} /></View><View style={{ flex: 1 }}><Text style={[styles.metricLabel, { color: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.teal : c.muted }]}>{metric.title}</Text><Text style={[styles.metricValue, { color: elementTheme.id === 'midnight-canopy' ? elementTheme.palette.amber : c.text }]}>{metric.value == null ? '—' : metric.value.toLocaleString(undefined, { maximumFractionDigits: metric.digits })}</Text></View></View></EditableGridCell>;
     if (placement.id === 'fiftyStates' && onFiftyStates) return <EditableGridCell key={placement.id} {...common} title="50 States"><FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense={placement.span < 12} disabled={editing} /></EditableGridCell>;
     if (placement.id === 'askJourneyDeck' && V3_ASK_JOURNEYDECK_ENABLED) return <EditableGridCell key={placement.id} {...common} title="Ask JourneyDeck"><AskJourneyDeckWidget onPress={() => router.push('/ask-journeydeck')} disabled={editing} /></EditableGridCell>;
+    if (placement.id === 'yourCar' && TESSIE_INTEGRATION_ENABLED) return <EditableGridCell key={placement.id} {...common} title="Your car"><YourCarWidget vehicles={vehicles} loading={vehicleLoading} failed={vehicleError} /></EditableGridCell>;
+    if (placement.id === 'journeyInProgress' && TESSIE_INTEGRATION_ENABLED) return <EditableGridCell key={placement.id} {...common} title="Journey in progress"><JourneyInProgressWidget progress={journeyProgress ?? null} onOpen={() => setActiveJourneyVisible(true)} /></EditableGridCell>;
     if (placement.id === 'memories') return <EditableGridCell key={placement.id} {...common} title="Recent memories"><Widget title="Recent memories" icon="photo.on.rectangle">{memories.length ? <View style={styles.memoryRow}>{memories.slice(0, 2).map(memory => <Pressable key={memory.id} accessibilityRole="button" accessibilityLabel={`Open memory ${memory.name}`} onPress={() => onMemory(memory.id)} style={({ pressed }) => [styles.memory, pressed && { opacity: 0.7 }]}><MemoryPhoto photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} /><Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{memory.name}</Text><Text style={[styles.meta, { color: c.muted }]}>{memory.journeyIds.length} journeys · {memory.photos.length} photos</Text></Pressable>)}</View> : <Empty>Your memories will appear here as your library grows.</Empty>}</Widget></EditableGridCell>;
     if (placement.id === 'journeys') return <EditableGridCell key={placement.id} {...common} title="Recent journeys"><Widget title="Recent journeys" icon="road.lanes">{journeys.length ? journeys.slice(0, 3).map(journey => <Pressable key={journey.id} accessibilityRole="button" accessibilityLabel={`Open journey ${journeyDisplayTitle(journey)}`} onPress={() => onJourney(journey.id)} style={({ pressed }) => [styles.journey, { borderColor: c.line }, pressed && { opacity: 0.7 }]}><View style={[styles.journeyIcon, { backgroundColor: c.inset }]}><SymbolView name="road.lanes" tintColor={c.accent} style={styles.icon} /></View><View style={{ flex: 1 }}><Text numberOfLines={2} style={[styles.cardTitle, { color: c.text }]}>{journeyDisplayTitle(journey)}</Text><Text style={[styles.meta, { color: c.muted }]}>{journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min</Text></View></Pressable>) : <Empty>Finish your first journey to see it here.</Empty>}</Widget></EditableGridCell>;
     return <EditableGridCell key={placement.id} {...common} title="Today's soundtrack"><Widget title="Today's soundtrack" icon="music.note">{soundtrack.length ? songGrid(soundtrack) : <Empty>Your latest journey soundtrack will appear here.</Empty>}</Widget></EditableGridCell>;
@@ -158,8 +166,10 @@ export function IpadHomeScreen({ userId, memories, journeys, music, recorder, lo
   <HomeLayoutEditorSheet visible={editing} onClose={() => setEditing(false)} onReset={gridLayout.reset}>
     <View testID="ipad-home-layout-editor" style={styles.widgetGrid}>{placements.map(renderPlacement)}</View>
   </HomeLayoutEditorSheet>
+  <ActiveJourneyDetailsSheet visible={activeJourneyVisible} progress={journeyProgress ?? null} onClose={() => setActiveJourneyVisible(false)} />
   </SafeAreaView>;
 }
+
 
 function EditableGridCell({ id, title, editing, hidden, movable = true, span, order, width, onMove, onResize, onToggle, onStartEditing, children }: { id: HomeWidgetId; title: string; editing: boolean; hidden?: boolean; movable?: boolean; span: number; order: number; width: number | `${number}%`; onMove: (offset: number) => void; onResize: (span?: number) => void; onStartEditing: () => void; onToggle: () => void; children: ReactNode }) {
   return <HomeGridCell placement={{ id, span, order, hidden }} title={title} editing={editing} movable={movable} width={width} onMove={onMove} onResize={onResize} onToggle={onToggle} onStartEditing={onStartEditing}>{children}</HomeGridCell>;
@@ -173,7 +183,7 @@ export function IpadRecorderControls({ status, busy, startLabel = 'Start Journey
   const c = useColors();
   const theme = useAppTheme();
   const homeColors = journeyDeckSemanticColors(theme.id, theme.palette);
-  const action = status === 'permission' ? { label: 'Enable Location', onPress: onEnable } : status === 'recording' || status === 'paused' ? { label: 'End Journey', onPress: onEnd } : { label: status === 'loading' ? 'Preparing…' : status === 'finishing' ? 'Finishing…' : status === 'automatic' ? 'Automatic recording' : startLabel, onPress: onStart };
+  const action = status === 'permission' ? { label: 'Enable Location', onPress: onEnable } : status === 'recording' || status === 'paused' ? { label: 'End Journey', onPress: onEnd } : { label: status === 'loading' ? 'Preparing…' : status === 'finishing' ? 'Finishing…' : status === 'automatic' ? 'Journeys detected automatically' : startLabel, onPress: onStart };
   const disabled = busy || ['loading', 'finishing', 'automatic'].includes(status);
   if (startLabel === 'Record Journey' && (status === 'ready' || status === 'loading')) return <View style={styles.recorder}>
     <Pressable accessibilityRole="button" accessibilityLabel={action.label} accessibilityState={{ disabled, busy }} disabled={disabled} onPress={action.onPress} style={({ pressed }) => [styles.start, { width: '100%', minHeight: 64, justifyContent: 'center', backgroundColor: homeColors.accent, borderColor: homeColors.accent, opacity: disabled || pressed ? 0.6 : 1 }]}>
@@ -182,7 +192,7 @@ export function IpadRecorderControls({ status, busy, startLabel = 'Start Journey
     {notice ? <Text style={[styles.meta, { color: c.muted }]}>{notice}</Text> : null}
   </View>;
   return <View style={styles.recorder}>
-    <View style={styles.recorderRow}><Text style={[styles.status, { color: c.accent }]}>{status === 'ready' ? '● READY' : status === 'recording' ? '● RECORDING' : status === 'paused' ? 'PAUSED' : ''}</Text>
+    <View style={styles.recorderRow}><Text style={[styles.status, { color: c.accent }]}>{status === 'ready' ? '● READY' : status === 'recording' ? '● RECORDING' : status === 'paused' ? 'PAUSED' : status === 'automatic' ? '● WATCHING' : ''}</Text>
       <Pressable accessibilityRole="button" disabled={disabled} onPress={action.onPress} style={({ pressed }) => [styles.start, { backgroundColor: c.inset, borderColor: c.accent, opacity: disabled || pressed ? 0.6 : 1 }]}><Text style={[styles.startText, { color: c.accent }]}>{action.label}</Text><SymbolView name="arrow.right" tintColor={c.accent} style={styles.icon} /></Pressable>
     </View>
     {status === 'paused' && <Pressable accessibilityRole="button" onPress={onResume} disabled={busy} style={styles.secondaryAction}><Text style={{ color: c.accent }}>Resume Journey</Text></Pressable>}

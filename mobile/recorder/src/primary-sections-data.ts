@@ -17,6 +17,9 @@ import {
 import { getLiveRecorderSnapshot, readAppCache, writeAppCache, type LiveRecorderSnapshot } from './storage';
 import { enrichJourneyEndpointPlaces } from './journey-place-enrichment';
 import { isVisibleJourney } from './journey-visibility';
+import { readTessieStatisticsRows } from './local-store';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import type { TessieStatisticsCharge, TessieStatisticsDrive } from './tessie-statistics-model';
 
 export type TimelineItem = {
   id: string;
@@ -65,6 +68,7 @@ export type PrimarySectionsData = {
   dashboard: AppDashboard;
   journeys: JourneySummary[];
   details: JourneyDetail[];
+  tessieAtlas: { drives: TessieStatisticsDrive[]; charges: TessieStatisticsCharge[] };
   memories: MemoriesCatalog;
   music: MusicDashboardData;
   vehicle: VehicleIntelligenceData;
@@ -455,12 +459,21 @@ export async function loadPrimarySectionsData(
     },
   };
   const accessibleJourneyIds = new Set(accessibleJourneys.map(journey => journey.id));
+  const tessieJourneys = accessibleJourneys.filter(journey => journey.provider === 'tessie' && Number.isFinite(Date.parse(journey.startedAt)));
+  const tessieAtlas = TESSIE_INTEGRATION_ENABLED && tessieJourneys.length
+    ? (() => {
+      const start = new Date(Math.min(...tessieJourneys.map(journey => Date.parse(journey.startedAt))) - 86_400_000).toISOString();
+      const end = new Date(Math.max(...tessieJourneys.map(journey => Date.parse(journey.endedAt) || Date.parse(journey.startedAt))) + 86_400_000).toISOString();
+      const rows = readTessieStatisticsRows(getCurrentUser().id, start, end);
+      return { drives: rows.drives.filter(drive => accessibleJourneyIds.has(drive.journeyId)), charges: rows.charges.filter(charge => accessibleJourneyIds.has(charge.journeyId)) };
+    })()
+    : { drives: [], charges: [] };
   const accessibleMemories: MemoriesCatalog = {
     ...memories,
     memories: memories.memories.map(memory => ({ ...memory, journeyIds: memory.journeyIds.filter(id => accessibleJourneyIds.has(id)) })),
   };
   const data: PrimarySectionsData = {
-    loadedAt: new Date().toISOString(), dashboard: accessibleDashboard, journeys: accessibleJourneys, details, memories: accessibleMemories, music: accessibleMusic, vehicle,
+    loadedAt: new Date().toISOString(), dashboard: accessibleDashboard, journeys: accessibleJourneys, details, tessieAtlas, memories: accessibleMemories, music: accessibleMusic, vehicle,
     live: getLiveRecorderSnapshot(),
     timeline: buildTimeline(accessibleJourneys, details, accessibleChargingSessions),
     statistics: buildStatistics(accessibleJourneys, details),

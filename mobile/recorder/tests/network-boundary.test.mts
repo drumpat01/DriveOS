@@ -128,7 +128,7 @@ test('network measurement avoids response-body rescans and hidden Data Health re
   assert.match(requestSource, /headers\.get\('content-length'\)/);
   assert.match(primarySections, /active \? subscribeNetworkActivity\(setNetwork\) : undefined/);
   assert.match(shell, /const utilityVisible = usePathname\(\) === '\/tools'/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen active=\{utilityVisible\} requested=/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen active=\{utilityVisible\} requested=/);
 });
 
 test('normal navigation surfaces remain free of direct network access and expose local-only diagnostics', async () => {

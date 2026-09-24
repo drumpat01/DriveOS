@@ -2,25 +2,28 @@ import * as SecureStore from 'expo-secure-store';
 
 export const HOME_GRID_COLUMNS = 12 as const;
 export type HomeLayoutClass = 'compact' | 'regular';
-export type HomeWidgetId = 'miles' | 'listening' | 'songs' | 'streak' | 'askJourneyDeck' | 'fiftyStates' | 'memories' | 'journeys' | 'soundtrack';
+export type HomeWidgetId = 'miles' | 'listening' | 'songs' | 'streak' | 'askJourneyDeck' | 'fiftyStates' | 'memories' | 'journeys' | 'soundtrack' | 'yourCar' | 'journeyInProgress';
 export type HomeWidgetPlacement = { id: HomeWidgetId; span: number; order: number; hidden?: boolean };
 
 const STORAGE_KEY = 'journeydeck.home-grid.v3';
 export const HOME_WIDGETS: readonly HomeWidgetId[] = ['memories', 'miles', 'listening', 'songs', 'streak', 'journeys', 'soundtrack'];
 export const V3_HOME_WIDGETS: readonly HomeWidgetId[] = ['memories', 'fiftyStates', 'miles', 'listening', 'songs', 'streak', 'journeys', 'soundtrack'];
-export const HOME_CONTEXT_WIDGETS: readonly HomeWidgetId[] = ['fiftyStates', 'askJourneyDeck', 'soundtrack'];
+export const TESSIE_HOME_WIDGETS: readonly HomeWidgetId[] = ['yourCar', 'journeyInProgress'];
+export const HOME_CONTEXT_WIDGETS: readonly HomeWidgetId[] = ['fiftyStates', 'askJourneyDeck', 'soundtrack', ...TESSIE_HOME_WIDGETS];
 export const HOME_SUMMARY_WIDGETS: readonly HomeWidgetId[] = ['miles', 'listening', 'songs', 'streak', 'journeys'];
 const allowed: Record<HomeWidgetId, readonly number[]> = {
   miles: [3, 4, 6, 12], listening: [3, 4, 6, 12], songs: [3, 4, 6, 12], streak: [3, 4, 6, 12],
   fiftyStates: [6, 8, 12],
   askJourneyDeck: [6, 8, 12],
   memories: [6, 8, 12], journeys: [6, 8, 12], soundtrack: [6, 8, 12],
+  yourCar: [6, 8, 12], journeyInProgress: [6, 8, 12],
 };
 
-function widgetCatalog(includeFiftyStates: boolean, includeAsk: boolean) {
+function widgetCatalog(includeFiftyStates: boolean, includeAsk: boolean, includeTessie: boolean) {
   const base = includeFiftyStates ? V3_HOME_WIDGETS : HOME_WIDGETS;
   const contextEnd = includeFiftyStates ? 2 : 1;
-  return includeAsk ? [...base.slice(0, contextEnd), 'askJourneyDeck' as const, ...base.slice(contextEnd)] : base;
+  const withAsk = includeAsk ? [...base.slice(0, contextEnd), 'askJourneyDeck' as const, ...base.slice(contextEnd)] : [...base];
+  return includeTessie ? [...withAsk, ...TESSIE_HOME_WIDGETS] : withAsk;
 }
 
 function legacyWidgetCatalog(includeFiftyStates: boolean, includeAsk: boolean): readonly HomeWidgetId[] {
@@ -30,26 +33,26 @@ function legacyWidgetCatalog(includeFiftyStates: boolean, includeAsk: boolean): 
   return includeAsk ? [...base.slice(0, 4), 'askJourneyDeck', ...base.slice(4)] : base;
 }
 
-export function defaultHomeWidgetLayout(kind: HomeLayoutClass, includeFiftyStates = false, includeAsk = false): HomeWidgetPlacement[] {
+export function defaultHomeWidgetLayout(kind: HomeLayoutClass, includeFiftyStates = false, includeAsk = false, includeTessie = false): HomeWidgetPlacement[] {
   const metric = kind === 'compact' ? 6 : 3;
-  return widgetCatalog(includeFiftyStates, includeAsk).map((id, order) => ({ id, order, span: id === 'askJourneyDeck' || id === 'fiftyStates' || id === 'soundtrack' ? 12 : id === 'memories' || id === 'journeys' ? (kind === 'compact' ? 12 : 6) : metric }));
+  return widgetCatalog(includeFiftyStates, includeAsk, includeTessie).map((id, order) => ({ id, order, span: id === 'askJourneyDeck' || id === 'fiftyStates' || id === 'soundtrack' || TESSIE_HOME_WIDGETS.includes(id) ? 12 : id === 'memories' || id === 'journeys' ? (kind === 'compact' ? 12 : 6) : metric }));
 }
 
-function isLegacyDefaultLayout(value: unknown, kind: HomeLayoutClass, includeFiftyStates: boolean, includeAsk: boolean) {
+function isLegacyDefaultLayout(value: unknown, kind: HomeLayoutClass, includeFiftyStates: boolean, includeAsk: boolean, includeTessie: boolean) {
   if (!Array.isArray(value)) return false;
   const metric = kind === 'compact' ? 6 : 3;
   const legacy = legacyWidgetCatalog(includeFiftyStates, includeAsk).map((id, order) => ({
     id, order, span: id === 'askJourneyDeck' || id === 'fiftyStates' || id === 'soundtrack' ? 12 : id === 'memories' || id === 'journeys' ? (kind === 'compact' ? 12 : 6) : metric,
   }));
-  return value.length === legacy.length && legacy.every((item, index) => {
+  return !includeTessie && value.length === legacy.length && legacy.every((item, index) => {
     const candidate = value[index];
     return candidate?.id === item.id && candidate?.order === item.order && candidate?.span === item.span && candidate?.hidden !== true;
   });
 }
 
-export function normalizeHomeWidgetLayout(value: unknown, kind: HomeLayoutClass, includeFiftyStates = false, includeAsk = false): HomeWidgetPlacement[] {
-  const fallback = defaultHomeWidgetLayout(kind, includeFiftyStates, includeAsk);
-  const catalog = widgetCatalog(includeFiftyStates, includeAsk);
+export function normalizeHomeWidgetLayout(value: unknown, kind: HomeLayoutClass, includeFiftyStates = false, includeAsk = false, includeTessie = false): HomeWidgetPlacement[] {
+  const fallback = defaultHomeWidgetLayout(kind, includeFiftyStates, includeAsk, includeTessie);
+  const catalog = widgetCatalog(includeFiftyStates, includeAsk, includeTessie);
   if (!Array.isArray(value)) return fallback;
   const seen = new Set<HomeWidgetId>();
   const parsed: HomeWidgetPlacement[] = [];
@@ -166,13 +169,13 @@ export function selectHomePresentation(layout: HomeWidgetPlacement[]): HomePrese
 }
 
 export type StoredHomeLayouts = Record<HomeLayoutClass, HomeWidgetPlacement[]>;
-export function loadHomeWidgetLayouts(includeFiftyStates = false, includeAsk = false): StoredHomeLayouts {
+export function loadHomeWidgetLayouts(includeFiftyStates = false, includeAsk = false, includeTessie = false): StoredHomeLayouts {
   try {
     const raw = SecureStore.getItem(STORAGE_KEY); const parsed = raw ? JSON.parse(raw) : {};
     return {
-      compact: isLegacyDefaultLayout(parsed.compact, 'compact', includeFiftyStates, includeAsk) ? defaultHomeWidgetLayout('compact', includeFiftyStates, includeAsk) : normalizeHomeWidgetLayout(parsed.compact, 'compact', includeFiftyStates, includeAsk),
-      regular: isLegacyDefaultLayout(parsed.regular, 'regular', includeFiftyStates, includeAsk) ? defaultHomeWidgetLayout('regular', includeFiftyStates, includeAsk) : normalizeHomeWidgetLayout(parsed.regular, 'regular', includeFiftyStates, includeAsk),
+      compact: isLegacyDefaultLayout(parsed.compact, 'compact', includeFiftyStates, includeAsk, includeTessie) ? defaultHomeWidgetLayout('compact', includeFiftyStates, includeAsk, includeTessie) : normalizeHomeWidgetLayout(parsed.compact, 'compact', includeFiftyStates, includeAsk, includeTessie),
+      regular: isLegacyDefaultLayout(parsed.regular, 'regular', includeFiftyStates, includeAsk, includeTessie) ? defaultHomeWidgetLayout('regular', includeFiftyStates, includeAsk, includeTessie) : normalizeHomeWidgetLayout(parsed.regular, 'regular', includeFiftyStates, includeAsk, includeTessie),
     };
-  } catch { return { compact: defaultHomeWidgetLayout('compact', includeFiftyStates, includeAsk), regular: defaultHomeWidgetLayout('regular', includeFiftyStates, includeAsk) }; }
+  } catch { return { compact: defaultHomeWidgetLayout('compact', includeFiftyStates, includeAsk, includeTessie), regular: defaultHomeWidgetLayout('regular', includeFiftyStates, includeAsk, includeTessie) }; }
 }
 export function saveHomeWidgetLayouts(layouts: StoredHomeLayouts) { SecureStore.setItem(STORAGE_KEY, JSON.stringify(layouts)); }

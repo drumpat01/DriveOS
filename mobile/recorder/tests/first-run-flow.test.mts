@@ -48,6 +48,8 @@ test('content exits before the next step enters while artwork stays mounted; Red
       useWindowDimensions: () => ({ width: 390, height: 844 }), StyleSheet: { create: (s: any) => s, absoluteFill: {} } };
     const Screen = load('first-run-onboarding-screen.tsx', {
       'react-native': native,
+      './release-features': { V3_LASTFM_ENABLED: false, TESSIE_INTEGRATION_ENABLED: false },
+      './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
       './app-theme': { useAppTheme: () => testTheme('redline') },
       './motion': { useMotionPreferences: () => ({ reduceMotion: reduced, isAppActive: true }) },
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 54, bottom: 34 }) },
@@ -79,4 +81,44 @@ test('content exits before the next step enters while artwork stays mounted; Red
     assert.equal(pending.length, 0);
     await act(() => tree.unmount());
   }
+});
+
+test('music picker requires a Last.fm username and saves only the selected provider', async () => {
+  const selected: string[] = [];
+  const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
+  const Screen = load('first-run-onboarding-screen.tsx', {
+    './release-features': { V3_LASTFM_ENABLED: true, TESSIE_INTEGRATION_ENABLED: false },
+    './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
+    'react-native': { View: host('View'), Text: host('Text'), ScrollView: host('ScrollView'), Pressable: host('Pressable'), TextInput: host('TextInput'),
+      Linking: { openURL: async () => {} }, useWindowDimensions: () => ({ width: 390, height: 844 }), StyleSheet: { create: (s: any) => s, absoluteFill: {} } },
+    './app-theme': { useAppTheme: () => testTheme('redline') },
+    './motion': { useMotionPreferences: () => ({ reduceMotion: true, isAppActive: true }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 54, bottom: 34 }) },
+    'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
+    'expo-symbols': { SymbolView: host('Symbol') },
+    './first-run-welcome-screen': { FirstRunWelcomeScreen: host('Welcome'), FIRST_RUN_ARTWORK: { redline: 'road' } },
+    'react-native-worklets': { scheduleOnRN: (fn: any, ...args: any[]) => fn(...args) },
+    'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, Easing: { bezier: () => {} },
+      useSharedValue: (initial: number) => React.useRef({ value: initial, get() { return this.value; }, set(v: any) { this.value = v; } }).current,
+      useAnimatedStyle: (fn: any) => fn(), cancelAnimation: () => {}, withTiming: (value: number) => value },
+  }).FirstRunOnboardingScreen;
+  let tree: any;
+  await act(() => { tree = create(React.createElement(Screen, { stage: 'music', lastFmUsername: '', onWelcomeComplete() {},
+    async onRecordingContinue() {}, async onLocationContinue() {}, async onConnectAppleMusic() { selected.push('apple'); },
+    async onConnectLastFm(username: string) { selected.push(username); }, onSkipMusic() {}, onFinish() {} })); });
+  const options = tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'radio');
+  assert.equal(options.length, 2);
+  assert.equal(options[0].props.accessibilityState.selected, true);
+  await act(() => options[1].props.onPress());
+  assert.equal(tree.root.findAllByType('TextInput').length, 1);
+  const continueButton = () => tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'button').at(-1);
+  await act(async () => continueButton().props.onPress());
+  assert.deepEqual(selected, []);
+  await act(() => tree.root.findByType('TextInput').props.onChangeText('road_listener'));
+  await act(async () => continueButton().props.onPress());
+  assert.deepEqual(selected, ['road_listener']);
+  await act(() => tree.root.findAllByType('Pressable').filter((node: any) => node.props.accessibilityRole === 'radio')[0].props.onPress());
+  await act(async () => continueButton().props.onPress());
+  assert.deepEqual(selected, ['road_listener', 'apple']);
+  await act(() => tree.unmount());
 });

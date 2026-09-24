@@ -18,8 +18,22 @@ export function entitlementsForMembershipTier(tier: JourneyDeckMembershipTier): 
     : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: 45 };
 }
 
-export function entitlementsForVerifiedMembership(status: VerifiedMembershipStatus): JourneyDeckMembershipEntitlements {
-  return entitlementsForMembershipTier(status.nativeModuleAvailable && status.tier === 'paid' ? 'paid' : 'free');
+export function entitlementsForVerifiedMembership(
+  status: VerifiedMembershipStatus,
+  options: { tessieV3Enabled?: boolean } = {},
+): JourneyDeckMembershipEntitlements {
+  const verifiedPaid = status.nativeModuleAvailable && status.tier === 'paid';
+  const base = entitlementsForMembershipTier(verifiedPaid ? 'paid' : 'free');
+  return verifiedPaid && options.tessieV3Enabled === true ? { ...base, tessieAccess: true } : base;
+}
+
+export function entitlementsForTestFlightMembership(
+  status: VerifiedMembershipStatus,
+  plusUnlocked: boolean,
+  tessieV3Enabled: boolean,
+): JourneyDeckMembershipEntitlements {
+  if (plusUnlocked) return { ...entitlementsForMembershipTier('paid'), tessieAccess: tessieV3Enabled };
+  return entitlementsForVerifiedMembership(status, { tessieV3Enabled });
 }
 
 export function withPreviewAtlasAccess(

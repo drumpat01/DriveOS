@@ -878,12 +878,17 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
       lastAuthorizationStatus = manager.authorizationStatus
       locationStateGeneration += 1
     }
-    if defaults.bool(forKey: RecorderDefaults.enabled) { startSignificantMonitoringIfAuthorized() }
+    // Always-only services: stop significant + precise when Always is lost so the
+    // in-memory significantMonitoring latch cannot block restart after re-grant.
     if manager.authorizationStatus != .authorizedAlways {
+      stopSignificantMonitoring()
       stopPreciseTracking()
       setLastError("always_location_required")
     } else {
       setLastError(nil)
+      if defaults.bool(forKey: RecorderDefaults.enabled) {
+        startSignificantMonitoringIfAuthorized()
+      }
     }
   }
 
@@ -1465,6 +1470,18 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("askJourneyDeckAsync") { (question: String, userID: String, contextToken: String?) async -> [String: Any] in
       await JourneyDeckAskService.shared.answer(question: question, expectedUserID: userID, contextToken: contextToken)
+    }
+
+    AsyncFunction("verifiedAskFullHistoryAsync") { () async -> Bool in
+      await JourneyDeckAskService.shared.hasVerifiedFullHistory()
+    }
+
+    // This bridge never receives archive rows. The OTA-controlled in-app reader
+    // validates the generated plan and rereads the profile-scoped SQLite snapshot.
+    AsyncFunction("planJourneyDeckQuestionAsync") { (question: String, context: String, nowMilliseconds: Double) async throws -> [String: Any]? in
+      guard nowMilliseconds.isFinite else { return nil }
+      return try await JourneyDeckAIPlanner.plan(
+        question: question, context: context, now: Date(timeIntervalSince1970: nowMilliseconds / 1000))
     }
 
     AsyncFunction("resolveJourneyDeckAnswerAsync") { (ticket: String, userID: String) async -> [String: Any] in

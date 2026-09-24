@@ -56,6 +56,8 @@ const ipad = evaluate(readFileSync(new URL('../src/ipad-settings-screen.tsx', im
 const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScreen;', {}, {
   ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
   useAdaptiveLayout: () => ({ isRegular: tablet, fold: adaptiveFold }),
+  TESSIE_INTEGRATION_ENABLED: false, isMusicProviderAvailable: (provider: string) => provider !== 'lastfm',
+  TESTFLIGHT_DATA_HEALTH_ENABLED: false,
   V3_MARKERS_PROTOTYPE_ENABLED: false,
   router: { push: () => undefined },
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
@@ -151,6 +153,15 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => tree.root.findByProps({ testID: 'ipad-settings' }).props.onLayout({ nativeEvent: { layout: { width: 976 } } }));
     assert.equal(tree.root.findByProps({ testID: 'ipad-settings' }).props.style[1], false);
 
+    await act(() => press('Open Recording & Location settings').props.onPress());
+    const showsCopy = (copy: string) => tree.root.findAllByType('Text').some((node: any) => node.children.join('') === copy);
+    assert.ok(showsCopy('Manual recording'));
+    await act(() => tree.update(render({ connectionCapabilities: { lastFmConfigured: false, tessieConfigured: true } })));
+    assert.ok(showsCopy('Automatic recording with Tessie'));
+    assert.ok(showsCopy('JourneyDeck detects drives and shows each journey while it is recording.'));
+    await act(() => tree.update(render()));
+    assert.ok(showsCopy('Manual recording'));
+
     await act(() => press('Open Account & iCloud settings').props.onPress());
     assert.ok(tree.root.findAllByProps({ testID: 'ipad-settings-account' }).length);
     await act(() => tree.root.findByType('AppleSignIn').props.onPress());
@@ -195,6 +206,10 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     await act(() => tree.update(render()));
     assert.equal(tree.root.findAllByProps({ testID: 'ipad-settings-sidebar' }).length, 0);
     assert.equal(tree.root.findAllByType('Pressable').filter((node: any) => typeof node.props.accessibilityLabel === 'string' && /^Open .* settings$/.test(node.props.accessibilityLabel)).length, 7);
+    await act(() => press('Open Recording & Location settings').props.onPress());
+    await act(() => tree.update(render({ connectionCapabilities: { lastFmConfigured: false, tessieConfigured: true } })));
+    assert.ok(showsCopy('Automatic recording with Tessie'));
+    await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     await act(() => press('Open Achievements settings').props.onPress());
     assert.equal(tree.root.findByType('AchievementsOverview').props.journeys.length, 1);
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());

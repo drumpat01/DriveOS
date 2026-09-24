@@ -123,28 +123,23 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
           </View>)}</View> : <Empty text="Your artist ranking will grow with your listening archive." />) : (topTracks.length ? topTracks.slice(0, 5).map((track, index) => <View key={`${track.track}-${track.artist}`} style={styles.topTrackRow}><Text style={styles.artistRank}>{String(index + 1).padStart(2, '0')}</Text><View style={styles.flexCard}><Text numberOfLines={1} style={styles.archiveTitle}>{track.track}</Text><Text accessibilityLabel={track.artist} numberOfLines={1} style={styles.archiveArtist}>{compactArtistCredit(track.artist)}</Text></View><Text style={styles.artistPlays}>{track.plays} plays</Text></View>) : <Empty text="Your most-played road songs will appear here." />)}
         </Panel>
 
-        <View style={styles.insightCard}>
-          <CardHeader title="Road insights" kicker="THIS WEEK" />
-          <View style={styles.insightSummary}><View><Text style={styles.tourValue}>{number(data.tour.miles)}</Text><Text style={styles.tourUnit}>miles with a soundtrack</Text></View><View style={styles.weekSummary}><Text style={styles.weekSummaryValue}>{number(data.week.total, 0)}</Text><Text style={styles.tourUnit}>plays this week</Text></View></View>
-          <RouteGlow />
-          <Text style={[styles.change, (data.tour.changePercent ?? 0) < 0 && styles.changeDown]}>{data.tour.changePercent === null ? 'Your first week of matched journey music' : `${data.tour.changePercent >= 0 ? '↑' : '↓'} ${Math.abs(data.tour.changePercent)}% mileage vs last week`}</Text>
-        </View>
+        <Panel title="Road insights" kicker="THIS WEEK">
+          <View style={styles.insightSummary}><View style={styles.insightMetric}><SymbolView name="road.lanes" tintColor={theme.palette.accent} size={18} /><Text style={styles.tourValue}>{number(data.tour.miles)}</Text><Text style={styles.tourUnit}>miles driven</Text></View><View style={[styles.insightMetric, styles.weekSummary]}><SymbolView name="music.note" tintColor={theme.palette.accent} size={18} /><Text style={styles.weekSummaryValue}>{number(data.week.total, 0)}</Text><Text style={styles.tourUnit}>plays this week</Text></View></View>
+          <View style={styles.changeRow}><SymbolView name={data.tour.changePercent === null ? 'sparkles' : data.tour.changePercent >= 0 ? 'arrow.up.right' : 'arrow.down.right'} tintColor={theme.palette.accent} size={15} /><Text style={styles.change}>{data.tour.changePercent === null ? 'Your first week of matched journey music' : `${Math.abs(data.tour.changePercent)}% mileage ${data.tour.changePercent >= 0 ? 'more' : 'less'} than last week`}</Text></View>
+        </Panel>
 
-        {data.mood.some(item => item.count > 0) ? <View style={styles.insightCard}>
-          <CardHeader title="Mood by mile" kicker="WHEN YOU LISTEN" />
+        {data.mood.some(item => item.count > 0) ? <Panel title="Mood by mile" kicker="WHEN YOU LISTEN">
           <MoodBar items={data.mood} />
-        </View> : null}
+        </Panel> : null}
 
-        {data.cities.length ? <View style={styles.insightCard}>
-          <CardHeader title="Cities & sound" kicker="JOURNEY MATCHES" />
+        {data.cities.length ? <Panel title="Cities & sound" kicker="JOURNEY MATCHES">
           <CityBars items={data.cities} />
-        </View> : null}
+        </Panel> : null}
 
-        {data.daily.some(day => day.minutes > 0) ? <View style={styles.insightCard}>
-          <CardHeader title="Listening time" kicker="LAST 7 DAYS" />
+        {data.daily.some(day => day.minutes > 0) ? <Panel title="Listening time" kicker="LAST 7 DAYS">
           <IntensityChart daily={data.daily.slice(-7)} />
           <Text style={styles.chartFootnote}>Minutes listened each day</Text>
-        </View> : null}
+        </Panel> : null}
 
         {!canOpenTracks ? <Text style={styles.linkFootnote}>Manual Song Recognition saves only the match and timestamp, so JourneyDeck leaves track taps inactive.</Text> : <Text style={styles.linkFootnote}>Tap any album to open it in {provider === 'lastfm' ? 'Spotify' : 'Apple Music'}.</Text>}
       </> : null}
@@ -204,23 +199,6 @@ function Empty({ text }: { text: string }) {
   const styles = useThemedStyles(darkStyles);
  return <Text style={styles.empty}>{text}</Text>; }
 
-function RouteGlow() {
-  const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
-
-  return <View style={styles.routeGraphic}>
-    <Svg width="100%" height="100%" viewBox="0 0 150 70">
-      <Defs><SvgLinearGradient id="mileageRoad" x1="8" y1="58" x2="142" y2="12" gradientUnits="userSpaceOnUse"><Stop offset="0" stopColor={theme.color("#ff795b", 'accent')} /><Stop offset="0.55" stopColor={theme.color("#ff4d87", 'accent')} /><Stop offset="1" stopColor={theme.color("#b46cff", 'accent')} /></SvgLinearGradient></Defs>
-      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke={theme.color("#28152f", 'accent')} strokeWidth="11" strokeLinecap="round" />
-      <Path d="M8 57 C35 57 34 20 65 21 C95 22 99 56 140 13" fill="none" stroke="url(#mileageRoad)" strokeWidth="3" strokeLinecap="round" />
-      <Path d="M15 54 C37 49 38 27 61 25 C87 23 101 48 133 18" fill="none" stroke={theme.color("#ffe3d8", 'accent')} strokeWidth="1.5" strokeLinecap="round" strokeDasharray="5 7" opacity="0.78" />
-      <Circle cx="8" cy="57" r="5" fill={theme.color("#ffb39d", 'accent')} stroke={theme.color("#fff2ec", 'accent')} strokeWidth="2" />
-      <Circle cx="140" cy="13" r="6" fill={theme.color("#ff4d87", 'accent')} stroke={theme.color("#ffd9ea", 'accent')} strokeWidth="2" />
-      <Circle cx="140" cy="13" r="11" fill="none" stroke={theme.color("#ff4d87", 'accent')} strokeWidth="2" opacity="0.23" />
-    </Svg>
-  </View>;
-}
-
 function MusicAtmosphere() {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
@@ -235,15 +213,16 @@ function MoodBar({ items }: { items: MusicDashboardData['mood'] }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
-  const palette = [colors.blue, '#7658dd', '#b34cd0', colors.pink];
-  return <View style={styles.moodBlock}><View style={styles.moodBar}>{items.map((item, index) => <View key={item.label} style={{ flex: Math.max(item.percent, item.count ? 4 : 0.5), backgroundColor: theme.color(palette[index], 'surface') }} />)}</View><View style={styles.moodLegend}>{items.map((item, index) => <View key={item.label} style={styles.moodItem}><Text style={[styles.moodPercent, { color: theme.color(palette[index], 'text') }]}>{item.percent}%</Text><Text style={styles.moodLabel}>{item.label}</Text></View>)}</View><Text style={styles.moodFootnote}>Your real listening rhythm across the day</Text></View>;
+  const palette = [theme.palette.blue, theme.palette.teal, theme.palette.accent, theme.palette.rose];
+  return <View style={styles.moodBlock}><View style={styles.moodBar}>{items.map((item, index) => <View key={item.label} style={{ flex: Math.max(item.percent, item.count ? 4 : 0.5), backgroundColor: palette[index % palette.length] }} />)}</View><View style={styles.moodLegend}>{items.map((item, index) => <View key={item.label} style={styles.moodItem}><Text style={[styles.moodPercent, { color: palette[index % palette.length] }]}>{item.percent}%</Text><Text style={styles.moodLabel}>{item.label}</Text></View>)}</View><Text style={styles.moodFootnote}>Your real listening rhythm across the day</Text></View>;
 }
 
 function CityBars({ items }: { items: MusicDashboardData['cities'] }) {
+  const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
   const maximum = Math.max(1, ...items.map(item => item.songs));
-  return items.length ? <View style={styles.cityList}>{items.map(item => <View key={item.label} style={styles.cityRow}><Text style={styles.cityName} numberOfLines={1}>{item.label}</Text><View style={styles.cityTrack}><View style={[styles.cityFill, { width: `${Math.max(5, Math.round((item.songs / maximum) * 100))}%` }]} /></View><Text style={styles.cityCount}>{item.songs}</Text></View>)}<Text style={styles.cityAttribution}>City labels © OpenStreetMap contributors · coordinates reduced before leaving this iPhone</Text></View> : <Empty text="Pull to refresh to add privacy-safe city labels for journey music." />;
+  return items.length ? <View style={styles.cityList}>{items.map(item => <View key={item.label} style={styles.cityRow}><Text style={styles.cityName} numberOfLines={1}>{item.label}</Text><View style={styles.cityTrack}><View style={[styles.cityFill, { width: `${Math.max(5, Math.round((item.songs / maximum) * 100))}%`, backgroundColor: theme.palette.accent }]} /></View><Text style={styles.cityCount}>{item.songs}</Text></View>)}<Text style={styles.cityAttribution}>City labels © OpenStreetMap contributors · coordinates reduced before leaving this iPhone</Text></View> : <Empty text="Pull to refresh to add privacy-safe city labels for journey music." />;
 }
 
 function IntensityChart({ daily }: { daily: MusicDashboardData['daily'] }) {
@@ -374,13 +353,13 @@ const darkStyles = StyleSheet.create({
   sourceGuidance: { borderRadius: 17, borderWidth: 1, borderColor: '#493359', backgroundColor: '#120d19', paddingHorizontal: 15, paddingVertical: 13, gap: 5 }, sourceGuidanceKicker: { color: '#ff8f78', fontSize: 8, fontWeight: '900', letterSpacing: 1.15 }, sourceGuidanceText: { color: '#a79dad', fontSize: 11, lineHeight: 17 },
   latestSoundtrack: { minHeight: 118, flexDirection: 'row', alignItems: 'center', gap: 13, paddingTop: 2 }, latestArtwork: { width: 104, height: 104, borderRadius: 16 }, latestArtworkFallback: { width: 104, height: 104, borderRadius: 16, backgroundColor: '#24152f', alignItems: 'center', justifyContent: 'center' }, latestArtworkSymbol: { width: 38, height: 38 }, latestCopy: { flex: 1, minWidth: 0 }, latestKicker: { color: '#ff829d', fontSize: 8, fontWeight: '900', letterSpacing: 1.1 }, latestTitle: { color: colors.text, fontSize: 20, lineHeight: 24, fontWeight: '900', marginTop: 7 }, latestArtist: { color: '#b5a7bc', fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 5 }, latestAlbum: { color: '#82768a', fontSize: 9, lineHeight: 14, marginTop: 2 }, latestOpenIcon: { width: 18, height: 18 },
   metricRail: { gap: 10, paddingRight: 14 }, metric: { width: 148, minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10 }, metricIconHalo: { width: 40, height: 40, borderRadius: 20, borderWidth: 1, padding: 3, shadowOpacity: 0.68, shadowRadius: 13, shadowOffset: { width: 0, height: 0 } }, metricIcon: { flex: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, metricSymbol: { width: 22, height: 22 }, metricCopy: { flex: 1 }, metricLabel: { color: '#a79aae', fontSize: 9, lineHeight: 12, fontWeight: '700' }, metricValue: { color: colors.text, fontSize: 20, fontWeight: '800', marginTop: 1, fontVariant: ['tabular-nums'] }, metricDetail: { color: '#958999', fontSize: 8, lineHeight: 11, marginTop: 1 },
-  panel: { borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }, cardAccent: { width: 3, height: 17, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 9, fontWeight: '800', letterSpacing: 0.65 },
+  panel: { borderRadius: 24, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 18, overflow: 'hidden', shadowColor: '#a64dff', shadowOpacity: 0.15, shadowRadius: 15, shadowOffset: { width: 0, height: 7 } }, cardHeader: { minHeight: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 14 }, cardTitleGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 }, cardAccent: { width: 3, height: 19, borderRadius: 2, backgroundColor: colors.coral, shadowColor: colors.coral, shadowOpacity: 0.55, shadowRadius: 7 }, cardTitle: { flex: 1, color: colors.text, fontSize: 18, lineHeight: 23, fontWeight: '800' }, cardKicker: { color: '#ff829d', fontSize: 10, lineHeight: 14, fontWeight: '800', letterSpacing: 0.8 },
   empty: { color: '#82778a', fontSize: 11, lineHeight: 17, paddingVertical: 12 },
   artistList: { gap: 3 }, artistRow: { minHeight: 63, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#291932' }, artistRank: { width: 26, color: '#877a92', fontSize: 10 }, artistArtwork: { width: 42, height: 42, borderRadius: 21 }, artistFallback: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#251634', borderWidth: 1, borderColor: '#4e2e68', alignItems: 'center', justifyContent: 'center' }, artistInitial: { color: '#c9aaff', fontSize: 16, fontWeight: '900' }, artistName: { flex: 1, color: '#f0e9f3', fontSize: 14, fontWeight: '800' }, artistPlays: { color: '#a296ab', fontSize: 10, fontWeight: '700' },
   rankingTabs: { flexDirection: 'row', gap: 4, borderRadius: 12, backgroundColor: '#09060f', padding: 3, marginBottom: 8 }, rankingTab: { flex: 1, minHeight: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }, rankingTabSelected: { backgroundColor: '#2b1738', borderWidth: 1, borderColor: '#5f3972' }, rankingTabText: { color: '#897d91', fontSize: 11, fontWeight: '800' }, rankingTabTextSelected: { color: '#f5edf8' },
-  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightCard: { minHeight: 0, borderRadius: 20, borderWidth: 1, borderColor: '#633678', backgroundColor: colors.panel, padding: 14, overflow: 'hidden', shadowColor: '#ff4d91', shadowOpacity: 0.25, shadowRadius: 17, shadowOffset: { width: 0, height: 7 } }, insightSummary: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 3 }, weekSummary: { alignItems: 'flex-end', paddingTop: 3 }, weekSummaryValue: { color: '#ff829d', fontSize: 28, lineHeight: 33, fontWeight: '900', fontVariant: ['tabular-nums'] }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 38, fontWeight: '900', marginTop: 2, textShadowColor: '#ff4d9155', textShadowRadius: 8 }, tourUnit: { color: '#aa9db0', fontSize: 8 }, routeGraphic: { height: 70, marginTop: 1 }, change: { color: '#ff795c', fontSize: 8, lineHeight: 13, fontWeight: '800' }, changeDown: { color: '#ffb05c' },
-  moodBlock: { flex: 1, justifyContent: 'space-between', paddingTop: 8 }, moodBar: { height: 17, borderRadius: 9, overflow: 'hidden', flexDirection: 'row', backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 10, fontWeight: '900' }, moodLabel: { color: '#817589', fontSize: 7, marginTop: 3 }, moodFootnote: { color: '#ff765a', fontSize: 6.5, marginTop: 15 },
-  cityList: { gap: 12, paddingTop: 2 }, cityRow: { flexDirection: 'row', alignItems: 'center', gap: 9 }, cityName: { width: 103, color: '#d8cfdd', fontSize: 9 }, cityTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: '#27172f', overflow: 'hidden' }, cityFill: { height: 6, borderRadius: 3, backgroundColor: colors.pink, shadowColor: colors.pink, shadowOpacity: 1, shadowRadius: 6 }, cityCount: { width: 25, color: '#b9a9c1', fontSize: 9, fontWeight: '800', textAlign: 'right' }, cityAttribution: { color: '#6f6476', fontSize: 7, lineHeight: 11, marginTop: 3 },
+  insightPair: { flexDirection: 'row', gap: 10 }, flexCard: { flex: 1 }, insightSummary: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }, insightMetric: { flex: 1, alignItems: 'flex-start', gap: 3 }, weekSummary: { alignItems: 'flex-end' }, weekSummaryValue: { color: '#ff829d', fontSize: 34, lineHeight: 39, fontWeight: '900', fontVariant: ['tabular-nums'] }, tourValue: { color: colors.text, fontSize: 34, lineHeight: 39, fontWeight: '900', fontVariant: ['tabular-nums'] }, tourUnit: { color: '#aa9db0', fontSize: 11, lineHeight: 15 }, changeRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 12, backgroundColor: '#21172e' }, change: { flex: 1, color: '#ff9a80', fontSize: 11, lineHeight: 16, fontWeight: '700' },
+  moodBlock: { gap: 14 }, moodBar: { height: 14, borderRadius: 7, overflow: 'hidden', flexDirection: 'row', gap: 3, backgroundColor: colors.track }, moodLegend: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 12 }, moodItem: { width: '50%' }, moodPercent: { fontSize: 14, lineHeight: 18, fontWeight: '800' }, moodLabel: { color: '#a89bb1', fontSize: 11, lineHeight: 15, marginTop: 2 }, moodFootnote: { color: '#a89bb1', fontSize: 10, lineHeight: 14 },
+  cityList: { gap: 14 }, cityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, cityName: { width: 112, color: '#d8cfdd', fontSize: 11, lineHeight: 16 }, cityTrack: { flex: 1, height: 8, borderRadius: 4, backgroundColor: '#27172f', overflow: 'hidden' }, cityFill: { height: 8, borderRadius: 4, backgroundColor: colors.pink }, cityCount: { width: 28, color: '#b9a9c1', fontSize: 11, lineHeight: 16, fontWeight: '800', textAlign: 'right' }, cityAttribution: { color: '#8d8094', fontSize: 9, lineHeight: 13, marginTop: 2 },
   chart: { height: 116, overflow: 'hidden' },
   chartLabels: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
   chartLabel: { width: 16, textAlign: 'center', color: '#74697d', fontSize: 7 },

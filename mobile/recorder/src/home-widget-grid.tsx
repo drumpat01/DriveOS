@@ -11,8 +11,8 @@ import { NativeSheet } from './native-sheet';
 
 export const HOME_WIDGET_HOLD_MS = 1000;
 
-export function useHomeWidgetLayout(layoutClass: HomeLayoutClass, includeFiftyStates = false, includeAsk = false) {
-  const [layouts, setLayouts] = useState<StoredHomeLayouts>(() => loadHomeWidgetLayouts(includeFiftyStates, includeAsk));
+export function useHomeWidgetLayout(layoutClass: HomeLayoutClass, includeFiftyStates = false, includeAsk = false, includeTessie = false) {
+  const [layouts, setLayouts] = useState<StoredHomeLayouts>(() => loadHomeWidgetLayouts(includeFiftyStates, includeAsk, includeTessie));
   const placements = layouts[layoutClass];
   const update = useCallback((next: HomeWidgetPlacement[]) => {
     setLayouts(current => {
@@ -29,7 +29,7 @@ export function useHomeWidgetLayout(layoutClass: HomeLayoutClass, includeFiftySt
     toggle: (id: HomeWidgetId) => update(toggleHomeWidget(placements, id)),
     selectContext: (id: HomeWidgetId) => update(selectHomeContextWidget(placements, id)),
     moveSummary: (id: HomeWidgetId, offset: -1 | 1) => update(moveHomeSummaryWidget(placements, id, offset)),
-    reset: () => update(defaultHomeWidgetLayout(layoutClass, includeFiftyStates, includeAsk)),
+    reset: () => update(defaultHomeWidgetLayout(layoutClass, includeFiftyStates, includeAsk, includeTessie)),
   };
 }
 

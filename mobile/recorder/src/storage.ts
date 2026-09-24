@@ -513,6 +513,12 @@ export function writeAppCache(key: string, value: unknown) {
     ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=excluded.updated_at;`, scopedKey, valueJson, now);
 }
 
+export function deleteAppCache(key: string) {
+  initializeDatabase();
+  if (!key || key.length > 200) return;
+  db.runSync('DELETE FROM recording_app_cache WHERE key=?;', `user:${getCurrentUser().id}:${key}`);
+}
+
 /** Hard deletion is reserved for the explicit, confirmed account-deletion flow. */
 export function deleteCurrentProfileRecorderData(): void {
   initializeDatabase();

@@ -14,6 +14,7 @@ import { NativeSheet } from './native-sheet';
 import { InteractiveRouteMap } from './interactive-route-map';
 import { activeSession } from './storage';
 import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { listTessieChargeMarkers, type LocalTessieChargeMarker } from './local-store';
 import { addMarkerMedia, listJourneyMarkers, listMarkerMedia, markerMediaUri, removeMarkerMedia, saveMarkerNotes, type JourneyMarker } from './journey-marker-store';
 
 export function CreateJourneyMarkerButton({ sessionId }: { sessionId: string }) {
@@ -46,12 +47,23 @@ export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeo
   const userId = getCurrentUser().id;
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<JourneyMarker | null>(null);
+  const [selectedCharge, setSelectedCharge] = useState<LocalTessieChargeMarker | null>(null);
   useEffect(() => subscribeLocalArchiveChanges(() => setRevision(value => value + 1)), []);
-  useEffect(() => { setSelected(null); }, [journeyId, userId]);
+  useEffect(() => { setSelected(null); setSelectedCharge(null); }, [journeyId, userId]);
   void revision;
   const markers = V3_MARKERS_PROTOTYPE_ENABLED ? listJourneyMarkers(userId, journeyId) : [];
+  const chargeMarkers = listTessieChargeMarkers(userId, journeyId);
   return <>
-    <InteractiveRouteMap {...props} markers={markers} onSelectMarker={setSelected} />
+    <InteractiveRouteMap {...props} markers={markers} onSelectMarker={setSelected}
+      chargeMarkers={chargeMarkers} onSelectCharge={setSelectedCharge} />
+    {chargeMarkers.length > 0 && <View style={styles.section} testID="tessie-charge-stops">
+      <Text style={styles.title}>Supercharger stops · {chargeMarkers.length}</Text>
+      {chargeMarkers.map(charge => <Pressable key={charge.id} accessibilityRole="button" onPress={() => setSelectedCharge(charge)} style={styles.card}>
+        <Text style={styles.title}>{charge.location}</Text>
+        <Text style={styles.body}>{new Date(charge.startedAt).toLocaleString()} · {Math.max(0, Math.round((Date.parse(charge.endedAt) - Date.parse(charge.startedAt)) / 60_000))} min stopped</Text>
+        <Text style={styles.body}>{charge.arrivalBatteryPercent ?? '—'}% arrival → {charge.departureBatteryPercent ?? '—'}% departure · {charge.energyAddedKwh === null ? 'Energy unknown' : `${charge.energyAddedKwh.toFixed(1)} kWh added`}</Text>
+      </Pressable>)}
+    </View>}
     {V3_MARKERS_PROTOTYPE_ENABLED && <View style={styles.section}>
       <Text style={styles.title}>Moments · {markers.length}</Text>
       {!markers.length && <Text style={styles.body}>{MARKER_OTA_COMPAT ? 'Tap Create a marker while recording. Your saved moments appear here. Siri capture requires the next app build.' : 'While recording, say “Siri, create a marker in JourneyDeck.” Your saved moments appear here.'}</Text>}
@@ -62,6 +74,12 @@ export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeo
       </Pressable>)}</ScrollView> : null}
     </View>}
     {selected && <MarkerEditor key={`${userId}:${selected.id}`} userId={userId} marker={selected} onClose={() => setSelected(null)} />}
+    {selectedCharge && <NativeSheet visible kicker="SUPERCHARGER STOP" title={selectedCharge.location} onClose={() => setSelectedCharge(null)}>
+      <Text style={styles.body}>Arrival battery: {selectedCharge.arrivalBatteryPercent ?? 'Unavailable'}{selectedCharge.arrivalBatteryPercent == null ? '' : '%'}</Text>
+      <Text style={styles.body}>Departure battery: {selectedCharge.departureBatteryPercent ?? 'Unavailable'}{selectedCharge.departureBatteryPercent == null ? '' : '%'}</Text>
+      <Text style={styles.body}>Energy added: {selectedCharge.energyAddedKwh === null ? 'Unknown' : `${selectedCharge.energyAddedKwh.toFixed(1)} kWh`}</Text>
+      <Text style={styles.body}>Time stopped: {Math.max(0, Math.round((Date.parse(selectedCharge.endedAt) - Date.parse(selectedCharge.startedAt)) / 60_000))} minutes</Text>
+    </NativeSheet>}
   </>;
 }
 
