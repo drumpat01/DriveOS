@@ -32,6 +32,8 @@ type Props = {
   onCustomPlace: (placeId?: string) => void;
   internalDiagnostics: boolean; advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
   onMarkersPrototype?: () => void;
+  onTessieSetup?: () => void;
+  tessieConnected?: boolean;
 };
 
 const categoryCopy: Record<SettingsCategoryId, string> = {
@@ -102,6 +104,7 @@ export function IpadSettingsScreen(p: Props) {
   </View>;
   const recording = <View testID="ipad-settings-recording" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('record.circle')}<View style={styles.flex}><Text style={title}>Manual recording</Text><Text style={body}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View>
+    {p.onTessieSetup && <View style={panel}><View style={styles.row}>{icon('car.side.fill')}<View style={styles.flex}><Text style={title}>Tessie</Text><Text style={body}>{p.tessieConnected ? 'Connected vehicle data and intelligence.' : 'Connect your Tesla for vehicle status, charging, drives, and efficiency.'}</Text></View>{button(p.tessieConnected ? 'Open' : 'Connect', p.onTessieSetup, { accessibilityLabel: 'Set up Tessie' })}</View></View>}
     {p.onMarkersPrototype && <View testID="ipad-markers-prototype-entry" style={panel}><View style={styles.row}>{icon('photo.on.rectangle')}<View style={styles.flex}><Text style={title}>Journey markers</Text><Text style={body}>Open saved markers and add notes or photos after your drive.</Text></View>{button('Open markers', p.onMarkersPrototype)}</View></View>}
     <View style={panel}><View style={styles.row}>{icon('location.fill')}<View style={styles.flex}><Text style={title}>Location stays private</Text><Text style={body}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text></View></View></View>
     <PlaceDataCredits />

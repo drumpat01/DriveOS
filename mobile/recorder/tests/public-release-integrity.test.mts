@@ -31,13 +31,12 @@ test('production uses the production privacy edge and keeps internal testing dis
   assert.equal(eas.build.production.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING, '0');
 });
 
-test('public Settings and utility navigation cannot expose Data Health', () => {
-  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /internalDiagnostics=\{internalTesting\}/);
-  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen[\s\S]*? : settingsPage\(\)/);
+test('Data Health is available to V3 TestFlight without exposing internal test controls', () => {
+  assert.match(shell, /internalDiagnostics=\{internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\}/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health'\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen/);
   assert.match(ipadSettings, /\{p\.internalDiagnostics && <>[\s\S]*?Open Data Health/);
-  assert.match(primarySections, /if \(!isInternalTestingBuild\(\)\) return null;/);
+  assert.match(primarySections, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
 });
 
 test('production microphone purpose string describes only user-initiated recognition', () => {
@@ -80,8 +79,8 @@ test('public recording defaults to manual while Apple Music continues during an 
 });
 
 test('V2 disables Tessie and defers its product scope to V3', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
-  assert.match(releaseFeatures, /dormant for possible V3 work/);
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.testflightTessieEnabled === true/);
+  assert.match(releaseFeatures, /V2 remains gated off/);
   assert.match(tessie, /Tessie is planned for JourneyDeck V3 and is not available in V2/);
   assert.match(v2Roadmap, /M3 — Vehicle intelligence \| Moved to JourneyDeck V3/);
   assert.match(v2Roadmap, /No V2 runtime, entitlement, onboarding step, setting, replay, or screen exposes Tessie/);
@@ -96,7 +95,7 @@ test('V2 disables Tessie and defers its product scope to V3', () => {
   assert.match(v2Roadmap, /retain V2's conflict-safe, non-destructive fallback/);
   assert.match(v2Roadmap, /do not reward extra driving or unsafe behavior/);
   assert.match(v2Roadmap, /Do not hardcode speculative screen dimensions, hinge geometry, safe areas/);
-  assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
+  assert.match(tessie, /entitlementsForTestFlightMembership\(await getMembershipStatus\(\), TESTFLIGHT_PLUS_UNLOCKED\)\.tessieAccess/);
   assert.match(tessie, /storedVerifiedVehicleCount/);
   assert.match(tessie, /if \(vehicleCount < 1\)/);
   assert.match(automaticDriveTask, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);

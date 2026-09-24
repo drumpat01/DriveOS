@@ -51,7 +51,10 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(`${config.ios.bundleIdentifier}.watchkitapp`, 'com.journeydeck.recorder.watchkitapp');
   assert.equal(config.scheme, 'journeydeck');
   assert.equal(config.name, 'JourneyDeck');
-  assert.equal(config.runtimeVersion, '3.0.0-preview.4');
+  assert.equal(config.runtimeVersion, '3.0.0-preview.5');
+  assert.equal(config.extra.features.testflightPlusUnlocked, true);
+  assert.equal(config.extra.features.testflightTessieEnabled, true);
+  assert.equal(config.extra.features.testflightDataHealth, true);
   assert.equal(config.updates.requestHeaders['expo-channel-name'], 'production');
   assert.equal(config.extra.features.atlasUnlocked, true);
   assert.equal(config.extra.features.markerPrototype, true);
@@ -182,7 +185,7 @@ test('V3 TestFlight workflow is dispatch-only, free-runner, and does not invoke 
   ];
   let text = '';
   for (const url of candidates) {
-    try { text = readFileSync(url, 'utf8'); break; } catch { /* mobile snapshot or main repository */ }
+    try { text = readFileSync(url, 'utf8').replace(/\r\n/g, '\n'); break; } catch { /* mobile snapshot or main repository */ }
   }
   assert.match(text, /^name: JourneyDeck V3 TestFlight$/m);
   assert.match(text, /^on:\n  workflow_dispatch:/m);

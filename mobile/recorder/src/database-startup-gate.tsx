@@ -6,6 +6,7 @@ import {
 import {
   databaseStartupIssue, prepareJourneyDeckDatabase, retryJourneyDeckDatabase, type DatabaseStartupIssue,
 } from './database-startup';
+import { observeJourneyDeckEventOnce } from './observability';
 
 export function DatabaseStartupGate({ children }: { children: ReactNode }) {
   const colorScheme = useColorScheme();
@@ -21,7 +22,14 @@ export function DatabaseStartupGate({ children }: { children: ReactNode }) {
     void task.then(() => {
       if (active) setReady(true);
     }).catch(error => {
-      if (active) setIssue(databaseStartupIssue(error));
+      if (active) {
+        const startupIssue = databaseStartupIssue(error);
+        setIssue(startupIssue);
+        if (startupIssue.schemaDiagnostic) {
+          const { source, found, supported } = startupIssue.schemaDiagnostic;
+          observeJourneyDeckEventOnce('database.startup_schema_blocked', `${source}:${found}:${supported}`, { source, found, supported });
+        }
+      }
     });
     return () => { active = false; };
   }, [attempt]);

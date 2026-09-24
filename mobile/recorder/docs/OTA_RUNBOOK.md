@@ -33,7 +33,7 @@ runtime is the compatibility boundary for installed builds.
 | Target | Channel | Environment | `APP_VARIANT` | Notes |
 | --- | --- | --- | --- | --- |
 | `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Patrick's internal V3 preview device path. Runtime `3.0.0-preview.4`. |
-| `v3-testflight` | `production` | `production` | `v3-store` | V3 features on the live App Store identity for TestFlight only. Requires explicit authorization. |
+| `v3-testflight` | `production` | `production` | `v3-store` | V3 features on the live App Store identity for TestFlight only. Build 36 runtime `3.0.0-preview.5`. Requires explicit authorization. |
 
 Do not use the legacy `preview` channel for V3. Do not publish V3 preview code
 to `production`. Do not publish V2 production OTA unless there is an urgent

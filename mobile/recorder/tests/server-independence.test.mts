@@ -145,9 +145,9 @@ test('direct Spotify remains a local owner capability with PKCE and no JourneyDe
   assert.doesNotMatch(spotify, /requestJourneyDeckJson|loadConnection/);
 });
 
-test('version 1 disables Tessie and automatic recording for every membership tier', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
-  assert.match(tessie, /entitlementsForVerifiedMembership\(await getMembershipStatus\(\)\)\.tessieAccess/);
+test('Tessie remains variant gated and uses the private edge', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.testflightTessieEnabled === true/);
+  assert.match(tessie, /entitlementsForTestFlightMembership\(await getMembershipStatus\(\), TESTFLIGHT_PLUS_UNLOCKED\)\.tessieAccess/);
   assert.match(tessie, /TESSIE_VERIFIED_VEHICLE_KEY/);
   assert.match(tessie, /if \(vehicleCount < 1\) throw new Error\('Tessie did not find an active Tesla/);
   assert.match(tessie, /tessieDirectStatus[\s\S]*?tessieAutomaticRecordingEligible/);
@@ -157,6 +157,6 @@ test('version 1 disables Tessie and automatic recording for every membership tie
   assert.match(locationTask, /TESSIE_INTEGRATION_ENABLED \? \[sampleTessieMediaForActiveSession/);
   assert.match(appData, /if \(!TESSIE_INTEGRATION_ENABLED\) return localVehicleIntelligence\(userId\)/);
   assert.match(primarySections, /if \(!active \|\| !TESSIE_INTEGRATION_ENABLED\) return/);
-  assert.doesNotMatch(shell, /from '\.\/tessie-direct'|Tessie Automatic Recording|Drive intelligence/i);
+  assert.match(shell, /TESSIE_INTEGRATION_ENABLED && <TessieSetupScreen/);
   assert.match(app, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
 });

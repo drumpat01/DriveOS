@@ -36,14 +36,14 @@ export function VehicleIntelligenceScreen({ visible, onClose }: { visible: boole
   const load = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
     try {
-      const loaded = await appDataClient.vehicleIntelligence();
+      const loaded = await appDataClient.vehicleIntelligence(refresh);
       setData(loaded); setRateDraft(String(loaded.preferences.electricityRatePerKwh));
     } catch (error) {
       Alert.alert('Vehicle data is not available yet', error instanceof Error ? error.message : 'Pull down to try again. Your saved local data was not changed.');
     } finally { setLoading(false); setRefreshing(false); }
   }, []);
 
-  useEffect(() => { if (visible) void load(); }, [load, visible]);
+  useEffect(() => { if (visible) void load(true); }, [load, visible]);
 
   const savePreferences = useCallback(async (preferences: VehicleIntelligencePreferences) => {
     if (!data) return;

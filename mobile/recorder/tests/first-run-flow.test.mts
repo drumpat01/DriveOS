@@ -54,6 +54,7 @@ test('content exits before the next step enters while artwork stays mounted; Red
       'expo-image': { Image: host('Image') }, 'expo-linear-gradient': { LinearGradient: host('Gradient') },
       'expo-symbols': { SymbolView: host('Symbol') },
       './first-run-welcome-screen': { FirstRunWelcomeScreen: host('Welcome'), FIRST_RUN_ARTWORK: { redline: 'road' } },
+      './release-features': { TESSIE_INTEGRATION_ENABLED: false },
       'react-native-worklets': { scheduleOnRN: (fn: any, ...args: any[]) => fn(...args) },
       'react-native-reanimated': { __esModule: true, default: { View: host('AnimatedView') }, Easing: { bezier: () => {} },
         useSharedValue: (initial: number) => React.useRef({ value: initial, get() { return this.value; }, set(v: any) { this.value = v; } }).current,

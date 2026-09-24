@@ -2,12 +2,14 @@ import { initializeAuth } from './auth';
 import { prepareLocalStore } from './local-store';
 import { initializeDatabase } from './storage';
 import { createStartupCoordinator, type StartupCoordinatorState } from './database-startup-model';
+import { databaseSchemaDiagnostic, type DatabaseSchemaDiagnostic } from './database-schema-diagnostic';
 
 export type DatabaseStartupState = StartupCoordinatorState;
 export type DatabaseStartupIssue = {
   code: 'DB-LOCKED' | 'DB-INTEGRITY' | 'DB-NEWER-SCHEMA' | 'DB-STARTUP';
   title: string;
   detail: string;
+  schemaDiagnostic?: DatabaseSchemaDiagnostic;
 };
 
 const coordinator = createStartupCoordinator(async () => {
@@ -51,10 +53,14 @@ export function databaseStartupIssue(error: unknown): DatabaseStartupIssue {
     };
   }
   if (message.includes('newer than this app')) {
+    const schemaDiagnostic = databaseSchemaDiagnostic(error);
     return {
       code: 'DB-NEWER-SCHEMA',
       title: 'A newer JourneyDeck is required',
-      detail: 'This build will not change an archive created by a newer version. Install the latest available JourneyDeck build and try again.',
+      detail: schemaDiagnostic
+        ? `${schemaDiagnostic.source === 'archive' ? 'Journey archive' : 'Older recorder file'} schema ${schemaDiagnostic.found}; this update supports ${schemaDiagnostic.supported}. Your data has not been changed. Please keep the app installed while we correct this mismatch.`
+        : 'This build will not change an archive created by a newer version. Please keep the app installed while we check compatibility.',
+      ...(schemaDiagnostic ? { schemaDiagnostic } : {}),
     };
   }
   return {

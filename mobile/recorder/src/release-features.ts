@@ -1,11 +1,5 @@
-/**
- * Public version-1 release gates.
- *
- * V2 is deliberately manual-recording only. The Tessie implementation stays
- * dormant for possible V3 work, but no V2 runtime, entitlement, onboarding
- * step, setting, or screen may expose it.
- */
-export const TESSIE_INTEGRATION_ENABLED: boolean = false;
+/** Tessie is enabled only in the V3 TestFlight manifest; V2 remains gated off. */
+export const TESSIE_INTEGRATION_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightTessieEnabled === true;
 
 /**
  * Build 13 safety fallback.
@@ -19,8 +13,12 @@ export const TESSIE_INTEGRATION_ENABLED: boolean = false;
  */
 export const NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false;
 
-/** Atlas design testing is unlocked only by the isolated V3 preview build. */
+/** Atlas design testing is unlocked in V3 builds. */
 export const PREVIEW_ATLAS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.atlasUnlocked === true;
+
+/** TestFlight V3 can exercise Plus features without a sandbox transaction. */
+export const TESTFLIGHT_PLUS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.testflightPlusUnlocked === true;
+export const TESTFLIGHT_DATA_HEALTH_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightDataHealth === true;
 
 /** Source-only interaction lab exposed exclusively by the isolated V3 preview. */
 export const V3_MARKERS_PROTOTYPE_ENABLED: boolean = Constants.expoConfig?.extra?.features?.markerPrototype === true;

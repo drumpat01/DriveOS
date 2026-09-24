@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForVerifiedMembership,
+  currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership,
   membershipCanAccessDate, membershipHistoryCutoff,
 } from '../src/membership-entitlements.ts';
 
@@ -19,7 +19,7 @@ test('paid members receive Atlas and their complete timeline', () => {
   assert.deepEqual(entitlementsForMembershipTier('paid'), {
     tier: 'paid',
     atlasAccess: true,
-    tessieAccess: false,
+    tessieAccess: true,
     timelineHistoryDays: null,
   });
 });
@@ -32,6 +32,12 @@ test('only a paid status from the native StoreKit verifier unlocks membership', 
   assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'paid' }).tier, 'paid');
   assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: false, tier: 'paid' }).tier, 'free');
   assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'free' }).tier, 'free');
+});
+
+test('TestFlight Plus unlock grants paid access while ordinary builds still use StoreKit', () => {
+  const freeStatus = { nativeModuleAvailable: true, tier: 'free' as const };
+  assert.deepEqual(entitlementsForTestFlightMembership(freeStatus, true), entitlementsForMembershipTier('paid'));
+  assert.deepEqual(entitlementsForTestFlightMembership(freeStatus, false), entitlementsForMembershipTier('free'));
 });
 
 test('free history stops at 45 days while paid history has no cutoff', () => {

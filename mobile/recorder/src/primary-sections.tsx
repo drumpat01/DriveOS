@@ -1,5 +1,5 @@
 import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
-import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { TESTFLIGHT_DATA_HEALTH_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -40,7 +40,6 @@ import { useCoreMotion } from './use-core-motion';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './neon-widget-outline';
 import { loadRecordingModePreferences } from './recording-mode';
 import { syncTessieDirect, tessieDirectStatus, type TessieVehicleSnapshot } from './tessie-direct';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { forceRefreshAllAppleMusicArtworkForDiagnostics } from './music-capture';
 import { buildSongRouteMoments } from './route-moments';
 import { buildAtlasInsights, type AtlasInsightWindow, type AtlasInsights } from './atlas-insights';
@@ -1129,7 +1128,7 @@ export function MoreScreen({
 
   // Data Health is an internal diagnostic surface. Public navigation falls
   // back to Settings in the shell, and this guard prevents accidental render.
-  if (!isInternalTestingBuild()) return null;
+  if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health')) return null;
 
   const destination = requested;
   let content: ReactNode;

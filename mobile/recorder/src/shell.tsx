@@ -15,7 +15,9 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { TESTFLIGHT_DATA_HEALTH_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { TessieSetupScreen } from './tessie-setup-screen';
+import { VehicleIntelligenceScreen } from './vehicle-intelligence-screen';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -125,7 +127,8 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
     case 'location': return 'recording';
     case 'music': return 'location';
     case 'membership': return 'music';
-    case 'instructions': return 'membership';
+    case 'tessie': return 'membership';
+    case 'instructions': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
   }
 }
 import { V3_FIFTY_STATES_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
@@ -323,6 +326,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
   const [firstRunProgress, setFirstRunProgress] = useState<FirstRunProgress | null>(() => loadFirstRunProgress());
+  const [tessieSetupVisible, setTessieSetupVisible] = useState(false);
+  const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
   const [musicCapabilities, setMusicCapabilities] = useState<JourneyDeckMusicCapabilityStatus | null>(null);
@@ -826,7 +831,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   };
 
   const openMore = (destination: MoreDestination) => {
-    if (!isInternalTestingBuild()) return;
+    if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health')) return;
     setMoreDestination(destination);
     router.navigate('/tools');
     void haptics.selection();
@@ -899,6 +904,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     ownerSpotifyEligible={ownerSpotifyEligible}
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
+    onTessieSetup={() => setTessieSetupVisible(true)}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
     onSpotifyOwnerSync={() => void syncSpotifyOwner()}
@@ -934,7 +940,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     },
     memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
-    tools: isInternalTestingBuild() ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
+    tools: isInternalTestingBuild() || TESTFLIGHT_DATA_HEALTH_ENABLED ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
     membership,
     refreshArchive: () => refreshPrimarySections(false),
     showUpgrade: () => setMembershipPaywallVisible(true),
@@ -971,6 +977,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             advanceFirstRun('membership');
           }}
           onSkipMusic={() => advanceFirstRun('membership')}
+          onOpenTessie={() => setTessieSetupVisible(true)}
+          onTessieContinue={() => advanceFirstRun('instructions')}
           onFinish={() => {
             setFirstRunProgress(completeFirstRun(firstRunRecordingMode));
             openTab('home');
@@ -1006,17 +1014,21 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             : null,
         } : null}
         onClose={() => {
-          if (firstRunStage === 'membership') { advanceFirstRun('instructions'); return; }
+          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         }}
         onLoadProducts={membershipStore.loadProducts}
         onPurchase={async productId => membershipStore.purchase(productId).then(outcome => {
           if (outcome !== 'purchased') return;
-          if (firstRunStage === 'membership') { advanceFirstRun('instructions'); return; }
+          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         })}
         onRestore={membershipStore.restore}
       />
+      {TESSIE_INTEGRATION_ENABLED && <TessieSetupScreen visible={tessieSetupVisible} onClose={() => setTessieSetupVisible(false)}
+        onConnectionChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
+        onOpenVehicle={() => { setTessieSetupVisible(false); setVehicleIntelligenceVisible(true); }} />}
+      {TESSIE_INTEGRATION_ENABLED && <VehicleIntelligenceScreen visible={vehicleIntelligenceVisible} onClose={() => setVehicleIntelligenceVisible(false)} />}
     </View></NativeNavigationContext.Provider>
   );
 }
@@ -2980,7 +2992,7 @@ function ConnectionsScreen({
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
-  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onTessieSetup, onEditorActiveChange,
 }: {
   provider: MusicProvider;
   connectionCapabilities: ConnectionCapabilities;
@@ -3015,6 +3027,7 @@ function ConnectionsScreen({
   onSignOut: () => void;
   onDeleteAccount: () => void;
   onDataHealth: () => void;
+  onTessieSetup: () => void;
   onEditorActiveChange: (active: boolean) => void;
 }) {
   const theme = useAppTheme();
@@ -3099,10 +3112,12 @@ function ConnectionsScreen({
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
-    internalDiagnostics={internalTesting}
+    internalDiagnostics={internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
     onMarkersPrototype={V3_MARKERS_PROTOTYPE_ENABLED ? () => router.push('/time-capsule-prototype') : undefined}
+    onTessieSetup={TESSIE_INTEGRATION_ENABLED ? onTessieSetup : undefined}
+    tessieConnected={connectionCapabilities.tessieConfigured}
   />;
 
   const profileCard = <>
@@ -3165,10 +3180,10 @@ function ConnectionsScreen({
   </View>;
   const supportCard = <>
     <SectionHeading title="Support" />
-    {internalTesting && <>
+    {(internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED) && <>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
         <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
-        <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>INTERNAL TESTING</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>Diagnostics and test controls for internal builds.</Text></View>
+        <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>{internalTesting ? 'INTERNAL TESTING' : 'TESTFLIGHT DIAGNOSTICS'}</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>{internalTesting ? 'Diagnostics and test controls for internal builds.' : 'Check app data and connected services.'}</Text></View>
         <Text style={styles.settingsDataHealthArrow}>{advancedSupportVisible ? '⌃' : '⌄'}</Text>
       </TouchPressable>
       <ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health" onPress={onDataHealth} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}><View style={styles.settingsDataHealthIcon}><SymbolView name="checkmark.shield.fill" tintColor={theme.color('#54e6bc', 'text')} size={22} /></View><View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>LOCAL-FIRST DIAGNOSTICS</Text><Text style={styles.settingsDataHealthTitle}>Data Health</Text><Text style={styles.settingsDataHealthBody}>Check recording, music, artwork, and private iCloud status.</Text></View><Text style={styles.settingsDataHealthArrow}>›</Text></TouchPressable></ExpandingSection>
@@ -3202,6 +3217,7 @@ function ConnectionsScreen({
           <View style={[styles.settingsInfoRow, styles.settingsHubRowBorder]}><View style={styles.settingsCompactIcon}><SymbolView name="location.fill" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>Location privacy</Text><Text style={styles.settingsCompactDetail}>Routes stay local and in your private iCloud account. Saved places are masked when sharing.</Text></View></View>
         </View>
         <View style={styles.settingsInsetNote}><Text style={styles.privateCloudTitle}>PLACE DATA</Text><PlaceDataCredits /></View>
+        {TESSIE_INTEGRATION_ENABLED && <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Tessie', detail: connectionCapabilities.tessieConfigured ? 'Connected Tesla vehicle data' : 'Connect your Tesla for vehicle intelligence', value: connectionCapabilities.tessieConfigured ? 'Connected' : undefined, symbol: 'car.side.fill', accessibilityLabel: 'Set up Tessie', onPress: onTessieSetup })}</View>}
       </>,
       music: <>{providerCard}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
       account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,

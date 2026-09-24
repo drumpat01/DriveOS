@@ -57,10 +57,10 @@ test('dormant vehicle intelligence retains its requested data surfaces', () => {
   for (const category of ['home', 'work', 'school', 'favorite', 'custom']) assert.match(screen, new RegExp(`'${category}'`));
 });
 
-test('dormant vehicle intelligence remains outside primary navigation', () => {
+test('V3 TestFlight vehicle intelligence is reachable from Tessie setup', () => {
   assert.match(shell, /VehicleIntelligenceScreen/);
-  assert.match(shell, /Drive intelligence/);
-  assert.match(shell, /token in this iPhone Keychain/);
+  assert.match(shell, /setVehicleIntelligenceVisible\(true\)/);
+  assert.match(shell, /TESSIE_INTEGRATION_ENABLED && <TessieSetupScreen/);
   assert.doesNotMatch(shell, /id: 'vehicle'/);
   assert.doesNotMatch(shell, /id: 'charging'/);
   assert.doesNotMatch(shell, /id: 'places'/);

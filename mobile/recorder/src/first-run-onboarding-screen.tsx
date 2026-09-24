@@ -12,12 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FirstRunStage } from './first-run-onboarding';
 import type { RecordingMode } from './recording-mode';
 import { FirstRunWelcomeScreen, FIRST_RUN_ARTWORK } from './first-run-welcome-screen';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED ? 7 : 6;
 const STEP_NUMBER: Partial<Record<FirstRunStage, number>> = {
-  recording: 2, location: 3, music: 4, membership: 5, instructions: 6,
+  recording: 2, location: 3, music: 4, membership: 5, tessie: 6, instructions: TOTAL_STEPS,
 };
 
 function alpha(hex: string, opacity: number) {
@@ -32,6 +33,8 @@ type Props = {
   onLocationContinue: () => Promise<void>;
   onConnectAppleMusic: () => Promise<void>;
   onSkipMusic: () => void;
+  onOpenTessie: () => void;
+  onTessieContinue: () => void;
   onFinish: () => void;
   onBack?: () => void;
 };
@@ -154,6 +157,21 @@ function MembershipStageBackdrop() {
   return <View style={[recordingStyles.screen, { backgroundColor: theme.palette.page }]} />;
 }
 
+function TessieIntroScreen({ onBack, onOpenTessie, onContinue }: { onBack?: () => void; onOpenTessie: () => void; onContinue: () => void }) {
+  const { palette } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  return <View style={recordingStyles.screen}><View style={[recordingStyles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <ScrollView style={recordingStyles.scroll} contentContainerStyle={recordingStyles.content} showsVerticalScrollIndicator={false}>
+      <OnboardingHeader step={STEP_NUMBER.tessie!} onBack={onBack} onSkip={onContinue} />
+      <View style={recordingStyles.scenerySpace} /><StepIcon name="car.side.fill" />
+      <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Bring your Tesla along.</Text>
+      <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Connect Tessie to explore vehicle status, charging, drives, and efficiency. This is optional and you can connect later in Settings.</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Set up Tessie" onPress={onOpenTessie} style={[recordingStyles.button, { backgroundColor: palette.accent }]}><Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Set up Tessie</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Continue without Tessie" onPress={onContinue} style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: palette.muted, fontSize: 16 }}>Continue</Text></Pressable>
+    </ScrollView>
+  </View></View>;
+}
+
 function FinishScreen({ onBack, onFinish }: { onBack?: () => void; onFinish: () => void }) {
   const theme = useAppTheme();
   const { palette } = theme;
@@ -228,6 +246,7 @@ export function FirstRunOnboardingScreen(props: Props) {
       {visibleStage === 'location' && <LocationScreen onBack={props.onBack} onContinue={props.onLocationContinue} />}
       {visibleStage === 'music' && <AppleMusicScreen onBack={props.onBack} onConnect={props.onConnectAppleMusic} onSkip={props.onSkipMusic} />}
       {visibleStage === 'membership' && <MembershipStageBackdrop />}
+      {visibleStage === 'tessie' && <TessieIntroScreen onBack={props.onBack} onOpenTessie={props.onOpenTessie} onContinue={props.onTessieContinue} />}
       {visibleStage === 'instructions' && <FinishScreen onBack={props.onBack} onFinish={props.onFinish} />}
     </Animated.View>
   </View>;

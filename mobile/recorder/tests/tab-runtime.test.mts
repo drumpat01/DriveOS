@@ -86,7 +86,7 @@ test('iPhone and iPad share the data-rich Statistics dashboard and retain paid A
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
   assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
-  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\('instructions'\); return; \}/);
+  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\(TESSIE_INTEGRATION_ENABLED \? 'tessie' : 'instructions'\); return; \}/);
   assert.match(shell, /insight=\{dashboard\.data\.summary\.allTime\.journeyCount > 0 \? \{/);
   assert.match(shell, /primarySections\.data\?\.music\.recentSelections\[0\]/);
   assert.match(membershipPaywall, /ATLAS ALREADY SEES/);
@@ -193,7 +193,8 @@ test('Data Health can force a visible Apple Music artwork retry', () => {
 });
 
 test('version 1 is manual-only while dormant automatic code stays fail-closed', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.testflightTessieEnabled === true/);
+  assert.match(releaseFeatures, /NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false/);
   assert.match(app, /const automaticMode = TESSIE_INTEGRATION_ENABLED &&/);
   assert.match(primarySections, /loadRecordingModePreferences/);
   assert.match(primarySections, /Ready for your next drive/);
@@ -229,7 +230,7 @@ test('Home owns the single recorder instance while Settings omits redundant reco
   assert.doesNotMatch(primarySections, /title="Record"|onRequestedChange\('record'\)|destination === 'record'/);
 });
 
-test('Settings is the fifth primary tab and limits Data Health to internal builds', () => {
+test('Settings is the fifth primary tab and exposes Data Health on TestFlight', () => {
   assert.match(nativeNavigation, /name="music"/);
   assert.match(nativeNavigation, /name="journeys"/);
   assert.match(nativeNavigation, /name="index"/);
@@ -239,13 +240,13 @@ test('Settings is the fifth primary tab and limits Data Health to internal build
   assert.match(shell, /onSoundtracks=\{\(\) => openTab\('music'\)\}/);
   assert.doesNotMatch(shell, /accessibilityLabel="Open tools and settings"/);
   assert.match(shell, /const internalTesting = isInternalTestingBuild\(\)/);
-  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /\{\(internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\) && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
   assert.match(shell, /onDataHealth=\{\(\) => openMore\('health'\)\}/);
   assert.match(shell, /accessibilityState=\{\{ expanded: advancedSupportVisible \}\}/);
   assert.match(shell, /<ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen active=\{utilityVisible\}/);
-  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\)\) return null;/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health'\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen active=\{utilityVisible\}/);
+  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
   assert.match(moreScreen, /onBack=\{onClose\}/);
@@ -311,7 +312,8 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /onSkipMusic=\{\(\) => advanceFirstRun\('membership'\)\}/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'instructions' \| 'complete'/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'instructions' \| 'complete'/);
+  assert.match(firstRunScreen, /const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED \? 7 : 6/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
   assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);
@@ -329,7 +331,7 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(firstRunScreen, /accessibilityLabel="Connect Apple Music"/);
   assert.match(firstRunScreen, /accessibilityLabel="Let the Journey Begin" onPress=\{onFinish\}/);
   assert.match(firstRunScreen, /`Step \$\{step\} of \$\{TOTAL_STEPS\}`/);
-  assert.match(firstRunScreen, /instructions: 6/);
+  assert.match(firstRunScreen, /instructions: TOTAL_STEPS/);
   assert.doesNotMatch(firstRunScreen, /04A \/ 04|04B \/ 04/);
   assert.match(welcomeIntro, /onboarding\.welcome-intro/);
 });
@@ -493,8 +495,8 @@ test('music chooser and Settings use approved service marks with honest provider
   assert.match(musicScreen, /MANUAL · ONE SONG AT A TIME/);
   assert.match(shell, /ConnectionTile name="Spotify history"[\s\S]*?brand="spotify"/);
   assert.match(shell, /SPOTIFY HISTORY VIA LAST\.FM/);
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = false/);
-  assert.doesNotMatch(shell, /Tessie Automatic Recording|Drive intelligence|function TessieMark/i);
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.testflightTessieEnabled === true/);
+  assert.doesNotMatch(shell, /Tessie Automatic Recording|function TessieMark/i);
   assert.doesNotMatch(shell, /name: 'Last\.fm for Spotify'/);
 });
 

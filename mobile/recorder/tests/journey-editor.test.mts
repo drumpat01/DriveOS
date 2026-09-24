@@ -32,6 +32,7 @@ function fixture() {
     './auth': { getCurrentUser: () => ({ id: state.userId }) },
     './database-owner': { getMasterDatabase: () => db },
     './local-archive-events': { notifyLocalArchiveChanged: () => state.notices++ },
+    './release-features': { TESTFLIGHT_PLUS_UNLOCKED: false },
     '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: state.paid ? 'paid' : 'free' }) },
     '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ nativeModuleAvailable: true, statusReliable: true, recording: state.recording, paused: false, sessionId: null }) },
   };

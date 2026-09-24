@@ -10,7 +10,8 @@ export type JourneyDeckObserveEvent =
   | 'recorder.completion_failed'
   | 'music.artwork_cached'
   | 'cloudkit.sync_failed'
-  | 'database.recovery_started';
+  | 'database.recovery_started'
+  | 'database.startup_schema_blocked';
 
 const safeEventNames = new Set<JourneyDeckObserveEvent>([
   'recorder.armed',
@@ -22,6 +23,7 @@ const safeEventNames = new Set<JourneyDeckObserveEvent>([
   'music.artwork_cached',
   'cloudkit.sync_failed',
   'database.recovery_started',
+  'database.startup_schema_blocked',
 ]);
 
 const emittedOnce = new Set<string>();

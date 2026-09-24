@@ -47,7 +47,7 @@ live app. That is accepted for this stream.
 | `ascAppId` | `6806502526` | `6814695593` — **never** this stream |
 | Channel | `production` | `v3-preview` |
 | Environment | `production` | `preview` |
-| Runtime | manual string `3.0.0-preview.4` | manual string `3.0.0-preview.4` |
+| Runtime | Build 36: manual string `3.0.0-preview.5` | manual string `3.0.0-preview.4` |
 | `APP_VARIANT` | `v3-store` (V3 features, live identity) | `v3-preview` (forces `.v3` identity) |
 | `INTERNAL_TESTING` | `0` | `1` |
 

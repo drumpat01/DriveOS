@@ -3,8 +3,8 @@ import Constants from 'expo-constants';
 import { requestPrivacyEdgeJson } from './network-request';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 import { getMembershipStatus } from '../modules/journeydeck-membership';
-import { entitlementsForVerifiedMembership } from './membership-entitlements';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import { entitlementsForTestFlightMembership } from './membership-entitlements';
+import { TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
 
 const TESSIE_TOKEN_KEY = 'journeydeck.vehicle.tessie.token.v1';
 const TESSIE_VERIFIED_VEHICLE_KEY = 'journeydeck.vehicle.tessie.verified-count.v1';
@@ -66,7 +66,7 @@ async function storedVerifiedVehicleCount() {
 
 async function paidTessieAccess() {
   if (!TESSIE_INTEGRATION_ENABLED) return false;
-  try { return entitlementsForVerifiedMembership(await getMembershipStatus()).tessieAccess; }
+  try { return entitlementsForTestFlightMembership(await getMembershipStatus(), TESTFLIGHT_PLUS_UNLOCKED).tessieAccess; }
   catch { return false; }
 }
 

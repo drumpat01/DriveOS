@@ -27,7 +27,7 @@ module.exports = ({ config }) => {
     version: v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
     // Marker capture/Siri and schema 9 require a new V3 binary; never OTA to older builds.
-    runtimeVersion: markerOtaCompat ? '3.0.0-preview.2' : v3 ? '3.0.0-preview.4' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    runtimeVersion: markerOtaCompat ? '3.0.0-preview.2' : v3Store ? '3.0.0-preview.5' : v3 ? '3.0.0-preview.4' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       requestHeaders: {
@@ -68,7 +68,7 @@ module.exports = ({ config }) => {
     extra: {
       ...config.extra,
       revenueCat: { appleApiKey: revenueCatAppleKey },
-      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3 },
+      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, testflightPlusUnlocked: v3Store, testflightTessieEnabled: v3Store, testflightDataHealth: v3Store },
       release: v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

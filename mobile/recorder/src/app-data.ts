@@ -656,6 +656,13 @@ export const appDataClient = {
     return refreshVehicleIntelligenceFromTessie(getCurrentUser().id);
   },
 
+  clearTessieVehicleCache(): void {
+    const userId = getCurrentUser().id;
+    writeAppCache(vehicleIntelligenceCacheKey(userId), {
+      data: localVehicleIntelligence(userId), preferencesDirty: false,
+    } satisfies VehicleIntelligenceCache);
+  },
+
   async saveVehicleIntelligencePreferences(preferences: VehicleIntelligencePreferences): Promise<VehicleIntelligenceData> {
     const userId = getCurrentUser().id, cacheKey = vehicleIntelligenceCacheKey(userId);
     const cached = readAppCache<VehicleIntelligenceCache>(cacheKey);

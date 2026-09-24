@@ -188,7 +188,8 @@ async function commitReviewedJourneyEdit(snapshot: JourneyEditorSnapshot, select
   if (selection.kind !== 'restore' && !resolution) {
     const { getMembershipStatus } = await import('../modules/journeydeck-membership');
     const membership = await getMembershipStatus();
-    if (!membership.nativeModuleAvailable || membership.tier !== 'paid') throw new Error('Journey Editing Studio requires JourneyDeck Plus.');
+    const { TESTFLIGHT_PLUS_UNLOCKED } = await import('./release-features');
+    if (!TESTFLIGHT_PLUS_UNLOCKED && (!membership.nativeModuleAvailable || membership.tier !== 'paid')) throw new Error('Journey Editing Studio requires JourneyDeck Plus.');
   }
   const { getNativeAutomaticRecorderStatus } = await import('../modules/journeydeck-recorder');
   const native = await getNativeAutomaticRecorderStatus();

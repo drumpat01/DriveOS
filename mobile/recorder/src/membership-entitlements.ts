@@ -14,12 +14,21 @@ export type VerifiedMembershipStatus = {
 
 export function entitlementsForMembershipTier(tier: JourneyDeckMembershipTier): JourneyDeckMembershipEntitlements {
   return tier === 'paid'
-    ? { tier, atlasAccess: true, tessieAccess: false, timelineHistoryDays: null }
+    ? { tier, atlasAccess: true, tessieAccess: true, timelineHistoryDays: null }
     : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: 45 };
 }
 
 export function entitlementsForVerifiedMembership(status: VerifiedMembershipStatus): JourneyDeckMembershipEntitlements {
   return entitlementsForMembershipTier(status.nativeModuleAvailable && status.tier === 'paid' ? 'paid' : 'free');
+}
+
+export function entitlementsForTestFlightMembership(
+  status: VerifiedMembershipStatus,
+  testflightPlusUnlocked: boolean,
+): JourneyDeckMembershipEntitlements {
+  return testflightPlusUnlocked
+    ? entitlementsForMembershipTier('paid')
+    : entitlementsForVerifiedMembership(status);
 }
 
 export function withPreviewAtlasAccess(

@@ -1,74 +1,25 @@
 # Current Handoff State
 
-## Current objective
+## Local xprem setup (September 24, 2026)
 
-V3 version 3.0.0 build 35 was built and submitted to TestFlight on the
-existing JourneyDeck App Store Connect app. Apple reports the build VALID and
-IN_BETA_TESTING. Confirm individual tester access on device if needed.
+- Objective: host xprem locally at no provider cost, then prepare future V3 preview and live-identity builds to use it. Do not alter the frozen V2 release path.
+- Added `tools/xprem-local/compose.yaml`, `setup.ps1`, and `README.md` on the existing dirty branch. Docker Desktop is running. The xprem v3.2.2 control plane and PostgreSQL are up in Docker Compose, bound to `127.0.0.1:3000`; persistent volumes are `xprem-local_xprem-db` and `xprem-local_xprem-updates`. A one-shot init service sets update-volume ownership for the xprem image. No billable resource was created.
+- The local dashboard has a JourneyDeck app ID `45dbc2f7-fa8a-4761-8db8-8fac41a4c624`, `v3-preview` and `production` branches, and matching channels. Generated admin credentials, database master key, and local publisher token are in the gitignored `tools/xprem-local/.env`; the public signing certificate is in the gitignored `tools/xprem-local/certificate.pem`. Back up `.env` with both Docker volumes. The token has not published an update.
+- With Patrick's explicit approval, created Cloudflare Tunnel `journeydeck-xprem-local` (ID `1fff03a5-20e3-4197-8f67-c5cc9479317f`) on the existing free Cloudflare account. Its ingress routes `ota.journeydeck.me` to `http://xprem:3000`. The token is in ignored `.env`, `XPREM_BASE_URL=https://ota.journeydeck.me`, and the optional Compose `public` profile's cloudflared sidecar has four active tunnel connections. No remote xprem hosting or OTA publish occurred.
+- Verified `docker compose --profile public config --quiet`, healthy PostgreSQL, `GET http://localhost:3000/hc` -> 200, dashboard login, and `GET /manifest` with the V3 preview and production headers -> `noUpdateAvailable` responses. The public certificate parses as RSA and expires in 2036.
+- Patrick saved the proxied `ota.journeydeck.me` DNS record in Cloudflare; the dashboard identifies it as a route to `journeydeck-xprem-local`. After clearing a stale local negative DNS cache, `Resolve-DnsName` and Cloudflare DNS both resolved the hostname. Public `GET https://ota.journeydeck.me/hc` and `/dashboard` returned 200; iOS manifest requests for `v3-preview` runtime `3.0.0-preview.4` and `production` runtime `3.0.0-preview.5` returned 200 with `noUpdateAvailable`. Pinned the local xprem container to `v3.2.2` and reverified public `/hc`.
+- In the correct schema-11 checkout, prepared V3 preview and V3 TestFlight configs to use the HTTPS manifest, xprem app ID, and public signing certificate; V2 keeps Expo Updates. Added a guarded xprem publisher while preserving the Expo wrapper for installed binaries. After build 37 exposed and prompted a one-line Swift 6 capture fix in the new PhotoKit bridge, the explicitly authorized retry succeeded as EAS build 38 (`a34d2a2a-1201-4b9e-bcc3-e6eeb79a6968`), runtime `3.0.0-preview.6`. The downloaded IPA was verified to embed the exact xprem URL, app ID, production channel, runtime, signing metadata and public certificate, without the old Expo URL. EAS submission `47a2abe5-82ea-4c5f-b076-4fb71ed53ae2` finished successfully and Apple accepted the upload; App Store Connect is processing it for TestFlight. No xprem OTA was published. See the schema-11 checkout's handoff for full validation and source state.
 
-## Repository state
+## Website and Build 36 OTA release
 
-- Build 35 was produced from `ca464d1` (PR #167 merged) plus the EAS
-  archive and post-install fixes carried on `codex/work-from-main-ca464d1`.
-- `.easignore` excludes `/.claude/` to avoid a Windows junction error
-  during EAS archive creation. `package.json` invokes
-  `scripts/diagnose-expo-modules-jsi.mjs` in the EAS post-install hook for
-  `v3-testflight`, removing `-quiet` from the nested Xcode command.
+- Private driving journal landing page was built in isolated checkout `C:\Users\patri\JourneyDeckv3-site-private-journal-20260924`, branch `codex/site-private-driving-journal-20260924`, merged as PR #173 to `main` at `3db0ed0` on September 24. CI passed. Public checks confirmed `/private-driving-journal` returns 200 with crawlable H1, opening, and FAQ; the homepage road card links to it, `/driving-journal` redirects to it, and the sitemap lists it. No App Store metadata or mobile source was changed. The site's local worktree is clean; this older checkout retains a separate website diff.
+- Website changes were isolated on `codex/site-soundtrack-20260923`, merged as PR #169 to `main` at `e2ee6594`, and deployed by Render as `dep-daptvg8473hc73aj4m4g`. Public checks confirmed `/apple-music-soundtrack` returns 200 and the homepage shows the new literal hero copy. CI passed. This checkout retains the same website source separately; reconcile it with main before merging, along with the unrelated mobile work below.
+- The Build 36 TestFlight iOS OTA was published from the schema-11 checkout `C:\Users\patri\JourneyDeckv3-origin-main-20260922`, not this schema-9 checkout: group `b519cabb-237a-453b-974c-4fceb8a4559a`, update `01a0ce9d-9837-70ae-a6be-b6e821cbf73a`, channel `production`, runtime `3.0.0-preview.5`. No new TestFlight build was created. See that checkout's handoff for current OTA details. The App Store listing was not changed.
 
-## Now on main via #166
+## Critical build-36 source correction
 
-- OTA runbook: `mobile/recorder/docs/OTA_RUNBOOK.md`
-- Dry-run-first wrapper: `mobile/recorder/scripts/publish-ota.mjs`
-  (`npm run ota:publish`). Defaults to dry-run; `--execute` is required to
-  publish after explicit authorization.
-- V3 TestFlight live-listing docs: `mobile/recorder/docs/ios-v3-testflight.md`
-- Gate: `mobile/recorder/scripts/v3-testflight-gate.mjs`
-  (`npm run testflight:gate`)
-- Pointers in `mobile/recorder/AGENTS.md` and this handoff.
-- Release checklist also repeats the existing-app rule in
-  `mobile/recorder/APP_STORE_RELEASE.md`.
-
-## Locked V3 TestFlight facts
-
-Preserve exactly. Do not invent alternatives.
-
-- ASC `6806502526`
-- Bundle `com.journeydeck.recorder`
-- EAS profile `v3-testflight`
-- `APP_VARIANT=v3-store`
-- Channel/environment `production` / `production` for the TestFlight OTA
-  target
-- TestFlight only — never App Review from this stream
-- Forbid a new ASC app, isolated preview ascAppId `6814695593`, and the
-  `.v3` bundle for this TestFlight stream
-- Preview OTA remains `v3-preview` / `preview` / `APP_VARIANT=v3-preview`
-- Publish, build, and submit require explicit Patrick authorization.
-  Wrappers dry-run / fail closed by default.
-
-## Recent merges on main
-
-- #166 — guarded OTA and V3 TestFlight agent process docs
-- #165 — V3 TestFlight live listing
-- #164 — Reanimated list skeletons
-- #163 — soft navy frost
-
-## Next steps
-
-1. EAS build `dd07903d-29dc-44e7-be78-4f0f2ba361c6` FINISHED:
-   version `3.0.0` build `35`, profile `v3-testflight`, live bundle
-   `com.journeydeck.recorder`, source commit `ca464d1`. The post-install hook
-   ran and the Watch policy test passed on the Mac worker.
-2. EAS submission `9ae714d7-c12c-45c9-bbb6-20a5ca6f7503` FINISHED.
-   `eas submit:status` reports ASC `6806502526`, processing `VALID`, internal
-   state `IN_BETA_TESTING`, runtime `3.0.0-preview.4`. Existing public live
-   version remains 2.0 build 31. No App Review submission or new ASC app.
-3. Earlier build 34 failed because the nested ExpoModulesJSI Xcode command
-   emitted `error: the following command failed with exit code 0 but produced
-   no further output` despite reporting a built framework. Removing `-quiet`
-   for build 35 produced a successful archive. Do not resubmit build 34.
-4. Release checks: `npm run typecheck` and `npx expo export --platform ios`
-   passed. `npm test` has a Windows CRLF-only assertion failure in
-   `tests/v3-testflight-eas.test.mts`; targeted native release tests pass.
-   `expo-doctor` reports 32 SDK 58 beta version mismatches.
-5. Verify TestFlight installation on an internal tester device; EAS status
-   does not prove access for a specific tester.
+- This checkout, `C:\Users\patri\JourneyDeckv3-current`, branch `codex/work-from-main-ca464d1`, contains schema-9 Tessie/Plus/diagnostic source committed as a branch snapshot at Patrick's request. Do not publish another build-36 OTA from here. Reconcile with the schema-11 checkout before merging or releasing. No OTA or native build was published from this branch.
+- Snapshot verification: mobile typecheck and 64 focused mobile tests passed; server typecheck and 12 API tests passed; staged `git diff --check` and Gitleaks found no issues. The local xprem `.env` and `certificate.pem` remain ignored and were not staged.
+- EAS Build 36 was built from the separate dirty checkout `C:\Users\patri\JourneyDeckv3-origin-main-20260922`, branch `codex/start-origin-main-20260922`, HEAD `df39413`, containing the complete seven-phase Tessie work and master SQLite schema 11. This was established from that checkout's handoff and confirmed in the actual Build 36 IPA bytecode (`MASTER_DATABASE_SCHEMA_VERSION=11`). Build 36's native Ask reader supports schemas 9–11. This checkout's schema-9 OTA blocked startup with `DB-NEWER-SCHEMA`; the embedded build opened before the OTA, including after Patrick reinstalled it.
+- Latest build-36 production iOS OTA was published from the schema-11 checkout: group `9a49a391-b44a-4f7b-bb17-8f67fde178e7`, update `01a0ce17-f2b7-7b0f-9ec0-763c1aee5a3d`, runtime `3.0.0-preview.5`, message `Add-Tessie-token-setup-sheet-for-Build-36`. It adds the token instruction sheet and supersedes the Tessie unlock group `49a05c87-5268-4e2c-b4c4-84fbea56a5f5` and this checkout's schema-9 diagnostic/update groups.
+- The schema-11 checkout's `.ai/HANDOFF.md` is authoritative for Tessie implementation, Worker deployment, tests, release state and next steps. Await Patrick's report after reopening build 36. Do not suggest another uninstall or claim local data survived the prior uninstall until verified through the app/private iCloud.
