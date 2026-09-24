@@ -15,15 +15,16 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESTFLIGHT_DATA_HEALTH_ENABLED, TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
-import { TessieSetupScreen } from './tessie-setup-screen';
-import { VehicleIntelligenceScreen } from './vehicle-intelligence-screen';
+import { TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_DATA_HEALTH_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
 import { IpadMemoriesScreen } from './ipad-memories-screen';
 import { SettingsScrollView } from './settings-scroll-view';
 import { IpadSettingsScreen } from './ipad-settings-screen';
+import { TessieConnectionCard } from './tessie-connection-card';
+import { syncTessieCaptureBestEffort, tessieDirectStatus } from './tessie-direct';
+import { ActiveJourneyDetailsSheet, JourneyInProgressWidget, YourCarWidget, type ActiveJourneyProgress } from './tessie-home-widgets';
 import { AchievementsOverview } from './achievements-overview';
 import { JourneyImage } from './journey-image';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
@@ -305,6 +306,7 @@ type RecorderComponent = ComponentType<{
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
+  onProgressChange?: (progress: ActiveJourneyProgress | null) => void;
 }>;
 
 export function JourneyDeckShell({ recorder, children }: { recorder: RecorderComponent; children: ReactNode }) {
@@ -321,13 +323,12 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const membership = membershipStore.state.entitlements;
   const [tab, setTab] = useState<Tab>('home');
   const [homeRecorderActive, setHomeRecorderActive] = useState(false);
+  const [homeJourneyProgress, setHomeJourneyProgress] = useState<ActiveJourneyProgress | null>(null);
   const [settingsEditorActive, setSettingsEditorActive] = useState(false);
   const tabRef = useRef<Tab>('home');
   const [preferences, setPreferences] = useState<MusicPreferences | null>(null);
   const [recordingPreferences, setRecordingPreferences] = useState<RecordingModePreferences | null>(null);
   const [firstRunProgress, setFirstRunProgress] = useState<FirstRunProgress | null>(() => loadFirstRunProgress());
-  const [tessieSetupVisible, setTessieSetupVisible] = useState(false);
-  const [vehicleIntelligenceVisible, setVehicleIntelligenceVisible] = useState(false);
   const [editingRecordingMode, setEditingRecordingMode] = useState(false);
   const [editingProvider, setEditingProvider] = useState(false);
   const [musicCapabilities, setMusicCapabilities] = useState<JourneyDeckMusicCapabilityStatus | null>(null);
@@ -364,8 +365,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     let alive = true;
     void loadMusicPreferences().then(value => { if (alive) setPreferences(value); });
     setRecordingPreferences(loadRecordingModePreferences());
+    void loadLastFmUsername().then(async value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); setLastFmConnected(await isLastFmConnected(value)); } });
     if (isInternalTestingBuild()) {
-      void loadLastFmUsername().then(async value => { if (alive) { setLastFmUsername(value); setLastFmDraft(value); setLastFmConnected(await isLastFmConnected(value)); } });
       void Promise.all([loadConnection(), spotifyDirectStatus()]).then(([connection, status]) => {
         if (!alive) return;
         setOwnerSpotifyEligible(Boolean(connection));
@@ -385,9 +386,18 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, [firstRunProgress, preferences, recordingPreferences]);
 
   useEffect(() => {
-    if (recordingPreferences?.mode !== 'automatic') return;
-    setRecordingPreferences(saveRecordingModePreferences({ mode: 'manual', onboardingCompleted: recordingPreferences.onboardingCompleted }));
-  }, [recordingPreferences]);
+    if (!TESSIE_INTEGRATION_ENABLED) return;
+    let current = true;
+    void tessieDirectStatus().then(status => {
+      if (!current || status !== 'connected') return;
+      const recording = loadRecordingModePreferences();
+      if (recording.onboardingCompleted && recording.mode !== 'automatic') {
+        setRecordingPreferences(saveRecordingModePreferences({ mode: 'automatic', onboardingCompleted: true }));
+      }
+    }).catch(() => undefined);
+    return () => { current = false; };
+  }, []);
+
 
   useEffect(() => {
     if (!isInternalTestingBuild()) return undefined;
@@ -633,14 +643,16 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
 
   useEffect(() => { if (tab === 'home') void refreshDashboard(); }, [refreshDashboard, tab]);
   useEffect(() => { void refreshPrimarySections(false); }, [refreshPrimarySections]);
+  useEffect(() => { if (TESSIE_INTEGRATION_ENABLED) void syncTessieCaptureBestEffort().then(() => refreshPrimarySections(false)).catch(() => undefined); }, [currentUser.id, refreshPrimarySections]);
   useEffect(() => { void forceAppleMusicArtworkRefreshAfterUpdate().catch(() => undefined); }, []);
-  useEffect(() => subscribeLocalArchiveChanges(() => { void refreshPrimarySections(false); }), [refreshPrimarySections]);
+  useEffect(() => subscribeLocalArchiveChanges(() => { void refreshPrimarySections(false); if (tab === 'home') void refreshDashboard(); }), [refreshDashboard, refreshPrimarySections, tab]);
   useEffect(() => { void refreshAppleIdentity(); void syncPrivateCloud(false); }, [refreshAppleIdentity, syncPrivateCloud]);
   useEffect(() => { if (tab === 'journeys') { void refreshJourneys(); void refreshMemories(); } }, [refreshJourneys, refreshMemories, tab]);
   useEffect(() => { if (tab === 'music') void refreshMusicDashboard(true); }, [refreshMusicDashboard, tab]);
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
+        if (TESSIE_INTEGRATION_ENABLED) void syncTessieCaptureBestEffort().then(() => refreshPrimarySections(false)).catch(() => undefined);
         void refreshAppleIdentity();
         void syncPrivateCloud(false);
         void refreshDashboard();
@@ -678,7 +690,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const refreshConnectionCapabilities = useCallback(async () => {
     try {
       setConnectionCapabilities(await appDataClient.connectionCapabilities());
-      if (!isInternalTestingBuild()) return;
       const username = await loadLastFmUsername();
       setLastFmConnected(await isLastFmConnected(username));
     }
@@ -686,14 +697,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, []);
 
   useEffect(() => {
-    if (!utilityVisible) return;
+    if (!utilityVisible && tab !== 'settings') return;
     void refreshMusicCapabilities();
     void refreshConnectionCapabilities();
-  }, [membershipStore.state.status.tier, refreshConnectionCapabilities, refreshMusicCapabilities, utilityVisible]);
+  }, [membershipStore.state.status.tier, refreshConnectionCapabilities, refreshMusicCapabilities, tab, utilityVisible]);
 
   const chooseProvider = useCallback(async (provider: MusicProvider) => {
     if (!isMusicProviderAvailable(provider)) {
-      Alert.alert('That music method is not available', 'Choose Apple Music or Manual Song Recognition in this public release.');
+      Alert.alert('That music method is not available', 'Choose another music method.');
       return;
     }
     const next = { provider, onboardingCompleted: true };
@@ -758,7 +769,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, [musicCapabilities, refreshMusicCapabilities, saveConnectionState]);
 
   const saveLastFm = useCallback(async () => {
-    if (!isInternalTestingBuild()) return;
+    if (!isMusicProviderAvailable('lastfm')) return;
     setSavingLastFm(true);
     try {
       await saveLastFmUsername(lastFmDraft);
@@ -776,7 +787,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   }, [lastFmDraft]);
 
   const syncLastFmNow = useCallback(async () => {
-    if (!isInternalTestingBuild()) return;
+    if (!isMusicProviderAvailable('lastfm')) return;
     setSyncingLastFm(true);
     try {
       const result = await syncRecentLastFmNow();
@@ -849,10 +860,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const activePreferences = preferences?.onboardingCompleted && !editingProvider ? preferences : null;
   const activeRecordingPreferences = recordingPreferences?.onboardingCompleted && !editingRecordingMode ? recordingPreferences : null;
   const storedAppleMusicConnected = dashboard.data.providerPreferences?.connections.appleMusic === 'connected';
-  const appleMusicConnected = musicCapabilities === null
-    ? storedAppleMusicConnected
-    : musicCapabilities.appleMusicAuthorizationStatus === 'authorized';
-  const showManualSongButton = activePreferences?.provider !== 'apple-music' || !appleMusicConnected;
+  const appleMusicConnected = musicCapabilities === null ? storedAppleMusicConnected : musicCapabilities.appleMusicAuthorizationStatus === 'authorized';
+  const showManualSongButton = isMusicProviderAvailable('lastfm') ? activePreferences?.provider === 'shazam'
+    : activePreferences?.provider !== 'apple-music' || !appleMusicConnected;
   const appReady = Boolean(activePreferences && activeRecordingPreferences);
   const fallbackFirstRunStage = preferences && recordingPreferences && !(preferences.onboardingCompleted && recordingPreferences.onboardingCompleted)
     ? (hasCompletedWelcomeIntro() ? 'recording' : 'welcome')
@@ -904,7 +914,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     ownerSpotifyEligible={ownerSpotifyEligible}
     spotifyOwnerState={spotifyOwnerState}
     onDataHealth={() => openMore('health')}
-    onTessieSetup={() => setTessieSetupVisible(true)}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
     onSpotifyOwnerSync={() => void syncSpotifyOwner()}
@@ -918,6 +927,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     onSaveLastFm={() => void saveLastFm()}
     onSyncLastFm={() => void syncLastFmNow()}
     onChangeProvider={() => setEditingProvider(true)}
+    onTessieChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
     onEditorActiveChange={setSettingsEditorActive}
   />;
 
@@ -928,13 +938,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
       home: <IpadHomeScreen userId={currentUser.id} memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
+        journeyProgress={homeJourneyProgress} vehicles={primarySections.data?.vehicle.vehicles ?? []} vehicleLoading={primarySections.status === 'loading' && !primarySections.data} vehicleError={primarySections.status === 'error'}
         onMemory={openMemory} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
-        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+        recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
     } : {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      home: <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+      home: <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
       statistics: <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
     },
@@ -976,8 +987,20 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             await connectAppleMusic('apple-music');
             advanceFirstRun('membership');
           }}
+          lastFmUsername={lastFmUsername}
+          onConnectLastFm={async username => {
+            await saveLastFmUsername(username);
+            setLastFmUsername(username);
+            setLastFmDraft(username);
+            setLastFmConnected(await isLastFmConnected(username));
+            await chooseProvider('lastfm');
+            advanceFirstRun('membership');
+          }}
           onSkipMusic={() => advanceFirstRun('membership')}
-          onOpenTessie={() => setTessieSetupVisible(true)}
+          tessieProfileId={currentUser.id}
+          tessieMembershipTier={membership.tier}
+          onTessieUpgrade={() => setMembershipPaywallVisible(true)}
+          onTessieChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
           onTessieContinue={() => advanceFirstRun('instructions')}
           onFinish={() => {
             setFirstRunProgress(completeFirstRun(firstRunRecordingMode));
@@ -993,7 +1016,14 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         {!firstRunStage && activeRecordingPreferences && preferences && !activePreferences && <ProviderPicker
           initial={preferences.provider ?? 'apple-music'}
           ownerSpotifyEnabled={ownerSpotifyEligible}
-          onContinue={async provider => {
+          lastFmUsername={lastFmUsername}
+          onContinue={async (provider, username) => {
+            if (provider === 'lastfm' && username) {
+              await saveLastFmUsername(username);
+              setLastFmUsername(username);
+              setLastFmDraft(username);
+              setLastFmConnected(await isLastFmConnected(username));
+            }
             await chooseProvider(provider);
             if (provider === 'apple-music') await connectAppleMusic(provider);
             if (provider === 'shazam') await enableRecognition(provider);
@@ -1025,10 +1055,6 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         })}
         onRestore={membershipStore.restore}
       />
-      {TESSIE_INTEGRATION_ENABLED && <TessieSetupScreen visible={tessieSetupVisible} onClose={() => setTessieSetupVisible(false)}
-        onConnectionChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
-        onOpenVehicle={() => { setTessieSetupVisible(false); setVehicleIntelligenceVisible(true); }} />}
-      {TESSIE_INTEGRATION_ENABLED && <VehicleIntelligenceScreen visible={vehicleIntelligenceVisible} onClose={() => setVehicleIntelligenceVisible(false)} />}
     </View></NativeNavigationContext.Provider>
   );
 }
@@ -1145,7 +1171,7 @@ function RecordingModeCard({ option, width }: { option: RecordingModeOption; wid
   );
 }
 
-function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: { initial: MusicProvider; ownerSpotifyEnabled: boolean; onContinue: (provider: MusicProvider) => Promise<void>; onCancel?: () => void }) {
+function ProviderPicker({ initial, ownerSpotifyEnabled, lastFmUsername, onContinue, onCancel }: { initial: MusicProvider; ownerSpotifyEnabled: boolean; lastFmUsername: string; onContinue: (provider: MusicProvider, username?: string) => Promise<void>; onCancel?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
@@ -1155,12 +1181,19 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
   const initialIndex = Math.max(0, availableProviders.findIndex(option => option.id === initial));
   const [index, setIndex] = useState(initialIndex);
   const [saving, setSaving] = useState(false);
+  const [username, setUsername] = useState(lastFmUsername);
+  const [error, setError] = useState('');
   const carousel = useRef<any>(null);
   const selected = availableProviders[index];
 
   const finish = async () => {
+    if (selected.id === 'lastfm' && !/^[A-Za-z][A-Za-z0-9_-]{1,14}$/.test(username.trim())) {
+      setError('Enter your Last.fm username: 2–15 characters, starting with a letter.');
+      return;
+    }
     setSaving(true);
-    try { await onContinue(selected.id); }
+    try { await onContinue(selected.id, selected.id === 'lastfm' ? username.trim() : undefined); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'Could not save your music choice. Try again.'); }
     finally { setSaving(false); }
   };
 
@@ -1169,8 +1202,8 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
       <ScrollView contentContainerStyle={styles.onboardingContent} showsVerticalScrollIndicator={false}>
         <BrandHeader compact />
         <Text style={styles.onboardingEyebrow}>AUTOMATIC SOUNDTRACKS</Text>
-        <Text style={styles.onboardingTitle}>Connect Apple Music for the full experience</Text>
-        <Text style={styles.onboardingBody}>Apple Music is JourneyDeck’s recommended automatic option at launch. Manual Song Recognition remains available, but you must tap Identify Song for every track.</Text>
+        <Text style={styles.onboardingTitle}>Choose your soundtrack source</Text>
+        <Text style={styles.onboardingBody}>Choose one music method for your journeys. You can change it later. For Manual Song Recognition, you must tap Identify Song for every track.</Text>
         <View style={styles.providerTabs}>
           {availableProviders.map((option, optionIndex) => (
             <Pressable key={option.id} onPress={() => { setIndex(optionIndex); carousel.current?.scrollTo({ x: optionIndex * (cardWidth + 12), animated: true }); }} style={[styles.providerTab, index === optionIndex && { borderColor: theme.color(option.color, 'border'), backgroundColor: theme.color(option.tint, 'surface') }]}>
@@ -1188,6 +1221,14 @@ function ProviderPicker({ initial, ownerSpotifyEnabled, onContinue, onCancel }: 
           {availableProviders.map(option => <ProviderCard key={option.id} option={option} width={cardWidth} />)}
         </ScrollView>
         <View style={styles.pageDots}>{availableProviders.map((option, optionIndex) => <View key={option.id} style={[styles.pageDot, index === optionIndex && { width: 24, backgroundColor: theme.color(selected.color, 'surface') }]} />)}</View>
+        {selected.id === 'lastfm' && <View style={styles.setupCard}>
+          <Text style={styles.setupBody}>Create a free Last.fm account, connect Spotify to it, then enter your Last.fm username.</Text>
+          <Text accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/join')} style={styles.privateCloudLearn}>Create free Last.fm account</Text>
+          <Text accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/about/trackmymusic')} style={styles.privateCloudLearn}>Connect Spotify to Last.fm</Text>
+          <TextInput accessibilityLabel="Last.fm username" value={username} onChangeText={value => { setUsername(value); setError(''); }} autoCapitalize="none" autoCorrect={false} maxLength={15} placeholder="Last.fm username" placeholderTextColor={theme.palette.muted} style={styles.setupInput} />
+          <Text style={styles.connectionDetail}>JourneyDeck matches your public Last.fm listening history to completed journeys.</Text>
+        </View>}
+        {error ? <Text accessibilityRole="alert" style={styles.setupWarning}>{error}</Text> : null}
         <PrimaryAction label={saving ? 'Saving your choice…' : selected.id === 'apple-music' ? 'Connect Apple Music' : selected.id === 'shazam' ? 'Use Manual Song Recognition' : `Continue with ${selected.name}`} onPress={() => void finish()} disabled={saving} />
         {onCancel && <Pressable onPress={onCancel} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Keep my current choice</Text></Pressable>}
         <Text style={styles.providerFootnote}>Apple Music requires an active subscription for automatic soundtracks. Route recording always works without a music service.</Text>
@@ -1231,7 +1272,7 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
   return <View style={styles.prosCons}><Text style={[styles.prosConsTitle, { color }]}>{title}</Text>{items.map(item => <View style={styles.proRow} key={item}><View style={[styles.proBullet, { borderColor: theme.color(color, 'border') }]}><Text style={[styles.proBulletText, { color }]}>{symbol}</Text></View><Text style={styles.proText}>{item}</Text></View>)}</View>;
 }
 
-function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatistics, onJourney, onFiftyStates, recorder }: { userId: string; primary: PrimaryDataState; recorderActive: boolean; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; onFiftyStates?: () => void; recorder: ReactNode }) {
+function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundtracks, onStatistics, onJourney, onFiftyStates, recorder }: { userId: string; primary: PrimaryDataState; recorderActive: boolean; journeyProgress: ActiveJourneyProgress | null; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; onFiftyStates?: () => void; recorder: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const { ambientMotionEnabled, reduceMotion } = useMotionPreferences();
@@ -1239,7 +1280,8 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [editingLayout, setEditingLayout] = useState(false);
-  const gridLayout = useHomeWidgetLayout('compact', Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED);
+  const [activeJourneyVisible, setActiveJourneyVisible] = useState(false);
+  const gridLayout = useHomeWidgetLayout('compact', Boolean(onFiftyStates), V3_ASK_JOURNEYDECK_ENABLED, TESSIE_INTEGRATION_ENABLED);
   const cameraDrift = useSharedValue(0);
   const recorderFocus = useSharedValue(recorderActive ? 1 : 0);
   const latestSummary = primary.data?.journeys[0] ?? null;
@@ -1293,6 +1335,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [recorderActive]);
   const homeColors = journeyDeckSemanticColors(theme.id, theme.palette);
+  const tessieVehicles = TESSIE_INTEGRATION_ENABLED ? primary.data?.vehicle.vehicles ?? [] : [];
   const presentation = selectHomePresentation(gridLayout.placements);
   const openEditor = () => setEditingLayout(true);
   const renderLatestMemory = () => <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
@@ -1321,6 +1364,8 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
     onFiftyStates ? { id: 'fiftyStates', label: '50 States', icon: 'map' } : null,
     V3_ASK_JOURNEYDECK_ENABLED ? { id: 'askJourneyDeck', label: 'Ask JourneyDeck', icon: 'sparkles' } : null,
     { id: 'soundtrack', label: 'Latest Soundtrack', icon: 'music.note' },
+    TESSIE_INTEGRATION_ENABLED ? { id: 'yourCar', label: 'Your car', icon: 'car.side' } : null,
+    TESSIE_INTEGRATION_ENABLED ? { id: 'journeyInProgress', label: 'Journey in progress', icon: 'location.north.line' } : null,
   ];
   const contextChoices = contextChoiceCandidates.filter((choice): choice is { id: HomeWidgetId; label: string; icon: SFSymbol } => choice !== null);
   const summaryLabels: Record<string, string> = { miles: 'Miles with music', listening: 'Listening hours', songs: 'Songs on the road', streak: 'Current streak', journeys: 'Journey library' };
@@ -1368,7 +1413,9 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
     ? <FiftyStatesHomeWidget userId={userId} onPress={onFiftyStates} dense onLongPress={openEditor} />
     : presentation.context?.id === 'askJourneyDeck'
       ? <AskJourneyDeckWidget onPress={() => router.push('/ask-journeydeck')} onLongPress={openEditor} />
-      : presentation.context?.id === 'soundtrack' ? renderLatestSoundtrack() : null;
+      : presentation.context?.id === 'soundtrack' ? renderLatestSoundtrack()
+        : presentation.context?.id === 'yourCar' ? <YourCarWidget vehicles={tessieVehicles} loading={primary.status === 'loading' && !primary.data} failed={primary.status === 'error'} />
+        : presentation.context?.id === 'journeyInProgress' ? <JourneyInProgressWidget progress={journeyProgress} onOpen={() => setActiveJourneyVisible(true)} /> : null;
   return <View style={styles.approvedHomeSafe}>
     <Reanimated.View pointerEvents="none" style={[styles.approvedHomeBackdrop, backdropStyle]}>
       <JourneyImage key={`home-header-${theme.id}`} imageIdentity={`home-header-${theme.id}`} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
@@ -1414,6 +1461,7 @@ function HomeScreen({ userId, primary, recorderActive, onSoundtracks, onStatisti
       noteIcon="sparkles" note="Choose what Home features, reorder your Road Summary, and hide anything you do not want.">
       <View testID="home-layout-editor-grid">{renderCustomizeSheet()}</View>
     </HomeLayoutEditorSheet>
+    <ActiveJourneyDetailsSheet visible={activeJourneyVisible} progress={journeyProgress} onClose={() => setActiveJourneyVisible(false)} />
   </View>;
 }
 
@@ -1789,7 +1837,9 @@ function LegacyHomeScreen({ state, primary, recordingMode, tessieConnected, onRe
   const todayBars = hourlyDrivingActivity(todayJourneys);
   const connections = data.providerPreferences?.connections ?? defaultConnections;
   const selectedProvider = providerOptions.find(option => toApiMusicProvider(option.id) === data.providerPreferences?.musicProvider);
-  const musicConnected = connections.appleMusic === 'connected' || connections.shazam === 'enabled' || (isInternalTestingBuild() && connections.lastFm === 'connected');
+  const musicConnected = data.providerPreferences?.musicProvider === 'apple_music' ? connections.appleMusic === 'connected'
+    : data.providerPreferences?.musicProvider === 'shazam' ? connections.shazam === 'enabled'
+    : data.providerPreferences?.musicProvider === 'lastfm' ? connections.lastFm === 'connected' : false;
   const recorderHealthy = data.recorder.connected && data.recorder.queuedPoints + data.recorder.queuedMusic === 0;
   const automaticMode = recordingMode === 'automatic';
   const home = useMemo(() => primary.data ? buildHomeSummary(primary.data) : null, [primary.data]);
@@ -2992,7 +3042,7 @@ function ConnectionsScreen({
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
-  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onTessieSetup, onEditorActiveChange,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged,
 }: {
   provider: MusicProvider;
   connectionCapabilities: ConnectionCapabilities;
@@ -3027,7 +3077,7 @@ function ConnectionsScreen({
   onSignOut: () => void;
   onDeleteAccount: () => void;
   onDataHealth: () => void;
-  onTessieSetup: () => void;
+  onTessieChanged: () => void;
   onEditorActiveChange: (active: boolean) => void;
 }) {
   const theme = useAppTheme();
@@ -3063,21 +3113,26 @@ function ConnectionsScreen({
     void haptics.selection();
   };
 
-  const internalMusicControls = <>{internalTesting && advancedSupportVisible && <>
-          <SectionHeading title="Internal music testing" />
+  const lastFmControls = <>{isMusicProviderAvailable('lastfm') && selected.id === 'lastfm' && <>
+          <SectionHeading title="Last.fm connection" />
           <ConnectionTile name="Spotify history" detail="Imported through your Last.fm username" symbol="↻" brand="spotify" color={theme.color("#1ed760", 'text')} status={!connectionCapabilities.lastFmConfigured ? 'Preview edge setup required' : lastFmConnected ? `Connected as ${lastFmUsername} · privacy edge` : lastFmUsername ? `Set for ${lastFmUsername} · pending first sync` : 'Not connected'} action={lastFmUsername ? 'Change' : 'Set up'} onPress={onEditLastFm} />
           {editingLastFm && <View style={styles.setupCard}>
             <Text style={styles.setupTitle}>SPOTIFY HISTORY VIA LAST.FM</Text>
             <Text style={styles.setupBody}>First connect Spotify scrobbling in Last.fm, then enter that public Last.fm username here. JourneyDeck uses only timestamped scrobbles around a completed journey.</Text>
-            <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={30} placeholder="Last.fm username" placeholderTextColor={theme.color("#6f6877", 'text')} style={styles.setupInput} />
+            <Text accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/join')} style={styles.privateCloudLearn}>Create a free Last.fm account</Text>
+            <Text accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/about/trackmymusic')} style={styles.privateCloudLearn}>Connect Spotify to Last.fm</Text>
+            <TextInput value={lastFmDraft} onChangeText={onLastFmDraft} autoCapitalize="none" autoCorrect={false} maxLength={15} placeholder="Last.fm username" placeholderTextColor={theme.color("#6f6877", 'text')} style={styles.setupInput} />
             <Text style={styles.connectionDetail}>Only your public Last.fm username and the completed journey’s time window cross the privacy edge. Routes, coordinates, Apple identity, and JourneyDeck records stay off it.</Text>
-            <Text onPress={() => void Linking.openURL('https://www.last.fm/')} style={styles.privateCloudLearn}>Listening history supplied by Last.fm · Open Last.fm</Text>
-            {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>The preview privacy edge still needs its Last.fm key before syncing can run.</Text>}
+            {!connectionCapabilities.lastFmConfigured && <Text style={styles.setupWarning}>Music sync is unavailable until the Last.fm connection is configured.</Text>}
             {lastFmUsername && connectionCapabilities.lastFmConfigured && <TouchPressable onPress={onSyncLastFm} disabled={syncingLastFm} style={[styles.setupSync, syncingLastFm && styles.pressed]}><Text style={styles.setupSyncText}>{syncingLastFm ? 'Checking recent journeys…' : 'Sync recent journeys now'}</Text></TouchPressable>}
             <View style={styles.setupActions}><TouchPressable onPress={onCancelLastFm} style={styles.setupSecondary}><Text style={styles.setupSecondaryText}>Cancel</Text></TouchPressable><TouchPressable onPress={onSaveLastFm} disabled={savingLastFm} style={[styles.setupPrimary, savingLastFm && styles.pressed]}><Text style={styles.setupPrimaryText}>{savingLastFm ? 'Saving…' : 'Save'}</Text></TouchPressable></View>
           </View>}
-          {ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color={theme.color("#1ed760", 'text')} status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}
         </>}</>;
+  const internalMusicControls = <>{internalTesting && advancedSupportVisible && ownerSpotifyEligible && <ConnectionTile name="Owner Spotify (private preview)" detail="Direct allowlisted history for Patrick’s device" symbol="▶" brand="spotify" color={theme.color("#1ed760", 'text')} status={spotifyOwnerState === 'connected' ? 'Connected · tokens in this iPhone Keychain' : spotifyOwnerState === 'connecting' ? 'Finish in Spotify…' : spotifyOwnerState === 'syncing' ? 'Matching recent journeys…' : 'Not connected'} action={spotifyOwnerState === 'connected' ? 'Sync now' : spotifyOwnerState === 'syncing' ? 'Syncing…' : 'Connect'} onPress={spotifyOwnerState === 'connected' ? onSpotifyOwnerSync : spotifyOwnerState === 'syncing' || spotifyOwnerState === 'connecting' ? () => undefined : onSpotifyOwnerConnect} />}</>;
+
+  const tessieContent = TESSIE_INTEGRATION_ENABLED
+    ? <TessieConnectionCard profileId={currentUser.id} membershipTier={membershipTier} onUpgrade={onMembership} onChanged={onTessieChanged} />
+    : null;
 
   if (destination.kind === 'profile') {
     return <SettingsProfileEditor currentUser={currentUser} appearance={profileAppearance} onSaved={appearance => { setProfileAppearance(appearance); closeEditor(); }} onBack={closeEditor} />;
@@ -3104,6 +3159,7 @@ function ConnectionsScreen({
     appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
     hasAppleAccount={Boolean(currentUser.appleSubject)} cloud={privateCloud} membershipTier={membershipTier} membershipExpirationDate={membershipExpirationDate}
     providerName={selected.name} providerDetail={selected.summary}
+    tessieConnected={connectionCapabilities.tessieConfigured}
     journeys={journeys}
     memories={memories}
     places={SAVED_PLACE_SLOTS.map(slot => ({ ...slot, saved: Boolean(savedPlaces[slot.id]) }))}
@@ -3115,9 +3171,8 @@ function ConnectionsScreen({
     internalDiagnostics={internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
+    tessieContent={tessieContent}
     onMarkersPrototype={V3_MARKERS_PROTOTYPE_ENABLED ? () => router.push('/time-capsule-prototype') : undefined}
-    onTessieSetup={TESSIE_INTEGRATION_ENABLED ? onTessieSetup : undefined}
-    tessieConnected={connectionCapabilities.tessieConfigured}
   />;
 
   const profileCard = <>
@@ -3213,13 +3268,12 @@ function ConnectionsScreen({
       achievements: <AchievementsOverview journeys={journeys} memories={memories} />,
       recording: <>
         <View style={styles.settingsCompactList}>
-          <View style={styles.settingsInfoRow}><View style={styles.settingsCompactIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>Manual recording</Text><Text style={styles.settingsCompactDetail}>Journeys begin only after you tap Start Journey.</Text></View><Text style={styles.settingsStatusText}>On</Text></View>
+          <View style={styles.settingsInfoRow}><View style={styles.settingsCompactIcon}><SymbolView name="record.circle" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>{connectionCapabilities.tessieConfigured ? 'Automatic recording with Tessie' : 'Manual recording'}</Text><Text style={styles.settingsCompactDetail}>{connectionCapabilities.tessieConfigured ? 'JourneyDeck detects drives and shows each journey while it is recording.' : 'Journeys begin only after you tap Start Journey.'}</Text></View><Text style={styles.settingsStatusText}>On</Text></View>
           <View style={[styles.settingsInfoRow, styles.settingsHubRowBorder]}><View style={styles.settingsCompactIcon}><SymbolView name="location.fill" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsCompactTitle}>Location privacy</Text><Text style={styles.settingsCompactDetail}>Routes stay local and in your private iCloud account. Saved places are masked when sharing.</Text></View></View>
         </View>
         <View style={styles.settingsInsetNote}><Text style={styles.privateCloudTitle}>PLACE DATA</Text><PlaceDataCredits /></View>
-        {TESSIE_INTEGRATION_ENABLED && <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Tessie', detail: connectionCapabilities.tessieConfigured ? 'Connected Tesla vehicle data' : 'Connect your Tesla for vehicle intelligence', value: connectionCapabilities.tessieConfigured ? 'Connected' : undefined, symbol: 'car.side.fill', accessibilityLabel: 'Set up Tessie', onPress: onTessieSetup })}</View>}
       </>,
-      music: <>{providerCard}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
+      music: <>{providerCard}{tessieContent}{lastFmControls}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and vehicle connections are optional. A connection or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
       account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
       places: <><Text style={styles.settingsDetailIntro}>Name familiar places automatically and protect their exact locations when sharing.</Text>{placesCard}</>,
       membership: <>{membershipCard}{supportCard}</>,
@@ -3229,7 +3283,7 @@ function ConnectionsScreen({
 
   const savedPlaceCount = SAVED_PLACE_SLOTS.filter(slot => Boolean(savedPlaces[slot.id])).length + customSavedPlaces.length;
   const categorySummary: Record<SettingsCategoryId, string> = {
-    appearance: `${theme.name} · ${appIconCatalog[appIconId].name} icon`, recording: 'Manual recording', music: selected.name,
+    appearance: `${theme.name} · ${appIconCatalog[appIconId].name} icon`, recording: connectionCapabilities.tessieConfigured ? 'Automatic recording with Tessie' : 'Manual recording', music: selected.name,
     achievements: `${journeys.length} recorded journeys`,
     account: privateCloud.status === 'synced' ? 'iCloud synced' : 'Profile and private backup', places: `${savedPlaceCount} saved`,
     membership: membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Help and privacy',

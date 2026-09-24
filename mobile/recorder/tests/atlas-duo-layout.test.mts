@@ -13,10 +13,11 @@ const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../src/primary-sections.tsx', import.meta.url), 'utf8');
 const atlas = source.slice(source.indexOf('export function AtlasScreen('), source.indexOf('function AtlasPulseCard('));
 const module = { exports: {} as any };
-const code = ts.transpileModule(atlas + '\nexports.AtlasScreen = AtlasScreen;', { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+const code = ts.transpileModule(atlas + '\nAtlasTravelStoriesCards = ({children}) => null; exports.AtlasScreen = AtlasScreen;', { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 const styles = new Proxy({}, { get: (_target, key) => String(key) });
 let adaptive: any = { fold: null };
+let fontScale = 1;
 vm.runInNewContext(code, {
   module,
   exports: module.exports,
@@ -44,9 +45,11 @@ vm.runInNewContext(code, {
   useAppTheme: () => ({ color: (value: string) => value }),
   useThemedStyles: () => styles,
   useAdaptiveLayout: () => adaptive,
-  useWindowDimensions: () => ({ fontScale: 1 }),
+  useWindowDimensions: () => ({ fontScale }),
   verticalFoldContentColumns: (fold: any, padding: number) => fold?.axis === 'vertical' ? { beforeWidth: fold.before.width - padding, afterWidth: fold.after.width - padding, gap: fold.frame.width } : null,
   buildAtlasInsights: (_journeys: any[], _details: any[], window: string) => ({ window }),
+  TESSIE_INTEGRATION_ENABLED: false,
+  getCurrentUser: () => ({ id: 'test' }),
   saveAtlasPatternReview() {},
   formatAtlasPatternRoute: () => '',
 });
@@ -69,8 +72,12 @@ test('Atlas retains its selected window while opening into two physical panes', 
     assert.equal(tree.root.findByProps({ testID: 'atlas-duo-map' }).props.style.width, 614);
     assert.equal(windowButton().props.accessibilityState.selected, true);
     assert.equal(tree.root.findByType('map'), map, 'the map host and its camera state survive the pose transition');
+    fontScale = 1.4;
+    await act(() => tree.update(React.createElement(module.exports.AtlasScreen, props)));
+    assert.equal(tree.root.findByType('insights').props.singleColumn, true, 'enlarged text uses one insight column on iPad');
   } finally {
     adaptive = { fold: null };
+    fontScale = 1;
     await act(() => tree?.unmount());
   }
 });

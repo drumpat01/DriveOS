@@ -19,7 +19,7 @@ test('paid members receive Atlas and their complete timeline', () => {
   assert.deepEqual(entitlementsForMembershipTier('paid'), {
     tier: 'paid',
     atlasAccess: true,
-    tessieAccess: true,
+    tessieAccess: false,
     timelineHistoryDays: null,
   });
 });
@@ -34,10 +34,21 @@ test('only a paid status from the native StoreKit verifier unlocks membership', 
   assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'free' }).tier, 'free');
 });
 
-test('TestFlight Plus unlock grants paid access while ordinary builds still use StoreKit', () => {
-  const freeStatus = { nativeModuleAvailable: true, tier: 'free' as const };
-  assert.deepEqual(entitlementsForTestFlightMembership(freeStatus, true), entitlementsForMembershipTier('paid'));
-  assert.deepEqual(entitlementsForTestFlightMembership(freeStatus, false), entitlementsForMembershipTier('free'));
+test('V3 Tessie needs verified paid membership; V2 and preview Atlas remain closed', () => {
+  const v3 = { tessieV3Enabled: true };
+  assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'paid' }, v3).tessieAccess, true);
+  assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: false, tier: 'paid' }, v3).tessieAccess, false);
+  assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'free' }, v3).tessieAccess, false);
+  assert.equal(entitlementsForVerifiedMembership({ nativeModuleAvailable: true, tier: 'paid' }).tessieAccess, false);
+});
+
+test('Build 36 TestFlight grants Plus and Tessie without a sandbox purchase', () => {
+  const free = { nativeModuleAvailable: true, tier: 'free' as const };
+  assert.deepEqual(entitlementsForTestFlightMembership(free, true, true), {
+    tier: 'paid', atlasAccess: true, tessieAccess: true, timelineHistoryDays: null,
+  });
+  assert.equal(entitlementsForTestFlightMembership(free, false, true).tessieAccess, false);
+  assert.equal(entitlementsForTestFlightMembership(free, true, false).tessieAccess, false);
 });
 
 test('free history stops at 45 days while paid history has no cutoff', () => {

@@ -1,6 +1,6 @@
 import * as TaskManager from 'expo-task-manager';
 import type { LocationObject } from 'expo-location';
-import { sampleAppleMusicForActiveSession, sampleTessieMediaForActiveSession } from './music-capture';
+import { sampleAppleMusicForActiveSession } from './music-capture';
 import {
   evaluateCurrentManualRecordingFailsafe, finishManualRecordingForFailsafe,
 } from './manual-recording-failsafe-runtime';
@@ -8,7 +8,6 @@ import { activeSession, recordLocations } from './storage';
 import { LOCATION_TASK_NAME, stopLocationTracking } from './tracking';
 import { isNativeAutomaticSession } from '../modules/journeydeck-recorder';
 import { syncNativeRecorderInbox } from './native-recorder-inbox';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { observeJourneyDeckEvent } from './observability';
 import { prepareJourneyDeckDatabase } from './database-startup';
 
@@ -36,9 +35,6 @@ TaskManager.defineTask<{ locations: LocationObject[] }>(LOCATION_TASK_NAME, asyn
   if (inserted > 0) {
     // Build 11 automatic journeys are owned entirely by the native Swift
     // recorder. This Expo task remains the manual-recording transport only.
-    await Promise.allSettled([
-      sampleAppleMusicForActiveSession(),
-      ...(TESSIE_INTEGRATION_ENABLED ? [sampleTessieMediaForActiveSession()] : []),
-    ]);
+    await sampleAppleMusicForActiveSession();
   }
 });

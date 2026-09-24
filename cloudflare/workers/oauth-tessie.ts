@@ -39,6 +39,10 @@ type TessieDrive = {
   id?: unknown; started_at?: unknown; ended_at?: unknown; starting_location?: unknown; ending_location?: unknown;
   odometer_distance?: unknown; energy_used?: unknown; starting_battery?: unknown; ending_battery?: unknown;
 };
+type TessieState = {
+  timestamp?: unknown; latitude?: unknown; longitude?: unknown; speed?: unknown;
+  heading?: unknown; battery_level?: unknown;
+};
 
 class TessieUpstreamError extends Error {
   readonly status: number;
@@ -48,16 +52,36 @@ class TessieUpstreamError extends Error {
 const TOKEN = /^\S{16,512}$/;
 const VIN = /^[A-HJ-NPR-Z0-9]{11,20}$/i;
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60_000;
+const MAX_ROUTE_WINDOW_MS = 24 * 60 * 60_000;
+const MAX_ROUTE_POINTS = 2_500;
+const OPAQUE_DRIVE_ID = /^[a-f0-9]{32}$/;
 
 function clean(value: unknown, maximum = 160) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, maximum) : '';
 }
-function numberOrNull(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : null; }
+function safeVehicleName(value: unknown) {
+  const name = clean(value);
+  return name && !VIN.test(name) ? name : 'Tesla';
+}
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function energyOrNull(value: unknown) {
+  const amount = numberOrNull(value);
+  return amount !== null && amount >= 0 && amount <= 1_000 ? amount : null;
+}
 function isoFromUnix(value: unknown) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   const date = new Date(parsed > 10_000_000_000 ? parsed : parsed * 1_000);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+function boundedNumber(value: unknown, minimum: number, maximum: number) {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null;
 }
 function tokenFrom(body: Record<string, unknown>) {
   const token = stringField(body, 'accessToken') ?? stringField(body, 'apiKey');
@@ -152,7 +176,7 @@ export async function handleTessieSync(request: Request, env: Env): Promise<Resp
     const fromSeconds = Math.floor(from / 1_000), toSeconds = Math.ceil(to / 1_000);
     for (const source of sourceVehicles) {
       const vin = clean(source.vin, 24), vehicleKey = await opaqueKey('tessie-vehicle', vin), last = source.last_state ?? {};
-      const name = clean(last.display_name) || clean(last.vehicle_state?.vehicle_name) || 'Tesla';
+      const name = safeVehicleName(last.display_name || last.vehicle_state?.vehicle_name);
       vehicles.push({
         vehicleKey, name, status: clean(last.state, 32) || 'unknown', batteryPercent: numberOrNull(last.charge_state?.battery_level),
         rangeMiles: numberOrNull(last.charge_state?.battery_range), chargingState: clean(last.charge_state?.charging_state, 48) || null,
@@ -164,13 +188,19 @@ export async function handleTessieSync(request: Request, env: Env): Promise<Resp
         tessieGet<{ results?: TessieCharge[] }>(`/${encodeURIComponent(vin)}/charges?${query}`, token, env),
         tessieGet<{ results?: TessieDrive[] }>(`/${encodeURIComponent(vin)}/drives?${query}`, token, env),
       ]);
+      // Tessie has no continuation cursor. Never present a saturated window as complete.
+      if ((chargePayload.results?.length ?? 0) >= 200 || (drivePayload.results?.length ?? 0) >= 200) {
+        return jsonResponse({ error: 'Tessie history window is too large; retry a shorter window' }, 422, { 'Cache-Control': 'no-store' });
+      }
       for (const charge of (Array.isArray(chargePayload.results) ? chargePayload.results : []).slice(0, 200)) {
         const startedAt = isoFromUnix(charge.started_at), endedAt = isoFromUnix(charge.ended_at), location = clean(charge.location) || 'Charging location';
         if (!startedAt || !endedAt) continue;
+        const energyAdded = energyOrNull(charge.energy_added);
         charges.push({
           id: await opaqueKey('tessie-charge', vehicleKey, String(charge.id ?? startedAt)), locationKey: await opaqueKey('tessie-location', location),
           location, vehicleKey, vehicleName: name, startedAt, endedAt, isSupercharger: charge.is_supercharger === true,
-          energyAddedKwh: numberOrNull(charge.energy_added) ?? 0, energyUsedKwh: numberOrNull(charge.energy_used) ?? 0,
+          energyAddedKwh: energyAdded ?? 0, energyUsedKwh: numberOrNull(charge.energy_used) ?? 0,
+          energyAddedKnown: energyAdded !== null,
           milesAdded: numberOrNull(charge.miles_added) ?? 0, startingBatteryPercent: numberOrNull(charge.starting_battery),
           endingBatteryPercent: numberOrNull(charge.ending_battery), recordedCost: numberOrNull(charge.cost),
         });
@@ -178,15 +208,76 @@ export async function handleTessieSync(request: Request, env: Env): Promise<Resp
       for (const drive of (Array.isArray(drivePayload.results) ? drivePayload.results : []).slice(0, 200)) {
         const startedAt = isoFromUnix(drive.started_at), endedAt = isoFromUnix(drive.ended_at);
         if (!startedAt || !endedAt) continue;
+        const energyUsed = energyOrNull(drive.energy_used);
         drives.push({
           id: await opaqueKey('tessie-drive', vehicleKey, String(drive.id ?? startedAt)), vehicleKey, vehicleName: name, startedAt, endedAt,
           startingLocation: clean(drive.starting_location) || 'Unknown start', endingLocation: clean(drive.ending_location) || 'Unknown destination',
-          miles: numberOrNull(drive.odometer_distance) ?? 0, energyUsedKwh: numberOrNull(drive.energy_used) ?? 0,
+          miles: numberOrNull(drive.odometer_distance) ?? 0, energyUsedKwh: energyUsed ?? 0,
+          energyUsedKnown: energyUsed !== null,
           startingBatteryPercent: numberOrNull(drive.starting_battery), endingBatteryPercent: numberOrNull(drive.ending_battery),
         });
       }
     }
     return jsonResponse({ generatedAt: new Date().toISOString(), vehicles, charges, drives }, 200, { 'Cache-Control': 'no-store, no-cache, must-revalidate' });
+  } catch (error) { return upstreamFailure(error); }
+}
+
+/** Exact route coordinates cross the edge only for one authenticated, bounded drive. */
+export async function handleTessieRoute(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
+  const body = await readBoundedJson(request, 4_096);
+  const token = body ? tokenFrom(body) : null;
+  const driveId = body ? stringField(body, 'driveId') : null;
+  const from = Date.parse(body ? stringField(body, 'startedAt') ?? '' : '');
+  const to = Date.parse(body ? stringField(body, 'endedAt') ?? '' : '');
+  const now = Date.now();
+  if (!token || !driveId || !OPAQUE_DRIVE_ID.test(driveId) || !Number.isFinite(from) || !Number.isFinite(to)
+    || from >= to || to - from > MAX_ROUTE_WINDOW_MS || to > now + 5 * 60_000 || from < now - MAX_WINDOW_MS - 5 * 60_000) {
+    return jsonResponse({ error: 'Invalid Tessie route request' }, 400, { 'Cache-Control': 'no-store' });
+  }
+  const limited = await rateLimited(token, env);
+  if (limited) return limited;
+  try {
+    const vehiclePayload = await tessieGet<{ results?: TessieVehicle[] }>('/vehicles?only_active=true', token, env, 1_048_576);
+    const vehicles = (Array.isArray(vehiclePayload.results) ? vehiclePayload.results : [])
+      .filter(vehicle => VIN.test(clean(vehicle.vin, 24))).slice(0, 4);
+    let matchedVin: string | null = null;
+    const fromSeconds = Math.floor(from / 1_000), toSeconds = Math.ceil(to / 1_000);
+    for (const vehicle of vehicles) {
+      const vin = clean(vehicle.vin, 24);
+      const vehicleKey = await opaqueKey('tessie-vehicle', vin);
+      const query = `from=${Math.max(0, fromSeconds - 60)}&to=${toSeconds + 60}&distance_format=mi&timezone=UTC&limit=200`;
+      const history = await tessieGet<{ results?: TessieDrive[] }>(`/${encodeURIComponent(vin)}/drives?${query}`, token, env);
+      if ((history.results?.length ?? 0) >= 200) return jsonResponse({ error: 'Tessie route window is too large' }, 422, { 'Cache-Control': 'no-store' });
+      for (const drive of Array.isArray(history.results) ? history.results : []) {
+        if (isoFromUnix(drive.started_at) !== new Date(from).toISOString() || isoFromUnix(drive.ended_at) !== new Date(to).toISOString()) continue;
+        if (await opaqueKey('tessie-drive', vehicleKey, String(drive.id ?? isoFromUnix(drive.started_at))) === driveId) {
+          matchedVin = vin;
+          break;
+        }
+      }
+      if (matchedVin) break;
+    }
+    if (!matchedVin) return jsonResponse({ error: 'Tessie drive was not found' }, 404, { 'Cache-Control': 'no-store' });
+    // The web app uses historical states at one-second resolution with condensation off.
+    const query = `from=${Math.max(0, fromSeconds - 60)}&to=${toSeconds + 60}&interval=1&condense=false&distance_format=mi&temperature_format=f`;
+    const states = await tessieGet<{ results?: TessieState[] }>(`/${encodeURIComponent(matchedVin)}/states?${query}`, token, env, 4_194_304);
+    const valid = (Array.isArray(states.results) ? states.results : []).flatMap(state => {
+      const recordedAt = isoFromUnix(state.timestamp);
+      const latitude = boundedNumber(state.latitude, -90, 90), longitude = boundedNumber(state.longitude, -180, 180);
+      if (!recordedAt || latitude === null || longitude === null || Date.parse(recordedAt) < from || Date.parse(recordedAt) > to) return [];
+      return [{ recordedAt, latitude, longitude,
+        speedMph: boundedNumber(state.speed, 0, 250), headingDegrees: boundedNumber(state.heading, 0, 360),
+        batteryPercent: boundedNumber(state.battery_level, 0, 100) }];
+    }).sort((left, right) => left.recordedAt.localeCompare(right.recordedAt));
+    const step = Math.max(1, Math.ceil(valid.length / MAX_ROUTE_POINTS));
+    const routePoints = step === 1 ? valid : valid.filter((_, index) => index % step === 0);
+    if (valid.length && routePoints.at(-1) !== valid.at(-1)) {
+      if (routePoints.length === MAX_ROUTE_POINTS) routePoints.pop();
+      routePoints.push(valid.at(-1)!);
+    }
+    return jsonResponse({ driveId, generatedAt: new Date().toISOString(), routePoints }, 200,
+      { 'Cache-Control': 'no-store, no-cache, must-revalidate' });
   } catch (error) { return upstreamFailure(error); }
 }
 

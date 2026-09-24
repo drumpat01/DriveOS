@@ -6,7 +6,7 @@
  */
 
 import { handleSpotifyConfig, handleSpotifyTokenExchange } from './oauth-spotify.ts';
-import { handleTessieMedia, handleTessieSync, handleTessieVerification } from './oauth-tessie.ts';
+import { handleTessieMedia, handleTessieRoute, handleTessieSync, handleTessieVerification } from './oauth-tessie.ts';
 import { handlePlacesLookup } from './places-lookup.ts';
 import { handleOverturePlaces } from './overture-places.ts';
 import { handleLastFmHistory } from './lastfm-history.ts';
@@ -91,6 +91,8 @@ export default {
         response = await handleTessieVerification(request, env);
       } else if (path === '/api/vehicle/tessie/sync') {
         response = await handleTessieSync(request, env);
+      } else if (path === '/api/vehicle/tessie/route') {
+        response = await handleTessieRoute(request, env);
       } else if (path === '/api/vehicle/tessie/media') {
         response = await handleTessieMedia(request, env);
       } else if (path === '/api/places/reverse') {

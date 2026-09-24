@@ -3,38 +3,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-import { tessieMediaObservation } from '../../src/music-observations.ts';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const appData = fs.readFileSync(path.join(root, 'src', 'app-data.ts'), 'utf8');
 const screen = fs.readFileSync(path.join(root, 'src', 'vehicle-intelligence-screen.tsx'), 'utf8');
 const shell = fs.readFileSync(path.join(root, 'src', 'shell.tsx'), 'utf8');
 const tessie = fs.readFileSync(path.join(root, 'src', 'tessie-direct.ts'), 'utf8');
+const connectionCard = fs.readFileSync(path.join(root, 'src', 'tessie-connection-card.tsx'), 'utf8');
 const profileSecrets = fs.readFileSync(path.join(root, 'src', 'profile-secure-store.ts'), 'utf8');
 
-test('dormant Tessie media places Tesla built-in playback at its estimated route time', () => {
-  const observation = tessieMediaObservation({
-    available: true,
-    isPlaying: true,
-    sampledAt: '2026-08-30T15:05:48.000Z',
-    track: 'Midnight City',
-    artist: 'M83',
-    album: 'Hurry Up, We’re Dreaming',
-    source: 'AppleMusic',
-    durationMs: 243_000,
-    elapsedMs: 48_000,
-  }, '2026-08-30T15:00:00.000Z');
-
-  assert.ok(observation);
-  assert.equal(observation.playedAt, '2026-08-30T15:05:00.000Z');
-  assert.equal(observation.source, 'apple_music');
-  assert.equal(observation.durationMs, 243_000);
-});
-
-test('dormant Tessie media rejects paused, unavailable, and incomplete playback', () => {
-  assert.equal(tessieMediaObservation({ available: true, isPlaying: false, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
-  assert.equal(tessieMediaObservation({ available: false, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song', artist: 'Artist' }, '2026-08-30T15:00:00.000Z'), null);
-  assert.equal(tessieMediaObservation({ available: true, isPlaying: true, sampledAt: '2026-08-30T15:05:00.000Z', track: 'Song' }, '2026-08-30T15:00:00.000Z'), null);
+test('Tessie now-playing is not used as a song recorder', () => {
+  const capture = fs.readFileSync(path.join(root, 'src', 'music-capture.ts'), 'utf8');
+  const automatic = fs.readFileSync(path.join(root, 'src', 'automatic-drive-task.ts'), 'utf8');
+  const location = fs.readFileSync(path.join(root, 'src', 'location-task.ts'), 'utf8');
+  for (const source of [capture, automatic, location]) assert.doesNotMatch(source, /sampleTessieMediaForActiveSession|tessieMediaObservation/);
 });
 
 test('dormant Tessie refresh remains local-first and privacy-edge bounded', () => {
@@ -57,10 +39,10 @@ test('dormant vehicle intelligence retains its requested data surfaces', () => {
   for (const category of ['home', 'work', 'school', 'favorite', 'custom']) assert.match(screen, new RegExp(`'${category}'`));
 });
 
-test('V3 TestFlight vehicle intelligence is reachable from Tessie setup', () => {
-  assert.match(shell, /VehicleIntelligenceScreen/);
-  assert.match(shell, /setVehicleIntelligenceVisible\(true\)/);
-  assert.match(shell, /TESSIE_INTEGRATION_ENABLED && <TessieSetupScreen/);
+test('V3 Tessie connection lives in Settings and keeps primary navigation stable', () => {
+  assert.match(shell, /TessieConnectionCard/);
+  assert.match(shell, /tessieContent/);
+  assert.match(connectionCard, /token is stored in this device’s Keychain and sent securely to the privacy edge/);
   assert.doesNotMatch(shell, /id: 'vehicle'/);
   assert.doesNotMatch(shell, /id: 'charging'/);
   assert.doesNotMatch(shell, /id: 'places'/);

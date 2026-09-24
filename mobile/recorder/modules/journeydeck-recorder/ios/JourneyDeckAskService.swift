@@ -19,8 +19,11 @@ private final class AskArchive {
       if let db { sqlite3_close(db) }; db = nil; throw AskFailure.unavailable
     }
     sqlite3_busy_timeout(db, 1000)
+    // Tessie migrations 10–11 only add metadata tables/columns. Ask continues
+    // reading the unchanged schema-9 archive contract; unknown versions fail closed.
     guard try rows("PRAGMA application_id", []).first?["application_id"] as? Int64 == 0x4a444c31,
-          try rows("PRAGMA user_version", []).first?["user_version"] as? Int64 == 9 else { throw AskFailure.unavailable }
+          let archiveVersion = try rows("PRAGMA user_version", []).first?["user_version"] as? Int64,
+          (9...11).contains(archiveVersion) else { throw AskFailure.unavailable }
   }
   deinit { if let db { sqlite3_close(db) } }
   static func resource(_ name: String, _ ext: String) throws -> Data {
@@ -125,7 +128,7 @@ public final class JourneyDeckAskService: NSObject {
       }
   }
   private var available: Bool {
-    Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3" &&
+    ["com.journeydeck.recorder.v3", "com.journeydeck.recorder"].contains(Bundle.main.bundleIdentifier ?? "") &&
       Bundle.main.object(forInfoDictionaryKey: "JourneyDeckAskEnabled") as? Bool == true &&
       UIApplication.shared.isProtectedDataAvailable
   }
@@ -142,6 +145,10 @@ public final class JourneyDeckAskService: NSObject {
          transaction.expirationDate.map({ $0 > now }) ?? true { return Date(timeIntervalSince1970: 0) }
     }
     return now.addingTimeInterval(-45 * 86400)
+  }
+  public func hasVerifiedFullHistory() async -> Bool {
+    guard available else { return false }
+    return await cutoff(Date()) == Date(timeIntervalSince1970: 0)
   }
   public func answer(question: String, expectedUserID: String? = nil, contextToken: String? = nil, siri: Bool = false) async -> [String: Any] {
     await respond(question: question, expectedUserID: expectedUserID, contextToken: contextToken, siri: siri, savedPlan: nil)

@@ -55,8 +55,8 @@ test('Data Health exposes exact aggregate isolation counts and a safe return pat
 test('legacy device credentials can only be claimed by a normal profile', () => {
   assert.match(profileSecrets, /profileKey\(base\)/);
   assert.match(profileSecrets, /legacy-owner-v1/);
-  assert.match(profileSecrets, /isIsolationTestProfile\(\)/);
-  assert.ok(profileSecrets.indexOf('isIsolationTestProfile()') < profileSecrets.indexOf('SecureStore.setItemAsync(ownerKey'));
+  assert.match(profileSecrets, /isIsolationTestProfile\(user\)/);
+  assert.ok(profileSecrets.indexOf('isIsolationTestProfile(user)') < profileSecrets.indexOf('SecureStore.setItemAsync(ownerKey'));
 });
 
 test('music, owner Spotify, and Tessie credentials are profile-scoped', () => {

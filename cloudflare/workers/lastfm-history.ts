@@ -5,6 +5,7 @@ type LastFmTrack = {
   name?: unknown;
   artist?: { '#text'?: unknown };
   album?: { '#text'?: unknown };
+  image?: { size?: unknown; '#text'?: unknown }[];
   url?: unknown;
   date?: { uts?: unknown };
   '@attr'?: { nowplaying?: unknown };
@@ -29,6 +30,20 @@ function cleanHttpsUrl(value: unknown) {
   catch { return null; }
 }
 
+function artworkUrl(images: LastFmTrack['image']) {
+  if (!Array.isArray(images)) return null;
+  for (const size of ['extralarge', 'large', 'medium', 'small']) {
+    const candidate = cleanHttpsUrl(images.find(image => image?.size === size)?.['#text']);
+    if (!candidate) continue;
+    const url = new URL(candidate);
+    if (!['lastfm.freetls.fastly.net', 'lastfm-img2.akamaized.net'].includes(url.hostname)) continue;
+    // Last.fm uses this image for tracks with no known album cover.
+    if (url.pathname.includes('2a96cbd8b46e442fc41c2b86b821562f')) continue;
+    return candidate;
+  }
+  return null;
+}
+
 export async function handleLastFmHistory(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405, { Allow: 'POST', 'Cache-Control': 'no-store' });
   const body = await readBoundedJson(request);
@@ -46,7 +61,7 @@ export async function handleLastFmHistory(request: Request, env: Env): Promise<R
   const limited = await enforceRateLimit(env.LASTFM_RATE_LIMITER, await opaqueKey('lastfm', username), 'Try Last.fm again in a minute');
   if (limited) return limited;
 
-  const tracks: { playedAt: string; track: string; artist: string; album: string | null; externalUrl: string | null }[] = [];
+  const tracks: { playedAt: string; track: string; artist: string; album: string | null; artworkUrl: string | null; externalUrl: string | null }[] = [];
   const paddedFrom = Math.floor((from - 120_000) / 1_000);
   const paddedTo = Math.ceil((to + 120_000) / 1_000);
   for (let page = 1; page <= 5; page += 1) {
@@ -65,7 +80,8 @@ export async function handleLastFmHistory(request: Request, env: Env): Promise<R
       if (!Number.isFinite(playedSeconds) || !track || !artist) continue;
       const playedAt = playedSeconds * 1_000;
       if (playedAt < from - 120_000 || playedAt > to + 120_000) continue;
-      tracks.push({ playedAt: new Date(playedAt).toISOString(), track, artist, album: clean(value.album?.['#text']) || null, externalUrl: cleanHttpsUrl(value.url) });
+      tracks.push({ playedAt: new Date(playedAt).toISOString(), track, artist, album: clean(value.album?.['#text']) || null,
+        artworkUrl: artworkUrl(value.image), externalUrl: cleanHttpsUrl(value.url) });
     }
     const totalPages = Math.max(1, Number(payload.recenttracks?.['@attr']?.totalPages) || 1);
     if (page >= totalPages || values.length < 200) break;

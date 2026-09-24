@@ -41,12 +41,10 @@ Stop the services with `docker compose --profile public stop`; restart them with
 `docker compose --profile public up -d`. Do not use `docker compose down -v`,
 which removes the database and update files.
 
-This local HTTP address is only for desktop setup and testing. An installed
-iPhone build needs the public HTTPS `BASE_URL` and a new native build containing
-the xprem URL and its public signing certificate. The configured
-`XPREM_BASE_URL` is `https://ota.journeydeck.me`.
-Existing builds continue using Expo Updates. The repository's guarded OTA
-publisher continues to target Expo for those builds. The V3 app configuration
-and guarded xprem publisher for future native builds are prepared in the
-schema-11 checkout at `C:\Users\patri\JourneyDeckv3-origin-main-20260922`.
-No xprem update or new native build has been published.
+This local HTTP address is only for desktop setup and testing. The configured
+`XPREM_BASE_URL` is `https://ota.journeydeck.me`. Build 38 embeds that HTTPS
+manifest URL and the public signing certificate for runtime
+`3.0.0-preview.6`. Build 36 and earlier installed builds continue using Expo
+Updates; the guarded `ota:publish` command serves those builds. The guarded
+`xprem:publish` command serves compatible V3 xprem builds. No xprem update has
+been published.

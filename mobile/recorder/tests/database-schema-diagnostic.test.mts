@@ -4,8 +4,8 @@ import test from 'node:test';
 import { databaseSchemaDiagnostic } from '../src/database-schema-diagnostic.ts';
 
 test('startup identifies the main archive version without reading or changing data', () => {
-  assert.deepEqual(databaseSchemaDiagnostic(new Error('JourneyDeck local archive schema 10 is newer than this app supports.')),
-    { source: 'archive', found: 10, supported: 9 });
+  assert.deepEqual(databaseSchemaDiagnostic(new Error('JourneyDeck local archive schema 12 is newer than this app supports.')),
+    { source: 'archive', found: 12, supported: 11 });
 });
 
 test('startup distinguishes an old recorder file and excludes unrelated errors', () => {

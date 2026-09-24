@@ -167,6 +167,12 @@ test('JS-to-native bridge rejects profile changes and invalid links without quer
   const pending = deferred();
   const bridge = load('ask-journeydeck.ts', {
     expo: { requireOptionalNativeModule: () => ({ askJourneyDeckAsync: () => { asked++; return pending.promise; }, resolveJourneyDeckAnswerAsync: async () => { resolved++; return result(); } }) },
+    'expo-crypto': { randomUUID: () => ticket },
+    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+    './ask-journeydeck-archive': { currentAskProfile: () => ({ id: current, epoch: 'epoch' }), readAskSnapshot: () => { throw new Error('Native fallback test'); } },
+    './ask-journeydeck-local': { createLocalAskRuntime: () => ({ ask: async () => null, resolve: async () => null, clear() {} }) },
+    './database-startup': { prepareJourneyDeckDatabase: async () => {} },
+    '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: false, tier: 'free' }) },
     './local-store': { getActiveLocalUserId: () => current }, './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true },
   });
   await assert.rejects(() => bridge.askJourneyDeck('b', 'How many miles?'), /profile changed/); assert.equal(asked, 0);

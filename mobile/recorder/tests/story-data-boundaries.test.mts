@@ -10,6 +10,17 @@ function evaluate(code: string, globals: Record<string, unknown>) {
   vm.runInNewContext(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports, ...globals });
   return exports;
 }
+
+test('cached journey detail cannot restore an unverified Tessie song position', () => {
+  const block = source.slice(source.indexOf('function mergeJourneyWithLocalDetail('), source.indexOf('function mergeLocalJourneyPage('));
+  const merge = evaluate(block + '\nexports.merge = mergeJourneyWithLocalDetail;', { soundtrackKey: (track: any) => track.id }).merge;
+  const track = { id: 'song', playedAt: '2026-09-21T12:15:00Z', track: 'Song', artist: 'Artist' };
+  const cached = { soundtrack: [{ ...track, mapCoordinate: [-97, 32] }], songCount: 1 };
+  const local = { soundtrack: [{ ...track, mapCoordinate: null, requiresTimedCoordinate: true }] };
+  const result = merge(cached, local);
+  assert.equal(result.soundtrack[0].mapCoordinate, null);
+  assert.equal(result.soundtrack[0].requiresTimedCoordinate, true);
+});
 test('a saved trim beats a larger cached original; retired split parts cannot reappear from cache', async () => {
   let local: any = { id: 'edited', startedAt: 'new-start', songCount: 0, soundtrack: [], route: { coordinates: [[0, 0], [1, 1]] } };
   const client = evaluate(`const client = {${source.slice(source.indexOf('  async journey(id:'), source.indexOf('  async vehicleIntelligence('))}}; exports.client = client;`, {

@@ -1,5 +1,6 @@
 import { getCurrentUser } from './auth';
 import { isInternalTestingBuild } from './internal-testing';
+import { V3_LASTFM_ENABLED } from './release-features';
 import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 import { deleteProfileSecret, deleteProfileSecretAndOwnedLegacy, loadProfileSecret, saveProfileSecret } from './profile-secure-store';
 
@@ -20,14 +21,10 @@ function isMusicProvider(value: unknown): value is MusicProvider {
   return value === 'apple-music' || value === 'shazam' || value === 'lastfm' || value === 'spotify-direct';
 }
 
-/**
- * Last.fm and direct Spotify are owner-preview integrations. Keep their
- * persisted data intact for an internal build, but never make either path
- * selectable or runnable by a public build until the commercial permissions
- * and review scope are complete.
- */
+/** Last.fm is approved for V3; direct Spotify stays in internal preview. */
 export function isMusicProviderAvailable(provider: MusicProvider): boolean {
-  return provider === 'apple-music' || provider === 'shazam' || isInternalTestingBuild();
+  return provider === 'apple-music' || provider === 'shazam'
+    || (provider === 'lastfm' && V3_LASTFM_ENABLED) || isInternalTestingBuild();
 }
 
 function availableProvider(value: unknown): MusicProvider | null {
@@ -68,8 +65,8 @@ export async function saveLastFmUsername(username: string) {
     await Promise.all([deleteProfileSecret(LASTFM_USERNAME_KEY), deleteProfileSecret(LASTFM_CONNECTED_USERNAME_KEY)]);
     return;
   }
-  if (!/^[A-Za-z0-9_-]{1,32}$/.test(normalized)) {
-    throw new Error('Enter a valid Last.fm username using letters, numbers, underscores, or hyphens.');
+  if (!/^[A-Za-z][A-Za-z0-9_-]{1,14}$/.test(normalized)) {
+    throw new Error('Use 2–15 characters, starting with a letter. Only letters, numbers, underscores, and hyphens are allowed.');
   }
   const connected = await loadProfileSecret(LASTFM_CONNECTED_USERNAME_KEY);
   await saveProfileSecret(LASTFM_USERNAME_KEY, normalized);
@@ -78,7 +75,7 @@ export async function saveLastFmUsername(username: string) {
 
 export async function markLastFmConnected(username: string) {
   const normalized = username.trim();
-  if (/^[A-Za-z0-9_-]{1,32}$/.test(normalized)) await saveProfileSecret(LASTFM_CONNECTED_USERNAME_KEY, normalized);
+  if (/^[A-Za-z][A-Za-z0-9_-]{1,14}$/.test(normalized)) await saveProfileSecret(LASTFM_CONNECTED_USERNAME_KEY, normalized);
 }
 
 export async function isLastFmConnected(username: string) {

@@ -1,8 +1,6 @@
 import ExpoModulesCore
 import Photos
-import PhotosUI
 import UIKit
-import CoreLocation
 #if canImport(SensitiveContentAnalysis)
 import SensitiveContentAnalysis
 #endif
@@ -18,13 +16,8 @@ public final class JourneyDeckPhotoLibraryModule: Module {
   public func definition() -> ModuleDefinition {
     Name("JourneyDeckPhotoLibrary")
     AsyncFunction("getStatusAsync") { () async -> [String: Any] in await self.status() }
-    AsyncFunction("requestPermissionAsync") { () async -> [String: Any] in
-      _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-      return await self.status()
-    }
-    AsyncFunction("manageLimitedSelectionAsync") { () async throws in try await self.manageLimitedSelection() }
-    AsyncFunction("scanAsync") { (scanID: String, windows: [[String: Double]]) async throws -> [String: Any] in
-      try await self.scan(scanID, windows: windows)
+    AsyncFunction("adoptScanAsync") { (scanID: String, windows: [[String: Double]], assetIDs: [String]) async throws -> [String] in
+      try await self.adoptScan(scanID, windows: windows, assetIDs: assetIDs)
     }
     AsyncFunction("previewAsync") { (scanID: String, assetID: String) async throws -> [String: Any] in
       try await self.preview(scanID, assetID: assetID)
@@ -60,26 +53,18 @@ public final class JourneyDeckPhotoLibraryModule: Module {
     return ["permission": permission, "sensitivityAvailable": sensitivityAvailable]
   }
 
-  @MainActor private func manageLimitedSelection() throws {
-    guard PHPhotoLibrary.authorizationStatus(for: .readWrite) == .limited,
-      let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
-      var controller = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-      throw failure("Open Photos access in Settings to choose which photos JourneyDeck can see.")
+  @MainActor private func adoptScan(_ scanID: String, windows: [[String: Double]], assetIDs: [String]) throws -> [String] {
+    guard canRead(), UIApplication.shared.applicationState == .active else {
+      throw failure("Allow access to selected photos before looking for matches.")
     }
-    while let presented = controller.presentedViewController { controller = presented }
-    PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: controller)
-  }
-
-  @MainActor private func scan(_ scanID: String, windows: [[String: Double]]) throws -> [String: Any] {
-    guard canRead() else { throw failure("Allow access to selected photos before looking for matches.") }
     guard !cancelledScans.contains(scanID), !scanID.isEmpty, scanID.count <= 100,
-      !windows.isEmpty, windows.count <= 30 else { throw failure("This photo review has ended. Start a fresh search.") }
-    var predicates: [NSPredicate] = []
+      !windows.isEmpty, windows.count <= 30, assetIDs.count <= 400,
+      Set(assetIDs).count == assetIDs.count else { throw failure("This photo review has ended. Start a fresh search.") }
+    var ranges: [ClosedRange<Date>] = []
     for window in windows {
       guard let start = window["startMs"], let end = window["endMs"], start.isFinite, end.isFinite,
         end >= start, end - start <= 31 * 86400_000 else { throw failure("Choose journeys with valid dates for photo matching.") }
-      predicates.append(NSPredicate(format: "creationDate >= %@ AND creationDate <= %@",
-        Date(timeIntervalSince1970: start / 1000) as NSDate, Date(timeIntervalSince1970: end / 1000) as NSDate))
+      ranges.append(Date(timeIntervalSince1970: start / 1000)...Date(timeIntervalSince1970: end / 1000))
     }
     if let previous = activeScanID { cancel(previous) }
     activeScanID = scanID
@@ -87,28 +72,16 @@ public final class JourneyDeckPhotoLibraryModule: Module {
     let options = PHFetchOptions()
     options.includeHiddenAssets = false
     options.includeAllBurstAssets = false
-    options.fetchLimit = 401
-    options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-    options.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [
-      NSPredicate(format: "mediaType == %d", PHAssetMediaType.image.rawValue),
-      NSCompoundPredicate(orPredicateWithSubpredicates: predicates),
-    ])
-    let fetched = PHAsset.fetchAssets(with: options)
-    var assets: [[String: Any]] = []
-    let formatter = ISO8601DateFormatter()
-    fetched.enumerateObjects { asset, index, stop in
-      if index >= 400 { stop.pointee = true; return }
-      guard !asset.isHidden, !asset.mediaSubtypes.contains(.photoScreenshot), let createdAt = asset.creationDate else { return }
-      var record: [String: Any] = ["id": asset.localIdentifier, "createdAtUtc": formatter.string(from: createdAt),
-        "width": asset.pixelWidth, "height": asset.pixelHeight]
-      if let location = asset.location, CLLocationCoordinate2DIsValid(location.coordinate), location.horizontalAccuracy >= 0 {
-        record["latitude"] = location.coordinate.latitude
-        record["longitude"] = location.coordinate.longitude
-      }
-      assets.append(record)
+    let fetched = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: options)
+    var approved: [String] = []
+    fetched.enumerateObjects { asset, _, _ in
+      guard asset.mediaType == .image, !asset.isHidden,
+        !asset.mediaSubtypes.contains(.photoScreenshot), let createdAt = asset.creationDate,
+        ranges.contains(where: { $0.contains(createdAt) }) else { return }
+      approved.append(asset.localIdentifier)
       self.allowedAssets.insert(asset.localIdentifier)
     }
-    return ["scanId": scanID, "assets": assets, "truncated": fetched.count > 400]
+    return approved
   }
 
   @MainActor private func selectedAsset(_ scanID: String, assetID: String) throws -> PHAsset {

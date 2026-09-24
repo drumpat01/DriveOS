@@ -61,6 +61,7 @@ test('Monday-first calendar and local day iteration work across month and DST bo
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 let light: boolean | 'sakura' | 'redline' | 'midnight-canopy' = false, fontScale = 1;
 let adaptiveFold: any = null;
+let tessieEnabled = false, tessieRangeSeen: any = null;
 const native = { Platform: { OS: 'ios', isPad: true }, StyleSheet: { create: (v: any) => v, hairlineWidth: 1 }, useWindowDimensions: () => ({ fontScale }),
   ...Object.fromEntries(['View', 'Text', 'ScrollView', 'Pressable', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])) };
 const gridLayout = load('device-layout.ts', { 'react-native': native });
@@ -82,9 +83,79 @@ const ui = load('ipad-statistics-screen.tsx', {
   './journey-title': load('journey-title.ts'), './ipad-statistics-model': model, './device-layout': gridLayout,
   './theme-material': { ThemeMaterial: host('ThemeMaterial') },
   './adaptive-layout': { useAdaptiveLayout: () => ({ fold: adaptiveFold }), verticalFoldContentColumns: (fold: any, padding: number) => fold?.axis === 'vertical' ? { beforeWidth: fold.before.width - padding, afterWidth: fold.after.width - padding, gap: fold.frame.width } : null },
+  './app-data': { localAtlasClient: { tessieStatistics: (_userId: string, range: unknown) => { tessieRangeSeen = range; return tessieFixture; } } },
+  './auth': { getCurrentUser: () => ({ id: 'profile-one' }) },
+  './tessie-direct': { tessieDirectStatus: async () => 'not_connected' },
+  './release-features': { get TESSIE_INTEGRATION_ENABLED() { return tessieEnabled; } },
 });
 const text = (tree: any) => tree.root.findAllByType('Text').map((n: any) => n.children.join('')).join('|');
 const button = (tree: any, label: string) => tree.root.findAllByType('Pressable').find((n: any) => n.props.accessibilityLabel === label);
+const tessieFixture = {
+  range: { startInclusive: '2026-09-01T00:00:00.000Z', endExclusive: '2026-10-01T00:00:00.000Z' },
+  drivingEfficiency: { journeys: 2, measuredJourneys: 1, measuredMiles: 10, energyUsedKwh: 0, whPerMile: 0 },
+  energyByJourney: [{ journeyId: 'tessie-known-zero', startedAt: '2026-09-05T10:00:00.000Z', miles: 10, energyUsedKwh: 0, whPerMile: 0, vehicleName: 'Model Y', startingLocation: 'Home', endingLocation: 'Museum' },
+    { journeyId: 'tessie-unknown', startedAt: '2026-09-04T10:00:00.000Z', miles: 5, energyUsedKwh: null, whPerMile: null, vehicleName: 'Model Y', startingLocation: 'Museum', endingLocation: 'Park' }],
+  chargingOnRoad: { sessions: 1, measuredSessions: 0, energyAddedKwh: null, durationMinutes: 20, charges: [{ id: 'charge-one', journeyId: 'tessie-known-zero', startedAt: '2026-09-05T11:00:00.000Z', location: 'Supercharger', energyAddedKwh: null, durationMinutes: 20, batteryGainedPercent: null }] },
+  repeatedRoutes: [{ vehicleKey: 'car-one', startingLocation: 'Home', endingLocation: 'Museum', journeys: 3, journeyIds: ['tessie-known-zero', 'tessie-unknown', 'tessie-third'], totalMiles: 25, measuredJourneys: 1, measuredMiles: 10, averageWhPerMile: 0, bestWhPerMile: 0, worstWhPerMile: 0 }],
+};
+
+test('Tessie statistics share the selected period, distinguish unknown from measured zero, and navigate journeys', async () => {
+  let tree: any, opened = '';
+  tessieEnabled = true; tessieRangeSeen = null;
+  const props = { state: { status: 'ready', data: { journeys: [], details: [] } }, historyDays: null, compact: true, onRefresh() {}, onJourney(id: string) { opened = id; }, onUpgrade() {} };
+  const flatten = (style: any) => Object.assign({}, ...[style].flat(Infinity).filter(Boolean));
+  try {
+    await act(async () => { tree = create(React.createElement(ui.IpadStatisticsScreen, props)); });
+    await act(() => tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-statistics-canvas').props.onLayout({ nativeEvent: { layout: { width: 320 } } }));
+    assert.ok(tessieRangeSeen.startInclusive.endsWith('Z'));
+    assert.ok(tessieRangeSeen.endExclusive.endsWith('Z'));
+    assert.ok(Date.parse(tessieRangeSeen.endExclusive) > Date.parse(tessieRangeSeen.startInclusive));
+    const tessieButton = button(tree, 'Tessie');
+    assert.equal(tessieButton.props.accessibilityRole, 'button');
+    await act(async () => tessieButton.props.onPress());
+    for (const id of ['tessie-driving-efficiency', 'tessie-energy-by-journey', 'tessie-charging-on-road', 'tessie-route-comparison']) {
+      assert.ok(tree.root.findByProps({ testID: id }), `${id} is present`);
+    }
+    const rendered = text(tree);
+    assert.match(rendered, /disconnected/i);
+    assert.match(rendered, /Unknown/);
+    assert.match(rendered, /0 kWh/);
+    assert.match(rendered, /0 Wh\/mi/);
+    assert.match(rendered, /Model Y · Home → Museum/);
+    const journeyButton = button(tree, 'Open Tessie journey Home → Museum');
+    assert.ok(journeyButton);
+    await act(() => journeyButton.props.onPress());
+    assert.equal(opened, 'tessie-known-zero');
+    const routeJourney = button(tree, 'Open Journey 2 for route Home → Museum');
+    assert.ok(routeJourney, 'route comparisons expose more than one matching journey');
+    await act(() => routeJourney.props.onPress());
+    assert.equal(opened, 'tessie-unknown');
+    const showAllRoutes = button(tree, 'Show all 3 route journeys');
+    await act(() => showAllRoutes.props.onPress());
+    assert.equal(button(tree, 'Show fewer route journeys').props.accessibilityState.expanded, true);
+    const thirdRouteJourney = button(tree, 'Open Journey 3 for route Home → Museum');
+    assert.ok(thirdRouteJourney, 'expanded route comparison exposes every journey');
+    await act(() => thirdRouteJourney.props.onPress());
+    assert.equal(opened, 'tessie-third');
+    fontScale = 1.4;
+    await act(() => tree.update(React.createElement(ui.IpadStatisticsScreen, props)));
+    const sectionRow = tree.root.findAllByType('View').find((node: any) => flatten(node.props.style).flexWrap === 'wrap');
+    assert.ok(sectionRow, 'compact section choices wrap for narrow, enlarged layouts');
+    fontScale = 1;
+    const fullProps = { ...props, compact: false };
+    await act(() => tree.update(React.createElement(ui.IpadStatisticsScreen, fullProps)));
+    const canvas = () => tree.root.findAllByType('View').find((node: any) => node.props.testID === 'ipad-statistics-canvas');
+    await act(() => canvas().props.onLayout({ nativeEvent: { layout: { width: 1247 } } }));
+    const panels = tree.root.findByProps({ testID: 'tessie-statistics-panels' });
+    const firstPanelWidth = () => tree.root.findByProps({ testID: 'tessie-statistics-panels' }).findAllByType('View').map((view: any) => flatten(view.props.style).width).find((value: unknown) => typeof value === 'number' || value === '100%');
+    assert.equal(firstPanelWidth(), gridLayout.ipadGridSpan(1247, 3), 'wide iPad uses half-width panels');
+    await act(() => canvas().props.onLayout({ nativeEvent: { layout: { width: 500 } } }));
+    assert.equal(firstPanelWidth(), '100%', 'narrow canvas stacks Tessie panels');
+  } finally {
+    tessieEnabled = false; fontScale = 1;
+    await act(() => tree?.unmount());
+  }
+});
 
 test('Autumn iPad metric highlights form complete card borders and never use background greens', async () => {
   let tree: any;

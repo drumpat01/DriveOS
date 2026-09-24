@@ -9,30 +9,12 @@ const sharp = createRequire(import.meta.url)('sharp');
 const projectRoot = new URL('../', import.meta.url);
 const read = (path: string) => readFile(new URL(path, projectRoot), 'utf8');
 
-test('the approved medallions are backed by a pinned Minted native module', async () => {
-  const [config, podspec, swift, bridge] = await Promise.all([
-    read('modules/journeydeck-keepsakes/expo-module.config.json'),
-    read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakes.podspec'),
-    read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakesModule.swift'),
-    read('modules/journeydeck-keepsakes/index.tsx'),
-  ]);
-
-  assert.deepEqual(JSON.parse(config).apple?.modules, ['JourneyDeckKeepsakesModule']);
-  assert.match(podspec, /:ios => '17\.0'/);
-  assert.match(podspec, /github\.com\/haplollc\/Minted\.git/);
-  assert.match(podspec, /kind: 'exactVersion', version: '1\.1\.1'/);
-  assert.match(podspec, /products: \['Minted'\]/);
-  assert.match(swift, /import Minted/);
-  // Build 28's native module is unchanged. The OTA bypasses its renderer.
-  assert.match(swift, /Constant\("assetCatalogVersion"\) \{ 3 \}/);
+test('approved medallions render through Expo DOM without the unused Minted module', async () => {
+  const bridge = await read('modules/journeydeck-keepsakes/index.tsx');
   assert.doesNotMatch(bridge, /requireNativeView|JourneyDeckKeepsakesModule/);
   assert.match(bridge, /ExpoDomWebViewModule/);
-  assert.match(swift, /node\?\.eulerAngles\.y = 0/);
-  assert.match(swift, /required init\(appContext: AppContext\? = nil\)/);
-  assert.match(swift, /Prop\("artworkUri"\)/);
-  assert.match(swift, /url\.isFileURL/);
-  assert.doesNotMatch(swift, /private static let achievements/);
-  assert.match(swift, /Drag left or right to rotate the medallion/);
+  await assert.rejects(read('modules/journeydeck-keepsakes/expo-module.config.json'), /ENOENT/);
+  await assert.rejects(read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakes.podspec'), /ENOENT/);
 });
 
 test('all 50 theme faces stay in the OTA artwork catalog instead of the native bundle', async () => {
@@ -60,8 +42,7 @@ test('all 50 theme faces stay in the OTA artwork catalog instead of the native b
     assert.ok(Math.abs(frame.width * width - frame.height * height) < width * .03, key + ' orthographic circle');
     assert.ok(catalog.includes('../assets/medallions-v2/runtime/' + key + '.webp'), key + ' uses recreated art');
   }
-  const podspec = await read('modules/journeydeck-keepsakes/ios/JourneyDeckKeepsakes.podspec');
-  assert.doesNotMatch(podspec, /resource_bundles/);
+  assert.doesNotMatch(catalog, /JourneyDeckKeepsakesModule/);
 });
 
 test('Achievements moves keepsakes out of Memories and into Settings', async () => {
@@ -103,6 +84,6 @@ test('Achievements moves keepsakes out of Memories and into Settings', async () 
   assert.match(achievements, />WHY</);
   assert.match(achievements, /muted=\{!achievement\.earned\}/);
   assert.match(categories, /id: 'achievements', title: 'Achievements'/);
-  assert.match(appConfig, /v3 \? '3\.0\.0-preview\.4' : preview \? '2\.0\.0-preview\.14' : '2\.0\.0-watch\.9'/);
+  assert.match(appConfig, /v3 \? '3\.0\.0-preview\.6' : preview \? '2\.0\.0-preview\.14' : '2\.0\.0-watch\.9'/);
   assert.match(appConfig, /deploymentTarget: '17\.0'/);
 });

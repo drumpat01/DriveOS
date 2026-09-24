@@ -61,6 +61,8 @@ function harness() {
   const screen = load('ipad-statistics-screen.tsx', {
     'react-native': native, 'react-native-svg': svg, 'expo-symbols': { SymbolView: 'Symbol' },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', useSafeAreaInsets: () => ({ bottom: 0 }) },
+    './app-data': { localAtlasClient: {} }, './auth': { getCurrentUser: () => ({ id: 'fixture' }) },
+    './tessie-direct': { tessieDirectStatus: async () => 'not_connected' }, './release-features': { TESSIE_INTEGRATION_ENABLED: false },
     './statistics-motion': api, './haptics': { haptics: { selection: () => state.haptics++ } },
     './app-theme': { useAppTheme: () => testTheme('redline') },
     './delight-ui': { AdaptiveGlassSurface: 'GlassSurface' },

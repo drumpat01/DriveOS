@@ -1,5 +1,18 @@
-/** Tessie is enabled only in the V3 TestFlight manifest; V2 remains gated off. */
-export const TESSIE_INTEGRATION_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightTessieEnabled === true;
+import Constants from 'expo-constants';
+
+/**
+ * Public version-1 release gates.
+ *
+ * V2 is deliberately manual-recording only. Tessie is enabled by the V3 app
+ * variant; no V2 runtime, entitlement, onboarding step, setting, or screen
+ * may expose it.
+ */
+export const TESSIE_INTEGRATION_ENABLED: boolean = Constants.expoConfig?.extra?.features?.tessieEnabled === true;
+export const TESTFLIGHT_PLUS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.testflightPlusUnlocked === true;
+export const TESTFLIGHT_DATA_HEALTH_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightDataHealth === true;
+
+/** Preserve the approved Build 35 Last.fm flow without changing frozen V2. */
+export const V3_LASTFM_ENABLED: boolean = Constants.expoConfig?.extra?.features?.lastFmEnabled === true;
 
 /**
  * Build 13 safety fallback.
@@ -13,12 +26,8 @@ export const TESSIE_INTEGRATION_ENABLED: boolean = Constants.expoConfig?.extra?.
  */
 export const NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false;
 
-/** Atlas design testing is unlocked in V3 builds. */
+/** Atlas design testing is unlocked only by the isolated V3 preview build. */
 export const PREVIEW_ATLAS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.atlasUnlocked === true;
-
-/** TestFlight V3 can exercise Plus features without a sandbox transaction. */
-export const TESTFLIGHT_PLUS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.testflightPlusUnlocked === true;
-export const TESTFLIGHT_DATA_HEALTH_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightDataHealth === true;
 
 /** Source-only interaction lab exposed exclusively by the isolated V3 preview. */
 export const V3_MARKERS_PROTOTYPE_ENABLED: boolean = Constants.expoConfig?.extra?.features?.markerPrototype === true;
@@ -31,4 +40,3 @@ export const V3_ASK_JOURNEYDECK_ENABLED: boolean = Constants.expoConfig?.extra?.
 
 /** Approved forest appearance and alternate icon, isolated to the V3 preview. */
 export const V3_MIDNIGHT_CANOPY_ENABLED: boolean = Constants.expoConfig?.extra?.features?.midnightCanopy === true;
-import Constants from 'expo-constants';

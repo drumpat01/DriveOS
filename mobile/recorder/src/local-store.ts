@@ -14,8 +14,10 @@ import { migrateCompatMarkers } from './journey-marker-compat-data';
  *   or renamed -- new columns are added with sensible defaults.
  * - Privacy by design: raw home/work coordinates are stored only in the iOS
  *   application sandbox. They never cross the JourneyDeck application server.
- * - Exact GPS points leave the device only as private CloudKit route assets;
+ * - Recorder GPS points leave the device only as private CloudKit route assets;
  *   they never cross the JourneyDeck application server or privacy edge.
+ *   Optional Tessie historical points come from the provider through the
+ *   stateless privacy edge on a bounded, user-initiated route request.
  */
 
 import * as Crypto from 'expo-crypto';
@@ -38,6 +40,9 @@ import { getMasterDatabase, openMasterDatabase } from './database-owner';
 import { PRIVATE_PLACE_PREFIX, parsePrivatePlace, privatePlaceValue, savedPlaceLocalId } from './private-place-record';
 import { JOURNEY_MARKER_SCHEMA_SQL, JOURNEY_MARKER_SYNC_SCHEMA_SQL } from './journey-marker-schema';
 import { JOURNEY_EDITOR_SCHEMA_SQL } from './journey-editor-schema';
+import { TESSIE_JOURNEY_SCHEMA_SQL } from './tessie-journey-schema';
+import { tessieJourneyId, type TessieJourneyPlan } from './tessie-journey-plan';
+import type { TessieDriveRoute, TessieDriveSnapshot } from './tessie-contract';
 
 // --- Database handle (single shared connection, WAL mode) --------------------
 
@@ -487,6 +492,15 @@ const MIGRATIONS: Array<() => void> = [
   () => { db.execSync(JOURNEY_MARKER_SCHEMA_SQL); migrateCompatMarkers(db); },
   // Migration 9 -- revision-safe private-sync queues for Markers and photos.
   () => { db.execSync(JOURNEY_MARKER_SYNC_SCHEMA_SQL); },
+  // Migration 10 -- local Supercharger stops matched to imported Tessie drives.
+  () => { db.execSync(TESSIE_JOURNEY_SCHEMA_SQL); },
+  // Migration 11 -- distinguish missing provider energy from a measured zero.
+  () => { db.execSync(`
+    ALTER TABLE local_tessie_drive_metadata ADD COLUMN energy_observed INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE local_tessie_charge_markers ADD COLUMN energy_observed INTEGER NOT NULL DEFAULT 0;
+    UPDATE local_tessie_drive_metadata SET energy_observed=1 WHERE energy_used_kwh>0;
+    UPDATE local_tessie_charge_markers SET energy_observed=1 WHERE energy_added_kwh>0;
+  `); },
 ];
 
 const PLAYBACK_DEDUPE_REPAIR_KEY = 'repair.music-playback-dedupe.v1';
@@ -993,6 +1007,239 @@ export function getJourneyByLegacyDriveId(userId: LocalUserId, legacyDriveId: st
   return row ? rowToJourney(row) : null;
 }
 
+export type LocalTessieChargeMarker = {
+  id: string; startedAt: string; endedAt: string; location: string;
+  latitude: number | null; longitude: number | null;
+  arrivalBatteryPercent: number | null; departureBatteryPercent: number | null; energyAddedKwh: number | null;
+};
+
+export type LocalTessieDriveMetadata = {
+  startingLocation: string; endingLocation: string; startingBatteryPercent: number | null;
+  endingBatteryPercent: number | null; energyUsedKwh: number | null;
+};
+
+export function getTessieDriveMetadata(userId: LocalUserId, journeyId: string): LocalTessieDriveMetadata | null {
+  initializeLocalStore();
+  if (schemaVersion < 10) return null;
+  return db.getFirstSync<LocalTessieDriveMetadata>(`SELECT starting_location AS startingLocation,ending_location AS endingLocation,
+    starting_battery_percent AS startingBatteryPercent,ending_battery_percent AS endingBatteryPercent,
+    CASE WHEN energy_observed=1 THEN energy_used_kwh ELSE NULL END AS energyUsedKwh
+    FROM local_tessie_drive_metadata WHERE user_id=? AND journey_id=?;`, userId, journeyId);
+}
+
+/** Resolve provider replay IDs back to the durable journey without merging vehicles. */
+export function findTessieJourneyForDrive(userId: LocalUserId, drive: TessieDriveSnapshot): LocalJourney | null {
+  initializeLocalStore();
+  const exact = getJourney(userId, tessieJourneyId(userId, drive.id));
+  if (exact || schemaVersion < 10) return exact;
+  const candidates = db.getAllSync<{ id: string; startedAt: string; endedAt: string }>(`SELECT j.id,j.started_at AS startedAt,j.ended_at AS endedAt
+    FROM local_journeys j JOIN local_tessie_drive_metadata m ON m.journey_id=j.id AND m.user_id=j.user_id
+    WHERE j.user_id=? AND j.provider='tessie' AND m.vehicle_key=? AND j.started_at<? AND j.ended_at>?
+    ORDER BY j.started_at,j.id;`, userId, drive.vehicleKey, drive.endedAt, drive.startedAt);
+  const start = Date.parse(drive.startedAt), end = Date.parse(drive.endedAt);
+  const match = candidates.find(other => {
+    const otherStart = Date.parse(other.startedAt), otherEnd = Date.parse(other.endedAt);
+    const overlap = Math.min(end, otherEnd) - Math.max(start, otherStart);
+    return overlap > 0 && overlap / Math.min(end - start, otherEnd - otherStart) >= 0.8;
+  });
+  return match ? getJourney(userId, match.id) : null;
+}
+
+export function tessieJourneyNeedsRoute(userId: LocalUserId, driveId: string, journeyId = tessieJourneyId(userId, driveId)): boolean {
+  initializeLocalStore();
+  if (schemaVersion < 10) return false;
+  const id = journeyId;
+  const journey = getJourney(userId, id);
+  if (journey?.provider !== 'tessie' && journey) return false;
+  if (journey && isEditorManagedJourney(userId, id)) return false;
+  const route = db.getFirstSync<{ n: number; first: string; last: string }>(
+    'SELECT COUNT(*) AS n,MIN(recorded_at) AS first,MAX(recorded_at) AS last FROM local_gps_points WHERE journey_id=?;', id);
+  if (route && route.n >= 2 && journey && Date.parse(route.first) <= Date.parse(journey.startedAt) + 120_000
+    && Date.parse(route.last) >= Date.parse(journey.endedAt) - 120_000) return false;
+  const attempted = db.getFirstSync<{ route_attempted_at: string | null }>(
+    'SELECT route_attempted_at FROM local_tessie_drive_metadata WHERE user_id=? AND journey_id=?;', userId, id)?.route_attempted_at;
+  return !attempted || Date.now() - Date.parse(attempted) >= 5 * 60_000;
+}
+
+export function markTessieRouteAttempt(userId: LocalUserId, driveId: string, journeyId = tessieJourneyId(userId, driveId)): void {
+  initializeLocalStore();
+  if (schemaVersion < 10) return;
+  db.runSync('UPDATE local_tessie_drive_metadata SET route_attempted_at=? WHERE user_id=? AND journey_id=?;',
+    now(), userId, journeyId);
+}
+
+export function tessieRouteAttemptedAt(userId: LocalUserId, driveId: string, journeyId = tessieJourneyId(userId, driveId)): number {
+  initializeLocalStore();
+  if (schemaVersion < 10) return 0;
+  const row = db.getFirstSync<{ attempted: string | null }>(
+    'SELECT route_attempted_at AS attempted FROM local_tessie_drive_metadata WHERE user_id=? AND journey_id=?;',
+    userId, journeyId);
+  return Date.parse(row?.attempted ?? '') || 0;
+}
+
+/** Atomic, idempotent import. Only missing route data is added on repeat syncs. */
+export function persistTessieJourney(userId: LocalUserId, plan: TessieJourneyPlan, route: TessieDriveRoute | null): 'created' | 'updated' | 'unchanged' | 'overlap' {
+  initializeLocalStore();
+  if (schemaVersion < 10) return 'unchanged';
+  const drive = plan.drive, id = findTessieJourneyForDrive(userId, drive)?.id ?? tessieJourneyId(userId, drive.id);
+  if (route && route.driveId !== drive.id) throw new Error('Tessie route does not match the drive.');
+  const points = route?.routePoints ?? [];
+  let outcome: 'created' | 'updated' | 'unchanged' | 'overlap' = 'unchanged';
+  db.withTransactionSync(() => {
+    const existing = getJourney(userId, id);
+    if ((existing && existing.provider !== 'tessie') || isEditorManagedJourney(userId, id)) return;
+    const containsExisting = !existing || (drive.startedAt <= existing.startedAt && drive.endedAt >= existing.endedAt);
+    if (existing && containsExisting && (drive.startedAt !== existing.startedAt || drive.endedAt !== existing.endedAt)) {
+      const minutes = (Date.parse(drive.endedAt) - Date.parse(drive.startedAt)) / 60_000;
+      db.runSync(`UPDATE local_journeys SET started_at=?,ended_at=?,duration_minutes=?,miles=?,average_speed_mph=?,
+        synced_to_cloud=0,updated_at=? WHERE id=? AND user_id=?;`, drive.startedAt, drive.endedAt, minutes,
+        drive.miles, drive.miles / (minutes / 60), now(), id, userId);
+      db.runSync('UPDATE local_tessie_drive_metadata SET route_attempted_at=NULL WHERE user_id=? AND journey_id=?;', userId, id);
+      outcome = 'updated';
+    }
+    let duplicateJourneyId: string | null = null;
+    if (!existing) {
+      const overlaps = db.getAllSync<{ id: string; provider: string | null; vehicleKey: string | null; startedAt: string; endedAt: string }>(
+        `SELECT j.id,j.provider,m.vehicle_key AS vehicleKey,j.started_at AS startedAt,j.ended_at AS endedAt
+         FROM local_journeys j LEFT JOIN local_tessie_drive_metadata m ON m.journey_id=j.id
+         WHERE j.user_id=? AND j.started_at<? AND j.ended_at>?;`, userId, drive.endedAt, drive.startedAt);
+      const start = Date.parse(drive.startedAt), end = Date.parse(drive.endedAt);
+      const duplicate = overlaps.find(other => {
+        if (other.provider === 'tessie' && other.vehicleKey !== drive.vehicleKey) return false;
+        const otherStart = Date.parse(other.startedAt), otherEnd = Date.parse(other.endedAt);
+        const overlap = Math.min(end, otherEnd) - Math.max(start, otherStart);
+        const reference = other.provider === 'tessie'
+          ? Math.min(end - start, otherEnd - otherStart)
+          : Math.max(end - start, otherEnd - otherStart);
+        return overlap > 0 && overlap / reference >= 0.8;
+      });
+      if (duplicate) {
+        outcome = 'overlap';
+        if (duplicate.provider !== 'tessie') return;
+        duplicateJourneyId = duplicate.id;
+      }
+    }
+    if (!existing && !duplicateJourneyId) {
+      const start = Date.parse(drive.startedAt), end = Date.parse(drive.endedAt);
+      const first = points[0], last = points.at(-1);
+      const durationMinutes = (end - start) / 60_000;
+      const averageSpeed = durationMinutes > 0 ? drive.miles / (durationMinutes / 60) : null;
+      const timestamp = now();
+      db.runSync(`INSERT INTO local_journeys(id,user_id,legacy_drive_id,started_at,ended_at,duration_minutes,miles,
+        start_lat,start_lng,end_lat,end_lng,start_place_id,end_place_id,average_speed_mph,max_speed_mph,
+        song_count,vehicle_name,provider,synced_to_cloud,created_at,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'tessie',0,?,?);`,
+      id, userId, drive.id, drive.startedAt, drive.endedAt, durationMinutes, drive.miles,
+      first?.latitude ?? null, first?.longitude ?? null, last?.latitude ?? null, last?.longitude ?? null,
+      null, null, averageSpeed, null, 0, drive.vehicleName, timestamp, timestamp);
+      outcome = 'created';
+    }
+    if (!duplicateJourneyId && containsExisting) {
+      const metadata = db.getFirstSync<LocalTessieDriveMetadata & { vehicleKey: string; energyObserved: number }>(`SELECT vehicle_key AS vehicleKey,
+        starting_location AS startingLocation,ending_location AS endingLocation,
+        starting_battery_percent AS startingBatteryPercent,ending_battery_percent AS endingBatteryPercent,
+        energy_used_kwh AS energyUsedKwh,energy_observed AS energyObserved
+        FROM local_tessie_drive_metadata WHERE user_id=? AND journey_id=?;`, userId, id);
+      if (!metadata || metadata.vehicleKey !== drive.vehicleKey || metadata.startingLocation !== drive.startingLocation
+        || metadata.endingLocation !== drive.endingLocation || metadata.startingBatteryPercent !== drive.startingBatteryPercent
+        || metadata.endingBatteryPercent !== drive.endingBatteryPercent || metadata.energyUsedKwh !== drive.energyUsedKwh
+        || metadata.energyObserved !== Number(drive.energyUsedKnown ?? drive.energyUsedKwh > 0)) {
+        db.runSync(`INSERT INTO local_tessie_drive_metadata(journey_id,user_id,vehicle_key,starting_location,ending_location,
+          starting_battery_percent,ending_battery_percent,energy_used_kwh,energy_observed,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(journey_id) DO UPDATE SET starting_location=excluded.starting_location,ending_location=excluded.ending_location,
+          starting_battery_percent=excluded.starting_battery_percent,ending_battery_percent=excluded.ending_battery_percent,
+          energy_used_kwh=excluded.energy_used_kwh,energy_observed=excluded.energy_observed,updated_at=excluded.updated_at;`,
+        id, userId, drive.vehicleKey, drive.startingLocation, drive.endingLocation, drive.startingBatteryPercent,
+        drive.endingBatteryPercent, drive.energyUsedKwh, Number(drive.energyUsedKnown ?? drive.energyUsedKwh > 0), now());
+        if (outcome === 'unchanged') outcome = 'updated';
+      }
+      const savedRoute = db.getFirstSync<{ n: number; first: string | null; last: string | null }>(
+        'SELECT COUNT(*) AS n,MIN(recorded_at) AS first,MAX(recorded_at) AS last FROM local_gps_points WHERE journey_id=?;', id);
+      const existingPointCount = savedRoute?.n ?? 0;
+      const expandsPartialRoute = savedRoute && points.length >= 2
+        && points[0]!.recordedAt <= (savedRoute.first ?? points[0]!.recordedAt)
+        && points.at(-1)!.recordedAt >= (savedRoute.last ?? points.at(-1)!.recordedAt) &&
+        ((Date.parse(savedRoute.first ?? '') > Date.parse(drive.startedAt) + 120_000 && points[0]!.recordedAt < savedRoute.first!)
+          || (Date.parse(savedRoute.last ?? '') < Date.parse(drive.endedAt) - 120_000 && points.at(-1)!.recordedAt > savedRoute.last!));
+      if ((existingPointCount < 2 && points.length > existingPointCount) || expandsPartialRoute) {
+        if (existingPointCount) db.runSync('DELETE FROM local_gps_points WHERE journey_id=?;', id);
+        points.forEach((point, sequence) => db.runSync(`INSERT OR IGNORE INTO local_gps_points(journey_id,sequence,recorded_at,latitude,longitude,
+          accuracy_meters,altitude_meters,heading_degrees,speed_mps) VALUES(?,?,?,?,?,NULL,NULL,?,?);`,
+        id, sequence, point.recordedAt, point.latitude, point.longitude, point.headingDegrees,
+        point.speedMph == null ? null : point.speedMph / 2.2369362921));
+        const first = points[0]!, last = points.at(-1)!;
+        db.runSync(`UPDATE local_journeys SET start_lat=?,start_lng=?,end_lat=?,end_lng=?,route_synced_to_cloud=0,
+          route_sync_revision=route_sync_revision+1,route_updated_at=?,synced_to_cloud=0,updated_at=? WHERE id=? AND user_id=?;`,
+        first.latitude, first.longitude, last.latitude, last.longitude, now(), now(), id, userId);
+        if (outcome !== 'created') outcome = 'updated';
+      }
+    }
+    const markerJourneyId = duplicateJourneyId ?? id;
+    const lastPoint = db.getFirstSync<{ latitude: number; longitude: number; recordedAt: string }>(
+      'SELECT latitude,longitude,recorded_at AS recordedAt FROM local_gps_points WHERE journey_id=? ORDER BY sequence DESC LIMIT 1;', markerJourneyId);
+    const arrivalTime = getJourney(userId, markerJourneyId)?.endedAt;
+    const endpoint = lastPoint && arrivalTime && Math.abs(Date.parse(lastPoint.recordedAt) - Date.parse(arrivalTime)) <= 120_000 ? lastPoint : null;
+    for (const charge of plan.charges) {
+      const saved = db.getFirstSync<LocalTessieChargeMarker & { journeyId: string; energyObserved: number }>(`SELECT journey_id AS journeyId,started_at AS startedAt,
+        ended_at AS endedAt,location,latitude,longitude,arrival_battery_percent AS arrivalBatteryPercent,
+        departure_battery_percent AS departureBatteryPercent,energy_added_kwh AS energyAddedKwh,energy_observed AS energyObserved
+        FROM local_tessie_charge_markers WHERE user_id=? AND id=?;`, userId, charge.id);
+      if (saved && saved.journeyId === markerJourneyId && saved.startedAt === charge.startedAt && saved.endedAt === charge.endedAt
+        && saved.location === charge.location && saved.latitude === (endpoint?.latitude ?? null)
+        && saved.longitude === (endpoint?.longitude ?? null) && saved.arrivalBatteryPercent === charge.startingBatteryPercent
+        && saved.departureBatteryPercent === charge.endingBatteryPercent && saved.energyAddedKwh === charge.energyAddedKwh
+        && saved.energyObserved === Number(charge.energyAddedKnown ?? charge.energyAddedKwh > 0)) continue;
+      const result = db.runSync(`INSERT INTO local_tessie_charge_markers(id,user_id,journey_id,started_at,ended_at,location,
+        latitude,longitude,arrival_battery_percent,departure_battery_percent,energy_added_kwh,energy_observed,updated_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,id) DO UPDATE SET
+        journey_id=excluded.journey_id,started_at=excluded.started_at,ended_at=excluded.ended_at,location=excluded.location,
+        latitude=excluded.latitude,longitude=excluded.longitude,
+        arrival_battery_percent=excluded.arrival_battery_percent,departure_battery_percent=excluded.departure_battery_percent,
+        energy_added_kwh=excluded.energy_added_kwh,energy_observed=excluded.energy_observed,updated_at=excluded.updated_at;`,
+      charge.id, userId, markerJourneyId, charge.startedAt, charge.endedAt, charge.location,
+      endpoint?.latitude ?? null, endpoint?.longitude ?? null,
+      charge.startingBatteryPercent, charge.endingBatteryPercent, charge.energyAddedKwh,
+      Number(charge.energyAddedKnown ?? charge.energyAddedKwh > 0), now());
+      if (result.changes && (outcome === 'unchanged' || duplicateJourneyId)) outcome = 'updated';
+    }
+  });
+  return outcome;
+}
+
+export function listTessieChargeMarkers(userId: LocalUserId, journeyId: string): LocalTessieChargeMarker[] {
+  initializeLocalStore();
+  if (schemaVersion < 10) return [];
+  return db.getAllSync<LocalTessieChargeMarker>(`SELECT id,started_at AS startedAt,ended_at AS endedAt,location,
+    latitude,longitude,arrival_battery_percent AS arrivalBatteryPercent,
+    departure_battery_percent AS departureBatteryPercent,CASE WHEN energy_observed=1 THEN energy_added_kwh ELSE NULL END AS energyAddedKwh
+    FROM local_tessie_charge_markers WHERE user_id=? AND journey_id=? ORDER BY started_at,id;`, userId, journeyId);
+}
+
+/** Source rows for Tessie-only statistics. Separate queries prevent charge joins from multiplying drive energy. */
+export function readTessieStatisticsRows(userId: LocalUserId, startInclusive: string, endExclusive: string): {
+  drives: import('./tessie-statistics-model').TessieStatisticsDrive[];
+  charges: import('./tessie-statistics-model').TessieStatisticsCharge[];
+} {
+  initializeLocalStore();
+  if (schemaVersion < 10) return { drives: [], charges: [] };
+  const drives = db.getAllSync<import('./tessie-statistics-model').TessieStatisticsDrive>(`SELECT j.id AS journeyId,j.legacy_drive_id AS sourceDriveId,
+    m.vehicle_key AS vehicleKey,j.vehicle_name AS vehicleName,j.started_at AS startedAt,j.ended_at AS endedAt,
+    j.miles,CASE WHEN m.energy_observed=1 THEN m.energy_used_kwh ELSE NULL END AS energyUsedKwh,
+    m.starting_location AS startingLocation,m.ending_location AS endingLocation,
+    m.starting_battery_percent AS startingBatteryPercent,m.ending_battery_percent AS endingBatteryPercent
+    FROM local_journeys j JOIN local_tessie_drive_metadata m ON m.journey_id=j.id AND m.user_id=j.user_id
+    WHERE j.user_id=? AND j.provider='tessie' AND j.started_at>=? AND j.started_at<?
+    ORDER BY j.started_at DESC,j.id;`, userId, startInclusive, endExclusive);
+  const charges = db.getAllSync<import('./tessie-statistics-model').TessieStatisticsCharge>(`SELECT c.id,c.journey_id AS journeyId,
+    c.started_at AS startedAt,c.ended_at AS endedAt,c.location,
+    CASE WHEN c.energy_observed=1 THEN c.energy_added_kwh ELSE NULL END AS energyAddedKwh,
+    c.arrival_battery_percent AS arrivalBatteryPercent,c.departure_battery_percent AS departureBatteryPercent
+    FROM local_tessie_charge_markers c JOIN local_journeys j ON j.id=c.journey_id AND j.user_id=c.user_id
+    WHERE c.user_id=? AND j.provider='tessie' AND c.started_at>=? AND c.started_at<?
+    ORDER BY c.started_at DESC,c.id;`, userId, startInclusive, endExclusive);
+  return { drives, charges };
+}
+
 // --- GPS points --------------------------------------------------------------
 
 export function isEditorManagedJourney(userId: LocalUserId, journeyId: string): boolean {
@@ -1214,9 +1461,10 @@ export function listMusicEntries(userId: LocalUserId, limit = 50): LocalMusicEnt
   const rows = db.getAllSync<Record<string, unknown>>(
     `SELECT e.id,e.user_id AS userId,e.journey_id AS journeyId,e.source,e.played_at AS playedAt,
       COALESCE(s.title,e.track) AS track,COALESCE(s.artist,e.artist) AS artist,
-      COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
+      CASE WHEN e.source='lastfm' THEN COALESCE(e.album,a.title) ELSE COALESCE(a.title,e.album) END AS album,
+      COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
       COALESCE(sa.remote_url,aa.remote_url,e.artwork_url) AS artworkUrl,
-      COALESCE(s.external_url,a.external_url,e.external_url) AS externalUrl,
+      CASE WHEN e.source='lastfm' THEN e.external_url ELSE COALESCE(s.external_url,a.external_url,e.external_url) END AS externalUrl,
       e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt,
       CASE WHEN s.updated_at>e.created_at THEN s.updated_at ELSE e.created_at END AS updatedAt
       FROM local_music_entries e
@@ -1238,12 +1486,8 @@ export type MusicArtworkCatalogItem = {
   externalUrl?: string | null;
 };
 
-/**
- * Backfills catalog artwork without relying on MusicKit playback timestamps.
- * Recently-played responses can omit lastPlayedDate even though their catalog
- * metadata is complete, so title + artist is the safe local repair identity.
- */
-export function enrichMusicEntriesWithArtwork(userId: LocalUserId, catalog: MusicArtworkCatalogItem[], options: { replaceExisting?: boolean } = {}): number {
+/** Backfills exact title + artist catalog artwork without playback timestamps. */
+export function enrichMusicEntriesWithArtwork(userId: LocalUserId, catalog: MusicArtworkCatalogItem[], options: { replaceExisting?: boolean; source?: 'apple_music' | 'lastfm' } = {}): number {
   initializeLocalStore();
   let enriched = 0;
   db.withTransactionSync(() => {
@@ -1256,10 +1500,10 @@ export function enrichMusicEntriesWithArtwork(userId: LocalUserId, catalog: Musi
       });
       const result = db.runSync(`UPDATE local_music_entries SET song_id=?,
         album=COALESCE(album,?),artwork_url=?,external_url=COALESCE(external_url,?),synced_to_cloud=0
-        WHERE user_id=? AND source='apple_music' AND (artwork_url IS NULL OR ?=1)
+        WHERE user_id=? AND source=? AND (artwork_url IS NULL OR ?=1)
           AND LOWER(TRIM(track))=LOWER(?) AND LOWER(TRIM(artist))=LOWER(?);`,
       songId, item.album ?? null, item.artworkUrl, item.externalUrl ?? null,
-      userId, Number(Boolean(options.replaceExisting)), track, artist);
+      userId, options.source ?? 'apple_music', Number(Boolean(options.replaceExisting)), track, artist);
       enriched += result.changes;
     }
   });
@@ -1288,9 +1532,10 @@ export function listMusicEntriesForJourney(userId: LocalUserId, journeyId: strin
   const rows = db.getAllSync<Record<string, unknown>>(
     `SELECT e.id,e.user_id AS userId,e.journey_id AS journeyId,e.source,e.played_at AS playedAt,
       COALESCE(s.title,e.track) AS track,COALESCE(s.artist,e.artist) AS artist,
-      COALESCE(a.title,e.album) AS album,COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
+      CASE WHEN e.source='lastfm' THEN COALESCE(e.album,a.title) ELSE COALESCE(a.title,e.album) END AS album,
+      COALESCE(s.duration_ms,e.duration_ms) AS durationMs,
       COALESCE(sa.remote_url,aa.remote_url,e.artwork_url) AS artworkUrl,
-      COALESCE(s.external_url,a.external_url,e.external_url) AS externalUrl,
+      CASE WHEN e.source='lastfm' THEN e.external_url ELSE COALESCE(s.external_url,a.external_url,e.external_url) END AS externalUrl,
       e.confidence,e.synced_to_cloud AS syncedToCloud,e.created_at AS createdAt,
       CASE WHEN s.updated_at>e.created_at THEN s.updated_at ELSE e.created_at END AS updatedAt
       FROM local_music_entries e

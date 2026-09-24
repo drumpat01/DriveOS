@@ -7,6 +7,7 @@ import {
   type LocalJourney, type LocalMusicEntry,
 } from './local-store';
 import { notifyLocalArchiveChanged } from './local-archive-events';
+import { TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
 import {
   editorSongSegment, MAX_EDITOR_POINTS, previewEditorSegments, previewJourneyEdit, validateEditorSegments,
   type JourneyEditSelection, type JourneyEditorOriginal, type JourneyEditorSegment, type JourneyEditorSnapshot,
@@ -188,7 +189,6 @@ async function commitReviewedJourneyEdit(snapshot: JourneyEditorSnapshot, select
   if (selection.kind !== 'restore' && !resolution) {
     const { getMembershipStatus } = await import('../modules/journeydeck-membership');
     const membership = await getMembershipStatus();
-    const { TESTFLIGHT_PLUS_UNLOCKED } = await import('./release-features');
     if (!TESTFLIGHT_PLUS_UNLOCKED && (!membership.nativeModuleAvailable || membership.tier !== 'paid')) throw new Error('Journey Editing Studio requires JourneyDeck Plus.');
   }
   const { getNativeAutomaticRecorderStatus } = await import('../modules/journeydeck-recorder');

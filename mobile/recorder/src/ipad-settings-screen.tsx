@@ -23,6 +23,7 @@ type Props = {
   signingInWithApple: boolean; accountActionPending: boolean; hasAppleAccount: boolean;
   cloud: { status: string; detail: string }; membershipTier: 'free' | 'paid'; membershipExpirationDate: string | null;
   providerName: string; providerDetail: string;
+  tessieConnected: boolean;
   journeys: JourneySummary[];
   memories: JourneyMemory[];
   places: { id: SavedPlaceSlot; label: string; symbol: string; saved: boolean }[];
@@ -30,10 +31,8 @@ type Props = {
   onEditProfile: () => void; onAppleSignIn: () => void; onSignOut: () => void; onDeleteAccount: () => void;
   onSync: () => void; onMembership: () => void; onChangeProvider: () => void; onPlace: (slot: SavedPlaceSlot) => void;
   onCustomPlace: (placeId?: string) => void;
-  internalDiagnostics: boolean; advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode;
+  internalDiagnostics: boolean; advancedVisible: boolean; onToggleAdvanced: () => void; onDataHealth: () => void; advancedContent: ReactNode; tessieContent?: ReactNode;
   onMarkersPrototype?: () => void;
-  onTessieSetup?: () => void;
-  tessieConnected?: boolean;
 };
 
 const categoryCopy: Record<SettingsCategoryId, string> = {
@@ -80,12 +79,12 @@ export function IpadSettingsScreen(p: Props) {
   const categorySummary = useMemo<Record<SettingsCategoryId, string>>(() => ({
     appearance: theme.name,
     achievements: `${p.journeys.length} recorded journeys`,
-    recording: 'Manual recording',
+    recording: p.tessieConnected ? 'Automatic recording with Tessie' : 'Manual recording',
     music: p.providerName,
     account: p.cloud.status === 'synced' ? 'iCloud synced' : p.cloud.detail,
     places: `${placeCount} saved`,
     membership: p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days',
-  }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.providerName, placeCount, theme.name]);
+  }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.providerName, p.tessieConnected, placeCount, theme.name]);
 
   const icon = (name: SFSymbol, size = 24) => <View style={[styles.icon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.coral : theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={name} tintColor={theme.id === 'midnight-canopy' || theme.id === 'redline' ? colors.text : colors.accent} size={size} /></View>;
   const button = (label: string, onPress: () => void, options: { disabled?: boolean; primary?: boolean; accessibilityLabel?: string } = {}) =>
@@ -103,14 +102,14 @@ export function IpadSettingsScreen(p: Props) {
     <AppIconPicker embedded compact membershipTier={p.membershipTier} onUpgrade={p.onMembership} />
   </View>;
   const recording = <View testID="ipad-settings-recording" style={styles.detailStack}>
-    <View style={panel}><View style={styles.row}>{icon('record.circle')}<View style={styles.flex}><Text style={title}>Manual recording</Text><Text style={body}>A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.</Text></View></View></View>
-    {p.onTessieSetup && <View style={panel}><View style={styles.row}>{icon('car.side.fill')}<View style={styles.flex}><Text style={title}>Tessie</Text><Text style={body}>{p.tessieConnected ? 'Connected vehicle data and intelligence.' : 'Connect your Tesla for vehicle status, charging, drives, and efficiency.'}</Text></View>{button(p.tessieConnected ? 'Open' : 'Connect', p.onTessieSetup, { accessibilityLabel: 'Set up Tessie' })}</View></View>}
+    <View style={panel}><View style={styles.row}>{icon('record.circle')}<View style={styles.flex}><Text style={title}>{p.tessieConnected ? 'Automatic recording with Tessie' : 'Manual recording'}</Text><Text style={body}>{p.tessieConnected ? 'JourneyDeck detects drives and shows each journey while it is recording.' : 'A journey begins only after you tap Start Journey. You stay in control of every drive JourneyDeck saves.'}</Text></View></View></View>
     {p.onMarkersPrototype && <View testID="ipad-markers-prototype-entry" style={panel}><View style={styles.row}>{icon('photo.on.rectangle')}<View style={styles.flex}><Text style={title}>Journey markers</Text><Text style={body}>Open saved markers and add notes or photos after your drive.</Text></View>{button('Open markers', p.onMarkersPrototype)}</View></View>}
     <View style={panel}><View style={styles.row}>{icon('location.fill')}<View style={styles.flex}><Text style={title}>Location stays private</Text><Text style={body}>Route points remain in your local library and private iCloud account. Saved places are masked when you share.</Text></View></View></View>
     <PlaceDataCredits />
   </View>;
   const music = <View testID="ipad-settings-music" style={styles.detailStack}>
     <View style={panel}><View style={styles.row}>{icon('music.note')}<View style={styles.flex}><Text style={title}>Soundtrack capture</Text><Text style={body}>{p.providerName}</Text><Text style={body}>{p.providerDetail}</Text></View>{button('Change', p.onChangeProvider, { accessibilityLabel: 'Change soundtrack provider' })}</View></View>
+    {p.tessieContent}
     <View style={[panel, { backgroundColor: colors.inset }]}><Text style={[styles.kicker, { color: colors.accent }]}>PRIVATE BY DESIGN</Text><Text style={body}>Music is optional. A music or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View>
     {p.advancedContent}
   </View>;

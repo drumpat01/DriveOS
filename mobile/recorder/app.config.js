@@ -12,7 +12,7 @@ module.exports = ({ config }) => {
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
   const channel = v3Preview ? 'v3-preview' : preview ? 'v2-preview' : 'production';
-  if (markerOtaCompat && (!v3 || process.env.EAS_BUILD === 'true')) throw new Error('Marker compatibility mode is only for V3 OTA updates, never native builds.');
+  if (markerOtaCompat) throw new Error('Tessie schema 11 requires a new V3 native build. Older-runtime OTA compatibility is unavailable from this tree.');
   // Keys are public Apple SDK keys; each bundle must use its own RevenueCat app.
   const revenueCatAppleKey = (preview || v3Preview ? process.env.REVENUECAT_PREVIEW_APPLE_API_KEY : process.env.REVENUECAT_PRODUCTION_APPLE_API_KEY) || '';
   if (revenueCatAppleKey && !/^appl_[A-Za-z0-9]+$/.test(revenueCatAppleKey)) throw new Error('RevenueCat requires a public Apple SDK key for the selected app.');
@@ -26,16 +26,30 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // Marker capture/Siri and schema 9 require a new V3 binary; never OTA to older builds.
-    runtimeVersion: markerOtaCompat ? '3.0.0-preview.2' : v3Store ? '3.0.0-preview.5' : v3 ? '3.0.0-preview.4' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // Build 35 (preview.4) Ask accepts schema 9 only. Tessie schema 11 needs
+    // the updated native reader; never deliver this archive migration to it by OTA.
+    // Expo MediaLibrary and the Ask bridges require a new binary. Keep Build
+    // 36's preview.5 OTA stream separate from this source's native runtime.
+    runtimeVersion: v3 ? '3.0.0-preview.6' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
+      ...(v3 ? {
+        url: 'https://ota.journeydeck.me/manifest',
+        codeSigningCertificate: './certs/xprem-certificate.crt',
+        codeSigningMetadata: { keyid: 'main', alg: 'rsa-v1_5-sha256' },
+      } : {}),
       requestHeaders: {
         ...(config.updates?.requestHeaders || {}),
         'expo-channel-name': channel,
+        ...(v3 ? {
+          'expo-app-id': '45dbc2f7-fa8a-4761-8db8-8fac41a4c624',
+          'xprem-branch': channel,
+        } : {}),
       },
     },
-    plugins: [...existingPlugins, 'expo-router', ['expo-audio', {
+    plugins: [...existingPlugins, 'expo-router', ...(v3 ? [['expo-media-library', {
+      photosPermission: photoPermission, savePhotosPermission: false, preventAutomaticLimitedAccessAlert: true,
+    }]] : []), ['expo-audio', {
       microphonePermission,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
     }], './plugins/with-even-native-tabs', './plugins/with-alternate-app-icons', './plugins/with-journeydeck-watch', './plugins/with-journeydeck-siri', ...(v3 ? ['./plugins/with-ask-journeydeck'] : [])],
@@ -68,7 +82,7 @@ module.exports = ({ config }) => {
     extra: {
       ...config.extra,
       revenueCat: { appleApiKey: revenueCatAppleKey },
-      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, testflightPlusUnlocked: v3Store, testflightTessieEnabled: v3Store, testflightDataHealth: v3Store },
+      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, tessieEnabled: v3, lastFmEnabled: v3, testflightPlusUnlocked: v3Store, testflightDataHealth: v3Store },
       release: v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

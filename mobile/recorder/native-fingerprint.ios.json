@@ -1,7 +1,7 @@
 {
   "platform": "ios",
   "preset": "balanced",
-  "runtimeVersion": "3.0.0-preview.4",
+  "runtimeVersion": "3.0.0-preview.6",
   "channel": "v3-preview",
   "hash": null,
   "recordedAt": null,

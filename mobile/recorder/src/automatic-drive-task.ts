@@ -10,11 +10,8 @@ import {
 import { loadConnection, loadOrCreateDeviceId } from './credentials';
 import { evaluateDriveDetection } from './drive-detection';
 import { queueLastFmForCompletedSession } from './lastfm-sync';
-import {
-  sampleAppleMusicForActiveSession, sampleTessieMediaForActiveSession,
-} from './music-capture';
+import { sampleAppleMusicForActiveSession } from './music-capture';
 import { loadRecordingModePreferences } from './recording-mode';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import {
   abandonLocalSession, activeSession, beginLocalSession, completeSessionLocally, recordFinishingLocation, recordLocations, setLocalStatus,
 } from './storage';
@@ -61,10 +58,7 @@ async function startDetectedJourney(preRoll: AutomaticDrivePreRollPoint[]) {
   try {
     if (!(await startLocationTracking())) throw new Error('iOS did not confirm route tracking.');
     recordLocations(ordered.map(locationFromPreRoll));
-    await Promise.allSettled([
-      sampleAppleMusicForActiveSession({ force: true }),
-      ...(TESSIE_INTEGRATION_ENABLED ? [sampleTessieMediaForActiveSession({ force: true })] : []),
-    ]);
+    await sampleAppleMusicForActiveSession({ force: true });
     saveAutomaticDriveEvent('started', session.id);
     observeJourneyDeckEvent('recorder.drive_confirmed', { engine: 'expo' });
     observeJourneyDeckEvent('recorder.preroll_recovered', {

@@ -14,7 +14,8 @@ test('a route archive over the recorder cache limit still loads Statistics and A
   assert.ok(JSON.stringify(detail).length > 4194304);
   const exports: any = {};
   vm.runInNewContext(code, { exports, Date, Set, Promise,
-    getCurrentUser: () => ({ id: 'owner' }),
+    getCurrentUser: () => ({ id: 'owner' }), TESSIE_INTEGRATION_ENABLED: false,
+    buildAtlasTravelStories: () => ({ songTravel: [], returnTrips: [], quietGaps: [], memoryPrompt: null }),
     primarySectionsCacheKey: () => 'primary.sections.owner.v1',
     writeAppCache: () => { throw new Error('JourneyDeck recorder cache value is invalid or too large.'); },
     loadJourneyArchive: async () => [journey],

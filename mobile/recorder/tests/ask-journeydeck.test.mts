@@ -52,8 +52,130 @@ function fixture() {
     const args = [user, new Date(cutoff).toISOString(), new Date(now).toISOString()];
     return { now, cutoff, journeys: db.prepare(queries.journeys).all(...args), memories: db.prepare(queries.memories).all(...args), music: db.prepare(queries.music).all(...args), sensitiveLabels: db.prepare(queries.sensitiveLabels).all(user) };
   };
-  return { db, store, a, b, read, journey, play };
+  return { db, adapter, store, a, b, read, journey, play };
 }
+
+function loadAskSource(relativePath: string, mocks: Record<string, unknown> = {}) {
+  const path = resolve(root, relativePath), module = { exports: {} as any };
+  const code = ts.transpileModule(readFileSync(path, 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  vm.runInNewContext(code, { module, exports: module.exports,
+    require: (id: string) => id in mocks ? mocks[id] : require(resolve(dirname(path), id)) });
+  return module.exports;
+}
+
+test('in-app Expo SQLite reader uses the bounded profile-scoped Siri queries on schema 11', () => {
+  const f = fixture();
+  try {
+    const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
+      './database-owner': { getMasterDatabase: () => f.adapter },
+      './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
+    });
+    const snapshot = archive.readAskSnapshot(f.a, now - 45 * 86400000, now, false);
+    assert.equal(snapshot.profile.id, f.a);
+    assert.equal(snapshot.input.journeys.length, 3);
+    assert.equal(snapshot.input.music.length, 3);
+    assert.doesNotMatch(JSON.stringify(snapshot.input), /PRIVATE PROFILE|123 Private Road|secret note|999/);
+    f.store.setActiveLocalUserId(f.b);
+    assert.throws(() => archive.readAskSnapshot(f.a, 0, now, false), /profile changed/);
+  } finally { f.db.close(); }
+});
+
+test('in-app Ask answers and refreshes evidence locally, limits free history, and invalidates changed profiles', async () => {
+  const f = fixture();
+  try {
+    const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
+      './database-owner': { getMasterDatabase: () => f.adapter },
+      './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
+    });
+    const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
+    let active = true, paid = false;
+    const app = createLocalAskRuntime({
+      profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
+      membership: async () => ({ nativeModuleAvailable: true, tier: paid ? 'paid' : 'free' }),
+      verifiedFullHistory: async () => paid,
+      isActive: () => active, uuid: randomUUID, now: () => now,
+    });
+    assert.equal(await app.ask(f.a, 'How many saved journey markers?'), null,
+      'an installed build without the planner bridge keeps its native AI path');
+    const miles = await app.ask(f.a, 'How many miles did I drive this week?');
+    assert.match(miles.text, /19.8 miles across 2 journeys this week/);
+    assert.equal(miles.profileId, f.a);
+    assert.match((await app.ask(f.a, 'And how many journeys was that?', miles.contextToken)).text, /2 journeys this week/);
+    assert.equal((await app.ask(f.a, 'How many miles did I drive all time?')).status, 'historyLimited');
+    paid = true;
+    assert.match((await app.ask(f.a, 'How many miles did I drive all time?')).text, /49.8 miles/);
+    f.db.prepare('DELETE FROM local_journeys WHERE id=?').run('a-last');
+    const refreshed = await app.resolve(f.a, miles.ticket);
+    assert.doesNotMatch(JSON.stringify(refreshed.evidence), /a-last/);
+    active = false;
+    await assert.rejects(() => app.resolve(f.a, miles.ticket), /locked/);
+    active = true;
+    f.store.setActiveLocalUserId(f.b);
+    await assert.rejects(() => app.resolve(f.a, miles.ticket), /profile changed/);
+  } finally { f.db.close(); }
+});
+
+test('installed builds without the Ask entitlement bridge keep paid history on the native path', async () => {
+  const f = fixture();
+  try {
+    const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
+      './database-owner': { getMasterDatabase: () => f.adapter },
+      './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
+    });
+    const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
+    const app = createLocalAskRuntime({
+      profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
+      membership: async () => ({ nativeModuleAvailable: true, tier: 'paid' }),
+      isActive: () => true, uuid: randomUUID, now: () => now,
+    });
+    assert.match((await app.ask(f.a, 'How many miles did I drive this week?')).text, /19.8 miles/);
+    assert.equal(await app.ask(f.a, 'How many miles did I drive all time?'), null);
+  } finally { f.db.close(); }
+});
+
+test('in-app planner sees no archive rows and refuses an answer after the profile changes during inference', async () => {
+  const f = fixture();
+  try {
+    const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
+      './database-owner': { getMasterDatabase: () => f.adapter },
+      './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
+    });
+    const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
+    const plans = require(resolve(root, resource, 'ask-query-engine.js'));
+    const local = createLocalAskRuntime({
+      profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
+      membership: async () => ({ nativeModuleAvailable: true, tier: 'free' }),
+      planner: async (_question: string, context: string) => {
+        assert.equal(context, 'null', 'no archive contents are sent to the model');
+        return { ...plans.defaults, domain: 'markers', metric: 'count' };
+      },
+      isActive: () => true, uuid: randomUUID, now: () => now,
+    });
+    const markerAnswer = await local.ask(f.a, 'How many saved journey markers?');
+    assert.equal(markerAnswer.status, 'answered');
+    assert.equal(markerAnswer.profileId, f.a);
+    let release!: (value: any) => void;
+    const pending = new Promise(resolve => { release = resolve; });
+    const app = createLocalAskRuntime({
+      profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
+      membership: async () => ({ nativeModuleAvailable: true, tier: 'free' }),
+      planner: (_question: string, context: string) => {
+        assert.equal(context, 'null', 'no archive contents are sent to the model');
+        return pending;
+      },
+      isActive: () => true, uuid: randomUUID, now: () => now,
+    });
+    const answer = app.ask(f.a, 'How many saved journey markers?');
+    // The planner is asynchronous. Changing profiles before it returns must
+    // prevent both execution and publication of the old profile's result.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    f.store.setActiveLocalUserId(f.b);
+    release({ ...plans.defaults, domain: 'markers', metric: 'count' });
+    await assert.rejects(() => answer, /profile changed/);
+  } finally { f.db.close(); }
+});
 
 test('AI analysis SQL is read-only, profile scoped, and excludes marker content while preserving attachment counts', () => {
   const f = fixture();

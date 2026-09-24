@@ -28,6 +28,7 @@ function fixture(compat = false) {
   const loaded = new Map<string, any>();
   const overrides: Record<string, any> = {
     'expo-crypto': { randomUUID }, './database-owner': { getMasterDatabase: () => db },
+    'expo-constants': { __esModule: true, default: { expoConfig: { extra: { features: {} } } } },
     './local-archive-events': { notifyLocalArchiveChanged: () => state.notices++ },
     './auth': { getCurrentUser: () => ({ id: state.userId }) },
     '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
@@ -82,7 +83,7 @@ test('OTA keeps schema 7 intact, saves real notes/photos, and upgrades all conte
     assert.equal(f.markers.listMarkerMedia(f.state.userId, marker.id).length, 1);
     assert.equal(f.database.prepare('PRAGMA user_version').get()?.user_version, 7);
     f.upgrade();
-    assert.equal(f.database.prepare('PRAGMA user_version').get()?.user_version, 9);
+    assert.equal(f.database.prepare('PRAGMA user_version').get()?.user_version, 11);
     assert.equal(f.database.prepare('SELECT notes FROM local_journey_markers').get()?.notes, 'Saved using the OTA');
     assert.equal(f.database.prepare('SELECT COUNT(*) AS n FROM local_marker_media').get()?.n, 1);
     assert.equal(f.database.prepare("SELECT COUNT(*) AS n FROM local_preferences WHERE key LIKE 'journey.marker.v1:%'").get()?.n, 0);

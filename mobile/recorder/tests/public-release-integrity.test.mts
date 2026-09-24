@@ -31,10 +31,11 @@ test('production uses the production privacy edge and keeps internal testing dis
   assert.equal(eas.build.production.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING, '0');
 });
 
-test('Data Health is available to V3 TestFlight without exposing internal test controls', () => {
+test('public Settings and utility navigation cannot expose Data Health', () => {
+  assert.match(shell, /\{\(internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\) && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
   assert.match(shell, /internalDiagnostics=\{internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\}/);
-  assert.match(shell, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health'\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen[\s\S]*? : settingsPage\(\)/);
   assert.match(ipadSettings, /\{p\.internalDiagnostics && <>[\s\S]*?Open Data Health/);
   assert.match(primarySections, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
 });
@@ -60,15 +61,16 @@ test('public Shazam capture is manual per song and never starts from background 
   assert.match(recorder, /Tap once for each song you want on this journey/);
 });
 
-test('public music choices cannot include preview-only Spotify integrations', () => {
+test('V3 preserves Last.fm while direct Spotify remains internal and V2 stays frozen', () => {
   assert.match(preferences, /export function isMusicProviderAvailable/);
-  assert.match(preferences, /provider === 'apple-music' \|\| provider === 'shazam' \|\| isInternalTestingBuild\(\)/);
+  assert.match(preferences, /provider === 'lastfm' && V3_LASTFM_ENABLED/);
+  assert.match(releaseFeatures, /lastFmEnabled === true/);
   assert.match(preferences, /if \(!isMusicProviderAvailable\(provider\) \|\| provider === 'spotify-direct'\) return null/);
   assert.match(lastFm, /if \(!isMusicProviderAvailable\('lastfm'\)\) return \{ attempted: 0, succeeded: 0, matchedTracks: 0 \}/);
   assert.match(spotify, /function requireInternalPreview\(\)/);
   assert.match(spotify, /requireInternalPreview\(\);/);
   assert.match(shell, /const publicProviderOptions = providerOptions\.filter\(option => isMusicProviderAvailable\(option\.id\)\)/);
-  assert.match(shell, /\{internalTesting && advancedSupportVisible && <>/);
+  assert.match(shell, /\{internalTesting && advancedSupportVisible && ownerSpotifyEligible && <ConnectionTile/);
 });
 
 test('public recording defaults to manual while Apple Music continues during an active route', () => {
@@ -78,9 +80,9 @@ test('public recording defaults to manual while Apple Music continues during an 
   assert.match(recorder, /!active && !automaticMode && <PrimaryButton label="Start recording"/);
 });
 
-test('V2 disables Tessie and defers its product scope to V3', () => {
-  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.testflightTessieEnabled === true/);
-  assert.match(releaseFeatures, /V2 remains gated off/);
+test('V2 disables Tessie while V3 requires an explicit variant flag and verified membership', () => {
+  assert.match(releaseFeatures, /TESSIE_INTEGRATION_ENABLED: boolean = Constants\.expoConfig\?\.extra\?\.features\?\.tessieEnabled === true/);
+  assert.match(releaseFeatures, /Tessie is enabled by the V3 app/);
   assert.match(tessie, /Tessie is planned for JourneyDeck V3 and is not available in V2/);
   assert.match(v2Roadmap, /M3 — Vehicle intelligence \| Moved to JourneyDeck V3/);
   assert.match(v2Roadmap, /No V2 runtime, entitlement, onboarding step, setting, replay, or screen exposes Tessie/);
@@ -95,7 +97,7 @@ test('V2 disables Tessie and defers its product scope to V3', () => {
   assert.match(v2Roadmap, /retain V2's conflict-safe, non-destructive fallback/);
   assert.match(v2Roadmap, /do not reward extra driving or unsafe behavior/);
   assert.match(v2Roadmap, /Do not hardcode speculative screen dimensions, hinge geometry, safe areas/);
-  assert.match(tessie, /entitlementsForTestFlightMembership\(await getMembershipStatus\(\), TESTFLIGHT_PLUS_UNLOCKED\)\.tessieAccess/);
+  assert.match(tessie, /entitlementsForTestFlightMembership\(await getMembershipStatus\(\), TESTFLIGHT_PLUS_UNLOCKED, true\)\.tessieAccess/);
   assert.match(tessie, /storedVerifiedVehicleCount/);
   assert.match(tessie, /if \(vehicleCount < 1\)/);
   assert.match(automaticDriveTask, /!current && !\(await tessieAutomaticRecordingEligible\(\)\)/);

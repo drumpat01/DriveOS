@@ -34,6 +34,7 @@ function fixture(compat = false) {
     './native-sheet': { NativeSheet: ({ children, footer, ...props }: any) => React.createElement('Sheet', props, children, footer) },
     './interactive-route-map': { InteractiveRouteMap: host('Map') }, './storage': { activeSession: () => state.recording ? { id: 'session' } : null },
     './release-features': { V3_MARKERS_PROTOTYPE_ENABLED: true },
+    './local-store': { listTessieChargeMarkers: () => [] },
     './journey-marker-store': {
       listMarkerMedia: () => [], listJourneyMarkers: () => [marker],
       saveMarkerNotes: (_owner: string, _id: string, notes: string) => { if (state.failSave) throw Error('Disk full'); state.notes = notes; },

@@ -51,18 +51,41 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(`${config.ios.bundleIdentifier}.watchkitapp`, 'com.journeydeck.recorder.watchkitapp');
   assert.equal(config.scheme, 'journeydeck');
   assert.equal(config.name, 'JourneyDeck');
-  assert.equal(config.runtimeVersion, '3.0.0-preview.5');
-  assert.equal(config.extra.features.testflightPlusUnlocked, true);
-  assert.equal(config.extra.features.testflightTessieEnabled, true);
-  assert.equal(config.extra.features.testflightDataHealth, true);
+  assert.equal(config.runtimeVersion, '3.0.0-preview.6');
   assert.equal(config.updates.requestHeaders['expo-channel-name'], 'production');
+  assert.equal(config.updates.url, 'https://ota.journeydeck.me/manifest');
+  assert.equal(config.updates.requestHeaders['expo-app-id'], '45dbc2f7-fa8a-4761-8db8-8fac41a4c624');
+  assert.equal(config.updates.requestHeaders['xprem-branch'], 'production');
+  assert.equal(config.updates.codeSigningCertificate, './certs/xprem-certificate.crt');
+  assert.deepEqual(config.updates.codeSigningMetadata, { keyid: 'main', alg: 'rsa-v1_5-sha256' });
   assert.equal(config.extra.features.atlasUnlocked, true);
   assert.equal(config.extra.features.markerPrototype, true);
   assert.equal(config.extra.features.fiftyStates, true);
   assert.equal(config.extra.features.askJourneyDeck, true);
   assert.equal(config.extra.features.midnightCanopy, true);
+  assert.equal(config.extra.features.lastFmEnabled, true);
+  assert.equal(config.extra.features.tessieEnabled, true);
+  assert.equal(config.extra.features.testflightPlusUnlocked, true);
+  assert.equal(config.extra.features.testflightDataHealth, true);
   assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), true);
 }
+
+test('schema-11 V3 cannot target older installed runtimes through the marker OTA override', () => {
+  withEnv({ APP_VARIANT: 'v3-store', EAS_BUILD_PROFILE: undefined, EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT: '1' }, () => {
+    assert.throws(() => configureApp({ config: base }), /new V3 native build/);
+  });
+  withEnv({ APP_VARIANT: undefined, EAS_BUILD_PROFILE: 'production', EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT: undefined }, () => {
+    const config = configureApp({ config: base });
+    assert.equal(config.runtimeVersion, '2.0.0-watch.9');
+    assert.equal(config.updates.url, base.updates.url);
+    assert.equal(config.updates.codeSigningCertificate, undefined);
+    assert.equal(config.updates.requestHeaders['expo-app-id'], undefined);
+    assert.equal(config.extra.features.lastFmEnabled, false);
+    assert.equal(config.extra.features.tessieEnabled, false);
+    assert.equal(config.extra.features.testflightPlusUnlocked, false);
+    assert.equal(config.extra.features.testflightDataHealth, false);
+  });
+});
 
 test('v3-testflight is store distribution on the live listing and production channel', () => {
   const profile = eas.build['v3-testflight'];
@@ -111,7 +134,12 @@ test('isolated v3-preview identity is unchanged and is not selected by v3-testfl
     assert.equal(config.ios.bundleIdentifier, 'com.journeydeck.recorder.v3');
     assert.equal(config.ios.entitlements['com.apple.developer.icloud-container-identifiers'][0], 'iCloud.com.journeydeck.recorder.v3');
     assert.equal(config.updates.requestHeaders['expo-channel-name'], 'v3-preview');
+    assert.equal(config.updates.url, 'https://ota.journeydeck.me/manifest');
+    assert.equal(config.updates.requestHeaders['expo-app-id'], '45dbc2f7-fa8a-4761-8db8-8fac41a4c624');
+    assert.equal(config.updates.requestHeaders['xprem-branch'], 'v3-preview');
     assert.equal(config.extra.features.askJourneyDeck, true);
+    assert.equal(config.extra.features.testflightPlusUnlocked, false);
+    assert.equal(config.extra.features.testflightDataHealth, false);
   });
 });
 

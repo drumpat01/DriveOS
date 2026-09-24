@@ -12,7 +12,7 @@ const JS_ONLY_UPDATE = [
   '  cd mobile/recorder',
   '  $env:APP_VARIANT = "v3-preview"',
   '  npx eas-cli update --channel v3-preview --environment preview --platform ios --message "Describe the JS/asset change"',
-  'Do not publish until that update is explicitly authorized. Installed binaries still need runtime 3.0.0-preview.4.',
+  'Do not publish until that update is explicitly authorized. This source requires runtime 3.0.0-preview.6; installed Build 36 uses preview.5.',
 ].join('\n');
 
 export function parseArgs(argv) {
@@ -99,7 +99,7 @@ export async function run(argv, io = {}) {
   const currentRecord = {
     platform: 'ios',
     preset: 'balanced',
-    runtimeVersion: '3.0.0-preview.4',
+    runtimeVersion: '3.0.0-preview.6',
     channel: 'v3-preview',
     hash: fingerprint.hash,
     recordedAt: new Date().toISOString(),

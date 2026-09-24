@@ -62,6 +62,21 @@ test('Ask widget migrates into both layouts without dropping hidden states or cu
   }
 });
 
+test('Tessie widgets are V3-only, fully resizable, and preserve customized layout when added', () => {
+  const legacy = grid.defaultHomeWidgetLayout('regular', true, true);
+  const customized = grid.toggleHomeWidget(grid.moveHomeWidget(legacy, 'soundtrack', -4), 'songs');
+  const migrated = grid.normalizeHomeWidgetLayout(customized, 'regular', true, true, true);
+  assert.deepEqual(Array.from(migrated.slice(-2), (item: any) => item.id), ['yourCar', 'journeyInProgress']);
+  assert.equal(migrated.find((item: any) => item.id === 'yourCar').span, 12);
+  assert.equal(migrated.find((item: any) => item.id === 'journeyInProgress').span, 12);
+  assert.equal(migrated.find((item: any) => item.id === 'songs').hidden, true);
+  assert.equal(grid.defaultHomeWidgetLayout('regular').some((item: any) => item.id === 'yourCar'), false);
+  const phone = grid.selectHomePresentation(grid.defaultHomeWidgetLayout('compact', true, true, true));
+  assert.equal(phone.context.id, 'fiftyStates');
+  const selected = grid.selectHomePresentation(grid.selectHomeContextWidget(grid.defaultHomeWidgetLayout('compact', true, true, true), 'journeyInProgress'));
+  assert.equal(selected.context.id, 'journeyInProgress');
+});
+
 test('normalization rejects duplicates, repairs spans, and adds future widgets', () => {
   const result = grid.normalizeHomeWidgetLayout([{ id: 'journeys', span: 5, order: 99 }, { id: 'journeys', span: 12, order: 0 }, { id: 'bogus', span: 12 }], 'regular');
   assert.equal(result.find((item: any) => item.id === 'journeys').span, 6);

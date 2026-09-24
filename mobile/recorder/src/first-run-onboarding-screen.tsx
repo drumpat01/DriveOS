@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useMotionPreferences } from './motion';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { TESSIE_INTEGRATION_ENABLED, V3_LASTFM_ENABLED } from './release-features';
+import { TessieConnectionCard } from './tessie-connection-card';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -12,9 +14,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { FirstRunStage } from './first-run-onboarding';
 import type { RecordingMode } from './recording-mode';
 import { FirstRunWelcomeScreen, FIRST_RUN_ARTWORK } from './first-run-welcome-screen';
-import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
+const SPOTIFY_ICON = require('../assets/spotify-icon-white.png');
 
 const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED ? 7 : 6;
 const STEP_NUMBER: Partial<Record<FirstRunStage, number>> = {
@@ -32,8 +34,13 @@ type Props = {
   onRecordingContinue: (mode: RecordingMode) => Promise<void>;
   onLocationContinue: () => Promise<void>;
   onConnectAppleMusic: () => Promise<void>;
+  onConnectLastFm: (username: string) => Promise<void>;
+  lastFmUsername: string;
   onSkipMusic: () => void;
-  onOpenTessie: () => void;
+  tessieProfileId: string;
+  tessieMembershipTier: 'free' | 'paid';
+  onTessieUpgrade: () => void;
+  onTessieChanged: () => void;
   onTessieContinue: () => void;
   onFinish: () => void;
   onBack?: () => void;
@@ -117,7 +124,74 @@ function AppleMusicScreen({ onBack, onConnect, onSkip }: { onBack?: () => void; 
         <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Play Apple Music on this device to save songs with your journeys.</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Connect Apple Music" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving}
           onPress={() => void act(onConnect)} style={({ pressed }) => [recordingStyles.button, { backgroundColor: palette.accent, opacity: pressed || saving ? 0.78 : 1 }]}>
-          <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>{saving ? 'Connecting…' : 'Connect Apple Music'}</Text>
+          <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>{saving ? 'Connectingâ€¦' : 'Connect Apple Music'}</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  </View>;
+}
+
+function MusicPickerScreen({ onBack, onConnectAppleMusic, onConnectLastFm, lastFmUsername, onSkip }: {
+  onBack?: () => void; onConnectAppleMusic: () => Promise<void>; onConnectLastFm: (username: string) => Promise<void>;
+  lastFmUsername: string; onSkip: () => void;
+}) {
+  const theme = useAppTheme();
+  const { palette } = theme;
+  const insets = useSafeAreaInsets();
+  const [selection, setSelection] = useState<'apple-music' | 'lastfm'>('apple-music');
+  const [username, setUsername] = useState(lastFmUsername);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const act = async () => {
+    if (saving) return;
+    if (selection === 'lastfm' && !/^[A-Za-z][A-Za-z0-9_-]{1,14}$/.test(username.trim())) {
+      setError('Enter your Last.fm username: 2–15 characters, starting with a letter.');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (selection === 'lastfm') await onConnectLastFm(username.trim());
+      else await onConnectAppleMusic();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save your music choice. Try again.');
+    } finally { setSaving(false); }
+  };
+  return <View style={recordingStyles.screen}>
+    <View style={[recordingStyles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <ScrollView style={recordingStyles.scroll} contentContainerStyle={recordingStyles.content} showsVerticalScrollIndicator={false}>
+        <OnboardingHeader step={STEP_NUMBER.music!} onBack={onBack} onSkip={onSkip} />
+        <View style={recordingStyles.musicScenerySpace} />
+        <StepIcon name="music.note" />
+        <Text accessibilityRole="header" style={[recordingStyles.title, recordingStyles.musicHeadline, { color: palette.text, textShadowColor: palette.page }]}>Bring your music along.</Text>
+        <Text style={[recordingStyles.musicPickerDescription, { color: palette.muted }]}>Choose one way to add songs to your journeys. You can change it later.</Text>
+        <View accessibilityRole="radiogroup" style={recordingStyles.musicOptions}>
+          <Pressable accessibilityRole="radio" accessibilityState={{ selected: selection === 'apple-music' }} onPress={() => { setSelection('apple-music'); setError(''); }}
+            style={[recordingStyles.musicOption, { backgroundColor: alpha(palette.card, 0.72), borderColor: selection === 'apple-music' ? palette.accent : alpha(palette.line, 0.75) }]}>
+            <ExpoImage source={APPLE_MUSIC_ICON} contentFit="contain" accessible={false} style={recordingStyles.musicOptionIcon} />
+            <View style={recordingStyles.musicOptionCopy}><Text style={[recordingStyles.musicOptionTitle, { color: palette.text }]}>Apple Music</Text><Text style={[recordingStyles.musicOptionDetail, { color: palette.muted }]}>Songs played on this device</Text></View>
+            <SymbolView name={selection === 'apple-music' ? 'largecircle.fill.circle' : 'circle'} tintColor={selection === 'apple-music' ? palette.accent : palette.muted} size={22} />
+          </Pressable>
+          <Pressable accessibilityRole="radio" accessibilityState={{ selected: selection === 'lastfm' }} onPress={() => { setSelection('lastfm'); setError(''); }}
+            style={[recordingStyles.musicOption, { backgroundColor: alpha(palette.card, 0.72), borderColor: selection === 'lastfm' ? palette.accent : alpha(palette.line, 0.75) }]}>
+            <View style={[recordingStyles.musicOptionIcon, recordingStyles.spotifyIcon]}><ExpoImage source={SPOTIFY_ICON} contentFit="contain" accessible={false} style={recordingStyles.spotifyMark} /></View>
+            <View style={recordingStyles.musicOptionCopy}><Text style={[recordingStyles.musicOptionTitle, { color: palette.text }]}>Spotify via Last.fm</Text><Text style={[recordingStyles.musicOptionDetail, { color: palette.muted }]}>Spotify listening history, after journeys</Text></View>
+            <SymbolView name={selection === 'lastfm' ? 'largecircle.fill.circle' : 'circle'} tintColor={selection === 'lastfm' ? palette.accent : palette.muted} size={22} />
+          </Pressable>
+        </View>
+        {selection === 'lastfm' && <View style={recordingStyles.lastFmSetup}>
+          <Text style={[recordingStyles.lastFmInstructions, { color: palette.text }]}>Create a free Last.fm account, then connect Spotify to Last.fm. Enter your Last.fm username here once Spotify scrobbling is on.</Text>
+          <View style={recordingStyles.lastFmLinks}>
+            <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/join')}><Text style={[recordingStyles.lastFmLink, { color: palette.accent }]}>Create free account ↗</Text></Pressable>
+            <Pressable accessibilityRole="link" onPress={() => void Linking.openURL('https://www.last.fm/about/trackmymusic')}><Text style={[recordingStyles.lastFmLink, { color: palette.accent }]}>Connect Spotify ↗</Text></Pressable>
+          </View>
+          <TextInput accessibilityLabel="Last.fm username" value={username} onChangeText={value => { setUsername(value); setError(''); }} autoCapitalize="none" autoCorrect={false} maxLength={15}
+            placeholder="Last.fm username" placeholderTextColor={palette.muted} style={[recordingStyles.lastFmInput, { color: palette.text, borderColor: alpha(palette.line, 0.8), backgroundColor: alpha(palette.card, 0.8) }]} />
+          <Text style={[recordingStyles.lastFmPrivacy, { color: palette.muted }]}>JourneyDeck uses your public Last.fm history to match songs to completed journeys. Spotify does not connect directly to JourneyDeck.</Text>
+        </View>}
+        {error ? <Text accessibilityRole="alert" style={recordingStyles.musicError}>{error}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityState={{ disabled: saving, busy: saving }} disabled={saving}
+          onPress={() => void act()} style={({ pressed }) => [recordingStyles.button, recordingStyles.musicButton, { backgroundColor: palette.accent, opacity: pressed || saving ? 0.78 : 1 }]}>
+          <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>{saving ? 'Saving…' : selection === 'lastfm' ? 'Use Spotify history' : 'Connect Apple Music'}</Text>
         </Pressable>
       </ScrollView>
     </View>
@@ -157,19 +231,26 @@ function MembershipStageBackdrop() {
   return <View style={[recordingStyles.screen, { backgroundColor: theme.palette.page }]} />;
 }
 
-function TessieIntroScreen({ onBack, onOpenTessie, onContinue }: { onBack?: () => void; onOpenTessie: () => void; onContinue: () => void }) {
-  const { palette } = useAppTheme();
+function TessieIntroScreen({ profileId, membershipTier, onUpgrade, onChanged, onContinue, onBack }: {
+  profileId: string; membershipTier: 'free' | 'paid'; onUpgrade: () => void; onChanged: () => void; onContinue: () => void; onBack?: () => void;
+}) {
+  const theme = useAppTheme();
+  const { palette } = theme;
   const insets = useSafeAreaInsets();
-  return <View style={recordingStyles.screen}><View style={[recordingStyles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]}>
-    <ScrollView style={recordingStyles.scroll} contentContainerStyle={recordingStyles.content} showsVerticalScrollIndicator={false}>
-      <OnboardingHeader step={STEP_NUMBER.tessie!} onBack={onBack} onSkip={onContinue} />
-      <View style={recordingStyles.scenerySpace} /><StepIcon name="car.side.fill" />
-      <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Bring your Tesla along.</Text>
-      <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Connect Tessie to explore vehicle status, charging, drives, and efficiency. This is optional and you can connect later in Settings.</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="Set up Tessie" onPress={onOpenTessie} style={[recordingStyles.button, { backgroundColor: palette.accent }]}><Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Set up Tessie</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="Continue without Tessie" onPress={onContinue} style={{ padding: 18, alignItems: 'center' }}><Text style={{ color: palette.muted, fontSize: 16 }}>Continue</Text></Pressable>
-    </ScrollView>
-  </View></View>;
+  return <View style={recordingStyles.screen}>
+    <View style={[recordingStyles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <ScrollView style={recordingStyles.scroll} contentContainerStyle={recordingStyles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <OnboardingHeader step={STEP_NUMBER.tessie!} onBack={onBack} onSkip={onContinue} />
+        <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Bring your car along.</Text>
+        <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Connect Tessie to add Tesla drives, charging, and vehicle insights. You can set this up later in Settings.</Text>
+        <TessieConnectionCard profileId={profileId} membershipTier={membershipTier} onUpgrade={onUpgrade} onChanged={onChanged} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Continue" onPress={onContinue}
+          style={({ pressed }) => [recordingStyles.button, { backgroundColor: palette.accent, opacity: pressed ? 0.78 : 1 }]}>
+          <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Continue</Text>
+        </Pressable>
+      </ScrollView>
+    </View>
+  </View>;
 }
 
 function FinishScreen({ onBack, onFinish }: { onBack?: () => void; onFinish: () => void }) {
@@ -244,9 +325,11 @@ export function FirstRunOnboardingScreen(props: Props) {
       {visibleStage === 'welcome' && <FirstRunWelcomeScreen onStart={props.onWelcomeComplete} contentOnly />}
       {visibleStage === 'recording' && <RecordingScreen onBack={props.onBack} onContinue={props.onRecordingContinue} />}
       {visibleStage === 'location' && <LocationScreen onBack={props.onBack} onContinue={props.onLocationContinue} />}
-      {visibleStage === 'music' && <AppleMusicScreen onBack={props.onBack} onConnect={props.onConnectAppleMusic} onSkip={props.onSkipMusic} />}
+      {visibleStage === 'music' && (V3_LASTFM_ENABLED
+        ? <MusicPickerScreen onBack={props.onBack} onConnectAppleMusic={props.onConnectAppleMusic} onConnectLastFm={props.onConnectLastFm} lastFmUsername={props.lastFmUsername} onSkip={props.onSkipMusic} />
+        : <AppleMusicScreen onBack={props.onBack} onConnect={props.onConnectAppleMusic} onSkip={props.onSkipMusic} />)}
       {visibleStage === 'membership' && <MembershipStageBackdrop />}
-      {visibleStage === 'tessie' && <TessieIntroScreen onBack={props.onBack} onOpenTessie={props.onOpenTessie} onContinue={props.onTessieContinue} />}
+      {visibleStage === 'tessie' && <TessieIntroScreen profileId={props.tessieProfileId} membershipTier={props.tessieMembershipTier} onUpgrade={props.onTessieUpgrade} onChanged={props.onTessieChanged} onContinue={props.onTessieContinue} onBack={props.onBack} />}
       {visibleStage === 'instructions' && <FinishScreen onBack={props.onBack} onFinish={props.onFinish} />}
     </Animated.View>
   </View>;
@@ -276,4 +359,22 @@ const recordingStyles = StyleSheet.create({
   musicMark: { width: 64, height: 64, borderRadius: 15, marginBottom: 24 },
   musicHeadline: { marginBottom: 16 },
   musicDescription: { fontSize: 16, lineHeight: 24, marginBottom: 32 },
+  musicScenerySpace: { flexGrow: 1, minHeight: 20 },
+  musicPickerDescription: { fontSize: 16, lineHeight: 24, marginBottom: 22 },
+  musicOptions: { gap: 10 },
+  musicOption: { minHeight: 74, borderWidth: 1, borderRadius: 14, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  musicOptionIcon: { width: 40, height: 40, borderRadius: 9 },
+  spotifyIcon: { backgroundColor: '#08080a', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  spotifyMark: { width: 24, height: 24 },
+  musicOptionCopy: { flex: 1, minWidth: 0 },
+  musicOptionTitle: { fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  musicOptionDetail: { fontSize: 13, lineHeight: 18 },
+  lastFmSetup: { marginTop: 18, gap: 12 },
+  lastFmInstructions: { fontSize: 14, lineHeight: 21 },
+  lastFmLinks: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 20, rowGap: 10 },
+  lastFmLink: { fontSize: 14, lineHeight: 22, fontWeight: '700' },
+  lastFmInput: { minHeight: 52, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, fontSize: 16 },
+  lastFmPrivacy: { fontSize: 12, lineHeight: 18 },
+  musicError: { color: '#ff9b91', fontSize: 13, lineHeight: 19, marginTop: 12 },
+  musicButton: { marginTop: 24 },
 });

@@ -14,15 +14,17 @@ function lookupIdentity(track: string, artist: string) {
   return `${track.trim().toLocaleLowerCase()}\0${artist.trim().toLocaleLowerCase()}`;
 }
 
-export async function resolveMissingAppleMusicArtwork(limit = MAX_LOOKUPS_PER_REFRESH, options: { force?: boolean; journeyId?: string } = {}) {
+type ArtworkSource = 'apple_music' | 'lastfm';
+
+async function resolveMissingArtwork(source: ArtworkSource, limit = MAX_LOOKUPS_PER_REFRESH, options: { force?: boolean; journeyId?: string } = {}) {
   const userId = getCurrentUser().id;
   const attempts = readAppCache<Record<string, number>>(ATTEMPT_CACHE_KEY) ?? {};
   const cutoff = Date.now() - RETRY_AFTER_MS;
   const unique = new Map<string, { track: string; artist: string; externalUrl: string | null }>();
   const entries = options.journeyId ? listMusicEntriesForJourney(userId, options.journeyId) : listMusicEntries(userId, 500);
   for (const entry of entries) {
-    if (entry.source !== 'apple_music' || entry.artworkUrl) continue;
-    const identity = lookupIdentity(entry.track, entry.artist);
+    if (entry.source !== source || entry.artworkUrl) continue;
+    const identity = source === 'lastfm' ? `lastfm\0${lookupIdentity(entry.track, entry.artist)}` : lookupIdentity(entry.track, entry.artist);
     if ((!options.force && (attempts[identity] ?? 0) > cutoff) || unique.has(identity)) continue;
     unique.set(identity, { track: entry.track, artist: entry.artist, externalUrl: entry.externalUrl });
   }
@@ -36,7 +38,7 @@ export async function resolveMissingAppleMusicArtwork(limit = MAX_LOOKUPS_PER_RE
       }));
       if (getCurrentUser().id !== userId) return;
       attempts[identity] = Date.now();
-      if (match) enriched += enrichMusicEntriesWithArtwork(userId, [match]);
+      if (match) enriched += enrichMusicEntriesWithArtwork(userId, [match], { source });
     } catch {
       failed += 1;
     }
@@ -45,4 +47,12 @@ export async function resolveMissingAppleMusicArtwork(limit = MAX_LOOKUPS_PER_RE
   writeAppCache(ATTEMPT_CACHE_KEY, attempts);
   if (enriched > 0) notifyLocalArchiveChanged();
   return { attempted: bounded.length, enriched, failed };
+}
+
+export function resolveMissingAppleMusicArtwork(limit = MAX_LOOKUPS_PER_REFRESH, options: { force?: boolean; journeyId?: string } = {}) {
+  return resolveMissingArtwork('apple_music', limit, options);
+}
+
+export function resolveMissingLastFmArtwork(limit = MAX_LOOKUPS_PER_REFRESH) {
+  return resolveMissingArtwork('lastfm', limit);
 }

@@ -8,14 +8,27 @@ const ipadHome = await readFile(new URL('ipad-home.tsx', root), 'utf8');
 const sharedGrid = await readFile(new URL('home-widget-grid.tsx', root), 'utf8');
 
 test('compact and regular Home persist through the same widget-layout store, with iPad keeping the full twelve-column editor', () => {
-  assert.match(shell, /useHomeWidgetLayout\('compact', Boolean\(onFiftyStates\), V3_ASK_JOURNEYDECK_ENABLED\)/);
-  assert.match(ipadHome, /useHomeWidgetLayout\(layoutClass, Boolean\(onFiftyStates\), V3_ASK_JOURNEYDECK_ENABLED\)/);
+  assert.match(shell, /useHomeWidgetLayout\('compact', Boolean\(onFiftyStates\), V3_ASK_JOURNEYDECK_ENABLED, TESSIE_INTEGRATION_ENABLED\)/);
+  assert.match(ipadHome, /useHomeWidgetLayout\(layoutClass, Boolean\(onFiftyStates\), V3_ASK_JOURNEYDECK_ENABLED, TESSIE_INTEGRATION_ENABLED\)/);
   assert.match(shell, /testID="compact-home-widget-grid"/);
   assert.match(ipadHome, /placement\.span \/ 12/, 'iPad Home still renders a real free-form grid, so span still matters there');
   assert.doesNotMatch(shell, /placement\.span \/ 12/, 'phone Home no longer has a resizable grid to size');
   assert.match(sharedGrid, /HomeLayoutEditorSheet/);
   assert.match(sharedGrid, /<NativeSheet/);
   assert.match(sharedGrid, /Restore default Home layout/);
+});
+
+test('Tessie Home widgets use cached vehicle data and open a local active-journey details sheet on both platforms', () => {
+  for (const source of [shell, ipadHome]) {
+    assert.match(source, /YourCarWidget/);
+    assert.match(source, /JourneyInProgressWidget/);
+    assert.match(source, /ActiveJourneyDetailsSheet/);
+    assert.match(source, /TESSIE_INTEGRATION_ENABLED/);
+  }
+  assert.match(shell, /primary\.data\?\.vehicle\.vehicles/);
+  assert.match(shell, /onProgressChange=\{setHomeJourneyProgress\}/);
+  assert.match(ipadHome, /vehicleLoading/);
+  assert.match(ipadHome, /vehicleError/);
 });
 
 test('phone Home replaces the twelve-column editor with a curated customize sheet', () => {

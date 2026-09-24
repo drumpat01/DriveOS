@@ -1,5 +1,5 @@
 import { TouchPressable as Pressable, SlidingSelection } from './touch-feedback';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Line } from 'react-native-svg';
@@ -12,6 +12,11 @@ import { CardDetailLink } from './card-detail-link';
 import { journeyDisplayTitle } from './journey-title';
 import type { PrimaryDataState } from './primary-sections';
 import type { JourneySummary } from './app-data';
+import { localAtlasClient } from './app-data';
+import { getCurrentUser } from './auth';
+import { tessieDirectStatus } from './tessie-direct';
+import { TESSIE_INTEGRATION_ENABLED } from './release-features';
+import type { TessieJourneyEnergy, TessieRouteComparison, TessieStatistics } from './tessie-statistics-model';
 import { buildIpadStatistics, calendarDays, dayKey, localDay, summarize, type StatisticsRange } from './ipad-statistics-model';
 import { StatisticsBar, StatisticsDayJourneys, StatisticsMotionFrame, StatisticsMotionProvider, StatisticsRollingValue, StatisticsSparkline } from './statistics-motion';
 import { haptics } from './haptics';
@@ -78,6 +83,81 @@ function JourneyRow({ journey, onJourney }: { journey: JourneySummary; onJourney
   </CardDetailLink>;
 }
 
+function TessieStatisticsPanels({ statistics, connection, onJourney, wide, span }: {
+  statistics: TessieStatistics; connection: 'checking' | 'connected' | 'disconnected' | 'unavailable'; onJourney: (id: string) => void;
+  wide: boolean; span: (count: number) => number | '100%';
+}) {
+  const c = useColors();
+  const status = connection === 'connected' ? 'Tessie connected · saved locally'
+    : connection === 'checking' ? 'Checking Tessie connection…'
+      : connection === 'disconnected' ? 'Tessie is disconnected. Previously imported history remains available offline.'
+        : 'Tessie connection status is unavailable. Saved history remains available offline.';
+  const known = (value: number | null, digits = 1, unit = 'kWh') => value === null ? 'Unknown' : `${number(value, digits)} ${unit}`;
+  const journeyById = new Map(statistics.energyByJourney.map(drive => [drive.journeyId, drive]));
+  const openJourney = (id: string, label: string, actionLabel = 'Open ›') => <CardDetailLink key={id} kind="journey" id={id} onSelect={() => onJourney(id)}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${label}`} onPress={() => onJourney(id)} style={[styles.journey, { borderColor: c.line }]}>
+      <View style={{ flex: 1, minWidth: 0 }}><Text style={[styles.body, { color: c.text }]} numberOfLines={2}>{label}</Text></View>
+      <Text style={[styles.caption, { color: c.accent }]}>{actionLabel}</Text>
+    </Pressable>
+  </CardDetailLink>;
+  const driveTitle = (drive: TessieJourneyEnergy) => `${drive.startingLocation} → ${drive.endingLocation}`;
+  const panels = [
+    <Panel key="efficiency" testID="tessie-driving-efficiency" title="Driving efficiency" subtitle={status} accent={c.teal}>
+      {statistics.drivingEfficiency.whPerMile === null
+        ? <Text style={[styles.value, { color: c.text }]}>Unknown</Text>
+        : <Text accessibilityRole="text" accessibilityLabel={`${number(statistics.drivingEfficiency.whPerMile, 1)} watt-hours per mile`} style={[styles.value, { color: c.text }]}>{number(statistics.drivingEfficiency.whPerMile, 1)} Wh/mi</Text>}
+      <StatLine label="Measured energy" value={known(statistics.drivingEfficiency.energyUsedKwh)} color={c.teal} />
+      <StatLine label="Measured drives" value={`${statistics.drivingEfficiency.measuredJourneys} of ${statistics.drivingEfficiency.journeys}`} color={c.blue} />
+      <StatLine label="Measured distance" value={statistics.drivingEfficiency.measuredJourneys ? `${number(statistics.drivingEfficiency.measuredMiles, 1)} mi` : '—'} color={c.coral} />
+      {!statistics.drivingEfficiency.journeys ? <Text style={[styles.caption, { color: c.muted }]}>No imported Tessie drives in this period.</Text> : null}
+    </Panel>,
+    <Panel key="energy" testID="tessie-energy-by-journey" title="Energy by journey" subtitle="Drive energy is grouped by journey start date." accent={c.coral}>
+      {statistics.energyByJourney.length ? statistics.energyByJourney.slice(0, 8).map(drive => <View key={drive.journeyId}>
+        {openJourney(drive.journeyId, `Tessie journey ${driveTitle(drive)}`)}
+        <Text style={[styles.caption, { color: c.muted }]}>{new Date(drive.startedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · {number(drive.miles, 1)} mi · {known(drive.energyUsedKwh)} · {drive.whPerMile === null ? 'Efficiency unknown' : `${number(drive.whPerMile, 1)} Wh/mi`}</Text>
+      </View>) : <Text style={[styles.body, { color: c.muted }]}>No imported Tessie journeys in this period.</Text>}
+      {statistics.energyByJourney.some(drive => drive.energyUsedKwh === null) ? <Text style={[styles.caption, { color: c.muted }]}>Some drives have no measured energy. Unknown values are not counted as zero.</Text> : null}
+      {statistics.energyByJourney.length > 8 ? <Text style={[styles.caption, { color: c.muted }]}>Showing the 8 most recent of {statistics.energyByJourney.length} journeys.</Text> : null}
+    </Panel>,
+    <Panel key="charging" testID="tessie-charging-on-road" title="Charging on the road" subtitle="Matched Supercharger stops · charge start date" accent={c.amber}>
+      {statistics.chargingOnRoad.sessions ? <>
+        <StatLine label="Energy added" value={known(statistics.chargingOnRoad.energyAddedKwh)} color={c.amber} />
+        <StatLine label="Measured sessions" value={`${statistics.chargingOnRoad.measuredSessions} of ${statistics.chargingOnRoad.sessions}`} color={c.blue} />
+        <StatLine label="Charging time" value={duration(statistics.chargingOnRoad.durationMinutes)} color={c.teal} />
+        {statistics.chargingOnRoad.charges.slice(0, 6).map(charge => <View key={charge.id}>
+          {openJourney(charge.journeyId, `Journey linked to charge at ${charge.location}`)}
+          <Text style={[styles.caption, { color: c.muted }]}>{charge.location} · {known(charge.energyAddedKwh)} · {duration(charge.durationMinutes)}{charge.batteryGainedPercent === null ? '' : ` · ${number(charge.batteryGainedPercent, 0)} percentage points`}</Text>
+        </View>)}
+        {statistics.chargingOnRoad.charges.length > 6 ? <Text style={[styles.caption, { color: c.muted }]}>Showing 6 of {statistics.chargingOnRoad.charges.length} charging stops.</Text> : null}
+        {statistics.chargingOnRoad.measuredSessions < statistics.chargingOnRoad.sessions ? <Text style={[styles.caption, { color: c.muted }]}>Some stops have no measured energy; they are excluded from the energy total.</Text> : null}
+      </> : <Text style={[styles.body, { color: c.muted }]}>No matched on-road Supercharger stops in this period.</Text>}
+    </Panel>,
+    <Panel key="routes" testID="tessie-route-comparison" title="Route comparison" subtitle="Repeated routes on the same vehicle · weighted by measured miles" accent={c.blue}>
+      {statistics.repeatedRoutes.length ? statistics.repeatedRoutes.slice(0, 6).map(route => <RouteComparisonRow key={`${route.vehicleKey}:${route.startingLocation}:${route.endingLocation}`} route={route} vehicleName={journeyById.get(route.journeyIds[0] ?? '')?.vehicleName ?? null} openJourney={openJourney} />)
+        : <Text style={[styles.body, { color: c.muted }]}>Repeated routes appear after at least two journeys share known start and destination labels.</Text>}
+    </Panel>,
+  ];
+  return <View testID="tessie-statistics-panels" style={[styles.row, { alignItems: 'stretch' }]}>{panels.map((panel, index) => <View key={index} style={{ width: wide ? span(3) : '100%', minWidth: 0 }}>{panel}</View>)}</View>;
+}
+
+function RouteComparisonRow({ route, vehicleName, openJourney }: { route: TessieRouteComparison; vehicleName: string | null; openJourney: (id: string, label: string, actionLabel?: string) => ReactNode }) {
+  const c = useColors();
+  const [showAllJourneys, setShowAllJourneys] = useState(false);
+  const label = `${route.startingLocation} → ${route.endingLocation}`;
+  const journeyIds = showAllJourneys ? route.journeyIds : route.journeyIds.slice(0, 2);
+  return <View style={{ gap: 2 }}>
+    {journeyIds.map((id, index) => openJourney(id, `Journey ${index + 1} for route ${label}`, `Drive ${index + 1} ›`))}
+    <Text style={[styles.caption, { color: c.muted }]}>{vehicleName ?? 'Vehicle not identified'} · {label} · {route.journeys} journeys · {number(route.totalMiles, 1)} mi</Text>
+    <Text style={[styles.caption, { color: c.muted }]}>{route.averageWhPerMile === null ? 'Efficiency unknown' : `${number(route.averageWhPerMile, 1)} Wh/mi average`}
+      {route.bestWhPerMile === null ? '' : ` · ${number(route.bestWhPerMile, 1)} best`}{route.worstWhPerMile === null ? '' : ` · ${number(route.worstWhPerMile, 1)} highest`}</Text>
+    {route.measuredJourneys < route.journeys ? <Text style={[styles.caption, { color: c.muted }]}>{route.measuredJourneys} of {route.journeys} drives measured</Text> : null}
+    {route.journeyIds.length > 2 ? <Pressable accessibilityRole="button" accessibilityLabel={showAllJourneys ? 'Show fewer route journeys' : `Show all ${route.journeyIds.length} route journeys`}
+      accessibilityState={{ expanded: showAllJourneys }} onPress={() => setShowAllJourneys(value => !value)} style={styles.button}>
+      <Text style={[styles.caption, { color: c.accent }]}>{showAllJourneys ? 'Show fewer' : `Show all ${route.journeyIds.length} journeys`}</Text>
+    </Pressable> : null}
+  </View>;
+}
+
 export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, onAtlas, onYearOnRoad, historyDays, compact = false }: {
   state: PrimaryDataState; onRefresh: () => void | Promise<void>; onJourney: (id: string) => void; onUpgrade: () => void; onAtlas?: () => void; onYearOnRoad?: () => void; historyDays: number | null; compact?: boolean;
 }) {
@@ -86,7 +166,8 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const c = useColors(), insets = useSafeAreaInsets(), { fontScale } = useWindowDimensions();
   const adaptiveLayout = useAdaptiveLayout();
   const [width, setWidth] = useState(0), [range, setRange] = useState<StatisticsRange>(30);
-  const [compactSection, setCompactSection] = useState<'overview' | 'days' | 'insights'>('overview');
+  const [compactSection, setCompactSection] = useState<'overview' | 'days' | 'insights' | 'tessie'>('overview');
+  const [tessieConnection, setTessieConnection] = useState<'checking' | 'connected' | 'disconnected' | 'unavailable'>(TESSIE_INTEGRATION_ENABLED ? 'checking' : 'unavailable');
   const [selectedDay, setSelectedDay] = useState<string | null>(null), [monthKey, setMonthKey] = useState<string | null>(null);
   const [recentCount, setRecentCount] = useState(compact ? 3 : 8), [dayCount, setDayCount] = useState(5);
   const [refreshing, setRefreshing] = useState(false);
@@ -98,6 +179,24 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const nowKey = dayKey(new Date());
   const effectiveRange = historyDays !== null && (range === 'all' || range > historyDays) ? 30 : range;
   const model = useMemo(() => buildIpadStatistics(state.data?.journeys ?? [], state.data?.details ?? [], effectiveRange, new Date(), historyDays), [state.data, effectiveRange, historyDays, nowKey]);
+  const tessieRange = useMemo(() => {
+    const startOfDisplayedDay = new Date(model.start.getFullYear(), model.start.getMonth(), model.start.getDate()).valueOf();
+    const start = historyDays === null ? startOfDisplayedDay : Math.max(startOfDisplayedDay, Date.now() - historyDays * 86_400_000);
+    const end = new Date(model.end.getFullYear(), model.end.getMonth(), model.end.getDate() + 1).valueOf();
+    return { startInclusive: new Date(start).toISOString(), endExclusive: new Date(end).toISOString() };
+  }, [model.start, model.end, historyDays, nowKey]);
+  const tessieStatistics = useMemo(() => TESSIE_INTEGRATION_ENABLED
+    ? localAtlasClient.tessieStatistics(getCurrentUser().id, tessieRange)
+    : null, [tessieRange, state.data, nowKey]);
+  useEffect(() => {
+    let active = true;
+    if (!TESSIE_INTEGRATION_ENABLED) { setTessieConnection('unavailable'); return () => { active = false; }; }
+    setTessieConnection('checking');
+    void tessieDirectStatus().then(status => {
+      if (active) setTessieConnection(status === 'connected' ? 'connected' : 'disconnected');
+    }).catch(() => { if (active) setTessieConnection('unavailable'); });
+    return () => { active = false; };
+  }, [state.data, nowKey]);
   const startKey = dayKey(model.start), endKey = dayKey(model.end);
   const focus = selectedDay && selectedDay >= startKey && selectedDay <= endKey ? selectedDay : dayKey(new Date(model.selected[0]?.startedAt ?? model.end));
   const desiredMonth = monthKey ?? focus;
@@ -134,9 +233,11 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
   const rangeFilterColors = [rangeColors[1], rangeColors[1], rangeColors[2], rangeColors[3]];
   const rangeSelector = <SlidingSelection selectedIndex={([7, 30, 90, 'all'] as const).indexOf(effectiveRange)} style={[styles.row, compact && styles.rangeGrid, singleRowRanges && styles.rangeRow]} itemStyle={compact ? (singleRowRanges ? styles.rangeButton : styles.growButton) : undefined} highlightStyle={{ borderRadius: 12, backgroundColor: `${rangeFilterColors[([7, 30, 90, 'all'] as const).indexOf(effectiveRange)]}${c.isLight ? '22' : '2e'}` }}>{([7, 30, 90, 'all'] as const).map((value, index) => <Button key={value} accent={rangeFilterColors[index]} fitLabel={singleRowRanges} label={`${value === 'all' ? 'All' : `${value}D`}${historyDays !== null && (value === 'all' || value > historyDays) ? ' · Plus' : ''}`} selected={effectiveRange === value}
     onPress={() => { if (historyDays !== null && (value === 'all' || value > historyDays)) { onUpgrade(); return; } if (value !== effectiveRange) void haptics.selection(); setRange(value); setSelectedDay(null); setMonthKey(null); setRecentCount(compact ? 3 : 8); setDayCount(5); }} />)}</SlidingSelection>;
-  const compactSectionSelector = <SlidingSelection selectedIndex={['overview', 'days', 'insights'].indexOf(compactSection)} style={styles.sectionSelector} itemStyle={styles.sectionButton}
+  const compactSections = TESSIE_INTEGRATION_ENABLED ? ['overview', 'days', 'insights', 'tessie'] as const : ['overview', 'days', 'insights'] as const;
+  const wrapCompactSections = width / fontScale < 360;
+  const compactSectionSelector = <SlidingSelection selectedIndex={compactSections.indexOf(compactSection as never)} style={[styles.sectionSelector, wrapCompactSections && { flexWrap: 'wrap' }]} itemStyle={[styles.sectionButton, wrapCompactSections && { flexBasis: '45%' }]}
     highlightStyle={{ borderRadius: 12, backgroundColor: `${c.accent}${c.isLight ? '20' : '30'}` }}>
-    {(['overview', 'days', 'insights'] as const).map(section => <Button key={section} grow label={section[0].toUpperCase() + section.slice(1)} selected={compactSection === section}
+    {compactSections.map(section => <Button key={section} grow label={section[0].toUpperCase() + section.slice(1)} selected={compactSection === section}
       onPress={() => { if (section !== compactSection) void haptics.selection(); setCompactSection(section); }} />)}
   </SlidingSelection>;
   const metricComparison = (metric: typeof metrics[number]) => {
@@ -277,6 +378,8 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
           </StatisticsMotionFrame> : null}
           {(!compact || compactSection === 'insights') ? <Text style={[styles.caption, { color: c.muted }]}>Listening time sums saved song durations, not measured playback. {model.totals.partialMusic ? 'Some music details or durations are missing; listening and distinct music totals are partial. ' : ''}All music is grouped by its journey’s start date. Sparklines show up to 90 days. Comparisons use the preceding equal-length period when accessible.</Text> : null}
         </>}
+        {TESSIE_INTEGRATION_ENABLED && tessieStatistics && (!compact || compactSection === 'tessie')
+          ? <TessieStatisticsPanels statistics={tessieStatistics} connection={tessieConnection} onJourney={onJourney} wide={wide} span={span} /> : null}
         {(!compact || compactSection === 'overview') ? yearCard : null}
       </View>
     </ScrollView>

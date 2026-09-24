@@ -1,4 +1,5 @@
 import type { JourneyMarker } from './journey-marker-store';
+import type { LocalTessieChargeMarker } from './local-store';
 import { SymbolView } from 'expo-symbols';
 import { JourneyReplayStage, ReplayPosition } from './journey-replay-stage';
 import { JourneyReplayMarker, REPLAY_TICK_MS } from './journey-replay-marker';
@@ -27,6 +28,8 @@ import { useCoreMotion } from './use-core-motion';
 type InteractiveRouteMapProps = {
   markers?: JourneyMarker[];
   onSelectMarker?: (marker: JourneyMarker) => void;
+  chargeMarkers?: LocalTessieChargeMarker[];
+  onSelectCharge?: (charge: LocalTessieChargeMarker) => void;
   coordinates: RouteCoordinate[];
   routeSamples?: TimedRouteSample[];
   photos?: ReplayPhoto[];
@@ -52,6 +55,7 @@ const REPLAY_CHASE_PITCH = 52;
 export function InteractiveRouteMap({
   coordinates,
   markers = [], onSelectMarker,
+  chargeMarkers = [], onSelectCharge,
   routeSamples,
   photos = EMPTY_PHOTOS,
   songMoments,
@@ -333,6 +337,13 @@ export function InteractiveRouteMap({
           onPress={event => { event.stopPropagation(); settleReplay(); onSelectMarker?.(marker); }}>
           <View accessibilityLabel={`Saved marker ${index + 1}`} style={{ width: 38, height: 44, borderRadius: 6, borderWidth: 2, borderColor: mapPalette.routeLine, backgroundColor: theme.palette.card, alignItems: 'center', justifyContent: 'center', shadowColor: mapPalette.routeGlow, shadowOpacity: 0.95, shadowRadius: 9, shadowOffset: { width: 0, height: 0 } }}>
             <SymbolView name="photo" tintColor={theme.palette.accent} size={24} />
+          </View>
+        </Marker>)}
+        {chargeMarkers.filter(charge => charge.latitude != null && charge.longitude != null && (!replayEngaged || replayTimestamp >= lastReplayTime)).map(charge => <Marker
+          id={`tessie-charge-${charge.id}`} key={charge.id} lngLat={[charge.longitude!, charge.latitude!]} anchor="bottom"
+          onPress={event => { event.stopPropagation(); settleReplay(); onSelectCharge?.(charge); }}>
+          <View accessibilityLabel="Supercharger stop" style={[styles.songMarker, { backgroundColor: theme.palette.card, borderWidth: 2, borderColor: mapPalette.routeLine }]}>
+            <SymbolView name="bolt.fill" tintColor={theme.palette.accent} size={19} />
           </View>
         </Marker>)}
         {songMoments.filter(moment => !replayEngaged || Date.parse(moment.playedAt) <= replayTimestamp).map(moment => <Marker

@@ -110,11 +110,11 @@ export async function requestPrivacyEdgeJson<T>(
       headers: { accept: 'application/json', 'content-type': 'application/json', 'x-journeydeck-version': '1.7' },
     });
     const downloadBytes = reportedDownloadBytes(response);
-    if (options.maxResponseBytes && downloadBytes > options.maxResponseBytes) throw new Error('Public directory response is too large.');
+    if (options.maxResponseBytes && downloadBytes > options.maxResponseBytes) throw new Error('Privacy edge response is too large.');
     let payload: { error?: string } | null;
     if (options.maxResponseBytes) {
       const bytes = await response.arrayBuffer();
-      if (bytes.byteLength > options.maxResponseBytes) throw new Error('Public directory response is too large.');
+      if (bytes.byteLength > options.maxResponseBytes) throw new Error('Privacy edge response is too large.');
       payload = await new Response(bytes).json() as { error?: string } | null;
     } else {
       payload = await response.json().catch(() => null) as { error?: string } | null;

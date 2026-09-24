@@ -4,6 +4,7 @@ import {
   getSession, markLastFmSyncResult, pendingLastFmSyncs, queueLastFmSync, queueRecentCompletedLastFmSyncs, saveImportedMusicForCompletedSession,
 } from './storage';
 import { requestPrivacyEdgeJson } from './network-request';
+import { resolveMissingLastFmArtwork } from './apple-artwork-lookup';
 
 let automaticSyncInFlight: Promise<LastFmSyncSummary> | null = null;
 
@@ -13,7 +14,7 @@ export type LastFmSyncSummary = {
   matchedTracks: number;
 };
 
-type LastFmHistoryResponse = { tracks: { playedAt: string; track: string; artist: string; album: string | null; externalUrl: string | null }[]; attribution: string };
+type LastFmHistoryResponse = { tracks: { playedAt: string; track: string; artist: string; album: string | null; artworkUrl?: string | null; externalUrl: string | null }[]; attribution: string };
 
 function privacyEdgeUrl() {
   const edge = Constants.expoConfig?.extra?.edge as { url?: unknown } | undefined;
@@ -29,6 +30,7 @@ async function runPendingLastFmSync(force: boolean): Promise<LastFmSyncSummary> 
   const rows = pendingLastFmSyncs({ force, limit: 5 });
   let succeeded = 0, matchedTracks = 0;
   for (const row of rows) {
+    if ((await loadMusicPreferences()).provider !== 'lastfm') break;
     try {
       const edgeUrl = privacyEdgeUrl(), session = getSession(row.sessionId);
       if (!edgeUrl) throw new Error('JourneyDeck privacy edge is not configured.');
@@ -36,6 +38,7 @@ async function runPendingLastFmSync(force: boolean): Promise<LastFmSyncSummary> 
       const result = await requestPrivacyEdgeJson<LastFmHistoryResponse>(edgeUrl, '/api/music/lastfm/recent', {
         username: row.username || username, from: session.started_at, to: session.ended_at,
       }, { reason: 'external_import', operation: 'Spotify history import', timeoutMs: 15_000, timeoutMessage: 'Last.fm took too long to respond.' });
+      if ((await loadMusicPreferences()).provider !== 'lastfm') break;
       const imported = saveImportedMusicForCompletedSession(row.sessionId, 'lastfm', result.tracks);
       await markLastFmConnected(row.username || username);
       markLastFmSyncResult(row.sessionId, true);
@@ -45,6 +48,9 @@ async function runPendingLastFmSync(force: boolean): Promise<LastFmSyncSummary> 
       markLastFmSyncResult(row.sessionId, false);
     }
   }
+  // Older imports and tracks without a Last.fm cover can use an exact catalog
+  // match. An unavailable catalog must never fail a successful history import.
+  await resolveMissingLastFmArtwork(8).catch(() => undefined);
   return { attempted: rows.length, succeeded, matchedTracks };
 }
 
@@ -70,7 +76,8 @@ export async function queueLastFmForCompletedSession(sessionId: string) {
 }
 
 export async function syncRecentLastFmNow() {
-  if (!isMusicProviderAvailable('lastfm')) throw new Error('Spotify history is available only in JourneyDeck internal preview builds.');
+  if (!isMusicProviderAvailable('lastfm')) throw new Error('Spotify history is not available in this build.');
+  if ((await loadMusicPreferences()).provider !== 'lastfm') throw new Error('Choose Spotify history as your music method first.');
   const username = await loadLastFmUsername();
   if (!username) throw new Error('Add your Last.fm username first.');
   if (automaticSyncInFlight) await automaticSyncInFlight;
