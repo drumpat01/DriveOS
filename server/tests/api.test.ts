@@ -59,10 +59,24 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(soundtrack.body, /aria-current="page">Soundtracks<\/a>/);
     assert.match(soundtrack.body, /\/assets\/v2\/soundtrack\.jpg/);
     assert.match(soundtrack.body, /Identify Song uses ShazamKit/);
+    const journal = await runtime.app.inject({ method: "GET", url: "/private-driving-journal" });
+    assert.equal(journal.statusCode, 200, journal.body);
+    assert.match(String(journal.headers["content-type"]), /text\/html/);
+    assert.match(journal.body, /<h1>Private driving journal for iPhone<\/h1>/);
+    assert.match(journal.body, /JourneyDeck is a private driving journal for iPhone\. You manually start a journey/);
+    assert.match(journal.body, /<h2>Frequently asked questions<\/h2>/);
+    assert.match(journal.body, /What is a private driving journal app for iPhone\?/);
+    assert.match(journal.body, /href="\/privacy"/);
+    assert.match(journal.body, /href="\/apple-music-soundtrack"/);
+    assert.match(journal.body, /https:\/\/apps\.apple\.com\/us\/app\/journeydeck\/id6806502526/);
+    assert.match(journal.body, /rel="canonical" href="https:\/\/journeydeck\.me\/private-driving-journal"/);
+    const journalAlias = await runtime.app.inject({ method: "GET", url: "/driving-journal" });
+    assert.equal(journalAlias.statusCode, 301);
+    assert.equal(journalAlias.headers.location, "/private-driving-journal");
     const terms = await runtime.app.inject({ method: "GET", url: "/terms" });
     assert.equal(terms.statusCode, 200, terms.body);
     assert.match(terms.body, /JourneyDeck Terms of Use/i);
-    for (const page of [privacy, support, soundtrack, terms]) {
+    for (const page of [privacy, support, soundtrack, journal, terms]) {
       assert.match(page.body, /class="site-header"/);
       assert.match(page.body, /class="desktop-nav" aria-label="Main navigation"/);
       assert.match(page.body, /href="\/apple-music-soundtrack"/);
@@ -78,6 +92,7 @@ test("public information and discovery pages are accessible without an authentic
     assert.match(String(sitemap.headers["content-type"]), /xml/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/terms<\/loc>/i);
     assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/apple-music-soundtrack<\/loc>/i);
+    assert.match(sitemap.body, /<loc>https:\/\/journeydeck\.me\/private-driving-journal<\/loc>/i);
     assert.doesNotMatch(sitemap.body, /<loc>https:\/\/journeydeck\.me\/(?:beta|app|login)(?:\/|<)/i);
   } finally { await runtime.app.close(); fixture.cleanup(); }
 });
@@ -104,6 +119,7 @@ test("hosted root serves the Grand Touring launch page while private routes stay
     assert.match(landing.body, /href="#medallions"/);
     assert.match(landing.body, /href="\/apple-music-soundtrack"/);
     assert.match(landing.body, /class="feature-cta" href="\/apple-music-soundtrack"/);
+    assert.match(landing.body, /class="feature-cta" href="\/private-driving-journal">See the private driving journal overview/);
     assert.match(landing.body, /id="replay"/);
     assert.match(landing.body, /id="memories"/);
     assert.match(landing.body, /id="membership"/);
