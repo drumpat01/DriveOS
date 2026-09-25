@@ -1,5 +1,11 @@
 # Current Handoff State
 
+## Pending Autumn Drive native icon (September 25, 2026)
+
+- The user approved a new Autumn Drive app icon derived from `mobile/recorder/assets/theme-autumn-drive-road-v1.png` and the JourneyDeck pulse mark. The approved art now replaces `mobile/recorder/assets/icon-midnight-canopy-v1.png` as an opaque 1024×1024 PNG.
+- The existing V3-only native slot remains `JourneyDeckMidnightCanopy`, presented to users as Autumn Drive, so no catalog or persistence IDs changed. Nine focused icon tests, TypeScript typecheck, and `git diff --check` passed.
+- The asset change is uncommitted. It requires a new V3 TestFlight native build; OTA cannot add or replace an iOS alternate app icon embedded in Build 38.
+
 ## Current V3 OTA (September 25, 2026)
 
 - Commit `173c7cb` raises the expanded iPhone Journey Library tray, gives each journey two independently truncating lines (start on top; destination and compact metrics below), and evens Memory detail spacing with aligned section/card edges. The changes are OTA-safe layout/JS only.
