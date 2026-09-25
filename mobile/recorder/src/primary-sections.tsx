@@ -32,7 +32,7 @@ import {
 } from './network-activity';
 import { getCurrentUser, isIsolationTestProfile } from './auth';
 import { loadConnection } from './credentials';
-import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
+import { localDatabaseIntegrityReport, localRouteBackupSummary, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
 import { statisticsPresentationKey, shouldAnimateStatistics } from './delight-policy';
@@ -1020,11 +1020,12 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     return () => { current = false; };
   }, [active, currentUser.id, state.data?.loadedAt]);
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const routeBackups = useMemo(() => localRouteBackupSummary(currentUser.id), [currentUser.id, state.data?.loadedAt]);
   const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const unifiedIntegrityIssueCount = masterIntegrity.foreignKeyViolationCount + masterIntegrity.ownershipViolationCount
     + masterIntegrity.invalidValueCount + recorderIntegrity.duplicateActiveOwnerCount + recorderIntegrity.invalidValueCount;
-  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic + recorderIntegrity.pendingCompletionJobCount;
+  const pendingPrivateWork = profileDiagnostics.pendingSyncCount + recorderIntegrity.pendingLocalCompletionJobCount;
   const testProfile = isIsolationTestProfile(currentUser);
   const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
     && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
@@ -1076,12 +1077,13 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
-    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local tasks are waiting to finish or sync. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
-    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
-    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
-    <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
+    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{pendingPrivateWork === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{pendingPrivateWork ? `${profileDiagnostics.pendingSyncCount} private iCloud records and ${recorderIntegrity.pendingLocalCompletionJobCount} local completion jobs are waiting. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
+    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingLocalCompletionJobCount} local jobs · ${recorderIntegrity.pendingRemoteCompletionJobCount} optional server jobs`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
+    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} points not sent to optional server`} healthy />
+    <HealthRow title="On-device archive" status="Ready" detail={`Archive refreshed ${relativeTime(state.data?.loadedAt)}`} healthy />
     <HealthRow title="Recorder backup destination" status={recorderDestination.status} detail={recorderDestination.host} healthy={recorderDestination.status === 'Saved'} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
+    <HealthRow title="iCloud route backups" status={routeBackups.pendingRoutes ? 'Waiting' : routeBackups.backedUpRoutes ? 'Up to date' : 'No routes'} detail={`${routeBackups.backedUpPoints} GPS points in ${routeBackups.backedUpRoutes} backed-up routes · ${routeBackups.pendingPoints} points in ${routeBackups.pendingRoutes} routes waiting`} healthy={routeBackups.pendingRoutes === 0} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} capabilities={providerCapabilities} />

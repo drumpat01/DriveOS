@@ -688,6 +688,8 @@ export type RecorderDatabaseIntegrityReport = {
   duplicateActiveOwnerCount: number;
   invalidValueCount: number;
   pendingCompletionJobCount: number;
+  pendingLocalCompletionJobCount: number;
+  pendingRemoteCompletionJobCount: number;
   expiredCompletionLeaseCount: number;
   ok: boolean;
 };
@@ -717,6 +719,9 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
     AS n;`)?.n ?? 0);
   const pendingCompletionJobCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
     FROM recording_jobs WHERE owner_user_id=? AND status<>'completed';`, getCurrentUser().id)?.n ?? 0);
+  const pendingRemoteCompletionJobCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
+    FROM recording_jobs WHERE owner_user_id=? AND status<>'completed' AND kind='remote_completion';`, getCurrentUser().id)?.n ?? 0);
+  const pendingLocalCompletionJobCount = pendingCompletionJobCount - pendingRemoteCompletionJobCount;
   const expiredCompletionLeaseCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
     FROM recording_jobs WHERE owner_user_id=? AND status='running' AND lease_expires_at<=?;`,
   getCurrentUser().id, new Date().toISOString())?.n ?? 0);
@@ -731,6 +736,8 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
     duplicateActiveOwnerCount,
     invalidValueCount,
     pendingCompletionJobCount,
+    pendingLocalCompletionJobCount,
+    pendingRemoteCompletionJobCount,
     expiredCompletionLeaseCount,
     ok,
   };
