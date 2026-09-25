@@ -1,10 +1,10 @@
 # Current Handoff State
 
-## Pending Autumn Drive native icon (September 25, 2026)
+## Autumn Drive icon preview V3 OTA (September 25, 2026)
 
 - The user approved a new Autumn Drive app icon derived from `mobile/recorder/assets/theme-autumn-drive-road-v1.png` and the JourneyDeck pulse mark. The approved art now replaces `mobile/recorder/assets/icon-midnight-canopy-v1.png` as an opaque 1024×1024 PNG.
 - The existing V3-only native slot remains `JourneyDeckMidnightCanopy`, presented to users as Autumn Drive, so no catalog or persistence IDs changed. Nine focused icon tests, TypeScript typecheck, and `git diff --check` passed.
-- The asset change is uncommitted. It requires a new V3 TestFlight native build; OTA cannot add or replace an iOS alternate app icon embedded in Build 38.
+- Commit `58d1c9c` was published through xprem to Build 38's `production` branch/runtime `3.0.0-preview.6` so the approved art appears in the icon switcher preview. iOS update `17903610171301`, publish group `072fb038-3684-4aad-8731-5c9abfc5048a`, message `Preview_Autumn_Drive_app_icon`, deployed September 25 at 18:30:19 UTC. Build 38 still cannot apply this icon to the Home Screen; that requires a new V3 TestFlight native build embedding the replacement icon set.
 
 ## Current V3 OTA (September 25, 2026)
 
