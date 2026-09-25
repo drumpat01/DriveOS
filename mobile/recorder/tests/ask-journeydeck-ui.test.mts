@@ -160,12 +160,15 @@ test('the transient inactive state used while iOS presents a sheet does not clea
   } finally { await s.close(); }
 });
 
-test('the form sheet second layout pass does not scroll the empty welcome state out of view', async () => {
+test('the chat opens with a short bot greeting and does not auto-scroll before the user speaks', async () => {
   const s = await screen();
   try {
     await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
     assert.deepEqual(s.scrolls, []);
-    assert.match(s.text(), /Where have we been/);
+    assert.match(s.text(), /Hello! I’m JourneyDeck/);
+    assert.match(s.text(), /private on-device history/);
+    assert.doesNotMatch(s.text(), /Where have we been/);
+    assert.equal(s.tree.root.findAll((node: any) => node.props.accessibilityLabel?.startsWith('Ask:')).length, 0);
     await s.submit('How many miles?');
     await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
     assert.equal(s.scrolls.length, 1); assert.equal(s.scrolls[0].animated, true);

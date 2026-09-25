@@ -5,7 +5,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
-import { ASK_EXAMPLES, askJourneyDeck, isAskJourneyDeckAvailable, resolveJourneyDeckAnswer, type AskAnswer, type AskEvidence } from './ask-journeydeck';
+import { askJourneyDeck, isAskJourneyDeckAvailable, resolveJourneyDeckAnswer, type AskAnswer, type AskEvidence } from './ask-journeydeck';
 import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { canShowSiriTesting } from './siri-testing';
 
@@ -89,22 +89,18 @@ export function AskJourneyDeckScreen() {
       : <>
         <ScrollView ref={scroll} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
           style={styles.scroll} contentContainerStyle={styles.conversation}
-          onContentSizeChange={() => { if (messages.length > 0 || busy) scroll.current?.scrollToEnd({ animated: true }); }}>
+          onContentSizeChange={() => { if (messages.some(message => message.role === 'user')) scroll.current?.scrollToEnd({ animated: true }); }}>
           <View style={styles.identityRow}>
             <View style={[styles.avatar, { backgroundColor: c.accent }]}><SymbolView name="point.3.connected.trianglepath.dotted" tintColor={c.onAccent} size={23} weight="semibold" /></View>
             <View style={styles.identityCopy}><Text style={[styles.identityTitle, { color: c.text }]}>JourneyDeck</Text><Text style={[styles.identityStatus, { color: c.muted }]}>Your private road companion</Text></View>
             <View style={[styles.privateBadge, { backgroundColor: c.inset }]}><SymbolView name="lock.fill" tintColor={c.accent} size={10} /><Text style={[styles.privateText, { color: c.muted }]}>ON DEVICE</Text></View>
           </View>
 
-          {messages.length === 0 && !busy && <View style={styles.welcome}>
-            <Text style={[styles.welcomeTitle, { color: c.text }]}>Where have we been?</Text>
-            <Text style={[styles.welcomeBody, { color: c.muted }]}>Ask about your journeys, music, Memories, markers, or familiar places. I’ll answer from the active profile’s local history.</Text>
-            <View style={styles.prompts}>
-              {ASK_EXAMPLES.map((example, index) => <Pressable key={example} accessibilityRole="button" accessibilityLabel={`Ask: ${example}`} disabled={busy}
-                onPress={() => submitValue(example)} style={({ pressed }) => [styles.prompt, { backgroundColor: c.card, borderColor: c.line, opacity: pressed ? 0.68 : 1 }]}>
-                <View style={[styles.promptIcon, { backgroundColor: c.inset }]}><SymbolView name={index === 0 ? 'road.lanes' : index === 1 ? 'clock.arrow.circlepath' : 'music.note'} tintColor={c.accent} size={17} /></View>
-                <Text style={[styles.promptText, { color: c.text }]}>{example}</Text><SymbolView name="arrow.up.right" tintColor={c.muted} size={13} />
-              </Pressable>)}
+          {messages.length === 0 && !busy && <View style={styles.assistantRow}>
+            <View style={[styles.miniAvatar, { backgroundColor: c.inset }]}><SymbolView name="point.3.connected.trianglepath.dotted" tintColor={c.accent} size={15} /></View>
+            <View style={[styles.assistantBubble, { backgroundColor: c.card, borderColor: c.line }]}>
+              <Text style={[styles.messageText, { color: c.text }]}>Hello! I’m JourneyDeck.</Text>
+              <Text style={[styles.messageText, { color: c.muted }]}>Ask me about your journeys, music, Memories, markers, or familiar places, and I’ll answer from this profile’s private on-device history.</Text>
             </View>
           </View>}
 
@@ -161,8 +157,6 @@ const styles = StyleSheet.create({
   closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, unavailable: { flex: 1, padding: 24 }, body: { fontSize: 17, lineHeight: 24 },
   identityRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 11 }, avatar: { width: 42, height: 42, borderRadius: 15, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' },
   identityCopy: { flex: 1, gap: 2 }, identityTitle: { fontSize: 17, fontWeight: '800' }, identityStatus: { fontSize: 12 }, privateBadge: { minHeight: 28, paddingHorizontal: 9, borderRadius: 14, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 5 }, privateText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
-  welcome: { paddingTop: 24, gap: 12 }, welcomeTitle: { fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.5 }, welcomeBody: { fontSize: 16, lineHeight: 24, maxWidth: 520 }, prompts: { gap: 10, paddingTop: 8 },
-  prompt: { minHeight: 60, borderRadius: 18, borderCurve: 'continuous', borderWidth: 1, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 11 }, promptIcon: { width: 34, height: 34, borderRadius: 12, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center' }, promptText: { flex: 1, fontSize: 15, lineHeight: 20, fontWeight: '600' },
   userRow: { alignItems: 'flex-end', paddingLeft: 52 }, userBubble: { maxWidth: '88%', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, borderBottomRightRadius: 7, borderCurve: 'continuous' },
   assistantRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, paddingRight: 28 }, miniAvatar: { width: 30, height: 30, borderRadius: 11, borderCurve: 'continuous', alignItems: 'center', justifyContent: 'center', marginTop: 3 },
   assistantBubble: { flexShrink: 1, maxWidth: '92%', padding: 15, borderRadius: 20, borderBottomLeftRadius: 7, borderCurve: 'continuous', borderWidth: 1, gap: 13 }, messageText: { fontSize: 16, lineHeight: 23 },
