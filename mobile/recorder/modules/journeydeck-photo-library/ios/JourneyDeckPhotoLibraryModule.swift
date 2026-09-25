@@ -1,9 +1,6 @@
 import ExpoModulesCore
 import Photos
 import UIKit
-#if canImport(SensitiveContentAnalysis)
-import SensitiveContentAnalysis
-#endif
 
 public final class JourneyDeckPhotoLibraryModule: Module {
   @MainActor private var activeScanID: String?
@@ -46,11 +43,7 @@ public final class JourneyDeckPhotoLibraryModule: Module {
     case .restricted: permission = "restricted"
     default: permission = "undetermined"
     }
-    var sensitivityAvailable = false
-    #if canImport(SensitiveContentAnalysis)
-    if #available(iOS 17.0, *) { sensitivityAvailable = SCSensitivityAnalyzer().analysisPolicy != .disabled }
-    #endif
-    return ["permission": permission, "sensitivityAvailable": sensitivityAvailable]
+    return ["permission": permission]
   }
 
   @MainActor private func adoptScan(_ scanID: String, windows: [[String: Double]], assetIDs: [String]) throws -> [String] {
@@ -135,19 +128,6 @@ public final class JourneyDeckPhotoLibraryModule: Module {
     }
   }
 
-  /// Nil means the OS cannot analyze. False means the analyzer ran and found no nudity.
-  @MainActor private func sensitivity(_ image: UIImage) async throws -> Bool? {
-    #if canImport(SensitiveContentAnalysis)
-    if #available(iOS 17.0, *) {
-      let analyzer = SCSensitivityAnalyzer()
-      if analyzer.analysisPolicy != .disabled, let cgImage = image.cgImage {
-        return try await analyzer.analyzeImage(cgImage).isSensitive
-      }
-    }
-    #endif
-    return nil
-  }
-
   @MainActor private func jpeg(_ image: UIImage, maxBytes: Int) -> Data? {
     // Rendering creates a new pixel-only JPEG: no source EXIF/GPS/filename leaves PhotoKit.
     let format = UIGraphicsImageRendererFormat()
@@ -167,20 +147,17 @@ public final class JourneyDeckPhotoLibraryModule: Module {
 
   @MainActor private func preview(_ scanID: String, assetID: String) async throws -> [String: Any] {
     let asset = try selectedAsset(scanID, assetID: assetID)
-    // Bound decoded images throughout analysis/encoding, not just PhotoKit fetching.
+    // Bound decoded images throughout encoding, not just PhotoKit fetching.
     guard processingImages < 12 else { throw failure("Photos are still being prepared. Retry this preview in a moment.") }
     processingImages += 1
     defer { processingImages -= 1 }
     guard let image = await image(asset, size: 640) else {
-      return ["status": "unavailable", "checkedForNudity": false]
+      return ["status": "unavailable"]
     }
     _ = try selectedAsset(scanID, assetID: assetID)
-    // If an enabled analyzer errors, withhold the image; do not silently bypass that protection.
-    let sensitive = try await sensitivity(image)
+    guard let data = jpeg(image, maxBytes: 240_000) else { return ["status": "unavailable"] }
     _ = try selectedAsset(scanID, assetID: assetID)
-    if sensitive == true { return ["status": "sensitive", "checkedForNudity": true] }
-    guard let data = jpeg(image, maxBytes: 240_000) else { return ["status": "unavailable", "checkedForNudity": sensitive != nil] }
-    return ["status": "ready", "dataUri": "data:image/jpeg;base64," + data.base64EncodedString(), "checkedForNudity": sensitive != nil]
+    return ["status": "ready", "dataUri": "data:image/jpeg;base64," + data.base64EncodedString()]
   }
 
   @MainActor private func export(_ scanID: String, assetID: String) async throws -> [String: Any] {
@@ -190,10 +167,8 @@ public final class JourneyDeckPhotoLibraryModule: Module {
     defer { processingImages -= 1 }
     guard let image = await image(asset, size: 1280) else { throw failure("Download this photo in Photos, then return and search again.") }
     _ = try selectedAsset(scanID, assetID: assetID)
-    let sensitive = try await sensitivity(image)
-    _ = try selectedAsset(scanID, assetID: assetID)
-    guard sensitive != true else { throw failure("A potentially sensitive photo was excluded. Choose another photo.") }
     guard let data = jpeg(image, maxBytes: 1_572_864) else { throw failure("This photo could not be prepared within the private library size limit.") }
+    _ = try selectedAsset(scanID, assetID: assetID)
     return ["fileName": "Journey photo.jpg", "contentType": "image/jpeg", "dataBase64": data.base64EncodedString()]
   }
 }

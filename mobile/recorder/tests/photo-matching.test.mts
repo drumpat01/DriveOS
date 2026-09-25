@@ -57,11 +57,11 @@ function harness() {
   const calls = { permission: 0, scan: 0, cancel: [] as string[], export: [] as string[], imported: [] as string[] };
   let failPhotoB = false;
   const bridge = {
-    getStatus: async () => ({ permission, sensitivityAvailable: false }),
-    requestPermission: async () => { calls.permission++; return { permission, sensitivityAvailable: false }; },
+    getStatus: async () => ({ permission }),
+    requestPermission: async () => { calls.permission++; return { permission }; },
     manageLimitedSelection: async () => {}, cancel: async (id: string) => { calls.cancel.push(id); },
     scan: async (id: string) => { calls.scan++; return scanWait ? scanWait.promise : { scanId: id, assets: [asset(), asset('photo-b')], truncated: false }; },
-    preview: async () => ({ status: 'ready', dataUri: 'data:image/jpeg;base64,AAAA', checkedForNudity: false }),
+    preview: async () => ({ status: 'ready', dataUri: 'data:image/jpeg;base64,AAAA' }),
     export: async (_scan: string, id: string) => { calls.export.push(id); return exportWait ? exportWait.promise : { fileName: 'Photo.jpg', contentType: 'image/jpeg', dataBase64: 'AAAA' }; },
   };
   const Animated = { Value: class { stopAnimation() {} setValue() {} }, timing: () => ({ start() {}, stop() {} }), View: 'AnimatedView' };
@@ -158,8 +158,8 @@ test('Build 36 keeps its embedded photo scanner when Expo MediaLibrary is absent
   const module = { exports: {} as any };
   let scanned = false;
   const native = {
-    getStatusAsync: async () => ({ permission: 'full', sensitivityAvailable: true }),
-    requestPermissionAsync: async () => ({ permission: 'full', sensitivityAvailable: true }),
+    getStatusAsync: async () => ({ permission: 'full' }),
+    requestPermissionAsync: async () => ({ permission: 'full' }),
     manageLimitedSelectionAsync: async () => {},
     scanAsync: async (scanId: string) => { scanned = true; return { scanId, assets: [], truncated: false }; },
     previewAsync: async () => ({}), exportAsync: async () => ({}), cancelAsync: async () => {},
@@ -180,7 +180,7 @@ test('Expo metadata scan filters screenshots, bounds work, and adopts only valid
   const start = Date.parse('2026-07-01T09:30:00Z'), end = Date.parse('2026-07-01T11:30:00Z');
   const adopted: string[][] = [], requested: any[] = [];
   const native = {
-    getStatusAsync: async () => ({ permission: 'limited', sensitivityAvailable: true }),
+    getStatusAsync: async () => ({ permission: 'limited' }),
     adoptScanAsync: async (_id: string, _windows: unknown, ids: string[]) => { adopted.push(ids); return ['a']; },
     cancelAsync: async () => {}, previewAsync: async () => ({}), exportAsync: async () => ({}),
   };
@@ -204,7 +204,7 @@ test('Expo metadata scan filters screenshots, bounds work, and adopts only valid
     id === 'expo-modules-core' ? { requireOptionalNativeModule: (name: string) => name === 'ExpoMediaLibrary' ? {} : native }
       : id === './photo-matching-model' ? model : id === 'expo-media-library/legacy' ? media : require(id) });
   const library = module.exports.photoMatchingLibrary;
-  assert.deepEqual(JSON.parse(JSON.stringify(await library.getStatus())), { permission: 'limited', sensitivityAvailable: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(await library.getStatus())), { permission: 'limited' });
   const result = await library.scan('scan-1', [{ startMs: start, endMs: end }]);
   assert.deepEqual(JSON.parse(JSON.stringify(adopted)), [['a', 'b']]);
   assert.deepEqual(JSON.parse(JSON.stringify(result.assets.map((item: any) => item.id))), ['a']);
@@ -239,7 +239,7 @@ test('closing a review cancels an in-flight Expo metadata scan before native ado
   assert.equal(adopted, false);
 });
 
-test('PhotoKit export bridge validates Expo-selected IDs and retains offline sensitive-content protections', () => {
+test('PhotoKit export bridge validates Expo-selected IDs without content analysis', () => {
   const source = readFileSync(new URL('../modules/journeydeck-photo-library/ios/JourneyDeckPhotoLibraryModule.swift', import.meta.url), 'utf8');
   const podspec = readFileSync(new URL('../modules/journeydeck-photo-library/ios/JourneyDeckPhotoLibrary.podspec', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /^import PhotosUI$/m);
@@ -252,6 +252,7 @@ test('PhotoKit export bridge validates Expo-selected IDs and retains offline sen
   assert.match(source, /isNetworkAccessAllowed = false/); assert.match(source, /assetIDs\.count <= 400/);
   assert.match(source, /processingImages < 12/);
   assert.match(source, /cancelImageRequest/); assert.match(source, /UIGraphicsImageRenderer/);
-  assert.match(source, /guard sensitive != true/); assert.match(source, /analysisPolicy != \.disabled/);
+  assert.doesNotMatch(source, /SensitiveContentAnalysis|SCSensitivityAnalyzer|analyzeImage|checkedForNudity/);
+  assert.doesNotMatch(podspec, /SensitiveContentAnalysis/);
   assert.doesNotMatch(source, /performChanges|requestLocation|startUpdatingLocation|URLSession|write\(to/);
 });

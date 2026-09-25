@@ -28,7 +28,7 @@ function PhotoSuggestion({ scanId, match, width, selected, imported, disabled, r
     setPreview(null);
     void photoMatchingLibrary.preview(scanId, match.asset.id).then(value => {
       if (live) setPreview(value);
-    }).catch(() => { if (live) setPreview({ status: 'unavailable', checkedForNudity: false }); });
+    }).catch(() => { if (live) setPreview({ status: 'unavailable' }); });
     return () => { live = false; fade.stopAnimation(); };
   }, [scanId, match.asset.id, attempt, fade]);
   useEffect(() => {
@@ -43,7 +43,7 @@ function PhotoSuggestion({ scanId, match, width, selected, imported, disabled, r
       accessibilityState={{ checked: selected || imported, disabled: !ready || disabled || imported }} disabled={!ready || disabled || imported}
       onPress={onToggle} style={s.photoButton}>
       {ready ? <Animated.View style={[s.photo, { opacity: fade }]}><Image source={{ uri: preview.dataUri }} style={s.photo} resizeMode="cover" /></Animated.View>
-        : <View style={[s.photo, s.placeholder, { backgroundColor: p.inset }]}>{preview ? <Text style={[s.placeholderText, { color: p.muted }]}>{preview.status === 'sensitive' ? 'Potentially sensitive\nExcluded from suggestions' : 'Photo unavailable\nOpen it in Photos to download'}</Text> : <ActivityIndicator color={p.accent} />}</View>}
+        : <View style={[s.photo, s.placeholder, { backgroundColor: p.inset }]}>{preview ? <Text style={[s.placeholderText, { color: p.muted }]}>Photo unavailable\nOpen it in Photos to download</Text> : <ActivityIndicator color={p.accent} />}</View>}
       <View style={[s.selection, { backgroundColor: selected || imported ? p.accent : p.page, borderColor: p.chrome }]}><Text style={{ color: selected || imported ? p.onAccent : p.text, fontWeight: '800' }}>{selected || imported ? '✓' : '+'}</Text></View>
     </Pressable>
     <View style={s.tileCopy}>
@@ -167,9 +167,7 @@ function PhotoMatchingReview({ reviewKey, memoryName, journeys, onImport, onClos
     <View style={[s.notice, { backgroundColor: p.card, borderColor: p.line }]}>
       <Text style={[s.noticeTitle, { color: p.text }]}>On your device. Always your choice.</Text>
       <Text style={[s.small, { color: p.muted }]}>We use photo dates and saved photo locations. Hidden photos and screenshots are excluded. Nothing is added automatically. Selected copies use your existing private Memory library and iCloud sync settings.</Text>
-      <Text style={[s.small, { color: p.muted, marginTop: 9 }]}>{status?.sensitivityAvailable
-        ? 'Apple’s on-device nudity check is available. Flagged photos are withheld; the check cannot identify every type of sensitive content.'
-        : 'Automatic sensitive-content filtering is unavailable. Suggestions use time and location only; review photos before adding them.'}</Text>
+      <Text style={[s.small, { color: p.muted, marginTop: 9 }]}>Choose any image yourself using Add Photo in your Memory, even if it does not appear in these suggestions.</Text>
     </View>
     {status?.permission === 'limited' && <View style={s.inline}><Text style={[s.small, { color: p.muted, flex: 1 }]}>Searching only the photos you allowed.</Text><Pressable disabled={phase === 'importing'} onPress={() => void manageLimited()}><Text style={{ color: p.accent }}>Choose photos</Text></Pressable></View>}
     {(journeys.length > eligible.length || eligible.length === PHOTO_MATCH_LIMITS.journeys) && <Text style={[s.small, { color: p.muted }]}>This review covers the {eligible.length} most recent eligible journeys. Use a Memory with fewer journeys to review older photos. Long or undated recordings are excluded.</Text>}
