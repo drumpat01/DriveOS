@@ -98,7 +98,14 @@ import { observeJourneyDeckEvent } from './observability';
 import { JourneyMarkerRoute } from './journey-markers';
 import { journeyDeckMapPalette } from './journey-map-theme';
 import { buildSongRouteMoments } from './route-moments';
-import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
+import {
+  classifyPrivateICloudSyncError,
+  getPrivateICloudSyncBackoff,
+  getPrivateICloudSyncFailureRecord,
+  isPrivateICloudNativeAvailable,
+  PrivateICloudSyncDeferredError,
+  syncCurrentUserWithPrivateICloud,
+} from './icloud-sync';
 import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type JourneyLibrarySort } from './library-model';
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import { buildHomeSummary } from './home-summary';
@@ -513,6 +520,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
       return;
     }
+    // Automatic triggers wait out a failure backoff silently; the Sync button
+    // (announce) always retries now.
+    if (!announce && getPrivateICloudSyncBackoff()) return;
     setPrivateCloud({ status: 'syncing', detail: 'Checking iCloud zone…' });
     try {
       const result = await syncCurrentUserWithPrivateICloud({ force: announce });
@@ -528,12 +538,31 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       const summary = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} need${result.failedUploads === 1 ? 's' : ''} attention` : ''}${pending ? ` · ${pending} ${pending === 1 ? 'item' : 'items'} still waiting to upload.${result.failedUploads ? '' : ' Tap Sync again to continue.'}` : ''}${awaitingNative ? ` · ${awaitingNative} private items waiting for the next native build` : ''}`;
       const detail = [summary, ...(result.issueDetails ?? [])].join('\n\n');
       setPrivateCloud({ status: result.failedUploads ? 'error' : awaitingNative || pending ? 'idle' : 'synced', detail });
-      if (result.failedUploads) observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'partial_upload', failed_count: result.failedUploads });
+      if (result.failedUploads && !result.reused) {
+        const failure = getPrivateICloudSyncFailureRecord();
+        observeJourneyDeckEvent('cloudkit.sync_failed', {
+          stage: 'partial_upload', error_category: 'partial_upload', failed_count: result.failedUploads,
+          consecutive_failures: failure?.consecutiveFailures ?? 1,
+        });
+      }
       if (announce) Alert.alert(result.failedUploads ? 'Private iCloud needs attention' : pending || awaitingNative ? 'Private iCloud sync is incomplete' : 'Private iCloud sync finished', detail);
-      // Refresh the shared library snapshot so restored data reaches Home/Music.
-      await refreshPrimarySections(false);
+      // Refresh the shared library snapshot only when this sync restored or
+      // removed records. A full reload walks the whole archive.
+      if (!result.reused && (result.downloaded > 0 || result.deletedRecordNames.length > 0)) await refreshPrimarySections(false);
     } catch (error) {
-      observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'sync_exception' });
+      if (error instanceof PrivateICloudSyncDeferredError) {
+        // Lost a race with a failure recorded after the pre-check. No CloudKit work ran.
+        setPrivateCloud({ status: 'error', detail: `${error.message}\n\nEverything remains saved on this ${isIpad() ? 'iPad' : 'iPhone'}.` });
+        return;
+      }
+      const failure = getPrivateICloudSyncFailureRecord();
+      observeJourneyDeckEvent('cloudkit.sync_failed', {
+        stage: 'sync_exception',
+        error_category: classifyPrivateICloudSyncError(error),
+        consecutive_failures: failure?.consecutiveFailures ?? 1,
+        retry_in_seconds: failure ? Math.max(0, Math.round((failure.nextAttemptAt - Date.now()) / 1000)) : 0,
+        user_initiated: announce,
+      });
       const reason = error instanceof Error && error.message.trim()
         ? error.message.trim()
         : 'CloudKit did not return an error description.';

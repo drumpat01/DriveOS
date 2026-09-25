@@ -212,3 +212,21 @@ test('product reloads clear stale prices and ignore superseded responses', async
     assert.equal(h.control.state.productsLoading, false);
   } finally { await h.dispose(); }
 });
+
+test('an unchanged StoreKit refresh keeps entitlements identity so dependent reloads do not rerun', async () => {
+  let current: any = free;
+  const h = await harness({ getMembershipStatus: async () => ({ ...current }) });
+  try {
+    const first = h.control.state.entitlements;
+    await h.foreground();
+    const interval = [...h.timers.values()].find(timer => timer.delay === 15 * 60_000);
+    assert.ok(interval, 'the 15-minute StoreKit refresh is still scheduled');
+    await act(async () => { interval!.callback(); });
+    assert.notEqual(h.control.state.status, free, 'each refresh really delivered a new status object');
+    assert.equal(h.control.state.entitlements, first, 'equal entitlements keep the same object');
+    current = paid;
+    await h.foreground();
+    assert.equal(h.control.state.entitlements.tier, 'paid');
+    assert.notEqual(h.control.state.entitlements, first, 'a real change still propagates');
+  } finally { await h.dispose(); }
+});

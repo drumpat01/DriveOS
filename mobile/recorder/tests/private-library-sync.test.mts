@@ -953,3 +953,168 @@ test('an edit committed while an ordinary route asset is preparing takes ownersh
   assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 1);
   assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').durationMinutes, 20);
 });
+
+function withClock<T>(start: number, run: (advance: (ms: number) => void) => Promise<T>): Promise<T> {
+  const realNow = Date.now;
+  let now = start;
+  Date.now = () => now;
+  return run(ms => { now += ms; }).finally(() => { Date.now = realNow; });
+}
+
+test('failed automatic syncs back off instead of rerunning on every trigger; Sync retries immediately', () => withClock(1_000_000, async advance => {
+  let accountChecks = 0, pulls = 0, failing = true;
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => { accountChecks++; return 'available'; },
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => {
+        pulls++;
+        if (failing) throw new Error('Private iCloud response timed out. Local changes remain queued; retry sync shortly.');
+        return { records: [], deletedRecordNames: [] };
+      },
+      commitCloudKitChangeToken: async () => {},
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), /timed out/);
+  assert.deepEqual(coordinator.getPrivateICloudSyncBackoff(), { consecutiveFailures: 1, category: 'timeout', nextAttemptAt: 1_000_000 + 2 * 60_000 });
+
+  // Resume / membership-refresh triggers during the wait do no CloudKit work.
+  for (let index = 0; index < 3; index++) {
+    await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError' && error.backoff.category === 'timeout');
+  }
+  assert.equal(accountChecks, 1);
+  assert.equal(pulls, 1);
+
+  advance(2 * 60_000);
+  assert.equal(coordinator.getPrivateICloudSyncBackoff(), null, 'the wait has elapsed');
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), /timed out/);
+  assert.equal(pulls, 2);
+  assert.equal(coordinator.getPrivateICloudSyncBackoff().consecutiveFailures, 2);
+  assert.equal(coordinator.getPrivateICloudSyncBackoff().nextAttemptAt, 1_000_000 + 2 * 60_000 + 5 * 60_000);
+
+  // A user-initiated sync ignores the wait, and success clears the schedule.
+  failing = false;
+  const forced = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  assert.equal(pulls, 3);
+  assert.equal(forced.reused, undefined);
+  assert.equal(coordinator.getPrivateICloudSyncBackoff(), null);
+  assert.equal(coordinator.getPrivateICloudSyncFailureRecord(), null);
+  const reused = await coordinator.syncCurrentUserWithPrivateICloud();
+  assert.equal(reused.reused, true, 'the next automatic trigger reuses the completed sync');
+  assert.equal(pulls, 3);
+}));
+
+test('partial uploads honor CloudKit retry-after and concurrent triggers share one pass', () => withClock(5_000_000, async () => {
+  let pulls = 0, releasePull!: () => void;
+  const pullGate = new Promise<void>(resolve => { releasePull = resolve; });
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available',
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => { pulls++; await pullGate; return { records: [], deletedRecordNames: [] }; },
+      commitCloudKitChangeToken: async () => {},
+      pushCloudKitRecords: async (_scope: string, records: any[]) => ({
+        savedRecordNames: [], remoteRecords: [], failedRecordNames: records.map(record => record.recordName),
+        failedRecords: records.map(record => ({ recordName: record.recordName, code: 'request_rate_limited', retryAfterSeconds: 600 })),
+      }),
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+
+  const triggers = [coordinator.syncCurrentUserWithPrivateICloud(), coordinator.syncCurrentUserWithPrivateICloud(), coordinator.syncCurrentUserWithPrivateICloud({ force: true })];
+  releasePull();
+  const results = await Promise.all(triggers);
+  assert.equal(pulls, 1, 'overlapping resume, refresh and user triggers join the in-flight sync');
+  assert.ok(results.every(result => result === results[0]));
+  assert.ok(results[0].failedUploads > 0);
+  assert.deepEqual(coordinator.getPrivateICloudSyncBackoff(), { consecutiveFailures: 1, category: 'partial_upload', nextAttemptAt: 5_000_000 + 10 * 60_000 });
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError');
+  assert.equal(pulls, 1);
+}));
+
+test('a CloudKit retry-after longer than the 60-minute app cap is honored end to end', () => withClock(9_000_000, async advance => {
+  let pulls = 0;
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available',
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => { pulls++; return { records: [], deletedRecordNames: [] }; },
+      commitCloudKitChangeToken: async () => {},
+      pushCloudKitRecords: async (_scope: string, records: any[]) => ({
+        savedRecordNames: [], remoteRecords: [], failedRecordNames: records.map(record => record.recordName),
+        failedRecords: records.map(record => ({ recordName: record.recordName, code: 'request_rate_limited', retryAfterSeconds: 2 * 3600 })),
+      }),
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+
+  assert.ok((await coordinator.syncCurrentUserWithPrivateICloud()).failedUploads > 0);
+  assert.equal(coordinator.getPrivateICloudSyncBackoff().nextAttemptAt, 9_000_000 + 2 * 3600_000);
+  advance(61 * 60_000);
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError',
+    'the app cap alone would have retried here; the server asked for two hours');
+  assert.equal(pulls, 1);
+  advance(59 * 60_000);
+  await coordinator.syncCurrentUserWithPrivateICloud();
+  assert.equal(pulls, 2, 'retries once the server window has passed');
+}));
+
+test('an older successful sync cannot mask a later failed or partial forced sync', () => withClock(20_000_000, async advance => {
+  let pulls = 0, pullFails = false, pushFails = false;
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 3 }),
+      getCloudKitAccountStatus: async () => 'available',
+      ensureCloudKitPrivateZone: async () => {},
+      pullCloudKitChanges: async () => {
+        pulls++;
+        if (pullFails) throw new Error('The operation couldn’t be completed. (CKErrorDomain error 4.)');
+        return { records: [], deletedRecordNames: [] };
+      },
+      commitCloudKitChangeToken: async () => {},
+      pushCloudKitRecords: async (_scope: string, records: any[]) => pushFails
+        ? { savedRecordNames: [], remoteRecords: [], failedRecordNames: records.map(record => record.recordName), failedRecords: [] }
+        : { savedRecordNames: records.map(record => record.recordName), remoteRecords: [], failedRecordNames: [] },
+    },
+    './network-activity': { beginNetworkActivity: () => ({ finish() {} }) },
+  };
+  const phone = device(overrides);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+
+  // Thrown failure after a cached success.
+  await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  assert.equal((await coordinator.syncCurrentUserWithPrivateICloud()).reused, true, 'precondition: the success is cached');
+  pullFails = true; advance(60_000);
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud({ force: true }), /CKErrorDomain/);
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError' && error.backoff.category === 'network',
+    'the stale success is not returned as if iCloud were up to date');
+
+  // Partial upload after a fresh cached success.
+  pullFails = false;
+  await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
+  assert.equal((await coordinator.syncCurrentUserWithPrivateICloud()).reused, true);
+  seed(phone); pushFails = true; advance(60_000);
+  assert.ok((await coordinator.syncCurrentUserWithPrivateICloud({ force: true })).failedUploads > 0);
+  const pullsAfterPartial = pulls;
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud(), (error: any) => error.name === 'PrivateICloudSyncDeferredError' && error.backoff.category === 'partial_upload');
+  assert.equal(pulls, pullsAfterPartial);
+}));
