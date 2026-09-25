@@ -1,10 +1,12 @@
 # Current Handoff State
 
-## Pending Autumn Drive theme (September 25, 2026)
-
-- Uncommitted `theme-autumn-drive-road-v1.png` is a generated 1536×1024 scenic road image, matching the other theme artwork dimensions. Autumn Drive's switcher, welcome, and Home artwork now use it. Its palette and map colors were rebuilt around forest shadow, warm ivory, copper, and golden-hour light. The stored theme ID remains `midnight-canopy` for compatibility. Theme tests, TypeScript typecheck, and `git diff --check` passed. This work has not been included in the published V3 TestFlight OTA or committed.
-
 ## Current V3 OTA (September 25, 2026)
+
+- Commit `b4ad907` rebuilds Autumn Drive around the 1536×1024 scenic road image `theme-autumn-drive-road-v1.png`, matching the other theme artwork dimensions. The switcher, welcome, and Home artwork use it; the palette and map colors use forest shadow, warm ivory, copper, and golden-hour light. The stored theme ID remains `midnight-canopy` for compatibility.
+- xprem iOS update `17903548807231`, publish group `69352a2b-7c6e-49a1-975c-04fa4be1db27`, message `Autumn_Drive_artwork_and_palette`, published September 25 at 16:48:04 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and live V3 TestFlight identity. Public manifest returned HTTP 200, update UUID `9ac9cca4-ee34-0d27-d1fc-5ccc8362452b`, and a launch asset. No native build, EAS OTA, or Git push was performed.
+- Verification: 31 focused theme tests, TypeScript typecheck, `git diff --check`, V3 store iOS Expo export, and guarded publisher dry run passed. Confirm on a Build 38 device with two cold launches and inspect the theme switcher, welcome, Home, and map.
+
+## Prior V3 OTA (September 25, 2026)
 
 - Branch `codex/v3-testflight-ota-20260925` at `e84ed57` combines the photo-choice change (`fd85fc7`) with the post-Build-38 JS-only private iCloud sync backoff fix (`e84ed57`). The photo change removes optional SensitiveContentAnalysis native source and its framework link; the current Build 38 native binary is unchanged. OTA delivers the matching JavaScript and copy, plus the iCloud fix. Automatic suggestions still use time/location; Memory Add Photo remains available for any user-chosen image within format and size limits.
 - xprem iOS update `17903454568571`, publish group `085dcaf9-cda4-44e8-84c5-01d62915521c`, message `V3_photo_choice_and_iCloud_sync_recovery`, published September 25 at 14:11:38 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and live V3 TestFlight identity. Public manifest returns update UUID `73c3ed32-1988-3323-5405-9c84218b2fbe` with a launch asset. No EAS OTA, new native build, Git push, or App Review submission was performed.
