@@ -1006,7 +1006,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     void loadConnection().then(connection => {
       if (!current) return;
       if (!connection) {
-        setRecorderDestination({ status: 'None', host: 'No server address saved for this profile.' });
+        setRecorderDestination({ status: 'Retired', host: 'This profile uses the on-device archive and private iCloud only.' });
         return;
       }
       try {
@@ -1078,10 +1078,10 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
     <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{pendingPrivateWork === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{pendingPrivateWork ? `${profileDiagnostics.pendingSyncCount} private iCloud records and ${recorderIntegrity.pendingLocalCompletionJobCount} local completion jobs are waiting. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
-    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingLocalCompletionJobCount} local jobs · ${recorderIntegrity.pendingRemoteCompletionJobCount} optional server jobs`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
-    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} points not sent to optional server`} healthy />
+    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingLocalCompletionJobCount} local jobs · ${recorderIntegrity.pendingRemoteCompletionJobCount} legacy server jobs`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
+    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={recorderDestination.status === 'Saved' ? `${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} points waiting for the legacy server` : `${dashboard.recorder.capturedPoints} GPS captured · completed routes use private iCloud`} healthy />
     <HealthRow title="On-device archive" status="Ready" detail={`Archive refreshed ${relativeTime(state.data?.loadedAt)}`} healthy />
-    <HealthRow title="Recorder backup destination" status={recorderDestination.status} detail={recorderDestination.host} healthy={recorderDestination.status === 'Saved'} />
+    <HealthRow title="Legacy server migration" status={recorderDestination.status} detail={recorderDestination.host} healthy={recorderDestination.status === 'Saved' || recorderDestination.status === 'Retired'} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="iCloud route backups" status={routeBackups.pendingRoutes ? 'Waiting' : routeBackups.backedUpRoutes ? 'Up to date' : 'No routes'} detail={`${routeBackups.backedUpPoints} GPS points in ${routeBackups.backedUpRoutes} backed-up routes · ${routeBackups.pendingPoints} points in ${routeBackups.pendingRoutes} routes waiting`} healthy={routeBackups.pendingRoutes === 0} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />

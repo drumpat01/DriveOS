@@ -87,6 +87,14 @@ test('clean profiles can record manually without JourneyDeck credentials', () =>
   assert.doesNotMatch(nativeRecorder + nativeTransitions, /loadConnection|JourneyDeck credentials|URLSession/);
 });
 
+test('new V3 users cannot configure or queue the retired recorder server path', () => {
+  assert.doesNotMatch(app, /Optional owner backup|Connect owner backup|DEFAULT_SERVER_URL|saveConnection|pingRecorder/);
+  assert.doesNotMatch(credentials, /export (?:async )?function saveConnection/);
+  const nativeImportCompletion = storage.slice(storage.indexOf("if (session.status === 'completed'"), storage.indexOf('if (completed.length > 0'));
+  assert.doesNotMatch(nativeImportCompletion, /remote_completion/);
+  assert.match(nativeImportCompletion, /private_cloud_sync/);
+});
+
 test('Build 12 automatic journeys use the Expo safety fallback without sharing Swift SQLite', () => {
   assert.doesNotMatch(locationTask, /processAutomaticDriveLocations/);
   assert.match(releaseFeatures, /NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false/);

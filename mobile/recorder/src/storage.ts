@@ -222,7 +222,10 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
         db.runSync(`UPDATE recording_sessions
           SET status='completed',ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
           WHERE id=?;`, session.endedAt, session.nextSequence, session.updatedAt, session.id);
-        for (const kind of ['archive_mirror', 'apple_music_history', 'private_cloud_sync', 'remote_completion'] as CompletionJobKind[]) {
+        // Native V3 journeys are local-first and back up through private iCloud.
+        // Server completion is retained only for profiles that already had the
+        // legacy connection when a journey was finished by the JS recorder.
+        for (const kind of ['archive_mirror', 'apple_music_history', 'private_cloud_sync'] as CompletionJobKind[]) {
           enqueueCompletionJobInTransaction(session.id, ownerUserId, kind, now);
         }
         completed.push(session.id);
