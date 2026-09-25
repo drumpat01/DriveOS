@@ -2,6 +2,11 @@
 
 ## Current V3 OTA (September 25, 2026)
 
+- Commit `173c7cb` raises the expanded iPhone Journey Library tray, gives each journey two independently truncating lines (start on top; destination and compact metrics below), and evens Memory detail spacing with aligned section/card edges. The changes are OTA-safe layout/JS only.
+- xprem iOS update `17903604981361`, publish group `1539de82-66aa-43ec-b2d9-e495bf780f95`, message `Improve_Memories_layout`, published September 25 at 18:21:40 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `ba8bb96f-a5f6-d532-1813-1da9d4228549`, and a launch asset. Focused layout tests (48), TypeScript typecheck, diff check, and publisher iOS export passed. No native build, EAS OTA, or Git push.
+
+## Prior legacy server retirement V3 OTA (September 25, 2026)
+
 - Commit `e84c1c0` retires the legacy recorder-server path for new V3 users: the public server-address/key form and credential-save function are removed, native V3 journey imports no longer create remote completion jobs, and clean profiles show that their archive and backup path is local SQLite plus private iCloud. Existing profiles with previously stored legacy credentials may still load them to finish old migration work; no clean/new profile can configure this path.
 - xprem iOS update `17903597103381`, publish group `b94fd4ba-7ad4-4e4a-bf5b-011fbb5264b2`, message `Retire_legacy_server_for_new_users`, published September 25 at 18:08:32 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `3f6926e8-4ec7-32a3-2d83-a124204ce6ee`, and a launch asset. Focused tests (74), TypeScript typecheck, diff check, and publisher iOS export passed. No native build, EAS OTA, or Git push.
 
