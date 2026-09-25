@@ -6,7 +6,7 @@ export function phoneStudioLayout(width: number, height: number, fontScale = 1) 
     columns: width >= 320 && fontScale <= 1.2 ? 2 : 1,
     cardHeight: fontScale > 1.2 ? 250 : 210,
     collapsedTray: Math.min(96, Math.max(68, 68 * fontScale)),
-    expandedTray: Math.min(330, usableHeight * 0.52, Math.max(180 * Math.min(fontScale, 1.5), usableHeight * 0.36)),
+    expandedTray: Math.min(440, usableHeight * 0.72, Math.max(220 * Math.min(fontScale, 1.5), usableHeight * 0.64)),
   };
 }
 
