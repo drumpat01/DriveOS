@@ -2,6 +2,11 @@
 
 ## Current V3 OTA (September 25, 2026)
 
+- Commit `39f04ea` corrects Data Health's conflated sync indicators: optional server GPS upload flags and remote completion jobs are shown separately from private iCloud work; the hardcoded recorder Connected label is replaced with the local archive status. A new iCloud route backups row counts completed-route GPS points acknowledged by CloudKit and routes still pending, without changing sync behavior. The screenshot before this change showed no saved recorder server for the active profile, 16,428 points with unset optional server upload flags, 3 total completion jobs, and Private iCloud Synced; it did not prove how many route points CloudKit had acknowledged.
+- xprem iOS update `17903590834861`, publish group `2d20aec0-b7e2-40be-93c3-6edd213a171e`, message `Clarify_iCloud_route_backup_status`, published September 25 at 17:58:06 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `6870b0f6-584a-68ab-97f3-ab218a618fc0`, and a launch asset. Focused tests (56), TypeScript typecheck, diff check, and publisher iOS export passed. Next: confirm on the device after two cold launches, read the new route backup row, then investigate any routes or local completion jobs still pending. No native build, EAS OTA, or Git push.
+
+## Prior recorder destination V3 OTA (September 25, 2026)
+
 - Commit `88af29d` adds a Data Health row showing only the saved recorder backup server host from the current iPhone profile's secure connection. It does not display the key, URL path, or account identity. This helps identify the destination of queued GPS points without changing sync behavior.
 - xprem iOS update `17903585591291`, publish group `dd5f0b7c-9381-4ddf-85c2-e95ac472d116`, message `Show_recorder_backup_host`, published September 25 at 17:49:21 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `1efbe5e2-c903-e76d-0ca3-fd6e934041d1`, and a launch asset. Focused UI tests (35), TypeScript typecheck, diff check, and publisher iOS export passed. Next: confirm on device after two cold launches; read the new destination row and investigate the recorder backlog. No native build, EAS OTA, or Git push.
 
