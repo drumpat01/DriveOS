@@ -26,7 +26,7 @@ const previews: Record<ThemeId, number> = {
   light: require('../assets/home-header-light-v1.png'),
   sakura: require('../assets/theme-rosewater-road-v1.png'),
   redline: require('../assets/theme-grand-touring-home-v2.png'),
-  'midnight-canopy': require('../assets/theme-midnight-canopy-v1.png'),
+  'midnight-canopy': require('../assets/theme-autumn-drive-road-v1.png'),
 };
 
 const visibleFreeThemeIds: readonly ThemeId[] = V3_MIDNIGHT_CANOPY_ENABLED

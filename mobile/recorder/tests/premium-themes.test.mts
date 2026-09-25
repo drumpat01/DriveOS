@@ -80,7 +80,7 @@ test('premium palettes keep text and supporting metric colors readable on their 
   assert.equal(catalog.themeCatalog.redline.palette.green, '#2f6b57', 'Grand Touring uses British Racing Green for structural and chart accents');
   assert.equal(catalog.themeCatalog.redline.palette.blue, '#6fa5f0', 'Touring Blue remains visibly distinct from Chrome in compact charts');
   assert.deepEqual(catalog.themeCatalog.redline.swatches, ['#081832', '#203a63', '#d4b15a', '#f6f0e2', '#b6bfcc', '#2f6b57'], 'Grand Touring presents navy first, blue second and racing green sixth');
-  assert.deepEqual(catalog.themeCatalog['midnight-canopy'].swatches, ['#162f13', '#206722', '#590000', '#ffd000', '#ffa600', '#ff7600', '#ffffff', '#000000']);
+  assert.deepEqual(catalog.themeCatalog['midnight-canopy'].swatches, ['#171d17', '#283528', '#f4ad53', '#d98d63', '#9e4c36', '#e9dec9', '#a8bf98', '#414335']);
   assert.deepEqual(catalog.themeChoices(false), ['dark', 'redline', 'light', 'sakura']);
   assert.deepEqual(catalog.themeChoices(true), ['dark', 'redline', 'midnight-canopy', 'light', 'sakura']);
   assert.equal(catalog.chartColor(catalog.themeCatalog.sakura.palette.rose, 'sakura'), '#d895ab');
@@ -96,20 +96,20 @@ test('premium palettes keep text and supporting metric colors readable on their 
   }
   for (const id of ['sakura', 'redline', 'midnight-canopy'] as const) {
     const p = catalog.themeCatalog[id].palette;
-    assert.equal(new Set([p.coral, p.amber, p.teal, p.blue, p.rose, p.green]).size, id === 'midnight-canopy' ? 3 : 6, 'test 4 intentionally consolidates legacy supporting colors');
+    assert.ok(new Set([p.coral, p.amber, p.teal, p.blue, p.rose, p.green]).size >= (id === 'midnight-canopy' ? 5 : 6), `${id} keeps supporting colors distinguishable`);
     const supportingBackgrounds = id === 'midnight-canopy' ? [p.page, p.card] : [p.page, p.card, p.inset];
-    const textColors = id === 'midnight-canopy' ? [p.text, p.muted] : [p.text, p.muted, p.accent, p.coral, p.amber, p.teal, p.blue, p.rose, ...(id === 'redline' ? [] : [p.green])];
+    const textColors = id === 'midnight-canopy' ? [p.text, p.muted, p.accent, p.coral, p.amber, p.teal, p.blue] : [p.text, p.muted, p.accent, p.coral, p.amber, p.teal, p.blue, p.rose, ...(id === 'redline' ? [] : [p.green])];
     for (const bg of supportingBackgrounds) for (const fg of textColors) {
       assert.ok(contrast(fg, bg) >= 4.5, `${id}: ${fg} on ${bg} = ${contrast(fg, bg)}`);
     }
-    if (id === 'midnight-canopy') for (const fg of [p.text, p.muted]) assert.ok(contrast(fg, p.inset) >= 4.5, `midnight-canopy readable copy on raised Pine: ${fg}`);
+    if (id === 'midnight-canopy') for (const fg of [p.text, p.muted]) assert.ok(contrast(fg, p.inset) >= 4.5, `Autumn readable copy on bark controls: ${fg}`);
     if (id === 'redline') assert.ok(contrast(p.text, p.green) >= 4.5, 'Racing Green surfaces carry warm ivory text');
     assert.ok(contrast(p.onAccent, p.accent) >= 4.5);
     assert.equal(palette.themedColor('transparent', id), 'transparent');
     assert.equal(palette.themedColor('url(#route)', id), 'url(#route)');
     assert.match(palette.themedColor('rgba(5,3,11,0)', id, 'surface'), /,0\)$/);
   }
-  for (const id of ['dark', 'light', 'sakura', 'redline'] as const) {
+  for (const id of ['dark', 'light', 'sakura', 'redline', 'midnight-canopy'] as const) {
     const p = catalog.themeCatalog[id].palette;
     assert.ok(contrast(p.onSuccess, p.success) >= 4.5, `${id} saved action remains readable`);
     assert.ok(contrast(p.onDanger, p.danger) >= 4.5, `${id} destructive action remains readable`);
@@ -124,30 +124,29 @@ test('premium palettes keep text and supporting metric colors readable on their 
   for (const invalid of [null, 'expired-theme', '__proto__', 7]) assert.equal(catalog.parseThemeId(invalid), 'redline');
 });
 
-test('Autumn uses the exact test 4 palette and keeps page, card, control and glow roles separate', () => {
+test('Autumn palette follows the road photo and keeps page, card, control and glow roles separate', () => {
   const p = catalog.themeCatalog['midnight-canopy'].palette;
-  const approved = new Set(['#162f13', '#206722', '#590000', '#ffd000', '#ffa600', '#ff7600', '#ffffff', '#000000']);
-  assert.equal(p.accent, '#ffa600', 'actions use test 4 orange');
-  assert.equal(p.page, '#162f13');
-  assert.equal(p.card, '#206722');
-  assert.equal(p.inset, '#590000');
-  assert.equal(p.onAccent, '#000000');
-  assert.equal(p.glow, '#ff7600');
+  assert.equal(p.accent, '#f4ad53', 'actions use golden-hour amber');
+  assert.equal(p.page, '#171d17');
+  assert.equal(p.card, '#283528');
+  assert.equal(p.inset, '#342f28');
+  assert.equal(p.onAccent, '#1e1a13');
+  assert.equal(p.glow, '#e88937');
   assert.equal(palette.themedColor('#bc6aff', 'midnight-canopy', 'shadow'), p.glow);
   const surfaces = palette.themedStyleSheet({ homeRecorderCard: { backgroundColor: '#09080e' }, approvedLatestMemory: { backgroundColor: '#09080e' }, approvedLatestSongArrow: { backgroundColor: '#271730' } }, 'midnight-canopy');
   assert.equal(surfaces.homeRecorderCard.backgroundColor, p.card);
   assert.equal(surfaces.approvedLatestMemory.backgroundColor, p.card);
   assert.equal(surfaces.approvedLatestSongArrow.backgroundColor, p.inset);
-  assert.equal(p.text, '#ffffff');
-  assert.equal(p.muted, '#ffffff');
+  assert.equal(p.text, '#f7f0df');
+  assert.equal(p.muted, '#d3c8b5');
   assert.notEqual(p.accent, p.text);
-  assert.deepEqual(new Set(Object.values(p)), approved);
+  assert.notEqual(p.rose, p.coral, 'russet controls remain distinct from copper accents');
   for (const input of ['#c43c00', '#ffa800', '#471329', '#ff5c73', '#08070d']) {
     assert.ok([p.page, p.card].includes(palette.themedColor(input, 'midnight-canopy', 'surface')));
     assert.ok([p.text, p.accent, p.amber].includes(palette.themedColor(input, 'midnight-canopy', 'text')));
   }
   assert.deepEqual(palette.themedGradient(['#c43c00', '#471329', '#08070d'], 'midnight-canopy'), [p.card, p.card, p.page]);
-  assert.equal(palette.themedGradient(['rgba(196,60,0,0.25)'], 'midnight-canopy')[0], 'rgba(32,103,34,0.25)');
+  assert.equal(palette.themedGradient(['rgba(196,60,0,0.25)'], 'midnight-canopy')[0], 'rgba(40,53,40,0.25)');
   for (const value of ['#ffffff', '#b6a6c1', '#746a7c']) assert.equal(palette.themedColor(value, 'midnight-canopy', 'text'), p.text);
   assert.equal(palette.themedColor('#ff5577', 'midnight-canopy', 'text'), p.accent);
   assert.equal(palette.themedColor('#ffb050', 'midnight-canopy', 'text'), p.amber);
@@ -172,7 +171,7 @@ test('tab titles no longer use a palette bar as a substitute for themed elements
   } finally { await act(() => tree?.unmount()); }
 });
 
-test('Autumn assigns red to small badges and section markers, yellow to values, never red cards', () => {
+test('Autumn assigns russet to small badges and section markers, amber to values, never russet cards', () => {
   const p = catalog.themeCatalog['midnight-canopy'].palette;
   const input = { sectionAccent: { backgroundColor: '#ff795b' }, cardAccent: { backgroundColor: '#ff5577' }, settingsHubIcon: { backgroundColor: '#291735' }, metricValue: { color: '#ffffff' }, panel: { backgroundColor: '#120d19' }, page: { backgroundColor: '#08070d' } };
   const actual = palette.themedStyleSheet(input, 'midnight-canopy');
@@ -185,9 +184,9 @@ test('Autumn assigns red to small badges and section markers, yellow to values, 
   assert.equal(palette.themedStyleSheet(input, 'dark'), input);
 });
 
-test('Autumn widgets have yellow outlines and the recording beacon is red with amber paused state', () => {
+test('Autumn widgets have moss outlines and the recording beacon is russet with amber paused state', () => {
   const p = catalog.themeCatalog['midnight-canopy'].palette;
-  assert.equal(p.line, '#ffd000');
+  assert.equal(p.line, '#7b795c');
   assert.equal(palette.themedColor('rgba(190,168,194,0.44)', 'midnight-canopy', 'border'), p.line);
   assert.equal(palette.themedColor('transparent', 'midnight-canopy', 'border'), 'transparent');
   const input = { homeRecorderPulseCore: {}, homeRecorderPulseOuter: {}, homeRecorderPulseMiddle: {}, homeRecorderPulseCorePaused: {}, homeRecorderCard: { backgroundColor: '#09080e', borderColor: '#abcabc' } };
@@ -199,18 +198,18 @@ test('Autumn widgets have yellow outlines and the recording beacon is red with a
   assert.equal(actual.homeRecorderCard.backgroundColor, p.card);
 });
 
-test('Autumn widget headings are orange while body copy remains white', () => {
+test('Autumn widget headings are sage while body copy remains warm ivory', () => {
   const input = { cardTitle: { color: '#ffffff' }, sectionTitle: { color: '#ffffff' }, metricLabel: { color: '#ffffff' }, body: { color: '#ffffff' } };
   const output = palette.themedStyleSheet(input, 'midnight-canopy');
-  for (const name of ['cardTitle', 'sectionTitle', 'metricLabel'] as const) assert.equal(output[name].color, '#ffa600');
-  assert.equal(output.body.color, '#ffffff');
+  for (const name of ['cardTitle', 'sectionTitle', 'metricLabel'] as const) assert.equal(output[name].color, catalog.themeCatalog['midnight-canopy'].palette.teal);
+  assert.equal(output.body.color, catalog.themeCatalog['midnight-canopy'].palette.text);
   assert.equal(palette.themedStyleSheet(input, 'dark'), input);
 });
 
 test('theme grid exposes every paid selection and reports failed saves', async () => {
   const selections: string[] = [], alerts: string[] = []; let fail = false;
   const origins: { x: number; y: number }[] = [];
-  const assets = Object.fromEntries(['cinematic-home-main-photo-v1.jpg', 'home-header-light-v1.png', 'theme-rosewater-road-v1.png', 'theme-grand-touring-home-v2.png', 'theme-midnight-canopy-v1.png'].map((name, i) => [`../assets/${name}`, i + 1]));
+  const assets = Object.fromEntries(['cinematic-home-main-photo-v1.jpg', 'home-header-light-v1.png', 'theme-rosewater-road-v1.png', 'theme-grand-touring-home-v2.png', 'theme-autumn-drive-road-v1.png'].map((name, i) => [`../assets/${name}`, i + 1]));
   const api = load('theme-picker.tsx', {
     ...assets, './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: false },
     './theme-catalog': catalog,
@@ -262,7 +261,7 @@ test('theme artwork switches only registered decorative images, preserving user 
   vm.runInNewContext(code, { module, exports: module.exports, require: asset });
   assert.ok(![...assets.keys()].some(path => /theme-(rosewater|carbon-blue|grand-touring)-/.test(path)), 'custom replacements register only when selected');
   const resolve = module.exports.headerImageSource;
-  assert.equal(resolve(asset('../assets/cinematic-home-main-photo-v1.jpg'), 'midnight-canopy'), asset('../assets/theme-autumn-home-road-v1.jpg'));
+  assert.equal(resolve(asset('../assets/cinematic-home-main-photo-v1.jpg'), 'midnight-canopy'), asset('../assets/theme-autumn-drive-road-v1.png'));
   const autumnSettings = asset('../assets/cinematic-settings-photo-v1.jpg');
   assert.equal(resolve(autumnSettings, 'midnight-canopy'), autumnSettings, 'Home photo replacement stays scoped to Home');
   const photo = { uri: 'file:///private/photo.jpg' };

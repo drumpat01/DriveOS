@@ -1,5 +1,9 @@
 # Current Handoff State
 
+## Pending Autumn Drive theme (September 25, 2026)
+
+- Uncommitted `theme-autumn-drive-road-v1.png` is a generated 1536×1024 scenic road image, matching the other theme artwork dimensions. Autumn Drive's switcher, welcome, and Home artwork now use it. Its palette and map colors were rebuilt around forest shadow, warm ivory, copper, and golden-hour light. The stored theme ID remains `midnight-canopy` for compatibility. Theme tests, TypeScript typecheck, and `git diff --check` passed. This work has not been included in the published V3 TestFlight OTA or committed.
+
 ## Current V3 OTA (September 25, 2026)
 
 - Branch `codex/v3-testflight-ota-20260925` at `e84ed57` combines the photo-choice change (`fd85fc7`) with the post-Build-38 JS-only private iCloud sync backoff fix (`e84ed57`). The photo change removes optional SensitiveContentAnalysis native source and its framework link; the current Build 38 native binary is unchanged. OTA delivers the matching JavaScript and copy, plus the iCloud fix. Automatic suggestions still use time/location; Memory Add Photo remains available for any user-chosen image within format and size limits.

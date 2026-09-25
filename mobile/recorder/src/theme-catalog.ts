@@ -34,14 +34,13 @@ export const themeCatalog: Record<ThemeId, { name: string; mode: ThemeAppearance
     success: '#2f6b57', onSuccess: '#f6f0e2', danger: '#8e3040', onDanger: '#f6f0e2',
     coral: '#d4b15a', amber: '#f6f0e2', teal: '#9cb7d6', blue: '#6fa5f0', rose: '#e4c77a', green: '#2f6b57',
   } },
-  'midnight-canopy': { name: 'Autumn Drive', mode: 'dark', description: 'Forest green · sunset orange · deep red', swatches: ['#162f13', '#206722', '#590000', '#ffd000', '#ffa600', '#ff7600', '#ffffff', '#000000'], palette: {
-    // User-selected Theme Creator preset "test 4", September 17, 2026.
-    // Keep the stored ID stable; photos and album artwork are not palette tokens.
-    page: '#162f13', card: '#206722', inset: '#590000', text: '#ffffff', muted: '#ffffff',
-    accent: '#ffa600', onAccent: '#000000', line: '#ffd000', chrome: '#590000',
-    success: '#206722', onSuccess: '#ffffff', danger: '#590000', onDanger: '#ffffff',
-    coral: '#590000', amber: '#ffa600', teal: '#ffa600', blue: '#590000', rose: '#590000', green: '#162f13',
-    glow: '#ff7600',
+  'midnight-canopy': { name: 'Autumn Drive', mode: 'dark', description: 'Forest shadow · copper leaves · golden hour', swatches: ['#171d17', '#283528', '#f4ad53', '#d98d63', '#9e4c36', '#e9dec9', '#a8bf98', '#414335'], palette: {
+    // Sampled from the Autumn Drive road artwork. Keep the stored ID stable.
+    page: '#171d17', card: '#283528', inset: '#342f28', text: '#f7f0df', muted: '#d3c8b5',
+    accent: '#f4ad53', onAccent: '#1e1a13', line: '#7b795c', chrome: '#c9b695',
+    success: '#486f43', onSuccess: '#ffffff', danger: '#8f4032', onDanger: '#ffffff',
+    coral: '#d98d63', amber: '#f4b864', teal: '#a8bf98', blue: '#a4b9bb', rose: '#9e4c36', green: '#a8bf98',
+    glow: '#e88937',
   } },
 };
 
