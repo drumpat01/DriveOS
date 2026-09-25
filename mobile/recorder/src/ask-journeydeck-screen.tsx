@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Column, Host, TextInput, useNativeState } from '@expo/ui';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
@@ -17,7 +16,7 @@ type ChatMessage =
 export function AskJourneyDeckScreen() {
   const theme = useAppTheme(), c = theme.palette, userID = getCurrentUser().id, insets = useSafeAreaInsets();
   const { ticket } = useLocalSearchParams<{ ticket?: string }>();
-  const question = useNativeState('');
+  const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]), [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null), [foreground, setForeground] = useState(AppState.currentState === 'active');
   const request = useRef(0), inFlight = useRef(false), context = useRef<string | undefined>(undefined), messageID = useRef(0);
@@ -25,15 +24,13 @@ export function AskJourneyDeckScreen() {
   const nextID = (kind: string) => `${kind}-${++messageID.current}`;
   const invalidate = useCallback(() => {
     request.current++; inFlight.current = false; context.current = undefined; messageID.current = 0;
-    setBusy(false); setMessages([]); setError(null);
-    try { question.value = ''; } catch { /* The dismissed field is already gone. */ }
-  }, [question]);
+    setBusy(false); setMessages([]); setError(null); setQuestion('');
+  }, []);
   useEffect(() => { invalidate(); }, [userID, invalidate]);
-  useFocusEffect(useCallback(() => () => { invalidate(); }, [invalidate]));
   useEffect(() => {
     const listener = AppState.addEventListener('change', state => {
       setForeground(state === 'active');
-      if (state !== 'active') invalidate();
+      if (state === 'background') invalidate();
     });
     return () => { request.current++; listener.remove(); };
   }, [invalidate]);
@@ -60,10 +57,10 @@ export function AskJourneyDeckScreen() {
   const submitValue = (raw: string) => {
     const value = raw.trim();
     if (!value) { setError('Enter a question first.'); return; }
-    Keyboard.dismiss(); question.value = '';
+    Keyboard.dismiss(); setQuestion('');
     void perform(() => askJourneyDeck(userID, value, context.current), value);
   };
-  const submit = () => submitValue(question.value);
+  const submit = () => submitValue(question);
   const openEvidence = async (messageId: string, answer: AskAnswer, item: AskEvidence) => {
     if (!answer.ticket || inFlight.current) return;
     const id = ++request.current; inFlight.current = true; setBusy(true);
@@ -127,10 +124,9 @@ export function AskJourneyDeckScreen() {
         <View style={[styles.composerDock, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: c.page, borderColor: c.line }]}>
           <View style={styles.privacyRow}><SymbolView name="lock.fill" tintColor={c.muted} size={9} /><Text style={[styles.privacyLine, { color: c.muted }]}>Questions aren’t saved or sent with your journey data.</Text></View>
           <View style={[styles.composer, { backgroundColor: c.card, borderColor: error ? c.accent : c.line }]}>
-            <Host matchContents colorScheme={theme.isLight ? 'light' : 'dark'} seedColor={c.accent} style={styles.inputHost}>
-              <Column><TextInput testID="ask-question" value={question} placeholder="Ask about your road history" maxLength={500} editable={canSend}
-                returnKeyType="send" onSubmitEditing={submit} style={styles.input} textStyle={{ color: c.text, fontSize: 16 }} /></Column>
-            </Host>
+            <TextInput testID="ask-question" value={question} onChangeText={setQuestion} placeholder="Ask about your road history"
+              placeholderTextColor={c.muted} selectionColor={c.accent} maxLength={500} editable={canSend} returnKeyType="send"
+              onSubmitEditing={submit} style={[styles.input, { color: c.text }]} />
             <Pressable testID="ask-submit" accessibilityRole="button" accessibilityLabel={busy ? 'Reading your local history' : 'Send question'} onPress={submit} disabled={!canSend}
               style={({ pressed }) => [styles.sendButton, { backgroundColor: canSend ? c.accent : c.inset, opacity: pressed ? 0.7 : 1 }]}>
               {busy ? <ActivityIndicator color={c.muted} size="small" /> : <SymbolView name="arrow.up" tintColor={canSend ? c.onAccent : c.muted} size={18} weight="bold" />}
@@ -173,6 +169,6 @@ const styles = StyleSheet.create({
   sources: { gap: 8, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth }, sourceLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.1 }, sourceRow: { minHeight: 46, borderRadius: 13, borderCurve: 'continuous', paddingHorizontal: 11, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 9 }, sourceText: { flex: 1, fontSize: 14, lineHeight: 18, fontWeight: '600' },
   errorBubble: { minHeight: 48, borderRadius: 16, borderCurve: 'continuous', borderWidth: 1, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9 }, errorText: { flex: 1, fontSize: 14, lineHeight: 19 },
   availability: { fontSize: 13, lineHeight: 19 }, followUp: { textAlign: 'center', fontSize: 12, paddingVertical: 4 }, testingLink: { minHeight: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 5 }, testingText: { fontSize: 14, fontWeight: '700' },
-  composerDock: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 8, gap: 7 }, privacyRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 }, privacyLine: { textAlign: 'center', fontSize: 10, lineHeight: 14 }, composer: { minHeight: 54, borderRadius: 22, borderCurve: 'continuous', borderWidth: 1, paddingLeft: 6, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }, inputHost: { flex: 1 }, input: { minHeight: 44, paddingHorizontal: 10, backgroundColor: 'transparent' },
+  composerDock: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 14, paddingTop: 8, gap: 7 }, privacyRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4 }, privacyLine: { textAlign: 'center', fontSize: 10, lineHeight: 14 }, composer: { minHeight: 54, borderRadius: 22, borderCurve: 'continuous', borderWidth: 1, paddingLeft: 6, paddingRight: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }, input: { flex: 1, minHeight: 44, paddingHorizontal: 10, backgroundColor: 'transparent', fontSize: 16 },
   sendButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
 });

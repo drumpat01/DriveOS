@@ -28,23 +28,21 @@ function deferred() {
 const ticket = 'b78cba9f-e125-4fb9-a76b-e1cd44583c75';
 const result = (text = '19.8 miles across 2 journeys') => ({ status: 'answered', text, ticket, contextToken: ticket, profileId: 'a', evidence: [{ kind: 'journey', id: 'journey-a', label: 'Journey on Sep 15, 2026' }] });
 async function screen(options: { available?: boolean; enabled?: boolean; ticket?: string } = {}) {
-  let userID = 'a', blur: (() => void) | undefined, listener: (state: string) => void = () => {};
+  let userID = 'a', listener: (state: string) => void = () => {};
   let ask: (...args: any[]) => Promise<any> = async () => result();
   let resolve: (...args: any[]) => Promise<any> = async () => result();
   const calls: any[][] = [], resolutions: any[][] = [], pushes: any[] = [];
   const appState = { currentState: 'active', addEventListener: (_: string, callback: typeof listener) => { listener = callback; return { remove() {} }; } };
   const native = { AppState: appState, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
-    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'View'].map(name => [name, host(name)])) };
+    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])) };
   const component = load('ask-journeydeck-screen.tsx', {
     'react-native': native,
-    '@expo/ui': { ...Object.fromEntries(['Column', 'Host', 'TextInput'].map(name => [name, host(name)])), useNativeState: (value: any) => React.useRef({ value }).current },
     'expo-symbols': { SymbolView: host('Symbol') },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 8, left: 0 }) },
     'expo-router': {
       Stack: { Screen: host('route-options') },
       router: { push: (path: any) => pushes.push(path), canGoBack: () => true, back: () => pushes.push('back'), replace: (path: any) => pushes.push(path) },
       useLocalSearchParams: () => ({ ticket: options.ticket }),
-      useFocusEffect: (callback: () => () => void) => React.useEffect(() => { blur = callback(); return blur; }, [callback]),
     },
     './app-theme': { useAppTheme: () => testTheme('grand-touring') },
     './siri-testing': { canShowSiriTesting: false },
@@ -65,10 +63,9 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     input: () => tree.root.findByType('TextInput'),
     button: () => tree.root.findByProps({ testID: 'ask-submit' }),
     ask: (fn: typeof ask) => { ask = fn; }, resolve: (fn: typeof resolve) => { resolve = fn; },
-    submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.value.value = question; tree.root.findByProps({ testID: 'ask-submit' }).props.onPress(); }); },
+    submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.onChangeText(question); }); await act(() => tree.root.findByProps({ testID: 'ask-submit' }).props.onPress()); },
     state: async (state: string) => { await act(() => { appState.currentState = state; listener(state); }); },
     profile: async (id: string) => { await act(() => { userID = id; tree.update(React.createElement(component)); }); },
-    blur: async () => { await act(() => blur?.()); },
     close: async () => { await act(() => tree.unmount()); },
   };
 }
@@ -132,16 +129,15 @@ test('failed requests recover; a new request cannot inherit context from a faile
   } finally { await s.close(); }
 });
 
-test('profile switches, backgrounding and dismissal discard answers and pending responses', async () => {
-  for (const boundary of ['profile', 'background', 'blur']) {
+test('profile switches and backgrounding discard answers and pending responses', async () => {
+  for (const boundary of ['profile', 'background']) {
     const s = await screen();
     try {
       await s.submit('How many miles?');
       const pending = deferred(); s.ask(() => pending.promise); await s.submit('When was my last journey?');
       if (boundary === 'profile') await s.profile('b');
       else if (boundary === 'background') await s.state('background');
-      else await s.blur();
-      assert.doesNotMatch(s.text(), /19.8 miles/); assert.equal(s.input().props.value.value, '');
+      assert.doesNotMatch(s.text(), /19.8 miles/); assert.equal(s.input().props.value, '');
       await act(() => pending.resolve(result('STALE PRIVATE ANSWER')));
       assert.doesNotMatch(s.text(), /STALE PRIVATE ANSWER/);
       if (boundary === 'background') await s.state('active');
@@ -149,6 +145,18 @@ test('profile switches, backgrounding and dismissal discard answers and pending 
       assert.equal(s.calls.at(-1)[2], undefined);
     } finally { await s.close(); }
   }
+});
+
+test('the transient inactive state used while iOS presents a sheet does not clear or dismiss Ask', async () => {
+  const s = await screen();
+  try {
+    await s.submit('How many miles?');
+    assert.match(s.text(), /19.8 miles/);
+    await s.state('inactive');
+    assert.match(s.text(), /19.8 miles/);
+    assert.deepEqual(s.pushes, []);
+    await s.state('active');
+  } finally { await s.close(); }
 });
 
 test('supporting records are revalidated before navigation and deleted records cannot be opened', async () => {
