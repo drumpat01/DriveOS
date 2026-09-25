@@ -31,10 +31,11 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
   let userID = 'a', listener: (state: string) => void = () => {};
   let ask: (...args: any[]) => Promise<any> = async () => result();
   let resolve: (...args: any[]) => Promise<any> = async () => result();
-  const calls: any[][] = [], resolutions: any[][] = [], pushes: any[] = [];
+  const calls: any[][] = [], resolutions: any[][] = [], pushes: any[] = [], scrolls: any[] = [];
   const appState = { currentState: 'active', addEventListener: (_: string, callback: typeof listener) => { listener = callback; return { remove() {} }; } };
   const native = { AppState: appState, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
-    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])) };
+    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])),
+    ScrollView: React.forwardRef(({ children, ...props }: any, ref: any) => { React.useImperativeHandle(ref, () => ({ scrollToEnd: (options: any) => scrolls.push(options) })); return React.createElement('ScrollView', props, children); }) };
   const component = load('ask-journeydeck-screen.tsx', {
     'react-native': native,
     'expo-symbols': { SymbolView: host('Symbol') },
@@ -58,7 +59,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
   let tree: any;
   await act(() => { tree = create(React.createElement(component)); });
   return {
-    tree, calls, resolutions, pushes,
+    tree, calls, resolutions, pushes, scrolls,
     text: () => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|'),
     input: () => tree.root.findByType('TextInput'),
     button: () => tree.root.findByProps({ testID: 'ask-submit' }),
@@ -156,6 +157,18 @@ test('the transient inactive state used while iOS presents a sheet does not clea
     assert.match(s.text(), /19.8 miles/);
     assert.deepEqual(s.pushes, []);
     await s.state('active');
+  } finally { await s.close(); }
+});
+
+test('the form sheet second layout pass does not scroll the empty welcome state out of view', async () => {
+  const s = await screen();
+  try {
+    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
+    assert.deepEqual(s.scrolls, []);
+    assert.match(s.text(), /Where have we been/);
+    await s.submit('How many miles?');
+    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
+    assert.equal(s.scrolls.length, 1); assert.equal(s.scrolls[0].animated, true);
   } finally { await s.close(); }
 });
 

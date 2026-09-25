@@ -88,7 +88,8 @@ export function AskJourneyDeckScreen() {
       ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
       : <>
         <ScrollView ref={scroll} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
-          style={styles.scroll} contentContainerStyle={styles.conversation} onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
+          style={styles.scroll} contentContainerStyle={styles.conversation}
+          onContentSizeChange={() => { if (messages.length > 0 || busy) scroll.current?.scrollToEnd({ animated: true }); }}>
           <View style={styles.identityRow}>
             <View style={[styles.avatar, { backgroundColor: c.accent }]}><SymbolView name="point.3.connected.trianglepath.dotted" tintColor={c.onAccent} size={23} weight="semibold" /></View>
             <View style={styles.identityCopy}><Text style={[styles.identityTitle, { color: c.text }]}>JourneyDeck</Text><Text style={[styles.identityStatus, { color: c.muted }]}>Your private road companion</Text></View>
