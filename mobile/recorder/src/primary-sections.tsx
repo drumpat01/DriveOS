@@ -31,6 +31,7 @@ import {
   type NetworkActivityEvent,
 } from './network-activity';
 import { getCurrentUser, isIsolationTestProfile } from './auth';
+import { loadConnection } from './credentials';
 import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
@@ -998,6 +999,26 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [artworkRefreshState, setArtworkRefreshState] = useState<'idle' | 'running' | 'complete' | 'warning' | 'error'>('idle');
   const [artworkRefreshDetail, setArtworkRefreshDetail] = useState('Re-check Apple Music and retry missing exact-match cover artwork on this iPhone.');
+  const [recorderDestination, setRecorderDestination] = useState<{ status: string; host: string }>({ status: 'Checking', host: 'Reading the saved address on this iPhone…' });
+  useEffect(() => {
+    if (!active) return;
+    let current = true;
+    void loadConnection().then(connection => {
+      if (!current) return;
+      if (!connection) {
+        setRecorderDestination({ status: 'None', host: 'No server address saved for this profile.' });
+        return;
+      }
+      try {
+        setRecorderDestination({ status: 'Saved', host: new URL(connection.serverUrl).host });
+      } catch {
+        setRecorderDestination({ status: 'Invalid', host: 'The saved server address could not be read.' });
+      }
+    }).catch(() => {
+      if (current) setRecorderDestination({ status: 'Unavailable', host: 'The saved server address could not be read.' });
+    });
+    return () => { current = false; };
+  }, [active, currentUser.id, state.data?.loadedAt]);
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
   const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
@@ -1059,6 +1080,7 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
     <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
     <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
     <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
+    <HealthRow title="Recorder backup destination" status={recorderDestination.status} detail={recorderDestination.host} healthy={recorderDestination.status === 'Saved'} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
