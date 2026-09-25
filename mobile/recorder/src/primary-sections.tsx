@@ -98,7 +98,7 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
       automaticallyAdjustContentInsets={false}
       refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={theme.color("#b889ff", 'text')} />}
     >
-      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
+      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={({ pressed }) => [styles.utilityBack, { backgroundColor: theme.palette.card, borderColor: theme.palette.line, opacity: pressed ? 0.65 : 1 }]}><SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} /></Pressable>}
       {headerImage
         ? <>{headerPresentation === 'centered' && <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
         : headerPresentation === 'centered'
@@ -1343,8 +1343,7 @@ const darkStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
   headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
   content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22 },
-  utilityBack: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
-  utilityBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
+  utilityBack: { alignSelf: 'flex-start', width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },

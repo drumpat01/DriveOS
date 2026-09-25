@@ -1,5 +1,12 @@
 # Current Handoff State
 
+## Pending icon, Settings, and back-navigation polish (September 25, 2026)
+
+- Autumn Drive now uses the existing borderless dark-green/gold icon-family master, resized to an opaque 1024×1024 `mobile/recorder/assets/icon-midnight-canopy-v1.png`. Its JourneyDeck ring/wave scale and dimensional treatment match the other alternate icons.
+- The obsolete standalone Markers page and its Settings entries were removed on phone and iPad; route and unused page sources were deleted. Journey markers attached to individual journeys remain intact.
+- Native stack headers now request minimal icon-only back buttons. Settings editors and utility screens replace text such as `‹ Appearance` and `‹ Tools` with the same 44-point circular SF Symbol chevron treatment used by detail screens.
+- Fifty focused tests, TypeScript typecheck, and `git diff --check` pass. Changes are uncommitted and unpublished.
+
 ## Autumn Drive icon preview V3 OTA (September 25, 2026)
 
 - The user approved a new Autumn Drive app icon derived from `mobile/recorder/assets/theme-autumn-drive-road-v1.png` and the JourneyDeck pulse mark. The approved art now replaces `mobile/recorder/assets/icon-midnight-canopy-v1.png` as an opaque 1024×1024 PNG.

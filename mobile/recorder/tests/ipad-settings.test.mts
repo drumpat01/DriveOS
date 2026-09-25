@@ -218,7 +218,7 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 0, 'phone icon gallery stays one level deeper');
     await act(() => press('Choose theme').props.onPress());
     assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
-    assert.equal(tree.root.findByType('SettingsEditorScaffold').props.backLabel, 'Appearance');
+    assert.equal(tree.root.findByType('SettingsEditorScaffold').props.backLabel, undefined, 'settings editors use an icon-only back control');
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     await act(() => press('Choose app icon').props.onPress());
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);

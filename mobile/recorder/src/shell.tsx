@@ -139,7 +139,7 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
     case 'instructions': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
   }
 }
-import { V3_FIFTY_STATES_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { V3_FIFTY_STATES_ENABLED } from './release-features';
 import {
   AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
@@ -2819,15 +2819,15 @@ type SettingsDestination =
   | { kind: 'saved-place'; slot: SavedPlaceSlot }
   | { kind: 'custom-place'; placeId?: string };
 
-function SettingsEditorScaffold({ eyebrow, title, onBack, backLabel = 'Settings', backDisabled = false, primaryAction, children }: {
+function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
   eyebrow: string;
   title: string;
   onBack: () => void;
-  backLabel?: string;
   backDisabled?: boolean;
   primaryAction?: { label: string; onPress: () => void; disabled?: boolean };
   children: ReactNode;
 }) {
+  const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
   const insets = useSafeAreaInsets();
@@ -2850,8 +2850,8 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backLabel = 'Settings'
       >
         <AtmosphericBackdrop variant="settings" />
         <View style={styles.settingsEditorNavigation}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={[styles.settingsEditorBack, backDisabled && styles.pressed]}>
-            <Text style={styles.settingsEditorBackText}>‹  {backLabel}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={({ pressed }) => [styles.settingsEditorBack, { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, (pressed || backDisabled) && styles.pressed]}>
+            <SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} />
           </Pressable>
           {primaryAction && <Pressable accessibilityRole="button" accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled} onPress={primaryAction.onPress} style={[styles.settingsEditorHeaderAction, primaryAction.disabled && styles.pressed]}><Text style={styles.settingsEditorHeaderActionText}>{primaryAction.label}</Text></Pressable>}
         </View>
@@ -3174,7 +3174,7 @@ function ConnectionsScreen({
   }
   if (destination.kind === 'appearance-picker') {
     const choosingTheme = destination.picker === 'theme';
-    return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} backLabel="Appearance" onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
+    return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
       <View style={styles.settingsCategoryStack}>
         {choosingTheme
           ? <ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} />
@@ -3201,7 +3201,6 @@ function ConnectionsScreen({
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
     tessieContent={tessieContent}
-    onMarkersPrototype={V3_MARKERS_PROTOTYPE_ENABLED ? () => router.push('/time-capsule-prototype') : undefined}
   />;
 
   const profileCard = <>
@@ -3336,8 +3335,7 @@ function ConnectionsScreen({
     <View style={styles.settingsHubSection}>
       <Text style={styles.settingsSectionLabel}>YOUR JOURNEY</Text>
       <View style={styles.settingsHubList}>
-        {V3_MARKERS_PROTOTYPE_ENABLED && <TouchPressable testID="markers-prototype-entry" accessibilityRole="button" accessibilityLabel="Open saved journey markers" onPress={() => router.push('/time-capsule-prototype')} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}><View style={styles.settingsHubIcon}><SymbolView name="hourglass" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Markers</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>Notes and photos from your drives</Text></View><Text style={styles.settingsHubChevron}>›</Text></TouchPressable>}
-        {renderCategoryRow('achievements', V3_MARKERS_PROTOTYPE_ENABLED)}
+        {renderCategoryRow('achievements', false)}
         {renderCategoryRow('places', true)}
       </View>
     </View>
@@ -4073,8 +4071,7 @@ const darkStyles = StyleSheet.create({
   settingsEditorScreen: { flex: 1, backgroundColor: '#08070d' },
   settingsEditorContent: { minHeight: '100%', paddingHorizontal: 20 },
   settingsEditorNavigation: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  settingsEditorBack: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 2 },
-  settingsEditorBackText: { color: '#d0a6ff', fontSize: 15, fontWeight: '900' },
+  settingsEditorBack: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   settingsEditorHeaderAction: { minWidth: 68, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,121,91,0.5)', backgroundColor: 'rgba(255,96,91,0.14)', paddingHorizontal: 14 },
   settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
   settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginTop: 10 },
