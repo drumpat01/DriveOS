@@ -2,6 +2,11 @@
 
 ## Current V3 OTA (September 25, 2026)
 
+- Commit `88af29d` adds a Data Health row showing only the saved recorder backup server host from the current iPhone profile's secure connection. It does not display the key, URL path, or account identity. This helps identify the destination of queued GPS points without changing sync behavior.
+- xprem iOS update `17903585591291`, publish group `dd5f0b7c-9381-4ddf-85c2-e95ac472d116`, message `Show_recorder_backup_host`, published September 25 at 17:49:21 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `1efbe5e2-c903-e76d-0ca3-fd6e934041d1`, and a launch asset. Focused UI tests (35), TypeScript typecheck, diff check, and publisher iOS export passed. Next: confirm on device after two cold launches; read the new destination row and investigate the recorder backlog. No native build, EAS OTA, or Git push.
+
+## Prior Autumn Drive V3 OTA (September 25, 2026)
+
 - Commit `b4ad907` rebuilds Autumn Drive around the 1536×1024 scenic road image `theme-autumn-drive-road-v1.png`, matching the other theme artwork dimensions. The switcher, welcome, and Home artwork use it; the palette and map colors use forest shadow, warm ivory, copper, and golden-hour light. The stored theme ID remains `midnight-canopy` for compatibility.
 - xprem iOS update `17903548807231`, publish group `69352a2b-7c6e-49a1-975c-04fa4be1db27`, message `Autumn_Drive_artwork_and_palette`, published September 25 at 16:48:04 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and live V3 TestFlight identity. Public manifest returned HTTP 200, update UUID `9ac9cca4-ee34-0d27-d1fc-5ccc8362452b`, and a launch asset. No native build, EAS OTA, or Git push was performed.
 - Verification: 31 focused theme tests, TypeScript typecheck, `git diff --check`, V3 store iOS Expo export, and guarded publisher dry run passed. Confirm on a Build 38 device with two cold launches and inspect the theme switcher, welcome, Home, and map.
