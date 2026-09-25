@@ -1,24 +1,24 @@
 # Current Handoff State
 
-## Pending Ask JourneyDeck conversation redesign (September 25, 2026)
+## Current Ask JourneyDeck V3 OTA (September 25, 2026)
 
 - `ask-journeydeck-screen.tsx` is now a full themed chatbot sheet: JourneyDeck identity/privacy header, empty-state prompt cards, persistent user and assistant bubbles, an in-conversation reading state, answer-specific supporting-record cards, inline recovery messages, and a bottom composer that clears after sending and stays above the keyboard.
 - The screen uses only the shared palette roles (`page`, `card`, `inset`, `accent`, `onAccent`, `text`, `muted`, and `line`), so Cinematic, Grand Touring, Autumn Drive, Warm Ivory, and Rosewater each render in their own established colors. No new hardcoded screen colors were introduced.
 - The design follows Appllama research across Notee, Craft, and iScanner AI chat surfaces: compact assistant identity, chat transcript, contextual prompt cards, and anchored composer. It retains JourneyDeck privacy, profile invalidation, follow-up context, and supporting-record revalidation.
-- Eight Ask UI tests, 62 broader Ask/navigation/theme/release tests, TypeScript typecheck, and `git diff --check` pass. Simulator visual and motion inspection remains required on macOS/iPhone. No build, OTA, commit, or push was performed.
+- Source commit `d24c59e` was published through xprem to Build 38's `production` branch/runtime `3.0.0-preview.6`. iOS update `17903650275751`, publish group `bb20bd84-7358-46b6-abee-c5f877de03aa`, message `Build39_Ask_chat_and_access_preview`, deployed September 25 at 19:37:11 UTC. Public manifest returned HTTP 200. Eight Ask UI tests, 62 broader Ask/navigation/theme/release tests, TypeScript typecheck, publisher iOS export, and `git diff --check` pass. Confirm after up to two cold launches; simulator visual and motion inspection remains required on macOS/iPhone. No native build or Git push was performed.
 
-## Pending Build 39 access and diagnostics changes (September 25, 2026)
+## Pending Build 39 native Siri changes (September 25, 2026)
 
 - Data Health is now restricted to internal testing builds. The V3 TestFlight feature flag, Settings links, utility route exception, and iPad diagnostics exception were removed, so paid and unpaid TestFlight users cannot open it.
 - V3 TestFlight continues granting all Plus entitlements without a purchase. All Siri features are permanently membership free: Start Journey, Stop Journey, Create a Marker, and complete-history Ask JourneyDeck/Apple Intelligence. StoreKit, the 45-day Ask cutoff, and the native Ask entitlement bridge were removed. Public releases also receive complete Ask history for free.
 - Create a Marker now uses the explicit native V3 capability instead of the obsolete `.v3` bundle check, so it works with Build 39's live TestFlight bundle identity while remaining disabled in V2.
-- 110 focused tests, TypeScript typecheck, and `git diff --check` pass. No build, OTA publish, commit, or Git push has been performed. The user explicitly said not to build yet.
+- The OTA hides Data Health and gives the in-app Ask flow complete history now. Build 38's compiled Siri Ask service still has its old native StoreKit/history behavior and its marker command still has the old bundle check; Build 39 is required to deliver those native fixes. The user explicitly said not to build yet.
 
-## Pending adaptive dark app icons (September 25, 2026)
+## Pending native adaptive dark app icons (September 25, 2026)
 
 - Five approved 1024×1024 black-background icon variants were added for Grand Touring, Warm Ivory, Cinematic, Rosewater, and Autumn Drive. The existing icons remain the light variants.
 - `ios.icon.dark` now points to Grand Touring dark for the primary icon. The alternate-icon config plugin emits paired Any/Dark asset-catalog entries using the iOS luminosity appearance, and the in-app picker preview follows the device color scheme.
-- Twenty-three focused icon/navigation/watch tests, TypeScript typecheck, and `git diff --check` pass. These native icon assets require a new V3 TestFlight build to affect the Home Screen. Changes are uncommitted and unpublished.
+- The OTA includes the dark previews in the icon switcher. Twenty-three focused icon/navigation/watch tests, TypeScript typecheck, and `git diff --check` pass. A new V3 TestFlight build is still required for iOS to apply the dark variants on the Home Screen.
 
 ## Icon, Settings, and back-navigation V3 OTA (September 25, 2026)
 
