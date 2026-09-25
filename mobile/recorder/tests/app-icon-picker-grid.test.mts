@@ -21,11 +21,12 @@ function loadPicker(state: {
   selections: string[];
   alerts: string[];
   fail: boolean;
+  colorScheme: 'light' | 'dark';
 }) {
   const module = { exports: {} as any };
   const source = readFileSync(new URL('../src/app-icon-picker.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const assets = Object.fromEntries(['icon-cinematic-dark-v2.png', 'icon-warm-ivory-v2.png', 'icon-rosewater-v2.png', 'icon-grand-touring-v2.png', 'icon-midnight-canopy-v1.png']
+  const assets = Object.fromEntries(['icon-cinematic-dark-v2.png', 'icon-warm-ivory-v2.png', 'icon-rosewater-v2.png', 'icon-grand-touring-v2.png', 'icon-midnight-canopy-v1.png', 'icon-cinematic-dark-appearance-v1.png', 'icon-warm-ivory-dark-v1.png', 'icon-rosewater-dark-v1.png', 'icon-grand-touring-dark-v1.png', 'icon-midnight-canopy-dark-v1.png']
     .map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,
@@ -46,6 +47,7 @@ function loadPicker(state: {
       }) },
       'react-native': {
         Alert: { alert: (title: string) => state.alerts.push(title) },
+        useColorScheme: () => state.colorScheme,
         StyleSheet: { create: (value: any) => value },
         View: host('View'), Text: host('Text'), Pressable: host('Pressable'),
       },
@@ -57,7 +59,7 @@ function loadPicker(state: {
 }
 
 async function mount(membershipTier: 'free' | 'paid' = 'free', availability: 'checking' | 'ready' | 'requires-build' | 'unsupported' = 'ready') {
-  const state = { appIconId: 'grand-touring' as icons.AppIconId, availability, changing: false, selections: [] as string[], alerts: [] as string[], fail: false };
+  const state = { appIconId: 'grand-touring' as icons.AppIconId, availability, changing: false, selections: [] as string[], alerts: [] as string[], fail: false, colorScheme: 'light' as const };
   const api = loadPicker(state);
   let upgrades = 0;
   let tree: any;
@@ -138,5 +140,16 @@ test('unavailable native icon support disables all four cards', async () => {
       assert.equal(card.props.disabled, true);
       assert.equal(card.props.accessibilityState.disabled, true);
     }
+  } finally { await harness.unmount(); }
+});
+
+test('icon previews follow the device light and dark appearance', async () => {
+  const harness = await mount('paid');
+  try {
+    const preview = () => harness.tree.root.findAllByType('Image')[0];
+    assert.equal(preview().props.source, 4, 'light appearance uses the existing Grand Touring icon');
+    harness.state.colorScheme = 'dark';
+    await act(() => harness.tree.update(React.createElement(loadPicker(harness.state).AppIconPicker, { membershipTier: 'paid' })));
+    assert.equal(preview().props.source, 9, 'dark appearance uses the approved Grand Touring dark variant');
   } finally { await harness.unmount(); }
 });

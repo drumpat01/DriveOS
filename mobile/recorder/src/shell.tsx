@@ -15,7 +15,7 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_DATA_HEALTH_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -871,7 +871,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   };
 
   const openMore = (destination: MoreDestination) => {
-    if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health')) return;
+    if (!isInternalTestingBuild()) return;
     setMoreDestination(destination);
     router.navigate('/tools');
     void haptics.selection();
@@ -980,7 +980,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     },
     memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
-    tools: isInternalTestingBuild() || TESTFLIGHT_DATA_HEALTH_ENABLED ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
+    tools: isInternalTestingBuild() ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
     membership,
     refreshArchive: () => refreshPrimarySections(false),
     showUpgrade: () => setMembershipPaywallVisible(true),
@@ -3197,7 +3197,7 @@ function ConnectionsScreen({
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
-    internalDiagnostics={internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED}
+    internalDiagnostics={internalTesting}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
     tessieContent={tessieContent}
@@ -3263,7 +3263,7 @@ function ConnectionsScreen({
   </View>;
   const supportCard = <>
     <SectionHeading title="Support" />
-    {(internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED) && <>
+    {internalTesting && <>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
         <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
         <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>{internalTesting ? 'INTERNAL TESTING' : 'TESTFLIGHT DIAGNOSTICS'}</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>{internalTesting ? 'Diagnostics and test controls for internal builds.' : 'Check app data and connected services.'}</Text></View>

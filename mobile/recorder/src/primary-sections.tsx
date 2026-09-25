@@ -1,5 +1,5 @@
 import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
-import { TESTFLIGHT_DATA_HEALTH_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -1249,7 +1249,7 @@ export function MoreScreen({
 
   // Data Health is an internal diagnostic surface. Public navigation falls
   // back to Settings in the shell, and this guard prevents accidental render.
-  if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health')) return null;
+  if (!isInternalTestingBuild()) return null;
 
   const destination = requested;
   let content: ReactNode;

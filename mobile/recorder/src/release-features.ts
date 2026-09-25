@@ -9,7 +9,6 @@ import Constants from 'expo-constants';
  */
 export const TESSIE_INTEGRATION_ENABLED: boolean = Constants.expoConfig?.extra?.features?.tessieEnabled === true;
 export const TESTFLIGHT_PLUS_UNLOCKED: boolean = Constants.expoConfig?.extra?.features?.testflightPlusUnlocked === true;
-export const TESTFLIGHT_DATA_HEALTH_ENABLED: boolean = Constants.expoConfig?.extra?.features?.testflightDataHealth === true;
 
 /** Preserve the approved Build 35 Last.fm flow without changing frozen V2. */
 export const V3_LASTFM_ENABLED: boolean = Constants.expoConfig?.extra?.features?.lastFmEnabled === true;

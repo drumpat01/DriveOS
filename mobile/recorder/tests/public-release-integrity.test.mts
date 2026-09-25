@@ -32,12 +32,13 @@ test('production uses the production privacy edge and keeps internal testing dis
 });
 
 test('public Settings and utility navigation cannot expose Data Health', () => {
-  assert.match(shell, /\{\(internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\) && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /internalDiagnostics=\{internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\}/);
+  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /internalDiagnostics=\{internalTesting\}/);
   assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen[\s\S]*? : settingsPage\(\)/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen[\s\S]*? : settingsPage\(\)/);
   assert.match(ipadSettings, /\{p\.internalDiagnostics && <>[\s\S]*?Open Data Health/);
-  assert.match(primarySections, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
+  assert.match(primarySections, /if \(!isInternalTestingBuild\(\)\) return null;/);
+  assert.doesNotMatch(`${shell}\n${primarySections}\n${releaseFeatures}`, /TESTFLIGHT_DATA_HEALTH_ENABLED|testflightDataHealth/);
 });
 
 test('production microphone purpose string describes only user-initiated recognition', () => {

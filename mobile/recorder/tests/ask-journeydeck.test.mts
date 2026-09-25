@@ -82,7 +82,7 @@ test('in-app Expo SQLite reader uses the bounded profile-scoped Siri queries on 
   } finally { f.db.close(); }
 });
 
-test('in-app Ask answers and refreshes evidence locally, limits free history, and invalidates changed profiles', async () => {
+test('in-app Ask answers complete history for free, refreshes evidence, and invalidates changed profiles', async () => {
   const f = fixture();
   try {
     const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
@@ -90,11 +90,9 @@ test('in-app Ask answers and refreshes evidence locally, limits free history, an
       './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
     });
     const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
-    let active = true, paid = false;
+    let active = true;
     const app = createLocalAskRuntime({
       profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
-      membership: async () => ({ nativeModuleAvailable: true, tier: paid ? 'paid' : 'free' }),
-      verifiedFullHistory: async () => paid,
       isActive: () => active, uuid: randomUUID, now: () => now,
     });
     assert.equal(await app.ask(f.a, 'How many saved journey markers?'), null,
@@ -103,8 +101,6 @@ test('in-app Ask answers and refreshes evidence locally, limits free history, an
     assert.match(miles.text, /19.8 miles across 2 journeys this week/);
     assert.equal(miles.profileId, f.a);
     assert.match((await app.ask(f.a, 'And how many journeys was that?', miles.contextToken)).text, /2 journeys this week/);
-    assert.equal((await app.ask(f.a, 'How many miles did I drive all time?')).status, 'historyLimited');
-    paid = true;
     assert.match((await app.ask(f.a, 'How many miles did I drive all time?')).text, /49.8 miles/);
     f.db.prepare('DELETE FROM local_journeys WHERE id=?').run('a-last');
     const refreshed = await app.resolve(f.a, miles.ticket);
@@ -117,7 +113,7 @@ test('in-app Ask answers and refreshes evidence locally, limits free history, an
   } finally { f.db.close(); }
 });
 
-test('installed builds without the Ask entitlement bridge keep paid history on the native path', async () => {
+test('Ask history stays complete without a membership or release flag', async () => {
   const f = fixture();
   try {
     const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
@@ -127,11 +123,9 @@ test('installed builds without the Ask entitlement bridge keep paid history on t
     const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
     const app = createLocalAskRuntime({
       profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
-      membership: async () => ({ nativeModuleAvailable: true, tier: 'paid' }),
       isActive: () => true, uuid: randomUUID, now: () => now,
     });
-    assert.match((await app.ask(f.a, 'How many miles did I drive this week?')).text, /19.8 miles/);
-    assert.equal(await app.ask(f.a, 'How many miles did I drive all time?'), null);
+    assert.match((await app.ask(f.a, 'How many miles did I drive all time?')).text, /49.8 miles/);
   } finally { f.db.close(); }
 });
 
@@ -146,7 +140,6 @@ test('in-app planner sees no archive rows and refuses an answer after the profil
     const plans = require(resolve(root, resource, 'ask-query-engine.js'));
     const local = createLocalAskRuntime({
       profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
-      membership: async () => ({ nativeModuleAvailable: true, tier: 'free' }),
       planner: async (_question: string, context: string) => {
         assert.equal(context, 'null', 'no archive contents are sent to the model');
         return { ...plans.defaults, domain: 'markers', metric: 'count' };
@@ -160,7 +153,6 @@ test('in-app planner sees no archive rows and refuses an answer after the profil
     const pending = new Promise(resolve => { release = resolve; });
     const app = createLocalAskRuntime({
       profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
-      membership: async () => ({ nativeModuleAvailable: true, tier: 'free' }),
       planner: (_question: string, context: string) => {
         assert.equal(context, 'null', 'no archive contents are sent to the model');
         return pending;
@@ -337,7 +329,8 @@ test('native source contracts require local authentication, read-only bounded qu
   assert.match(service, /isProtectedDataAvailable/); assert.match(service, /generation == lockGeneration/);
   assert.match(service, /current.id == result.1 && current.epoch == result.2/);
   assert.match(service, /stored.expires > Date\(\)/);
-  assert.match(service, /case \.verified/); assert.match(service, /45 \* 86400/);
+  assert.doesNotMatch(service, /StoreKit|currentEntitlements|JourneyDeckTestFlightPlusUnlocked|45 \* 86400/);
+  assert.match(service, /Date\(timeIntervalSince1970: 0\)/);
   assert.equal((intent.match(/requiresLocalDeviceAuthentication/g) ?? []).length, 2);
   assert.match(intent, /^internal import JourneyDeckRecorder$/m);
   assert.match(intent, /ShowsSnippetIntent/); assert.match(intent, /AskJourneyDeckAnswerSnippet: SnippetIntent/);
@@ -350,6 +343,13 @@ test('native source contracts require local authentication, read-only bounded qu
     assert.match(queries[name], /user_id=\?/); assert.match(queries[name], /LIMIT 20001/);
     assert.doesNotMatch(queries[name], /\b(?:lat|lng|route|notes|name|email|apple_subject|title|place_id)\b/);
   }
+});
+
+test('V3 Siri commands have no membership gate and marker availability follows the native V3 capability', () => {
+  const recorder = readFileSync(resolve(root, 'modules/journeydeck-recorder/ios/JourneyDeckSiriRecorder.swift'), 'utf8');
+  assert.match(recorder, /JourneyDeckMarkerEnabled/);
+  assert.doesNotMatch(recorder, /com\.journeydeck\.recorder\.v3/);
+  assert.doesNotMatch(recorder, /StoreKit|membership|subscription|purchase|entitlement/i);
 });
 
 test('V3 native intent metadata is added once to the app target and excluded from production configuration', () => {

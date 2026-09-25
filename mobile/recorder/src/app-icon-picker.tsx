@@ -1,4 +1,4 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, useColorScheme, View } from 'react-native';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 
@@ -22,6 +22,14 @@ const previews: Record<AppIconId, number> = {
   'midnight-canopy': require('../assets/icon-midnight-canopy-v1.png'),
 };
 
+const darkPreviews: Record<AppIconId, number> = {
+  original: require('../assets/icon-cinematic-dark-appearance-v1.png'),
+  'warm-ivory': require('../assets/icon-warm-ivory-dark-v1.png'),
+  rosewater: require('../assets/icon-rosewater-dark-v1.png'),
+  'grand-touring': require('../assets/icon-grand-touring-dark-v1.png'),
+  'midnight-canopy': require('../assets/icon-midnight-canopy-dark-v1.png'),
+};
+
 const visibleAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
   ? [...APP_ICON_GRID_ORDER, 'midnight-canopy']
   : APP_ICON_GRID_ORDER;
@@ -34,6 +42,7 @@ type AppIconPickerProps = {
 };
 
 export function AppIconPicker({ embedded = false, compact = false, membershipTier = 'free', onUpgrade }: AppIconPickerProps = {}) {
+  const darkAppearance = useColorScheme() === 'dark';
   const theme = useAppTheme();
   const colors = theme.palette;
   const { appIconId, availability, changing, setAppIcon } = useAppIconChoice();
@@ -83,7 +92,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
         }]}
       >
         <View style={styles.previewFrame}>
-          <Image accessible={false} source={previews[id]} contentFit="cover" style={[styles.preview, compact && styles.compactPreview]} />
+          <Image accessible={false} source={(darkAppearance ? darkPreviews : previews)[id]} contentFit="cover" style={[styles.preview, compact && styles.compactPreview]} />
           {isPlus && <Text testID={`app-icon-plus-${id}`} style={[styles.plusBadge, { color: colors.onAccent, backgroundColor: colors.accent }]}>PLUS</Text>}
           {selected && <View testID={`app-icon-selected-${id}`} style={[styles.selectedBadge, { backgroundColor: colors.accent }]}>
             <SymbolView name="checkmark" tintColor={colors.onAccent} size={14} weight="bold" />

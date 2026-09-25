@@ -1,7 +1,6 @@
 import Foundation
 import JavaScriptCore
 import SQLite3
-import StoreKit
 import UIKit
 
 private enum AskFailure: Error { case unavailable, profileChanged, tooLarge, interpretation }
@@ -136,19 +135,7 @@ public final class JourneyDeckAskService: NSObject {
     ["status": "unavailable", "text": text, "evidence": [], "ticket": NSNull(), "contextToken": NSNull()]
   }
   private func cutoff(_ now: Date) async -> Date {
-    // Same verified StoreKit products as JourneyDeckMembership. No editable cache,
-    // preview Atlas flag, or caller-provided entitlement can unlock old history.
-    for await value in StoreKit.Transaction.currentEntitlements {
-      if case .verified(let transaction) = value,
-         ["com.journeydeck.recorder.pro.monthly", "com.journeydeck.recorder.pro.annual"].contains(transaction.productID),
-         transaction.revocationDate == nil, !transaction.isUpgraded,
-         transaction.expirationDate.map({ $0 > now }) ?? true { return Date(timeIntervalSince1970: 0) }
-    }
-    return now.addingTimeInterval(-45 * 86400)
-  }
-  public func hasVerifiedFullHistory() async -> Bool {
-    guard available else { return false }
-    return await cutoff(Date()) == Date(timeIntervalSince1970: 0)
+    Date(timeIntervalSince1970: 0)
   }
   public func answer(question: String, expectedUserID: String? = nil, contextToken: String? = nil, siri: Bool = false) async -> [String: Any] {
     await respond(question: question, expectedUserID: expectedUserID, contextToken: contextToken, siri: siri, savedPlan: nil)

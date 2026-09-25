@@ -66,7 +66,7 @@ module.exports = ({ config }) => {
       requireFullScreen: false,
       icon: {
         light: './assets/icon-grand-touring-v2.png',
-        dark: './assets/icon-grand-touring-v2.png',
+        dark: './assets/icon-grand-touring-dark-v1.png',
         // Grayscale mask for iOS tinted and clear Home Screen appearances.
         // The system supplies the tint or Liquid Glass background at runtime.
         tinted: './assets/icon-tinted-clear-v1.png',
@@ -77,12 +77,12 @@ module.exports = ({ config }) => {
         ...config.ios.entitlements,
         'com.apple.developer.icloud-container-identifiers': [container],
       },
-      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
+      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, JourneyDeckMarkerEnabled: v3, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
     },
     extra: {
       ...config.extra,
       revenueCat: { appleApiKey: revenueCatAppleKey },
-      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, tessieEnabled: v3, lastFmEnabled: v3, testflightPlusUnlocked: v3Store, testflightDataHealth: v3Store },
+      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, tessieEnabled: v3, lastFmEnabled: v3, testflightPlusUnlocked: v3Store },
       release: v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

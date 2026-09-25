@@ -6,7 +6,6 @@ import { createLocalAskRuntime, type AskAnswer } from './ask-journeydeck-local';
 import { prepareJourneyDeckDatabase } from './database-startup';
 import { getActiveLocalUserId } from './local-store';
 import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
-import { getMembershipStatus } from '../modules/journeydeck-membership';
 
 export type AskEvidence = { kind: 'journey' | 'memory'; id: string; label: string };
 export type { AskAnswer } from './ask-journeydeck-local';
@@ -14,14 +13,11 @@ type NativeAsk = {
   askJourneyDeckAsync?: (question: string, userID: string, context: string | null) => Promise<AskAnswer>;
   resolveJourneyDeckAnswerAsync?: (ticket: string, userID: string) => Promise<AskAnswer>;
   planJourneyDeckQuestionAsync?: (question: string, context: string, now: number) => Promise<Record<string, unknown> | null>;
-  verifiedAskFullHistoryAsync?: () => Promise<boolean>;
 };
 const native = requireOptionalNativeModule<NativeAsk>('JourneyDeckRecorder');
 const local = createLocalAskRuntime({
   profile: currentAskProfile,
   snapshot: readAskSnapshot,
-  membership: getMembershipStatus,
-  verifiedFullHistory: native?.verifiedAskFullHistoryAsync?.bind(native),
   planner: native?.planJourneyDeckQuestionAsync?.bind(native),
   isActive: () => AppState.currentState === 'active',
   uuid: randomUUID,

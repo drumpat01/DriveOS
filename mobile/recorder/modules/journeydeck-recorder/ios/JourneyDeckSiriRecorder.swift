@@ -14,7 +14,7 @@ public enum JourneyDeckSiriCommandResult: String {
 
 public enum JourneyDeckSiriRecorder {
   public static func createMarker() async -> String {
-    guard Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3" else { return "unavailable" }
+    guard Bundle.main.object(forInfoDictionaryKey: "JourneyDeckMarkerEnabled") as? Bool == true else { return "unavailable" }
     let recorder = JourneyDeckNativeRecorder.shared
     let status = await recorder.status()
     guard status["statusReliable"] as? Bool == true else { return "unavailable" }

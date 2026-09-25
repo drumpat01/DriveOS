@@ -66,7 +66,8 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(config.extra.features.lastFmEnabled, true);
   assert.equal(config.extra.features.tessieEnabled, true);
   assert.equal(config.extra.features.testflightPlusUnlocked, true);
-  assert.equal(config.extra.features.testflightDataHealth, true);
+  assert.equal(config.extra.features.testflightDataHealth, undefined);
+  assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, true);
   assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), true);
 }
 
@@ -83,7 +84,8 @@ test('schema-11 V3 cannot target older installed runtimes through the marker OTA
     assert.equal(config.extra.features.lastFmEnabled, false);
     assert.equal(config.extra.features.tessieEnabled, false);
     assert.equal(config.extra.features.testflightPlusUnlocked, false);
-    assert.equal(config.extra.features.testflightDataHealth, false);
+    assert.equal(config.extra.features.testflightDataHealth, undefined);
+    assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, false);
   });
 });
 
@@ -139,7 +141,8 @@ test('isolated v3-preview identity is unchanged and is not selected by v3-testfl
     assert.equal(config.updates.requestHeaders['xprem-branch'], 'v3-preview');
     assert.equal(config.extra.features.askJourneyDeck, true);
     assert.equal(config.extra.features.testflightPlusUnlocked, false);
-    assert.equal(config.extra.features.testflightDataHealth, false);
+    assert.equal(config.extra.features.testflightDataHealth, undefined);
+    assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, true);
   });
 });
 

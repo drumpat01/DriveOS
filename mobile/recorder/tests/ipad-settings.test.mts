@@ -57,7 +57,6 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
   useAdaptiveLayout: () => ({ isRegular: tablet, fold: adaptiveFold }),
   TESSIE_INTEGRATION_ENABLED: false, isMusicProviderAvailable: (provider: string) => provider !== 'lastfm',
-  TESTFLIGHT_DATA_HEALTH_ENABLED: false,
   V3_MARKERS_PROTOTYPE_ENABLED: false,
   router: { push: () => undefined },
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),

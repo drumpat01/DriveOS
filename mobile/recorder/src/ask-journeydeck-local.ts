@@ -33,15 +33,12 @@ type Ticket = {
 export type LocalAskDependencies = {
   profile(): AskProfile | null;
   snapshot(userID: string, cutoff: number, now: number, analysis: boolean): { input: AskSnapshot; profile: AskProfile };
-  membership(): Promise<{ nativeModuleAvailable: boolean; tier: 'free' | 'paid' }>;
-  verifiedFullHistory?: () => Promise<boolean>;
   planner?: (question: string, context: string, now: number) => Promise<Record<string, unknown> | null>;
   isActive(): boolean;
   uuid(): string;
   now(): number;
 };
 
-const FREE_HISTORY_MS = 45 * 86_400_000;
 const TICKET_MS = 5 * 60_000;
 
 /** In-app only. Siri continues to use its own authenticated native reader. */
@@ -54,18 +51,6 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
       throw new Error('The active profile changed or the app locked. Ask again.');
     }
     return current;
-  }
-
-  async function historyAccess(now: number) {
-    // Preview flags and local preferences cannot grant paid history. The new
-    // bridge uses the native Ask reader's independent verified StoreKit check.
-    const membership = await deps.membership().catch(() => ({ nativeModuleAvailable: false, tier: 'free' as const }));
-    if (!membership.nativeModuleAvailable || membership.tier !== 'paid') {
-      return { boundary: now - FREE_HISTORY_MS, legacyPaid: false };
-    }
-    if (!deps.verifiedFullHistory) return { boundary: now - FREE_HISTORY_MS, legacyPaid: true };
-    const verified = await deps.verifiedFullHistory().catch(() => false);
-    return { boundary: verified ? 0 : now - FREE_HISTORY_MS, legacyPaid: false };
   }
 
   function trimTickets(now: number) {
@@ -89,9 +74,9 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
   }
 
   async function evaluate(userID: string, question: string, previous: Record<string, unknown> | null,
-    savedPlan: Record<string, unknown> | null = null, allowNativeFallback = false): Promise<AskAnswer | null> {
+    savedPlan: Record<string, unknown> | null = null): Promise<AskAnswer | null> {
     if (!question || question.length > 500) return { status: 'unavailable', text: 'Please keep your question under 500 characters.', evidence: [] };
-    const identity = check(userID), now = deps.now(), { boundary, legacyPaid } = await historyAccess(now);
+    const identity = check(userID), now = deps.now(), boundary = 0;
     check(userID, identity.epoch);
     let plan = savedPlan;
     let answer: EngineAnswer;
@@ -118,7 +103,6 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
         }
       }
     }
-    if (legacyPaid && allowNativeFallback && answer.status === 'historyLimited') return null;
     return finish(answer, userID, identity.epoch, question, previous, plan, now);
   }
 
@@ -131,7 +115,7 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
       if (prior && (prior.userID !== userID || prior.epoch !== profile.epoch)) {
         throw new Error('The active profile changed. Ask again.');
       }
-      return evaluate(userID, question, prior?.context ?? null, null, !prior);
+      return evaluate(userID, question, prior?.context ?? null);
     },
     async resolve(userID: string, ticketID: string): Promise<AskAnswer | null> {
       const now = deps.now(); trimTickets(now);

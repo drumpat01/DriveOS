@@ -1472,10 +1472,6 @@ public final class JourneyDeckRecorderModule: Module {
       await JourneyDeckAskService.shared.answer(question: question, expectedUserID: userID, contextToken: contextToken)
     }
 
-    AsyncFunction("verifiedAskFullHistoryAsync") { () async -> Bool in
-      await JourneyDeckAskService.shared.hasVerifiedFullHistory()
-    }
-
     // This bridge never receives archive rows. The OTA-controlled in-app reader
     // validates the generated plan and rereads the profile-scoped SQLite snapshot.
     AsyncFunction("planJourneyDeckQuestionAsync") { (question: String, context: String, nowMilliseconds: Double) async throws -> [String: Any]? in

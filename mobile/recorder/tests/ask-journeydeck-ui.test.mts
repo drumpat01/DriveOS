@@ -9,6 +9,7 @@ import ts from 'typescript';
 import { testTheme } from './theme-fixture.mts';
 
 const require = createRequire(import.meta.url);
+const askScreenSource = readFileSync(new URL('../src/ask-journeydeck-screen.tsx', import.meta.url), 'utf8');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
 function load(name: string, mocks: Record<string, unknown>) {
@@ -32,10 +33,13 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
   let resolve: (...args: any[]) => Promise<any> = async () => result();
   const calls: any[][] = [], resolutions: any[][] = [], pushes: any[] = [];
   const appState = { currentState: 'active', addEventListener: (_: string, callback: typeof listener) => { listener = callback; return { remove() {} }; } };
-  const native = { AppState: appState, Keyboard: { dismiss() {} }, ...Object.fromEntries(['ActivityIndicator', 'Pressable', 'ScrollView', 'Text', 'View'].map(name => [name, host(name)])) };
+  const native = { AppState: appState, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
+    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'ScrollView', 'Text', 'View'].map(name => [name, host(name)])) };
   const component = load('ask-journeydeck-screen.tsx', {
     'react-native': native,
-    '@expo/ui': { ...Object.fromEntries(['Button', 'Column', 'Host', 'TextInput'].map(name => [name, host(name)])), useNativeState: (value: any) => React.useRef({ value }).current },
+    '@expo/ui': { ...Object.fromEntries(['Column', 'Host', 'TextInput'].map(name => [name, host(name)])), useNativeState: (value: any) => React.useRef({ value }).current },
+    'expo-symbols': { SymbolView: host('Symbol') },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 8, left: 0 }) },
     'expo-router': {
       Stack: { Screen: host('route-options') },
       router: { push: (path: any) => pushes.push(path), canGoBack: () => true, back: () => pushes.push('back'), replace: (path: any) => pushes.push(path) },
@@ -59,9 +63,9 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     tree, calls, resolutions, pushes,
     text: () => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|'),
     input: () => tree.root.findByType('TextInput'),
-    button: () => tree.root.findByType('Button'),
+    button: () => tree.root.findByProps({ testID: 'ask-submit' }),
     ask: (fn: typeof ask) => { ask = fn; }, resolve: (fn: typeof resolve) => { resolve = fn; },
-    submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.value.value = question; tree.root.findByType('Button').props.onPress(); }); },
+    submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.value.value = question; tree.root.findByProps({ testID: 'ask-submit' }).props.onPress(); }); },
     state: async (state: string) => { await act(() => { appState.currentState = state; listener(state); }); },
     profile: async (id: string) => { await act(() => { userID = id; tree.update(React.createElement(component)); }); },
     blur: async () => { await act(() => blur?.()); },
@@ -83,6 +87,19 @@ test('Home widget exposes an accessible question entry and respects layout-editi
     await act(() => tree.update(React.createElement(Widget, { onPress: () => opened++, disabled: true })));
     assert.equal(tree.root.findByType('Pressable').props.disabled, true);
   } finally { await act(() => tree?.unmount()); }
+});
+
+test('Ask JourneyDeck uses the shared theme palette for a full chatbot conversation surface', () => {
+  assert.match(askScreenSource, /type ChatMessage/);
+  assert.match(askScreenSource, /styles\.userBubble/);
+  assert.match(askScreenSource, /styles\.assistantBubble/);
+  assert.match(askScreenSource, /styles\.composerDock/);
+  assert.match(askScreenSource, /SUPPORTING RECORDS/);
+  assert.match(askScreenSource, /backgroundColor: c\.page/);
+  assert.match(askScreenSource, /backgroundColor: c\.accent/);
+  assert.match(askScreenSource, /backgroundColor: c\.card/);
+  assert.match(askScreenSource, /backgroundColor: c\.inset/);
+  assert.doesNotMatch(askScreenSource, /#[0-9a-f]{3,8}/i);
 });
 
 test('question sheet validates empty input, submits free text, suppresses duplicates and carries follow-up context', async () => {
@@ -108,7 +125,7 @@ test('failed requests recover; a new request cannot inherit context from a faile
     await s.submit('How many miles?');
     s.ask(async () => { throw Error('native read failed'); });
     await s.submit('follow-up');
-    assert.match(s.text(), /could not be answered/); assert.doesNotMatch(s.text(), /19.8 miles/);
+    assert.match(s.text(), /couldn’t answer/); assert.match(s.text(), /19.8 miles/);
     assert.equal(s.button().props.disabled, false);
     s.ask(async () => result()); await s.submit('How many miles?');
     assert.equal(s.calls[2][2], undefined);
@@ -148,10 +165,10 @@ test('supporting records are revalidated before navigation and deleted records c
   } finally { await s.close(); }
 });
 
-test('old installed runtimes and non-V3 routes fail closed; Done dismisses the prompt', async () => {
+test('old installed runtimes and non-V3 routes fail closed; the native close control dismisses the prompt', async () => {
   const old = await screen({ available: false });
   try {
-    assert.equal(old.button().props.disabled, true); assert.match(old.text(), /needs the new V3 native preview/);
+    assert.equal(old.button().props.disabled, true); assert.match(old.text(), /needs the V3 native question engine/);
     const done = old.tree.root.findByType('route-options').props.options.headerRight();
     await act(() => done.props.onPress()); assert.deepEqual(old.pushes, ['back']);
   } finally { await old.close(); }
