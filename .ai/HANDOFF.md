@@ -1,11 +1,11 @@
 # Current Handoff State
 
-## Pending icon, Settings, and back-navigation polish (September 25, 2026)
+## Icon, Settings, and back-navigation V3 OTA (September 25, 2026)
 
 - Autumn Drive now uses the existing borderless dark-green/gold icon-family master, resized to an opaque 1024×1024 `mobile/recorder/assets/icon-midnight-canopy-v1.png`. Its JourneyDeck ring/wave scale and dimensional treatment match the other alternate icons.
 - The obsolete standalone Markers page and its Settings entries were removed on phone and iPad; route and unused page sources were deleted. Journey markers attached to individual journeys remain intact.
 - Native stack headers now request minimal icon-only back buttons. Settings editors and utility screens replace text such as `‹ Appearance` and `‹ Tools` with the same 44-point circular SF Symbol chevron treatment used by detail screens.
-- Fifty focused tests, TypeScript typecheck, and `git diff --check` pass. Changes are uncommitted and unpublished.
+- Commit `a5558f8` was published through xprem to Build 38's `production` branch/runtime `3.0.0-preview.6`. iOS update `17903619478771`, publish group `31cf0e1c-8e53-4fa1-8074-adb51f4fe9a1`, message `Polish_Autumn_icon_and_navigation`, deployed September 25 at 18:45:50 UTC. Public manifest returned HTTP 200. Fifty focused tests, TypeScript typecheck, publisher iOS export, and `git diff --check` passed. The Home Screen icon still requires a native build; the OTA updates its switcher preview.
 
 ## Autumn Drive icon preview V3 OTA (September 25, 2026)
 
