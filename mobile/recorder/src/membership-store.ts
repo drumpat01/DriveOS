@@ -11,7 +11,7 @@ import {
   type JourneyDeckMembershipProduct,
   type JourneyDeckMembershipStatus,
 } from '../modules/journeydeck-membership';
-import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
 
 const unavailableStatus: JourneyDeckMembershipStatus = {
@@ -171,10 +171,17 @@ export function useJourneyDeckMembership() {
     return () => clearTimeout(timer);
   }, [refresh, status]);
 
-  const entitlements = useMemo(
-    () => withPreviewAtlasAccess(entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED), PREVIEW_ATLAS_UNLOCKED),
-    [status],
-  );
+  // Every StoreKit refresh (15-minute timer, app resume) yields a new status
+  // object. Keep the previous entitlements identity when nothing changed so
+  // consumers' callbacks/effects (archive reloads, private iCloud sync) do not rerun.
+  const entitlementsRef = useRef<JourneyDeckMembershipEntitlements | null>(null);
+  const entitlements = useMemo(() => {
+    const next = withPreviewAtlasAccess(entitlementsForTestFlightMembership(status, TESTFLIGHT_PLUS_UNLOCKED, TESSIE_INTEGRATION_ENABLED), PREVIEW_ATLAS_UNLOCKED);
+    const previous = entitlementsRef.current;
+    if (previous && sameMembershipEntitlements(previous, next)) return previous;
+    entitlementsRef.current = next;
+    return next;
+  }, [status]);
   const state: JourneyDeckMembershipState = { phase, status, entitlements, products, productsLoading, purchasePending, message };
   return { state, refresh, loadProducts, purchase, restore };
 }

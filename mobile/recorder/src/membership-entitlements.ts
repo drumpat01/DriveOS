@@ -18,6 +18,11 @@ export function entitlementsForMembershipTier(tier: JourneyDeckMembershipTier): 
     : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: 45 };
 }
 
+export function sameMembershipEntitlements(a: JourneyDeckMembershipEntitlements, b: JourneyDeckMembershipEntitlements): boolean {
+  return a.tier === b.tier && a.atlasAccess === b.atlasAccess && a.tessieAccess === b.tessieAccess
+    && a.timelineHistoryDays === b.timelineHistoryDays;
+}
+
 export function entitlementsForVerifiedMembership(
   status: VerifiedMembershipStatus,
   options: { tessieV3Enabled?: boolean } = {},
