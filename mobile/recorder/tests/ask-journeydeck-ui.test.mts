@@ -67,6 +67,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.onChangeText(question); }); await act(() => tree.root.findByProps({ testID: 'ask-submit' }).props.onPress()); },
     state: async (state: string) => { await act(() => { appState.currentState = state; listener(state); }); },
     profile: async (id: string) => { await act(() => { userID = id; tree.update(React.createElement(component)); }); },
+    reopen: async () => { await act(() => tree.unmount()); await act(() => { tree = create(React.createElement(component)); }); },
     close: async () => { await act(() => tree.unmount()); },
   };
 }
@@ -130,22 +131,18 @@ test('failed requests recover; a new request cannot inherit context from a faile
   } finally { await s.close(); }
 });
 
-test('profile switches and backgrounding discard answers and pending responses', async () => {
-  for (const boundary of ['profile', 'background']) {
-    const s = await screen();
-    try {
-      await s.submit('How many miles?');
-      const pending = deferred(); s.ask(() => pending.promise); await s.submit('When was my last journey?');
-      if (boundary === 'profile') await s.profile('b');
-      else if (boundary === 'background') await s.state('background');
-      assert.doesNotMatch(s.text(), /19.8 miles/); assert.equal(s.input().props.value, '');
-      await act(() => pending.resolve(result('STALE PRIVATE ANSWER')));
-      assert.doesNotMatch(s.text(), /STALE PRIVATE ANSWER/);
-      if (boundary === 'background') await s.state('active');
-      s.ask(async () => result()); await s.submit('How many miles?');
-      assert.equal(s.calls.at(-1)[2], undefined);
-    } finally { await s.close(); }
-  }
+test('profile switches isolate chat history and pending responses', async () => {
+  const s = await screen();
+  try {
+    await s.submit('How many miles?');
+    const pending = deferred(); s.ask(() => pending.promise); await s.submit('When was my last journey?');
+    await s.profile('b');
+    assert.doesNotMatch(s.text(), /19.8 miles/); assert.equal(s.input().props.value, '');
+    await act(() => pending.resolve(result('STALE PRIVATE ANSWER')));
+    assert.doesNotMatch(s.text(), /STALE PRIVATE ANSWER/);
+    s.ask(async () => result()); await s.submit('How many miles?');
+    assert.equal(s.calls.at(-1)[2], undefined);
+  } finally { await s.close(); }
 });
 
 test('the transient inactive state used while iOS presents a sheet does not clear or dismiss Ask', async () => {
@@ -157,6 +154,18 @@ test('the transient inactive state used while iOS presents a sheet does not clea
     assert.match(s.text(), /19.8 miles/);
     assert.deepEqual(s.pushes, []);
     await s.state('active');
+  } finally { await s.close(); }
+});
+
+test('chat bubbles remain through backgrounding and closing the sheet until the app process ends', async () => {
+  const s = await screen();
+  try {
+    await s.submit('How many miles?');
+    assert.match(s.text(), /How many miles/); assert.match(s.text(), /19.8 miles/);
+    await s.state('background'); await s.state('active');
+    assert.match(s.text(), /How many miles/); assert.match(s.text(), /19.8 miles/);
+    await s.reopen();
+    assert.match(s.text(), /How many miles/); assert.match(s.text(), /19.8 miles/);
   } finally { await s.close(); }
 });
 

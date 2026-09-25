@@ -13,27 +13,38 @@ type ChatMessage =
   | { id: string; role: 'user'; text: string }
   | { id: string; role: 'assistant'; answer: AskAnswer };
 
+type ChatSession = { messages: ChatMessage[]; context?: string; nextMessageID: number };
+const chatSessions = new Map<string, ChatSession>();
+const sessionFor = (userID: string) => {
+  const existing = chatSessions.get(userID);
+  if (existing) return existing;
+  const created: ChatSession = { messages: [], nextMessageID: 0 };
+  chatSessions.set(userID, created);
+  return created;
+};
+
 export function AskJourneyDeckScreen() {
   const theme = useAppTheme(), c = theme.palette, userID = getCurrentUser().id, insets = useSafeAreaInsets();
   const { ticket } = useLocalSearchParams<{ ticket?: string }>();
+  const session = sessionFor(userID);
   const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([]), [busy, setBusy] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>(session.messages), [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null), [foreground, setForeground] = useState(AppState.currentState === 'active');
-  const request = useRef(0), inFlight = useRef(false), context = useRef<string | undefined>(undefined), messageID = useRef(0);
+  const request = useRef(0), inFlight = useRef(false), context = useRef<string | undefined>(session.context), messageID = useRef(session.nextMessageID);
   const scroll = useRef<ScrollView>(null);
-  const nextID = (kind: string) => `${kind}-${++messageID.current}`;
-  const invalidate = useCallback(() => {
-    request.current++; inFlight.current = false; context.current = undefined; messageID.current = 0;
-    setBusy(false); setMessages([]); setError(null); setQuestion('');
-  }, []);
-  useEffect(() => { invalidate(); }, [userID, invalidate]);
+  const nextID = (kind: string) => { session.nextMessageID = ++messageID.current; return `${kind}-${messageID.current}`; };
+  useEffect(() => {
+    const saved = sessionFor(userID);
+    request.current++; inFlight.current = false; context.current = saved.context; messageID.current = saved.nextMessageID;
+    setBusy(false); setMessages(saved.messages); setError(null); setQuestion('');
+  }, [userID]);
+  useEffect(() => { sessionFor(userID).messages = messages; }, [messages, userID]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', state => {
       setForeground(state === 'active');
-      if (state === 'background') invalidate();
     });
     return () => { request.current++; listener.remove(); };
-  }, [invalidate]);
+  }, []);
 
   const perform = useCallback(async (work: () => Promise<AskAnswer>, prompt?: string) => {
     if (inFlight.current || AppState.currentState !== 'active') return;
@@ -43,9 +54,9 @@ export function AskJourneyDeckScreen() {
       const next = await work();
       if (id !== request.current || getCurrentUser().id !== userID || AppState.currentState !== 'active') return;
       setMessages(current => [...current, { id: nextID('answer'), role: 'assistant', answer: next }]);
-      context.current = next.contextToken;
+      context.current = next.contextToken; session.context = next.contextToken;
     } catch {
-      if (id === request.current) { context.current = undefined; setError('I couldn’t answer that question. Check the active profile and try again.'); }
+      if (id === request.current) { context.current = undefined; session.context = undefined; setError('I couldn’t answer that question. Check the active profile and try again.'); }
     } finally {
       if (id === request.current) { inFlight.current = false; setBusy(false); }
     }
@@ -80,7 +91,7 @@ export function AskJourneyDeckScreen() {
   return <KeyboardAvoidingView behavior="padding" style={[styles.screen, { backgroundColor: c.page }]}>
     <Stack.Screen options={{
       title: 'Ask JourneyDeck',
-      headerRight: () => <Pressable accessibilityRole="button" accessibilityLabel="Close Ask JourneyDeck" onPress={() => { invalidate(); router.canGoBack() ? router.back() : router.replace('/'); }} style={styles.closeButton}>
+      headerRight: () => <Pressable accessibilityRole="button" accessibilityLabel="Close Ask JourneyDeck" onPress={() => { router.canGoBack() ? router.back() : router.replace('/'); }} style={styles.closeButton}>
         <SymbolView name="xmark" tintColor={c.accent} size={17} weight="semibold" />
       </Pressable>,
     }} />
