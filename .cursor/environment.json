@@ -1,0 +1,17 @@
+{
+  "name": "JourneyDeck",
+  "user": "ubuntu",
+  "install": "bash ./.cursor/install.sh",
+  "start": "bash ./.cursor/start.sh",
+  "terminals": [
+    {
+      "name": "demo-ui",
+      "command": "node tests/mock-web-server.mjs"
+    },
+    {
+      "name": "app-server",
+      "command": "DRIVEOS_NODE_HOST=0.0.0.0 DRIVEOS_NODE_PORT=8791 DRIVEOS_MODE=web npm run dev:server"
+    }
+  ],
+  "ports": [8790, 8791]
+}
