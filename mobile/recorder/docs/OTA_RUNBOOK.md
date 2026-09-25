@@ -33,7 +33,7 @@ runtime is the compatibility boundary for installed builds.
 | Target | Channel | Environment | `APP_VARIANT` | Notes |
 | --- | --- | --- | --- | --- |
 | `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Current source targets the next native runtime `3.0.0-preview.6`. |
-| `v3-testflight` | `production` | `production` | `v3-store` | Installed Build 36 uses `3.0.0-preview.5`; current source needs a new `3.0.0-preview.6` binary. Requires explicit authorization. |
+| `v3-testflight` | `production` | `production` | `v3-store` | Build 38 uses xprem and runtime `3.0.0-preview.6`; publish with `xprem:publish`. Requires explicit authorization. |
 
 Phase 7 compatibility boundary: installed Build 35 uses `3.0.0-preview.4`
 and its native Ask reader accepts archive schema 9 only. This source migrates
@@ -42,8 +42,8 @@ to schema 11 and updates that native reader; it must first ship in a new
 legacy marker compatibility override. See `tessie-v3-phase7.md` for the artifact
 audit and release gates. Preserve the installed Last.fm flow when releasing.
 
-The native-to-OTA Ask and Expo MediaLibrary changes advance the current source
-to `3.0.0-preview.6`. Do not publish this source as an OTA for Build 36's
+The native-to-OTA Ask and Expo MediaLibrary changes advanced the current source
+to `3.0.0-preview.6` in Build 38. Do not publish this source as an OTA for Build 36's
 `3.0.0-preview.5` runtime.
 
 Do not use the legacy `preview` channel for V3. Do not publish V3 preview code
@@ -136,8 +136,14 @@ Expo Updates URL. Keep the computer, Docker Desktop, and the Cloudflare Tunnel
 running for those new builds to check for updates; installed builds can still
 launch their embedded bundle when the server is unavailable.
 
-After a new xprem-configured native build is installed, use the guarded xprem
-wrapper for its future compatible JavaScript updates. It defaults to dry-run:
+Build 38 uses xprem. Use the guarded xprem wrapper for compatible JavaScript
+updates. It defaults to dry-run:
+
+On Windows, pinned `eoas@3.2.2` currently emits backslashes in exported asset
+paths, which xprem rejects during upload. Resolve that CLI/platform issue before
+the next publish; switching Build 38 to `ota:publish` will not reach its xprem
+client. A single-token `--message` also avoids the wrapper's Windows shell
+argument splitting issue.
 
 ```powershell
 cd mobile/recorder

@@ -1,16 +1,18 @@
 # Current Handoff State
 
-## Current V3 photo change (September 25, 2026)
+## Current V3 OTA (September 25, 2026)
 
-- In the detached `5869905` worktree, uncommitted edits remove the optional SensitiveContentAnalysis check, framework link, status fields, and blocking copy from Photo Matching. Automatic suggestions still use time/location; the separate Memory Add Photo picker remains available for any user-chosen image within format and size limits.
-- Focused photo tests: 16 passed. Mobile TypeScript typecheck and `git diff --check` passed. Swift was source-reviewed on Windows; a new iOS build and on-device check are needed before this change appears in TestFlight. No build, OTA, commit, or deployment was performed.
+- Branch `codex/v3-testflight-ota-20260925` at `e84ed57` combines the photo-choice change (`fd85fc7`) with the post-Build-38 JS-only private iCloud sync backoff fix (`e84ed57`). The photo change removes optional SensitiveContentAnalysis native source and its framework link; the current Build 38 native binary is unchanged. OTA delivers the matching JavaScript and copy, plus the iCloud fix. Automatic suggestions still use time/location; Memory Add Photo remains available for any user-chosen image within format and size limits.
+- xprem iOS update `17903454568571`, publish group `085dcaf9-cda4-44e8-84c5-01d62915521c`, message `V3_photo_choice_and_iCloud_sync_recovery`, published September 25 at 14:11:38 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and live V3 TestFlight identity. Public manifest returns update UUID `73c3ed32-1988-3323-5405-9c84218b2fbe` with a launch asset. No EAS OTA, new native build, Git push, or App Review submission was performed.
+- Combined validation: 79 focused mobile tests, TypeScript typecheck, `git diff --check`, and V3 store iOS Expo export passed. Swift was source-reviewed on Windows. Confirm the OTA on a Build 38 device with two cold launches and check photo choice and iCloud sync behavior there.
+- The pinned Windows `eoas@3.2.2` CLI first rejected spaces in the message, then Windows asset paths. Publishing succeeded with a single-token message and a temporary path-normalization change in the npm-cached CLI; the cached CLI was restored. The ignored `mobile/recorder/dist` and `C:\Users\patri\AppData\Local\Temp\journeydeck-v3-ota-preflight-20260925` exports remain because recursive cleanup was blocked by tool policy. The temporary `node_modules` junction was removed.
 
 ## Current V3 source and release (September 24, 2026)
 
 - Main at 5869905 (PRs #174–175) combines the current website and server sources with the V3 mobile source used for Build 38, plus tools/xprem-local. The mobile master database schema is 11.
 - Build 38 is the current native TestFlight build: EAS build a34d2a2a-1201-4b9e-bcc3-e6eeb79a6968, live bundle com.journeydeck.recorder, production channel, runtime 3.0.0-preview.6. EAS submission 47a2abe5-82ea-4c5f-b076-4fb71ed53ae2 finished and Apple accepted the upload. The IPA embeds the xprem HTTPS manifest URL, app ID, signing certificate, and production channel.
 - Build 38 was produced from the previously dirty checkout C:\Users\patri\JourneyDeckv3-origin-main-20260922. Its handoff retains detailed Tessie, artwork, Ask, photo, Worker, OTA, and device-validation history. The current integration copied its mobile and Cloudflare source; the source checkout remains unmodified.
-- Earlier Expo builds use runtime 3.0.0-preview.5 and Expo Updates. Do not publish the runtime .6 source to that older runtime. No xprem OTA has been published. The Last.fm image relay in Cloudflare source has not been deployed.
+- Earlier Expo builds use runtime 3.0.0-preview.5 and Expo Updates. Do not publish the runtime .6 source to that older runtime. The Last.fm image relay in Cloudflare source has not been deployed.
 - V2 remains frozen. V3 TestFlight uses the existing live App Store identity and is not submitted to App Review without separate authorization.
 
 ## Local xprem environment
