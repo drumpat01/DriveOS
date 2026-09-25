@@ -2,6 +2,11 @@
 
 ## Current V3 OTA (September 25, 2026)
 
+- Commit `e84c1c0` retires the legacy recorder-server path for new V3 users: the public server-address/key form and credential-save function are removed, native V3 journey imports no longer create remote completion jobs, and clean profiles show that their archive and backup path is local SQLite plus private iCloud. Existing profiles with previously stored legacy credentials may still load them to finish old migration work; no clean/new profile can configure this path.
+- xprem iOS update `17903597103381`, publish group `b94fd4ba-7ad4-4e4a-bf5b-011fbb5264b2`, message `Retire_legacy_server_for_new_users`, published September 25 at 18:08:32 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `3f6926e8-4ec7-32a3-2d83-a124204ce6ee`, and a launch asset. Focused tests (74), TypeScript typecheck, diff check, and publisher iOS export passed. No native build, EAS OTA, or Git push.
+
+## Prior iCloud route status V3 OTA (September 25, 2026)
+
 - Commit `39f04ea` corrects Data Health's conflated sync indicators: optional server GPS upload flags and remote completion jobs are shown separately from private iCloud work; the hardcoded recorder Connected label is replaced with the local archive status. A new iCloud route backups row counts completed-route GPS points acknowledged by CloudKit and routes still pending, without changing sync behavior. The screenshot before this change showed no saved recorder server for the active profile, 16,428 points with unset optional server upload flags, 3 total completion jobs, and Private iCloud Synced; it did not prove how many route points CloudKit had acknowledged.
 - xprem iOS update `17903590834861`, publish group `2d20aec0-b7e2-40be-93c3-6edd213a171e`, message `Clarify_iCloud_route_backup_status`, published September 25 at 17:58:06 UTC to branch/channel `production` for runtime `3.0.0-preview.6` and Build 38. Public manifest returned HTTP 200, update UUID `6870b0f6-584a-68ab-97f3-ab218a618fc0`, and a launch asset. Focused tests (56), TypeScript typecheck, diff check, and publisher iOS export passed. Next: confirm on the device after two cold launches, read the new route backup row, then investigate any routes or local completion jobs still pending. No native build, EAS OTA, or Git push.
 
