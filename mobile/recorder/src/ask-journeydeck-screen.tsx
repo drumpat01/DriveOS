@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Image, Keyboard, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
 import { SymbolView } from 'expo-symbols';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
@@ -59,8 +59,24 @@ export function AskJourneyDeckScreen() {
   const [modelAvailability, setModelAvailability] = useState<string>('checking');
   const request = useRef(0), context = useRef<string | undefined>(session.context);
   const scroll = useRef<ScrollView>(null);
-  const scrollRequested = useRef(false);
+  const pendingScroll = useRef<{ id: string; y?: number; bottom?: number } | null>(null);
+  const scrollSize = useRef({ viewport: 0, content: 0 });
   const renderedMessageCount = useRef(session.messages.length);
+  const revealNewMessage = () => {
+    const target = pendingScroll.current, { viewport, content } = scrollSize.current;
+    // Row layout and content size can arrive in either order. Wait for both,
+    // then reveal the beginning of the reply within the measured scroll range.
+    // No animated end-scroll can outlive keyboard or presentation resizing.
+    if (!target || target.y == null || target.bottom == null || viewport <= 0 || content < target.bottom || !scroll.current) return;
+    const y = Math.min(Math.max(0, target.y - 12), Math.max(0, content - viewport));
+    pendingScroll.current = null;
+    scroll.current.scrollTo({ y, animated: false });
+  };
+  const measureMessage = (id: string, y: number, height: number) => {
+    if (pendingScroll.current?.id !== id) return;
+    pendingScroll.current = { id, y, bottom: y + height };
+    revealNewMessage();
+  };
   const nextID = (kind: string) => `${kind}-${++sessionFor(userID).nextMessageID}`;
   const updateMessages = (update: (current: ChatMessage[]) => ChatMessage[]) => {
     const saved = sessionFor(userID);
@@ -74,13 +90,12 @@ export function AskJourneyDeckScreen() {
   };
   useEffect(() => {
     const saved = sessionFor(userID);
-    // iOS formSheet reports changing content sizes during its open animation.
-    // Scrolling a restored transcript then can move every bubble off screen.
-    // Only scroll when a new message arrives after the sheet is visible.
-    scrollRequested.current = false;
+    // Restoring a conversation does not request scrolling. Only newly added
+    // messages can move it; viewport/keyboard changes alone cannot.
+    pendingScroll.current = null;
     renderedMessageCount.current = saved.messages.length;
     const sync = () => {
-      if (saved.messages.length > renderedMessageCount.current) scrollRequested.current = true;
+      if (saved.messages.length > renderedMessageCount.current) pendingScroll.current = { id: saved.messages[saved.messages.length - 1].id };
       renderedMessageCount.current = saved.messages.length;
       context.current = saved.context;
       setChatSnapshot({ userID, messages: saved.messages, busy: saved.busy });
@@ -106,7 +121,7 @@ export function AskJourneyDeckScreen() {
   const perform = useCallback(async (work: () => Promise<AskAnswer>, prompt?: string) => {
     if (sessionFor(userID).busy || AppState.currentState !== 'active') return;
     setSessionBusy(true); setError(null);
-    if (prompt) { scrollRequested.current = true; updateMessages(current => [...current, { id: nextID('user'), role: 'user', text: prompt }]); }
+    if (prompt) updateMessages(current => [...current, { id: nextID('user'), role: 'user', text: prompt }]);
     try {
       const next = await work();
       if (getCurrentUser().id !== userID) {
@@ -115,14 +130,12 @@ export function AskJourneyDeckScreen() {
         saved.messages = [...saved.messages, { id: nextID('answer'), role: 'assistant', answer: { status: 'unavailable', text: ASK_CANNOT_COMPUTE, evidence: [] } }];
         return;
       }
-      scrollRequested.current = true;
       updateMessages(current => [...current, { id: nextID('answer'), role: 'assistant', answer: next }]);
       sessionFor(userID).context = next.status === 'answered' ? next.contextToken : undefined;
       context.current = sessionFor(userID).context;
     } catch {
       if (getCurrentUser().id === userID) {
         context.current = undefined; sessionFor(userID).context = undefined;
-        scrollRequested.current = true;
         updateMessages(current => [...current, { id: nextID('answer'), role: 'assistant', answer: { status: 'unavailable', text: ASK_CANNOT_COMPUTE, evidence: [] } }]);
       }
     } finally {
@@ -158,34 +171,23 @@ export function AskJourneyDeckScreen() {
   };
 
   const canSend = !busy && foreground && isAskJourneyDeckAvailable;
-  const emptyChat = messages.length === 0 && !busy && !visibleError && !ticket && isAskJourneyDeckAvailable;
-  return <KeyboardAvoidingView behavior="padding" style={[styles.screen, { backgroundColor: c.page }]}>
-    <Stack.Screen options={{
-      title: 'Ask JourneyDeck',
-      headerRight: () => <Pressable accessibilityRole="button" accessibilityLabel="Close Ask JourneyDeck" onPress={() => { router.canGoBack() ? router.back() : router.replace('/'); }} style={styles.closeButton}>
+  return <KeyboardAvoidingView behavior="padding" style={[styles.screen, { backgroundColor: c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
+    <View style={styles.header}>
+      <View style={styles.closeButton} />
+      <Text accessibilityRole="header" style={[styles.headerTitle, { color: c.text }]}>Ask JourneyDeck</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close Ask JourneyDeck" onPress={() => { router.canGoBack() ? router.back() : router.replace('/'); }} style={styles.closeButton}>
         <SymbolView name="xmark" tintColor={c.accent} size={17} weight="semibold" />
-      </Pressable>,
-    }} />
+      </Pressable>
+    </View>
     {!V3_ASK_JOURNEYDECK_ENABLED
       ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
-      : <>
-        {emptyChat ? <View style={[styles.scroll, styles.conversation]}>
-          <View style={styles.identityRow}>
-            <BotAvatar themeID={theme.id} size={42} />
-            <View style={styles.identityCopy}><Text style={[styles.identityTitle, { color: c.text }]}>JourneyDeck</Text><Text numberOfLines={2} style={[styles.identityStatus, { color: c.muted }]}>{modelStatusLabel(modelAvailability)}</Text></View>
-            <View style={[styles.privateBadge, { backgroundColor: c.inset }]}><SymbolView name="lock.fill" tintColor={c.accent} size={10} /><Text style={[styles.privateText, { color: c.muted }]}>ON DEVICE</Text></View>
-          </View>
-          <View style={styles.assistantRow}>
-            <BotAvatar themeID={theme.id} size={30} />
-            <View style={[styles.assistantBubble, { backgroundColor: c.card, borderColor: c.line }]}>
-              <Text style={[styles.messageText, { color: c.text }]}>Hello! I’m JourneyDeck.</Text>
-              <Text style={[styles.messageText, { color: c.muted }]}>Ask me about your journeys, music, Memories, markers, or familiar places, and I’ll answer from this profile’s private on-device history.</Text>
-            </View>
-          </View>
-        </View> :
-        <ScrollView ref={scroll} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+      : <View style={styles.chat}>
+        <ScrollView ref={scroll} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
+          automaticallyAdjustKeyboardInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
+          removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
           style={styles.scroll} contentContainerStyle={styles.conversation}
-          onContentSizeChange={() => { if (scrollRequested.current) { scrollRequested.current = false; scroll.current?.scrollToEnd({ animated: true }); } }}>
+          onLayout={event => { scrollSize.current.viewport = event.nativeEvent.layout.height; revealNewMessage(); }}
+          onContentSizeChange={(_width, height) => { scrollSize.current.content = height; revealNewMessage(); }}>
           <View style={styles.identityRow}>
             <BotAvatar themeID={theme.id} size={42} />
             <View style={styles.identityCopy}><Text style={[styles.identityTitle, { color: c.text }]}>JourneyDeck</Text><Text numberOfLines={2} style={[styles.identityStatus, { color: c.muted }]}>{modelStatusLabel(modelAvailability)}</Text></View>
@@ -200,9 +202,12 @@ export function AskJourneyDeckScreen() {
             </View>
           </View>
 
-          {messages.map(message => message.role === 'user'
-            ? <View key={message.id} style={styles.userRow}><View style={[styles.userBubble, { backgroundColor: c.accent }]}><Text selectable style={[styles.messageText, { color: c.onAccent }]}>{message.text}</Text></View></View>
-            : <AssistantMessage key={message.id} message={message} themeID={theme.id} colors={c} busy={busy} onEvidence={item => void openEvidence(message.id, message.answer, item)} />)}
+          {messages.map(message => <View key={message.id} testID={`ask-message-${message.id}`}
+            onLayout={event => { const { y, height } = event.nativeEvent.layout; measureMessage(message.id, y, height); }}>
+            {message.role === 'user'
+              ? <View style={styles.userRow}><View style={[styles.userBubble, { backgroundColor: c.accent }]}><Text selectable style={[styles.messageText, { color: c.onAccent }]}>{message.text}</Text></View></View>
+              : <AssistantMessage message={message} themeID={theme.id} colors={c} busy={busy} onEvidence={item => void openEvidence(message.id, message.answer, item)} />}
+          </View>)}
 
           {busy && <View accessibilityLabel="Reading your local history" style={styles.assistantRow}>
             <BotAvatar themeID={theme.id} size={30} />
@@ -212,7 +217,7 @@ export function AskJourneyDeckScreen() {
           {!isAskJourneyDeckAvailable && <Text selectable style={[styles.availability, { color: c.muted }]}>This installed version needs the V3 native question engine.</Text>}
           {messages.length > 0 && !busy && <Text style={[styles.followUp, { color: c.muted }]}>Ask a follow-up or start a new question below.</Text>}
           {canShowSiriTesting && <Pressable accessibilityRole="button" onPress={() => router.push('/siri-testing')} style={styles.testingLink}><Text style={[styles.testingText, { color: c.accent }]}>Open Siri AI testing</Text><SymbolView name="chevron.right" tintColor={c.accent} size={13} /></Pressable>}
-        </ScrollView>}
+        </ScrollView>
 
         <View style={[styles.composerDock, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: c.page, borderColor: c.line }]}>
           <View style={styles.privacyRow}><SymbolView name="lock.fill" tintColor={c.muted} size={9} /><Text style={[styles.privacyLine, { color: c.muted }]}>Questions aren’t saved or sent with your journey data.</Text></View>
@@ -226,7 +231,7 @@ export function AskJourneyDeckScreen() {
             </Pressable>
           </View>
         </View>
-      </>}
+      </View>}
   </KeyboardAvoidingView>;
 }
 
@@ -260,7 +265,9 @@ function modelStatusLabel(status: string): string {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, scroll: { flex: 1 }, conversation: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, gap: 18 },
+  screen: { flex: 1 }, chat: { flex: 1, minHeight: 0, width: '100%', maxWidth: 860, alignSelf: 'center' },
+  header: { minHeight: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }, headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600' },
+  scroll: { flex: 1, minHeight: 0 }, conversation: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, gap: 18 },
   closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, unavailable: { flex: 1, padding: 24 }, body: { fontSize: 17, lineHeight: 24 },
   identityRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 11 },
   identityCopy: { flex: 1, gap: 2 }, identityTitle: { fontSize: 17, fontWeight: '800' }, identityStatus: { fontSize: 12 }, privateBadge: { minHeight: 28, paddingHorizontal: 9, borderRadius: 14, borderCurve: 'continuous', flexDirection: 'row', alignItems: 'center', gap: 5 }, privateText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },

@@ -35,13 +35,13 @@ Uploads are revision-acknowledged: a network response can mark a row backed up o
 
 Downloaded photos are size-checked and copied out of CloudKit's transport cache into `Documents/journeydeck-marker-media/<escaped-profile-id>/`. Cloud record fields never include the local profile ID or a device path. Photo tombstones remove the app-owned file only after the winning version has been accepted. Marker photos are normalized JPEGs with a 10 MB private-backup limit.
 
-The checked-in development schema declares both record types, but no CloudKit environment was changed or deployed during Windows implementation. Production schema deployment remains a later explicit release action.
+On September 26, 2026, the live CloudKit Console for `iCloud.com.journeydeck.recorder` confirmed both types were missing from Development and Production. `JourneyMarker` (19 fields including CloudKit metadata) and `MarkerPhoto` (16 fields including CloudKit metadata) were added to Development from the checked-in V3 field contract and deployed to Production after explicit user approval. The deployment preview contained only these two record types and their generated access grants. Production now lists both types. A physical-device marker/photo upload and restore remains unverified.
 
-## Native rollout
+## Native rollout history
 
-V3 runtime is now **`3.0.0-preview.4`**. A new iOS binary is required for Expo SDK 58, the native capture method, Siri intent registration, inbox schema 4, and Marker CloudKit capability version 5. V2 runtime/identity remain unchanged. Marker shortcut registration and native capture are V3-only. Master schema 9 supplies revision-safe private-sync queues for Markers and photos; Ask JourneyDeck's database version check matches schema 9.
+The initial Marker native rollout used **`3.0.0-preview.4`**. Build 40 uses **`3.0.0-preview.8`**. Expo SDK 58, native capture, Siri intent registration, inbox schema 4, and Marker CloudKit capability version 5 require a native iOS binary. V2 runtime/identity remain unchanged. Marker shortcut registration and native capture are V3-only. Master schema 9 supplies revision-safe private-sync queues for Markers and photos.
 
-No native build, OTA, Git commit, or push is authorized by implementation alone. The full native implementation must not be published to runtime `3.0.0-preview.2`; do not downgrade a migrated archive to an older binary.
+The original Marker implementation did not by itself authorize a build, OTA, Git commit, or push. The full native implementation must not be published to runtime `3.0.0-preview.2`; do not downgrade a migrated archive to an older binary.
 
 ### Compatible OTA for installed Build 10
 

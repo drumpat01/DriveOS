@@ -26,9 +26,9 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // Build 39 bundles the revised Siri/Ask engine and adaptive icons. Isolate
-    // it from Build 38's preview.6 updates so older chat code cannot replace it.
-    runtimeVersion: v3 ? '3.0.0-preview.7' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // Build 40 bundles the shared Siri/Ask engine and themed chat avatars.
+    // Isolate it from Build 39's preview.7 updates.
+    runtimeVersion: v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(v3 ? {

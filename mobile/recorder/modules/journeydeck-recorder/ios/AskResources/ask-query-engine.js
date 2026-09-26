@@ -36,6 +36,10 @@
     if (/^(?:(?:what|who)(?: is| was|'s) (?:my |the )?|(?:my )?)(?:most played|top) artist[?.!]*$/.test(q)) {
       return { ...defaults, domain: 'music', operation: 'rank', groupBy: 'artist', limit: 1 };
     }
+    const longest = /^(?:please )?(?:(?:what|which)(?: is| was|'s)|show(?: me)?) (?:my |the )?longest (?:journey|trip|drive)(?: by (distance|miles|duration|time|driving time))?[?.!]*$/.exec(q);
+    if (longest) {
+      return { ...defaults, operation: 'largest', metric: ['duration', 'time', 'driving time'].includes(longest[1]) ? 'minutes' : 'miles' };
+    }
     return null;
   }
   function followUpPlan(question, previous, now) {
@@ -50,6 +54,9 @@
     if (typeof question !== 'string' || question.length > 500 || !raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const followUpQuery = followUpPlan(question, previous, now);
     if (followUpQuery) return followUpQuery;
+    const direct = directPlan(question);
+    if (direct?.operation === 'largest') return direct;
+    if (raw.decision !== undefined && !choices.decision.includes(raw.decision)) return null;
     const p = Object.assign({}, defaults, raw), q = question.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
     const followUp = hasPriorContext && /^(?:and |what about |how about )/.test(q);
     // Guided generation can populate constrained fields even when they are irrelevant.
@@ -90,37 +97,62 @@
 
     const unsupported = /\b(?:delete|erase|remove all|start recording|stop recording|create (?:a )?marker|email|send|share)\b|\b(?:note|notes|transcript|transcripts|voice memos?|engine temperature|fuel|gas)\b|\bphotos? (?:containing|showing|with)\b|\b(?:color|colour) (?:were|was|are|is)\b|\broute(?:s)? (?:crossed|crossing)\b|\b(?:excluding|except|without)\b/;
     const ambiguous = /\b(?:best|most fun|favorite|favourite)\b|\bbiggest one\b/;
-    const domains = {
-      journeys: /\b(?:journey|journeys|trip|trips|drive|drives|driving|mile|miles|mileage|distance|minutes?|duration)\b/,
-      music: /\b(?:music|soundtrack|song|songs|track|tracks|artist|artists|album|albums|play|plays|played|listen|listened)\b/,
-      memories: /\b(?:memory|memories)\b/,
-      markers: /\bmarkers?\b/,
-      places: /\b(?:arrival|arrivals|arrive|arrived|ending at|ended at|end at|work|home)\b/,
-    };
-    const operations = {
-      total: /\b(?:how many|what is my|total|count|number of|sum|add|add up|how often)\b|^(?:miles|mileage|distance|minutes|photos?)\b/,
-      average: /\b(?:average|mean)\b/,
-      latest: /\b(?:latest|last|most recent)\b/,
-      first: /\bfirst\b/,
-      largest: /\b(?:longest|most miles|highest mileage|largest)\b/,
-      smallest: /\b(?:shortest|least mileage|lowest mileage|smallest)\b/,
-      list: /\b(?:list|show)\b/,
-      rank: /\b(?:top|rank|number one|most played|most listened|most recorded)\b/,
-      compare: /\b(?:compare|versus|vs\.?|difference)\b/,
-    };
-    const metrics = {
-      count: /./,
-      miles: /\b(?:mile|miles|mileage|distance|how far)\b/,
-      minutes: /\b(?:minute|minutes|drive time|driving time|duration)\b/,
-      songPlays: /\b(?:song|songs|music|play|plays)\b/,
-      photos: /\bphotos?\b/,
-    };
+    // The model owns semantic interpretation. The executor validates capabilities
+    // and types; it must not require the user's words to repeat schema field names.
+    // Never promote a model refusal into an answer based on keyword overlap.
     if (ambiguous.test(q)) p.decision = 'clarify';
     else if (unsupported.test(q)) p.decision = 'unsupported';
-    else if ((followUp || domains[p.domain]?.test(q)) && operations[p.operation]?.test(q) && metrics[p.metric]?.test(q)) p.decision = 'answer';
-    else p.decision = p.decision === 'clarify' ? 'clarify' : 'unsupported';
-    if (p.metric === 'voiceMemos') p.metric = 'count';
-    return p;
+    if (p.metric === 'voiceMemos') { p.metric = 'count'; p.decision = 'unsupported'; }
+    return validate(p);
+  }
+  function planFailure(reason) {
+    const messages = {
+      clarificationNeeded: ['clarify', 'Please clarify what you want to find or compare. For longest journeys, you can specify distance or driving time.'],
+      unsupportedRequest: ['clarify', 'That request needs information or an operation Ask JourneyDeck does not support yet. Ask about saved journeys, recorded music, Memories, markers, or arrivals.'],
+      invalidPlan: ['unavailable', 'I could not turn that question into a supported query. Try rephrasing it.'],
+      modelUnavailable: ['unavailable', 'Apple Intelligence could not interpret this question right now, and the offline question matcher did not recognize it. Please try again.'],
+    };
+    const key = Object.prototype.hasOwnProperty.call(messages, reason) ? reason : 'invalidPlan';
+    return { ...reply(messages[key][0], messages[key][1]), reason: key };
+  }
+  // Both chat and Siri use this entry point. Local shortcuts are exact complete
+  // questions; other phrasings belong to the model, subject to the same validator.
+  function resolvePlan(question, raw, previous, now) {
+    const direct = directPlan(question) || followUpPlan(question, previous, now) || localPlan(question, previous, now);
+    if (direct) return direct;
+    return raw == null ? null : normalizeModelPlan(question, raw, previous != null, previous, now);
+  }
+  function localPlan(question, previous, now) {
+    // Reuse the complete offline grammar, rather than a second collection of
+    // keyword guesses about the model. Both paths then use the same executor.
+    const legacy = typeof module !== 'undefined' ? require('./ask-engine.js') : root.JourneyDeckAskEngine;
+    if (!legacy || !Number.isFinite(now) || (isContextualQuestion(question) && previous?.version !== 1)) return null;
+    const parsed = legacy.plan(question, { now, cutoff: 0 }, previous);
+    if (!parsed) return null;
+    const metrics = {
+      miles: { metric: 'miles' }, journeyCount: {},
+      latestJourney: { operation: 'latest' }, firstJourney: { operation: 'first' },
+      longestJourney: { operation: 'largest', metric: 'miles' },
+      memoryCount: { domain: 'memories' }, latestMemory: { domain: 'memories', operation: 'latest' },
+      songCount: { domain: 'music' },
+      topArtist: { domain: 'music', operation: 'rank', groupBy: 'artist', limit: 1 },
+      topSong: { domain: 'music', operation: 'rank', groupBy: 'track', limit: 1 },
+    };
+    if (!Object.prototype.hasOwnProperty.call(metrics, parsed.metric)) return null;
+    const periods = { 'in your available history': 'available', today: 'today', yesterday: 'yesterday',
+      'this week': 'thisWeek', 'last week': 'lastWeek', 'this month': 'thisMonth', 'last month': 'lastMonth',
+      'this year': 'thisYear', 'last year': 'lastYear', 'all time': 'allTime', 'in total': 'allTime' };
+    const plan = { ...defaults, ...metrics[parsed.metric], period: periods[parsed.range.label] };
+    if (!plan.period) {
+      const rolling = /^the last (\d+) days$/.exec(parsed.range.label);
+      if (rolling) { plan.period = 'lastDays'; plan.days = Number(rolling[1]); }
+      else if (parsed.range.label.startsWith('on ')) {
+        const day = new Date(parsed.range.start);
+        plan.period = 'date';
+        plan.startDate = [day.getFullYear(), String(day.getMonth() + 1).padStart(2, '0'), String(day.getDate()).padStart(2, '0')].join('-');
+      } else return null;
+    }
+    return validate(plan);
   }
   function validate(raw, issues) {
     const fail = reason => { if (issues) issues.push(reason); return null; };
@@ -187,7 +219,8 @@
   const includes = (a, b) => !b || (typeof a === 'string' && a.toLowerCase().includes(b.toLowerCase()));
   function execute(raw, input, previous) {
     const p = validate(raw);
-    if (!p || p.decision !== 'answer') return clarify();
+    if (!p) return planFailure('invalidPlan');
+    if (p.decision !== 'answer') return planFailure(p.decision === 'unsupported' ? 'unsupportedRequest' : 'clarificationNeeded');
     if (!input || !finite(input.now) || !finite(input.cutoff)) return unavailable();
     const required = ['journeys', 'music', 'memories', 'markers', 'places', 'memoryJourneys', 'sensitiveLabels'];
     if (required.some(k => !Array.isArray(input[k]) || input[k].length > 20000)) return unavailable();
@@ -297,6 +330,9 @@
         return name + ' on ' + date(Date.parse(row.at)) + (p.metric !== 'count' ? ': ' + format(value(row)) + ' ' + unit : '');
       }).join('; ') + '. ' + rows.length + ' matching records ' + scope + '.' : 'No matching records ' + scope + '.';
     } else text = format(numeric) + ' ' + unit + ' across ' + rows.length + ' matching records ' + scope + '.';
+    if (p.domain === 'journeys' && p.operation === 'largest' && ['miles', 'minutes'].includes(p.metric)) {
+      text = (p.metric === 'miles' ? 'Longest by distance: ' : 'Longest by driving time: ') + text;
+    }
     text += ' Saved on this device only.';
     if (p.timeOfDay !== 'all') text += ' Night starts are before 6 AM or from 6 PM, using this device’s time zone.';
     const journeyIds = !isSelection ? [] : [...new Set(selectedRows.flatMap(row => p.domain === 'memories'
@@ -325,7 +361,7 @@
         title: 'Memory created ' + date(Date.parse(m.createdAt)), summary: 'Saved Memory' })),
     ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || String(a.id).localeCompare(String(b.id))).slice(0, 500);
   }
-  const api = { choices, defaults, isContextualQuestion, directPlan, normalizeModelPlan, followUpPlan, validate, range, execute, modelContext, entities };
+  const api = { choices, defaults, resolvePlan, planFailure, isContextualQuestion, directPlan, normalizeModelPlan, followUpPlan, validate, range, execute, modelContext, entities };
   if (typeof module !== 'undefined') module.exports = api;
   root.JourneyDeckQueryEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

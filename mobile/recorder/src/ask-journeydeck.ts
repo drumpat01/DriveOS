@@ -11,6 +11,7 @@ export type AskAnswer = {
   ticket?: string;
   contextToken?: string;
   profileId?: string;
+  reason?: 'clarificationNeeded' | 'unsupportedRequest' | 'invalidPlan' | 'modelUnavailable';
 };
 type NativeAsk = {
   askJourneyDeckAsync?: (question: string, userID: string, context: string | null) => Promise<AskAnswer>;
@@ -20,9 +21,24 @@ type NativeAsk = {
 const native = requireOptionalNativeModule<NativeAsk>('JourneyDeckRecorder');
 export const isAskJourneyDeckAvailable = V3_ASK_JOURNEYDECK_ENABLED && Boolean(native?.askJourneyDeckAsync && native?.resolveJourneyDeckAnswerAsync);
 export const ASK_EXAMPLES = ['How many miles did I drive this week?', 'When was my last journey?', 'What was my top artist this month?'];
-export const ASK_CANNOT_COMPUTE = 'Beep Boop. Can not compute.';
+export const ASK_CANNOT_COMPUTE = "I couldn't complete that request. Please try again.";
 
 export function presentAskAnswer(answer: AskAnswer): AskAnswer {
+  // These reason codes are emitted by the native query engine, never model prose.
+  const messages = {
+    invalidPlan: 'I could not turn that question into a supported query. Try rephrasing it.',
+    modelUnavailable: 'Apple Intelligence could not interpret this question right now, and the offline question matcher did not recognize it. Please try again.',
+  };
+  if (answer.status === 'unavailable' && answer.reason && Object.prototype.hasOwnProperty.call(messages, answer.reason)) {
+    return { status: 'unavailable', reason: answer.reason, text: messages[answer.reason as keyof typeof messages], evidence: [] };
+  }
+  if (['clarify', 'historyLimited'].includes(answer.status) && typeof answer.text === 'string' &&
+      answer.text.trim() && answer.text !== 'Beep Boop. Can not compute.') {
+    return { status: answer.status, reason: answer.reason, text: answer.text, evidence: [] };
+  }
+  if (answer.status === 'clarify') {
+    return { status: 'clarify', text: 'Please specify what you want to find, such as the longest journey by distance or by driving time.', evidence: [] };
+  }
   return answer.status === 'answered' && typeof answer.text === 'string' && answer.text.trim().length > 0
     ? answer
     : { status: answer.status === 'answered' ? 'unavailable' : answer.status, text: ASK_CANNOT_COMPUTE, evidence: [] };

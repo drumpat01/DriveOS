@@ -2,7 +2,11 @@
 
 ## V2 complete and frozen — September 15, 2026
 
-The user confirmed V2 submission to App Review and declared development complete. No V2 runtime changes are allowed except urgent customer-reported bugs. Cosmetic polish, features, refactors, dependency upgrades, and other non-urgent improvements belong to V3 on a separate branch. Keep urgent fixes minimal, document the report and urgency, and run targeted validation. Release actions still require user authorization. See root `GEMINI.md` for the authoritative freeze policy.
+The user confirmed V2 submission to App Review and declared development complete. No V2 runtime changes are allowed except urgent customer-reported bugs. Keep urgent fixes minimal, document the report and urgency, and run targeted validation. Release actions still require user authorization. See root `GEMINI.md` for the authoritative freeze policy.
+
+## V3 feature complete — September 26, 2026
+
+The user declared V3 feature complete. Only emergency bug fixes are in scope. Do not add features, cosmetic polish, refactors, dependency upgrades, or discretionary releases. Keep emergency fixes minimal and run targeted validation. The existing TestFlight stream remains TestFlight only unless the user separately authorizes App Review submission.
 
 ## iPad acceptance surfaces
 

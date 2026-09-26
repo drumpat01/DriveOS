@@ -86,6 +86,17 @@ test('zoom detail routes omit UIKit headers while retaining native stack gesture
   await act(() => tree.unmount());
 });
 
+test('Ask uses a full-screen route without form-sheet sizing or a second header', async () => {
+  let tree: any;
+  try {
+    await act(() => { tree = create(React.createElement(navigation.JourneyDeckNativeStack)); });
+    const ask = tree.root.findAllByType('route').find((item: any) => item.props.name === 'ask-journeydeck');
+    assert.equal(ask.props.options.presentation, 'fullScreenModal');
+    assert.equal(ask.props.options.headerShown, false);
+    assert.equal(ask.props.options.sheetAllowedDetents, undefined);
+  } finally { await act(() => tree?.unmount()); }
+});
+
 test('native bar has five fixed routes and an original orange Home image in both appearances', async () => {
   let tree: any;
   const render = () => React.createElement(navigationContext.NativeNavigationContext.Provider, { value: { tabBarHidden: false } }, React.createElement(navigation.JourneyDeckNativeTabs));
