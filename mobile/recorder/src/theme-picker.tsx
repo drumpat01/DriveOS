@@ -15,11 +15,12 @@ import { useThemeChoice } from './app-theme';
 import {
   FREE_THEME_IDS,
   PLUS_THEME_IDS,
+  V4_PLUS_THEME_IDS,
   themeCatalog,
   themeRequiresPlus,
   type ThemeId,
 } from './theme-catalog';
-import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED } from './release-features';
 
 const previews: Record<ThemeId, number> = {
   dark: require('../assets/cinematic-home-main-photo-v1.jpg'),
@@ -27,12 +28,17 @@ const previews: Record<ThemeId, number> = {
   sakura: require('../assets/theme-rosewater-road-v1.png'),
   redline: require('../assets/theme-grand-touring-home-v2.png'),
   'midnight-canopy': require('../assets/theme-autumn-drive-road-v1.png'),
+  // Registered only when V4 offers the theme, so earlier variants never load the artwork.
+  'aurora-glass': V4_AURORA_GLASS_ENABLED ? require('../assets/theme-aurora-glass-scene-v1.jpg') : 0,
 };
 
 const visibleFreeThemeIds: readonly ThemeId[] = V3_MIDNIGHT_CANOPY_ENABLED
   ? [...FREE_THEME_IDS, 'midnight-canopy']
   : FREE_THEME_IDS;
-const visibleThemeIds: readonly ThemeId[] = [...visibleFreeThemeIds, ...PLUS_THEME_IDS];
+const visiblePlusThemeIds: readonly ThemeId[] = V4_AURORA_GLASS_ENABLED
+  ? [...PLUS_THEME_IDS, ...V4_PLUS_THEME_IDS]
+  : PLUS_THEME_IDS;
+const visibleThemeIds: readonly ThemeId[] = [...visibleFreeThemeIds, ...visiblePlusThemeIds];
 
 type ThemePickerProps = {
   embedded?: boolean;
@@ -151,7 +157,7 @@ export function ThemePicker({ embedded = false, compact = false, membershipTier 
     <Text style={[styles.detail, { color: colors.muted }]}>Choose the colors and artwork used throughout JourneyDeck.</Text>
     <View accessibilityRole="radiogroup" style={styles.grid}>
       {renderRow('FREE', visibleFreeThemeIds, false, 'free')}
-      {renderRow('JOURNEYDECK PLUS', PLUS_THEME_IDS, true, 'plus')}
+      {renderRow('JOURNEYDECK PLUS', visiblePlusThemeIds, true, 'plus')}
     </View>
   </View>;
 }

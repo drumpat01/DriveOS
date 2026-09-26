@@ -36,3 +36,12 @@ These app-ready derivatives preserve the licensed source photographs while apply
 | `theme-grand-touring-settings-v1.png` | Grand Touring Settings header | “Close up of Engine in Black and White” — Jean Marc Bonnel | [Pexels #19227069](https://www.pexels.com/photo/close-up-of-engine-in-black-and-white-19227069/) |
 | `theme-carbon-blue-journey-v1.png` | Grand Touring Journey detail and time-of-day fallback | “Blue Car Driving on Road in Late Evening” — Erik Mclean | [Pexels #5158107](https://www.pexels.com/photo/blue-car-driving-on-road-in-late-evening-5158107/) |
 | `theme-carbon-blue-road-v1.png` | Grand Touring shared road/header fallback | “A Blue Sedan Car on the Road” — Erik Mclean | [Pexels #9827743](https://www.pexels.com/photo/a-blue-sedan-car-on-the-road-9827743/) |
+
+## Aurora Glass theme (V4)
+
+These images contain no photography or third-party material. `scripts/generate-aurora-glass-artwork.mjs` renders them from the seeded procedural scene in `scripts/aurora-glass-scene.mjs`, so they are original JourneyDeck artwork and can be regenerated exactly. Added September 26, 2026.
+
+| Bundled asset | App use | Source |
+| --- | --- | --- |
+| `theme-aurora-glass-scene-v1.jpg` | Aurora Glass Home background, theme preview and first-run artwork | Procedural (original) |
+| `theme-aurora-glass-scene-soft-v1.jpg` | Aurora Glass blurred background for Memories, Settings, headers and fallbacks | Procedural (original), blurred and dimmed |

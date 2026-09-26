@@ -1,4 +1,9 @@
-import type { ThemeId } from './theme-catalog';
+import type { ArtworkThemeId, ThemeId } from './theme-catalog';
+
+/** Aurora Glass has no medallion set of its own; it shows Grand Touring's midnight-navy coins. */
+export function medallionThemeId(id: ThemeId): ArtworkThemeId {
+  return id === 'aurora-glass' ? 'redline' : id;
+}
 import type { MedallionFrame } from './medallion-surface';
 
 export type ApprovedMedallionId =
@@ -28,7 +33,7 @@ export const approvedMedallionIds: readonly ApprovedMedallionId[] = [
   'all-fifty',
 ];
 
-export const medallionArtwork: Record<ApprovedMedallionId, Record<ThemeId, number>> = {
+const medallionArtworkByTheme: Record<ApprovedMedallionId, Record<ArtworkThemeId, number>> = {
   'all-fifty': {
     redline: require('../assets/medallions-v3/runtime/all-fifty-redline.webp'),
     sakura: require('../assets/medallions-v3/runtime/all-fifty-sakura.webp'),
@@ -108,12 +113,18 @@ export const medallionArtwork: Record<ApprovedMedallionId, Record<ThemeId, numbe
   },
 };
 
+/** Every theme resolves directly; Aurora Glass shows Grand Touring's midnight-navy coins. */
+export const medallionArtwork = Object.fromEntries(Object.entries(medallionArtworkByTheme).map(([id, byTheme]) => [
+  id, { ...byTheme, 'aurora-glass': byTheme.redline },
+])) as Record<ApprovedMedallionId, Record<ThemeId, number>>;
+
 // These normalized face bounds are shared by native thumbnails and WebGL.
 // Using one crop keeps the artwork centered on the physical coin in every theme.
-const medallionFrames = require('../assets/medallions-v2/frames.json') as Record<`${ApprovedMedallionId}-${ThemeId}`, MedallionFrame>;
-const v3MedallionFrames = require('../assets/medallions-v3/frames.json') as Record<`all-fifty-${ThemeId}`, MedallionFrame>;
+const medallionFrames = require('../assets/medallions-v2/frames.json') as Record<`${ApprovedMedallionId}-${ArtworkThemeId}`, MedallionFrame>;
+const v3MedallionFrames = require('../assets/medallions-v3/frames.json') as Record<`all-fifty-${ArtworkThemeId}`, MedallionFrame>;
 
-export function getMedallionFrame(id: ApprovedMedallionId, theme: ThemeId): MedallionFrame {
+export function getMedallionFrame(id: ApprovedMedallionId, themeId: ThemeId): MedallionFrame {
+  const theme = medallionThemeId(themeId);
   if (id === 'all-fifty') return v3MedallionFrames[`${id}-${theme}`];
   return medallionFrames[`${id}-${theme}`] ?? medallionFrames[`${id}-redline`];
 }

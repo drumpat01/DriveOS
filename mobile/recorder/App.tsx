@@ -2,6 +2,7 @@ import { CreateJourneyMarkerButton } from './src/journey-markers';
 import { requestJourneyLocationAccess } from './src/location-permissions';
 import { IpadRecorderControls } from './src/ipad-home';
 import { AppThemeProvider, useAppTheme, useThemedStyles } from './src/app-theme';
+import { GlassBackdrop, useGlassCardStyle } from './src/glass-material';
 import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
 import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -152,6 +153,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
 }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const glassCardStyle = useGlassCardStyle();
   const { isAppActive, reduceMotion } = useMotionPreferences();
 
   const insets = useSafeAreaInsets();
@@ -699,6 +701,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   }
 
   if (presentation === 'home') {
+    const glassCard = glassCardStyle;
     const recording = summary?.status === 'recording';
     const paused = summary?.status === 'paused';
     const startupPending = !deviceId || !recorderInitialized;
@@ -713,7 +716,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
             <HomeRecorderStartPortal onPress={start} disabled={busy || startupPending} showProgress={busy} />
           </Reanimated.View>
         ) : (
-          <Reanimated.View key="live-recorder" entering={reduceMotion ? FadeIn.duration(120) : FadeInDown.duration(320).springify().damping(21)} style={styles.homeRecorderCard}>
+          <Reanimated.View key="live-recorder" entering={reduceMotion ? FadeIn.duration(120) : FadeInDown.duration(320).springify().damping(21)} style={[styles.homeRecorderCard, glassCard]}>
+            <GlassBackdrop role="clear" radius={25} />
             <View style={styles.homeRecorderStatusRow}>
               <View style={styles.homeRecorderPulseOuter}><View style={[styles.homeRecorderPulseMiddle, paused && styles.homeRecorderPulsePaused]}><View style={[styles.homeRecorderPulseCore, paused && styles.homeRecorderPulseCorePaused]} /></View></View>
               <View style={styles.homeRecorderStatusCopy}>
@@ -923,6 +927,30 @@ function HomeRecorderStartPortal({ onPress, disabled, showProgress = false, pres
     pressedScale.set(reduceMotion ? 1 : withSpring(1, MOTION_SPRINGS.responsive));
   };
 
+  // Glass themes: the approved recorder dock pairs the ready state with the single mint action.
+  if (V3_FIFTY_STATES_ENABLED && theme.isGlass && !ipadHeader) return <View testID="home-recorder-dock" style={styles.homeRecorderDock}>
+    <GlassBackdrop role="clear" radius={32} />
+    <View style={styles.homeRecorderDockStatus} accessible accessibilityLabel={`Ready. ${portalBody ?? ''}`}>
+      <View style={[styles.homeRecorderDockHalo, { backgroundColor: `${homeColors.accent}2e` }]}><View style={[styles.homeRecorderDockDot, { backgroundColor: homeColors.accent }]} /></View>
+      <View style={styles.flex}>
+        <Text style={[styles.homeRecorderDockTitle, { color: homeColors.text }]}>Ready</Text>
+        {portalBody ? <Text style={[styles.homeRecorderDockBody, { color: homeColors.textSecondary }]}>{portalBody}</Text> : null}
+      </View>
+    </View>
+    <Pressable
+      testID="home-start-journey-portal"
+      accessibilityRole="button" accessibilityLabel={actionLabel}
+      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(showProgress) }}
+      disabled={disabled} onPress={onPress}
+      style={({ pressed }) => [styles.homeRecorderDockAction, { opacity: disabled || pressed ? 0.6 : 1 }]}
+    >
+      <GlassBackdrop role="primary" radius={28} />
+      {showProgress ? <ActivityIndicator color={homeColors.onAccent} /> : <SymbolView name="record.circle" tintColor={homeColors.onAccent} size={22} />}
+      <Text style={{ color: homeColors.onAccent, fontSize: 19, fontWeight: '700', flexShrink: 1 }}>{actionLabel}</Text>
+      <SymbolView name="arrow.right" tintColor={homeColors.onAccent} size={20} />
+    </Pressable>
+  </View>;
+
   if (V3_FIFTY_STATES_ENABLED) return <Pressable
     testID="home-start-journey-portal"
     accessibilityRole="button" accessibilityLabel={actionLabel}
@@ -1006,7 +1034,7 @@ function HomeRecorderPrimaryAction({ label, symbol, onPress, disabled }: { label
   const styles = useThemedStyles(darkStyles);
 
   return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.homeRecorderPrimary, pressed && styles.homeRecorderPressed]}>
-    <LinearGradient colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(['#ff7654', '#ff376f'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
+    {theme.isGlass ? <GlassBackdrop role="primary" radius={21} /> : <LinearGradient colors={theme.isCustom ? [theme.palette.accent, theme.palette.accent] : theme.gradient(['#ff7654', '#ff376f'])} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />}
     <View style={styles.homeRecorderPrimaryIcon}><SymbolView name={symbol} tintColor={theme.isCustom ? theme.palette.onAccent : theme.color("#fff4ee", 'text')} size={26} /></View>
     <Text style={[styles.homeRecorderPrimaryText, theme.isCustom && { color: theme.palette.onAccent }]}>{label}</Text>
     <Text style={[styles.homeRecorderPrimaryArrow, theme.isCustom && { color: theme.palette.onAccent }]}>›</Text>
@@ -1027,6 +1055,13 @@ const darkStyles = StyleSheet.create({
   atmosphere: { position: 'absolute', top: -45, left: -20, right: -20, height: 1250 },
   flex: { flex: 1 }, safeArea: { flex: 1, backgroundColor: '#08070d' }, content: { padding: 20, paddingTop: 34, paddingBottom: 48, gap: 18 },
   homeRecorderStack: { gap: 16 },
+  homeRecorderDock: { borderRadius: 32, borderCurve: 'continuous', overflow: 'hidden', padding: 10, gap: 10 },
+  homeRecorderDockStatus: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 10, paddingTop: 6 },
+  homeRecorderDockHalo: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  homeRecorderDockDot: { width: 10, height: 10, borderRadius: 5 },
+  homeRecorderDockTitle: { fontSize: 16, lineHeight: 21, fontWeight: '700' },
+  homeRecorderDockBody: { fontSize: 13, lineHeight: 18 },
+  homeRecorderDockAction: { minHeight: 58, borderRadius: 28, borderCurve: 'continuous', overflow: 'hidden', paddingHorizontal: 20, paddingVertical: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 },
   homeRecorderCard: { overflow: 'hidden', borderRadius: 25, borderWidth: 1, borderColor: 'rgba(190,168,194,0.44)', backgroundColor: 'rgba(9,8,14,0.86)', paddingHorizontal: 18, paddingVertical: 20, shadowColor: '#bc6aff', shadowOpacity: 0.15, shadowRadius: 22, shadowOffset: { width: 0, height: 10 } },
   journeySavedMoment: { minHeight: 330, overflow: 'hidden', borderRadius: 26, padding: 18, gap: 15, shadowColor: '#bc6aff', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 12 } },
   journeySavedHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },

@@ -315,3 +315,86 @@ test('default Memory artwork receives a fresh shared image identity for every th
   assert.match(ipadHome, /const sourceKey = .*`default-memory-\$\{theme\.id\}`/);
   assert.match(ipadHome, /imageIdentity=\{sourceKey\}/);
 });
+
+test('Aurora Glass is a readable Plus dark theme with mint as its single action color', () => {
+  const aurora = catalog.themeCatalog['aurora-glass'];
+  const p = aurora.palette;
+  assert.equal(aurora.name, 'Aurora Glass');
+  assert.equal(aurora.mode, 'dark');
+  assert.equal(catalog.isCustomTheme('aurora-glass'), true);
+  assert.equal(catalog.themeRequiresPlus('aurora-glass'), true, 'owner placed Aurora in JourneyDeck Plus');
+  assert.deepEqual(catalog.V4_PLUS_THEME_IDS, ['aurora-glass']);
+  assert.deepEqual(catalog.PLUS_THEME_IDS, ['dark', 'sakura'], 'earlier variants keep their Plus grid');
+  assert.equal(catalog.parseThemeId('aurora-glass'), 'aurora-glass', 'a saved Aurora selection restores');
+  assert.equal(catalog.parseThemeId(null), 'redline', 'Grand Touring stays the default');
+  assert.equal(catalog.artworkThemeId('aurora-glass'), 'redline');
+  assert.equal(p.accent, '#5ff2c4');
+  const lum = (hex: string) => {
+    const c = [1, 3, 5].map(i => { const v = parseInt(hex.slice(i, i + 2), 16) / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; });
+    return c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722;
+  };
+  const contrast = (a: string, b: string) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  for (const bg of [p.page, p.card, p.inset]) for (const fg of [p.text, p.muted, p.accent, p.coral, p.amber, p.teal, p.blue, p.rose, p.green]) {
+    assert.ok(contrast(fg, bg) >= 4.5, `aurora-glass: ${fg} on ${bg} = ${contrast(fg, bg)}`);
+  }
+  assert.ok(contrast(p.onAccent, p.accent) >= 4.5);
+  assert.ok(contrast(p.onSuccess, p.success) >= 4.5);
+  assert.ok(contrast(p.onDanger, p.danger) >= 4.5);
+  assert.ok(new Set([p.coral, p.amber, p.teal, p.blue, p.rose, p.green]).size >= 5, 'chart inks stay distinguishable');
+  assert.notEqual(palette.themedColor('#43e6ae', 'aurora-glass', 'accent'), palette.themedColor('#ff5f67', 'aurora-glass', 'accent'), 'start and end markers stay distinct');
+  assert.match(palette.themedColor('#ff5c73', 'aurora-glass', 'shadow'), /^rgba\(0,0,0,/, 'no colored glow on every card');
+  assert.equal(palette.themedColor('transparent', 'aurora-glass'), 'transparent');
+});
+
+test('Aurora artwork: full scene on Home, calm blurred scene elsewhere, user photos untouched', async () => {
+  const assets = new Map<string, number>();
+  const module = { exports: {} as any };
+  const code = ts.transpileModule(readFileSync(new URL('../src/header-image-sources.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const asset = (path: string) => { if (!assets.has(path)) assets.set(path, assets.size + 1); return assets.get(path)!; };
+  vm.runInNewContext(code, { module, exports: module.exports, require: asset });
+  assert.ok(![...assets.keys()].some(path => /aurora-glass/.test(path)), 'Aurora artwork registers only when selected');
+  const resolve = module.exports.headerImageSource;
+  const scene = asset('../assets/theme-aurora-glass-scene-v1.jpg');
+  const soft = asset('../assets/theme-aurora-glass-scene-soft-v1.jpg');
+  assert.equal(resolve(asset('../assets/cinematic-home-main-photo-v1.jpg'), 'aurora-glass'), scene);
+  for (const file of ['cinematic-settings-photo-v1.jpg', 'cinematic-memories-polaroids-photo-v1.jpg', 'cinematic-memory-polaroids-photo-v1.jpg', 'cinematic-soundtracks-photo-v1.jpg', 'cinematic-statistics-photo-v1.jpg', 'cinematic-journey-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) {
+    assert.equal(resolve(asset(`../assets/${file}`), 'aurora-glass'), soft, `${file} uses the blurred scene`);
+  }
+  const photo = { uri: 'file:///private/photo.jpg' };
+  assert.equal(resolve(photo, 'aurora-glass'), photo);
+  assert.equal(resolve(99999, 'aurora-glass'), 99999);
+  const sharp = (await import('sharp')).default;
+  for (const file of ['theme-aurora-glass-scene-v1.jpg', 'theme-aurora-glass-scene-soft-v1.jpg']) {
+    const meta = await sharp(readFileSync(new URL(`../assets/${file}`, import.meta.url))).metadata();
+    assert.deepEqual([meta.width, meta.height], [1170, 2532], `${file} is portrait @3x artwork`);
+  }
+});
+
+test('Aurora surfaces are frosted tints over scenery and turn solid for Reduce Transparency', () => {
+  const p = catalog.themeCatalog['aurora-glass'].palette;
+  const card = palette.themedColor('rgba(9,8,14,0.88)', 'aurora-glass', 'surface');
+  assert.equal(card, 'rgba(5,11,24,0.88)', 'near-black surfaces stay the page color at their original alpha');
+  const raised = palette.themedColor('#2a2233', 'aurora-glass', 'surface');
+  assert.match(raised, /^rgba\(14,26,46,0\.62\)$/, 'cards become a frosted tint');
+  assert.equal(palette.themedColor('#2a2233', 'aurora-glass', 'surface', true), p.card, 'Reduce Transparency restores the solid card');
+  assert.match(palette.themedColor('#6b5a70', 'aurora-glass', 'surface'), /^rgba\(255,255,255,0\.1\)$/, 'controls become light glass');
+  assert.equal(palette.themedColor('#6b5a70', 'aurora-glass', 'surface', true), p.inset);
+  assert.equal(palette.themedColor('#49304f', 'aurora-glass', 'border'), 'rgba(255,255,255,0.14)', 'neutral edges read as glass');
+  assert.equal(palette.themedColor('#49304f', 'aurora-glass', 'border', true), 'rgba(255,255,255,0.28)', 'solid mode strengthens edges');
+  const sheet = palette.themedStyleSheet({ card: { backgroundColor: '#2a2233', borderColor: '#49304f' } }, 'aurora-glass');
+  const solid = palette.themedStyleSheet({ card: { backgroundColor: '#2a2233', borderColor: '#49304f' } }, 'aurora-glass', [], true);
+  assert.notEqual(sheet.card.backgroundColor, solid.card.backgroundColor);
+  assert.equal(palette.themedColor('#2a2233', 'redline', 'surface'), palette.themedColor('#2a2233', 'redline', 'surface', true), 'other themes ignore the glass option');
+});
+
+test('Aurora Home uses glass through shared chokepoints without touching other themes', () => {
+  const app = readFileSync(new URL('../App.tsx', import.meta.url), 'utf8');
+  const shell = readFileSync(new URL('../src/shell.tsx', import.meta.url), 'utf8');
+  const outline = readFileSync(new URL('../src/neon-widget-outline.tsx', import.meta.url), 'utf8');
+  assert.match(app, /theme\.isGlass && !ipadHeader\) return <View testID="home-recorder-dock"/, 'recorder dock only for glass themes on iPhone');
+  assert.match(app, /<GlassBackdrop role="primary" radius=\{28\} \/>/, 'the dock action is the mint primary material');
+  assert.equal((app.match(/testID="home-start-journey-portal"/g) ?? []).length, 3, 'every start variant keeps the same test and accessibility identity');
+  for (const card of ['approvedLatestMemory', 'approvedLatestSong', 'homeRoadSummary', 'sharePrompt']) assert.match(shell, new RegExp(`styles\.${card}, \{[^}]*\}, glassCard`), `${card} clears its fill for glass`);
+  assert.match(shell, /glassSoftSceneSource\(theme\.id\)/, 'Memories and Settings use the blurred scene');
+  assert.match(outline, /const glassEdge = theme\.isGlass && !isSelected;/);
+});

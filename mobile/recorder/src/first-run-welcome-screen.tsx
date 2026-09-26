@@ -12,6 +12,7 @@ export const FIRST_RUN_ARTWORK: Record<ThemeId, number> = {
   light: require('../assets/home-header-light-v1.png'),
   sakura: require('../assets/theme-rosewater-road-v1.png'),
   'midnight-canopy': require('../assets/theme-autumn-drive-road-v1.png'),
+  'aurora-glass': require('../assets/theme-aurora-glass-scene-v1.jpg'),
 };
 
 function alpha(hex: string, opacity: number) {

@@ -1,6 +1,6 @@
-import type { ThemeId } from './theme-catalog';
+import { artworkThemeId, type ArtworkThemeId, type ThemeId } from './theme-catalog';
 
-export type YearOnRoadMusicId = ThemeId;
+export type YearOnRoadMusicId = ArtworkThemeId;
 
 export const yearOnRoadMusic: Record<YearOnRoadMusicId, {
   name: string;
@@ -15,5 +15,5 @@ export const yearOnRoadMusic: Record<YearOnRoadMusicId, {
 };
 
 export function musicForTheme(themeId: ThemeId): YearOnRoadMusicId {
-  return themeId;
+  return artworkThemeId(themeId);
 }

@@ -26,7 +26,7 @@ export type YearOnRoadViewerProps = {
 };
 const CHAPTERS = ['Your year', 'The miles', 'Your rhythm', 'The long way', 'Your soundtrack', 'On repeat', 'The memories', 'Keep going'];
 const CHAPTER_DURATION_MS = 10_000;
-const THEMES: ThemeId[] = ['dark', 'light', 'redline', 'sakura'];
+const THEMES: YearOnRoadMusicId[] = ['dark', 'light', 'redline', 'sakura'];
 if (V3_MIDNIGHT_CANOPY_ENABLED) THEMES.push('midnight-canopy');
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const alpha = (hex: string, opacity: number) => `${hex}${Math.round(opacity * 255).toString(16).padStart(2, '0')}`;

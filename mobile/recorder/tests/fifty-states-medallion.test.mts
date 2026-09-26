@@ -97,7 +97,10 @@ test('award persists across reloads, notifies mounted consumers, isolates profil
 test('all five generated faces use detected circular frames and lossless authored pixels', async () => {
   const artwork = load('../src/medallion-artwork.ts');
   assert.equal(artwork.isApprovedMedallion('all-fifty'), true);
-  for (const [theme, url] of Object.entries(artwork.medallionArtwork['all-fifty'])) {
+  const allFifty = artwork.medallionArtwork['all-fifty'];
+  assert.equal(allFifty['aurora-glass'], allFifty.redline, 'Aurora Glass reuses the Grand Touring coin');
+  assert.equal(artwork.getMedallionFrame('all-fifty', 'aurora-glass'), artwork.getMedallionFrame('all-fifty', 'redline'));
+  for (const [theme, url] of Object.entries(allFifty).filter(([theme]) => theme !== 'aurora-glass')) {
     const frame = artwork.getMedallionFrame('all-fifty', theme);
     assert.ok(frame.x > 0 && frame.x < 0.08);
     assert.ok(frame.y > 0 && frame.y < 0.08);
