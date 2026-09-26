@@ -210,10 +210,14 @@ public final class JourneyDeckAskService: NSObject {
     do {
       let identity = try await archiveOwner.read { try $0.profile() }
       guard expectedUserID == nil || expectedUserID == identity.id else { throw AskFailure.profileChanged }
-      // Common standalone rankings have one unambiguous local meaning. Use the
-      // same archive plan for chat and Siri instead of asking the model to infer it.
-      var selectedPlan = savedPlan ?? (try Self.engine("directPlan", arguments: [question]) as? [String: Any])
       let prior = previousTicket.flatMap { $0.userID == identity.id && $0.epoch == identity.epoch ? $0.context : nil }
+      // A single plan resolver owns shortcuts, follow-ups and model validation
+      // for both entry points. Chat passes the original question unchanged.
+      var selectedPlan: [String: Any]? = savedPlan
+      if selectedPlan == nil {
+        selectedPlan = try Self.engine("resolvePlan", arguments: [question, NSNull(), prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any]
+      }
+      var interpretationFailure = "modelUnavailable"
       // The model interprets a question before the archive is loaded. Only the
       // question and a bounded, record-free follow-up summary reach it.
       if selectedPlan == nil, JourneyDeckAIPlanner.availability() == "available" {
@@ -221,13 +225,12 @@ public final class JourneyDeckAskService: NSObject {
         let data = try JSONSerialization.data(withJSONObject: summary, options: [.fragmentsAllowed, .sortedKeys])
         if data.count <= 4000 {
           do {
-            if let raw = try await JourneyDeckAIPlanner.plan(question: question, context: String(decoding: data, as: UTF8.self), now: now),
-               let plan = try Self.engine("normalizeModelPlan", arguments: [question, raw, prior != nil, prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any],
-               plan["decision"] as? String == "answer" {
+            if let raw = try await JourneyDeckAIPlanner.plan(question: question, context: String(decoding: data, as: UTF8.self), now: now) {
               guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
               let current = try await archiveOwner.read { try $0.profile() }
               guard current.id == identity.id && current.epoch == identity.epoch else { throw AskFailure.profileChanged }
-              selectedPlan = plan
+              selectedPlan = try Self.engine("resolvePlan", arguments: [question, raw, prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any]
+              if selectedPlan == nil { interpretationFailure = "invalidPlan" }
             }
           } catch is CancellationError { throw CancellationError() }
           catch AskFailure.profileChanged { throw AskFailure.profileChanged }
@@ -237,16 +240,20 @@ public final class JourneyDeckAskService: NSObject {
       // Even a nil, unavailable or failed model response must stay bound to the
       // profile that asked. An account switch during inference cannot retarget it.
       guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
-      if selectedPlan == nil {
-        selectedPlan = try Self.engine("followUpPlan", arguments: [question, prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any]
+      let afterInterpretation = try await archiveOwner.read { try $0.profile() }
+      guard afterInterpretation.id == identity.id && afterInterpretation.epoch == identity.epoch else { throw AskFailure.profileChanged }
+      guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
+      guard let executionPlan = selectedPlan else {
+        return try Self.engine("planFailure", arguments: [interpretationFailure]) as? [String: Any] ?? failure("Please try your question again.")
       }
-      let executionPlan = selectedPlan
+      if executionPlan["decision"] as? String != "answer" {
+        return try Self.execute(executionPlan, input: [:], previous: nil)
+      }
       let result: ([String: Any], String, String) = try await archiveOwner.read { archive in
-        let (input, userID, epoch) = try archive.snapshot(cutoff: boundary, now: now, expectedID: identity.id, expectedEpoch: identity.epoch, analysis: executionPlan != nil)
+        let (input, userID, epoch) = try archive.snapshot(cutoff: boundary, now: now, expectedID: identity.id, expectedEpoch: identity.epoch, analysis: true)
         guard userID == identity.id && epoch == identity.epoch else { throw AskFailure.profileChanged }
         let previous = previousTicket.flatMap { $0.userID == userID && $0.epoch == epoch ? $0.context : nil }
-        let payload = try executionPlan.map { try Self.execute($0, input: input, previous: previous) }
-          ?? Self.evaluate(question, input: input, previous: previous)
+        let payload = try Self.execute(executionPlan, input: input, previous: previous)
         let current = try archive.profile()
         guard current.id == userID && current.epoch == epoch else { throw AskFailure.profileChanged }
         return (payload, userID, epoch)
@@ -258,7 +265,6 @@ public final class JourneyDeckAskService: NSObject {
       guard current.id == result.1 && current.epoch == result.2 else { throw AskFailure.profileChanged }
       var payload = result.0
       guard payload["status"] as? String == "answered" else {
-        if payload["status"] as? String == "clarify" { payload["text"] = "Beep Boop. Can not compute." }
         return payload
       }
       if var context = payload["context"] as? [String: Any], context["version"] as? Int == 1,
@@ -317,6 +323,8 @@ public final class JourneyDeckAskService: NSObject {
   }
   nonisolated private static func engine(_ method: String, arguments: [Any], resource: String = "ask-query-engine", name: String = "JourneyDeckQueryEngine") throws -> Any {
     guard let source = String(data: try AskArchive.resource(resource, "js"), encoding: .utf8), let js = JSContext() else { throw AskFailure.unavailable }
+    js.evaluateScript(String(data: try AskArchive.resource("ask-engine", "js"), encoding: .utf8))
+    guard js.exception == nil else { throw AskFailure.unavailable }
     // Evaluation helpers share this same executor in their isolated JS context.
     if resource != "ask-query-engine" {
       js.evaluateScript(String(data: try AskArchive.resource("ask-query-engine", "js"), encoding: .utf8))
@@ -325,13 +333,5 @@ public final class JourneyDeckAskService: NSObject {
     guard js.exception == nil, let function = js.objectForKeyedSubscript(name)?.objectForKeyedSubscript(method),
           let value = function.call(withArguments: arguments), js.exception == nil else { throw AskFailure.unavailable }
     return value.isNull || value.isUndefined ? NSNull() : value.toObject() as Any
-  }
-  nonisolated private static func evaluate(_ question: String, input: [String: Any], previous: [String: Any]?) throws -> [String: Any] {
-    guard let source = String(data: try AskArchive.resource("ask-engine", "js"), encoding: .utf8), let js = JSContext() else { throw AskFailure.unavailable }
-    js.evaluateScript(source)
-    guard js.exception == nil, let function = js.objectForKeyedSubscript("JourneyDeckAskEngine")?.objectForKeyedSubscript("answer") else { throw AskFailure.unavailable }
-    let value = function.call(withArguments: [question, input, previous as Any? ?? NSNull()])
-    guard js.exception == nil, let answer = value?.toDictionary() as? [String: Any] else { throw AskFailure.unavailable }
-    return answer
   }
 }

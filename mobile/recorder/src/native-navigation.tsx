@@ -33,7 +33,7 @@ function JourneyDeckStackContent() {
     <Stack.Screen name="atlas" options={{ headerShown: false }} />
     <Stack.Screen name="tools" options={{ headerShown: false }} />
     <Stack.Screen name="fifty-states" options={{ headerShown: false, statusBarStyle: 'light' }} />
-    <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'formSheet', sheetGrabberVisible: true, sheetAllowedDetents: [1], headerShown: true }} />
+    <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'fullScreenModal', headerShown: false }} />
     <Stack.Screen name="siri-testing" options={{ title: 'Siri AI testing', headerShown: true }} />
   </Stack></ThemeProvider>;
 }

@@ -39,7 +39,7 @@
     ['miles', /^(?:how many miles (?:did i|have i) (?:drive|driven|travel|traveled)|how far (?:did i|have i) (?:drive|driven|travel|traveled)|(?:my |total )?miles)(.*)$/],
     ['journeyCount', /^(?:how many (?:journeys|trips|drives)(?: (?:did i|have i) (?:record|recorded|take|taken|complete|completed))?|(?:my |total )?(?:journey|trip|drive) count)(.*)$/],
     ['latestJourney', /^(?:(?:when was|what was|show|show me|tell me about) (?:my |the )?(?:last|latest|most recent) (?:journey|trip|drive))(.*)$/],
-    ['longestJourney', /^(?:(?:what was|which was|show|show me) (?:my |the )?longest (?:journey|trip|drive))(.*)$/],
+    ['longestJourney', /^(?:(?:what was|what is|whats|which was|which is|show|show me) (?:my |the )?longest (?:journey|trip|drive))(.*)$/],
     ['firstJourney', /^(?:(?:when was|what was|show|show me) (?:my |the )?first (?:journey|trip|drive))(.*)$/],
     ['memoryCount', /^(?:how many memories(?: (?:did i|have i) (?:make|made|create|created|save|saved))?|(?:my |total )?memory count)(.*)$/],
     ['latestMemory', /^(?:(?:when was|what was|show|show me) (?:my |the )?(?:last|latest|most recent) memory)(.*)$/],
@@ -107,7 +107,7 @@
     } else if (['latestJourney', 'firstJourney', 'longestJourney'].includes(p.metric)) {
       const sorted = [...journeys].sort((a, b) => p.metric === 'longestJourney' ? Number(b.miles) - Number(a.miles) || a.id.localeCompare(b.id) : (Date.parse(a.startedAt) - Date.parse(b.startedAt)) * (p.metric === 'firstJourney' ? 1 : -1) || a.id.localeCompare(b.id));
       const j = sorted[0];
-      text = j ? `Your ${p.metric === 'firstJourney' ? 'first' : p.metric === 'longestJourney' ? 'longest' : 'latest'} journey ${p.range.label} started ${dateLabel(Date.parse(j.startedAt))} and covered ${Number(j.miles).toFixed(1)} miles.` : `No completed journeys are saved ${p.range.label}.`;
+      text = j ? `Your ${p.metric === 'firstJourney' ? 'first' : p.metric === 'longestJourney' ? 'longest' : 'latest'} journey${p.metric === 'longestJourney' ? ' by distance' : ''} ${p.range.label} started ${dateLabel(Date.parse(j.startedAt))} and covered ${Number(j.miles).toFixed(1)} miles.` : `No completed journeys are saved ${p.range.label}.`;
       evidence = j ? [jEvidence(j)] : [];
     } else if (p.metric === 'memoryCount' || p.metric === 'latestMemory') {
       const m = [...memories].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.id.localeCompare(b.id))[0];

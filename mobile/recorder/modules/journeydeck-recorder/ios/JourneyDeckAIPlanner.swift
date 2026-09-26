@@ -43,7 +43,7 @@ private struct JourneyDeckQueryPlan {
 /// A fresh model session per question prevents stale account data or unbounded transcripts.
 @MainActor
 enum JourneyDeckAIPlanner {
-  static let revision = 4
+  static let revision = 5
   private static var busy = false
   private static var active: Task<[String: Any], Error>?
   static func cancel() { active?.cancel() }
@@ -79,7 +79,10 @@ enum JourneyDeckAIPlanner {
         markers in completed journeys; recorded arrivals at saved places. No route intersections,
         photo recognition, private notes, voice transcripts, vehicle telemetry, or write actions.
         If any requested condition is unsupported, choose unsupported. Never drop a condition.
-        Ambiguous biggest/favorite/best questions require clarify. Longest journey means miles.
+        Ambiguous biggest/favorite/best questions require clarify. Longest journey means miles
+        unless the user explicitly asks for driving time or duration, which means minutes.
+        Interpret ordinary synonyms and present/past tense consistently. The user's wording
+        does not need to contain the literal schema names (miles, largest, or journeys).
         Journeys support count/miles/minutes/songPlays. Music and places support count only.
         Memories and Markers support count/photos.
         Counting attached photos is supported; interpreting photo contents is not.

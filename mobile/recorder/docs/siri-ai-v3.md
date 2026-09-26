@@ -1,7 +1,7 @@
 # Siri AI in JourneyDeck V3
 
-Implementation contract, updated September 25, 2026 for Build 39.
-Native compilation and physical iPhone acceptance are required before release claims.
+Implementation contract, updated September 26, 2026 for planner revision 5 in Build 40.
+The EAS archive compiled; physical iPhone acceptance is still required before behavior claims.
 
 ## Architecture
 
@@ -22,7 +22,7 @@ is controlled by Apple and the person's settings; this is not a promise that Sir
 | Journeys | count, total/average miles and minutes, earliest/latest, largest/smallest, date grouping, period comparison | Completed saved journeys; time filters use start time |
 | Music | play count, artist/track/album filters and rankings, linked journey lookup | Repeat recorded plays count; not all real-world listening |
 | Memories | created count, earliest/latest, photo counts, linked journey lookup | Creation time is distinct from the dates of included journeys |
-| Markers | saved count, photos and voice-memo counts, earliest/latest, linked journey lookup | Only visible completed-journey segments; no notes or transcript search |
+| Markers | saved count, photo counts, earliest/latest, linked journey lookup | Only visible completed-journey segments; no voice-memo, notes or transcript search |
 | Places | recorded arrival counts and rankings; named geocoded-place matching | Recorded endpoints, not continuous visits or inferred cities |
 | Follow-ups | reuse period, filters, or a bounded previous selection | Siri context lasts five minutes; in-app context lasts for the process. Both invalidate on profile/lock changes. |
 
@@ -34,8 +34,9 @@ No recorded evidence, unsupported filters, ambiguous questions, route intersecti
 photo recognition, note/transcript semantics, and unrecorded visits must be distinguished.
 Start, Stop and Create Marker retain their explicit App Intents; the query planner is read-only.
 All Siri features remain free without a membership gate. Say “Ask JourneyDeck”; Siri
-requests the question and speaks its answer without opening the app. Unanswerable
-questions return exactly `Beep Boop. Can not compute.` The in-app themed conversation
+requests the question and speaks its answer without opening the app. Revision 5
+preserves distinct clarification, unsupported-request, invalid-plan and model-unavailable
+reasons instead of replacing every non-answer with `Beep Boop. Can not compute.` The in-app themed conversation
 keeps its bubbles in memory across sheet dismissal and backgrounding until the process ends.
 
 ## Privacy and future entity indexing
@@ -101,6 +102,39 @@ constraints that were not stated in the question. These changes are native bundl
 resources and require a build after 39; physical-device comparison is still needed.
 Invoke the JourneyDeck App Shortcut explicitly, then give Siri the same question as
 the in-app chat, to confirm Siri routes the request to JourneyDeck.
+
+### Revision 5: interpretation and validation have separate responsibilities
+
+The longest-journey failure exposed a contradiction introduced by revision 3:
+the model was instructed that an unqualified longest journey means miles, while
+the validator required literal mileage/distance words. The older local matcher
+also accepted "what was" but rejected "what is". The error presenter hid whether
+failure came from interpretation, validation, or archive access. Earlier evaluation
+phrases almost always named the units and tested prepared proposals; they did not
+establish successful interpretation of the user's wording by the device model.
+
+Revision 5 removes the domain/operation/metric vocabulary gate. Model proposals
+still undergo schema, enum, metric/domain, limit, filter, date, read-only and privacy
+validation. Unsupported capabilities remain blocked; a model's refusal is preserved,
+not promoted solely because its words overlap an accepted vocabulary.
+
+Chat sends the original question. Chat and Siri call the same `resolvePlan` entry point:
+complete deterministic local questions and validated follow-ups produce structured
+plans; other phrasings use the on-device model. The existing offline grammar is
+translated into the same plan contract and executor, rather than independently
+calculating a different answer. A complete known query can work when the model is
+busy or incorrectly refuses it; partial keyword matches cannot override a refusal.
+Longest defaults to distance, explicit duration selects minutes, and answers state
+the basis. Refusals require no archive snapshot. Profile and lock checks surround
+inference and execution, and no model prose, query text, or records are logged.
+
+The shipped synthetic suite now includes both exact screenshot questions and an
+ordinary synonym without literal schema words. Local tests cover original wording
+through the chat bridge, semantic proposals through the resolver/executor, offline
+periods/follow-ups, refusal reasons, and all 100 golden queries. Model replies are
+fixtures in these tests; they do not prove live Foundation Models behavior. This
+revision changes Swift and bundled resources, requires a native build, and must be
+checked on an iPhone in both Ask and the explicit Siri shortcut before release claims.
 
 Windows runs deterministic SQLite/engine, bridge, UI, privacy, and regression checks.
 Build 39 uses the authorized EAS `v3-testflight` profile with the live bundle

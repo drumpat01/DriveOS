@@ -35,7 +35,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
   const appState = { currentState: 'active', addEventListener: (_: string, callback: typeof listener) => { listener = callback; return { remove() {} }; } };
   const native = { AppState: appState, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
     ...Object.fromEntries(['ActivityIndicator', 'Image', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])),
-    ScrollView: React.forwardRef(({ children, ...props }: any, ref: any) => { React.useImperativeHandle(ref, () => ({ scrollToEnd: (options: any) => scrolls.push(options) })); return React.createElement('ScrollView', props, children); }) };
+    ScrollView: React.forwardRef(({ children, ...props }: any, ref: any) => { React.useImperativeHandle(ref, () => ({ scrollTo: (options: any) => scrolls.push(options) })); return React.createElement('ScrollView', props, children); }) };
   const component = load('ask-journeydeck-screen.tsx', {
     'react-native': native,
     'expo-symbols': { SymbolView: host('Symbol') },
@@ -51,7 +51,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: options.enabled !== false },
     './ask-journeydeck': {
       ASK_EXAMPLES: ['How many miles did I drive this week?'],
-      ASK_CANNOT_COMPUTE: 'Beep Boop. Can not compute.',
+      ASK_CANNOT_COMPUTE: "I couldn't complete that request. Please try again.",
       isAskJourneyDeckAvailable: options.available !== false,
       askJourneyDeckModelAvailability: async () => options.model ?? 'available',
       askJourneyDeck: (...args: any[]) => { calls.push(args); return ask(...args); },
@@ -70,7 +70,9 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     state: async (state: string) => { await act(async () => { appState.currentState = state; listener(state); await Promise.resolve(); }); },
     profile: async (id: string) => { await act(async () => { userID = id; tree.update(React.createElement(component)); await Promise.resolve(); }); },
     reopen: async () => { await act(() => tree.unmount()); await act(async () => { tree = create(React.createElement(component)); await Promise.resolve(); }); },
-    contentSizeChange: async () => { await act(() => tree.root.findByType('ScrollView').props.onContentSizeChange()); },
+    contentSizeChange: async (height = 1200) => { await act(() => tree.root.findByType('ScrollView').props.onContentSizeChange(390, height)); },
+    viewport: async (height: number) => { await act(() => tree.root.findByType('ScrollView').props.onLayout({ nativeEvent: { layout: { height } } })); },
+    messageLayout: async (y: number, height: number) => { await act(() => tree.root.findAllByType('View').filter((node: any) => node.props.testID?.startsWith('ask-message-')).at(-1).props.onLayout({ nativeEvent: { layout: { y, height } } })); },
     close: async () => { await act(() => tree.unmount()); },
   };
 }
@@ -127,7 +129,7 @@ test('failed requests recover; a new request cannot inherit context from a faile
     await s.submit('How many miles?');
     s.ask(async () => { throw Error('native read failed'); });
     await s.submit('follow-up');
-    assert.match(s.text(), /Beep Boop\. Can not compute\./); assert.match(s.text(), /19.8 miles/);
+    assert.match(s.text(), /couldn't complete that request/); assert.match(s.text(), /19.8 miles/);
     assert.equal(s.button().props.disabled, false);
     s.ask(async () => result()); await s.submit('How many miles?');
     assert.equal(s.calls[2][2], undefined);
@@ -189,20 +191,72 @@ test('a reply finishes in the same chat after the sheet is closed and reopened',
   } finally { await s.close(); }
 });
 
-test('the chat opens with a short bot greeting and scrolls only after a question', async () => {
+test('greeting, validation, pending reply and conversation retain one scroll viewport with explicit inset ownership', async () => {
   const s = await screen();
   try {
-    assert.equal(s.tree.root.findAllByType('ScrollView').length, 0, 'the empty chat never mounts a native scroll view');
+    const viewport = s.tree.root.findByType('ScrollView');
+    assert.equal(viewport.props.contentInsetAdjustmentBehavior, 'never');
+    assert.equal(viewport.props.automaticallyAdjustContentInsets, false);
+    assert.equal(viewport.props.automaticallyAdjustKeyboardInsets, false);
+    assert.equal(viewport.props.removeClippedSubviews, false);
+    await s.viewport(700); await s.contentSizeChange(340);
     assert.deepEqual(s.scrolls, []);
     assert.match(s.text(), /Hello! I’m JourneyDeck/);
     assert.match(s.text(), /private on-device history/);
     assert.doesNotMatch(s.text(), /Where have we been/);
     assert.equal(s.tree.root.findAll((node: any) => node.props.accessibilityLabel?.startsWith('Ask:')).length, 0);
+    await s.submit(' ');
+    assert.equal(s.tree.root.findByType('ScrollView'), viewport);
+    const pending = deferred(); s.ask(() => pending.promise);
     await s.submit('How many miles?');
-    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
-    assert.equal(s.scrolls.length, 1); assert.equal(s.scrolls[0].animated, true);
-    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
-    assert.equal(s.scrolls.length, 1, 'layout-only updates must not move the conversation');
+    assert.equal(s.tree.root.findByType('ScrollView'), viewport);
+    await act(() => pending.resolve(result()));
+    assert.equal(s.tree.root.findByType('ScrollView'), viewport);
+  } finally { await s.close(); }
+});
+
+test('a long answer scrolls to its beginning only after row, content and viewport have all been measured', async () => {
+  const s = await screen();
+  try {
+    await s.submit('How far did I drive today?');
+    await s.messageLayout(440, 1100);
+    await s.contentSizeChange(1600);
+    assert.deepEqual(s.scrolls, [], 'zero-height viewport cannot produce a scroll command');
+    await s.viewport(700);
+    assert.equal(s.scrolls.length, 1);
+    assert.equal(s.scrolls[0].y, 428, 'show the answer text, not the end of its supporting-record list');
+    assert.equal(s.scrolls[0].animated, false);
+    await s.viewport(320); await s.contentSizeChange(1800); await s.messageLayout(440, 1300);
+    await s.viewport(700); await s.contentSizeChange(1600);
+    assert.equal(s.scrolls.length, 1, 'keyboard, rotation and content relayout cannot issue another scroll');
+    assert.match(s.text(), /19.8 miles/);
+  } finally { await s.close(); }
+});
+
+test('new replies wait for matching content height and stay inside the visible scroll range', async () => {
+  const s = await screen();
+  try {
+    await s.viewport(700); await s.contentSizeChange(340);
+    await s.submit('How many miles?');
+    await s.messageLayout(440, 400);
+    assert.deepEqual(s.scrolls, [], 'the greeting content height is too old for the new answer');
+    await s.contentSizeChange(900);
+    assert.equal(s.scrolls[0].y, 200, 'clamp to content height minus viewport height');
+    await s.reopen();
+    await s.contentSizeChange(900); await s.viewport(500); await s.messageLayout(440, 400);
+    assert.equal(s.scrolls.length, 1, 'restoring the transcript does not request scrolling');
+  } finally { await s.close(); }
+});
+
+test('content-size-first delivery handles a short answer without scrolling beyond zero', async () => {
+  const s = await screen();
+  try {
+    await s.viewport(1000);
+    await s.submit('How many miles?');
+    await s.contentSizeChange(700);
+    assert.deepEqual(s.scrolls, []);
+    await s.messageLayout(440, 200);
+    assert.equal(s.scrolls[0].y, 0);
   } finally { await s.close(); }
 });
 
@@ -244,7 +298,7 @@ test('old installed runtimes and non-V3 routes fail closed; the native close con
   const old = await screen({ available: false });
   try {
     assert.equal(old.button().props.disabled, true); assert.match(old.text(), /needs the V3 native question engine/);
-    const done = old.tree.root.findByType('route-options').props.options.headerRight();
+    const done = old.tree.root.findAllByType('Pressable').find((node: any) => node.props.accessibilityLabel === 'Close Ask JourneyDeck');
     await act(() => done.props.onPress()); assert.deepEqual(old.pushes, ['back']);
   } finally { await old.close(); }
   const production = await screen({ enabled: false, ticket });
@@ -268,8 +322,43 @@ test('JS-to-native bridge rejects profile changes and invalid links without quer
   const answer = bridge.askJourneyDeck('a', 'How many miles?'); current = 'b'; pending.resolve(result());
   await assert.rejects(() => answer, /profile changed/);
   current = 'a'; nativeAnswer = async () => ({ status: 'unavailable', text: 'internal detail', evidence: [] });
-  assert.equal((await bridge.askJourneyDeck('a', 'Unsupported question')).text, 'Beep Boop. Can not compute.');
+  assert.equal((await bridge.askJourneyDeck('a', 'Unsupported question')).text, "I couldn't complete that request. Please try again.");
   current = 'a'; assert.equal((await bridge.resolveJourneyDeckAnswer('a', 'untrusted link')).status, 'unavailable'); assert.equal(resolved, 0);
   nativeResolution = async () => ({ status: 'clarify', text: 'ask another question', evidence: [] });
-  assert.equal((await bridge.resolveJourneyDeckAnswer('a', ticket)).text, 'Beep Boop. Can not compute.'); assert.equal(resolved, 1);
+  assert.equal((await bridge.resolveJourneyDeckAnswer('a', ticket)).text, 'ask another question'); assert.equal(resolved, 1);
+});
+
+test('chat sends the original wording to the shared native engine and preserves failure categories', async () => {
+  const queries = require('../modules/journeydeck-recorder/ios/AskResources/ask-query-engine.js');
+  const { fixture } = require('../modules/journeydeck-recorder/ios/AskResources/ask-evaluation.js');
+  const calls: string[] = [];
+  let raw: any = { ...queries.defaults, operation: 'largest', metric: 'miles' };
+  const bridge = load('ask-journeydeck.ts', {
+    expo: { requireOptionalNativeModule: () => ({
+      askJourneyDeckAsync: async (question: string) => {
+        calls.push(question);
+        const plan = queries.resolvePlan(question, raw, null, fixture().now);
+        return { ...queries.execute(plan, fixture(), null), profileId: 'a' };
+      }, resolveJourneyDeckAnswerAsync: async () => result(),
+    }) },
+    './database-startup': { prepareJourneyDeckDatabase: async () => {} },
+    './local-store': { getActiveLocalUserId: () => 'a' }, './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true },
+  });
+  for (const question of ['What is my longest drive?', 'What is my longest journey', 'Which outing took me the furthest?']) {
+    const answer = await bridge.askJourneyDeck('a', question);
+    assert.equal(answer.status, 'answered'); assert.match(answer.text, /Longest by distance:.*40.0 miles/);
+    assert.equal(answer.evidence[0].id, 'j4'); assert.equal(calls.at(-1), question);
+  }
+  raw = { ...queries.defaults, decision: 'unsupported' };
+  const unsupported = await bridge.askJourneyDeck('a', 'Find a photograph of a dog');
+  assert.equal(unsupported.reason, 'unsupportedRequest'); assert.match(unsupported.text, /does not support yet/);
+  assert.equal(unsupported.evidence.length, 0);
+  raw = { ...queries.defaults, operation: 'largest', metric: 'fuel' };
+  const invalid = await bridge.askJourneyDeck('a', 'Compare my petrol usage');
+  assert.equal(invalid.reason, 'invalidPlan'); assert.match(invalid.text, /supported query/);
+  const clarification = bridge.presentAskAnswer({ status: 'clarify', text: 'Distance or driving time?', evidence: result().evidence, ticket });
+  assert.equal(clarification.text, 'Distance or driving time?'); assert.equal(clarification.evidence.length, 0); assert.equal(clarification.ticket, undefined);
+  assert.match(bridge.presentAskAnswer(queries.planFailure('modelUnavailable')).text, /Apple Intelligence/);
+  // Unknown native failures must not expose raw error details or credentials.
+  assert.doesNotMatch(bridge.presentAskAnswer({ status: 'unavailable', reason: 'unknown', text: 'SECRET' }).text, /SECRET/);
 });
