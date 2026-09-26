@@ -3,7 +3,7 @@ import JavaScriptCore
 import SQLite3
 import UIKit
 
-private enum AskFailure: Error { case unavailable, profileChanged, tooLarge, interpretation }
+private enum AskFailure: Error { case unavailable, profileChanged, tooLarge }
 
 /// The only native archive reader for Ask. Never creates, migrates, or writes the master.
 private final class AskArchive {
@@ -74,9 +74,12 @@ private final class AskArchive {
           let epoch = row["epoch"] as? String, !epoch.isEmpty else { throw AskFailure.profileChanged }
     return (id, epoch)
   }
-  func snapshot(cutoff: Date, now: Date, analysis: Bool = false) throws -> ([String: Any], String, String) {
+  func snapshot(cutoff: Date, now: Date, expectedID: String, expectedEpoch: String, analysis: Bool = false) throws -> ([String: Any], String, String) {
     try transaction(true)
+    var committed = false
+    defer { if !committed { sqlite3_exec(db, "ROLLBACK", nil, nil, nil) } }
     let profile = try profile(), iso = ISO8601DateFormatter()
+    guard profile.id == expectedID && profile.epoch == expectedEpoch else { throw AskFailure.profileChanged }
     let values = [profile.id, iso.string(from: cutoff), iso.string(from: now)]
     var input: [String: Any] = ["now": now.timeIntervalSince1970 * 1000, "cutoff": cutoff.timeIntervalSince1970 * 1000]
     if analysis {
@@ -90,12 +93,33 @@ private final class AskArchive {
     }
     input["sensitiveLabels"] = try query("sensitiveLabels", [profile.id])
     try transaction(false)
+    committed = true
     return (input, profile.id, profile.epoch)
   }
 }
 
+/// Keep one native read connection for the process lifetime. Expo SQLite owns a
+/// second connection to this WAL database; repeatedly closing native handles
+/// while Expo is reading can invalidate its mapped WAL-index on iOS.
+private final class AskArchiveOwner: @unchecked Sendable {
+  private let queue = DispatchQueue(label: "journeydeck.ask.readonly", qos: .userInitiated)
+  private var archive: AskArchive?
+
+  func read<T>(_ operation: @escaping (AskArchive) throws -> T) async throws -> T {
+    try await withCheckedThrowingContinuation { continuation in
+      queue.async {
+        do {
+          if self.archive == nil { self.archive = try AskArchive() }
+          continuation.resume(returning: try operation(self.archive!))
+        } catch { continuation.resume(throwing: error) }
+      }
+    }
+  }
+}
+
 /// Both Expo and the app-target App Intent call this service. Tickets and follow-up
-/// context are memory-only, expire in five minutes, and are invalidated on lock.
+/// context are memory-only and invalidated on lock. Siri context lasts five
+/// minutes; in-app follow-ups last for the app session.
 @MainActor
 public final class JourneyDeckAskService: NSObject {
   public static let shared = JourneyDeckAskService()
@@ -105,13 +129,14 @@ public final class JourneyDeckAskService: NSObject {
     let context: [String: Any]?
     let plan: [String: Any]?
     let expires: Date
+    let created: Date
   }
   private var tickets: [String: Ticket] = [:]
   private var lastSiriTicket: String?
   private var lockGeneration = 0
   private var evaluating = false
   private var observer: NSObjectProtocol?
-  private let queue = DispatchQueue(label: "journeydeck.ask.readonly", qos: .userInitiated)
+  private let archiveOwner = AskArchiveOwner()
 
   private override init() {
     super.init()
@@ -134,7 +159,7 @@ public final class JourneyDeckAskService: NSObject {
   private func failure(_ text: String) -> [String: Any] {
     ["status": "unavailable", "text": text, "evidence": [], "ticket": NSNull(), "contextToken": NSNull()]
   }
-  private func cutoff(_ now: Date) async -> Date {
+  private func cutoff(_ now: Date) -> Date {
     Date(timeIntervalSince1970: 0)
   }
   public func answer(question: String, expectedUserID: String? = nil, contextToken: String? = nil, siri: Bool = false) async -> [String: Any] {
@@ -176,89 +201,92 @@ public final class JourneyDeckAskService: NSObject {
     let generation = lockGeneration, now = Date()
     tickets = tickets.filter { $0.value.expires > now }
     let token = contextToken ?? (siri ? lastSiriTicket : nil)
-    let previousTicket = token.flatMap { tickets[$0] }
+    let contextual = (try? Self.engine("isContextualQuestion", arguments: [question])) as? Bool ?? false
+    let previousTicket = (contextual ? token : nil).flatMap { tickets[$0] }
     // An unrecognized question must not leave an older Siri topic active.
     if siri { lastSiriTicket = nil }
-    let boundary = await cutoff(now)
+    let boundary = cutoff(now)
     guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
     do {
-      var selectedPlan = savedPlan
-      var result: ([String: Any], String, String) = try await withCheckedThrowingContinuation { continuation in
-        queue.async {
+      let identity = try await archiveOwner.read { try $0.profile() }
+      guard expectedUserID == nil || expectedUserID == identity.id else { throw AskFailure.profileChanged }
+      // Common standalone rankings have one unambiguous local meaning. Use the
+      // same archive plan for chat and Siri instead of asking the model to infer it.
+      var selectedPlan = savedPlan ?? (try Self.engine("directPlan", arguments: [question]) as? [String: Any])
+      let prior = previousTicket.flatMap { $0.userID == identity.id && $0.epoch == identity.epoch ? $0.context : nil }
+      // The model interprets a question before the archive is loaded. Only the
+      // question and a bounded, record-free follow-up summary reach it.
+      if selectedPlan == nil, JourneyDeckAIPlanner.availability() == "available" {
+        let summary = try Self.engine("modelContext", arguments: [prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000])
+        let data = try JSONSerialization.data(withJSONObject: summary, options: [.fragmentsAllowed, .sortedKeys])
+        if data.count <= 4000 {
           do {
-            let archive = try AskArchive()
-            let (input, userID, epoch) = try archive.snapshot(cutoff: boundary, now: now, analysis: savedPlan != nil)
-            guard expectedUserID == nil || expectedUserID == userID else { throw AskFailure.profileChanged }
-            let previous = previousTicket.flatMap { $0.userID == userID && $0.epoch == epoch ? $0.context : nil }
-            var payload = try savedPlan.map { try Self.execute($0, input: input, previous: previous) }
-              ?? Self.evaluate(question, input: input, previous: previous)
-            payload["modelContext"] = try Self.engine("modelContext", arguments: [previous as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000])
-            let current = try archive.profile()
-            guard current.id == userID && current.epoch == epoch else { throw AskFailure.profileChanged }
-            continuation.resume(returning: (payload, userID, epoch))
-          } catch { continuation.resume(throwing: error) }
+            if let raw = try await JourneyDeckAIPlanner.plan(question: question, context: String(decoding: data, as: UTF8.self), now: now),
+               let plan = try Self.engine("normalizeModelPlan", arguments: [question, raw, prior != nil, prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any],
+               plan["decision"] as? String == "answer" {
+              guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
+              let current = try await archiveOwner.read { try $0.profile() }
+              guard current.id == identity.id && current.epoch == identity.epoch else { throw AskFailure.profileChanged }
+              selectedPlan = plan
+            }
+          } catch is CancellationError { throw CancellationError() }
+          catch AskFailure.profileChanged { throw AskFailure.profileChanged }
+          catch { /* A busy model falls back to the local, read-only question engine. */ }
         }
       }
+      // Even a nil, unavailable or failed model response must stay bound to the
+      // profile that asked. An account switch during inference cannot retarget it.
       guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
-      if savedPlan == nil, result.0["status"] as? String == "clarify" {
-        let owner = result.1, epoch = result.2
-        let previous = previousTicket.flatMap { $0.userID == owner && $0.epoch == epoch ? $0.context : nil }
-        let current = try AskArchive().profile()
-        guard current.id == owner && current.epoch == epoch else { throw AskFailure.profileChanged }
-        let context = result.0["modelContext"] ?? NSNull()
-        let contextData = try JSONSerialization.data(withJSONObject: context, options: [.fragmentsAllowed, .sortedKeys])
-        let proposed: [String: Any]?
-        do {
-          if let raw = try await JourneyDeckAIPlanner.plan(question: question, context: String(decoding: contextData, as: UTF8.self), now: now) {
-            proposed = try Self.engine("normalizeModelPlan", arguments: [question, raw, previous != nil]) as? [String: Any]
-          } else { proposed = nil }
-        }
-        catch is CancellationError { throw CancellationError() }
-        catch { throw AskFailure.interpretation }
-        guard let plan = proposed else {
-          result.0.removeValue(forKey: "modelContext")
-          result.0["text"] = "I couldn't interpret that question. Apple Intelligence is unavailable or busy; try a simpler question about journey miles, counts, or your latest journey."
-          return result.0
-        }
-        guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
-        // Read fresh rows AFTER inference. The model never receives an archive snapshot.
-        result = try await withCheckedThrowingContinuation { continuation in
-          queue.async {
-            do {
-              let archive = try AskArchive()
-              let (input, id, currentEpoch) = try archive.snapshot(cutoff: boundary, now: Date(), analysis: true)
-              guard id == owner, currentEpoch == epoch else { throw AskFailure.profileChanged }
-              continuation.resume(returning: (try Self.execute(plan, input: input, previous: previous), id, currentEpoch))
-            } catch { continuation.resume(throwing: error) }
-          }
-        }
-        selectedPlan = plan
+      if selectedPlan == nil {
+        selectedPlan = try Self.engine("followUpPlan", arguments: [question, prior as Any? ?? NSNull(), now.timeIntervalSince1970 * 1000]) as? [String: Any]
+      }
+      let executionPlan = selectedPlan
+      let result: ([String: Any], String, String) = try await archiveOwner.read { archive in
+        let (input, userID, epoch) = try archive.snapshot(cutoff: boundary, now: now, expectedID: identity.id, expectedEpoch: identity.epoch, analysis: executionPlan != nil)
+        guard userID == identity.id && epoch == identity.epoch else { throw AskFailure.profileChanged }
+        let previous = previousTicket.flatMap { $0.userID == userID && $0.epoch == epoch ? $0.context : nil }
+        let payload = try executionPlan.map { try Self.execute($0, input: input, previous: previous) }
+          ?? Self.evaluate(question, input: input, previous: previous)
+        let current = try archive.profile()
+        guard current.id == userID && current.epoch == epoch else { throw AskFailure.profileChanged }
+        return (payload, userID, epoch)
       }
       guard available, generation == lockGeneration else { return failure("Unlock this device and ask again.") }
       // Recheck after returning to the main actor: a switch or deletion may have
       // committed while the worker's completion waited in the queue.
-      let current = try AskArchive().profile()
+      let current = try await archiveOwner.read { try $0.profile() }
       guard current.id == result.1 && current.epoch == result.2 else { throw AskFailure.profileChanged }
       var payload = result.0
-      payload.removeValue(forKey: "modelContext")
-      guard payload["status"] as? String == "answered" else { return payload }
+      guard payload["status"] as? String == "answered" else {
+        if payload["status"] as? String == "clarify" { payload["text"] = "Beep Boop. Can not compute." }
+        return payload
+      }
       if var context = payload["context"] as? [String: Any], context["version"] as? Int == 1,
          let metric = context["metric"] as? String, ["latestJourney", "firstJourney", "longestJourney"].contains(metric) {
         context["journeyIds"] = (payload["evidence"] as? [[String: Any]] ?? []).compactMap { $0["kind"] as? String == "journey" ? $0["id"] as? String : nil }
         payload["context"] = context
       }
       let key = UUID().uuidString
+      let expires = siri ? now.addingTimeInterval(300) : Date.distantFuture
+      if var context = payload["context"] as? [String: Any] {
+        context["expiresAt"] = expires.timeIntervalSince1970 * 1000
+        payload["context"] = context
+      }
       let previous = previousTicket.flatMap { $0.userID == result.1 && $0.epoch == result.2 ? $0.context : nil }
       tickets[key] = Ticket(userID: result.1, epoch: result.2, question: question, previous: previous,
-        context: payload["context"] as? [String: Any], plan: selectedPlan, expires: now.addingTimeInterval(300))
-      if tickets.count > 16 { tickets = [key: tickets[key]!] }
+        context: payload["context"] as? [String: Any], plan: executionPlan,
+        expires: expires, created: now)
+      // In-app chat tickets live only in process memory so follow-ups remain
+      // usable across sheet closes. Siri's separate spoken context stays short.
+      if tickets.count > 64, let oldest = tickets.filter({ $0.key != key }).min(by: { $0.value.created < $1.value.created })?.key {
+        tickets.removeValue(forKey: oldest)
+      }
       if siri { lastSiriTicket = key }
       payload.removeValue(forKey: "context")
       payload["ticket"] = key; payload["contextToken"] = key; payload["profileId"] = result.1
       return payload
     } catch AskFailure.profileChanged { return failure("Your active profile changed or is unavailable. Open JourneyDeck and ask again.") }
     catch is CancellationError { return failure("The question was cancelled or took too long. Please try again.") }
-    catch AskFailure.interpretation { return failure("Apple Intelligence could not interpret that question. Try a shorter question or a specific period.") }
     catch AskFailure.tooLarge { return failure("This library exceeds the prototype's reading limit. Open JourneyDeck to explore it.") }
     catch { return failure("Your local archive could not be read. Open JourneyDeck, let it finish loading, and try again.") }
   }
@@ -273,12 +301,12 @@ public final class JourneyDeckAskService: NSObject {
       return failure("This answer has expired. Ask your question again.")
     }
     do {
-      let current = try AskArchive().profile()
+      let current = try await archiveOwner.read { try $0.profile() }
       guard current.id == stored.userID, current.epoch == stored.epoch else { throw AskFailure.profileChanged }
       // Feed the saved prior context, not the answer's own context, to reproduce
       // follow-ups such as “What about last week?” without changing their meaning.
       let temporary = UUID().uuidString
-      tickets[temporary] = Ticket(userID: stored.userID, epoch: stored.epoch, question: "", previous: nil, context: stored.previous, plan: nil, expires: stored.expires)
+      tickets[temporary] = Ticket(userID: stored.userID, epoch: stored.epoch, question: "", previous: nil, context: stored.previous, plan: nil, expires: stored.expires, created: Date())
       defer { tickets.removeValue(forKey: temporary) }
       return await respond(question: stored.question, expectedUserID: expectedUserID, contextToken: temporary, siri: false, savedPlan: stored.plan)
     } catch { return failure("Your active profile changed. Ask your question again.") }

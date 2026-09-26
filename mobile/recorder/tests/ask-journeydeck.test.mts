@@ -129,6 +129,38 @@ test('Ask history stays complete without a membership or release flag', async ()
   } finally { f.db.close(); }
 });
 
+test('Apple Foundation Models plan ordinary questions before archive reads and local rules recover when unavailable', async () => {
+  const f = fixture();
+  try {
+    const archive = loadAskSource('src/ask-journeydeck-archive.ts', {
+      './database-owner': { getMasterDatabase: () => f.adapter },
+      './database-hardening': { MASTER_DATABASE_APPLICATION_ID: 0x4a444c31, MASTER_DATABASE_SCHEMA_VERSION: 11 },
+    });
+    const { createLocalAskRuntime } = loadAskSource('src/ask-journeydeck-local.ts');
+    const plans = require(resolve(root, resource, 'ask-query-engine.js'));
+    let snapshots = 0, modelCalls = 0;
+    const app = createLocalAskRuntime({
+      profile: archive.currentAskProfile,
+      snapshot: (...args: any[]) => { snapshots++; return archive.readAskSnapshot(...args); },
+      planner: async (_question: string, context: string) => {
+        modelCalls++;
+        assert.equal(context, 'null');
+        assert.equal(snapshots, 0, 'the model must run before reading archive rows');
+        return { ...plans.defaults, domain: 'journeys', operation: 'total', metric: 'miles', period: 'thisWeek' };
+      },
+      isActive: () => true, uuid: randomUUID, now: () => now,
+    });
+    assert.match((await app.ask(f.a, 'How many miles did I drive this week?')).text, /19.8 miles/);
+    assert.equal(modelCalls, 1); assert.equal(snapshots, 1);
+    const fallback = createLocalAskRuntime({
+      profile: archive.currentAskProfile, snapshot: archive.readAskSnapshot,
+      planner: async () => { throw Error('model not ready'); },
+      isActive: () => true, uuid: randomUUID, now: () => now,
+    });
+    assert.match((await fallback.ask(f.a, 'How many miles did I drive this week?')).text, /19.8 miles/);
+  } finally { f.db.close(); }
+});
+
 test('in-app planner sees no archive rows and refuses an answer after the profile changes during inference', async () => {
   const f = fixture();
   try {
@@ -322,12 +354,22 @@ test('native source contracts require local authentication, read-only bounded qu
   const intent = readFileSync(resolve(root, 'intents/AskJourneyDeckIntent.swift'), 'utf8');
   const pod = readFileSync(resolve(root, 'modules/journeydeck-recorder/ios/JourneyDeckRecorder.podspec'), 'utf8');
   assert.match(service, /SQLITE_OPEN_READONLY \| SQLITE_OPEN_FULLMUTEX/);
+  assert.match(service, /private final class AskArchiveOwner/);
+  assert.match(service, /private var archive: AskArchive\?/);
+  assert.equal((service.match(/try AskArchive\(\)/g) ?? []).length, 1,
+    'the native reader must retain one connection rather than repeatedly opening and closing the live WAL database');
+  assert.doesNotMatch(service, /AskArchive\(\)\.profile\(\)/);
+  assert.match(service, /defer \{ if !committed \{ sqlite3_exec\(db, "ROLLBACK"/,
+    'a failed snapshot must release its read transaction before the retained connection is reused');
   assert.doesNotMatch(service, /SQLITE_OPEN_CREATE|URLSession|NSLog|print\(/);
   assert.match(service, /sqlite3_stmt_readonly/); assert.match(service, /sqlite3_bind_text/);
   assert.match(service, /result.count <= 20000/);
   assert.match(service, /protectedDataWillBecomeUnavailableNotification/);
   assert.match(service, /isProtectedDataAvailable/); assert.match(service, /generation == lockGeneration/);
   assert.match(service, /current.id == result.1 && current.epoch == result.2/);
+  assert.ok(service.indexOf('JourneyDeckAIPlanner.plan(question: question') < service.indexOf('archive.snapshot(cutoff: boundary'),
+    'Siri must ask the on-device model to plan before loading archive rows');
+  assert.match(service, /plan\["decision"\] as\? String == "answer"/);
   assert.match(service, /stored.expires > Date\(\)/);
   assert.doesNotMatch(service, /StoreKit|currentEntitlements|JourneyDeckTestFlightPlusUnlocked|45 \* 86400/);
   assert.match(service, /Date\(timeIntervalSince1970: 0\)/);
@@ -336,7 +378,10 @@ test('native source contracts require local authentication, read-only bounded qu
   assert.match(intent, /ShowsSnippetIntent/); assert.match(intent, /AskJourneyDeckAnswerSnippet: SnippetIntent/);
   assert.ok(intent.includes('Summary("Ask JourneyDeck \\(\\.$question)")'));
   assert.match(intent, /dialog: "\\\(text\)"/);
-  assert.match(intent, /journeydeck-v3:\/\/ask-journeydeck\?ticket=/);
+  assert.match(intent, /JourneyDeckAskURLScheme/);
+  assert.doesNotMatch(intent, /journeydeck-v3:\/\//);
+  assert.match(service, /userID == identity.id && epoch == identity.epoch/);
+  assert.match(service, /context\["expiresAt"\] = expires.timeIntervalSince1970 \* 1000/);
   assert.doesNotMatch(intent, /\?question=|\?user/);
   assert.match(pod, /resource_bundles.*JourneyDeckAsk/);
   for (const name of ['journeys', 'memories', 'music']) {
@@ -347,7 +392,10 @@ test('native source contracts require local authentication, read-only bounded qu
 
 test('V3 Siri commands have no membership gate and marker availability follows the native V3 capability', () => {
   const recorder = readFileSync(resolve(root, 'modules/journeydeck-recorder/ios/JourneyDeckSiriRecorder.swift'), 'utf8');
+  const nativeRecorder = readFileSync(resolve(root, 'modules/journeydeck-recorder/ios/JourneyDeckRecorderModule.swift'), 'utf8');
   assert.match(recorder, /JourneyDeckMarkerEnabled/);
+  assert.match(nativeRecorder, /JourneyDeckMarkerEnabled/);
+  assert.doesNotMatch(nativeRecorder, /Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3"/);
   assert.doesNotMatch(recorder, /com\.journeydeck\.recorder\.v3/);
   assert.doesNotMatch(recorder, /StoreKit|membership|subscription|purchase|entitlement/i);
 });
@@ -359,7 +407,8 @@ test('V3 native intent metadata is added once to the app target and excluded fro
   const mergedShortcuts = siriPlugin.addAskShortcutToSiriSource(siriSource);
   assert.equal(siriPlugin.addAskShortcutToSiriSource(mergedShortcuts), mergedShortcuts);
   assert.equal((`${mergedShortcuts}\n${readFileSync(resolve(root, 'intents/AskJourneyDeckIntent.swift'), 'utf8')}`.match(/AppShortcutsProvider/g) ?? []).length, 1);
-  assert.match(mergedShortcuts, /@available\(iOS 26\.0, \*\)\nstruct JourneyDeckAppShortcuts/);
+  assert.match(mergedShortcuts, /@available\(iOS 17\.4, \*\)\nstruct JourneyDeckAppShortcuts/);
+  assert.match(mergedShortcuts, /if #available\(iOS 26\.0, \*\)/);
   assert.match(mergedShortcuts, /AppShortcut\(intent: AskJourneyDeckIntent\(\)/);
   const project = require('xcode').project(resolve(root, 'node_modules/react-native-view-shot/ios/RNViewShot.xcodeproj/project.pbxproj'));
   project.parseSync(); plugin.addIntentSource(project, 'JourneyDeckV3');

@@ -1,7 +1,7 @@
 import type { AskProfile, AskSnapshot } from './ask-journeydeck-archive';
 
-// Both engines already run in native JavaScriptCore for Siri. Metro also bundles
-// them here so the in-app answer rules can change through a compatible OTA.
+// Legacy Expo answer path retained for regression comparison. The app now calls
+// JourneyDeckAskService for both typed and Siri questions.
 const askEngine = require('../modules/journeydeck-recorder/ios/AskResources/ask-engine.js') as {
   answer(question: string, input: AskSnapshot, previous: unknown): EngineAnswer;
 };
@@ -41,7 +41,7 @@ export type LocalAskDependencies = {
 
 const TICKET_MS = 5 * 60_000;
 
-/** In-app only. Siri continues to use its own authenticated native reader. */
+/** Regression fixture for the prior Expo reader; not wired into the app. */
 export function createLocalAskRuntime(deps: LocalAskDependencies) {
   const tickets = new Map<string, Ticket>();
 
@@ -85,14 +85,12 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
       if (snapshot.profile.epoch !== identity.epoch) throw new Error('The active profile changed. Ask again.');
       answer = queryEngine.execute(plan, snapshot.input, previous);
     } else {
-      const snapshot = deps.snapshot(userID, boundary, now, false);
-      if (snapshot.profile.epoch !== identity.epoch) throw new Error('The active profile changed. Ask again.');
-      answer = askEngine.answer(question, snapshot.input, previous);
-      if (answer.status === 'clarify') {
-        if (!deps.planner) return previous ? answer : null; // Preserve the installed binary's AI path.
+      if (deps.planner) {
         const modelContext = JSON.stringify(queryEngine.modelContext(previous, now));
         if (modelContext.length > 4000) return { status: 'unavailable', text: 'This follow-up is too long. Ask a new question.', evidence: [] };
-        const raw = await deps.planner(question, modelContext, now);
+        let raw: Record<string, unknown> | null = null;
+        try { raw = await deps.planner(question, modelContext, now); }
+        catch { /* Apple Intelligence can be unavailable or busy; use the local rules below. */ }
         check(userID, identity.epoch);
         plan = raw ? queryEngine.normalizeModelPlan(question, raw, previous !== null) : null;
         if (plan) {
@@ -100,8 +98,13 @@ export function createLocalAskRuntime(deps: LocalAskDependencies) {
           const fresh = deps.snapshot(userID, boundary, deps.now(), true);
           if (fresh.profile.epoch !== identity.epoch) throw new Error('The active profile changed. Ask again.');
           answer = queryEngine.execute(plan, fresh.input, previous);
+          return finish(answer, userID, identity.epoch, question, previous, plan, now);
         }
       }
+      const snapshot = deps.snapshot(userID, boundary, now, false);
+      if (snapshot.profile.epoch !== identity.epoch) throw new Error('The active profile changed. Ask again.');
+      answer = askEngine.answer(question, snapshot.input, previous);
+      if (answer.status === 'clarify' && !deps.planner && !previous) return null; // Older binaries still own their native AI path.
     }
     return finish(answer, userID, identity.epoch, question, previous, plan, now);
   }

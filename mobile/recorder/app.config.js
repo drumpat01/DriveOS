@@ -26,11 +26,9 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // Build 35 (preview.4) Ask accepts schema 9 only. Tessie schema 11 needs
-    // the updated native reader; never deliver this archive migration to it by OTA.
-    // Expo MediaLibrary and the Ask bridges require a new binary. Keep Build
-    // 36's preview.5 OTA stream separate from this source's native runtime.
-    runtimeVersion: v3 ? '3.0.0-preview.6' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // Build 39 bundles the revised Siri/Ask engine and adaptive icons. Isolate
+    // it from Build 38's preview.6 updates so older chat code cannot replace it.
+    runtimeVersion: v3 ? '3.0.0-preview.7' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(v3 ? {

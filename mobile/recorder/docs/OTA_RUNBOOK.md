@@ -32,8 +32,8 @@ runtime is the compatibility boundary for installed builds.
 
 | Target | Channel | Environment | `APP_VARIANT` | Notes |
 | --- | --- | --- | --- | --- |
-| `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Current source targets the next native runtime `3.0.0-preview.6`. |
-| `v3-testflight` | `production` | `production` | `v3-store` | Build 38 uses xprem and runtime `3.0.0-preview.6`; publish with `xprem:publish`. Requires explicit authorization. |
+| `v3-preview` | `v3-preview` | `preview` | `v3-preview` | Current source targets the next native runtime `3.0.0-preview.7`. |
+| `v3-testflight` | `production` | `production` | `v3-store` | Build 39 uses xprem and runtime `3.0.0-preview.7`; publish with `xprem:publish`. Requires explicit authorization. |
 
 Phase 7 compatibility boundary: installed Build 35 uses `3.0.0-preview.4`
 and its native Ask reader accepts archive schema 9 only. This source migrates
@@ -46,6 +46,10 @@ The native-to-OTA Ask and Expo MediaLibrary changes advanced the current source
 to `3.0.0-preview.6` in Build 38. Do not publish this source as an OTA for Build 36's
 `3.0.0-preview.5` runtime.
 
+Build 39 advances to `3.0.0-preview.7` for the revised native Siri/Ask service,
+marker capability, and adaptive icon assets. This source must not be retagged
+as Build 38's `.6` runtime. Its older OTA must not replace Build 39's bundled chat.
+
 Do not use the legacy `preview` channel for V3. Do not publish V3 preview code
 to `production`. Do not publish V2 production OTA unless there is an urgent
 customer-reported bug and Patrick explicitly authorizes that V2 release action.
@@ -54,7 +58,7 @@ customer-reported bug and Patrick explicitly authorizes that V2 release action.
 
 Build 36 and earlier binaries still check Expo Updates. Use the existing
 `ota:publish` wrapper only for an explicitly authorized, runtime-compatible
-Expo target. This checkout's `3.0.0-preview.6` source is not compatible with
+Expo target. This checkout's `3.0.0-preview.7` source is not compatible with
 Build 36's `3.0.0-preview.5` runtime.
 
 ### Preferred command

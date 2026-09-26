@@ -17,7 +17,7 @@ function load(name: string, mocks: Record<string, unknown>) {
   const code = ts.transpileModule(readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : require(id) });
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.endsWith('.png') ? id : require(id) });
   return module.exports;
 }
 function deferred() {
@@ -27,14 +27,14 @@ function deferred() {
 }
 const ticket = 'b78cba9f-e125-4fb9-a76b-e1cd44583c75';
 const result = (text = '19.8 miles across 2 journeys') => ({ status: 'answered', text, ticket, contextToken: ticket, profileId: 'a', evidence: [{ kind: 'journey', id: 'journey-a', label: 'Journey on Sep 15, 2026' }] });
-async function screen(options: { available?: boolean; enabled?: boolean; ticket?: string } = {}) {
+async function screen(options: { available?: boolean; enabled?: boolean; ticket?: string; theme?: string; model?: string } = {}) {
   let userID = 'a', listener: (state: string) => void = () => {};
   let ask: (...args: any[]) => Promise<any> = async () => result();
   let resolve: (...args: any[]) => Promise<any> = async () => result();
   const calls: any[][] = [], resolutions: any[][] = [], pushes: any[] = [], scrolls: any[] = [];
   const appState = { currentState: 'active', addEventListener: (_: string, callback: typeof listener) => { listener = callback; return { remove() {} }; } };
   const native = { AppState: appState, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: any) => value, hairlineWidth: 1 },
-    ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])),
+    ...Object.fromEntries(['ActivityIndicator', 'Image', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map(name => [name, host(name)])),
     ScrollView: React.forwardRef(({ children, ...props }: any, ref: any) => { React.useImperativeHandle(ref, () => ({ scrollToEnd: (options: any) => scrolls.push(options) })); return React.createElement('ScrollView', props, children); }) };
   const component = load('ask-journeydeck-screen.tsx', {
     'react-native': native,
@@ -45,19 +45,21 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
       router: { push: (path: any) => pushes.push(path), canGoBack: () => true, back: () => pushes.push('back'), replace: (path: any) => pushes.push(path) },
       useLocalSearchParams: () => ({ ticket: options.ticket }),
     },
-    './app-theme': { useAppTheme: () => testTheme('grand-touring') },
+    './app-theme': { useAppTheme: () => testTheme(options.theme ?? 'redline') },
     './siri-testing': { canShowSiriTesting: false },
     './auth': { getCurrentUser: () => ({ id: userID }) },
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: options.enabled !== false },
     './ask-journeydeck': {
       ASK_EXAMPLES: ['How many miles did I drive this week?'],
+      ASK_CANNOT_COMPUTE: 'Beep Boop. Can not compute.',
       isAskJourneyDeckAvailable: options.available !== false,
+      askJourneyDeckModelAvailability: async () => options.model ?? 'available',
       askJourneyDeck: (...args: any[]) => { calls.push(args); return ask(...args); },
       resolveJourneyDeckAnswer: (...args: any[]) => { resolutions.push(args); return resolve(...args); },
     },
   }).AskJourneyDeckScreen;
   let tree: any;
-  await act(() => { tree = create(React.createElement(component)); });
+  await act(async () => { tree = create(React.createElement(component)); await Promise.resolve(); });
   return {
     tree, calls, resolutions, pushes, scrolls,
     text: () => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|'),
@@ -65,9 +67,10 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     button: () => tree.root.findByProps({ testID: 'ask-submit' }),
     ask: (fn: typeof ask) => { ask = fn; }, resolve: (fn: typeof resolve) => { resolve = fn; },
     submit: async (question: string) => { await act(() => { tree.root.findByType('TextInput').props.onChangeText(question); }); await act(() => tree.root.findByProps({ testID: 'ask-submit' }).props.onPress()); },
-    state: async (state: string) => { await act(() => { appState.currentState = state; listener(state); }); },
-    profile: async (id: string) => { await act(() => { userID = id; tree.update(React.createElement(component)); }); },
-    reopen: async () => { await act(() => tree.unmount()); await act(() => { tree = create(React.createElement(component)); }); },
+    state: async (state: string) => { await act(async () => { appState.currentState = state; listener(state); await Promise.resolve(); }); },
+    profile: async (id: string) => { await act(async () => { userID = id; tree.update(React.createElement(component)); await Promise.resolve(); }); },
+    reopen: async () => { await act(() => tree.unmount()); await act(async () => { tree = create(React.createElement(component)); await Promise.resolve(); }); },
+    contentSizeChange: async () => { await act(() => tree.root.findByType('ScrollView').props.onContentSizeChange()); },
     close: async () => { await act(() => tree.unmount()); },
   };
 }
@@ -124,7 +127,7 @@ test('failed requests recover; a new request cannot inherit context from a faile
     await s.submit('How many miles?');
     s.ask(async () => { throw Error('native read failed'); });
     await s.submit('follow-up');
-    assert.match(s.text(), /couldn’t answer/); assert.match(s.text(), /19.8 miles/);
+    assert.match(s.text(), /Beep Boop\. Can not compute\./); assert.match(s.text(), /19.8 miles/);
     assert.equal(s.button().props.disabled, false);
     s.ask(async () => result()); await s.submit('How many miles?');
     assert.equal(s.calls[2][2], undefined);
@@ -165,14 +168,31 @@ test('chat bubbles remain through backgrounding and closing the sheet until the 
     await s.state('background'); await s.state('active');
     assert.match(s.text(), /How many miles/); assert.match(s.text(), /19.8 miles/);
     await s.reopen();
+    await s.contentSizeChange();
+    assert.deepEqual(s.scrolls, [], 'reopening the iOS sheet must not auto-scroll restored bubbles out of view');
     assert.match(s.text(), /How many miles/); assert.match(s.text(), /19.8 miles/);
   } finally { await s.close(); }
 });
 
-test('the chat opens with a short bot greeting and does not auto-scroll before the user speaks', async () => {
+test('a reply finishes in the same chat after the sheet is closed and reopened', async () => {
   const s = await screen();
   try {
-    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
+    const pending = deferred();
+    s.ask(() => pending.promise);
+    await s.submit('How many journeys this week?');
+    await s.reopen();
+    assert.equal(s.button().props.disabled, true);
+    await act(() => pending.resolve(result('2 journeys this week')));
+    assert.match(s.text(), /How many journeys this week/);
+    assert.match(s.text(), /2 journeys this week/);
+    assert.equal(s.button().props.disabled, false);
+  } finally { await s.close(); }
+});
+
+test('the chat opens with a short bot greeting and scrolls only after a question', async () => {
+  const s = await screen();
+  try {
+    assert.equal(s.tree.root.findAllByType('ScrollView').length, 0, 'the empty chat never mounts a native scroll view');
     assert.deepEqual(s.scrolls, []);
     assert.match(s.text(), /Hello! I’m JourneyDeck/);
     assert.match(s.text(), /private on-device history/);
@@ -181,7 +201,29 @@ test('the chat opens with a short bot greeting and does not auto-scroll before t
     await s.submit('How many miles?');
     await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
     assert.equal(s.scrolls.length, 1); assert.equal(s.scrolls[0].animated, true);
+    await act(() => s.tree.root.findByType('ScrollView').props.onContentSizeChange());
+    assert.equal(s.scrolls.length, 1, 'layout-only updates must not move the conversation');
   } finally { await s.close(); }
+});
+
+test('JourneyDeck uses the navigator avatar corresponding to each selected theme', async () => {
+  const choices = {
+    dark: 'navigator-cinematic-dark-256.png', light: 'navigator-warm-ivory-256.png', sakura: 'navigator-rosewater-256.png',
+    redline: 'navigator-grand-touring-256.png', 'midnight-canopy': 'navigator-autumn-drive-256.png',
+  };
+  for (const [theme, filename] of Object.entries(choices)) {
+    const s = await screen({ theme });
+    try {
+      assert.ok(s.tree.root.findAllByType('Image').length >= 2);
+      assert.ok(s.tree.root.findAllByType('Image').every((node: any) => String(node.props.source).endsWith(filename)));
+    } finally { await s.close(); }
+  }
+});
+
+test('Apple Intelligence setup status is shown when it is disabled on the iPhone', async () => {
+  const s = await screen({ model: 'appleIntelligenceNotEnabled' });
+  try { assert.match(s.text(), /Turn on Apple Intelligence in iPhone Settings/); }
+  finally { await s.close(); }
 });
 
 test('supporting records are revalidated before navigation and deleted records cannot be opened', async () => {
@@ -215,19 +257,19 @@ test('old installed runtimes and non-V3 routes fail closed; the native close con
 test('JS-to-native bridge rejects profile changes and invalid links without querying another profile', async () => {
   let current = 'a', asked = 0, resolved = 0;
   const pending = deferred();
+  let nativeAnswer = () => pending.promise;
+  let nativeResolution = async () => result();
   const bridge = load('ask-journeydeck.ts', {
-    expo: { requireOptionalNativeModule: () => ({ askJourneyDeckAsync: () => { asked++; return pending.promise; }, resolveJourneyDeckAnswerAsync: async () => { resolved++; return result(); } }) },
-    'expo-crypto': { randomUUID: () => ticket },
-    'react-native': { AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
-    './ask-journeydeck-archive': { currentAskProfile: () => ({ id: current, epoch: 'epoch' }), readAskSnapshot: () => { throw new Error('Native fallback test'); } },
-    './ask-journeydeck-local': { createLocalAskRuntime: () => ({ ask: async () => null, resolve: async () => null, clear() {} }) },
+    expo: { requireOptionalNativeModule: () => ({ askJourneyDeckAsync: () => { asked++; return nativeAnswer(); }, resolveJourneyDeckAnswerAsync: () => { resolved++; return nativeResolution(); } }) },
     './database-startup': { prepareJourneyDeckDatabase: async () => {} },
-    '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: false, tier: 'free' }) },
     './local-store': { getActiveLocalUserId: () => current }, './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true },
   });
   await assert.rejects(() => bridge.askJourneyDeck('b', 'How many miles?'), /profile changed/); assert.equal(asked, 0);
   const answer = bridge.askJourneyDeck('a', 'How many miles?'); current = 'b'; pending.resolve(result());
   await assert.rejects(() => answer, /profile changed/);
+  current = 'a'; nativeAnswer = async () => ({ status: 'unavailable', text: 'internal detail', evidence: [] });
+  assert.equal((await bridge.askJourneyDeck('a', 'Unsupported question')).text, 'Beep Boop. Can not compute.');
   current = 'a'; assert.equal((await bridge.resolveJourneyDeckAnswer('a', 'untrusted link')).status, 'unavailable'); assert.equal(resolved, 0);
-  await bridge.resolveJourneyDeckAnswer('a', ticket); assert.equal(resolved, 1);
+  nativeResolution = async () => ({ status: 'clarify', text: 'ask another question', evidence: [] });
+  assert.equal((await bridge.resolveJourneyDeckAnswer('a', ticket)).text, 'Beep Boop. Can not compute.'); assert.equal(resolved, 1);
 });

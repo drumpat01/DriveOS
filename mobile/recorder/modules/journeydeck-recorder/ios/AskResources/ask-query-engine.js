@@ -27,9 +27,31 @@
   const unavailable = () => reply('unavailable', 'Some local history could not be read completely. Open JourneyDeck and try again.');
   const finite = n => typeof n === 'number' && Number.isFinite(n) && n >= 0;
   const textFilter = s => typeof s === 'string' && s.length <= 160 && !/[\x00-\x1f]/.test(s);
-  function normalizeModelPlan(question, raw, hasPriorContext = false) {
+  function isContextualQuestion(question) {
+    return typeof question === 'string' && /^(?:and |what about |how about )|\b(?:that journey|that trip|that drive|those journeys|those trips|that period)\b/i.test(question.trim());
+  }
+  function directPlan(question) {
+    if (typeof question !== 'string') return null;
+    const q = question.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+    if (/^(?:(?:what|who)(?: is| was|'s) (?:my |the )?|(?:my )?)(?:most played|top) artist[?.!]*$/.test(q)) {
+      return { ...defaults, domain: 'music', operation: 'rank', groupBy: 'artist', limit: 1 };
+    }
+    return null;
+  }
+  function followUpPlan(question, previous, now) {
+    if (typeof question !== 'string' || previous?.version !== 2 || previous.expiresAt <= now) return null;
+    const match = /^(?:and|what about|how about)\s+(today|yesterday|this week|last week|this month|last month|this year|last year|all time)[?.!]?$/i.exec(question.trim());
+    const plan = validate(previous.plan);
+    if (!match || !plan || plan.decision !== 'answer' || plan.operation === 'compare') return null;
+    const periods = { today: 'today', yesterday: 'yesterday', 'this week': 'thisWeek', 'last week': 'lastWeek', 'this month': 'thisMonth', 'last month': 'lastMonth', 'this year': 'thisYear', 'last year': 'lastYear', 'all time': 'allTime' };
+    return { ...plan, period: periods[match[1].toLowerCase()], days: 0, startDate: '', endDate: '' };
+  }
+  function normalizeModelPlan(question, raw, hasPriorContext = false, previous = null, now = Date.now()) {
     if (typeof question !== 'string' || question.length > 500 || !raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const followUpQuery = followUpPlan(question, previous, now);
+    if (followUpQuery) return followUpQuery;
     const p = Object.assign({}, defaults, raw), q = question.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, ' ').trim();
+    const followUp = hasPriorContext && /^(?:and |what about |how about )/.test(q);
     // Guided generation can populate constrained fields even when they are irrelevant.
     // Canonicalize only fields whose meaning is determined by another selected field.
     if (p.period !== 'lastDays') p.days = 0;
@@ -38,8 +60,33 @@
     if (p.operation !== 'compare') p.comparePeriod = 'none';
     if (p.operation !== 'rank') p.groupBy = 'none';
     if (p.domain === 'music' && p.metric === 'songPlays') p.metric = 'count';
-    if (p.operation === 'rank' && /\b(?:top|number one|#\s*1|most recorded|most played|most listened)\b/.test(q)) p.limit = 1;
-    if (!hasPriorContext) p.selection = 'history';
+    // Generated plans describe the query; they never get to invent constraints.
+    // A fresh question with no time phrase means the complete available history,
+    // even when a previous Siri request exists. Text filters must be present in
+    // the user's words rather than supplied from model knowledge or old context.
+    const explicitTime = /\b(?:today|yesterday|this week|last week|this month|last month|this year|last year|all[ -]?time|ever|past \d+ days?|last \d+ days?|between|from|through|since|before|after|january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\b/;
+    if (!followUp && !explicitTime.test(q)) {
+      p.period = 'available'; p.days = 0; p.startDate = ''; p.endDate = ''; p.comparePeriod = 'none';
+      if (p.operation === 'compare') p.operation = 'total';
+    }
+    for (const key of ['artist', 'track', 'album', 'place']) {
+      const proposed = typeof p[key] === 'string' ? p[key].trim().toLowerCase().replace(/\s+/g, ' ') : '';
+      if (proposed && !q.includes(proposed)) p[key] = '';
+    }
+    const ranking = /\b(?:top|rank|number one|#\s*1|most played|most listened|most recorded)\b/.test(q);
+    if (ranking && /\b(?:artist|artists)\b/.test(q)) {
+      p.domain = 'music'; p.operation = 'rank'; p.metric = 'count'; p.groupBy = 'artist';
+    } else if (ranking && /\b(?:song|songs|track|tracks)\b/.test(q)) {
+      p.domain = 'music'; p.operation = 'rank'; p.metric = 'count'; p.groupBy = 'track';
+    } else if (ranking && /\b(?:album|albums)\b/.test(q)) {
+      p.domain = 'music'; p.operation = 'rank'; p.metric = 'count'; p.groupBy = 'album';
+    }
+    const numberWords = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+    const explicitTop = /\btop\s+(\d+|\w+)\b/.exec(q);
+    const requestedCount = explicitTop && (/^\d+$/.test(explicitTop[1]) ? Number(explicitTop[1]) : numberWords.includes(explicitTop[1]) ? numberWords.indexOf(explicitTop[1]) + 1 : null);
+    if (p.operation === 'rank' && requestedCount != null) p.limit = requestedCount;
+    else if (p.operation === 'rank' && /\b(?:top\s+(?:(?:recorded|played)\s+)?(?:artist|song|track|album)|number one|#\s*1|most recorded|most played|most listened)\b/.test(q)) p.limit = 1;
+    if (!followUp) p.selection = 'history';
 
     const unsupported = /\b(?:delete|erase|remove all|start recording|stop recording|create (?:a )?marker|email|send|share)\b|\b(?:note|notes|transcript|transcripts|voice memos?|engine temperature|fuel|gas)\b|\bphotos? (?:containing|showing|with)\b|\b(?:color|colour) (?:were|was|are|is)\b|\broute(?:s)? (?:crossed|crossing)\b|\b(?:excluding|except|without)\b/;
     const ambiguous = /\b(?:best|most fun|favorite|favourite)\b|\bbiggest one\b/;
@@ -68,7 +115,6 @@
       songPlays: /\b(?:song|songs|music|play|plays)\b/,
       photos: /\bphotos?\b/,
     };
-    const followUp = hasPriorContext && /^(?:and |what about |how about )/.test(q);
     if (ambiguous.test(q)) p.decision = 'clarify';
     else if (unsupported.test(q)) p.decision = 'unsupported';
     else if ((followUp || domains[p.domain]?.test(q)) && operations[p.operation]?.test(q) && metrics[p.metric]?.test(q)) p.decision = 'answer';
@@ -279,7 +325,7 @@
         title: 'Memory created ' + date(Date.parse(m.createdAt)), summary: 'Saved Memory' })),
     ].sort((a, b) => Date.parse(b.date) - Date.parse(a.date) || String(a.id).localeCompare(String(b.id))).slice(0, 500);
   }
-  const api = { choices, defaults, normalizeModelPlan, validate, range, execute, modelContext, entities };
+  const api = { choices, defaults, isContextualQuestion, directPlan, normalizeModelPlan, followUpPlan, validate, range, execute, modelContext, entities };
   if (typeof module !== 'undefined') module.exports = api;
   root.JourneyDeckQueryEngine = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

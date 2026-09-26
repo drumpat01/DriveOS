@@ -51,7 +51,7 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(`${config.ios.bundleIdentifier}.watchkitapp`, 'com.journeydeck.recorder.watchkitapp');
   assert.equal(config.scheme, 'journeydeck');
   assert.equal(config.name, 'JourneyDeck');
-  assert.equal(config.runtimeVersion, '3.0.0-preview.6');
+  assert.equal(config.runtimeVersion, '3.0.0-preview.7');
   assert.equal(config.updates.requestHeaders['expo-channel-name'], 'production');
   assert.equal(config.updates.url, 'https://ota.journeydeck.me/manifest');
   assert.equal(config.updates.requestHeaders['expo-app-id'], '45dbc2f7-fa8a-4761-8db8-8fac41a4c624');

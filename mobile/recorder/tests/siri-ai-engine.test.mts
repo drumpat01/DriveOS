@@ -66,6 +66,67 @@ test('untrusted plans reject extra instructions, invalid ranges, unsupported met
   for (const plan of invalid) assert.equal(engine.validate(plan), null, JSON.stringify(plan));
   for (const startDate of ['2026-02-30', '2026-13-01', 'invalid']) assert.equal(engine.execute({ period: 'date', startDate }, suite.fixture()).status, 'clarify');
 });
+
+test('rank requests preserve an explicit top count and refuse counts beyond the supported limit', () => {
+  const raw = { ...engine.defaults, domain: 'music', operation: 'rank', groupBy: 'artist' };
+  const plan = engine.normalizeModelPlan('What are my top 5 artists?', raw);
+  assert.equal(plan.limit, 5);
+  assert.equal(engine.normalizeModelPlan('What are my top five artists?', raw).limit, 5);
+  assert.equal(engine.execute(plan, suite.fixture()).facts.groups.length, 2);
+  assert.equal(engine.normalizeModelPlan('What is my top artist?', raw).limit, 1);
+  assert.equal(engine.validate(engine.normalizeModelPlan('What are my top 30 artists?', raw)), null);
+});
+
+test('standalone Siri rankings cannot inherit or invent a period, artist, or previous selection', () => {
+  const raw = { ...engine.defaults, domain: 'journeys', operation: 'total', metric: 'miles', groupBy: 'none',
+    period: 'thisMonth', artist: 'Olivia Rodrigo', selection: 'previous' };
+  const plan = engine.normalizeModelPlan('What is my most played artist?', raw, true,
+    engine.execute({ domain: 'music', operation: 'rank', groupBy: 'artist' }, suite.fixture()).context,
+    suite.fixture().now);
+  assert.equal(plan.period, 'available');
+  assert.equal(plan.artist, '');
+  assert.equal(plan.selection, 'history');
+  assert.equal(plan.domain, 'music');
+  assert.equal(plan.operation, 'rank');
+  assert.equal(plan.metric, 'count');
+  assert.equal(plan.groupBy, 'artist');
+  assert.equal(plan.limit, 1);
+  assert.match(engine.execute(plan, suite.fixture()).text, /Nova: 4 recorded song plays in your available history/);
+
+  const explicit = engine.normalizeModelPlan('What was my most played artist Olivia Rodrigo this month?', raw, true);
+  assert.equal(explicit.period, 'thisMonth');
+  assert.equal(explicit.artist, 'Olivia Rodrigo');
+});
+
+test('plain top-artist questions use one local plan and do not consume Siri context', () => {
+  const service = readFileSync(new URL('../modules/journeydeck-recorder/ios/JourneyDeckAskService.swift', import.meta.url), 'utf8');
+  for (const question of ['What is my most played artist?', 'Who was my top artist?', 'My top artist']) {
+    assert.equal(engine.isContextualQuestion(question), false);
+    const plan = engine.directPlan(question);
+    assert.deepEqual(plan, { ...engine.defaults, domain: 'music', operation: 'rank', groupBy: 'artist', limit: 1 });
+    assert.match(engine.execute(plan, suite.fixture()).text, /Nova: 4 recorded song plays in your available history/);
+  }
+  assert.equal(engine.directPlan('Who was my top artist this month?'), null);
+  assert.equal(engine.isContextualQuestion('What about last week?'), true);
+  assert.equal(engine.isContextualQuestion('How many songs were on that journey?'), true);
+  assert.match(service, /let previousTicket = \(contextual \? token : nil\)\.flatMap/);
+  assert.match(service, /var selectedPlan = savedPlan \?\? \(try Self\.engine\("directPlan"/);
+  assert.match(service, /if selectedPlan == nil, JourneyDeckAIPlanner\.availability/);
+});
+
+test('period follow-ups preserve the previous metric and filters even when the model is unavailable or proposes a different query', () => {
+  const input = suite.fixture();
+  const previous = engine.execute({ metric: 'miles', period: 'thisWeek' }, input).context;
+  const plan = engine.followUpPlan('What about last week?', previous, input.now);
+  assert.equal(plan.metric, 'miles'); assert.equal(plan.period, 'lastWeek');
+  assert.deepEqual(engine.execute(plan, input, previous).facts,
+    engine.execute({ metric: 'miles', period: 'lastWeek' }, input).facts);
+  assert.deepEqual(engine.normalizeModelPlan('What about last week?', engine.defaults, true, previous, input.now), plan);
+  assert.equal(engine.followUpPlan('What about the weather?', previous, input.now), null);
+  assert.equal(engine.followUpPlan('What about last week?', { ...previous, expiresAt: input.now - 1 }, input.now), null);
+  const sessionContext = { ...previous, expiresAt: 64092211200000 };
+  assert.equal(engine.followUpPlan('What about last week?', sessionContext, input.now + 3600000).metric, 'miles');
+});
 test('explicit old history and comparison ranges never silently truncate', () => {
   const input = suite.fixture(); input.cutoff = new Date(2026, 8, 14).getTime();
   assert.equal(engine.execute({ period: 'allTime' }, input).status, 'historyLimited');

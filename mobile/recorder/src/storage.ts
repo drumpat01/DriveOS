@@ -113,7 +113,8 @@ export function initializeDatabase() {
     SELECT id || ':remote_completion',owner_user_id,id,'remote_completion','pending',0,
       COALESCE(ended_at,updated_at),NULL,NULL,COALESCE(ended_at,updated_at),updated_at,NULL
     FROM recording_sessions
-    WHERE status='completed' AND ended_at IS NOT NULL AND remote_completed=0;
+    WHERE status='completed' AND ended_at IS NOT NULL AND remote_completed=0
+      AND id NOT GLOB 'native_recording_*';
   `);
   const quickCheck = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
   if (String(Object.values(quickCheck ?? {})[0] ?? '').toLowerCase() !== 'ok') {
@@ -220,7 +221,7 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
       if (session.status === 'completed' && session.endedAt && routeIsComplete) {
         const now = new Date().toISOString();
         db.runSync(`UPDATE recording_sessions
-          SET status='completed',ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
+          SET status='completed',remote_completed=1,ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
           WHERE id=?;`, session.endedAt, session.nextSequence, session.updatedAt, session.id);
         // Native V3 journeys are local-first and back up through private iCloud.
         // Server completion is retained only for profiles that already had the

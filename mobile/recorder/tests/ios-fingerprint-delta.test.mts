@@ -25,7 +25,7 @@ test('V3, V2 preview, and production embed expo-channel-name for CNG and channel
     delete process.env.EAS_BUILD_PROFILE;
     process.env.APP_VARIANT = 'v3-preview';
     const v3 = configureApp({ config: base });
-    assert.equal(v3.runtimeVersion, '3.0.0-preview.6');
+    assert.equal(v3.runtimeVersion, '3.0.0-preview.7');
     assert.equal(v3.updates.requestHeaders['expo-channel-name'], 'v3-preview');
     process.env.APP_VARIANT = 'v2-preview';
     assert.equal(configureApp({ config: base }).updates.requestHeaders['expo-channel-name'], 'v2-preview');

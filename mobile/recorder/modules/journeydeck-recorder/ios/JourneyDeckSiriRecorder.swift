@@ -12,6 +12,7 @@ public enum JourneyDeckSiriCommandResult: String {
   case unavailable
 }
 
+@MainActor
 public enum JourneyDeckSiriRecorder {
   public static func createMarker() async -> String {
     guard Bundle.main.object(forInfoDictionaryKey: "JourneyDeckMarkerEnabled") as? Bool == true else { return "unavailable" }

@@ -1,5 +1,23 @@
 # Ask JourneyDeck — focused V3 prototype
 
+> Historical prototype plan. The current V3 experience is implemented in
+> `src/ask-journeydeck.ts`, `src/ask-journeydeck-screen.tsx`,
+> `intents/AskJourneyDeckIntent.swift`, `modules/journeydeck-recorder/ios/JourneyDeckAskService.swift`,
+> and `modules/journeydeck-recorder/ios/JourneyDeckAIPlanner.swift`. The remainder of this
+> document records the original prototype and contains superseded gates and behavior.
+>
+> **Current experience:** From anywhere Siri can run the Ask JourneyDeck App Intent,
+> prompt for a question, and speak its answer without opening the chat. The intent requires
+> local device authentication before private answers. Inside the app, Ask JourneyDeck is a
+> themed conversation with the selected theme's icon as the bot avatar. Questions and answers
+> stay in process memory until the app closes; a reply in progress survives closing and
+> reopening the sheet. Both surfaces call the same native answer service. Apple's on-device
+> Foundation Model interprets questions when available, then a validated read-only query
+> computes facts from the active profile's SQLite archive. Local rules handle supported
+> questions when the model is unavailable. Every non-answer is shown or spoken as exactly
+> `Beep Boop. Can not compute.` Apple Intelligence availability is shown in chat; the device
+> owner enables it in iPhone Settings. Build 39 compilation and iPhone Siri validation remain pending.
+
 Status: source implementation, September 16, 2026. No build, prebuild, export, OTA, or device run was performed. Swift compilation, Siri discovery/speech/snippets, and physical-device acceptance below are **not verified**. Do not mark roadmap V3-10 complete.
 
 ## Entry points and scope

@@ -720,7 +720,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     await withCheckedContinuation { continuation in
       workQueue.async {
         do {
-          guard Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3",
+          guard Bundle.main.object(forInfoDictionaryKey: "JourneyDeckMarkerEnabled") as? Bool == true,
                 UUID(uuidString: operationID) != nil,
                 let identity = self.configuredIdentity(),
                 self.defaults.string(forKey: RecorderDefaults.manualOwner) == identity.owner,

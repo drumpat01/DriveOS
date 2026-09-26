@@ -15,6 +15,9 @@ module.exports = config => {
   if (config.extra?.features?.askJourneyDeck !== true) return config;
   config = withInfoPlist(config, mod => {
     mod.modResults.JourneyDeckAskEnabled = true;
+    const scheme = Array.isArray(config.scheme) ? config.scheme[0] : config.scheme;
+    if (typeof scheme !== 'string' || !/^[a-z][a-z0-9+.-]*$/i.test(scheme)) throw new Error('Ask JourneyDeck requires the app URL scheme.');
+    mod.modResults.JourneyDeckAskURLScheme = scheme;
     mod.modResults.JourneyDeckSiriTestingEnabled = process.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING === '1';
     return mod;
   });
