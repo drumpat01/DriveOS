@@ -57,7 +57,6 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   ...controls, ...touchFeedbackMock, ThemePicker: host('ThemePicker'), AppIconPicker: host('AppIconPicker'), useState: React.useState, useEffect: React.useEffect,
   useAdaptiveLayout: () => ({ isRegular: tablet, fold: adaptiveFold }),
   TESSIE_INTEGRATION_ENABLED: false, isMusicProviderAvailable: (provider: string) => provider !== 'lastfm',
-  TESTFLIGHT_DATA_HEALTH_ENABLED: false,
   V3_MARKERS_PROTOTYPE_ENABLED: false,
   router: { push: () => undefined },
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
@@ -218,7 +217,7 @@ test('responsive Settings uses an iPad split view and an iPhone category hub wit
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 0, 'phone icon gallery stays one level deeper');
     await act(() => press('Choose theme').props.onPress());
     assert.equal(tree.root.findAllByType('ThemePicker').length, 1);
-    assert.equal(tree.root.findByType('SettingsEditorScaffold').props.backLabel, 'Appearance');
+    assert.equal(tree.root.findByType('SettingsEditorScaffold').props.backLabel, undefined, 'settings editors use an icon-only back control');
     await act(() => tree.root.findByType('SettingsEditorScaffold').props.onBack());
     await act(() => press('Choose app icon').props.onPress());
     assert.equal(tree.root.findAllByType('AppIconPicker').length, 1);
@@ -269,7 +268,9 @@ test('successful private sync refreshes the shared library; unavailable accounts
   const { sync } = evaluate(callback + '\nexports.sync = syncPrivateCloud;', {}, {
     useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isPrivateICloudNativeAvailable: () => true,
     setPrivateCloud: (state: any) => states.push(state), isIpad: () => true, observeJourneyDeckEvent: () => {},
-    syncCurrentUserWithPrivateICloud: async () => ({ accountStatus, privateContentVersion: 2, uploaded: 2, downloaded: 12, failedUploads, issueDetails, state: { pendingUploadCount } }),
+    getPrivateICloudSyncBackoff: () => null, getPrivateICloudSyncFailureRecord: () => null,
+    PrivateICloudSyncDeferredError: class extends Error {}, classifyPrivateICloudSyncError: () => 'unknown',
+    syncCurrentUserWithPrivateICloud: async () => ({ accountStatus, privateContentVersion: 2, uploaded: 2, downloaded: 12, failedUploads, issueDetails, deletedRecordNames: [], state: { pendingUploadCount } }),
     refreshPrimarySections: async (remote: boolean) => { assert.equal(remote, false); refreshed++; }, Alert: { alert: (title: string) => alerts.push(title) },
   });
   await sync(true);
@@ -293,4 +294,60 @@ test('successful private sync refreshes the shared library; unavailable accounts
   assert.match(states.at(-1).detail, /1 item still waiting/);
   assert.match(states.at(-1).detail, /Test memory/);
   assert.doesNotMatch(states.at(-1).detail, /Tap Sync again/);
+});
+
+test('private sync backs off quietly, reports a privacy-safe category, and only reloads the library for restored data', async () => {
+  class DeferredError extends Error {}
+  let backoff: any = null, outcome: any = null, refreshed = 0, calls = 0;
+  const states: any[] = [], events: any[] = [], alerts: string[] = [];
+  const callback = source.slice(source.indexOf('const syncPrivateCloud = useCallback'), source.indexOf('const createProfileIsolationTest'));
+  const { sync } = evaluate(callback + '\nexports.sync = syncPrivateCloud;', {}, {
+    useCallback: (callback: any) => callback, isIsolationTestProfile: () => false, isPrivateICloudNativeAvailable: () => true,
+    setPrivateCloud: (state: any) => states.push(state), isIpad: () => false, Alert: { alert: (title: string) => alerts.push(title) },
+    observeJourneyDeckEvent: (name: string, attributes: any) => events.push({ name, ...attributes }),
+    getPrivateICloudSyncBackoff: () => backoff,
+    getPrivateICloudSyncFailureRecord: () => ({ consecutiveFailures: 3, category: 'timeout', nextAttemptAt: Date.now() + 15 * 60_000 }),
+    PrivateICloudSyncDeferredError: DeferredError,
+    classifyPrivateICloudSyncError: (error: Error) => /timed out/.test(error.message) ? 'timeout' : 'unknown',
+    syncCurrentUserWithPrivateICloud: async () => { calls++; if (outcome instanceof Error) throw outcome; return outcome; },
+    refreshPrimarySections: async () => { refreshed++; },
+  });
+  const base = { accountStatus: 'available', privateContentVersion: 2, uploaded: 0, downloaded: 0, failedUploads: 0, issueDetails: [], deletedRecordNames: [], state: { pendingUploadCount: 0 } };
+
+  outcome = new Error('Private iCloud response timed out. Local changes remain queued; retry sync shortly.');
+  await sync(false);
+  assert.deepEqual(events.at(-1), { name: 'cloudkit.sync_failed', stage: 'sync_exception', error_category: 'timeout', consecutive_failures: 3, retry_in_seconds: 900, user_initiated: false });
+  assert.doesNotMatch(JSON.stringify(events), /timed out|queued/, 'error text never reaches diagnostics');
+  assert.equal(states.at(-1).status, 'error');
+
+  backoff = { consecutiveFailures: 3, category: 'timeout', nextAttemptAt: Date.now() + 60_000 };
+  const before = { calls, states: states.length, events: events.length };
+  await sync(false);
+  assert.deepEqual({ calls, states: states.length, events: events.length }, before, 'automatic triggers during backoff do nothing, not even a Syncing… flash');
+
+  outcome = { ...base, uploaded: 3 };
+  await sync(true);
+  assert.equal(calls, before.calls + 1, 'the Sync button retries during backoff');
+  assert.equal(states.at(-1).status, 'synced');
+  assert.equal(refreshed, 0, 'an upload-only sync does not reload the whole archive');
+
+  outcome = { ...base, reused: true, failedUploads: 2 };
+  await sync(false).catch(() => {});
+  backoff = null;
+  await sync(false);
+  assert.equal(events.filter(event => event.stage === 'partial_upload').length, 0, 'a reused result is not reported twice');
+  assert.equal(refreshed, 0);
+
+  outcome = { ...base, downloaded: 4 };
+  await sync(false);
+  assert.equal(refreshed, 1, 'restored records still reach Home and Music');
+  outcome = { ...base, deletedRecordNames: ['JourneySummary_x'] };
+  await sync(false);
+  assert.equal(refreshed, 2, 'remote deletions also refresh the library');
+
+  outcome = new DeferredError('Private iCloud will retry automatically after a short wait. Tap Sync to retry now.');
+  const eventCount = events.length;
+  await sync(false);
+  assert.equal(events.length, eventCount, 'a deferred race is not a new failure');
+  assert.match(states.at(-1).detail, /Tap Sync to retry now/);
 });

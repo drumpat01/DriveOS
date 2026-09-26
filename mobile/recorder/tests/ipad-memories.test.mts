@@ -228,8 +228,9 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
     assert.equal(tree.root.findAllByType('FirstJourneyKeepsake').length, 0, 'earned badges no longer occupy the Memories screen');
     const journeyLink = press(tree, 'Open journey Start 2 → Coast');
     assert.equal(journeyLink.props.accessibilityRole, 'button');
-    const journeyLine = journeyLink.findAllByType('Text').find((node: any) => node.props.ellipsizeMode === 'tail');
-    assert.equal(journeyLine.props.numberOfLines, 1, 'journey details stay on one line');
+    const journeyLines = journeyLink.findAllByType('Text').filter((node: any) => node.props.ellipsizeMode === 'tail');
+    assert.equal(journeyLines.length, 2, 'journey rows give the starting and ending locations their own lines');
+    assert.ok(journeyLines.every((node: any) => node.props.numberOfLines === 1), 'each location line truncates independently');
     const root = tree.root.findByProps({ testID: 'studio-drag-root' });
     await act(() => root.props.onLayout({ nativeEvent: { layout: { width: 369, height: 680 } } }));
     assert.ok(root.props.style.marginBottom <= 12, 'native safe area owns bar clearance without a second fixed tab-bar spacer');
@@ -266,7 +267,7 @@ test('iPhone gallery and animated tray preserve state, navigation and accessible
       const grid = tree.root.findAllByType('View').find((n: any) => n.props.testID === 'iphone-memory-grid');
       assert.equal(grid.children[0].props.style.width, phoneStudioLayout(width, height, fontScale).columns === 2 ? '50%' : '100%');
       const trayHeight = tree.root.findByProps({ testID: 'iphone-journey-tray' }).props.style[2].height.__getValue();
-      assert.ok(trayHeight <= height * .52, 'gallery retains room even in landscape or large text');
+      assert.ok(trayHeight <= height * .72, 'the taller library still leaves gallery context in landscape and large text');
       assert.equal(tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Memory gallery'), gallery);
       assert.equal(tree.root.findAllByType('ScrollView').find((n: any) => n.props.accessibilityLabel === 'Journey library'), library);
     }

@@ -26,11 +26,9 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // Build 35 (preview.4) Ask accepts schema 9 only. Tessie schema 11 needs
-    // the updated native reader; never deliver this archive migration to it by OTA.
-    // Expo MediaLibrary and the Ask bridges require a new binary. Keep Build
-    // 36's preview.5 OTA stream separate from this source's native runtime.
-    runtimeVersion: v3 ? '3.0.0-preview.6' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // Build 39 bundles the revised Siri/Ask engine and adaptive icons. Isolate
+    // it from Build 38's preview.6 updates so older chat code cannot replace it.
+    runtimeVersion: v3 ? '3.0.0-preview.7' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(v3 ? {
@@ -66,7 +64,7 @@ module.exports = ({ config }) => {
       requireFullScreen: false,
       icon: {
         light: './assets/icon-grand-touring-v2.png',
-        dark: './assets/icon-grand-touring-v2.png',
+        dark: './assets/icon-grand-touring-dark-v1.png',
         // Grayscale mask for iOS tinted and clear Home Screen appearances.
         // The system supplies the tint or Liquid Glass background at runtime.
         tinted: './assets/icon-tinted-clear-v1.png',
@@ -77,12 +75,12 @@ module.exports = ({ config }) => {
         ...config.ios.entitlements,
         'com.apple.developer.icloud-container-identifiers': [container],
       },
-      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
+      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, JourneyDeckMarkerEnabled: v3, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
     },
     extra: {
       ...config.extra,
       revenueCat: { appleApiKey: revenueCatAppleKey },
-      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, tessieEnabled: v3, lastFmEnabled: v3, testflightPlusUnlocked: v3Store, testflightDataHealth: v3Store },
+      features: { ...config.extra?.features, atlasUnlocked: v3, markerPrototype: v3, fiftyStates: v3, askJourneyDeck: v3, midnightCanopy: v3, tessieEnabled: v3, lastFmEnabled: v3, testflightPlusUnlocked: v3Store },
       release: v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

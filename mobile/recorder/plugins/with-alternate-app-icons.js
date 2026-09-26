@@ -7,26 +7,31 @@ const alternateIcons = [
   {
     name: 'JourneyDeckWarmIvory',
     source: 'assets/icon-warm-ivory-v2.png',
+    darkSource: 'assets/icon-warm-ivory-dark-v1.png',
     backgroundColor: '#fffaf0',
   },
   {
     name: 'JourneyDeckRosewater',
     source: 'assets/icon-rosewater-v2.png',
+    darkSource: 'assets/icon-rosewater-dark-v1.png',
     backgroundColor: '#fff4f7',
   },
   {
     name: 'JourneyDeckGrandTouring',
     source: 'assets/icon-grand-touring-v2.png',
+    darkSource: 'assets/icon-grand-touring-dark-v1.png',
     backgroundColor: '#081832',
   },
   {
     name: 'JourneyDeckCinematic',
     source: 'assets/icon-cinematic-dark-v2.png',
+    darkSource: 'assets/icon-cinematic-dark-appearance-v1.png',
     backgroundColor: '#08070d',
   },
   {
     name: 'JourneyDeckMidnightCanopy',
     source: 'assets/icon-midnight-canopy-v1.png',
+    darkSource: 'assets/icon-midnight-canopy-dark-v1.png',
     backgroundColor: '#101a12',
     v3Only: true,
   },
@@ -61,21 +66,30 @@ async function writeAlternateIconAssets(projectRoot, assetCatalogRoot, icons = a
     const destination = path.join(assetCatalogRoot, `${icon.name}.appiconset`);
     fs.mkdirSync(destination, { recursive: true });
     const filename = `${icon.name}.png`;
-    const { source } = await generateImageAsync({
-      projectRoot,
-      cacheType: `journeydeck-alternate-icon-${icon.name}`,
-    }, {
-      src: path.join(projectRoot, icon.source),
-      name: filename,
-      width: 1024,
-      height: 1024,
-      resizeMode: 'cover',
-      removeTransparency: true,
-      backgroundColor: icon.backgroundColor,
-    });
-    fs.writeFileSync(path.join(destination, filename), source);
+    const darkFilename = `${icon.name}-dark.png`;
+    for (const variant of [
+      { filename, source: icon.source, cacheSuffix: 'light', backgroundColor: icon.backgroundColor },
+      { filename: darkFilename, source: icon.darkSource, cacheSuffix: 'dark', backgroundColor: '#000000' },
+    ]) {
+      const { source } = await generateImageAsync({
+        projectRoot,
+        cacheType: `journeydeck-alternate-icon-${icon.name}-${variant.cacheSuffix}`,
+      }, {
+        src: path.join(projectRoot, variant.source),
+        name: variant.filename,
+        width: 1024,
+        height: 1024,
+        resizeMode: 'cover',
+        removeTransparency: true,
+        backgroundColor: variant.backgroundColor,
+      });
+      fs.writeFileSync(path.join(destination, variant.filename), source);
+    }
     fs.writeFileSync(path.join(destination, 'Contents.json'), JSON.stringify({
-      images: [{ filename, idiom: 'universal', platform: 'ios', size: '1024x1024' }],
+      images: [
+        { filename, idiom: 'universal', platform: 'ios', size: '1024x1024' },
+        { appearances: [{ appearance: 'luminosity', value: 'dark' }], filename: darkFilename, idiom: 'universal', platform: 'ios', size: '1024x1024' },
+      ],
       info: { author: 'xcode', version: 1 },
     }, null, 2));
   }

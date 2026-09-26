@@ -55,16 +55,21 @@ test('alternate icon assets are build-ready 1024px opaque iOS app icon sets', as
     for (const icon of plugin.alternateIcons) {
       const catalogRoot = join(directory, `${icon.name}.appiconset`);
       const catalog = JSON.parse(readFileSync(join(catalogRoot, 'Contents.json'), 'utf8'));
-      assert.deepEqual(catalog.images, [{ filename: `${icon.name}.png`, idiom: 'universal', platform: 'ios', size: '1024x1024' }]);
-      const generated = join(catalogRoot, catalog.images[0].filename);
-      const png = readFileSync(generated);
-      assert.equal(png.readUInt32BE(16), 1024);
-      assert.equal(png.readUInt32BE(20), 1024);
-      const decoded = await require('@expo/image-utils').getPngInfo(generated);
-      const source = await require('@expo/image-utils').getPngInfo(join(root, icon.source));
-      assert.ok(decoded.data.equals(source.data), `${icon.name} must contain the exact approved source pixels`);
-      for (let alpha = 3; alpha < decoded.data.length; alpha += 4) {
-        assert.equal(decoded.data[alpha], 255, `${icon.name} must be opaque`);
+      assert.deepEqual(catalog.images, [
+        { filename: `${icon.name}.png`, idiom: 'universal', platform: 'ios', size: '1024x1024' },
+        { appearances: [{ appearance: 'luminosity', value: 'dark' }], filename: `${icon.name}-dark.png`, idiom: 'universal', platform: 'ios', size: '1024x1024' },
+      ]);
+      for (const [image, sourcePath] of [[catalog.images[0], icon.source], [catalog.images[1], icon.darkSource]] as const) {
+        const generated = join(catalogRoot, image.filename);
+        const png = readFileSync(generated);
+        assert.equal(png.readUInt32BE(16), 1024);
+        assert.equal(png.readUInt32BE(20), 1024);
+        const decoded = await require('@expo/image-utils').getPngInfo(generated);
+        const source = await require('@expo/image-utils').getPngInfo(join(root, sourcePath));
+        assert.ok(decoded.data.equals(source.data), `${icon.name} ${image.filename.includes('-dark') ? 'dark' : 'light'} must contain the exact approved source pixels`);
+        for (let alpha = 3; alpha < decoded.data.length; alpha += 4) {
+          assert.equal(decoded.data[alpha], 255, `${icon.name} must be opaque`);
+        }
       }
     }
     await plugin.writeAlternateIconAssets(root, directory, plugin.iconsForConfig({ extra: { features: { midnightCanopy: false } } }));

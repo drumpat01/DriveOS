@@ -88,7 +88,10 @@ function JourneyFace({ journey, floating = false, embedded = false }: { journey:
   return <View style={[styles.journeyFace, embedded && styles.embeddedJourneyFace, { backgroundColor: embedded ? 'transparent' : theme.palette.card, borderColor: embedded ? 'transparent' : theme.palette.line }, floating && styles.floatingFace]}>
     {!embedded && <ThemeMaterial radius={18} />}
     <SymbolView name="road.lanes" tintColor={theme.palette.accent} style={styles.icon} />
-    <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.journeyLine, { color: theme.palette.text }]}>{date} · {journeyRouteLabel(journey)} · {journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min · {journey.songCount} songs</Text>
+    <View style={styles.journeyLines}>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.journeyLine, { color: theme.palette.text }]}><Text style={{ color: theme.palette.muted }}>{date} · </Text>{journey.startingLocation || 'Unknown start'}</Text>
+      <Text numberOfLines={1} ellipsizeMode="tail" style={[styles.journeyLine, { color: theme.palette.text }]}>{journey.endingLocation || 'Unknown destination'}<Text style={{ color: theme.palette.muted }}> · {journey.miles.toFixed(1)} mi · {Math.round(journey.durationMinutes)} min</Text></Text>
+    </View>
     {floating && <SymbolView name="line.3.horizontal" tintColor={theme.palette.muted} style={styles.smallIcon} />}
   </View>;
 }
@@ -447,7 +450,7 @@ const styles = StyleSheet.create({
   memoryCard: { height: 246, borderRadius: 20, overflow: 'hidden', justifyContent: 'flex-end' },
   memoryCopy: { padding: 18, gap: 6 }, memoryTitle: { color: '#fff6ed', fontSize: 24, fontWeight: '800' }, memoryMeta: { color: '#f0e1ee', fontSize: 13 },
   newCard: { height: 246, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', padding: 22, gap: 14, justifyContent: 'center', alignItems: 'center' },
-  journeyWrap: { margin: 6, borderRadius: 18, overflow: 'visible' }, journeyRowCard: { minHeight: 58, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' }, journeySelectArea: { flex: 1, minWidth: 0 }, journeyFace: { minHeight: 56, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 9 }, embeddedJourneyFace: { borderWidth: 0, borderRadius: 0, paddingRight: 6 }, journeyLine: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  journeyWrap: { margin: 6, borderRadius: 18, overflow: 'visible' }, journeyRowCard: { minHeight: 60, borderWidth: 1, borderRadius: 18, flexDirection: 'row', alignItems: 'center', overflow: 'hidden' }, journeySelectArea: { flex: 1, minWidth: 0 }, journeyFace: { minHeight: 58, borderWidth: 1, borderRadius: 18, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 9 }, embeddedJourneyFace: { borderWidth: 0, borderRadius: 0, paddingRight: 6 }, journeyLines: { flex: 1, minWidth: 0, gap: 1 }, journeyLine: { minWidth: 0, fontSize: 11, lineHeight: 15, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 }, icon: { width: 21, height: 21 }, smallIcon: { width: 16, height: 16 },
   eyebrow: { fontSize: 11, fontWeight: '700', letterSpacing: 1 }, journeyTitle: { fontSize: 17, lineHeight: 23, fontWeight: '700' }, meta: { fontSize: 13, lineHeight: 19 },
   journeyCheckButton: { width: 48, minHeight: 56, alignItems: 'center', justifyContent: 'center' }, journeyCheck: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' }, journeyCheckIcon: { width: 14, height: 14 },

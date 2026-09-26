@@ -1,5 +1,5 @@
 import { listSessionMarkers, listJourneyMarkers } from './journey-marker-store';
-import { TESTFLIGHT_DATA_HEALTH_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
 import { CardDetailLink } from './card-detail-link';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -31,7 +31,8 @@ import {
   type NetworkActivityEvent,
 } from './network-activity';
 import { getCurrentUser, isIsolationTestProfile } from './auth';
-import { localDatabaseIntegrityReport, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
+import { loadConnection } from './credentials';
+import { localDatabaseIntegrityReport, localRouteBackupSummary, localStoreDiagnostics, previewLocalRetention, type LocalUser } from './local-store';
 import type { LocalRetentionPreview, RetentionCount } from './retention-preview';
 import { isInternalTestingBuild } from './internal-testing';
 import { statisticsPresentationKey, shouldAnimateStatistics } from './delight-policy';
@@ -97,7 +98,7 @@ function ScreenScaffold({ eyebrow, title, subtitle, headerImage, onRefresh, lead
       automaticallyAdjustContentInsets={false}
       refreshControl={<RefreshControl refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} tintColor={theme.color("#b889ff", 'text')} />}
     >
-      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={styles.utilityBack}><Text style={styles.utilityBackText}>‹  {leadingAction.label}</Text></Pressable>}
+      {leadingAction && <Pressable accessibilityRole="button" accessibilityLabel={leadingAction.label} onPress={leadingAction.onPress} style={({ pressed }) => [styles.utilityBack, { backgroundColor: theme.palette.card, borderColor: theme.palette.line, opacity: pressed ? 0.65 : 1 }]}><SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} /></Pressable>}
       {headerImage
         ? <>{headerPresentation === 'centered' && <Text testID="centered-page-title" style={[styles.statsPageTitle, centeredTitleStyle]}>{title}</Text>}<View style={styles.artHeader}><HeaderArtwork source={headerImage} /></View></>
         : headerPresentation === 'centered'
@@ -998,12 +999,33 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
   const [retentionPreviewState, setRetentionPreviewState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [artworkRefreshState, setArtworkRefreshState] = useState<'idle' | 'running' | 'complete' | 'warning' | 'error'>('idle');
   const [artworkRefreshDetail, setArtworkRefreshDetail] = useState('Re-check Apple Music and retry missing exact-match cover artwork on this iPhone.');
+  const [recorderDestination, setRecorderDestination] = useState<{ status: string; host: string }>({ status: 'Checking', host: 'Reading the saved address on this iPhone…' });
+  useEffect(() => {
+    if (!active) return;
+    let current = true;
+    void loadConnection().then(connection => {
+      if (!current) return;
+      if (!connection) {
+        setRecorderDestination({ status: 'Retired', host: 'This profile uses the on-device archive and private iCloud only.' });
+        return;
+      }
+      try {
+        setRecorderDestination({ status: 'Saved', host: new URL(connection.serverUrl).host });
+      } catch {
+        setRecorderDestination({ status: 'Invalid', host: 'The saved server address could not be read.' });
+      }
+    }).catch(() => {
+      if (current) setRecorderDestination({ status: 'Unavailable', host: 'The saved server address could not be read.' });
+    });
+    return () => { current = false; };
+  }, [active, currentUser.id, state.data?.loadedAt]);
   const profileDiagnostics = useMemo(() => localStoreDiagnostics(currentUser.id), [currentUser.id, state.data?.loadedAt]);
+  const routeBackups = useMemo(() => localRouteBackupSummary(currentUser.id), [currentUser.id, state.data?.loadedAt]);
   const masterIntegrity = useMemo(() => localDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const recorderIntegrity = useMemo(() => recorderDatabaseIntegrityReport(), [currentUser.id, state.data?.loadedAt]);
   const unifiedIntegrityIssueCount = masterIntegrity.foreignKeyViolationCount + masterIntegrity.ownershipViolationCount
     + masterIntegrity.invalidValueCount + recorderIntegrity.duplicateActiveOwnerCount + recorderIntegrity.invalidValueCount;
-  const queued = dashboard.recorder.queuedPoints + dashboard.recorder.queuedMusic + recorderIntegrity.pendingCompletionJobCount;
+  const pendingPrivateWork = profileDiagnostics.pendingSyncCount + recorderIntegrity.pendingLocalCompletionJobCount;
   const testProfile = isIsolationTestProfile(currentUser);
   const profileIsClean = profileDiagnostics.journeyCount === 0 && profileDiagnostics.gpsPointCount === 0
     && profileDiagnostics.musicEntryCount === 0 && profileDiagnostics.memoryCount === 0
@@ -1055,11 +1077,13 @@ export function DataHealthScreen({ active, state, dashboard, privateCloud, apple
       {updates.isUpdatePending && <Text style={styles.releasePending}>A newer update is downloaded. Restart JourneyDeck to run it.</Text>}
       <Text style={styles.releaseHelp}>Use the release label and short Update ID when reporting what you are testing.</Text>
     </View>
-    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{queued === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{queued ? `${queued} local tasks are waiting to finish or sync. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
-    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingCompletionJobCount} completion jobs waiting`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
-    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={`${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} queued`} healthy />
-    <HealthRow title="JourneyDeck connection" status={dashboard.recorder.connected ? 'Connected' : 'Offline'} detail={dashboard.recorder.connected ? `Archive refreshed ${relativeTime(state.data?.loadedAt)}` : 'Local recording and cached history still work.'} healthy={dashboard.recorder.connected} />
+    <View style={styles.healthHero}><NeonWidgetOutline radius={26} /><Text style={styles.healthHeroValue}>{pendingPrivateWork === 0 && privateCloud.status !== 'error' && masterIntegrity.ok && recorderIntegrity.ok ? 'Healthy' : 'Needs a look'}</Text><Text style={styles.itemDetail}>{pendingPrivateWork ? `${profileDiagnostics.pendingSyncCount} private iCloud records and ${recorderIntegrity.pendingLocalCompletionJobCount} local completion jobs are waiting. They remain safe on this iPhone.` : masterIntegrity.ok && recorderIntegrity.ok ? 'The unified on-device database passed structural and profile-isolation checks.' : 'The unified on-device database needs an integrity review.'}</Text></View>
+    <HealthRow title="Unified JourneyDeck database" status={masterIntegrity.ok && recorderIntegrity.ok ? 'Verified' : 'Needs review'} detail={`Schema ${masterIntegrity.schemaVersion} · ${unifiedIntegrityIssueCount} integrity issues · ${recorderIntegrity.pendingLocalCompletionJobCount} local jobs · ${recorderIntegrity.pendingRemoteCompletionJobCount} legacy server jobs`} healthy={masterIntegrity.ok && recorderIntegrity.ok} />
+    <HealthRow title="On-device recorder" status={dashboard.recorder.state === 'ready' ? 'Ready' : dashboard.recorder.state} detail={recorderDestination.status === 'Saved' ? `${dashboard.recorder.capturedPoints} GPS captured · ${dashboard.recorder.queuedPoints} points waiting for the legacy server` : `${dashboard.recorder.capturedPoints} GPS captured · completed routes use private iCloud`} healthy />
+    <HealthRow title="On-device archive" status="Ready" detail={`Archive refreshed ${relativeTime(state.data?.loadedAt)}`} healthy />
+    <HealthRow title="Legacy server migration" status={recorderDestination.status} detail={recorderDestination.host} healthy={recorderDestination.status === 'Saved' || recorderDestination.status === 'Retired'} />
     <HealthRow title="Private iCloud" status={privateCloud.status.replace('_', ' ')} detail={privateCloud.detail} healthy={privateCloud.status === 'synced' || privateCloud.status === 'idle'} />
+    <HealthRow title="iCloud route backups" status={routeBackups.pendingRoutes ? 'Waiting' : routeBackups.backedUpRoutes ? 'Up to date' : 'No routes'} detail={`${routeBackups.backedUpPoints} GPS points in ${routeBackups.backedUpRoutes} backed-up routes · ${routeBackups.pendingPoints} points in ${routeBackups.pendingRoutes} routes waiting`} healthy={routeBackups.pendingRoutes === 0} />
     <HealthRow title="Apple identity" status={appleIdentityStatus === 'authorized' ? 'Linked' : appleIdentityStatus} detail="Identity selects the local profile; iCloud sync uses the iPhone’s iCloud account." healthy={appleIdentityStatus === 'authorized'} />
     <SectionTitle title="Providers" detail="Connection freshness" />
     <ProviderHealth provider={provider} capabilities={providerCapabilities} />
@@ -1225,7 +1249,7 @@ export function MoreScreen({
 
   // Data Health is an internal diagnostic surface. Public navigation falls
   // back to Settings in the shell, and this guard prevents accidental render.
-  if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health')) return null;
+  if (!isInternalTestingBuild()) return null;
 
   const destination = requested;
   let content: ReactNode;
@@ -1319,8 +1343,7 @@ const darkStyles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#030105' },
   headerSpill: { position: 'absolute', top: 0, left: 0, right: 0, height: 430 },
   content: { paddingHorizontal: 20, paddingBottom: 150 }, artHeader: { position: 'relative', zIndex: 0, alignSelf: 'stretch', marginBottom: 22 },
-  utilityBack: { alignSelf: 'flex-start', minHeight: 38, justifyContent: 'center', paddingHorizontal: 3, marginBottom: 8 },
-  utilityBackText: { color: '#c99bff', fontSize: 14, fontWeight: '800' },
+  utilityBack: { alignSelf: 'flex-start', width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   eyebrow: { color: '#ff806a', fontSize: 10, fontWeight: '900', letterSpacing: 2.6 },
   title: { color: '#fff', fontSize: 37, lineHeight: 42, fontWeight: '900', letterSpacing: -1.3, marginTop: 7 },
   subtitle: { color: '#9c91a4', fontSize: 14, lineHeight: 21, marginTop: 7, marginBottom: 22, maxWidth: 350 },

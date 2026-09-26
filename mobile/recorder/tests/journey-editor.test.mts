@@ -70,6 +70,17 @@ function fixture() {
     snapshot: () => editor.loadJourneyEditor(state.userId, journey.id), close: () => database.close() };
 }
 
+test('Data Health route backup counts follow iCloud acknowledgement, not recorder server flags', () => {
+  const f = fixture();
+  try {
+    assert.deepEqual(clone(f.store.localRouteBackupSummary(f.state.userId)),
+      { backedUpRoutes: 1, backedUpPoints: 11, pendingRoutes: 0, pendingPoints: 0 });
+    f.database.exec('UPDATE local_journeys SET route_synced_to_cloud=0;');
+    assert.deepEqual(clone(f.store.localRouteBackupSummary(f.state.userId)),
+      { backedUpRoutes: 0, backedUpPoints: 0, pendingRoutes: 1, pendingPoints: 11 });
+  } finally { f.close(); }
+});
+
 test('trim interpolates endpoints live and commit keeps the complete original recoverable', async () => {
   const f = fixture();
   try {

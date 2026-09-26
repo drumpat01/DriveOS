@@ -1,8 +1,8 @@
 import { getMasterDatabase } from './database-owner';
 import { MASTER_DATABASE_APPLICATION_ID, MASTER_DATABASE_SCHEMA_VERSION } from './database-hardening';
 
-// These are the same fixed, parameterized statements used by the Siri reader.
-// Metro bundles this copy for OTA updates; the native bundle remains frozen until a build.
+// Legacy Expo reader retained for regression comparison with the native Ask
+// service. The app no longer imports this path for typed questions.
 const basicQueries = require('../modules/journeydeck-recorder/ios/AskResources/ask-queries.json') as Record<string, string>;
 const analysisQueries = require('../modules/journeydeck-recorder/ios/AskResources/ask-analysis-queries.json') as Record<string, string>;
 

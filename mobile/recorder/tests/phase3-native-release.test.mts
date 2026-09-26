@@ -45,7 +45,7 @@ test('Build 13 isolates Swift recording while the proven safety fallback owns au
   assert.match(swift, /native_recording_/);
   assert.match(swift, /sequence>=\?/);
   assert.match(swift, /FileProtectionType\.completeUntilFirstUserAuthentication/);
-  assert.match(storage, /archive_mirror.*apple_music_history.*private_cloud_sync.*remote_completion/s);
+  assert.match(storage, /archive_mirror.*apple_music_history.*private_cloud_sync/s);
   const configureBridge = swift.slice(swift.indexOf('AsyncFunction("configureAsync")'), swift.indexOf('AsyncFunction("getStatusAsync")'));
   assert.doesNotMatch(configureBridge, /runOnQueue/, 'Expo async bridge functions cannot use the synchronous queue modifier');
   assert.match(releaseFeatures, /NATIVE_AUTOMATIC_RECORDER_ENABLED: boolean = false/);

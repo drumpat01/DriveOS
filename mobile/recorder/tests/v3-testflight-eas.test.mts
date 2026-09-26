@@ -51,7 +51,7 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(`${config.ios.bundleIdentifier}.watchkitapp`, 'com.journeydeck.recorder.watchkitapp');
   assert.equal(config.scheme, 'journeydeck');
   assert.equal(config.name, 'JourneyDeck');
-  assert.equal(config.runtimeVersion, '3.0.0-preview.6');
+  assert.equal(config.runtimeVersion, '3.0.0-preview.7');
   assert.equal(config.updates.requestHeaders['expo-channel-name'], 'production');
   assert.equal(config.updates.url, 'https://ota.journeydeck.me/manifest');
   assert.equal(config.updates.requestHeaders['expo-app-id'], '45dbc2f7-fa8a-4761-8db8-8fac41a4c624');
@@ -66,7 +66,8 @@ function assertLiveIdentityWithV3Features(config: ReturnType<typeof configureApp
   assert.equal(config.extra.features.lastFmEnabled, true);
   assert.equal(config.extra.features.tessieEnabled, true);
   assert.equal(config.extra.features.testflightPlusUnlocked, true);
-  assert.equal(config.extra.features.testflightDataHealth, true);
+  assert.equal(config.extra.features.testflightDataHealth, undefined);
+  assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, true);
   assert.equal(config.plugins.includes('./plugins/with-ask-journeydeck'), true);
 }
 
@@ -83,7 +84,8 @@ test('schema-11 V3 cannot target older installed runtimes through the marker OTA
     assert.equal(config.extra.features.lastFmEnabled, false);
     assert.equal(config.extra.features.tessieEnabled, false);
     assert.equal(config.extra.features.testflightPlusUnlocked, false);
-    assert.equal(config.extra.features.testflightDataHealth, false);
+    assert.equal(config.extra.features.testflightDataHealth, undefined);
+    assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, false);
   });
 });
 
@@ -139,7 +141,8 @@ test('isolated v3-preview identity is unchanged and is not selected by v3-testfl
     assert.equal(config.updates.requestHeaders['xprem-branch'], 'v3-preview');
     assert.equal(config.extra.features.askJourneyDeck, true);
     assert.equal(config.extra.features.testflightPlusUnlocked, false);
-    assert.equal(config.extra.features.testflightDataHealth, false);
+    assert.equal(config.extra.features.testflightDataHealth, undefined);
+    assert.equal(config.ios.infoPlist.JourneyDeckMarkerEnabled, true);
   });
 });
 

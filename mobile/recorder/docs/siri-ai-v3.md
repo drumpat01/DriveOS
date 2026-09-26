@@ -1,13 +1,14 @@
 # Siri AI in JourneyDeck V3
 
-Implementation contract, September 18, 2026. This is the full V3 app, not a separate lab.
+Implementation contract, updated September 25, 2026 for Build 39.
 Native compilation and physical iPhone acceptance are required before release claims.
 
 ## Architecture
 
 The existing authenticated Ask service remains the sole read-only native archive reader.
-Recognized questions retain the deterministic fast path. Other questions use Apple's
-on-device Foundation Models guided generation to produce a versioned query plan.
+Siri and the in-app conversation share this service. Apple's on-device Foundation
+Models guided generation proposes a versioned query plan when available. Supported
+local rules and validated period follow-ups remain available when the model is not ready.
 The model sees the question and authorized prior query context, never archive rows,
 private labels, notes, photographs, audio, SQL, credentials, or record identifiers.
 The query executor validates the plan, calculates facts, and formats the entire answer.
@@ -23,7 +24,7 @@ is controlled by Apple and the person's settings; this is not a promise that Sir
 | Memories | created count, earliest/latest, photo counts, linked journey lookup | Creation time is distinct from the dates of included journeys |
 | Markers | saved count, photos and voice-memo counts, earliest/latest, linked journey lookup | Only visible completed-journey segments; no notes or transcript search |
 | Places | recorded arrival counts and rankings; named geocoded-place matching | Recorded endpoints, not continuous visits or inferred cities |
-| Follow-ups | reuse period, filters, or a bounded previous selection | Five-minute authenticated context, invalidated on profile/lock changes |
+| Follow-ups | reuse period, filters, or a bounded previous selection | Siri context lasts five minutes; in-app context lasts for the process. Both invalidate on profile/lock changes. |
 
 Date ranges use the device's calendar/time zone, Monday-start weeks, and exclusive
 end boundaries. Night means a journey beginning before 06:00 or at/after 18:00;
@@ -32,6 +33,10 @@ requests exceeding accessible history are refused, never silently truncated.
 No recorded evidence, unsupported filters, ambiguous questions, route intersections,
 photo recognition, note/transcript semantics, and unrecorded visits must be distinguished.
 Start, Stop and Create Marker retain their explicit App Intents; the query planner is read-only.
+All Siri features remain free without a membership gate. Say “Ask JourneyDeck”; Siri
+requests the question and speaks its answer without opening the app. Unanswerable
+questions return exactly `Beep Boop. Can not compute.` The in-app themed conversation
+keeps its bubbles in memory across sheet dismissal and backgrounding until the process ends.
 
 ## Privacy and future entity indexing
 
@@ -86,11 +91,21 @@ route-crossing/exclusion conditions, and ambiguous superlatives remain refused. 
 replay all 13 observed device proposals and inject equivalent filler noise across all
 100 phrasings, including refusal cases. Physical-device validation remains required.
 
+Revision 4 addresses a reported mismatch after Build 39: the in-app Ask chat showed
+AJR with 49 recorded plays for an all-history top-artist question while Siri said
+Olivia Rodrigo. The source of Siri's spoken answer is not yet confirmed. Standalone
+questions no longer receive an earlier Siri ticket as model context, and the common
+unqualified top-artist phrasings use a fixed local ranking plan on both surfaces.
+The model boundary also removes time ranges, artist filters, and previous-selection
+constraints that were not stated in the question. These changes are native bundle
+resources and require a build after 39; physical-device comparison is still needed.
+Invoke the JourneyDeck App Shortcut explicitly, then give Siri the same question as
+the in-app chat, to confirm Siri routes the request to JourneyDeck.
+
 Windows runs deterministic SQLite/engine, bridge, UI, privacy, and regression checks.
-GitHub Actions compiles the complete app using a standard public macOS runner, signing
-with an ad hoc profile containing the registered iPhone's UDID and correct CloudKit and
-Watch identities. No EAS cloud build. Signing credentials and profiles are secrets, never
-source or public artifacts. The device install uses HTTPS plus an installation manifest.
+Build 39 uses the authorized EAS `v3-testflight` profile with the live bundle
+`com.journeydeck.recorder`, schema 11, and runtime `3.0.0-preview.7`. The older GitHub
+ad hoc workflow is a separate preview path. Signing credentials remain outside source.
 Native code, entity/schema declarations and bundled native resources require rebuilding;
 React Native UI and supported JavaScript behavior can use compatible OTA updates.
 

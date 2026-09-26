@@ -38,7 +38,7 @@ export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'acc
     const p = themeCatalog[mode].palette, light = themeCatalog[mode].mode === 'light';
     const hi = Math.max(r, g, b), lo = Math.min(r, g, b), chroma = hi - lo;
     if (mode === 'midnight-canopy') {
-      // Test 4 keeps yellow frames separate from orange actions and red controls.
+      // Forest surfaces keep warm borders, amber actions, and russet controls separate.
       if (role === 'border') return alpha(p.line, a === 0 ? 0 : 1);
       // Reading copy stays white; saturated legacy icon/value colors keep emphasis.
       if (role === 'text') return alpha(chroma > 45 ? (r > g && g > b * 1.25 ? p.amber : p.accent) : p.text, a);

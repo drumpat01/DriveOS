@@ -1317,6 +1317,28 @@ export function routeArchivesPendingSync(userId: LocalUserId, limit = 10): Local
     ORDER BY COALESCE(j.route_updated_at,j.updated_at) DESC LIMIT ?;`, userId, Math.max(1, Math.min(25, Math.trunc(limit))));
 }
 
+/** Counts completed local routes acknowledged by private iCloud, independently of optional server uploads. */
+export function localRouteBackupSummary(userId: LocalUserId): {
+  backedUpRoutes: number; backedUpPoints: number; pendingRoutes: number; pendingPoints: number;
+} {
+  initializeLocalStore();
+  const row = db.getFirstSync<{ backedUpRoutes: number; backedUpPoints: number; pendingRoutes: number; pendingPoints: number }>(`
+    SELECT
+      COALESCE(SUM(CASE WHEN j.route_synced_to_cloud=1 THEN 1 ELSE 0 END),0) AS backedUpRoutes,
+      COALESCE(SUM(CASE WHEN j.route_synced_to_cloud=1 THEN points.point_count ELSE 0 END),0) AS backedUpPoints,
+      COALESCE(SUM(CASE WHEN j.route_synced_to_cloud=0 THEN 1 ELSE 0 END),0) AS pendingRoutes,
+      COALESCE(SUM(CASE WHEN j.route_synced_to_cloud=0 THEN points.point_count ELSE 0 END),0) AS pendingPoints
+    FROM local_journeys j
+    JOIN (SELECT journey_id,COUNT(*) AS point_count FROM local_gps_points GROUP BY journey_id) points ON points.journey_id=j.id
+    WHERE j.user_id=? AND NOT EXISTS(
+      SELECT 1 FROM local_journey_edit_members e WHERE e.user_id=j.user_id AND e.journey_id=j.id
+    );`, userId);
+  return {
+    backedUpRoutes: Number(row?.backedUpRoutes ?? 0), backedUpPoints: Number(row?.backedUpPoints ?? 0),
+    pendingRoutes: Number(row?.pendingRoutes ?? 0), pendingPoints: Number(row?.pendingPoints ?? 0),
+  };
+}
+
 export function getRouteArchive(userId: LocalUserId, journeyId: string): LocalRouteArchive | null {
   initializeLocalStore();
   return db.getFirstSync<LocalRouteArchive>(`SELECT j.id AS journeyId,j.user_id AS userId,j.route_sync_revision AS syncRevision,

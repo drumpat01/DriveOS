@@ -1,4 +1,4 @@
-// V3 registration is injected by the config plugin only in the isolated V3 app.
+// V3 registration is injected for both the preview and live TestFlight variants.
 struct CreateJourneyMarkerIntent: AppIntent {
   static let title: LocalizedStringResource = "Create a Marker"
   static let description = IntentDescription("Save this moment and its location in the journey being recorded. Add notes, photos or a voice memo later.")

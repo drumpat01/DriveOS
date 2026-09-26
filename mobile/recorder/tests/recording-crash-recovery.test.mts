@@ -65,7 +65,9 @@ for (const action of ['points', 'finish', 'import']) {
               assert.equal(h.storage.getSession(id).status, 'completed');
               assert.equal(h.database.prepare('SELECT COUNT(*) AS n FROM recording_points').get()?.n, 3);
               assert.equal(h.database.prepare('SELECT COUNT(*) AS n FROM recording_sessions').get()?.n, 1);
-              assert.equal(h.database.prepare('SELECT COUNT(*) AS n FROM recording_jobs').get()?.n, 4);
+              const jobs = h.database.prepare('SELECT kind FROM recording_jobs ORDER BY kind').all();
+              assert.deepEqual(jobs.map(row => row.kind), ['apple_music_history', 'archive_mirror', 'private_cloud_sync']);
+              assert.equal(h.storage.getSession(id).remote_completed, 1, 'native completion does not create retired server work after recovery');
             }
           } finally { h.database.close(); }
           if (!crashed) break;

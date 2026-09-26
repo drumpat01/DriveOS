@@ -33,7 +33,7 @@ function loadThemePicker(options: {
     'home-header-light-v1.png',
     'theme-rosewater-road-v1.png',
     'theme-grand-touring-home-v2.png',
-    'theme-midnight-canopy-v1.png',
+    'theme-autumn-drive-road-v1.png',
   ].map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,

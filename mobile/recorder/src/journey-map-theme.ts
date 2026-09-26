@@ -26,15 +26,15 @@ export type JourneyDeckMapPalette = {
   routeLine: string;
 };
 
-const AUTUMN_NEON_MAP = {
-  routeGlow: '#ff7600',
-  routeShadow: '#590000',
-  routeLine: '#fff200',
-  water: '#003c46',
-  waterEdge: '#00f0d0',
-  minorRoad: '#ff7600',
-  majorRoad: '#ffd000',
-  boundary: '#ff2d00',
+const AUTUMN_ROAD_MAP = {
+  routeGlow: '#e88937',
+  routeShadow: '#493025',
+  routeLine: '#f4b864',
+  water: '#263b3a',
+  waterEdge: '#789a92',
+  minorRoad: '#b78358',
+  majorRoad: '#e2ad68',
+  boundary: '#98664e',
 } as const;
 
 const cachedStyles: Partial<Record<ThemeId, JourneyDeckMapStyle>> = {};
@@ -47,9 +47,9 @@ function normalizedTheme(theme: MapTheme): ThemeId {
 export function journeyDeckMapPalette(theme: MapTheme): JourneyDeckMapPalette {
   if (normalizedTheme(theme) === 'midnight-canopy') {
     return {
-      routeGlow: AUTUMN_NEON_MAP.routeGlow,
-      routeShadow: AUTUMN_NEON_MAP.routeShadow,
-      routeLine: AUTUMN_NEON_MAP.routeLine,
+      routeGlow: AUTUMN_ROAD_MAP.routeGlow,
+      routeShadow: AUTUMN_ROAD_MAP.routeShadow,
+      routeLine: AUTUMN_ROAD_MAP.routeLine,
     };
   }
   if (normalizedTheme(theme) === 'redline') return {
@@ -70,14 +70,14 @@ function themedPaint(layer: MapStyleLayer, theme: MapTheme) {
     const water = /water|ocean|river|lake/.test(name);
     const park = /park|grass|wood|forest|landcover|landuse/.test(name);
     if (layer.type === 'background') return { ...paint, 'background-color': palette.page, 'background-opacity': 1 };
-    if (layer.type === 'fill') return { ...paint, 'fill-color': water ? AUTUMN_NEON_MAP.water : park ? palette.card : palette.page,
-      'fill-outline-color': water ? AUTUMN_NEON_MAP.waterEdge : '#52a83d', 'fill-opacity': 0.96 };
-    if (layer.type === 'fill-extrusion') return { ...paint, 'fill-extrusion-color': '#365c30', 'fill-extrusion-opacity': 0.82 };
+    if (layer.type === 'fill') return { ...paint, 'fill-color': water ? AUTUMN_ROAD_MAP.water : park ? palette.card : palette.page,
+      'fill-outline-color': water ? AUTUMN_ROAD_MAP.waterEdge : '#62734d', 'fill-opacity': 0.96 };
+    if (layer.type === 'fill-extrusion') return { ...paint, 'fill-extrusion-color': '#364333', 'fill-extrusion-opacity': 0.82 };
     if (layer.type === 'line') {
       const road = /road|street|motorway|trunk|primary|highway|secondary|tertiary|transportation/.test(name);
       const major = /motorway|trunk|primary|highway/.test(name);
       const boundary = /boundary|admin/.test(name);
-      return { ...paint, 'line-color': water ? AUTUMN_NEON_MAP.waterEdge : road ? (major ? AUTUMN_NEON_MAP.majorRoad : AUTUMN_NEON_MAP.minorRoad) : boundary ? AUTUMN_NEON_MAP.boundary : '#52a83d',
+      return { ...paint, 'line-color': water ? AUTUMN_ROAD_MAP.waterEdge : road ? (major ? AUTUMN_ROAD_MAP.majorRoad : AUTUMN_ROAD_MAP.minorRoad) : boundary ? AUTUMN_ROAD_MAP.boundary : '#62734d',
         'line-opacity': road ? (major ? 1 : 0.84) : boundary ? 0.8 : 0.68 };
     }
     if (layer.type === 'symbol') return { ...paint, 'text-color': palette.text, 'text-halo-color': palette.page, 'text-halo-width': 1.35, 'icon-opacity': 0.8 };

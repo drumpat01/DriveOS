@@ -113,7 +113,8 @@ export function initializeDatabase() {
     SELECT id || ':remote_completion',owner_user_id,id,'remote_completion','pending',0,
       COALESCE(ended_at,updated_at),NULL,NULL,COALESCE(ended_at,updated_at),updated_at,NULL
     FROM recording_sessions
-    WHERE status='completed' AND ended_at IS NOT NULL AND remote_completed=0;
+    WHERE status='completed' AND ended_at IS NOT NULL AND remote_completed=0
+      AND id NOT GLOB 'native_recording_*';
   `);
   const quickCheck = db.getFirstSync<Record<string, unknown>>('PRAGMA quick_check(1);');
   if (String(Object.values(quickCheck ?? {})[0] ?? '').toLowerCase() !== 'ok') {
@@ -220,9 +221,12 @@ export function importNativeRecorderInbox(snapshot: NativeRecorderInboxExport): 
       if (session.status === 'completed' && session.endedAt && routeIsComplete) {
         const now = new Date().toISOString();
         db.runSync(`UPDATE recording_sessions
-          SET status='completed',ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
+          SET status='completed',remote_completed=1,ended_at=?,next_sequence=?,updated_at=MAX(updated_at,?)
           WHERE id=?;`, session.endedAt, session.nextSequence, session.updatedAt, session.id);
-        for (const kind of ['archive_mirror', 'apple_music_history', 'private_cloud_sync', 'remote_completion'] as CompletionJobKind[]) {
+        // Native V3 journeys are local-first and back up through private iCloud.
+        // Server completion is retained only for profiles that already had the
+        // legacy connection when a journey was finished by the JS recorder.
+        for (const kind of ['archive_mirror', 'apple_music_history', 'private_cloud_sync'] as CompletionJobKind[]) {
           enqueueCompletionJobInTransaction(session.id, ownerUserId, kind, now);
         }
         completed.push(session.id);
@@ -688,6 +692,8 @@ export type RecorderDatabaseIntegrityReport = {
   duplicateActiveOwnerCount: number;
   invalidValueCount: number;
   pendingCompletionJobCount: number;
+  pendingLocalCompletionJobCount: number;
+  pendingRemoteCompletionJobCount: number;
   expiredCompletionLeaseCount: number;
   ok: boolean;
 };
@@ -717,6 +723,9 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
     AS n;`)?.n ?? 0);
   const pendingCompletionJobCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
     FROM recording_jobs WHERE owner_user_id=? AND status<>'completed';`, getCurrentUser().id)?.n ?? 0);
+  const pendingRemoteCompletionJobCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
+    FROM recording_jobs WHERE owner_user_id=? AND status<>'completed' AND kind='remote_completion';`, getCurrentUser().id)?.n ?? 0);
+  const pendingLocalCompletionJobCount = pendingCompletionJobCount - pendingRemoteCompletionJobCount;
   const expiredCompletionLeaseCount = Number(db.getFirstSync<{ n: number }>(`SELECT COUNT(*) AS n
     FROM recording_jobs WHERE owner_user_id=? AND status='running' AND lease_expires_at<=?;`,
   getCurrentUser().id, new Date().toISOString())?.n ?? 0);
@@ -731,6 +740,8 @@ export function recorderDatabaseIntegrityReport(): RecorderDatabaseIntegrityRepo
     duplicateActiveOwnerCount,
     invalidValueCount,
     pendingCompletionJobCount,
+    pendingLocalCompletionJobCount,
+    pendingRemoteCompletionJobCount,
     expiredCompletionLeaseCount,
     ok,
   };

@@ -15,7 +15,7 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_DATA_HEALTH_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -98,7 +98,14 @@ import { observeJourneyDeckEvent } from './observability';
 import { JourneyMarkerRoute } from './journey-markers';
 import { journeyDeckMapPalette } from './journey-map-theme';
 import { buildSongRouteMoments } from './route-moments';
-import { isPrivateICloudNativeAvailable, syncCurrentUserWithPrivateICloud } from './icloud-sync';
+import {
+  classifyPrivateICloudSyncError,
+  getPrivateICloudSyncBackoff,
+  getPrivateICloudSyncFailureRecord,
+  isPrivateICloudNativeAvailable,
+  PrivateICloudSyncDeferredError,
+  syncCurrentUserWithPrivateICloud,
+} from './icloud-sync';
 import { favoriteRoutes, filterJourneyLibrary, type JourneyLibraryFilter, type JourneyLibrarySort } from './library-model';
 import { PrimaryMobilityMap } from './primary-mobility-map';
 import { buildHomeSummary } from './home-summary';
@@ -132,7 +139,7 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
     case 'instructions': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
   }
 }
-import { V3_FIFTY_STATES_ENABLED, V3_MARKERS_PROTOTYPE_ENABLED } from './release-features';
+import { V3_FIFTY_STATES_ENABLED } from './release-features';
 import {
   AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
@@ -513,6 +520,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       setPrivateCloud({ status: 'unavailable', detail: 'Available after installing JourneyDeck 1.9.' });
       return;
     }
+    // Automatic triggers wait out a failure backoff silently; the Sync button
+    // (announce) always retries now.
+    if (!announce && getPrivateICloudSyncBackoff()) return;
     setPrivateCloud({ status: 'syncing', detail: 'Checking iCloud zone…' });
     try {
       const result = await syncCurrentUserWithPrivateICloud({ force: announce });
@@ -528,12 +538,31 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       const summary = `${result.uploaded} uploaded · ${result.downloaded} downloaded${result.failedUploads ? ` · ${result.failedUploads} need${result.failedUploads === 1 ? 's' : ''} attention` : ''}${pending ? ` · ${pending} ${pending === 1 ? 'item' : 'items'} still waiting to upload.${result.failedUploads ? '' : ' Tap Sync again to continue.'}` : ''}${awaitingNative ? ` · ${awaitingNative} private items waiting for the next native build` : ''}`;
       const detail = [summary, ...(result.issueDetails ?? [])].join('\n\n');
       setPrivateCloud({ status: result.failedUploads ? 'error' : awaitingNative || pending ? 'idle' : 'synced', detail });
-      if (result.failedUploads) observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'partial_upload', failed_count: result.failedUploads });
+      if (result.failedUploads && !result.reused) {
+        const failure = getPrivateICloudSyncFailureRecord();
+        observeJourneyDeckEvent('cloudkit.sync_failed', {
+          stage: 'partial_upload', error_category: 'partial_upload', failed_count: result.failedUploads,
+          consecutive_failures: failure?.consecutiveFailures ?? 1,
+        });
+      }
       if (announce) Alert.alert(result.failedUploads ? 'Private iCloud needs attention' : pending || awaitingNative ? 'Private iCloud sync is incomplete' : 'Private iCloud sync finished', detail);
-      // Refresh the shared library snapshot so restored data reaches Home/Music.
-      await refreshPrimarySections(false);
+      // Refresh the shared library snapshot only when this sync restored or
+      // removed records. A full reload walks the whole archive.
+      if (!result.reused && (result.downloaded > 0 || result.deletedRecordNames.length > 0)) await refreshPrimarySections(false);
     } catch (error) {
-      observeJourneyDeckEvent('cloudkit.sync_failed', { stage: 'sync_exception' });
+      if (error instanceof PrivateICloudSyncDeferredError) {
+        // Lost a race with a failure recorded after the pre-check. No CloudKit work ran.
+        setPrivateCloud({ status: 'error', detail: `${error.message}\n\nEverything remains saved on this ${isIpad() ? 'iPad' : 'iPhone'}.` });
+        return;
+      }
+      const failure = getPrivateICloudSyncFailureRecord();
+      observeJourneyDeckEvent('cloudkit.sync_failed', {
+        stage: 'sync_exception',
+        error_category: classifyPrivateICloudSyncError(error),
+        consecutive_failures: failure?.consecutiveFailures ?? 1,
+        retry_in_seconds: failure ? Math.max(0, Math.round((failure.nextAttemptAt - Date.now()) / 1000)) : 0,
+        user_initiated: announce,
+      });
       const reason = error instanceof Error && error.message.trim()
         ? error.message.trim()
         : 'CloudKit did not return an error description.';
@@ -842,7 +871,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   };
 
   const openMore = (destination: MoreDestination) => {
-    if (!isInternalTestingBuild() && !(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health')) return;
+    if (!isInternalTestingBuild()) return;
     setMoreDestination(destination);
     router.navigate('/tools');
     void haptics.selection();
@@ -951,7 +980,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     },
     memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
-    tools: isInternalTestingBuild() || TESTFLIGHT_DATA_HEALTH_ENABLED ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
+    tools: isInternalTestingBuild() ? <MoreScreen active={utilityVisible} requested={moreDestination} onRequestedChange={setMoreDestination} onClose={() => router.back()} state={primarySections} dashboard={dashboard.data} privateCloud={privateCloud} appleIdentityStatus={appleIdentityStatus} providerCapabilities={connectionCapabilities} currentUser={currentUser} profiles={listLocalUsers()} onCreateProfileTest={createProfileIsolationTest} onSwitchProfile={switchProfileForTest} onRefresh={() => refreshPrimarySections(true)} onCloudSync={() => void syncPrivateCloud(true)} /> : settingsPage(),
     membership,
     refreshArchive: () => refreshPrimarySections(false),
     showUpgrade: () => setMembershipPaywallVisible(true),
@@ -2431,7 +2460,7 @@ function MemoryDetailScreen({
           scrollEventThrottle={16}
         >
           <View testID="memory-detail-duo-layout" style={foldColumns ? { flexDirection: 'row', gap: foldColumns.gap, alignItems: 'flex-start' } : undefined}>
-            <View testID="memory-detail-story-pane" style={foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
+            <View testID="memory-detail-story-pane" style={[styles.memoryDetailStoryPane, foldColumns ? { width: foldColumns.beforeWidth, flexGrow: 0, flexShrink: 0 } : undefined]}>
               <Animated.View style={[styles.memoryDetailHero, photographicDepth]}>
                 <View style={StyleSheet.absoluteFill}>{cover ? <JourneyPhotoImage photo={cover} style={styles.memoryDetailHeroImage} onReady={onReady} /> : <MemoryArtwork artworkKey={memory.artworkKey} onReady={onReady} />}</View>
                 <LinearGradient colors={theme.gradient(['rgba(5,3,9,0.04)', 'rgba(8,5,13,0.33)', '#09060de8'] as const)} locations={[0, 0.42, 1]} style={StyleSheet.absoluteFill} />
@@ -2447,9 +2476,9 @@ function MemoryDetailScreen({
                 <Text style={styles.memoryPhotoMatchChevron}>›</Text>
               </Pressable>
             </View>
-            <View testID="memory-detail-journeys-pane" style={foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined}>
+            <View testID="memory-detail-journeys-pane" style={[styles.memoryDetailJourneysPane, foldColumns ? { width: foldColumns.afterWidth, flexGrow: 0, flexShrink: 0 } : undefined]}>
               <Reanimated.Text style={styles.memoryDetailSection}>JOURNEYS IN THIS MEMORY</Reanimated.Text>
-              <View style={styles.memoryJourneyList}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
+              <View style={[styles.memoryJourneyList, styles.memoryDetailJourneyList]}>{journeys.map((journey) => <Reanimated.View key={journey.id} ><JourneyCard journey={journey} compact onPress={() => onOpenJourney(journey.id)} /></Reanimated.View>)}</View>
               {!journeys.length && <EmptyCard title="This Memory is waiting for a journey" body="Edit it and choose one or more journeys to keep together." />}
             </View>
           </View>
@@ -2790,15 +2819,15 @@ type SettingsDestination =
   | { kind: 'saved-place'; slot: SavedPlaceSlot }
   | { kind: 'custom-place'; placeId?: string };
 
-function SettingsEditorScaffold({ eyebrow, title, onBack, backLabel = 'Settings', backDisabled = false, primaryAction, children }: {
+function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
   eyebrow: string;
   title: string;
   onBack: () => void;
-  backLabel?: string;
   backDisabled?: boolean;
   primaryAction?: { label: string; onPress: () => void; disabled?: boolean };
   children: ReactNode;
 }) {
+  const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
   const insets = useSafeAreaInsets();
@@ -2821,8 +2850,8 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backLabel = 'Settings'
       >
         <AtmosphericBackdrop variant="settings" />
         <View style={styles.settingsEditorNavigation}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Back to ${backLabel}`} accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={[styles.settingsEditorBack, backDisabled && styles.pressed]}>
-            <Text style={styles.settingsEditorBackText}>‹  {backLabel}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={({ pressed }) => [styles.settingsEditorBack, { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, (pressed || backDisabled) && styles.pressed]}>
+            <SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} />
           </Pressable>
           {primaryAction && <Pressable accessibilityRole="button" accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled} onPress={primaryAction.onPress} style={[styles.settingsEditorHeaderAction, primaryAction.disabled && styles.pressed]}><Text style={styles.settingsEditorHeaderActionText}>{primaryAction.label}</Text></Pressable>}
         </View>
@@ -3145,7 +3174,7 @@ function ConnectionsScreen({
   }
   if (destination.kind === 'appearance-picker') {
     const choosingTheme = destination.picker === 'theme';
-    return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} backLabel="Appearance" onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
+    return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
       <View style={styles.settingsCategoryStack}>
         {choosingTheme
           ? <ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} />
@@ -3168,11 +3197,10 @@ function ConnectionsScreen({
     onAppleSignIn={onAppleSignIn} onSignOut={onSignOut} onDeleteAccount={onDeleteAccount} onSync={onPrivateCloudSync}
     onMembership={onMembership} onChangeProvider={onChangeProvider} onPlace={slot => setDestination({ kind: 'saved-place', slot })}
     onCustomPlace={placeId => setDestination({ kind: 'custom-place', placeId })}
-    internalDiagnostics={internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED}
+    internalDiagnostics={internalTesting}
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
     tessieContent={tessieContent}
-    onMarkersPrototype={V3_MARKERS_PROTOTYPE_ENABLED ? () => router.push('/time-capsule-prototype') : undefined}
   />;
 
   const profileCard = <>
@@ -3235,7 +3263,7 @@ function ConnectionsScreen({
   </View>;
   const supportCard = <>
     <SectionHeading title="Support" />
-    {(internalTesting || TESTFLIGHT_DATA_HEALTH_ENABLED) && <>
+    {internalTesting && <>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: advancedSupportVisible }} onPress={() => setAdvancedSupportVisible(value => !value)} style={({ pressed }) => [styles.settingsDataHealth, pressed && styles.pressed]}>
         <View style={styles.settingsDataHealthIcon}><SymbolView name="wrench.and.screwdriver.fill" tintColor={theme.color('#b88cff', 'text')} size={21} /></View>
         <View style={styles.flex}><Text style={styles.settingsDataHealthKicker}>{internalTesting ? 'INTERNAL TESTING' : 'TESTFLIGHT DIAGNOSTICS'}</Text><Text style={styles.settingsDataHealthTitle}>Advanced Support</Text><Text style={styles.settingsDataHealthBody}>{internalTesting ? 'Diagnostics and test controls for internal builds.' : 'Check app data and connected services.'}</Text></View>
@@ -3307,8 +3335,7 @@ function ConnectionsScreen({
     <View style={styles.settingsHubSection}>
       <Text style={styles.settingsSectionLabel}>YOUR JOURNEY</Text>
       <View style={styles.settingsHubList}>
-        {V3_MARKERS_PROTOTYPE_ENABLED && <TouchPressable testID="markers-prototype-entry" accessibilityRole="button" accessibilityLabel="Open saved journey markers" onPress={() => router.push('/time-capsule-prototype')} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}><View style={styles.settingsHubIcon}><SymbolView name="hourglass" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Markers</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>Notes and photos from your drives</Text></View><Text style={styles.settingsHubChevron}>›</Text></TouchPressable>}
-        {renderCategoryRow('achievements', V3_MARKERS_PROTOTYPE_ENABLED)}
+        {renderCategoryRow('achievements', false)}
         {renderCategoryRow('places', true)}
       </View>
     </View>
@@ -3879,6 +3906,7 @@ const darkStyles = StyleSheet.create({
   memoryCollectionCard: { marginHorizontal: 20, minHeight: 98, borderRadius: 20, borderWidth: 1, borderColor: '#2e2738', backgroundColor: '#111018', padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12 }, collectionArtwork: { width: 68, height: 68, borderRadius: 16, overflow: 'hidden' }, collectionKicker: { color: '#89779c', fontSize: 8, fontWeight: '900', letterSpacing: 1.2 }, collectionTitle: { color: '#f5eff9', fontSize: 15, fontWeight: '900', marginTop: 5 }, collectionMeta: { color: '#8b8293', fontSize: 10, lineHeight: 14, marginTop: 4 }, collectionManage: { borderRadius: 999, backgroundColor: '#251934', paddingHorizontal: 9, paddingVertical: 7 }, collectionManageText: { color: '#bc96ff', fontSize: 8, fontWeight: '900' }, managingPill: { color: '#66efc2', fontSize: 8, fontWeight: '900', letterSpacing: 1, borderWidth: 1, borderColor: '#295f4e', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 6 }, journeyManageHelp: { marginHorizontal: 20, color: '#948a9e', fontSize: 11, lineHeight: 17 }, memoryJourneyList: { marginHorizontal: 20, gap: 8 }, journeyMembershipButton: { minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: '#5d4380', backgroundColor: '#1b1327', alignItems: 'center', justifyContent: 'center' }, journeyMembershipRemove: { borderColor: '#704037', backgroundColor: '#29130f' }, journeyMembershipText: { color: '#c3a5ff', fontSize: 10, fontWeight: '900' }, journeyMembershipRemoveText: { color: '#ff9c80' },
   memoryRoadThreadAligned: { position: 'absolute', zIndex: 0, left: 0, top: 0, width: 32 },
   memoryDetailChaptersAligned: { gap: 18, paddingLeft: 44 },
+  memoryDetailStoryPane: { gap: 18 }, memoryDetailJourneysPane: { gap: 12, marginTop: 8 }, memoryDetailJourneyList: { marginHorizontal: 0, gap: 12 },
   memoryDetailRoadPinAligned: { position: 'absolute', zIndex: 4, left: -40, top: 40, shadowColor: '#ff7357', shadowOpacity: 0.9, shadowRadius: 10 },
   memoryDetailRoot: { flex: 1, backgroundColor: 'rgba(3, 2, 6, 0.54)' }, memoryDetailBackdrop: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }, memoryDetailSheet: { flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#6a3f71', borderTopLeftRadius: 30, borderTopRightRadius: 30, shadowColor: '#000', shadowOpacity: 0.58, shadowRadius: 28, shadowOffset: { width: 0, height: -10 } }, memoryDetailSweep: { position: 'absolute', top: -120, bottom: -120, width: 155, transform: [{ rotate: '12deg' }] }, memoryDetailSweepGradient: { flex: 1 }, memoryDetailHeader: { position: 'relative', zIndex: 4, height: 42, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryDetailClose: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: '#7d617d', backgroundColor: '#180e1dd1', alignItems: 'center', justifyContent: 'center' }, memoryDetailCloseText: { color: '#f6eff8', fontSize: 30, lineHeight: 31, marginTop: -3, fontWeight: '300' }, memoryDetailHeaderActions: { flexDirection: 'row', gap: 8 }, memoryDetailHeaderAction: { minHeight: 30, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: '#6d4c79', backgroundColor: '#1c1025d9', alignItems: 'center', justifyContent: 'center' }, memoryDetailHeaderActionText: { color: '#ecd7ff', fontSize: 10, fontWeight: '900' }, memoryDetailContent: { position: 'relative', paddingHorizontal: 20, paddingTop: 9, paddingBottom: 38, gap: 12 }, memoryDetailHero: { height: 278, borderRadius: 28, overflow: 'hidden', borderWidth: 1, borderColor: '#83536f', backgroundColor: '#21142b', justifyContent: 'flex-end', shadowColor: '#ff765c', shadowOpacity: 0.25, shadowRadius: 25, shadowOffset: { width: 0, height: 12 } }, memoryDetailHeroImage: { width: '100%', height: '100%' }, memoryDetailHeroGlowOne: { position: 'absolute', width: 190, height: 190, borderRadius: 95, backgroundColor: '#ff765c', opacity: 0.17, right: -65, top: -82, shadowColor: '#ff765c', shadowOpacity: 0.8, shadowRadius: 28 }, memoryDetailHeroGlowTwo: { position: 'absolute', width: 155, height: 155, borderRadius: 78, backgroundColor: '#9d75ff', opacity: 0.16, left: -58, bottom: -80 }, memoryDetailHeroContent: { padding: 20, paddingTop: 64 }, memoryDetailKicker: { color: '#ffad8b', fontSize: 9, fontWeight: '900', letterSpacing: 2.1 }, memoryDetailTitle: { color: '#fff9ff', fontSize: 31, lineHeight: 35, fontWeight: '900', letterSpacing: -1, marginTop: 5 }, memoryDetailMeta: { color: '#ddd0df', fontSize: 12, fontWeight: '700', marginTop: 7 }, memoryStory: { gap: 7, paddingTop: 2 }, memoryDetailNotes: { color: '#d0c4d4', fontSize: 14, lineHeight: 21 }, memoryDetailSection: { color: '#ff987c', fontSize: 10, fontWeight: '900', letterSpacing: 2.1, marginTop: 8 }, memoryPhotoHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, memoryPhotoHeaderAction: { minHeight: 40, paddingHorizontal: 10, justifyContent: 'center' }, memoryPhotoHeaderActionText: { color: '#c6a7ff', fontSize: 12, fontWeight: '800' }, memoryPhotoStrip: { gap: 10, paddingVertical: 2 }, memoryPhotoThumb: { width: 84, height: 84, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#49364f' }, memoryPhotoThumbCover: { borderWidth: 2, borderColor: '#ff987c' }, memoryPhotoThumbImage: { width: '100%', height: '100%' }, memoryPhotoMatchRow: { minHeight: 64, borderRadius: 18, borderWidth: 1, borderColor: '#3a3044', backgroundColor: '#120d19', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14 }, memoryPhotoMatchIcon: { width: 23, height: 23 }, memoryPhotoMatchTitle: { color: '#f4edf7', fontSize: 14, fontWeight: '800' }, memoryPhotoMatchBody: { color: '#938797', fontSize: 11, marginTop: 3 }, memoryPhotoMatchChevron: { color: '#c6a7ff', fontSize: 24 }, memoryDetailAtlas: { position: 'relative' }, memoryRoadThread: { position: 'absolute', zIndex: 0, left: -3, top: -22, width: 82 }, memoryDetailChapters: { gap: 18, paddingLeft: 43 }, memoryChapterWrap: { position: 'relative' }, memoryDetailRoadNode: { position: 'absolute', zIndex: 4, width: 18, height: 18, borderRadius: 9, left: -51, top: 50, backgroundColor: '#ffb18f', borderWidth: 4, borderColor: '#321832', shadowColor: '#ff7357', shadowOpacity: 1, shadowRadius: 12 }, memoryChapterCard: { borderWidth: 1, borderColor: '#684558', borderRadius: 23, backgroundColor: '#16101b', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 16, shadowOffset: { width: 0, height: 8 } }, memoryChapterHeader: { minHeight: 112, padding: 13, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1221' }, memoryChapterArtwork: { width: 92, height: 82, borderRadius: 17, overflow: 'hidden', borderWidth: 1, borderColor: '#a16d75' }, memoryChapterKicker: { color: '#c6a1d0', fontSize: 7, fontWeight: '900', letterSpacing: 1.2 }, memoryChapterTitle: { color: '#fff8ff', fontSize: 18, lineHeight: 21, fontWeight: '900', marginTop: 4 }, memoryChapterMeta: { color: '#b4a5b7', fontSize: 9, marginTop: 6, lineHeight: 13 }, memoryChapterOpen: { width: 35, height: 35, borderRadius: 18, backgroundColor: '#361d2e', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#633849' }, memoryChapterOpenText: { color: '#ff9a78', fontSize: 19, fontWeight: '900' }, memoryChapterJourneys: { padding: 10, gap: 8, backgroundColor: '#100c14' }, memoryChapterJourney: { minHeight: 67, borderRadius: 14, backgroundColor: '#1b1520', overflow: 'hidden', flexDirection: 'row', alignItems: 'center', gap: 10, paddingRight: 9, borderWidth: 1, borderColor: '#322638' }, memoryChapterJourneyVisual: { width: 74, alignSelf: 'stretch', overflow: 'hidden', backgroundColor: '#2a1930' }, memoryChapterJourneyImage: { width: '100%', height: '100%' }, memoryChapterJourneyIndex: { position: 'absolute', left: 7, top: 7, zIndex: 2, width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#ff9b7c', shadowColor: '#ff795b', shadowOpacity: 0.7, shadowRadius: 5 }, memoryChapterJourneyIndexText: { color: '#240d0b', fontSize: 9, fontWeight: '900' }, memoryChapterJourneyRoute: { color: '#f5edf5', fontSize: 11, fontWeight: '900' }, memoryChapterJourneyMeta: { color: '#a197a5', fontSize: 8, marginTop: 4 }, memoryChapterEmpty: { color: '#8e8293', fontSize: 10, lineHeight: 16, padding: 12, backgroundColor: '#100c14' }, memoryChapterMore: { minHeight: 38, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#4a3047', backgroundColor: '#171019' }, memoryChapterMoreText: { color: '#d0adff', fontSize: 9, fontWeight: '900' }, memoryChapterMoreArrow: { color: '#ff9c7d', fontSize: 18, lineHeight: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }, brandCompact: { marginBottom: 14 }, brandWordmark: { color: '#f8f4ff', fontSize: 16, fontWeight: '900', letterSpacing: -0.25 }, wordmarkJourney: { color: '#f7f2fc' }, wordmarkDeck: { color: '#ff7b5c' }, brandTitle: { color: '#f8f4ff', fontSize: 20, fontWeight: '800', marginTop: 2 },
@@ -4043,8 +4071,7 @@ const darkStyles = StyleSheet.create({
   settingsEditorScreen: { flex: 1, backgroundColor: '#08070d' },
   settingsEditorContent: { minHeight: '100%', paddingHorizontal: 20 },
   settingsEditorNavigation: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  settingsEditorBack: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 2 },
-  settingsEditorBackText: { color: '#d0a6ff', fontSize: 15, fontWeight: '900' },
+  settingsEditorBack: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   settingsEditorHeaderAction: { minWidth: 68, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,121,91,0.5)', backgroundColor: 'rgba(255,96,91,0.14)', paddingHorizontal: 14 },
   settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
   settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginTop: 10 },

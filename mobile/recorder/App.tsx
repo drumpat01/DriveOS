@@ -7,7 +7,7 @@ import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
-  ScrollView, StyleSheet, Text, TextInput, View,
+  ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -25,8 +25,8 @@ import Reanimated, {
 import './src/location-task';
 import { NeonWidget, NeonWidgetOutline, QuietInset } from './src/neon-widget-outline';
 import { HeaderArtwork } from './src/header-artwork';
-import { loadConnection, loadOrCreateDeviceId, saveConnection, type Connection } from './src/credentials';
-import { flushAllQueuedMusicBestEffort, flushRecording, pingRecorder } from './src/api';
+import { loadConnection, loadOrCreateDeviceId, type Connection } from './src/credentials';
+import { flushAllQueuedMusicBestEffort, flushRecording } from './src/api';
 import {
   activeSession, beginLocalSession, completeSessionLocally, getSessionSummary, initializeDatabase,
   getLiveRecorderSnapshot, recordLocations, setLocalStatus, type LiveRecorderSnapshot, type LocalSessionStatus, type QueuedPoint, type SessionSummary,
@@ -79,7 +79,6 @@ import {
 
 configureJourneyDeckObservability();
 
-const DEFAULT_SERVER_URL = 'https://journeydeck.me';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
 
 function enrichCompletedJourney(connection: Connection | null, sessionId: string) {
@@ -158,8 +157,6 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const insets = useSafeAreaInsets();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [deviceId, setDeviceId] = useState<string | null>(null);
-  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
-  const [token, setToken] = useState('');
   const [summary, setSummary] = useState<SessionSummary | null>(null);
   const [distanceMiles, setDistanceMiles] = useState(0);
   const [foregroundPermission, setForegroundPermission] = useState(false);
@@ -464,7 +461,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
         const [localDeviceId, saved] = await Promise.all([loadOrCreateDeviceId(), loadConnection()]);
         if (cancelled) return;
         setDeviceId(localDeviceId);
-        if (saved) { setConnection(saved); setServerUrl(saved.serverUrl); }
+        if (saved) setConnection(saved);
         loaded = true;
       } catch {
         if (!cancelled) setNotice('Device setup could not finish. Unlock your device, then return to JourneyDeck to retry. Your saved journeys remain on this device.');
@@ -535,15 +532,6 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     catch (error) { const message = messageOf(error); setNotice(message); Alert.alert('JourneyDeck Recorder', message); }
     finally { await refresh().catch(() => {}); busyRef.current = false; setBusy(false); onJourneyChange?.(); }
   }, [onJourneyChange, refresh, runExclusive]);
-
-  const connect = () => withBusy(async () => {
-    const candidate = { serverUrl: serverUrl.trim().replace(/\/+$/, ''), token: token.trim() };
-    if (!candidate.serverUrl.startsWith('https://')) throw new Error('Use the secure https:// JourneyDeck address.');
-    if (candidate.token.length < 32) throw new Error('The recorder key must be at least 32 characters.');
-    await pingRecorder(candidate);
-    const saved = await saveConnection(candidate);
-    setConnection(saved); setToken(''); setNotice('Connected securely to JourneyDeck.');
-  }, 'Connecting securely…');
 
   const enablePermissions = () => withBusy(async () => {
     if (!(await requestJourneyLocationAccess())) return;
@@ -811,21 +799,10 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
               {!connection && summary?.status === 'finishing' && <PrimaryButton label="Finish & save" onPress={() => void finishSession(summary)} disabled={busy} />}
             </>
           )}
-          {!connection && deviceId ? (
-            <NeonWidget radius={22} style={styles.card}>
-              <Text style={styles.cardTitle}>Optional owner backup</Text>
-              <Text style={styles.body}>Recording works entirely on this iPhone. Existing JourneyDeck owners can connect a legacy server only to migrate or back up old data.</Text>
-              <Text style={styles.label}>JOURNEYDECK ADDRESS</Text>
-              <TextInput value={serverUrl} onChangeText={setServerUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" style={styles.input} />
-              <Text style={styles.label}>RECORDER KEY</Text>
-              <TextInput value={token} onChangeText={setToken} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Paste your private key" placeholderTextColor={theme.color("#655f74", 'text')} style={styles.input} />
-              <SecondaryButton label="Connect owner backup" onPress={connect} disabled={busy} />
-            </NeonWidget>
-          ) : null}
           {syncStage !== 'idle' ? <SyncStatus stage={syncStage} /> : busy ? <View style={styles.progressRow}><ActivityIndicator color={theme.color("#9b7cff", 'text')} /><Text style={styles.progressText}>{busyLabel}</Text></View> : null}
           {!!notice && <Text style={styles.notice}>{notice}</Text>}
           <View style={styles.warning}><Text style={styles.warningTitle}>{automaticMode ? 'AUTOMATIC DETECTION' : 'KEEP THE RECORDER RUNNING'}</Text><Text style={styles.warningText}>{automaticMode ? 'JourneyDeck looks for sustained driving speed and waits five parked minutes before finishing. Force-quitting the app stops automatic detection until you reopen it.' : 'Locking your iPhone is fine. Force-quitting the app from the app switcher stops iOS background location until you reopen it.'}</Text></View>
-          <Text style={styles.footer}>Private on-device recorder • {connection ? 'Owner backup connected' : 'No server required'}</Text>
+          <Text style={styles.footer}>Private on-device recorder • Private iCloud backup</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

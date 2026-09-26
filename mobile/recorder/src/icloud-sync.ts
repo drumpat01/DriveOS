@@ -17,7 +17,19 @@ import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
 import { rebuildAtlasSnapshot } from './local-atlas';
 import { beginNetworkActivity } from './network-activity';
 import { privateCloudProfileScope } from './private-cloud-profile';
+import {
+  classifyPrivateICloudSyncError,
+  nextPrivateICloudSyncBackoff,
+  PrivateICloudSyncDeferredError,
+  type PrivateICloudSyncBackoff,
+} from './private-icloud-sync-policy';
 export { privateCloudProfileScope } from './private-cloud-profile';
+export {
+  classifyPrivateICloudSyncError,
+  PrivateICloudSyncDeferredError,
+  type PrivateICloudSyncBackoff,
+  type PrivateICloudSyncErrorCategory,
+} from './private-icloud-sync-policy';
 
 export type PrivateICloudSyncResult = {
   available: boolean;
@@ -30,15 +42,33 @@ export type PrivateICloudSyncResult = {
   deletedRecordNames: string[];
   privateContentVersion: number;
   state: SyncState;
+  /** True when a recent completed sync was returned without contacting CloudKit. */
+  reused?: boolean;
 };
 
 let activeSync: { profileKey: string; userId: string; promise: Promise<PrivateICloudSyncResult> } | null = null;
 const activeDeletions = new Map<string, Promise<void>>();
 const recentSyncs = new Map<string, { completedAt: number; result: PrivateICloudSyncResult }>();
+// Failed or partial syncs are never cached as recent. Without this schedule every
+// automatic trigger (resume, membership refresh) re-ran the full sync.
+const failureBackoffs = new Map<string, PrivateICloudSyncBackoff>();
 const AUTOMATIC_SYNC_COOLDOWN_MS = 15 * 60_000;
 
 export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
+}
+
+/** Active failure backoff for the current profile, or null when an automatic sync may run now. */
+export function getPrivateICloudSyncBackoff(now = Date.now()): PrivateICloudSyncBackoff | null {
+  const user = getCurrentUser();
+  const backoff = failureBackoffs.get(user.appleSubject ?? user.id);
+  return backoff && now < backoff.nextAttemptAt ? backoff : null;
+}
+
+/** Consecutive-failure record for the current profile, including an elapsed backoff. */
+export function getPrivateICloudSyncFailureRecord(): PrivateICloudSyncBackoff | null {
+  const user = getCurrentUser();
+  return failureBackoffs.get(user.appleSubject ?? user.id) ?? null;
 }
 
 /** Separate zone keeps new editor assets out of older native clients. */
@@ -75,6 +105,7 @@ export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<vo
       if (capabilities.privateContentVersion >= 4) await deleteCloudKitPrivateZone(await privateCloudEditorScope(user));
       if (capabilities.privateContentVersion >= 5) await deleteCloudKitPrivateZone(await privateCloudMarkerScope(user));
       recentSyncs.delete(user.appleSubject ?? user.id);
+      failureBackoffs.delete(user.appleSubject ?? user.id);
     } catch (error) {
       if (!alreadyPending && !deleteDispatched) setPrivateCloudDeletionPending(user.id, false);
       throw error;
@@ -98,14 +129,31 @@ export async function syncCurrentUserWithPrivateICloud(options: { force?: boolea
     return syncCurrentUserWithPrivateICloud(options);
   }
   const recent = recentSyncs.get(profileKey);
-  if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return recent.result;
+  if (!options.force && recent && Date.now() - recent.completedAt < AUTOMATIC_SYNC_COOLDOWN_MS) return { ...recent.result, reused: true };
+  // A user-initiated (forced) sync always retries immediately; its outcome
+  // then resets or extends the schedule like any other attempt.
+  const backoff = failureBackoffs.get(profileKey);
+  if (!options.force && backoff && Date.now() < backoff.nextAttemptAt) throw new PrivateICloudSyncDeferredError(backoff);
   const promise = performSync(user)
     .then(result => {
       if (result.available && result.accountStatus === 'available'
         && result.failedUploads === 0 && result.state.pendingUploadCount === 0) {
         recentSyncs.set(profileKey, { completedAt: Date.now(), result });
+      } else {
+        // An older complete sync must not answer automatic callers (and bypass
+        // the backoff) after this newer attempt came back incomplete.
+        recentSyncs.delete(profileKey);
+      }
+      if (result.failedUploads > 0) {
+        failureBackoffs.set(profileKey, nextPrivateICloudSyncBackoff(failureBackoffs.get(profileKey), 'partial_upload', Date.now(), result.retryAfterSeconds));
+      } else if (result.available && result.accountStatus === 'available') {
+        failureBackoffs.delete(profileKey);
       }
       return result;
+    }, error => {
+      recentSyncs.delete(profileKey);
+      failureBackoffs.set(profileKey, nextPrivateICloudSyncBackoff(failureBackoffs.get(profileKey), classifyPrivateICloudSyncError(error), Date.now()));
+      throw error;
     })
     .finally(() => {
       if (activeSync?.promise === promise) activeSync = null;

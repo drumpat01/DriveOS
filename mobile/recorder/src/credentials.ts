@@ -55,15 +55,6 @@ export async function loadConnection(): Promise<Connection | null> {
   return { serverUrl, token, deviceId };
 }
 
-export async function saveConnection(value: Omit<Connection, 'deviceId'>): Promise<Connection> {
-  const deviceId = await loadOrCreateDeviceId();
-  await Promise.all([
-    SecureStore.setItemAsync(profileKey(SERVER_KEY), value.serverUrl, secureOptions), SecureStore.setItemAsync(profileKey(TOKEN_KEY), value.token, secureOptions),
-    SecureStore.setItemAsync(CONNECTION_OWNER_KEY, getCurrentUser().id, secureOptions), SecureStore.setItemAsync(DEVICE_KEY, deviceId, secureOptions),
-  ]);
-  return { ...value, deviceId };
-}
-
 export async function deleteCurrentProfileConnection(): Promise<void> {
   const currentUserId = getCurrentUser().id;
   const ownerId = await SecureStore.getItemAsync(CONNECTION_OWNER_KEY, secureOptions);

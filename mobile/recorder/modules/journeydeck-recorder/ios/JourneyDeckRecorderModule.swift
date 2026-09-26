@@ -720,7 +720,7 @@ final class JourneyDeckNativeRecorder: NSObject, CLLocationManagerDelegate {
     await withCheckedContinuation { continuation in
       workQueue.async {
         do {
-          guard Bundle.main.bundleIdentifier == "com.journeydeck.recorder.v3",
+          guard Bundle.main.object(forInfoDictionaryKey: "JourneyDeckMarkerEnabled") as? Bool == true,
                 UUID(uuidString: operationID) != nil,
                 let identity = self.configuredIdentity(),
                 self.defaults.string(forKey: RecorderDefaults.manualOwner) == identity.owner,
@@ -1470,10 +1470,6 @@ public final class JourneyDeckRecorderModule: Module {
 
     AsyncFunction("askJourneyDeckAsync") { (question: String, userID: String, contextToken: String?) async -> [String: Any] in
       await JourneyDeckAskService.shared.answer(question: question, expectedUserID: userID, contextToken: contextToken)
-    }
-
-    AsyncFunction("verifiedAskFullHistoryAsync") { () async -> Bool in
-      await JourneyDeckAskService.shared.hasVerifiedFullHistory()
     }
 
     // This bridge never receives archive rows. The OTA-controlled in-app reader

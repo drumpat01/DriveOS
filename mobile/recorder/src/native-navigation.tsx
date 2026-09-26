@@ -21,7 +21,7 @@ function JourneyDeckStackContent() {
     const base = theme.isLight ? DefaultTheme : DarkTheme;
     return { ...base, colors: { ...base.colors, background: theme.palette.page, card: theme.palette.page, text: theme.palette.text, primary: theme.isCustom ? theme.palette.accent : theme.isLight ? '#ad492e' : '#ff9470' } };
   }, [theme.id]);
-  return <ThemeProvider value={navigationTheme}><Stack screenOptions={{ headerStyle: { backgroundColor: navigationTheme.colors.card }, headerTintColor: navigationTheme.colors.text, contentStyle: { backgroundColor: navigationTheme.colors.background }, statusBarStyle: theme.isLight ? 'dark' : 'light', headerShadowVisible: false, gestureEnabled: true, freezeOnBlur: false }}>
+  return <ThemeProvider value={navigationTheme}><Stack screenOptions={{ headerStyle: { backgroundColor: navigationTheme.colors.card }, headerTintColor: navigationTheme.colors.text, headerBackButtonDisplayMode: 'minimal', contentStyle: { backgroundColor: navigationTheme.colors.background }, statusBarStyle: theme.isLight ? 'dark' : 'light', headerShadowVisible: false, gestureEnabled: true, freezeOnBlur: false }}>
     <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
     {/* Native navigation bars can resize zoom destinations after the transition.
         Detail frames own the header and window safe area from first render. */}
@@ -32,7 +32,6 @@ function JourneyDeckStackContent() {
     <Stack.Screen name="memory/[id]" options={{ title: 'Memory', headerShown: false, animation: flip?.activeToken ? 'none' : 'default' }} />
     <Stack.Screen name="atlas" options={{ headerShown: false }} />
     <Stack.Screen name="tools" options={{ headerShown: false }} />
-    <Stack.Screen name="time-capsule-prototype" options={{ title: 'Markers', headerShown: true }} />
     <Stack.Screen name="fifty-states" options={{ headerShown: false, statusBarStyle: 'light' }} />
     <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'formSheet', sheetGrabberVisible: true, sheetAllowedDetents: [1], headerShown: true }} />
     <Stack.Screen name="siri-testing" options={{ title: 'Siri AI testing', headerShown: true }} />

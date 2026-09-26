@@ -2,9 +2,9 @@ import { requireOptionalNativeModule } from 'expo-modules-core';
 import { PHOTO_MATCH_LIMITS, type PhotoLibraryAsset } from './photo-matching-model';
 
 export type PhotoLibraryPermission = 'undetermined' | 'limited' | 'full' | 'denied' | 'restricted' | 'unavailable';
-export type PhotoLibraryStatus = { permission: PhotoLibraryPermission; sensitivityAvailable: boolean };
+export type PhotoLibraryStatus = { permission: PhotoLibraryPermission };
 export type PhotoLibraryScan = { scanId: string; assets: PhotoLibraryAsset[]; truncated: boolean };
-export type PhotoLibraryPreview = { status: 'ready' | 'sensitive' | 'unavailable'; dataUri?: string; checkedForNudity: boolean };
+export type PhotoLibraryPreview = { status: 'ready' | 'unavailable'; dataUri?: string };
 export type MatchedPhotoImport = { fileName: string; contentType: 'image/jpeg'; dataBase64: string };
 type Window = { startMs: number; endMs: number };
 type PhotoLibraryBridge = {
@@ -20,7 +20,7 @@ type PhotoLibraryBridge = {
 type ExpoMediaLibrary = typeof import('expo-media-library/legacy');
 const native = requireOptionalNativeModule<PhotoLibraryBridge>('JourneyDeckPhotoLibrary');
 const expoAvailable = requireOptionalNativeModule('ExpoMediaLibrary') !== null;
-const unavailable: PhotoLibraryStatus = { permission: 'unavailable', sensitivityAvailable: false };
+const unavailable: PhotoLibraryStatus = { permission: 'unavailable' };
 const cancelledScans = new Set<string>();
 
 // Load only after checking the installed binary. Build 36 lacks ExpoMediaLibrary
@@ -40,8 +40,7 @@ function permissionOf(response: Awaited<ReturnType<ExpoMediaLibrary['getPermissi
 async function expoStatus(request: boolean): Promise<PhotoLibraryStatus> {
   const library = expoLibrary();
   const access = request ? await library.requestPermissionsAsync(false) : await library.getPermissionsAsync(false);
-  const sensitivityAvailable = (await native?.getStatusAsync?.().catch(() => unavailable))?.sensitivityAvailable ?? false;
-  return { permission: permissionOf(access), sensitivityAvailable };
+  return { permission: permissionOf(access) };
 }
 function validWindows(windows: Window[]) {
   return Array.isArray(windows) && windows.length > 0 && windows.length <= PHOTO_MATCH_LIMITS.journeys &&

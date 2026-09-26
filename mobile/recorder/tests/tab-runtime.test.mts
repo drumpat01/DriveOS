@@ -229,7 +229,7 @@ test('Home owns the single recorder instance while Settings omits redundant reco
   assert.doesNotMatch(primarySections, /title="Record"|onRequestedChange\('record'\)|destination === 'record'/);
 });
 
-test('Settings is the fifth primary tab and exposes Data Health on TestFlight', () => {
+test('Settings is the fifth primary tab and keeps Data Health internal only', () => {
   assert.match(nativeNavigation, /name="music"/);
   assert.match(nativeNavigation, /name="journeys"/);
   assert.match(nativeNavigation, /name="index"/);
@@ -239,13 +239,13 @@ test('Settings is the fifth primary tab and exposes Data Health on TestFlight', 
   assert.match(shell, /onSoundtracks=\{\(\) => openTab\('music'\)\}/);
   assert.doesNotMatch(shell, /accessibilityLabel="Open tools and settings"/);
   assert.match(shell, /const internalTesting = isInternalTestingBuild\(\)/);
-  assert.match(shell, /\{\(internalTesting \|\| TESTFLIGHT_DATA_HEALTH_ENABLED\) && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
+  assert.match(shell, /\{internalTesting && <>[\s\S]*?accessibilityLabel="Open Data Health"/);
   assert.match(shell, /onDataHealth=\{\(\) => openMore\('health'\)\}/);
   assert.match(shell, /accessibilityState=\{\{ expanded: advancedSupportVisible \}\}/);
   assert.match(shell, /<ExpandingSection expanded={advancedSupportVisible}><TouchPressable accessibilityRole="button" accessibilityLabel="Open Data Health"/);
-  assert.match(shell, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && destination === 'health'\)\) return;/);
-  assert.match(shell, /tools: isInternalTestingBuild\(\) \|\| TESTFLIGHT_DATA_HEALTH_ENABLED \? <MoreScreen active=\{utilityVisible\}/);
-  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\) && !\(TESTFLIGHT_DATA_HEALTH_ENABLED && requested === 'health'\)\) return null;/);
+  assert.match(shell, /if \(!isInternalTestingBuild\(\)\) return;/);
+  assert.match(shell, /tools: isInternalTestingBuild\(\) \? <MoreScreen active=\{utilityVisible\}/);
+  assert.match(moreScreen, /if \(!isInternalTestingBuild\(\)\) return null;/);
   assert.match(moreScreen, /title="Tools"/);
   assert.match(moreScreen, /title="Data Health"[\s\S]*?onRequestedChange\('health'\)/);
   assert.match(moreScreen, /onBack=\{onClose\}/);

@@ -1,6 +1,6 @@
 import type { Connection } from './credentials';
 import { completeRecording } from './api';
-import { syncCurrentUserWithPrivateICloud } from './icloud-sync';
+import { classifyPrivateICloudSyncError, syncCurrentUserWithPrivateICloud } from './icloud-sync';
 import { captureAppleMusicHistoryForSession } from './music-capture';
 import { areJourneyDeckRequestsBlocked } from './network-activity';
 import {
@@ -80,6 +80,7 @@ export async function processPendingCompletionJobs(options: {
         stage: job.kind,
         attempt_count: job.attemptCount,
         error_code: failureCode(job, error),
+        ...(job.kind === 'private_cloud_sync' ? { error_category: classifyPrivateICloudSyncError(error) } : {}),
       });
       // Later jobs may depend on this one. Stop this pass and retry from the
       // persisted queue rather than allowing enrichment to overtake storage.

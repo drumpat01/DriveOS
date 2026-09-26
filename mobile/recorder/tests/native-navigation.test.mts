@@ -281,7 +281,7 @@ test('preview navigation runtime stays isolated from V1 and the installed previe
     assert.ok(preview.plugins.includes('./plugins/with-even-native-tabs'));
     assert.deepEqual(preview.ios.icon, {
       light: './assets/icon-grand-touring-v2.png',
-      dark: './assets/icon-grand-touring-v2.png',
+      dark: './assets/icon-grand-touring-dark-v1.png',
       tinted: './assets/icon-tinted-clear-v1.png',
     });
     for (const file of Object.values(preview.ios.icon) as string[]) {

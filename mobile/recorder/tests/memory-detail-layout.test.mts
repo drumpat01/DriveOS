@@ -79,8 +79,8 @@ test('Memory detail keeps its story and journey list in separate Duo panes witho
     await act(() => { tree = create(React.createElement(module.exports.MemoryDetailScreen, props)); });
     const layout = tree.root.findByProps({ testID: 'memory-detail-duo-layout' });
     assert.equal(layout.props.style.gap, 27);
-    assert.equal(tree.root.findByProps({ testID: 'memory-detail-story-pane' }).props.style.width, 614);
-    assert.equal(tree.root.findByProps({ testID: 'memory-detail-journeys-pane' }).props.style.width, 614);
+    assert.equal(tree.root.findByProps({ testID: 'memory-detail-story-pane' }).props.style[1].width, 614);
+    assert.equal(tree.root.findByProps({ testID: 'memory-detail-journeys-pane' }).props.style[1].width, 614);
     assert.equal(tree.root.findByType('scroll').props.contentContainerStyle[1].paddingTop, 44);
     adaptive = { fold: null, occlusionInsets: { top: 0, right: 0, bottom: 0, left: 0 } };
     await act(() => tree.update(React.createElement(module.exports.MemoryDetailScreen, props)));

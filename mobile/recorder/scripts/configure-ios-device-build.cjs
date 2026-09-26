@@ -45,7 +45,7 @@ if (require.main === module) {
   setBundleBuildNumbers([path.join(appFolder, 'Info.plist'), path.join('ios', 'JourneyDeckWatch', 'Info.plist')], buildNumber);
   const expoPlist = path.join(appFolder, 'Supporting/Expo.plist');
   const updates = plist.parse(fs.readFileSync(expoPlist, 'utf8'));
-  if (updates.EXUpdatesRuntimeVersion !== '3.0.0-preview.6') throw Error('Unexpected native runtime; Expo MediaLibrary and the Ask bridges require the next V3 binary');
+  if (updates.EXUpdatesRuntimeVersion !== '3.0.0-preview.7') throw Error('Unexpected native runtime; Expo MediaLibrary and the Ask bridges require the next V3 binary');
   updates.EXUpdatesRequestHeaders = { ...updates.EXUpdatesRequestHeaders, 'expo-channel-name': 'v3-preview' };
   fs.writeFileSync(expoPlist, plist.build(updates));
 }

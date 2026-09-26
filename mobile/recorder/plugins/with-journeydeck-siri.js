@@ -4,11 +4,13 @@ const { IOSConfig, withDangerousMod, withXcodeProject } = require('expo/config-p
 
 const sourceName = 'JourneyDeckSiriIntents.swift';
 const shortcutMarker = '    // JOURNEYDECK_V3_APP_SHORTCUTS';
-const askShortcut = `    AppShortcut(intent: AskJourneyDeckIntent(), phrases: [
-      "Ask \\(.applicationName)", "Ask \\(.applicationName) about my journeys"
-    ], shortTitle: "Ask JourneyDeck", systemImageName: "bubble.left.and.text.bubble.right")`;
+const askShortcut = `    if #available(iOS 26.0, *) {
+      AppShortcut(intent: AskJourneyDeckIntent(), phrases: [
+        "Ask \\(.applicationName)", "Ask \\(.applicationName) about my journeys"
+      ], shortTitle: "Ask JourneyDeck", systemImageName: "bubble.left.and.text.bubble.right")
+    }`;
 const providerDeclaration = 'struct JourneyDeckAppShortcuts: AppShortcutsProvider {';
-const availableProviderDeclaration = '@available(iOS 26.0, *)\n' + providerDeclaration;
+const availableProviderDeclaration = '@available(iOS 17.4, *)\n' + providerDeclaration;
 
 function addAskShortcutToSiriSource(source) {
   if (source.includes('AppShortcut(intent: AskJourneyDeckIntent()')) return source;

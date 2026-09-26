@@ -50,6 +50,7 @@ test('Siri shortcuts use the durable native recorder without exposing sensitive 
   assert.match(intents, /StopJourneyIntent\(\)/);
   assert.match(intents, /\\\(\.applicationName\)/);
   assert.match(facade, /executeCommand\(operationID: operationID, action: "start"/);
+  assert.match(facade, /@MainActor\s+public enum JourneyDeckSiriRecorder/);
   assert.match(facade, /executeCommand\(operationID: operationID, action: "finish", sessionID: sessionID/);
   assert.match(facade, /command\["state"\] as\? String == "applied"/);
   assert.doesNotMatch(intents, /controlToken|ownerUserId|latitude|longitude/);

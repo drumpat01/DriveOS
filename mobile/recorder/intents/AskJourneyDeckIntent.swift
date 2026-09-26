@@ -1,13 +1,22 @@
+import Foundation
 import AppIntents
 import SwiftUI
 internal import JourneyDeckRecorder
+
+private func spokenAnswer(_ result: [String: Any]) -> String {
+  guard result["status"] as? String == "answered", let text = result["text"] as? String,
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    return "Beep Boop. Can not compute."
+  }
+  return text
+}
 
 /// Compiled into the V3 app target by with-ask-journeydeck. App-target metadata
 /// extraction discovers these types without relying on CocoaPods intent scanning.
 @available(iOS 26.0, *)
 struct AskJourneyDeckIntent: AppIntent {
   static let title: LocalizedStringResource = "Ask JourneyDeck"
-  static let description = IntentDescription("Ask a question about your completed journeys, Memories, or recorded music. Reads the active profile's local history while the device is unlocked.")
+  static let description = IntentDescription("Ask about your journeys, music, Memories, markers, or saved places. Reads the active profile's local history while the device is unlocked.")
   static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
   static let openAppWhenRun = false
 
@@ -19,7 +28,7 @@ struct AskJourneyDeckIntent: AppIntent {
   @MainActor
   func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetIntent {
     let result = await JourneyDeckAskService.shared.answer(question: question, siri: true)
-    let text = result["text"] as? String ?? "Open JourneyDeck and try again."
+    let text = spokenAnswer(result)
     let ticket = result["ticket"] as? String
     return .result(value: text, dialog: "\(text)", snippetIntent: AskJourneyDeckAnswerSnippet(ticket: ticket ?? ""))
   }
@@ -41,7 +50,7 @@ struct AskJourneyDeckAnswerSnippet: SnippetIntent {
   @MainActor
   func perform() async throws -> some IntentResult & ShowsSnippetView {
     let result = await JourneyDeckAskService.shared.resolveForSiri(ticket: ticket)
-    let text = result["text"] as? String ?? "Open JourneyDeck and ask again."
+    let text = spokenAnswer(result)
     return .result(view: AskJourneyDeckSnippet(text: text, ticket: result["ticket"] as? String))
   }
 }
@@ -53,7 +62,9 @@ struct AskJourneyDeckSnippet: View {
     VStack(alignment: .leading, spacing: 12) {
       Text("Ask JourneyDeck").font(.headline)
       Text(text).privacySensitive()
-      if let ticket, let url = URL(string: "journeydeck-v3://ask-journeydeck?ticket=\(ticket)") {
+      if let ticket, UUID(uuidString: ticket) != nil,
+         let scheme = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckAskURLScheme") as? String,
+         let url = URL(string: "\(scheme)://ask-journeydeck?ticket=\(ticket)") {
         Link("Open supporting details", destination: url)
       }
     }.padding()

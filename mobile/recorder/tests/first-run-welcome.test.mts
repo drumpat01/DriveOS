@@ -40,7 +40,7 @@ test('static welcome makes the private route, music, and memory value clear with
     light: '../assets/home-header-light-v1.png',
     sakura: '../assets/theme-rosewater-road-v1.png',
     redline: '../assets/onboarding-grand-touring-blue-hour.jpg',
-    'midnight-canopy': '../assets/theme-midnight-canopy-v1.png',
+    'midnight-canopy': '../assets/theme-autumn-drive-road-v1.png',
   };
   for (const themeId of ['dark', 'light', 'sakura', 'redline', 'midnight-canopy'] as const) {
     let starts = 0, tree: any;
