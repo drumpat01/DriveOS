@@ -3,7 +3,7 @@ import JourneyDeckCloudKitModule from './src/JourneyDeckCloudKitModule';
 
 export type {
   CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult,
-  CloudKitRecordFailure, CloudTransportRecord,
+  CloudKitRecordFailure, CloudKitZoneScopes, CloudTransportRecord,
 } from './src/JourneyDeckCloudKit.types';
 
 const cloudRequest = createCloudKitRequestGate();
@@ -18,6 +18,11 @@ export async function getCloudKitCapabilities() {
   return JourneyDeckCloudKitModule?.getCapabilitiesAsync
     ? cloudRequest(() => JourneyDeckCloudKitModule!.getCapabilitiesAsync!())
     : { privateContentVersion: 1, transportVersion: 1, retryMetadata: false };
+}
+
+export async function getCloudKitPrivateZoneScopes() {
+  if (!JourneyDeckCloudKitModule?.getPrivateZoneScopesAsync) throw new Error('Stable private iCloud zones require the JourneyDeck V4 native build.');
+  return cloudRequest(() => JourneyDeckCloudKitModule!.getPrivateZoneScopesAsync!());
 }
 
 export async function ensureCloudKitPrivateZone(profileScope: string) {

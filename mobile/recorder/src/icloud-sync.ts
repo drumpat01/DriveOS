@@ -6,6 +6,7 @@ import {
   commitCloudKitChangeToken,
   getCloudKitCapabilities,
   getCloudKitAccountStatus,
+  getCloudKitPrivateZoneScopes,
   isJourneyDeckCloudKitAvailable,
   pullCloudKitChanges,
   pushCloudKitRecords,
@@ -17,6 +18,7 @@ import { CloudKitSyncEngine, type SyncState } from './cloudkit-sync';
 import { rebuildAtlasSnapshot } from './local-atlas';
 import { beginNetworkActivity } from './network-activity';
 import { privateCloudProfileScope } from './private-cloud-profile';
+import { clearPublishedProEntitlements } from './pro-entitlement-cache';
 import {
   classifyPrivateICloudSyncError,
   nextPrivateICloudSyncBackoff,
@@ -58,6 +60,11 @@ export function isPrivateICloudNativeAvailable() {
   return isJourneyDeckCloudKitAvailable;
 }
 
+/** Lets small account metadata writes follow an in-flight archive sync. */
+export async function waitForPrivateICloudSyncIdle(): Promise<void> {
+  if (activeSync) await activeSync.promise.catch(() => undefined);
+}
+
 /** Active failure backoff for the current profile, or null when an automatic sync may run now. */
 export function getPrivateICloudSyncBackoff(now = Date.now()): PrivateICloudSyncBackoff | null {
   const user = getCurrentUser();
@@ -96,17 +103,32 @@ export async function deletePrivateCloudDataForUser(user: LocalUser): Promise<vo
       if (activeSync?.userId === user.id) await activeSync.promise.catch(() => undefined);
       const accountStatus = await getCloudKitAccountStatus();
       if (accountStatus !== 'available') throw new Error('Private iCloud must be available before this account can be deleted safely.');
-      const scope = await privateCloudProfileScope(user);
+      const capabilities = await getCloudKitCapabilities();
+      const scopes = [await privateCloudProfileScope(user)];
+      const { canonicalScope, existingScopes } = await getCloudKitPrivateZoneScopes();
+      if (user.appleSubject) scopes.push(canonicalScope);
+      if (capabilities.privateContentVersion >= 4) scopes.push(await privateCloudEditorScope(user));
+      if (capabilities.privateContentVersion >= 5) scopes.push(await privateCloudMarkerScope(user));
+      // Native zone enumeration filters JourneyDeck-<48 hex>. Validate again
+      // before passing a scope to the native deletion API.
+      if (scopes.some(scope => !/^[0-9a-f]{48}$/i.test(scope))) {
+        throw new Error('Private iCloud returned an invalid JourneyDeck zone scope.');
+      }
+      const uniqueScopes = [...new Set([...scopes, ...existingScopes.filter(scope => /^[0-9a-f]{48}$/i.test(scope))])];
+      console.info('Deleting private CloudKit zones', { zoneCount: uniqueScopes.length });
       // A rejected native call can mean the server deleted the zone but its
       // response was lost. Keep the durable pause once deletion is dispatched.
       deleteDispatched = true;
-      await deleteCloudKitPrivateZone(scope);
-      const capabilities = await getCloudKitCapabilities();
-      if (capabilities.privateContentVersion >= 4) await deleteCloudKitPrivateZone(await privateCloudEditorScope(user));
-      if (capabilities.privateContentVersion >= 5) await deleteCloudKitPrivateZone(await privateCloudMarkerScope(user));
+      for (const scope of uniqueScopes) {
+        await deleteCloudKitPrivateZone(scope);
+      }
+      // Native deleteZone clears both committed and pending change tokens, and
+      // does the same when CloudKit reports an already-missing zone.
+      clearPublishedProEntitlements(uniqueScopes);
       recentSyncs.delete(user.appleSubject ?? user.id);
       failureBackoffs.delete(user.appleSubject ?? user.id);
     } catch (error) {
+      if (deleteDispatched) console.warn('Private CloudKit zone deletion failed', { code: cloudKitErrorCode(error) });
       if (!alreadyPending && !deleteDispatched) setPrivateCloudDeletionPending(user.id, false);
       throw error;
     } finally {
@@ -181,6 +203,13 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     return result(false, 'could_not_determine', 0, 0, 0, null, [], engine, capabilities.privateContentVersion);
   }
 
+  // Never create a new private zone for a disposable local profile. Apple sign-in
+  // is required before the iCloud account's canonical archive is selected.
+  if (!user.appleSubject) {
+    activity.finish({ outcome: 'skipped' });
+    return result(false, 'could_not_determine', 0, 0, 0, null, [], engine, capabilities.privateContentVersion);
+  }
+
   try {
     const accountStatus = await getCloudKitAccountStatus();
     assertSyncProfileCurrent(user);
@@ -190,83 +219,91 @@ async function performSync(user: LocalUser): Promise<PrivateICloudSyncResult> {
     }
 
     engine.setSyncInProgress();
-    const profileScope = await privateCloudProfileScope(user);
+    const zones = await getCloudKitPrivateZoneScopes();
+    const canonicalScope = zones.canonicalScope;
     assertSyncProfileCurrent(user);
-    await ensureCloudKitPrivateZone(profileScope);
-    assertSyncProfileCurrent(user);
-    const pulled = await pullCloudKitChanges(profileScope);
-    const deletedRecordNames = [...pulled.deletedRecordNames];
-    assertSyncProfileCurrent(user);
-    engine.ingestRemoteDeletions(pulled.deletedRecordNames);
-    const ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
-    assertSyncProfileCurrent(user);
-    let downloaded = ingested.updatedCount;
-    // Keep the old cursor until every dependent record has been restored.
-    // A source device may upload the missing place/journey in its next batch.
-    if (capabilities.privateContentVersion >= 2 && ingested.deferredCount === 0) await commitCloudKitChangeToken(profileScope);
+    await ensureCloudKitPrivateZone(canonicalScope);
+    const deletedRecordNames: string[] = [];
+    let downloaded = 0;
     let uploaded = 0;
-    let failedUploads = ingested.deferredCount;
-    const editorScope = capabilities.privateContentVersion >= 4 ? await privateCloudEditorScope(user) : null;
-    if (editorScope) {
-      assertSyncProfileCurrent(user);
-      await ensureCloudKitPrivateZone(editorScope);
-      const edits = await pullCloudKitChanges(editorScope);
-      assertSyncProfileCurrent(user);
-      engine.ingestRemoteDeletions(edits.deletedRecordNames);
-      deletedRecordNames.push(...edits.deletedRecordNames);
-      const restored = await engine.ingestRemoteRecords(edits.records, () => assertSyncProfileCurrent(user));
-      downloaded += restored.updatedCount;
-      failedUploads += restored.deferredCount;
-      if (!restored.deferredCount) await commitCloudKitChangeToken(editorScope);
-    }
-    const markerScope = capabilities.privateContentVersion >= 5 ? await privateCloudMarkerScope(user) : null;
-    if (markerScope) {
-      assertSyncProfileCurrent(user);
-      await ensureCloudKitPrivateZone(markerScope);
-      const markers = await pullCloudKitChanges(markerScope);
-      assertSyncProfileCurrent(user);
-      engine.ingestRemoteDeletions(markers.deletedRecordNames);
-      deletedRecordNames.push(...markers.deletedRecordNames);
-      const restored = await engine.ingestRemoteRecords(markers.records, () => assertSyncProfileCurrent(user));
-      downloaded += restored.updatedCount;
-      failedUploads += restored.deferredCount;
-      if (!restored.deferredCount) await commitCloudKitChangeToken(markerScope);
+    let failedUploads = 0;
+    // Existing V2/V3 profile, editor and marker zones remain readable. Only the
+    // account-stable canonical zone receives new writes.
+    for (const scope of [...new Set([...zones.existingScopes, canonicalScope])]) {
+      try {
+        assertSyncProfileCurrent(user);
+        const pulled = await pullCloudKitChanges(scope);
+        assertSyncProfileCurrent(user);
+        engine.ingestRemoteDeletions(pulled.deletedRecordNames);
+        deletedRecordNames.push(...pulled.deletedRecordNames);
+        const ingested = await engine.ingestRemoteRecords(pulled.records, () => assertSyncProfileCurrent(user));
+        downloaded += ingested.updatedCount;
+        failedUploads += ingested.deferredCount;
+        // Keep a zone's old cursor when a dependent record has not arrived yet.
+        if (ingested.deferredCount === 0) await commitCloudKitChangeToken(scope);
+      } catch (error) {
+        if (scope === canonicalScope) throw error;
+        failedUploads++;
+        console.warn('CloudKit zone pull failed', { code: cloudKitErrorCode(error) });
+      }
     }
     let retryAfterSeconds: number | null = null;
+    const failedThisPass = new Set<string>();
     for (let batch = 0; batch < 5; batch++) {
       assertSyncProfileCurrent(user);
-      const pending = await engine.preparePushPayload(50);
+      const pending = await engine.preparePushPayload(50 + failedThisPass.size, failedThisPass);
       assertSyncProfileCurrent(user);
       if (!pending.length) break;
-      const batches = [
-        { scope: profileScope, records: pending.filter(record => !['JourneyEdit', 'JourneyMarker', 'MarkerPhoto'].includes(record.recordType)) },
-        { scope: editorScope, records: pending.filter(record => record.recordType === 'JourneyEdit') },
-        { scope: markerScope, records: pending.filter(record => record.recordType === 'JourneyMarker' || record.recordType === 'MarkerPhoto') },
-      ].filter(item => item.scope && item.records.length);
-      let savedThisBatch = 0, failedThisBatch = 0;
-      for (const item of batches) {
+      let savedThisBatch = 0;
+      const recordTypes = new Map(pending.map(record => [record.recordName, record.recordType]));
+      for (let offset = 0; offset < pending.length; offset += 25) {
+        const chunk = pending.slice(offset, offset + 25);
         assertSyncProfileCurrent(user);
-        const pushed = await pushCloudKitRecords(item.scope!, item.records);
-        assertSyncProfileCurrent(user);
-        if (pushed.remoteRecords.length) {
-          const reconciled = await engine.ingestRemoteRecords(pushed.remoteRecords, () => assertSyncProfileCurrent(user));
+        let responses = [] as Awaited<ReturnType<typeof pushCloudKitRecords>>[];
+        try {
+          responses = [await pushCloudKitRecords(canonicalScope, chunk)];
+        } catch (error) {
+          const category = classifyPrivateICloudSyncError(error);
+          if (['timeout', 'request_in_flight', 'account_unavailable', 'network', 'rate_limited', 'service_unavailable', 'zone_missing', 'change_cursor'].includes(category)) throw error;
+          // A malformed asset or unsupported record type may reject the whole
+          // batch. Retry its members individually so healthy records can land.
+          for (const record of chunk) {
+            try {
+              responses.push(await pushCloudKitRecords(canonicalScope, [record]));
+            } catch (individualError) {
+              const individualCategory = classifyPrivateICloudSyncError(individualError);
+              if (['timeout', 'request_in_flight', 'account_unavailable', 'network', 'rate_limited', 'service_unavailable', 'zone_missing', 'change_cursor'].includes(individualCategory)) throw individualError;
+              const code = cloudKitErrorCode(individualError);
+              console.warn('CloudKit record upload failed', { recordType: record.recordType, code });
+              engine.recordUploadFailure(record.recordName, code);
+              failedThisPass.add(record.recordName);
+              failedUploads++;
+            }
+          }
+        }
+        for (const pushed of responses) {
           assertSyncProfileCurrent(user);
-          downloaded += reconciled.updatedCount;
-          failedUploads += reconciled.deferredCount;
-        }
-        engine.acknowledgeSuccessfulPush(pushed.savedRecordNames);
-        uploaded += pushed.savedRecordNames.length;
-        savedThisBatch += pushed.savedRecordNames.length;
-        failedThisBatch += pushed.failedRecordNames.length;
-        failedUploads += pushed.failedRecordNames.length;
-        for (const recordName of pushed.failedRecordNames) {
-          engine.recordUploadFailure(recordName, pushed.failedRecords?.find(failure => failure.recordName === recordName)?.code ?? 'cloudkit_unknown');
-        }
-        for (const failure of pushed.failedRecords ?? []) {
-          if (failure.retryAfterSeconds != null) retryAfterSeconds = Math.max(retryAfterSeconds ?? 0, failure.retryAfterSeconds);
+          if (pushed.remoteRecords.length) {
+            const reconciled = await engine.ingestRemoteRecords(pushed.remoteRecords, () => assertSyncProfileCurrent(user));
+            downloaded += reconciled.updatedCount;
+            failedUploads += reconciled.deferredCount;
+          }
+          engine.acknowledgeSuccessfulPush(pushed.savedRecordNames);
+          uploaded += pushed.savedRecordNames.length;
+          savedThisBatch += pushed.savedRecordNames.length;
+          failedUploads += pushed.failedRecordNames.length;
+          for (const recordName of pushed.failedRecordNames) {
+            const code = pushed.failedRecords?.find(failure => failure.recordName === recordName)?.code ?? 'cloudkit_unknown';
+            console.warn('CloudKit record upload failed', { recordType: recordTypes.get(recordName) ?? 'Unknown', code });
+            engine.recordUploadFailure(recordName, code);
+            failedThisPass.add(recordName);
+          }
+          for (const failure of pushed.failedRecords ?? []) {
+            if (failure.retryAfterSeconds != null) retryAfterSeconds = Math.max(retryAfterSeconds ?? 0, failure.retryAfterSeconds);
+          }
         }
       }
-      if (failedThisBatch || !savedThisBatch) break;
+      if (!savedThisBatch && !failedThisPass.size) break;
     }
     failedUploads += engine.getPreparationFailureCount();
     if (downloaded) rebuildAtlasSnapshot(user.id);
@@ -289,6 +326,11 @@ function assertSyncProfileCurrent(user: LocalUser): void {
   if (current.id !== user.id || current.appleSubject !== user.appleSubject) {
     throw new Error('The active profile changed during private iCloud sync. Its local records remain queued safely.');
   }
+}
+
+function cloudKitErrorCode(error: unknown): string {
+  const value = error && typeof error === 'object' && 'code' in error ? String(error.code) : 'cloudkit_unknown';
+  return /^[A-Za-z0-9_.-]{1,80}$/.test(value) ? value : 'cloudkit_unknown';
 }
 
 function result(

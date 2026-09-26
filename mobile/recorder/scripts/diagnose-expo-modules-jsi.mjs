@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-if (process.env.EAS_BUILD_PROFILE === 'v3-testflight') {
+if (['v3-testflight', 'v4-testflight'].includes(process.env.EAS_BUILD_PROFILE)) {
   const projectRoot = fileURLToPath(new URL('../', import.meta.url));
   const scriptPath = join(projectRoot, 'node_modules', 'expo-modules-jsi', 'apple', 'scripts', 'build-xcframework.sh');
   const source = readFileSync(scriptPath, 'utf8');
@@ -14,5 +14,5 @@ if (process.env.EAS_BUILD_PROFILE === 'v3-testflight') {
   }
 
   writeFileSync(scriptPath, source.replace(quietFlag, ''));
-  console.log('ExpoModulesJSI nested xcodebuild will emit full diagnostics for v3-testflight.');
+  console.log('ExpoModulesJSI nested xcodebuild will emit full diagnostics for TestFlight.');
 }

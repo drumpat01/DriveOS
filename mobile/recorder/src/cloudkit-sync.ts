@@ -82,7 +82,7 @@ import {
 } from './journey-marker-store';
 import { validCapturedMarker } from './journey-marker-model';
 
-export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto';
+export type CloudKitRecordType = 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto' | 'Entitlement';
 
 export interface CloudKitRecord {
   recordName: string;
@@ -407,6 +407,7 @@ export function markerPhotoToCKRecord(photo: MarkerPhotoSyncRecord, assetFilePat
     fields: {
       id: photo.id,
       markerId: photo.markerId,
+      rootJourneyId: photo.rootJourneyId ?? null,
       fileName: photo.fileName,
       contentType: 'image/jpeg',
       byteLength: photo.deletedAt ? 0 : byteLength,
@@ -423,7 +424,7 @@ export function ckRecordToMarkerPhoto(record: CloudKitRecord, userId: LocalUserI
   const f = record.fields;
   const id = String(f.id || '');
   const photo: MarkerPhotoSyncRecord = {
-    id, userId, markerId: String(f.markerId || ''), kind: 'photo', fileName: String(f.fileName || ''),
+    id, userId, markerId: String(f.markerId || ''), rootJourneyId: String(f.rootJourneyId || ''), kind: 'photo', fileName: String(f.fileName || ''),
     deletedAt: f.deletedAt ? String(f.deletedAt) : null, syncedToCloud: 1,
     syncRevision: Math.max(1, Math.trunc(Number(f.syncRevision) || 1)),
     createdAt: String(f.createdAt || ''), updatedAt: String(f.updatedAt || record.modificationDate || ''),
@@ -492,7 +493,7 @@ export class CloudKitSyncEngine {
   /**
    * Prepares local records that need to be pushed to CloudKit.
    */
-  public async preparePushPayload(limit = 50): Promise<CloudKitRecord[]> {
+  public async preparePushPayload(limit = 50, excludedRecordNames: ReadonlySet<string> = new Set()): Promise<CloudKitRecord[]> {
     if (this.privateContentV2) preparePrivatePlaceSync(this.userId);
     const pendingJourneyIds = journeysPendingSync(this.userId, limit);
     const pendingMusicIds = musicEntriesPendingSync(this.userId, limit);
@@ -555,6 +556,7 @@ export class CloudKitSyncEngine {
       ...pendingMarkers.map(markerToCKRecord),
       ...markerPhotoRecords,
     ].filter(record => {
+      if (excludedRecordNames.has(record.recordName)) return false;
       // Preparing assets yields to JavaScript. An edit committed during that
       // wait takes ownership of the whole projection before these rows leave.
       if (record.recordType === 'Journey') return !isEditorManagedJourney(this.userId, String(record.fields.id));
@@ -699,7 +701,7 @@ export class CloudKitSyncEngine {
     let count = 0;
     let deferredCount = 0;
     const priority: Record<CloudKitRecordType, number> = { Journey: 0, RouteArchive: 1, JourneyEdit: 2, MusicEntry: 3,
-      JourneyMarker: 4, Collection: 5, Memory: 6, Photo: 7, MarkerPhoto: 8, PrivatePreference: -1 };
+      JourneyMarker: 4, Collection: 5, Memory: 6, Photo: 7, MarkerPhoto: 8, PrivatePreference: -1, Entitlement: 9 };
     const editsById = new Map(remoteRecords.filter(record => record.recordType === 'JourneyEdit').map(record => [String(record.fields.id), record]));
     const editDepth = (record: CloudKitRecord, seen = new Set<string>()): number => {
       const parentId = String(record.fields.parentId ?? '');
@@ -819,8 +821,14 @@ export class CloudKitSyncEngine {
         count++;
       } else if (record.recordType === 'MarkerPhoto') {
         const remote = ckRecordToMarkerPhoto(record, this.userId);
-        if (!getMarkerIncludingDeleted(this.userId, remote.markerId)) {
+        const owner = getMarkerIncludingDeleted(this.userId, remote.markerId);
+        if (!owner) {
           this.recordUploadFailure(record.recordName, 'missing_dependency');
+          deferredCount++;
+          continue;
+        }
+        if (remote.rootJourneyId && remote.rootJourneyId !== owner.rootJourneyId) {
+          this.recordUploadFailure(record.recordName, 'marker_photo_identity_conflict');
           deferredCount++;
           continue;
         }

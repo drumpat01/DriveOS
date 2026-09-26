@@ -1,10 +1,11 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult, CloudTransportRecord } from './JourneyDeckCloudKit.types';
+import type { CloudKitAccountStatus, CloudKitCapabilities, CloudKitPullResult, CloudKitPushResult, CloudKitZoneScopes, CloudTransportRecord } from './JourneyDeckCloudKit.types';
 
 declare class JourneyDeckCloudKitModule extends NativeModule<{}> {
   getAccountStatusAsync(): Promise<CloudKitAccountStatus>;
   getCapabilitiesAsync?(): Promise<CloudKitCapabilities>;
+  getPrivateZoneScopesAsync?(): Promise<CloudKitZoneScopes>;
   ensurePrivateZoneAsync(profileScope: string): Promise<{ ready: true }>;
   deletePrivateZoneAsync?(profileScope: string): Promise<{ deleted: true }>;
   pushRecordsAsync(profileScope: string, records: CloudTransportRecord[]): Promise<CloudKitPushResult>;

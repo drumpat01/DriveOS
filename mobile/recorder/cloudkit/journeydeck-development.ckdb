@@ -201,8 +201,26 @@ RECORD TYPE MarkerPhoto (
     fileName STRING,
     id STRING,
     markerId STRING,
+    rootJourneyId STRING,
     syncRevision INT64,
     updatedAt STRING,
+    GRANT WRITE TO "_creator",
+    GRANT READ TO "_world"
+);
+
+RECORD TYPE Entitlement (
+    "___createTime" TIMESTAMP,
+    "___createdBy" REFERENCE,
+    "___etag" STRING,
+    "___modTime" TIMESTAMP,
+    "___modifiedBy" REFERENCE,
+    "___recordID" REFERENCE,
+    environment STRING,
+    expiresAt TIMESTAMP,
+    isActive INT64,
+    originalTransactionId STRING,
+    productId STRING,
+    updatedAt TIMESTAMP,
     GRANT WRITE TO "_creator",
     GRANT READ TO "_world"
 );

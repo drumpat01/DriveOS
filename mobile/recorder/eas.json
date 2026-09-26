@@ -20,6 +20,14 @@
       "env": { "APP_VARIANT": "v3-store", "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "0" },
       "ios": { "simulator": false, "image": "macos-tahoe-26.6-xcode-27.0" }
     },
+    "v4-testflight": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "channel": "v4-testflight",
+      "environment": "production",
+      "env": { "APP_VARIANT": "v4-store", "EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING": "0" },
+      "ios": { "simulator": false, "image": "macos-tahoe-26.6-xcode-27.0" }
+    },
     "v3-development-simulator": {
       "developmentClient": true,
       "distribution": "internal",
@@ -93,6 +101,11 @@
       }
     },
     "v3-testflight": {
+      "ios": {
+        "ascAppId": "6806502526"
+      }
+    },
+    "v4-testflight": {
       "ios": {
         "ascAppId": "6806502526"
       }

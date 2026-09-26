@@ -2,7 +2,7 @@ export type CloudKitAccountStatus = 'available' | 'no_account' | 'restricted' | 
 
 export type CloudTransportRecord = {
   recordName: string;
-  recordType: 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto';
+  recordType: 'Journey' | 'RouteArchive' | 'JourneyEdit' | 'MusicEntry' | 'Collection' | 'Memory' | 'Photo' | 'PrivatePreference' | 'JourneyMarker' | 'MarkerPhoto' | 'Entitlement';
   fields: Record<string, string | number | boolean | null>;
   assetFilePath?: string;
   modificationDate?: string;
@@ -13,6 +13,8 @@ export type CloudKitCapabilities = {
   transportVersion?: number;
   retryMetadata?: boolean;
 };
+
+export type CloudKitZoneScopes = { canonicalScope: string; existingScopes: string[] };
 
 export type CloudKitRecordFailure = {
   recordName: string;

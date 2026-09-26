@@ -4,7 +4,7 @@ import ExpoModulesCore
 import Foundation
 
 private let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckCloudKitContainer") as? String ?? "iCloud.com.journeydeck.recorder"
-private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "JourneyEdit", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference", "JourneyMarker", "MarkerPhoto"]
+private let allowedRecordTypes: Set<String> = ["Journey", "RouteArchive", "JourneyEdit", "MusicEntry", "Collection", "Memory", "Photo", "PrivatePreference", "JourneyMarker", "MarkerPhoto", "Entitlement"]
 private let assetRecordTypes: Set<String> = ["Photo", "MarkerPhoto", "RouteArchive", "JourneyEdit"]
 private let maximumPhotoAssetBytes: UInt64 = 10 * 1_024 * 1_024
 private let maximumRouteAssetBytes: UInt64 = 20 * 1_024 * 1_024
@@ -30,6 +30,12 @@ private func iso8601(_ date: Date) -> String {
   ISO8601DateFormatter().string(from: date)
 }
 
+private func parseISO8601(_ value: String) -> Date? {
+  let fractional = ISO8601DateFormatter()
+  fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+}
+
 private final class PrivateCloudKitTransport {
   private let container = CKContainer(identifier: containerIdentifier)
   private var database: CKDatabase { container.privateCloudDatabase }
@@ -37,6 +43,22 @@ private final class PrivateCloudKitTransport {
 
   func accountStatus() async throws -> String {
     accountStatusName(try await CloudKitRequests.accountStatus(container))
+  }
+
+  func zoneScopes() async throws -> [String: Any] {
+    let userRecordID = try await container.userRecordID()
+    let seed = "journeydeck-icloud-v1:\(userRecordID.recordName)"
+    let digest = SHA256.hash(data: Data(seed.utf8)).map { String(format: "%02x", $0) }.joined()
+    let canonicalScope = String(digest.prefix(48))
+    let zones = try await retrying { try await self.database.allRecordZones() }
+    let scopes = zones.compactMap { zone -> String? in
+      let name = zone.zoneID.zoneName
+      guard name.hasPrefix("JourneyDeck-") else { return nil }
+      let scope = String(name.dropFirst("JourneyDeck-".count))
+      guard scope.count == 48 && scope.allSatisfy({ $0.isHexDigit }) else { return nil }
+      return scope.lowercased()
+    }
+    return ["canonicalScope": canonicalScope, "existingScopes": Array(Set(scopes)).sorted()]
   }
 
   func zoneID(profileScope: String) throws -> CKRecordZone.ID {
@@ -100,15 +122,32 @@ private final class PrivateCloudKitTransport {
       }
 
       if let existing {
+        let existingExpiration = existing["expiresAt"] as? Date
+        let requestedExpiration = (item.fields["expiresAt"] as? String).flatMap(parseISO8601)
+        let matchingExpiration = existingExpiration == nil && requestedExpiration == nil
+          || (existingExpiration != nil && requestedExpiration != nil
+            && abs(existingExpiration!.timeIntervalSince(requestedExpiration!)) < 1)
+        if item.recordType == "Entitlement",
+           let writtenAt = existing["updatedAt"] as? Date,
+           Date().timeIntervalSince(writtenAt) >= 0,
+           Date().timeIntervalSince(writtenAt) < 86_400,
+           existing["productId"] as? String == item.fields["productId"] as? String,
+           existing["originalTransactionId"] as? String == item.fields["originalTransactionId"] as? String,
+           existing["environment"] as? String == item.fields["environment"] as? String,
+           (existing["isActive"] as? NSNumber)?.intValue == (item.fields["isActive"] as? NSNumber)?.intValue,
+           matchingExpiration {
+          remoteWinners.append(try dictionary(from: existing))
+          continue
+        }
         let remoteRevision = (existing["syncRevision"] as? NSNumber)?.intValue ?? 1
         let localRevision = (item.fields["syncRevision"] as? NSNumber)?.intValue ?? 1
-        let remoteUpdated = existing["updatedAt"] as? String ?? ""
+        let remoteUpdated = (existing["updatedAt"] as? String) ?? (existing["updatedAt"] as? Date).map(iso8601) ?? ""
         let localUpdated = item.fields["updatedAt"] as? String ?? ""
         let remoteDeleted = existing["deletedAt"] is String
         let localDeleted = item.fields["deletedAt"] is String
-        let remoteWins = remoteRevision > localRevision || (remoteRevision == localRevision && (
+        let remoteWins = item.recordType != "Entitlement" && (remoteRevision > localRevision || (remoteRevision == localRevision && (
           remoteDeleted != localDeleted ? remoteDeleted : remoteUpdated >= localUpdated
-        ))
+        )))
         if remoteWins {
           remoteWinners.append(try dictionary(from: existing))
           continue
@@ -116,7 +155,7 @@ private final class PrivateCloudKitTransport {
       }
 
       let record = existing ?? CKRecord(recordType: item.recordType, recordID: item.recordID)
-      try apply(fields: item.fields, to: record)
+      try apply(fields: item.fields, to: record, recordType: item.recordType)
       if assetRecordTypes.contains(item.recordType) {
         if let path = item.assetFilePath, !path.isEmpty {
           record["asset"] = CKAsset(fileURL: try validatedAssetURL(path, recordType: item.recordType))
@@ -235,12 +274,19 @@ private final class PrivateCloudKitTransport {
     return ParsedInput(recordID: CKRecord.ID(recordName: name, zoneID: zoneID), recordType: type, fields: fields, assetFilePath: assetFilePath)
   }
 
-  private func apply(fields: [String: Any], to record: CKRecord) throws {
+  private func apply(fields: [String: Any], to record: CKRecord, recordType: String) throws {
     for (key, value) in fields {
       guard key.range(of: "^[A-Za-z][A-Za-z0-9_]{0,63}$", options: .regularExpression) != nil else {
         throw JourneyDeckCloudKitError.make(5, "A CloudKit field name is invalid.")
       }
       if value is NSNull { record[key] = nil; continue }
+      if recordType == "Entitlement" && (key == "expiresAt" || key == "updatedAt"), let value = value as? String {
+        guard let date = parseISO8601(value) else {
+          throw JourneyDeckCloudKitError.make(6, "An entitlement timestamp is invalid.")
+        }
+        record[key] = date as CKRecordValue
+        continue
+      }
       if let value = value as? String { record[key] = value as CKRecordValue; continue }
       if let value = value as? NSNumber { record[key] = value as CKRecordValue; continue }
       throw JourneyDeckCloudKitError.make(6, "CloudKit field \(key) has an unsupported value type.")
@@ -314,6 +360,7 @@ private final class PrivateCloudKitTransport {
     for key in record.allKeys() {
       if let value = record[key] as? String { fields[key] = value }
       else if let value = record[key] as? NSNumber { fields[key] = value }
+      else if let value = record[key] as? Date { fields[key] = iso8601(value) }
     }
     var output: [String: Any] = [
       "recordName": record.recordID.recordName,
@@ -478,7 +525,13 @@ public final class JourneyDeckCloudKitModule: Module {
     }
 
     AsyncFunction("getCapabilitiesAsync") { () -> [String: Any] in
-      ["privateContentVersion": 5, "transportVersion": 7, "retryMetadata": true]
+      ["privateContentVersion": 5, "transportVersion": 8, "retryMetadata": true]
+    }
+
+    AsyncFunction("getPrivateZoneScopesAsync") { () async throws -> [String: Any] in
+      try CloudTransportGate.acquire()
+      defer { CloudTransportGate.release() }
+      return try await self.transport.zoneScopes()
     }
 
     AsyncFunction("ensurePrivateZoneAsync") { (profileScope: String) async throws -> [String: Bool] in
