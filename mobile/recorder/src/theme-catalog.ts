@@ -1,4 +1,6 @@
-export type ThemeId = 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canopy';
+export type ThemeId = 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canopy' | 'aurora-glass';
+/** Themes with their own bundled per-theme artwork sets (medallions, avatars). */
+export type ArtworkThemeId = Exclude<ThemeId, 'aurora-glass'>;
 export type ThemeAppearance = 'dark' | 'light';
 export type ThemePalette = {
   page: string; card: string; inset: string; text: string; muted: string;
@@ -42,10 +44,21 @@ export const themeCatalog: Record<ThemeId, { name: string; mode: ThemeAppearance
     coral: '#d98d63', amber: '#f4b864', teal: '#a8bf98', blue: '#a4b9bb', rose: '#9e4c36', green: '#a8bf98',
     glow: '#e88937',
   } },
+  // V4 Aurora Glass: midnight scenery, glass surfaces, mint as the single control accent.
+  // Violet stays in the artwork; chart inks are cool and muted so mint remains the action color.
+  'aurora-glass': { name: 'Aurora Glass', mode: 'dark', description: 'Midnight sky · liquid glass · aurora mint', swatches: ['#050b18', '#0e1a2e', '#5ff2c4', '#8a5cff', '#f4f8ff'], palette: {
+    page: '#050b18', card: '#0e1a2e', inset: '#16243a', text: '#f4f8ff', muted: '#a9b8d3',
+    accent: '#5ff2c4', onAccent: '#03261c', line: '#2a3a58', chrome: '#c9d6ee',
+    success: '#5ff2c4', onSuccess: '#03261c', danger: '#c2445e', onDanger: '#ffffff',
+    coral: '#5ff2c4', amber: '#f2d488', teal: '#7fe3d0', blue: '#8fb4ff', rose: '#b59cff', green: '#5ff2c4',
+    glow: '#5ff2c4',
+  } },
 };
 
 export const FREE_THEME_IDS: readonly ThemeId[] = ['redline', 'light'];
 export const PLUS_THEME_IDS: readonly ThemeId[] = ['dark', 'sakura'];
+/** V4-only Plus theme; release-features decides whether it is offered. */
+export const V4_PLUS_THEME_IDS: readonly ThemeId[] = ['aurora-glass'];
 export const THEME_GRID_ORDER: readonly ThemeId[] = [...FREE_THEME_IDS, ...PLUS_THEME_IDS];
 
 export function themeChoices(includeAutumnDrive: boolean): readonly ThemeId[] {
@@ -55,14 +68,19 @@ export function themeChoices(includeAutumnDrive: boolean): readonly ThemeId[] {
 }
 
 export function themeRequiresPlus(id: ThemeId) {
-  return PLUS_THEME_IDS.includes(id);
+  return PLUS_THEME_IDS.includes(id) || V4_PLUS_THEME_IDS.includes(id);
+}
+
+/** Aurora has no dedicated medallion/avatar set; it borrows Grand Touring's midnight-navy artwork. */
+export function artworkThemeId(id: ThemeId): ArtworkThemeId {
+  return id === 'aurora-glass' ? 'redline' : id;
 }
 
 export function parseThemeId(value: unknown): ThemeId {
   return typeof value === 'string' && Object.hasOwn(themeCatalog, value) ? value as ThemeId : 'redline';
 }
 
-export function isCustomTheme(id: ThemeId) { return id === 'sakura' || id === 'redline' || id === 'midnight-canopy'; }
+export function isCustomTheme(id: ThemeId) { return id === 'sakura' || id === 'redline' || id === 'midnight-canopy' || id === 'aurora-glass'; }
 
 /** Pastel chart fills use the approved swatches; small labels retain deeper readable inks. */
 export function chartColor(value: string, id: ThemeId) {

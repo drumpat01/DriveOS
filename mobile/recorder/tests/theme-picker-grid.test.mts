@@ -18,6 +18,7 @@ const host = (name: string) => React.forwardRef(function Host({ children, ...pro
 
 function loadThemePicker(options: {
   includeAutumn?: boolean;
+  includeAurora?: boolean;
   initial?: catalog.ThemeId;
   fail?: { current: boolean };
   setThemes?: string[];
@@ -34,6 +35,7 @@ function loadThemePicker(options: {
     'theme-rosewater-road-v1.png',
     'theme-grand-touring-home-v2.png',
     'theme-autumn-drive-road-v1.png',
+    'theme-aurora-glass-scene-v1.jpg',
   ].map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,
@@ -41,7 +43,7 @@ function loadThemePicker(options: {
     require: (id: string) => ({
       ...assets,
       './theme-catalog': catalog,
-      './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: options.includeAutumn ?? false },
+      './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: options.includeAutumn ?? false, V4_AURORA_GLASS_ENABLED: options.includeAurora ?? false },
       './app-theme': { useThemeChoice: () => ({
         theme: { ...catalog.themeCatalog[initial], id: initial },
         setTheme: (id: string) => options.setThemes?.push(id),
@@ -63,14 +65,14 @@ function loadThemePicker(options: {
   return module.exports;
 }
 
-async function mount(options: { initial?: catalog.ThemeId; membershipTier?: 'free' | 'paid'; includeAutumn?: boolean } = {}) {
+async function mount(options: { initial?: catalog.ThemeId; membershipTier?: 'free' | 'paid'; includeAutumn?: boolean; includeAurora?: boolean } = {}) {
   const transitions: { id: string; origin: { x: number; y: number } }[] = [];
   const setThemes: string[] = [];
   const alerts: string[] = [];
   const fail = { current: false };
   let upgrades = 0;
   let surroundingMounts = 0;
-  const api = loadThemePicker({ initial: options.initial, includeAutumn: options.includeAutumn, transitions, setThemes, alerts, fail });
+  const api = loadThemePicker({ initial: options.initial, includeAutumn: options.includeAutumn, includeAurora: options.includeAurora, transitions, setThemes, alerts, fail });
   function Screen() {
     React.useEffect(() => { surroundingMounts += 1; }, []);
     return React.createElement('RecorderScreen', null, React.createElement(api.ThemePicker, {
@@ -207,4 +209,35 @@ test('V3 Autumn is a standard free card and animates from touch or accessibility
     assert.equal(restored.transitions.length, 0, 'reselecting Autumn does not replay the transition');
     assert.deepEqual(restored.setThemes, [], 'restored Autumn remains available to free members');
   } finally { await restored.unmount(); }
+});
+
+test('V4 Aurora Glass is a third Plus card: locked for free members, animated for paid members', async () => {
+  const hidden = await mount({ includeAutumn: true });
+  try {
+    assert.equal(hidden.tree.root.findAllByProps({ testID: 'theme-card-aurora-glass' }).length, 0, 'earlier variants never offer Aurora');
+  } finally { await hidden.unmount(); }
+
+  const free = await mount({ includeAutumn: true, includeAurora: true, membershipTier: 'free' });
+  try {
+    const plus = free.tree.root.findByProps({ testID: 'theme-row-plus' });
+    assert.deepEqual(plus.findAllByType('Pressable').map((c: any) => c.props.testID), ['theme-card-dark', 'theme-card-sakura', 'theme-card-aurora-glass']);
+    const card = plus.findByProps({ testID: 'theme-card-aurora-glass' });
+    assert.match(card.props.accessibilityLabel, /Aurora Glass, theme 6 of 6\. Dark appearance\..*JourneyDeck Plus\. Requires JourneyDeck Plus/);
+    assert.ok(plus.findByProps({ testID: 'theme-plus-aurora-glass' }));
+    await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
+    assert.equal(free.upgrades(), 1);
+    assert.deepEqual(free.transitions, []);
+  } finally { await free.unmount(); }
+
+  const paid = await mount({ includeAurora: true, membershipTier: 'paid' });
+  try {
+    const card = paid.cards().find((c: any) => c.props.testID === 'theme-card-aurora-glass');
+    await act(() => card.props.onPress({ nativeEvent: { pageX: 85, pageY: 380 } }));
+    assert.deepEqual(paid.transitions, [{ id: 'aurora-glass', origin: { x: 85, y: 380 } }]);
+  } finally { await paid.unmount(); }
+
+  const lapsed = await mount({ includeAurora: true, initial: 'aurora-glass', membershipTier: 'free' });
+  try {
+    assert.deepEqual(lapsed.setThemes, ['redline'], 'a lapsed Plus member returns to Grand Touring');
+  } finally { await lapsed.unmount(); }
 });

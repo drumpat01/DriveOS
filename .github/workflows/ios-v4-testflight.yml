@@ -1,0 +1,80 @@
+name: JourneyDeck V4 TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Validate only, or build V4 and upload it to the existing TestFlight listing
+        type: choice
+        options:
+          - validate
+          - testflight
+        default: validate
+        required: true
+      confirm_target:
+        description: For TestFlight, enter V4_TESTFLIGHT exactly
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: journeydeck-v4-testflight
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: mobile/recorder
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/recorder/package-lock.json
+      - name: Install mobile dependencies
+        run: npm ci
+      - name: Check V4 release identity
+        run: node scripts/v4-release-preflight.mjs
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test mobile app
+        run: npm test
+
+  testflight:
+    if: ${{ inputs.operation == 'testflight' && inputs.confirm_target == 'V4_TESTFLIGHT' && github.ref == 'refs/heads/main' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: v4-release
+    defaults:
+      run:
+        working-directory: mobile/recorder
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      APP_VARIANT: v4-store
+      EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING: '0'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/recorder/package-lock.json
+      - name: Require Expo release credential
+        run: test -n "$EXPO_TOKEN"
+      - name: Install mobile dependencies
+        run: npm ci
+      - name: Confirm V4 target
+        run: node scripts/v4-release-preflight.mjs
+      - name: Build and upload to TestFlight
+        run: npx --yes eas-cli@23.2.0 build --platform ios --profile v4-testflight --auto-submit-with-profile v4-testflight --non-interactive --no-wait

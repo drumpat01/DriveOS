@@ -13,6 +13,7 @@ import {
 } from '../modules/journeydeck-membership';
 import { entitlementsForTestFlightMembership, entitlementsForVerifiedMembership, sameMembershipEntitlements, withPreviewAtlasAccess, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { PREVIEW_ATLAS_UNLOCKED, TESSIE_INTEGRATION_ENABLED, TESTFLIGHT_PLUS_UNLOCKED } from './release-features';
+import { publishProEntitlement } from './pro-entitlement-sync';
 
 const unavailableStatus: JourneyDeckMembershipStatus = {
   nativeModuleAvailable: false,
@@ -54,6 +55,7 @@ export function useJourneyDeckMembership() {
     setStatus(nextStatus);
     setPhase('ready');
     setMessage(null);
+    void publishProEntitlement(nextStatus).catch(() => undefined);
   }, []);
 
   const refresh = useCallback(async () => {

@@ -8,6 +8,11 @@ export function ThemeMaterial({ radius = 20 }: { radius?: number }) {
   if (!theme.isCustom) return null;
   const grandTouring = theme.id === 'redline';
   const autumn = theme.id === 'midnight-canopy';
+  // Aurora cards keep a neutral glass sheen; mint is reserved for actions.
+  if (theme.id === 'aurora-glass') return <View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
+    <LinearGradient colors={['#ffffff12', '#ffffff00', '#ffffff06']} locations={[0, 0.45, 1]} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={['#ffffff20', '#ffffff55', '#ffffff20']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={{ position: 'absolute', top: 0, left: radius, right: radius, height: 1 }} />
+  </View>;
   return <View pointerEvents="none" accessible={false} style={[StyleSheet.absoluteFill, { borderRadius: radius, overflow: 'hidden' }]}>
     <LinearGradient colors={autumn ? [`${theme.palette.glow}18`, `${theme.palette.glow}00`, `${theme.palette.glow}12`] : theme.isLight ? ['#fff8fb55', '#ffffff00', '#d895ab22'] : grandTouring ? [`${theme.palette.green}48`, '#ffffff00', `${theme.palette.accent}10`] : ['#f6f0e218', '#ffffff00', '#d4b15a12']}
       locations={[0, 0.38, 1]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />

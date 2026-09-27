@@ -50,3 +50,24 @@ test('JourneyDeck map theming rejects malformed styles', () => {
   assert.equal(themeJourneyDeckMapStyle({ version: 7, layers: [] }), null);
   assert.equal(themeJourneyDeckMapStyle({ version: 8 }), null);
 });
+
+test('Aurora Glass map: midnight land, teal water, slate roads, and a mint route that is the only mint', async () => {
+  const input = { version: 8, sources: { open: { type: 'vector' } }, layers: [
+    { id: 'background', type: 'background' }, { id: 'park', type: 'fill' }, { id: 'water', type: 'fill' },
+    { id: 'road-motorway', type: 'line' }, { id: 'road-minor', type: 'line' }, { id: 'place-label', type: 'symbol' },
+  ] };
+  const fetcher = (async () => ({ ok: true, json: async () => input })) as unknown as typeof fetch;
+  const aurora = await loadJourneyDeckMapStyle(fetcher, 'aurora-glass');
+  assert.notEqual(aurora, await loadJourneyDeckMapStyle(fetcher, 'redline'), 'Aurora has its own cached style');
+  const paint = (i: number) => aurora?.layers[i]?.paint ?? {};
+  assert.equal(paint(0)['background-color'], '#0a1124');
+  assert.equal(paint(1)['fill-color'], '#0c2330');
+  assert.equal(paint(2)['fill-color'], '#05202c');
+  assert.equal(paint(3)['line-color'], '#34466b');
+  assert.equal(paint(4)['line-color'], '#26365a');
+  assert.equal(paint(5)['text-color'], '#9fb2d4');
+  assert.equal(aurora?.sources, input.sources);
+  const mint = themeCatalog['aurora-glass'].palette.accent;
+  assert.deepEqual(journeyDeckMapPalette('aurora-glass'), { routeGlow: mint, routeShadow: '#032018', routeLine: mint });
+  assert.ok(!JSON.stringify(aurora?.layers).toLowerCase().includes(mint), 'basemap never uses the route mint');
+});

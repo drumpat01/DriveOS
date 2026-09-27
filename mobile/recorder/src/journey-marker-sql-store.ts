@@ -13,7 +13,7 @@ export type JourneyMarkerSyncRecord = JourneyMarker & {
 };
 export type MarkerMedia = { id: string; kind: 'photo'; fileName: string };
 export type MarkerPhotoSyncRecord = MarkerMedia & {
-  markerId: string; userId: string; deletedAt: string | null;
+  markerId: string; rootJourneyId?: string; userId: string; deletedAt: string | null;
   syncedToCloud: number; syncRevision: number; createdAt: string; updatedAt: string;
 };
 
@@ -136,7 +136,7 @@ export function listMarkersPendingPrivateSync(userId: string, limit = 50): Journ
 export function listMarkerPhotosPendingPrivateSync(userId: string, limit = 50): MarkerPhotoSyncRecord[] {
   return ownedDatabase(userId).getAllSync<MarkerPhotoSyncRecord>(`SELECT media.id,media.kind,media.file_name AS fileName,
     media.deleted_at AS deletedAt,media.synced_to_cloud AS syncedToCloud,media.sync_revision AS syncRevision,
-    media.created_at AS createdAt,media.updated_at AS updatedAt,media.marker_id AS markerId,m.user_id AS userId
+    media.created_at AS createdAt,media.updated_at AS updatedAt,media.marker_id AS markerId,m.root_journey_id AS rootJourneyId,m.user_id AS userId
     FROM local_marker_media media JOIN local_journey_markers m ON m.id=media.marker_id
     WHERE m.user_id=? AND media.kind='photo' AND media.synced_to_cloud=0
     ORDER BY media.updated_at,media.id LIMIT ?;`, userId, limit);
@@ -150,7 +150,7 @@ export function getMarkerIncludingDeleted(userId: string, markerId: string): Jou
 export function getMarkerPhotoIncludingDeleted(userId: string, photoId: string): MarkerPhotoSyncRecord | null {
   return ownedDatabase(userId).getFirstSync<MarkerPhotoSyncRecord>(`SELECT media.id,media.kind,media.file_name AS fileName,
     media.deleted_at AS deletedAt,media.synced_to_cloud AS syncedToCloud,media.sync_revision AS syncRevision,
-    media.created_at AS createdAt,media.updated_at AS updatedAt,media.marker_id AS markerId,m.user_id AS userId
+    media.created_at AS createdAt,media.updated_at AS updatedAt,media.marker_id AS markerId,m.root_journey_id AS rootJourneyId,m.user_id AS userId
     FROM local_marker_media media JOIN local_journey_markers m ON m.id=media.marker_id
     WHERE m.user_id=? AND media.id=?;`, userId, photoId) ?? null;
 }

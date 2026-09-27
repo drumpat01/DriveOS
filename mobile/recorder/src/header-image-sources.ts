@@ -19,9 +19,18 @@ const customArtwork = new Set([...lightHeaders.keys(), require('../assets/cinema
 const memoryArtwork = new Set([require('../assets/cinematic-memory-polaroids-photo-v1.jpg'), require('../assets/cinematic-memories-polaroids-photo-v1.jpg')]);
 const journeyArtwork = new Set([require('../assets/cinematic-journey-photo-v1.jpg'), require('../assets/cinematic-home-morning-photo-v1.jpg'), require('../assets/cinematic-home-afternoon-photo-v1.jpg'), require('../assets/cinematic-home-evening-photo-v1.jpg'), require('../assets/cinematic-home-night-photo-v1.jpg')]);
 
+/** Calm, pre-blurred page scene for glass themes; null for every other theme. */
+export function glassSoftSceneSource(mode: ThemeId): ImageSourcePropType | null {
+  return mode === 'aurora-glass' ? require('../assets/theme-aurora-glass-scene-soft-v1.jpg') : null;
+}
+
 /** Theme app-owned artwork; unknown sources and dark mode remain untouched. */
 export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): ImageSourcePropType {
   if (typeof source === 'number' && customArtwork.has(source)) {
+    // Aurora Glass: full scenery on Home only; every other app-owned image uses the calm blurred scene.
+    if (mode === 'aurora-glass') return source === require('../assets/cinematic-home-main-photo-v1.jpg')
+      ? require('../assets/theme-aurora-glass-scene-v1.jpg')
+      : require('../assets/theme-aurora-glass-scene-soft-v1.jpg');
     if (mode === 'midnight-canopy' && source === require('../assets/cinematic-home-main-photo-v1.jpg')) return require('../assets/theme-autumn-drive-road-v1.png');
     // Keep replacement registration conditional, matching the device-proven OTA.
     if (mode === 'redline') {

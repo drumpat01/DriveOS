@@ -16,6 +16,8 @@ const botAvatars: Record<ThemeId, ImageSourcePropType> = {
   sakura: require('../assets/navigator-rosewater-256.png'),
   redline: require('../assets/navigator-grand-touring-256.png'),
   'midnight-canopy': require('../assets/navigator-autumn-drive-256.png'),
+  // Aurora shares Grand Touring's midnight-navy navigator.
+  'aurora-glass': require('../assets/navigator-grand-touring-256.png'),
 };
 
 function BotAvatar({ themeID, size }: { themeID: ThemeId; size: number }) {

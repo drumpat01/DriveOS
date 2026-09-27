@@ -36,6 +36,11 @@ function device(overrides: Record<string, any> = {}) {
     const module = { exports: {} };
     cache.set(path, module);
     const require = (name: string): any => {
+      if (name === '../modules/journeydeck-cloudkit' && name in overrides) {
+        const cloud = overrides[name];
+        cloud.getCloudKitPrivateZoneScopes ??= async () => ({ canonicalScope: 'f'.repeat(48), existingScopes: [] });
+        return cloud;
+      }
       if (name in overrides) return overrides[name];
       if (name === './database-owner') return { getMasterDatabase: () => adapter };
       if (name === 'expo-constants') return { __esModule: true, default: { expoConfig: { extra: { features: {} } } } };
@@ -688,7 +693,7 @@ test('timed-out cloud deletion remains paused across coordinator restart and can
   assert.equal(deletes, 1);
   release(); await blocked; await new Promise(resolve => setImmediate(resolve));
   await coordinator.deletePrivateCloudDataForUser(phone.user);
-  assert.equal(deletes, 2);
+  assert.equal(deletes, 3);
   assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true, 'barrier stays until local account cleanup');
   assert.ok(phone.store.getJourney(phone.user.id, 'fixture-journey'));
 });
@@ -792,14 +797,14 @@ test('cloud account deletion drains an in-flight upload and keeps sync paused ac
   releaseUpload();
   await deleting;
   assert.equal(await settledSync, 'cancelled');
-  assert.deepEqual(events, ['upload', 'delete']);
+  assert.deepEqual(events, ['upload', 'delete', 'delete']);
   assert.equal(cloudPresent, false);
   assert.equal(phone.store.getJourney(phone.user.id, 'fixture-journey').syncedToCloud, 0);
   const restartedCoordinator = phone.reload(resolve(src, 'icloud-sync.ts'));
   await assert.rejects(restartedCoordinator.syncCurrentUserWithPrivateICloud({ force: true }), /paused/,
     'failed later file cleanup cannot repopulate the deleted backup after restart');
   await restartedCoordinator.deletePrivateCloudDataForUser(phone.user);
-  assert.equal(deletes, 2, 'account deletion remains explicitly retryable');
+  assert.equal(deletes, 4, 'account deletion remains explicitly retryable');
   assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
   phone.store.deleteLocalUserData(phone.user.id);
   assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), false);
@@ -849,7 +854,7 @@ test('an uncertain cloud deletion response keeps backup paused across restart un
   const restarted = phone.reload(resolve(src, 'icloud-sync.ts'));
   await assert.rejects(restarted.syncCurrentUserWithPrivateICloud({ force: true }), /paused/);
   await restarted.deletePrivateCloudDataForUser(phone.user);
-  assert.equal(attempts, 2);
+  assert.equal(attempts, 3);
   assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
   phone.store.deleteLocalUserData(phone.user.id);
   assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), false);
@@ -868,7 +873,7 @@ test('a profile handoff during route-asset validation stops before replacing loc
   assert.equal(phone.store.getRouteArchive(phone.user.id, 'fixture-journey').syncedToCloud, 0);
 });
 
-test('edits and Markers use separate private zones and account deletion removes every zone', async () => {
+test('V4 reads legacy editor and Marker zones and writes only to the canonical zone', async () => {
   const pushes: Array<{ scope: string; records: any[] }> = [], pulls: string[] = [], deleted: string[] = [];
   const overrides: Record<string, any> = {
     '../modules/journeydeck-membership': { getMembershipStatus: async () => ({ nativeModuleAvailable: true, tier: 'paid' }) },
@@ -893,20 +898,64 @@ test('edits and Markers use separate private zones and account deletion removes 
   const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
   const base = await coordinator.privateCloudProfileScope(phone.user), edits = await coordinator.privateCloudEditorScope(phone.user);
   const markers = await coordinator.privateCloudMarkerScope(phone.user);
+  const canonical = 'f'.repeat(48);
+  overrides['../modules/journeydeck-cloudkit'].getCloudKitPrivateZoneScopes = async () => ({ canonicalScope: canonical, existingScopes: [base, edits, markers] });
   assert.notEqual(base, edits); assert.notEqual(base, markers); assert.notEqual(edits, markers);
   const synced = await coordinator.syncCurrentUserWithPrivateICloud({ force: true });
   assert.equal(synced.failedUploads, 0);
-  assert.deepEqual(pulls, [base, edits, markers]);
-  assert.ok(pushes.some(batch => batch.scope === edits && batch.records.some(record => record.recordType === 'JourneyEdit')));
-  assert.ok(pushes.some(batch => batch.scope === markers && batch.records.some(record => record.recordType === 'JourneyMarker')));
-  assert.ok(pushes.every(batch => batch.records.every(record => {
-    if (record.recordType === 'JourneyEdit') return batch.scope === edits;
-    if (record.recordType === 'JourneyMarker' || record.recordType === 'MarkerPhoto') return batch.scope === markers;
-    return batch.scope === base;
-  })));
+  assert.deepEqual(pulls, [base, edits, markers, canonical]);
+  assert.ok(pushes.some(batch => batch.records.some(record => record.recordType === 'JourneyEdit')));
+  assert.ok(pushes.some(batch => batch.records.some(record => record.recordType === 'JourneyMarker')));
+  assert.ok(pushes.every(batch => batch.scope === canonical));
   assert.equal(editor.journeyEditsPendingSync(phone.user.id).length, 0);
+  const secondLegacy = 'a'.repeat(48);
+  const cache = phone.load(resolve(src, 'pro-entitlement-cache.ts'));
+  cache.lastPublishedProEntitlements.set(canonical, { fingerprint: 'old', at: Date.now() });
+  overrides['../modules/journeydeck-cloudkit'].getCloudKitPrivateZoneScopes = async () => ({
+    canonicalScope: canonical, existingScopes: [base, secondLegacy, edits, markers,
+      `JourneyDeck-${'b'.repeat(48)}`, 'g'.repeat(48), 'short'],
+  });
   await coordinator.deletePrivateCloudDataForUser(phone.user);
-  assert.deepEqual(deleted, [base, edits, markers]);
+  assert.deepEqual(deleted, [base, canonical, edits, markers, secondLegacy]);
+  assert.equal(new Set(deleted).size, 5, 'each eligible zone is deleted once');
+  assert.equal(cache.lastPublishedProEntitlements.has(canonical), false, 'a recreated zone can publish its entitlement again');
+});
+
+test('failed legacy-zone deletion preserves the pause and retry accepts zones already gone', async () => {
+  const deleted = new Set<string>(), attempts: string[] = [];
+  let failSecond = true;
+  const canonical = 'f'.repeat(48), secondLegacy = 'a'.repeat(48);
+  const overrides: Record<string, any> = {
+    '../modules/journeydeck-cloudkit': {
+      isJourneyDeckCloudKitAvailable: true,
+      getCloudKitCapabilities: async () => ({ privateContentVersion: 5 }),
+      getCloudKitAccountStatus: async () => 'available',
+      getCloudKitPrivateZoneScopes: async () => ({ canonicalScope: canonical, existingScopes: [secondLegacy] }),
+      deleteCloudKitPrivateZone: async (scope: string) => {
+        attempts.push(scope);
+        if (failSecond && attempts.length === 2) { failSecond = false; throw Object.assign(new Error('Delete failed'), { code: 'networkFailure' }); }
+        if (deleted.has(scope)) return; // Native treats zoneNotFound/unknownItem as success.
+        deleted.add(scope);
+      },
+    },
+  };
+  const phone = device(overrides); seed(phone);
+  overrides['./auth'] = { getCurrentUser: () => phone.user };
+  const coordinator = phone.load(resolve(src, 'icloud-sync.ts'));
+  const base = await coordinator.privateCloudProfileScope(phone.user);
+  const cache = phone.load(resolve(src, 'pro-entitlement-cache.ts'));
+  cache.lastPublishedProEntitlements.set(canonical, { fingerprint: 'old', at: Date.now() });
+  await assert.rejects(coordinator.deletePrivateCloudDataForUser(phone.user), /Delete failed/);
+  assert.deepEqual(attempts, [base, canonical]);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true);
+  assert.equal(cache.lastPublishedProEntitlements.has(canonical), true);
+  await assert.rejects(coordinator.syncCurrentUserWithPrivateICloud({ force: true }), /paused/);
+  await coordinator.deletePrivateCloudDataForUser(phone.user);
+  assert.deepEqual(attempts.slice(2), [base, canonical, await coordinator.privateCloudEditorScope(phone.user),
+    await coordinator.privateCloudMarkerScope(phone.user), secondLegacy]);
+  assert.equal(deleted.size, 5);
+  assert.equal(cache.lastPublishedProEntitlements.has(canonical), false);
+  assert.equal(phone.store.isPrivateCloudDeletionPending(phone.user.id), true, 'local cleanup still owns the durable pause');
 });
 
 test('immutable edit assets round-trip out of order and physical deletion requeues the recovery copy', async () => {

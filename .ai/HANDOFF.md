@@ -1,20 +1,25 @@
-# Current Handoff State — V3 Complete, V4 Ready
+# Current Handoff State — V4 Production Preparation
 
-## Release and scope (September 26, 2026)
+## Objective and branch (September 26, 2026)
 
-- The user declared JourneyDeck V3 feature complete. Only emergency bug fixes are in scope. `GEMINI.md` and `mobile/recorder/AGENTS.md` record this policy. V2 remains frozen separately.
-- V3 TestFlight Build 40 is version 3.0.0, runtime `3.0.0-preview.8`, on the live `com.journeydeck.recorder` app. EAS build `068e68d0-d786-48fe-8cb1-e54ce42e2e33` and exact-build submission `fc6d968c-86d6-49ce-91d1-23f1e0c24331` finished. Apple reports `VALID` and `IN_BETA_TESTING`. No App Review submission occurred.
-- Main contains the Build 39 update source, Build 40 Ask/Siri/full-screen chat source, and the private iCloud sync backoff fix. Build 40's source was captured from its EAS worktree in PR #179; the EAS Git commit hash alone does not identify the dirty source that was uploaded.
-- Production CloudKit has `JourneyMarker` and `MarkerPhoto` record types. Physical-device marker/photo upload, download, deletion, and two-device restore remain unverified. Ask/Siri answer accuracy, supporting details, chat layout, and theme icons also need device acceptance.
+- The owner wants Claude to finish V4 and operate its Expo/GitHub production path. This checkout is `D:\JourneyDeckV4`, branch `codex/journeydeck-v4-public-connector`. V4 connector and Aurora Glass changes are committed locally; the branch is being reconciled with newer `origin/main` before push/PR merge. Verify Git state before acting.
+- V3 is feature complete except emergency fixes; V2 remains frozen. `origin/main` contains V3 Build 40 source, runtime `3.0.0-preview.8`; Build 40 is valid and in TestFlight beta testing on the live app. V4 stays a distinct runtime `4.0.0-preview.1` and `v4-testflight` update branch.
+- No V4 TestFlight build, App Store submission, CloudKit Production schema deployment, or V4 OTA has occurred. No records or zones were deleted.
 
-## Git and environment
+## V4 implementation
 
-- PR #179 merged into `main` at `e427b83`; its GitHub validation passed. The separate local `main` worktree at `C:\Users\patri\.codex\worktrees\journeydeck-grand-touring-homepage` was fast-forwarded and clean. Recheck the remote head before V4 work.
-- Draft PRs #161 (1Password ad hoc signing) and #177 (Cloud Agent environment) were closed without merging and their remote branches deleted. Duplicate PR #176 was closed because its exact iCloud patch is already on main as `e84ed57`. There were no other open PRs before this handoff update.
-- Old V3 preview, Build 38, temporary TestFlight, Build 39, Build 40, and Ask OTA worktrees were removed. The old Build 38 source and Last.fm/onboarding edits were preserved only in local Git stashes `b12476987a1e8b6a36bdb36e8a444843007aab72` and `ff70535eefa80dba77e2648ce8db6e248a934640`, respectively. They were not merged or pushed.
-- One empty directory remains at `C:\Users\patri\.codex\worktrees\4338\JourneyDeckv3-current`: Git deregistered that worktree, but Windows held the directory open and direct removal was blocked. It contains no files.
+- Aurora Glass is an opt-in V4 Plus theme, not the default. `mobile/recorder/docs/v4-aurora-glass-theme-brief.md` contains the design decision, Appllama research, mockups, implementation status, and device review list. Native glass, frosted surfaces, scenery, map palette, and Reduce Transparency behavior are implemented in source but have not been seen on a physical device.
+- CloudKit derives one canonical `JourneyDeck-<48 hex>` zone from the iCloud user record, reads legacy JourneyDeck zones, and writes new records to the canonical zone. V4 waits for Apple sign-in and isolates record-specific batch failures. Marker/photo local queues and migration 9 backfill existing records. Account deletion enumerates all JourneyDeck zones and preserves retry state on failure.
+- `MarkerPhoto.rootJourneyId` and `Entitlement` were added to the Development schema. StoreKit publishes verified Pro subscription state as `entitlement_pro` and avoids unchanged writes. The checked-in V3 docs previously said marker types were absent from Production; the newer V3 handoff says they are present. Inspect the **live** Production schema, then deploy any missing fields/types before V4 sync testing. `mobile/recorder/docs/v4-public-connector.md` has the full contract.
+- `v4-testflight` in `mobile/recorder/eas.json` targets the existing live bundle, iCloud container, and App Store Connect app. `mobile/recorder/docs/mockups/mcp-pro-onboarding.png` is a concept only; MCP entitlement enforcement and purchase-flow wiring remain unimplemented.
 
-## Next steps
+## Production handoff and access
 
-- Start any V4 work from the latest `origin/main` in a new branch or worktree. Keep V3 TestFlight and native runtime boundaries separate from V4.
-- Do not infer on-device success from source tests or EAS compilation. No new OTA, native build, deployment, or App Review submission occurred during this cleanup.
+- Read `mobile/recorder/docs/v4-production-handoff.md` for exact GitHub Actions commands, Expo identity, credential locations, CloudKit work, OTA boundary, and release checks. `.github/workflows/ios-v4-testflight.yml` provides manual validation and a main-only TestFlight build/upload path; `mobile/recorder/scripts/v4-release-preflight.mjs` checks the V4 target.
+- GitHub environment `v4-release` exists and accepts deployments from `main` only. Its `EXPO_TOKEN` environment secret is **missing**. Local `gh` and EAS CLI logins work for the current operator; Claude must recheck auth in its session. EAS production lists the RevenueCat Apple SDK key name. EAS-managed iOS signing and App Store Connect API key have not been verified for V4 noninteractive use. Never put key values in Git, chat, or logs.
+- V4 OTA still points to the separate xprem server. The GitHub workflow does not publish OTA. Read `mobile/recorder/docs/OTA_RUNBOOK.md` and establish V4 xprem signing/branch access before OTA work.
+
+## Verification and next steps
+
+- V4 release identity preflight, TypeScript typecheck, and workflow YAML parse passed. The full mobile suite exposed one stale Fifty States source assertion; it was fixed and its focused test passes. Run the full suite against the reconciled branch, then `git diff --check` and PR CI. Swift and glass rendering require a macOS native build and physical iPhone/iPad review.
+- Finish reconciling `origin/main`, push the branch, open and merge the PR once checks pass, and update this handoff with the resulting Git state. Then provision the missing Expo environment secret and verify EAS Apple credentials. Inspect/deploy CloudKit Production schema and run the connector's two-device TestFlight checks before any public V4 release.

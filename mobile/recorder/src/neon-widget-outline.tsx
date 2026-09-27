@@ -16,12 +16,14 @@ export function NeonWidgetOutline({ radius, tone = 'standard' }: { radius: numbe
   const [size, setSize] = useState({ width: 0, height: 0 });
   const isHero = tone === 'hero';
   const isSelected = tone === 'selected';
-  const colors = theme.isCustom ? (isSelected ? [theme.palette.accent, theme.palette.rose, theme.palette.accent] : [theme.palette.chrome, theme.palette.line, theme.palette.rose, theme.palette.chrome, theme.palette.line]) : isSelected ? selectedStops : neonStops;
+  // Glass themes trade the neon rim for a quiet white edge; only selection uses the accent.
+  const glassEdge = theme.isGlass && !isSelected;
+  const colors = glassEdge ? ['#ffffff5c', '#ffffff1f', '#ffffff14', '#ffffff29', '#ffffff47'] : theme.isCustom ? (isSelected ? [theme.palette.accent, theme.palette.rose, theme.palette.accent] : [theme.palette.chrome, theme.palette.line, theme.palette.rose, theme.palette.chrome, theme.palette.line]) : isSelected ? selectedStops : neonStops;
   const positions = isSelected ? [0, 0.54, 1] : [0, 0.27, 0.54, 0.78, 1];
-  const glowOpacity = isHero ? 0.46 : isSelected ? 0.4 : 0.14;
-  const rimOpacity = isHero ? 0.94 : isSelected ? 0.92 : 0.54;
+  const glowOpacity = glassEdge ? 0 : isHero ? 0.46 : isSelected ? 0.4 : 0.14;
+  const rimOpacity = glassEdge ? 1 : isHero ? 0.94 : isSelected ? 0.92 : 0.54;
   const glowWidth = isHero ? 3.6 : isSelected ? 3 : 2.2;
-  const rimWidth = isHero ? 1.55 : isSelected ? 1.35 : 1;
+  const rimWidth = glassEdge ? 1 : isHero ? 1.55 : isSelected ? 1.35 : 1;
   return <View pointerEvents="none" onLayout={event => {
     const { width, height } = event.nativeEvent.layout;
     setSize(current => current.width === width && current.height === height ? current : { width, height });
@@ -32,7 +34,7 @@ export function NeonWidgetOutline({ radius, tone = 'standard' }: { radius: numbe
         <BlurMask blur={isHero ? 8 : isSelected ? 7 : 4} style="normal" />
       </RoundedRect>
       <RoundedRect x={3} y={3} width={size.width - 6} height={size.height - 6} r={Math.max(radius - 3, 0)} style="stroke" strokeWidth={rimWidth} opacity={rimOpacity}>
-        <LinearGradient start={vec(0, 0)} end={vec(size.width, size.height)} colors={theme.gradient(colors)} positions={positions} />
+        <LinearGradient start={vec(0, 0)} end={glassEdge ? vec(0, size.height) : vec(size.width, size.height)} colors={glassEdge ? colors : theme.gradient(colors)} positions={positions} />
       </RoundedRect>
     </Canvas>}
   </View>;

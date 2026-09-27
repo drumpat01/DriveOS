@@ -39,3 +39,6 @@ export const V3_ASK_JOURNEYDECK_ENABLED: boolean = Constants.expoConfig?.extra?.
 
 /** Approved forest appearance and alternate icon, isolated to the V3 preview. */
 export const V3_MIDNIGHT_CANOPY_ENABLED: boolean = Constants.expoConfig?.extra?.features?.midnightCanopy === true;
+
+/** V4 Aurora Glass Plus theme, offered only by the V4 app variant. */
+export const V4_AURORA_GLASS_ENABLED: boolean = Constants.expoConfig?.extra?.features?.auroraGlass === true;

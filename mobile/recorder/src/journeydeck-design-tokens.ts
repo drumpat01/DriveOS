@@ -65,6 +65,12 @@ export function journeyDeckSemanticColors(id: ThemeId, palette: ThemePalette): J
     text: '#291d26', textSecondary: '#685461', separator: '#d8c5ba',
     accent: '#b94f3d', onAccent: '#ffffff', success: '#58752f', danger: '#a33f32',
   };
+  // Aurora surfaces stay solid here; screens opt specific cards into glass with GlassBackdrop.
+  if (id === 'aurora-glass') return {
+    page: palette.page, surface: palette.card, surfaceRaised: palette.inset, surfaceInset: palette.inset,
+    text: palette.text, textSecondary: palette.muted, separator: 'rgba(255,255,255,0.14)',
+    accent: palette.accent, onAccent: palette.onAccent, success: palette.success, danger: palette.danger,
+  };
   return {
     page: palette.page, surface: palette.card, surfaceRaised: palette.card, surfaceInset: palette.inset,
     text: palette.text, textSecondary: palette.muted, separator: palette.line,

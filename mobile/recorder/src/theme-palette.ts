@@ -29,7 +29,7 @@ function alpha(color: string, opacity: number) {
 }
 
 /** Translate existing presentation colors by role; dark values remain byte-for-byte intact. */
-export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'accent'): string {
+export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'accent', opaque = false): string {
   if (mode === 'dark') return value;
   const channels = rgba(value);
   if (!channels) return value; // transparent, SVG paint references, provider URLs, etc.
@@ -37,6 +37,19 @@ export function themedColor(value: string, mode: ThemeId, role: ColorRole = 'acc
   if (isCustomTheme(mode)) {
     const p = themeCatalog[mode].palette, light = themeCatalog[mode].mode === 'light';
     const hi = Math.max(r, g, b), lo = Math.min(r, g, b), chroma = hi - lo;
+    if (mode === 'aurora-glass') {
+      // Depth comes from dark, neutral shadows instead of colored glows on every card.
+      if (role === 'shadow') return alpha('#000000', a * 0.6);
+      // Cards and controls become frosted tints over the scenery; pages stay solid.
+      // Reduce Transparency (opaque) restores solid palette surfaces.
+      if (role === 'surface') {
+        if (hi < 32) return alpha(p.page, a);
+        if (opaque) return alpha(hi < 90 ? p.card : p.inset, a);
+        return hi < 90 ? alpha(p.card, a * 0.62) : `rgba(255,255,255,${Number((a * 0.1).toFixed(3))})`;
+      }
+      // Neutral edges read as glass; saturated legacy borders keep their mapped ink.
+      if (role === 'border' && !(chroma > 45 && hi > 140)) return `rgba(255,255,255,${Number((a === 0 ? 0 : opaque ? 0.28 : 0.14).toFixed(3))})`;
+    }
     if (mode === 'midnight-canopy') {
       // Forest surfaces keep warm borders, amber actions, and russet controls separate.
       if (role === 'border') return alpha(p.line, a === 0 ? 0 : 1);
@@ -86,14 +99,14 @@ export function themedGradient<T extends readonly string[]>(colors: T, mode: The
   return colors.map(color => themedColor(color, mode, 'accent')) as unknown as T;
 }
 
-export function themedStyleSheet<T extends Record<string, any>>(styles: T, mode: ThemeId, preserve: readonly string[] = []): T {
+export function themedStyleSheet<T extends Record<string, any>>(styles: T, mode: ThemeId, preserve: readonly string[] = [], opaque = false): T {
   if (mode === 'dark') return styles;
   return Object.fromEntries(Object.entries(styles).map(([name, style]) => {
     if (preserve.includes(name)) return [name, style];
     const mapped = Object.fromEntries(Object.entries(style).map(([key, value]) => {
       if (typeof value !== 'string' || !/color$/i.test(key)) return [key, value];
       const role: ColorRole = /shadow/i.test(key) ? 'shadow' : /border/i.test(key) ? 'border' : /background/i.test(key) ? 'surface' : 'text';
-      return [key, themedColor(value, mode, role)];
+      return [key, themedColor(value, mode, role, opaque)];
     }));
     if (mode === 'midnight-canopy') {
       const p = themeCatalog[mode].palette;

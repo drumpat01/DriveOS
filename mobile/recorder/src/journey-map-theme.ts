@@ -37,11 +37,23 @@ const AUTUMN_ROAD_MAP = {
   boundary: '#98664e',
 } as const;
 
+// Approved Aurora Glass map: midnight land, deep-teal water, slate-blue roads; mint belongs to the route only.
+const AURORA_GLASS_MAP = {
+  land: '#0a1124',
+  water: '#05202c',
+  waterEdge: '#2b7f86',
+  park: '#0c2330',
+  majorRoad: '#34466b',
+  minorRoad: '#26365a',
+  boundary: '#3a4a70',
+  label: '#9fb2d4',
+} as const;
+
 const cachedStyles: Partial<Record<ThemeId, JourneyDeckMapStyle>> = {};
 const styleRequests: Partial<Record<ThemeId, Promise<JourneyDeckMapStyle | null>>> = {};
 
 function normalizedTheme(theme: MapTheme): ThemeId {
-  return theme === 'midnight-canopy' ? theme : theme === 'light' ? 'light' : theme === 'sakura' ? 'sakura' : theme === 'redline' ? 'redline' : 'dark';
+  return theme === 'midnight-canopy' || theme === 'aurora-glass' ? theme : theme === 'light' ? 'light' : theme === 'sakura' ? 'sakura' : theme === 'redline' ? 'redline' : 'dark';
 }
 
 export function journeyDeckMapPalette(theme: MapTheme): JourneyDeckMapPalette {
@@ -52,6 +64,11 @@ export function journeyDeckMapPalette(theme: MapTheme): JourneyDeckMapPalette {
       routeLine: AUTUMN_ROAD_MAP.routeLine,
     };
   }
+  if (normalizedTheme(theme) === 'aurora-glass') return {
+    routeGlow: '#5ff2c4',
+    routeShadow: '#032018',
+    routeLine: '#5ff2c4',
+  };
   if (normalizedTheme(theme) === 'redline') return {
     routeGlow: '#f4c94f',
     routeShadow: '#6e5518',
@@ -81,6 +98,26 @@ function themedPaint(layer: MapStyleLayer, theme: MapTheme) {
         'line-opacity': road ? (major ? 1 : 0.84) : boundary ? 0.8 : 0.68 };
     }
     if (layer.type === 'symbol') return { ...paint, 'text-color': palette.text, 'text-halo-color': palette.page, 'text-halo-width': 1.35, 'icon-opacity': 0.8 };
+    return paint;
+  }
+
+  if (id === 'aurora-glass') {
+    const map = AURORA_GLASS_MAP;
+    const water = /water|ocean|river|lake/.test(name);
+    const park = /park|grass|wood|forest|landcover|landuse/.test(name);
+    if (layer.type === 'background') return { ...paint, 'background-color': map.land, 'background-opacity': 1 };
+    if (layer.type === 'fill') return { ...paint, 'fill-color': water ? map.water : park ? map.park : map.land,
+      'fill-outline-color': water ? map.waterEdge : map.minorRoad, 'fill-opacity': 0.97 };
+    if (layer.type === 'fill-extrusion') return { ...paint, 'fill-extrusion-color': '#131d36', 'fill-extrusion-opacity': 0.82 };
+    if (layer.type === 'line') {
+      const road = /road|street|motorway|trunk|primary|highway|secondary|tertiary|transportation/.test(name);
+      const major = /motorway|trunk|primary|highway/.test(name);
+      const boundary = /boundary|admin/.test(name);
+      return { ...paint, 'line-color': water ? map.waterEdge : road ? (major ? map.majorRoad : map.minorRoad) : boundary ? map.boundary : map.minorRoad,
+        'line-opacity': road ? (major ? 0.95 : 0.8) : water ? 0.55 : 0.6 };
+    }
+    if (layer.type === 'symbol') return { ...paint, 'text-color': map.label, 'text-halo-color': map.land, 'text-halo-width': 1.3, 'icon-opacity': 0.75 };
+    if (layer.type === 'raster') return { ...paint, 'raster-brightness-min': 0.03, 'raster-brightness-max': 0.36, 'raster-saturation': -0.7, 'raster-contrast': 0.3, 'raster-hue-rotate': 190 };
     return paint;
   }
 

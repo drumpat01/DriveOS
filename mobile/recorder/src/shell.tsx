@@ -41,6 +41,7 @@ import { GlassView, isGlassEffectAPIAvailable, isLiquidGlassAvailable } from 'ex
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { BlurView } from 'expo-blur';
 import { Image as ExpoImage } from 'expo-image';
+import { GlassBackdrop, useGlassCardStyle } from './glass-material';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MeshGradientView } from 'expo-mesh-gradient';
 import { router, useLocalSearchParams, usePathname } from 'expo-router';
@@ -114,7 +115,7 @@ import { loadCityLabelForCoordinate } from './music-city-summary';
 import { loadProfileAppearance, saveProfileAppearance, type ProfileAppearance } from './profile-appearance';
 import { NeonWidgetOutline } from './neon-widget-outline';
 import { CinematicPhotoGrade, HEADER_ARTWORK_ASPECT_RATIO } from './header-artwork';
-import { headerImageSource } from './header-image-sources';
+import { glassSoftSceneSource, headerImageSource } from './header-image-sources';
 import { isInternalTestingBuild } from './internal-testing';
 import { maskCoordinate, prepareShareCardCoords } from './privacy-masker';
 import { trimPrivateShareRoute } from './share-route-privacy';
@@ -1304,6 +1305,7 @@ function ProsCons({ title, color, items, symbol }: { title: string; color: strin
 function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundtracks, onStatistics, onJourney, onFiftyStates, recorder }: { userId: string; primary: PrimaryDataState; recorderActive: boolean; journeyProgress: ActiveJourneyProgress | null; onSoundtracks: () => void; onStatistics: () => void; onJourney: (id: string) => void; onFiftyStates?: () => void; recorder: ReactNode }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
+  const glassCard = useGlassCardStyle();
   const { ambientMotionEnabled, reduceMotion } = useMotionPreferences();
 
   const insets = useSafeAreaInsets();
@@ -1368,7 +1370,8 @@ function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundt
   const presentation = selectHomePresentation(gridLayout.placements);
   const openEditor = () => setEditingLayout(true);
   const renderLatestMemory = () => <CardDetailLink kind="journey" id={latestJourney?.id} actions={[]}>
-    <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestMemory, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+    <TouchPressable disabled={!latestJourney} onPress={() => latestJourney && onJourney(latestJourney.id)} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestMemory, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, glassCard, pressed && styles.pressed]}>
+      <GlassBackdrop role="frosted" radius={22} />
       <View style={styles.approvedLatestMemoryHeader}><SymbolView name="sparkles" tintColor={homeColors.accent} size={15} /><Text style={[styles.approvedLatestMemoryKicker, { color: homeColors.accent }]}>Latest memory</Text></View>
       <View style={styles.approvedLatestMemoryRow}>
         <View style={styles.approvedLatestMemoryArtwork}><ExpoImage source={latestImage} contentFit="cover" cachePolicy="memory-disk" style={StyleSheet.absoluteFill} />{latestJourney && <View style={styles.approvedLatestMemoryPlay}><SymbolView name="play.fill" tintColor="#fff" size={13} /></View>}</View>
@@ -1377,7 +1380,8 @@ function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundt
       </View>
     </TouchPressable>
   </CardDetailLink>;
-  const renderLatestSoundtrack = () => <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestSong, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+  const renderLatestSoundtrack = () => <TouchPressable accessibilityRole="button" accessibilityLabel={latestTrack ? `Open Soundtracks for ${latestTrack.track}` : 'Open Soundtracks'} onPress={onSoundtracks} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.approvedLatestSong, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, glassCard, pressed && styles.pressed]}>
+    <GlassBackdrop role="frosted" radius={21} />
     {latestTrack ? <Artwork track={latestTrack} size={58} /> : <View style={[styles.approvedLatestSongFallback, { backgroundColor: homeColors.surfaceInset, borderColor: homeColors.separator }]}><SymbolView name="music.note" tintColor={homeColors.accent} size={25} /></View>}
     <View style={styles.flex}>
       <Text style={[styles.approvedLatestSongKicker, { color: homeColors.accent }]}>LATEST SONG PLAYED</Text>
@@ -1450,10 +1454,10 @@ function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundt
       <JourneyImage key={`home-header-${theme.id}`} imageIdentity={`home-header-${theme.id}`} source={headerImageSource(require('../assets/cinematic-home-main-photo-v1.jpg'), theme.id)} contentFit="cover" style={StyleSheet.absoluteFill} />
     </Reanimated.View>
     <CinematicPhotoGrade />
-    <LinearGradient colors={theme.isCustom ? [`${theme.palette.page}28`, `${theme.palette.page}12`, `${theme.palette.page}b8`, theme.palette.page] : theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
+    <LinearGradient colors={theme.isGlass ? [`${theme.palette.page}73`, `${theme.palette.page}00`, `${theme.palette.page}40`, `${theme.palette.page}8c`] : theme.isCustom ? [`${theme.palette.page}28`, `${theme.palette.page}12`, `${theme.palette.page}b8`, theme.palette.page] : theme.isLight ? ['rgba(255,250,240,0.24)', 'rgba(255,250,240,0.08)', 'rgba(255,250,240,0.74)', '#fffaf0'] : ['rgba(4,3,11,0.05)', 'rgba(5,3,10,0.1)', 'rgba(5,3,10,0.72)', '#05030b']} locations={[0, 0.28, 0.55, 0.86]} style={StyleSheet.absoluteFill} />
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.approvedHomeContent, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 28 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
       <PhoneTabTitle title="Home"
-        leading={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, pressed && styles.pressed]}><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></TouchPressable>}
+        leading={<TouchPressable accessibilityRole="button" accessibilityLabel="Open Statistics" onPress={onStatistics} style={({ pressed }) => [styles.approvedHomeHeaderButton, glassCard, pressed && styles.pressed]}><GlassBackdrop role="clear" radius={23} /><SymbolView name="chart.bar.xaxis" tintColor={theme.color("#c5afd1", 'text')} size={22} /></TouchPressable>}
         trailing={<NativeActionMenu compact label="Home actions" actions={[
           { id: 'soundtracks', title: 'Soundtracks', onSelect: onSoundtracks },
           { id: 'edit-home', title: 'Edit Home', onSelect: openEditor },
@@ -1463,7 +1467,8 @@ function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundt
         <View testID="home-fixed-recorder">{recorder}</View>
         <View testID="compact-home-widget-grid" style={styles.homeCuratedStack}>
           {presentation.memory ? renderLatestMemory() : null}
-          {presentation.memory && showSharePrompt && latestJourney && <View style={[styles.sharePrompt, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }]}>
+          {presentation.memory && showSharePrompt && latestJourney && <View style={[styles.sharePrompt, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, glassCard]}>
+            <GlassBackdrop role="frosted" radius={16} />
             <SymbolView name="square.and.arrow.up" tintColor={homeColors.accent} size={16} />
             <Text style={[styles.sharePromptText, { color: homeColors.text }]}>Your drive is ready to share.</Text>
             <TouchPressable accessibilityRole="button" accessibilityLabel="Share this drive" onPress={() => { markShareJourneyPrompted(latestJourney.id); setPromptedShareJourneyId(latestJourney.id); openJourneyCardAction(latestJourney.id, 'share'); }} style={({ pressed }) => [styles.sharePromptAction, { backgroundColor: homeColors.accent }, pressed && styles.pressed]}>
@@ -1474,7 +1479,8 @@ function HomeScreen({ userId, primary, recorderActive, journeyProgress, onSoundt
             </TouchPressable>
           </View>}
           {contextualWidget}
-          {presentation.summary.length ? <TouchPressable testID="home-road-summary" accessibilityRole="button" accessibilityLabel="Open road summary in Statistics" accessibilityHint="Long press to edit Home" onPress={onStatistics} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.homeRoadSummary, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, pressed && styles.pressed]}>
+          {presentation.summary.length ? <TouchPressable testID="home-road-summary" accessibilityRole="button" accessibilityLabel="Open road summary in Statistics" accessibilityHint="Long press to edit Home" onPress={onStatistics} onLongPress={openEditor} delayLongPress={1000} style={({ pressed }) => [styles.homeRoadSummary, { backgroundColor: homeColors.surfaceRaised, borderColor: homeColors.separator }, glassCard, pressed && styles.pressed]}>
+            <GlassBackdrop role="frosted" radius={journeyDeckRadius.feature} />
             <View style={styles.homeRoadSummaryHeader}><View><Text style={[styles.homeRoadSummaryKicker, { color: homeColors.accent }]}>ROAD SUMMARY</Text><Text style={[styles.homeRoadSummaryTitle, { color: homeColors.text }]}>Along the way</Text></View><SymbolView name="chevron.right" tintColor={homeColors.accent} size={17} /></View>
             <View style={styles.homeRoadSummaryGrid}>{presentation.summary.map((placement, index) => {
               const metric = placement.id === 'journeys' ? { title: 'Journeys', value: primary.data?.journeys.length.toLocaleString() ?? '—', icon: 'books.vertical' as SFSymbol } : metricWidgets[placement.id as keyof typeof metricWidgets];
@@ -3386,6 +3392,9 @@ function AtmosphericBackdrop({ variant }: { variant: 'home' | 'memories' | 'sett
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
+  // Glass themes place their calm, pre-blurred scene behind Memories and Settings.
+  const glassScene = variant === 'home' ? null : glassSoftSceneSource(theme.id);
+  if (glassScene) return <ExpoImage pointerEvents="none" accessible={false} source={glassScene} contentFit="cover" style={styles.atmosphere} />;
   const accent = variant === 'home' ? '#ff603f' : variant === 'memories' ? '#a04cff' : '#315f91';
   const secondary = variant === 'settings' ? '#d34378' : '#ff3f85';
   return <Svg pointerEvents="none" viewBox="0 0 430 1400" preserveAspectRatio="none" style={styles.atmosphere}>

@@ -4,6 +4,10 @@ export type JourneyDeckMembershipStatus = {
   activeProductId: string | null;
   expirationDate: string | null;
   environment: 'sandbox' | 'production' | 'xcode' | null;
+  originalTransactionId?: string | null;
+  mostRecentProductId?: string | null;
+  mostRecentExpirationDate?: string | null;
+  mostRecentEnvironment?: 'sandbox' | 'production' | 'xcode' | null;
 };
 
 export type JourneyDeckMembershipProduct = {

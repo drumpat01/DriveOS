@@ -155,22 +155,26 @@ public final class JourneyDeckMembershipModule: Module {
       }
     }
 
-    guard let transaction = newestTransaction else {
-      return [
-        "nativeModuleAvailable": true,
-        "tier": "free",
-        "activeProductId": nil,
-        "expirationDate": nil,
-        "environment": nil,
-      ]
+    var mostRecent = newestTransaction
+    if mostRecent == nil {
+      for productID in journeyDeckMembershipProductIDs {
+        guard let result = await StoreKit.Transaction.latest(for: productID),
+              case .verified(let transaction) = result else { continue }
+        if mostRecent == nil || transaction.purchaseDate > mostRecent!.purchaseDate {
+          mostRecent = transaction
+        }
+      }
     }
-
     return [
       "nativeModuleAvailable": true,
-      "tier": "paid",
-      "activeProductId": transaction.productID,
-      "expirationDate": iso8601(transaction.expirationDate),
-      "environment": environmentName(transaction.environment),
+      "tier": newestTransaction == nil ? "free" : "paid",
+      "activeProductId": newestTransaction?.productID,
+      "expirationDate": iso8601(newestTransaction?.expirationDate),
+      "environment": newestTransaction.flatMap { environmentName($0.environment) },
+      "originalTransactionId": mostRecent.map { String($0.originalID) },
+      "mostRecentProductId": mostRecent?.productID,
+      "mostRecentExpirationDate": iso8601(mostRecent?.expirationDate),
+      "mostRecentEnvironment": mostRecent.flatMap { environmentName($0.environment) },
     ]
   }
 }
