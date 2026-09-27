@@ -21,5 +21,5 @@
 
 ## Verification and next steps
 
-- V4 release identity preflight, TypeScript typecheck, full mobile suite, workflow YAML parse, and PR #181 GitHub CI passed. The stale Fifty States source assertion was fixed. Manual **validate-only** run `36289303256` found that the Atlas insight test fixture assumes America/Chicago local time; the workflow now sets that time zone for validation. Rerun the workflow and check its result. No EAS build was dispatched. Swift and glass rendering require a macOS native build and physical iPhone/iPad review.
+- V4 release identity preflight, TypeScript typecheck, full mobile suite, workflow YAML parse, and PR #181 GitHub CI passed. The stale Fifty States source assertion was fixed. Manual **validate-only** run `36289303256` found that the Atlas insight test fixture assumes America/Chicago local time; the workflow now sets that time zone for validation, and rerun `36289551202` passed. No EAS build was dispatched. Swift and glass rendering require a macOS native build and physical iPhone/iPad review.
 - Next: provision the missing Expo environment secret and verify EAS Apple credentials. Inspect/deploy CloudKit Production schema and run the connector's two-device TestFlight checks before any public V4 release.
