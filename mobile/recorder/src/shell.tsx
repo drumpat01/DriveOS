@@ -3193,7 +3193,7 @@ function ConnectionsScreen({
   }
 
   if (destination.kind === 'connector') {
-    return <SettingsEditorScaffold eyebrow="AI ASSISTANTS" title="Connect to Claude" onBack={closeEditor}>
+    return <SettingsEditorScaffold eyebrow="AI ASSISTANTS" title="Connect an AI assistant" onBack={closeEditor}>
       <ConnectorSettings profileId={currentUser.id} membershipTier={membershipTier} hasAppleAccount={Boolean(currentUser.appleSubject)} cloudStatus={privateCloud.status}
         onSync={onPrivateCloudSync} onMembership={onMembership} onAccount={() => setDestination({ kind: 'category', category: 'account' })} />
     </SettingsEditorScaffold>;
@@ -3362,8 +3362,8 @@ function ConnectionsScreen({
     {V4_CONNECTOR_ENABLED && <View style={styles.settingsHubSection}>
       <Text style={styles.settingsSectionLabel}>AI ASSISTANTS</Text>
       <View style={styles.settingsHubList}>
-        <TouchPressable accessibilityRole="button" accessibilityLabel="Open Connect to Claude" onPress={openConnector} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}>
-          <View style={styles.settingsHubIcon}><SymbolView name="sparkles" tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Connect to Claude</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>{connectorSummary}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+        <TouchPressable accessibilityRole="button" accessibilityLabel="Open AI assistant connections" onPress={openConnector} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}>
+          <View style={styles.settingsHubIcon}><SymbolView name="sparkles" tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Claude, ChatGPT & more</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>{connectorSummary}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
         </TouchPressable>
       </View>
     </View>}

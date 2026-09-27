@@ -28,3 +28,15 @@ test('the connector screen is V4-only and saves through the synced private prefe
   assert.match(shell, /connector=\{V4_CONNECTOR_ENABLED \? \{/);
   assert.match(screen, /upsertPrivatePreference\(profileId, CONNECTOR_PRIVACY_KEY, next\)/);
 });
+
+test('the connector screen offers Claude, ChatGPT, Grok and other MCP apps, each with setup steps', async () => {
+  const { CONNECTOR_ASSISTANTS, connectorAssistant } = await import('../src/connector-assistants.ts');
+  assert.deepEqual(CONNECTOR_ASSISTANTS.map(assistant => assistant.id), ['claude', 'chatgpt', 'grok', 'other']);
+  assert.ok(CONNECTOR_ASSISTANTS.every(assistant => assistant.addSteps.length > 0 && assistant.label.length <= 8));
+  assert.match(connectorAssistant('chatgpt').addSteps.join(' '), /Add → Create MCP App/);
+  assert.doesNotMatch(connectorAssistant('chatgpt').addSteps.join(' '), /Developer mode/);
+  assert.equal(connectorAssistant('grok').settingsUrl, 'https://grok.com/connectors');
+  assert.equal(connectorAssistant('nope' as never).id, 'claude');
+  const screen = readFileSync(new URL('../src/connector-settings.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(screen.replace('Connect JourneyDeck to Claude, ChatGPT, Grok', ''), /\bClaude\b/, 'no Claude-only copy outside the intro');
+});

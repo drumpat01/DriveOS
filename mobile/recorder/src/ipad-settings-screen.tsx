@@ -128,7 +128,7 @@ export function IpadSettingsScreen(p: Props) {
       {button(cloudBusy ? 'Syncing…' : cloudUnavailable ? 'Update app' : 'Sync now', p.onSync, { primary: true, disabled: cloudBusy || cloudUnavailable, accessibilityLabel: 'Sync iCloud now' })}</View>
       <Text style={body}>Your JourneyDeck library stays private in your iCloud account. Sync on your iPhone first, then sync here.</Text>
       <Pressable accessibilityRole="link" accessibilityLabel="Privacy Policy" onPress={() => openPage('privacy')}><Text style={[styles.link, { color: colors.accent }]}>Read Privacy Policy</Text></Pressable></View>
-    {p.connector && <Pressable accessibilityRole="button" accessibilityLabel="Open Connect to Claude" onPress={p.connector.onOpen} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('sparkles')}<View style={styles.flex}><Text style={title}>Connect to Claude</Text><Text style={body}>{p.connector.summary}</Text></View>
+    {p.connector && <Pressable accessibilityRole="button" accessibilityLabel="Open AI assistant connections" onPress={p.connector.onOpen} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('sparkles')}<View style={styles.flex}><Text style={title}>AI assistants</Text><Text style={body}>{p.connector.summary}</Text></View>
       <SymbolView name="chevron.right" tintColor={colors.muted} size={14} /></Pressable>}
   </View>;
   const places = <View testID="ipad-settings-places" style={styles.detailStack}>{p.places.map(place => <Pressable key={place.id} accessibilityRole="button" accessibilityLabel={`${place.saved ? 'Change' : 'Set'} ${place.label}`} onPress={() => p.onPlace(place.id)}
