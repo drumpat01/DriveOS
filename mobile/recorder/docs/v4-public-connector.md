@@ -2,7 +2,7 @@
 
 ## Production CloudKit action
 
-The checked-in Development schema has `JourneyMarker` and `MarkerPhoto`. The V3 Marker documentation says these types were never deployed to Production; this checkout cannot inspect the live Production schema. Deploy both types and the new `Entitlement` type from Development to Production in the CloudKit Console before testing V4 uploads. The app retains every existing record type, field, and recordName. No query indexes are required for the connector's zone-change reads.
+**Deployed September 27, 2026.** A live read of the Production schema showed that `JourneyMarker` was already complete, while `MarkerPhoto` lacked `rootJourneyId` and `Entitlement` was absent. The live Development schema matched Production, so the checked-in `.ckdb` additions had never been applied. The owner added the missing field and type in Development, reviewed the deploy diff, and deployed. The diff contained only those changes plus the default `_world`/`_icloud`/`_creator` roles for `Entitlement`. Production now matches the table below. The app retains every existing record type, field, and recordName. No query indexes are required for the connector's zone-change reads.
 
 | Record type | App field | CloudKit type |
 | --- | --- | --- |
