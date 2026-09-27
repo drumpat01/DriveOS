@@ -9,7 +9,13 @@
 - JourneyDeck V2 development is complete. The user confirmed submission of version 2.0 / build 31 to App Review; this does not imply Apple approval or public release.
 - V2 is frozen. Changes are allowed only to address urgent bugs reported by customers. Do not make V2 feature additions, cosmetic changes, refactors, dependency upgrades, or discretionary OTA/native releases.
 - Record the customer report and urgency for any V2 fix, keep its scope minimal, and validate it with targeted tests. Release actions still require user authorization.
-- All new features and non-urgent improvements belong to V3 on a separate development branch. Keep the submitted V2 baseline intact.
+- Keep the submitted V2 baseline intact.
+
+## V3 Feature Complete — Emergency Fixes Only (September 26, 2026)
+
+- The user declared JourneyDeck V3 feature complete. Only emergency bug fixes are in scope from now on.
+- Do not add features, cosmetic polish, refactors, dependency upgrades, or discretionary releases to V3. Keep an emergency fix minimal and validate the affected behavior with targeted tests.
+- Release actions still require explicit user authorization. The existing V3 TestFlight stream must not be submitted to App Review without separate authorization.
 
 ## ⚡ Before You Change Code (Checklist)
 

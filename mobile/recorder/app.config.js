@@ -28,8 +28,8 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v4Store ? '4.0.0' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // V4 uses a new runtime and update branch, leaving V3 TestFlight updates isolated.
-    runtimeVersion: v4Store ? '4.0.0-preview.1' : v3 ? '3.0.0-preview.7' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    // V4 and V3 Build 40 have separate native and OTA compatibility boundaries.
+    runtimeVersion: v4Store ? '4.0.0-preview.1' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(modern ? {

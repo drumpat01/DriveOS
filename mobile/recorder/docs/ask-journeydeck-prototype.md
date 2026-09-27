@@ -14,9 +14,10 @@
 > reopening the sheet. Both surfaces call the same native answer service. Apple's on-device
 > Foundation Model interprets questions when available, then a validated read-only query
 > computes facts from the active profile's SQLite archive. Local rules handle supported
-> questions when the model is unavailable. Every non-answer is shown or spoken as exactly
-> `Beep Boop. Can not compute.` Apple Intelligence availability is shown in chat; the device
-> owner enables it in iPhone Settings. Build 39 compilation and iPhone Siri validation remain pending.
+> questions when the model is unavailable. Build 40 includes revision 5 with one shared
+> plan resolver/executor and distinct clarification and failure reasons; see `siri-ai-v3.md`.
+> Apple Intelligence availability is shown in chat; the device owner enables it in iPhone
+> Settings. Revision 5 compiled in the Build 40 EAS archive. Physical-device validation remains pending.
 
 Status: source implementation, September 16, 2026. No build, prebuild, export, OTA, or device run was performed. Swift compilation, Siri discovery/speech/snippets, and physical-device acceptance below are **not verified**. Do not mark roadmap V3-10 complete.
 

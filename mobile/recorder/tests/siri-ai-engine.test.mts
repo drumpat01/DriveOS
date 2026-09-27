@@ -7,11 +7,105 @@ const require = createRequire(import.meta.url);
 const path = '../modules/journeydeck-recorder/ios/AskResources/';
 const engine = require(path + 'ask-query-engine.js'), suite = require(path + 'ask-evaluation.js');
 
+test('longest journey defaults explicitly to distance and honors explicit driving time', () => {
+  const input = suite.fixture(); input.journeys[0].minutes = 180;
+  for (const question of ['What is my longest drive?', 'What is my longest journey', 'What’s my longest trip?', 'Show me my longest journey by distance']) {
+    // Neither model refusal nor an invented metric/period may override this complete query.
+    const plan = engine.normalizeModelPlan(question, { decision: 'unsupported', metric: 'minutes', period: 'today' });
+    const answer = engine.execute(plan, input);
+    assert.equal(answer.status, 'answered'); assert.equal(answer.facts.value, 40);
+    assert.match(answer.text, /^Longest by distance:/); assert.deepEqual(answer.context.journeyIds, ['j4']);
+  }
+  const duration = engine.execute(engine.directPlan('What is my longest journey by driving time?'), input);
+  assert.equal(duration.facts.value, 180); assert.match(duration.text, /^Longest by driving time:/);
+  assert.deepEqual(duration.context.journeyIds, ['j1']);
+  for (const question of ['What is my longest drive this week?', 'What is my longest drive by duration this week?']) {
+    assert.equal(engine.directPlan(question), null);
+    const plan = engine.normalizeModelPlan(question, { decision: 'answer', operation: 'largest', metric: question.includes('duration') ? 'minutes' : 'miles', period: 'thisWeek' });
+    assert.equal(plan.decision, 'answer'); assert.equal(plan.period, 'thisWeek');
+    assert.equal(plan.metric, question.includes('duration') ? 'minutes' : 'miles');
+  }
+  const excluded = 'What is my longest drive without highways?';
+  assert.equal(engine.directPlan(excluded), null);
+  assert.equal(engine.normalizeModelPlan(excluded, { operation: 'largest', metric: 'miles' }).decision, 'unsupported');
+});
+
+test('semantic model plans execute without a second vocabulary gate; model refusals are not promoted', () => {
+  const input = suite.fixture(); input.journeys[0].minutes = 180;
+  const cases = [
+    ['Which outing took me the furthest?', { operation: 'largest', metric: 'miles' }, 40, 'j4'],
+    ['On which outing did I spend the most time behind the wheel?', { operation: 'largest', metric: 'minutes' }, 180, 'j1'],
+    ['Which performer dominates my listening history?', { domain: 'music', operation: 'rank', groupBy: 'artist', limit: 1 }, 6, null],
+    ['How far did I go on average this week?', { operation: 'average', metric: 'miles', period: 'thisWeek' }, 20, null],
+  ] as const;
+  for (const [question, intent, value, journeyId] of cases) {
+    const plan = engine.resolvePlan(question, { ...engine.defaults, ...intent }, null, input.now);
+    const answer = engine.execute(plan, input);
+    assert.equal(answer.status, 'answered', question); assert.equal(answer.facts.value, value, question);
+    if (journeyId) assert.deepEqual(answer.context.journeyIds, [journeyId]);
+  }
+  for (const decision of ['clarify', 'unsupported']) {
+    const plan = engine.resolvePlan('Can you tell me something about my outing?', { ...engine.defaults, decision }, null, input.now);
+    assert.equal(plan.decision, decision);
+    // Refusals do not load or inspect any archive rows.
+    const answer = engine.execute(plan, null);
+    assert.equal(answer.reason, decision === 'clarify' ? 'clarificationNeeded' : 'unsupportedRequest');
+    assert.equal(answer.evidence.length, 0); assert.equal(answer.context, null);
+  }
+  for (const raw of [{ ...engine.defaults, sql: 'SELECT secret' }, { ...engine.defaults, metric: 'fuel' }, { ...engine.defaults, limit: 500 }]) {
+    assert.equal(engine.resolvePlan('Which outing took me the furthest?', raw, null, input.now), null);
+  }
+  for (const question of ['Which outing took me furthest excluding Monday?', 'Read my private notes', 'Delete all journeys']) {
+    const plan = engine.resolvePlan(question, { ...engine.defaults, operation: 'largest', metric: 'miles' }, null, input.now);
+    assert.equal(plan.decision, 'unsupported');
+  }
+  assert.equal(engine.resolvePlan('Count my audio clips', { ...engine.defaults, domain: 'markers', metric: 'voiceMemos' }, null, input.now).decision, 'unsupported');
+});
+
 test('100 golden queries have independently calculated expected results, including refusals', () => {
   assert.equal(suite.cases.length, 100);
   for (const item of suite.cases) assert.equal(suite.grade(item.id, item.plan).status, 'passed', item.id);
   assert.equal(suite.grade('01-1', { metric: 'minutes', period: 'thisWeek' }).status, 'failed');
   assert.equal(suite.grade('21-1', {}).status, 'passed');
+});
+test('offline grammar and model plans share one executor, including periods and follow-ups', () => {
+  const input = suite.fixture();
+  const cases = [
+    ['How many miles did I drive this week?', 80],
+    ['What is my longest drive this week?', 40],
+    ['How many journeys on 2026-09-17?', 1],
+    ['How many journeys in the last 2 days?', 3],
+    ['What is my top artist this month?', 6],
+  ] as const;
+  for (const [question, value] of cases) {
+    const offline = engine.resolvePlan(question, null, null, input.now);
+    assert.ok(offline, question);
+    const noisy = engine.resolvePlan(question, { ...engine.defaults, decision: 'unsupported', period: 'yesterday' }, null, input.now);
+    assert.deepEqual(noisy, offline, 'a fully parsed local question does not depend on model availability');
+    assert.equal(engine.execute(offline, input).facts.value, value, question);
+  }
+  const initial = engine.execute(engine.resolvePlan('What is my longest drive?', null, null, input.now), input);
+  const followUp = engine.resolvePlan('What about last week?', null, initial.context, input.now);
+  assert.equal(engine.execute(followUp, input, initial.context).facts.value, 30);
+  assert.equal(engine.resolvePlan('What is my longest drive without highways?', null, null, input.now), null);
+  assert.equal(engine.resolvePlan('What is my longest drive by duration this week?', null, null, input.now), null,
+    'the distance-only offline grammar must not drop an explicit duration qualifier');
+});
+
+test('native JavaScriptCore resource order and all golden requests use the same plan contract', () => {
+  const context = vm.createContext({});
+  for (const name of ['ask-engine.js', 'ask-query-engine.js']) vm.runInContext(readFileSync(new URL(path + name, import.meta.url), 'utf8'), context);
+  for (const item of suite.cases) {
+    const input = suite.fixture(), raw = { ...engine.defaults, ...item.plan };
+    const plan = engine.resolvePlan(item.question, raw, null, input.now);
+    const nativePlan = vm.runInContext(`JourneyDeckQueryEngine.resolvePlan(${JSON.stringify(item.question)}, ${JSON.stringify(raw)}, null, ${input.now})`, context);
+    assert.equal(JSON.stringify(nativePlan), JSON.stringify(plan), item.id);
+    const answer = engine.execute(plan, input);
+    if (raw.decision === 'answer') {
+      assert.equal(answer.status, 'answered', item.question);
+      for (const [key, value] of Object.entries(item.facts)) assert.deepEqual(answer.facts[key], value, item.question);
+    } else assert.notEqual(answer.status, 'answered', item.question);
+  }
 });
 test('resource executes without Node APIs using the same global entry points as JavaScriptCore', () => {
   const context = vm.createContext({});
@@ -20,8 +114,8 @@ test('resource executes without Node APIs using the same global entry points as 
   assert.equal(vm.runInContext('JourneyDeckEvaluation.grade("01-1",{metric:"miles",period:"thisWeek"}).status', context), 'passed');
 });
 
-test('revision 2 phone plans normalize unused fields without weakening capability refusals', () => {
-  const raw = (changes: any) => ({ ...engine.defaults, decision: 'unsupported', ...changes });
+test('model plans normalize irrelevant fields without weakening capability refusals', () => {
+  const raw = (changes: any) => ({ ...engine.defaults, decision: 'answer', ...changes });
   const samples = [
     ['01-1', raw({ metric: 'miles', period: 'thisWeek', days: 7 })],
     ['03-1', raw({ metric: 'minutes', period: 'thisWeek', comparePeriod: 'thisWeek' })],
@@ -43,12 +137,12 @@ test('revision 2 phone plans normalize unused fields without weakening capabilit
   assert.equal(engine.normalizeModelPlan('Delete all my journeys.', { ...engine.defaults, decision: 'answer' }).decision, 'unsupported');
   assert.equal(engine.normalizeModelPlan('What color were the cars I passed?', { ...engine.defaults, decision: 'answer' }).decision, 'unsupported');
   assert.equal(engine.normalizeModelPlan('What was my best drive?', { ...engine.defaults, decision: 'answer' }).decision, 'clarify');
-  assert.equal(engine.normalizeModelPlan('Tell me something surprising.', { ...engine.defaults, decision: 'answer' }).decision, 'unsupported');
+  assert.equal(engine.normalizeModelPlan('Tell me something surprising.', { ...engine.defaults, decision: 'unsupported' }).decision, 'unsupported');
 });
-test('all 100 phrasings survive constrained-model filler noise or retain their refusal', () => {
+test('all 100 phrasings survive irrelevant filler while capability refusals remain blocked', () => {
   for (const item of suite.cases) {
     const expected = engine.validate(item.plan);
-    const noisy = { ...expected, decision: expected.decision === 'answer' ? 'unsupported' : 'answer' };
+    const noisy = { ...expected, decision: 'answer' }; // adversarial answer for denied capabilities
     if (expected.period !== 'lastDays') noisy.days = 7;
     if (!['date', 'between'].includes(expected.period)) { noisy.startDate = '2026-09-18'; noisy.endDate = '2026-09-21'; }
     if (expected.operation !== 'compare') noisy.comparePeriod = 'thisWeek';
@@ -110,7 +204,8 @@ test('plain top-artist questions use one local plan and do not consume Siri cont
   assert.equal(engine.isContextualQuestion('What about last week?'), true);
   assert.equal(engine.isContextualQuestion('How many songs were on that journey?'), true);
   assert.match(service, /let previousTicket = \(contextual \? token : nil\)\.flatMap/);
-  assert.match(service, /var selectedPlan = savedPlan \?\? \(try Self\.engine\("directPlan"/);
+  assert.match(service, /var selectedPlan: \[String: Any\]\? = savedPlan/);
+  assert.match(service, /selectedPlan = try Self\.engine\("resolvePlan"/);
   assert.match(service, /if selectedPlan == nil, JourneyDeckAIPlanner\.availability/);
 });
 

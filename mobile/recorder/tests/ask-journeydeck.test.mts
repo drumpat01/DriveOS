@@ -348,6 +348,21 @@ test('invalid distances fail safely and absent metadata is not confused with abs
   } finally { f.db.close(); }
 });
 
+test('longest journey accepts present tense and contractions, while retaining period filters', () => {
+  const f = fixture();
+  try {
+    for (const question of ['What is my longest drive?', 'What is my longest journey', 'What’s my longest trip?', 'Which is my longest journey?']) {
+      const answer = engine.answer(question, f.read(), null);
+      assert.equal(answer.status, 'answered'); assert.match(answer.text, /by distance.*30.0 miles/);
+      assert.equal(answer.evidence[0].id, 'a-first');
+    }
+    assert.equal(engine.answer('What is my longest drive this week?', f.read(), null).evidence[0].id, 'a-week');
+    for (const question of ['What is my longest drive by duration?', 'What is my longest drive without highways?']) {
+      assert.equal(engine.answer(question, f.read(), null).status, 'clarify');
+    }
+  } finally { f.db.close(); }
+});
+
 test('native source contracts require local authentication, read-only bounded queries and profile/lock rechecks', () => {
   // Source checks, not a substitute for compiling or exercising iOS App Intents.
   const service = readFileSync(resolve(root, 'modules/journeydeck-recorder/ios/JourneyDeckAskService.swift'), 'utf8');
@@ -369,7 +384,7 @@ test('native source contracts require local authentication, read-only bounded qu
   assert.match(service, /current.id == result.1 && current.epoch == result.2/);
   assert.ok(service.indexOf('JourneyDeckAIPlanner.plan(question: question') < service.indexOf('archive.snapshot(cutoff: boundary'),
     'Siri must ask the on-device model to plan before loading archive rows');
-  assert.match(service, /plan\["decision"\] as\? String == "answer"/);
+  assert.match(service, /executionPlan\["decision"\] as\? String != "answer"/);
   assert.match(service, /stored.expires > Date\(\)/);
   assert.doesNotMatch(service, /StoreKit|currentEntitlements|JourneyDeckTestFlightPlusUnlocked|45 \* 86400/);
   assert.match(service, /Date\(timeIntervalSince1970: 0\)/);
