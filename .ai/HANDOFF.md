@@ -2,7 +2,7 @@
 
 ## Objective and branch (September 26, 2026)
 
-- The owner wants Claude to finish V4 and operate its Expo/GitHub production path. This checkout is `D:\JourneyDeckV4`, branch `codex/journeydeck-v4-public-connector`. V4 connector and Aurora Glass changes are committed locally; the branch is being reconciled with newer `origin/main` before push/PR merge. Verify Git state before acting.
+- The owner wants Claude to finish V4 and operate its Expo/GitHub production path. V4 connector, Aurora Glass, and release handoff changes merged to `main` in PR #181 (`48e38f4`) after GitHub CI passed. This checkout is `D:\JourneyDeckV4`; verify its current branch and remote head before acting.
 - V3 is feature complete except emergency fixes; V2 remains frozen. `origin/main` contains V3 Build 40 source, runtime `3.0.0-preview.8`; Build 40 is valid and in TestFlight beta testing on the live app. V4 stays a distinct runtime `4.0.0-preview.1` and `v4-testflight` update branch.
 - No V4 TestFlight build, App Store submission, CloudKit Production schema deployment, or V4 OTA has occurred. No records or zones were deleted.
 
@@ -21,5 +21,5 @@
 
 ## Verification and next steps
 
-- V4 release identity preflight, TypeScript typecheck, and workflow YAML parse passed. The full mobile suite exposed one stale Fifty States source assertion; it was fixed and its focused test passes. Run the full suite against the reconciled branch, then `git diff --check` and PR CI. Swift and glass rendering require a macOS native build and physical iPhone/iPad review.
-- Finish reconciling `origin/main`, push the branch, open and merge the PR once checks pass, and update this handoff with the resulting Git state. Then provision the missing Expo environment secret and verify EAS Apple credentials. Inspect/deploy CloudKit Production schema and run the connector's two-device TestFlight checks before any public V4 release.
+- V4 release identity preflight, TypeScript typecheck, full mobile suite, workflow YAML parse, and PR #181 GitHub CI passed. The stale Fifty States source assertion was fixed. A manual **validate-only** run of the new V4 workflow was dispatched as GitHub Actions run `36289303256`; check its final result. No EAS build was dispatched. Swift and glass rendering require a macOS native build and physical iPhone/iPad review.
+- Next: provision the missing Expo environment secret and verify EAS Apple credentials. Inspect/deploy CloudKit Production schema and run the connector's two-device TestFlight checks before any public V4 release.
