@@ -6,7 +6,7 @@
 - V3 is feature complete except emergency fixes; V2 remains frozen. `origin/main` contains V3 Build 40 source, runtime `3.0.0-preview.8`; Build 40 is valid and in TestFlight beta testing on the live app. V4 stays a distinct runtime `4.0.0-preview.1` and `v4-testflight` update branch.
 - **V4 Build 41 is uploaded to TestFlight** on the existing live app (`6806502526`) as a separate **Version 4.0.0**. It is TestFlight-only; do not submit it to App Review or release it publicly without separate owner authorization. EAS build `5590c259-42b1-4b72-ae57-9ffd38500a48` came from `main` `1775223` via workflow run `36316567728`. EAS submission `076ac273-a9a0-4c4b-886e-a54e28a285b0` finished, and App Store Connect showed the build "Processing" at hand-off. V3 Build 40 is unchanged in the internal and External groups.
 - Owner constraint: V4 must not replace V3 in TestFlight and has **no external testers yet**. Never add V4 builds to the External group. The internal group ("JourneyDeck Internal Testers", owner only) auto-distributes uploaded builds, so V4 appears there.
-- No App Store submission or V4 OTA has occurred. No records or zones were deleted.
+- **V4 OTA published (September 27, 2026):** xprem update `17905130334591` on branch/channel `v4-testflight` (runtime `4.0.0-preview.1`) sets `testflightPlusUnlocked` for V4, unlocking all Plus features in V4 TestFlight only. Source is commit `07c9a82` on unpushed branch `claude/v4-ota-plus-unlock`; merge it to `main` or later V4 builds lose the unlock. The owner added xprem channel id 3 (`v4-testflight` -> branch 31). Clear the Metro cache (`expo export --clear`) if the export resolves `medallion-dom.tsx` to an old Codex worktree. No App Store submission; no records or zones deleted.
 
 ## V4 implementation
 
