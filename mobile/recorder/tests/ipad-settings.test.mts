@@ -58,6 +58,7 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   useAdaptiveLayout: () => ({ isRegular: tablet, fold: adaptiveFold }),
   TESSIE_INTEGRATION_ENABLED: false, isMusicProviderAvailable: (provider: string) => provider !== 'lastfm',
   V3_MARKERS_PROTOTYPE_ENABLED: false,
+  V4_CONNECTOR_ENABLED: false, ConnectorSettings: host('ConnectorSettings'), readConnectorPrivacy: () => ({}), connectorPrivacySummary: () => '',
   router: { push: () => undefined },
   useAppTheme: () => colors, useThemeChoice: () => ({ theme: colors, setMode: () => {} }),
   useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Cinematic' } },
