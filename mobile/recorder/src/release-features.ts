@@ -42,3 +42,9 @@ export const V3_MIDNIGHT_CANOPY_ENABLED: boolean = Constants.expoConfig?.extra?.
 
 /** V4 Aurora Glass Plus theme, offered only by the V4 app variant. */
 export const V4_AURORA_GLASS_ENABLED: boolean = Constants.expoConfig?.extra?.features?.auroraGlass === true;
+
+/** V4 "Connect to Claude" onboarding and sharing controls, offered only by the V4 app variant. */
+export const V4_CONNECTOR_ENABLED: boolean = Constants.expoConfig?.extra?.features?.connector === true;
+
+/** The public JourneyDeck connector's MCP address, shown for pasting into an assistant. */
+export const CONNECTOR_MCP_URL: string | null = typeof Constants.expoConfig?.extra?.connector?.url === 'string' ? Constants.expoConfig.extra.connector.url : null;

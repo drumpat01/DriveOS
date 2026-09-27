@@ -7,6 +7,8 @@ import { AppIconPicker } from './app-icon-picker';
 import { appIconCatalog } from './app-icon-catalog';
 import { useAppIconChoice } from './app-icon-preference';
 import { ThemePicker } from './theme-picker';
+import { ConnectorSettings, readConnectorPrivacy } from './connector-settings';
+import { connectorPrivacySummary } from './connector-privacy';
 import { settingsCategories, type SettingsCategoryId } from './settings-categories';
 import { isIpad } from './device-layout';
 import { useAdaptiveLayout, verticalFoldContentColumns } from './adaptive-layout';
@@ -15,7 +17,7 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED } from './release-features';
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -2823,7 +2825,8 @@ type SettingsDestination =
   | { kind: 'appearance-picker'; picker: 'theme' | 'icon' }
   | { kind: 'profile' }
   | { kind: 'saved-place'; slot: SavedPlaceSlot }
-  | { kind: 'custom-place'; placeId?: string };
+  | { kind: 'custom-place'; placeId?: string }
+  | { kind: 'connector' };
 
 function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, primaryAction, children }: {
   eyebrow: string;
@@ -3189,6 +3192,15 @@ function ConnectionsScreen({
     </SettingsEditorScaffold>;
   }
 
+  if (destination.kind === 'connector') {
+    return <SettingsEditorScaffold eyebrow="AI ASSISTANTS" title="Connect to Claude" onBack={closeEditor}>
+      <ConnectorSettings profileId={currentUser.id} membershipTier={membershipTier} hasAppleAccount={Boolean(currentUser.appleSubject)} cloudStatus={privateCloud.status}
+        onSync={onPrivateCloudSync} onMembership={onMembership} onAccount={() => setDestination({ kind: 'category', category: 'account' })} />
+    </SettingsEditorScaffold>;
+  }
+  const openConnector = () => { setDestination({ kind: 'connector' }); void haptics.selection(); };
+  const connectorSummary = V4_CONNECTOR_ENABLED ? connectorPrivacySummary(readConnectorPrivacy(currentUser.id)) : '';
+
   if (adaptiveLayout.isRegular) return <IpadSettingsScreen
     displayName={profileAppearance.displayName} avatar={profileAppearance.avatarDataUri} initials={profileInitialsFor(profileAppearance.displayName)}
     appleIdentityStatus={appleIdentityStatus} signingInWithApple={signingInWithApple} accountActionPending={accountActionPending}
@@ -3207,6 +3219,7 @@ function ConnectionsScreen({
     advancedVisible={advancedSupportVisible} onToggleAdvanced={() => setAdvancedSupportVisible(value => !value)} onDataHealth={onDataHealth}
     advancedContent={internalMusicControls}
     tessieContent={tessieContent}
+    connector={V4_CONNECTOR_ENABLED ? { summary: connectorSummary, onOpen: openConnector } : undefined}
   />;
 
   const profileCard = <>
@@ -3346,6 +3359,14 @@ function ConnectionsScreen({
       </View>
     </View>
     {renderCategoryGroup('PREFERENCES', ['appearance', 'music', 'recording'])}
+    {V4_CONNECTOR_ENABLED && <View style={styles.settingsHubSection}>
+      <Text style={styles.settingsSectionLabel}>AI ASSISTANTS</Text>
+      <View style={styles.settingsHubList}>
+        <TouchPressable accessibilityRole="button" accessibilityLabel="Open Connect to Claude" onPress={openConnector} style={({ pressed }) => [styles.settingsHubRow, pressed && styles.pressed]}>
+          <View style={styles.settingsHubIcon}><SymbolView name="sparkles" tintColor={theme.id === 'midnight-canopy' ? theme.palette.text : theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>Connect to Claude</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>{connectorSummary}</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+        </TouchPressable>
+      </View>
+    </View>}
     {renderCategoryGroup('ACCOUNT & SUPPORT', ['account', 'membership'])}
   </SettingsScrollView>;
 }
