@@ -11,6 +11,8 @@ module.exports = ({ config }) => {
   const v3Preview = !v4Store && !v3Store && (process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator'].includes(process.env.EAS_BUILD_PROFILE));
   const v3 = v3Preview || v3Store;
   const modern = v3 || v4Store;
+  // Development builds unlock every Plus feature. Set JOURNEYDECK_PAYWALL=live for the App Store submission build.
+  const paywallLive = process.env.JOURNEYDECK_PAYWALL === 'live';
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
   const channel = v4Store ? 'v4-testflight' : v3Preview ? 'v3-preview' : preview ? 'v2-preview' : 'production';
@@ -83,7 +85,7 @@ module.exports = ({ config }) => {
       revenueCat: { appleApiKey: revenueCatAppleKey },
       // V4 TestFlight points at the staging connector until the production host exists.
       ...(v4Store ? { connector: { url: 'https://mcp-staging.journeydeck.me/mcp' } } : {}),
-      features: { ...config.extra?.features, atlasUnlocked: modern, markerPrototype: modern, fiftyStates: modern, askJourneyDeck: modern, midnightCanopy: modern, auroraGlass: v4Store, connector: v4Store, tessieEnabled: modern, lastFmEnabled: modern, testflightPlusUnlocked: v3Store || v4Store },
+      features: { ...config.extra?.features, atlasUnlocked: modern && !paywallLive, markerPrototype: modern, fiftyStates: modern, askJourneyDeck: modern, midnightCanopy: modern, auroraGlass: v4Store, connector: v4Store, redesign: v4Store, tessieEnabled: modern, lastFmEnabled: modern, testflightPlusUnlocked: (v3Store || v4Store) && !paywallLive },
       release: v4Store ? { label: 'JourneyDeck V4 — Connector TestFlight', sequence: 'V4-STORE-TF' } : v3Preview ? { label: 'JourneyDeck V3 — Adaptive Preview', sequence: 'V3-P2-CURRENT-V2' } : v3Store ? { label: 'JourneyDeck V3 — Live TestFlight', sequence: 'V3-STORE-TF' } : preview ? { label: 'JourneyDeck V2 — Stories & Studio', sequence: 'V2-P9-HARDENED' } : { label: 'JourneyDeck 2.0 — Stories & Studio', sequence: 'V2-BUNDLE4-HARDENED' },
     },
   };

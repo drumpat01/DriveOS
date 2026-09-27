@@ -3,6 +3,7 @@ import { TouchPressable as Pressable } from './touch-feedback';
 import { useAppTheme, useThemedStyles } from './app-theme';
 import { useAdaptiveLayout } from './adaptive-layout';
 import { IpadMusicScreen } from './ipad-music-screen';
+import { SoundtrackScreen } from './soundtrack-screen';
 import { ipadListeningDays } from './ipad-music-data';
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -39,14 +40,14 @@ function number(value: number, digits = 1) {
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
-async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
+export async function openTrack(track: SoundtrackTrack, provider: MusicProvider) {
   const destination = musicTrackDestination(track, provider);
   if (!destination) return;
   try { await Linking.openURL(destination); }
   catch { Alert.alert('Music app unavailable', `JourneyDeck could not open ${provider === 'lastfm' ? 'Spotify' : 'Apple Music'} right now.`); }
 }
 
-export function MusicScreen({ state, provider, journeys, details, onJourney, onRefresh }: { state: MusicDashboardState; provider: MusicProvider; journeys: JourneySummary[]; details: JourneyDetail[]; onJourney: (id: string) => void; onRefresh: () => Promise<void> }) {
+export function MusicScreen({ state, provider, journeys, details, onJourney, onRefresh, redesign = false }: { state: MusicDashboardState; provider: MusicProvider; journeys: JourneySummary[]; details: JourneyDetail[]; onJourney: (id: string) => void; onRefresh: () => Promise<void>; redesign?: boolean }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
 
@@ -71,6 +72,8 @@ export function MusicScreen({ state, provider, journeys, details, onJourney, onR
   }, [manualRefreshing, onRefresh]);
   if (layout.isRegular) return <IpadMusicScreen state={state} daily={ipadDaily} provider={provider} archive={visibleArchive} query={archiveQuery} onQueryChange={setArchiveQuery}
     canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} refreshing={manualRefreshing} onRefresh={() => void refreshFromGesture()} />;
+  if (redesign) return <SoundtrackScreen status={state.status} message={state.message} music={state.data} provider={provider} journeys={journeys} details={details}
+    canOpenTracks={canOpenTracks} onTrack={track => void openTrack(track, provider)} onJourney={onJourney} onRefresh={onRefresh} />;
   return (
     <ScrollView
       style={styles.page}

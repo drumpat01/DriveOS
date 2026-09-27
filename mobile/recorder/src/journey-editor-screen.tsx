@@ -12,15 +12,27 @@ import { useJourneyDeckNavigation } from './native-navigation-context';
 import { JourneyEditorMap } from './journey-editor-map';
 import { loadJourneyEditor, commitJourneyEdit, getJourneyEditConflictChoices, resolveJourneyEditConflict } from './journey-editor-store';
 import { previewJourneyEdit, type JourneyEditSelection, type JourneyEditorSnapshot } from './journey-editor-model';
+import { isIpad } from './device-layout';
+import { V4_REDESIGN_ENABLED } from './release-features';
+import { SERIF, Segmented, useRedesignColors } from './redesign-ui';
 import { clipEditorRoute, moveEditorHandle, sampleEditorRoute, type EditorHandle, type EditorRange } from './journey-editor-timeline';
 
 const time = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 const minutes = (ms: number) => `${Math.floor(ms / 60000)}m ${Math.floor(ms / 1000) % 60}s`;
+/** V4 iPhone Journey Studio: redesign roles, serif title, pill controls. iPad keeps the V3 studio. */
+const V4 = V4_REDESIGN_ENABLED && !isIpad();
+
+/** The studio's palette roles, from the V4 redesign roles on iPhone. */
+function useStudioColors() {
+  const palette = useAppTheme().palette;
+  const v4 = useRedesignColors();
+  return V4 ? { ...palette, accent: v4.accent, onAccent: v4.onAccent, text: v4.text, muted: v4.textSecondary, card: v4.surface, line: v4.border, page: v4.page, amber: v4.highlight, coral: v4.danger, inset: v4.surfaceStrong } : palette;
+}
 
 function StudioButton({ title, onPress, disabled = false, primary = false }: { title: string; onPress: () => void; disabled?: boolean; primary?: boolean }) {
-  const c = useAppTheme().palette;
+  const c = useStudioColors();
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={({ pressed }) => [styles.button, { backgroundColor: primary ? c.accent : c.card, borderColor: primary ? c.accent : c.line, opacity: disabled ? .4 : pressed ? .7 : 1 }]}>
+    style={({ pressed }) => [styles.button, { backgroundColor: primary ? c.accent : c.card, borderColor: primary ? c.accent : c.line, opacity: disabled ? .4 : pressed ? .7 : 1 }, V4 && styles.buttonV4]}>
     <Text style={{ color: primary ? c.onAccent : c.text, fontWeight: '700', textAlign: 'center' }}>{title}</Text>
   </Pressable>;
 }
@@ -37,7 +49,7 @@ function RangeHandle({ handle, value, dragValue, bounds, range, width, disabled,
   handle: EditorHandle; value: number; dragValue: SharedValue<number>; bounds: EditorRange; range: EditorRange; width: number;
   disabled: boolean; reducedMotion: boolean; onChange: (value: number) => void;
 }) {
-  const c = useAppTheme().palette;
+  const c = useStudioColors();
   const scale = useSharedValue(1);
   const startAt = useSharedValue(value);
   const gesture = useMemo(() => Gesture.Pan()
@@ -69,14 +81,14 @@ function RangeHandle({ handle, value, dragValue, bounds, range, width, disabled,
       accessibilityValue={{ text: time(value), min: bounds.startMs, max: bounds.endMs, now: value }}
       accessibilityActions={[{ name: 'increment', label: 'Later by ten seconds' }, { name: 'decrement', label: 'Earlier by ten seconds' }]}
       onAccessibilityAction={event => { if (!disabled) onChange(moveEditorHandle(handle, value, event.nativeEvent.actionName === 'increment' ? 10_000 : -10_000, bounds.endMs - bounds.startMs, bounds, range)); }}
-      style={[styles.handle, animatedStyle, { backgroundColor: c.accent, borderColor: c.page }]}>
+      style={[styles.handle, V4 && styles.handleV4, animatedStyle, { backgroundColor: c.accent, borderColor: c.page }]}>
       <View style={{ width: 3, height: 23, backgroundColor: c.onAccent, borderRadius: 2 }} />
     </Reanimated.View>
   </GestureDetector>;
 }
 
 function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEditorSnapshot; onSaved: (id: string) => Promise<void>; onBack: () => void; premium: boolean }) {
-  const c = useAppTheme().palette, { width, height, fontScale } = useWindowDimensions(), insets = useDetailViewportInsets();
+  const c = useStudioColors(), { width, height, fontScale } = useWindowDimensions(), insets = useDetailViewportInsets();
   const bounds = useMemo(() => snapshot.segments.find(s => s.id === snapshot.journeyId)!, [snapshot]);
   const [range, setRange] = useState<EditorRange>({ startMs: bounds.startMs, endMs: bounds.endMs });
   const [mode, setMode] = useState<'trim' | 'split'>('trim'), [splitMs, setSplitMs] = useState(Math.round((bounds.startMs + bounds.endMs) / 2));
@@ -132,9 +144,9 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Both edits remain saved. Reopen this journey to review the conflict.'); }
     finally { saving.current = false; setBusy(false); }
   };
-  const controls = <View style={[styles.inspector, wide && { width: 330 }, { backgroundColor: c.card, borderColor: c.line }]}>
+  const controls = <View style={[styles.inspector, V4 && styles.panelV4, wide && { width: 330 }, { backgroundColor: c.card, borderColor: c.line }]}>
     <Text style={[styles.eyebrow, { color: c.accent }]}>JOURNEY STUDIO · PLUS</Text>
-    <Text style={[styles.title, { color: c.text }]}>{review?.kind === 'restore' ? 'Bring it all back.' : mode === 'trim' ? 'Make every mile count.' : 'Start a new chapter.'}</Text>
+    <Text style={[styles.title, V4 && styles.titleV4, { color: c.text }]}>{review?.kind === 'restore' ? 'Bring it all back.' : mode === 'trim' ? 'Make every mile count.' : 'Start a new chapter.'}</Text>
     <Text style={[styles.body, { color: c.muted }]}>Drag the handles to keep your favorite stretch. Your original recording stays safe.</Text>
     {conflicts.map(conflict => <View key={conflict.id} style={[styles.review, { borderColor: c.amber }]}>
       <Text style={{ color: c.text, fontWeight: '800' }}>Another device edited this journey.</Text>
@@ -143,8 +155,9 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
         `This device: ${snapshot.segments.length} parts, ${Math.round(snapshot.segments.reduce((n, s) => n + (s.endMs - s.startMs) / 60000, 0))} minutes.\nOther device: ${conflict.parts} parts, ${Math.round(conflict.durationMinutes)} minutes.\nYour unsaved preview will be discarded. Both saved operations are preserved.`,
         [{ text: 'Cancel', style: 'cancel' }, { text: 'Keep this device', onPress: () => { void resolveConflict(conflict.id, 'keep_current'); } }, { text: 'Use other device', onPress: () => { void resolveConflict(conflict.id, 'use_incoming'); } }])} />
     </View>)}
-    <View style={styles.row}><StudioButton title="Trim" disabled={busy || !premium} onPress={() => { setMode('trim'); setReview(null); }} primary={mode === 'trim'} />
-      <StudioButton title="Split" disabled={busy || !premium || bounds.endMs - bounds.startMs < 20_000} onPress={() => { setMode('split'); setReview(null); }} primary={mode === 'split'} /></View>
+    {V4 ? <View pointerEvents={busy || !premium ? 'none' : 'auto'} style={(busy || !premium) && { opacity: .4 }}><Segmented label="Edit mode" value={mode} onChange={next => { if (next === 'split' && bounds.endMs - bounds.startMs < 20_000) return; setMode(next); setReview(null); }}
+      options={[{ id: 'trim', label: 'Trim' }, { id: 'split', label: 'Split' }]} /></View> : <View style={styles.row}><StudioButton title="Trim" disabled={busy || !premium} onPress={() => { setMode('trim'); setReview(null); }} primary={mode === 'trim'} />
+      <StudioButton title="Split" disabled={busy || !premium || bounds.endMs - bounds.startMs < 20_000} onPress={() => { setMode('split'); setReview(null); }} primary={mode === 'split'} /></View>}
     {(mode === 'trim' ? ['start', 'end'] as const : ['split'] as const).map(handle => {
       const value = handle === 'start' ? range.startMs : handle === 'end' ? range.endMs : splitMs;
       const update = (next: number) => { setReview(null); if (handle === 'split') setSplitMs(next); else setRange(current => ({ ...current, [handle === 'start' ? 'startMs' : 'endMs']: next })); };
@@ -169,7 +182,7 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
     <View style={{ height: wide ? Math.max(310, height - insets.top - insets.bottom - 225) : Math.max(270, Math.min(420, height * .38)) }}>
       <JourneyEditorMap points={points} range={mode === 'trim' ? range : bounds} splitMs={mode === 'split' ? splitMs : null} reducedMotion={reducedMotion} />
     </View>
-    <View style={[styles.timeline, { borderColor: c.line, backgroundColor: c.card }]}>
+    <View style={[styles.timeline, V4 && styles.panelV4, { borderColor: c.line, backgroundColor: c.card }]}>
       <View style={styles.row}><Text style={{ color: c.muted, flex: 1 }}>{time(bounds.startMs)}</Text><Text style={{ color: c.muted }}>{time(bounds.endMs)}</Text></View>
       <View style={styles.trackArea} onLayout={event => setTrackWidth(Math.max(1, event.nativeEvent.layout.width))}>
         <View style={[styles.track, { backgroundColor: c.line }]} />
@@ -188,7 +201,7 @@ function Editor({ snapshot, onSaved, onBack, premium }: { snapshot: JourneyEdito
 }
 
 export function NativeJourneyEditorScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>(), nav = useJourneyDeckNavigation(), c = useAppTheme().palette;
+  const { id } = useLocalSearchParams<{ id: string }>(), nav = useJourneyDeckNavigation(), c = useStudioColors();
   const [snapshot, setSnapshot] = useState<JourneyEditorSnapshot | null>(null), [error, setError] = useState<string | null>(null);
   const mounted = useRef(true), currentId = useRef(id); currentId.current = id;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -206,9 +219,11 @@ export function NativeJourneyEditorScreen() {
       if (mounted.current && currentId.current === id && getCurrentUser().id === snapshot.userId) router.replace({ pathname: '/journey/[id]', params: { id: rootId } });
     }} />;
   return <DetailScreenFrame title="Journey Studio" onBack={back}><View style={{ padding: 28, gap: 20 }}>
-    {nav.membership.tier !== 'paid' ? <><Text style={[styles.title, { color: c.text }]}>Give your journeys the perfect cut.</Text><Text style={{ color: c.muted }}>Trim and split with JourneyDeck Plus. Your original recordings stay safe.</Text><StudioButton title="Explore Plus" primary onPress={nav.showUpgrade} /></>
+    {nav.membership.tier !== 'paid' ? <><Text style={[styles.title, V4 && styles.titleV4, { color: c.text }]}>Give your journeys the perfect cut.</Text><Text style={{ color: c.muted }}>Trim and split with JourneyDeck Plus. Your original recordings stay safe.</Text><StudioButton title="Explore Plus" primary onPress={nav.showUpgrade} /></>
       : error ? <Text accessibilityRole="alert" style={{ color: c.muted }}>{error}</Text> : <ActivityIndicator color={c.accent} accessibilityLabel="Loading original journey" />}
   </View></DetailScreenFrame>;
 }
 
-const styles = StyleSheet.create({ layout: { gap: 20 }, stage: { minWidth: 0, gap: 15 }, inspector: { padding: 20, gap: 17, borderWidth: 1, borderRadius: 26 }, title: { fontSize: 28, fontWeight: '800', letterSpacing: -.7 }, eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2 }, body: { fontSize: 14, lineHeight: 21 }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }, button: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 12, borderRadius: 16, borderWidth: 1, justifyContent: 'center' }, timeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth }, timeline: { padding: 20, borderWidth: 1, borderRadius: 24, gap: 12 }, trackArea: { height: 68, marginHorizontal: 12 }, track: { position: 'absolute', top: 28, left: 0, right: 0, height: 12, borderRadius: 6 }, handle: { position: 'absolute', top: 6, width: 44, height: 56, borderRadius: 14, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, review: { padding: 16, borderWidth: 1, borderRadius: 18, gap: 14 } });
+const styles = StyleSheet.create({ layout: { gap: 20 }, stage: { minWidth: 0, gap: 15 }, inspector: { padding: 20, gap: 17, borderWidth: 1, borderRadius: 26 }, title: { fontSize: 28, fontWeight: '800', letterSpacing: -.7 }, eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2 }, body: { fontSize: 14, lineHeight: 21 }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 }, button: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 12, borderRadius: 16, borderWidth: 1, justifyContent: 'center' }, timeRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth }, timeline: { padding: 20, borderWidth: 1, borderRadius: 24, gap: 12 }, trackArea: { height: 68, marginHorizontal: 12 }, track: { position: 'absolute', top: 28, left: 0, right: 0, height: 12, borderRadius: 6 }, handle: { position: 'absolute', top: 6, width: 44, height: 56, borderRadius: 14, borderWidth: 3, alignItems: 'center', justifyContent: 'center' }, review: { padding: 16, borderWidth: 1, borderRadius: 18, gap: 14 },
+  buttonV4: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16 }, titleV4: { fontFamily: SERIF, fontWeight: '600', letterSpacing: -.4 },
+  panelV4: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 24 }, handleV4: { borderRadius: 12 } });

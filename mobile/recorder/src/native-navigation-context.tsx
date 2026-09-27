@@ -1,8 +1,9 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { JourneyDeckMembershipEntitlements } from './membership-entitlements';
+import type { JourneyMemory } from './app-data';
 
-export type JourneyDeckTab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings';
-export const tabPaths = { music: '/(tabs)/music', journeys: '/(tabs)/journeys', home: '/(tabs)', statistics: '/(tabs)/statistics', settings: '/(tabs)/settings' } as const;
+export type JourneyDeckTab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings' | 'search';
+export const tabPaths = { music: '/(tabs)/music', journeys: '/(tabs)/journeys', home: '/(tabs)', statistics: '/(tabs)/statistics', settings: '/(tabs)/settings', search: '/(tabs)/search' } as const;
 type NativeNavigationContent = {
   tabs: Record<JourneyDeckTab, ReactNode>;
   memory: (id: string, onReady?: () => void) => ReactNode;
@@ -13,6 +14,13 @@ type NativeNavigationContent = {
   showUpgrade: () => void;
   onTabFocus: (tab: JourneyDeckTab) => void;
   tabBarHidden: boolean;
+  /** V4 iPhone redesign: Today, Memories, Soundtrack, Atlas and Search, with Settings pushed from Today. */
+  redesign?: boolean;
+  /** Memories visible to this profile, for detail screens (V4 journey detail). */
+  memories?: JourneyMemory[];
+  refreshMemories?: () => void;
+  /** Recorder shown in the tab bar's bottom accessory (iOS 26+), when the redesign is on. */
+  accessory?: ReactNode;
 };
 export const NativeNavigationContext = createContext<NativeNavigationContent | null>(null);
 export function useJourneyDeckNavigation() {

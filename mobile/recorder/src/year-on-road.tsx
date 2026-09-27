@@ -5,11 +5,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView } from 'expo-symbols';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { themeCatalog, type ThemeId, type ThemePalette } from './theme-catalog';
-import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+import { isIpad } from './device-layout';
+/** New York on iOS, as in redesign-ui. */
+const SERIF = 'ui-serif';
 import { headerImageSource } from './header-image-sources';
 import { buildYearOnRoadRecap, recapRoutePath, type RecapRank, type YearOnRoadData, type YearOnRoadRecap } from './year-on-road-model';
 import { useYearOnRoadAudio } from './year-on-road-audio';
 import { musicForTheme, yearOnRoadMusic, type YearOnRoadMusicId } from './year-on-road-music';
+
+/** V4 iPhone type: serif headlines over the same chapters. iPad keeps the V3 look. */
+const V4_TYPE = V4_REDESIGN_ENABLED && !isIpad();
 
 export type { YearOnRoadData } from './year-on-road-model';
 export type YearOnRoadViewerProps = {
@@ -120,7 +126,7 @@ function YearOnRoadExperience({ data, appTheme, premium, onClose, onUnlock, init
   return <View style={[styles.root, { backgroundColor: palette.page, paddingTop: Math.max(insets.top, 12), paddingBottom: Math.max(insets.bottom, 12) }]} accessibilityViewIsModal>
     <AmbientField palette={palette} moving={advancing && !reduced} />
     <View style={[styles.top, { maxWidth: wide ? 1060 : 680 }]}>
-      <View style={styles.brand}><Text style={[styles.eyebrow, { color: palette.accent }]}>JOURNEYDECK PLUS</Text><Text style={[styles.brandTitle, { color: palette.text }]}>Your Year on the Road</Text></View>
+      <View style={styles.brand}><Text style={[styles.eyebrow, { color: palette.accent }]}>JOURNEYDECK PLUS</Text><Text style={[styles.brandTitle, V4_TYPE && styles.serifTitle, { color: palette.text }]}>Your Year on the Road</Text></View>
       <IconButton name="xmark" label="Close year on the road" color={palette.text} onPress={onClose} />
     </View>
     <View style={[styles.toolbar, { maxWidth: wide ? 1060 : 680 }]}>
@@ -152,8 +158,8 @@ function YearOnRoadExperience({ data, appTheme, premium, onClose, onUnlock, init
       })}</View>
       <Pressable accessibilityRole="button" onPress={() => { setMusicChoice(null); setChooser(null); }} style={styles.matchApp}><Text style={{ color: palette.accent, fontWeight: '700' }}>Match recap appearance{musicChoice == null ? ' ✓' : ''}</Text></Pressable>
     </View> : null}
-    {!premium ? <View style={styles.gate}><HeroArt themeId={themeId} palette={palette} moving={false} height={220} /><Text style={[styles.gateTitle, { color: palette.text }]}>A year worth reliving.</Text><Text style={[styles.gateText, { color: palette.muted }]}>Your miles, music and Memories, brought together in an animated story with JourneyDeck Plus.</Text><PrimaryButton label="Explore JourneyDeck Plus" onPress={onUnlock} palette={palette} /></View>
-      : !recap.journeyCount ? <View style={styles.gate}><HeroArt themeId={themeId} palette={palette} moving={false} height={200} /><Text style={[styles.gateTitle, { color: palette.text }]}>The road is waiting.</Text><Text style={[styles.gateText, { color: palette.muted }]}>No saved journeys start in {recap.year}. Choose another year, or record a journey to begin your story.</Text><PrimaryButton label="Choose a year" onPress={() => setChooser('year')} palette={palette} /></View>
+    {!premium ? <View style={styles.gate}><HeroArt themeId={themeId} palette={palette} moving={false} height={220} /><Text style={[styles.gateTitle, V4_TYPE && styles.serifHeadline, { color: palette.text }]}>A year worth reliving.</Text><Text style={[styles.gateText, { color: palette.muted }]}>Your miles, music and Memories, brought together in an animated story with JourneyDeck Plus.</Text><PrimaryButton label="Explore JourneyDeck Plus" onPress={onUnlock} palette={palette} /></View>
+      : !recap.journeyCount ? <View style={styles.gate}><HeroArt themeId={themeId} palette={palette} moving={false} height={200} /><Text style={[styles.gateTitle, V4_TYPE && styles.serifHeadline, { color: palette.text }]}>The road is waiting.</Text><Text style={[styles.gateText, { color: palette.muted }]}>No saved journeys start in {recap.year}. Choose another year, or record a journey to begin your story.</Text><PrimaryButton label="Choose a year" onPress={() => setChooser('year')} palette={palette} /></View>
         : <>
           <View style={[styles.progressRow, { maxWidth: wide ? 1060 : 680 }]} accessibilityLabel={`Chapter ${chapter + 1} of ${CHAPTERS.length}: ${CHAPTERS[chapter]}`}>
             {CHAPTERS.map((label, index) => <Pressable key={label} accessibilityRole="button" accessibilityLabel={`Go to ${label}`} onPress={() => setChapter(index)} style={styles.progressHit}>
@@ -178,7 +184,7 @@ function ChapterContent({ recap, chapter, themeId, palette: p, wide, compact, mo
   recap: YearOnRoadRecap; chapter: number; themeId: ThemeId; palette: ThemePalette; wide: boolean; compact: boolean; moving: boolean; reduced: boolean;
 }) {
   const kicker = (text: string) => <Text style={[styles.eyebrow, { color: p.accent }]}>{text}</Text>;
-  const heading = (text: string) => <Text style={[styles.headline, wide && styles.headlineWide, { color: p.text }]}>{text}</Text>;
+  const heading = (text: string) => <Text style={[styles.headline, wide && styles.headlineWide, V4_TYPE && styles.serifHeadline, { color: p.text }]}>{text}</Text>;
   const body = (text: string) => <Text style={[styles.body, { color: p.muted }]}>{text}</Text>;
   const durationNote = recap.measuredDurationJourneys < recap.journeyCount ? `Time saved for ${recap.measuredDurationJourneys} of ${recap.journeyCount} journeys.` : 'From your saved journey durations.';
   const artHeight = wide ? 330 : compact ? 180 : 235;
@@ -336,7 +342,7 @@ function PrimaryButton({ label, onPress, palette }: { label: string; onPress: ()
 
 const styles = StyleSheet.create({
   root: { flex: 1, overflow: 'hidden' }, top: { width: '100%', alignSelf: 'center', paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  brand: { flex: 1 }, brandTitle: { fontSize: 17, fontWeight: '700', marginTop: 4 }, eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2.1 },
+  brand: { flex: 1 }, serifTitle: { fontFamily: SERIF, fontSize: 19, fontWeight: '600' }, serifHeadline: { fontFamily: SERIF, fontWeight: '600', letterSpacing: -0.6 }, brandTitle: { fontSize: 17, fontWeight: '700', marginTop: 4 }, eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2.1 },
   toolbar: { width: '100%', alignSelf: 'center', flexDirection: 'row', paddingHorizontal: 20, gap: 7, marginTop: 15 }, choiceButton: { borderWidth: 1, borderRadius: 22, minHeight: 44, minWidth: 0, flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 9, gap: 5 },
   choiceLabel: { fontSize: 12, fontWeight: '700', flexShrink: 1 }, tinyIcon: { width: 13, height: 13 }, chevron: { width: 10, height: 10 }, smallIcon: { width: 20, height: 20 }, soundButton: { width: 44, height: 44, borderWidth: 1, borderRadius: 23, alignItems: 'center', justifyContent: 'center', marginLeft: 'auto' },
   chooser: { flexGrow: 0, maxHeight: 76, marginTop: 10 }, choices: { paddingHorizontal: 20, gap: 9, paddingVertical: 4 }, option: { minHeight: 44, paddingHorizontal: 19, justifyContent: 'center', borderRadius: 22, borderWidth: 1 }, optionText: { fontWeight: '700', fontSize: 14 },

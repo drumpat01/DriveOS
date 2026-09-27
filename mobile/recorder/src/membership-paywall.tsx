@@ -188,6 +188,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
           <BenefitRow icon="chart.line.uptrend.xyaxis" title="Pattern Intelligence" description="See when and where you drive." colors={colors} />
           <BenefitRow icon="mappin.and.ellipse" title="Favorite Places" description="Find the places that matter most." colors={colors} />
           <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
+          <BenefitRow icon="bubble.left.and.text.bubble.right" title="Ask JourneyDeck" description="Ask about your drives in the app and with Siri." colors={colors} />
           <BenefitRow icon="music.note" title="Your Year on the Road" description="Relive your year with music and motion." colors={colors} />
           <BenefitRow icon="infinity" title="Complete History" description="Every journey beyond the latest 45 days." colors={colors} last />
         </View>

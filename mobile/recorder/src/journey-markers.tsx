@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState, type ComponentProps } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { SymbolView } from 'expo-symbols';
+import { redesignStyles, SectionHeader, Surface, useRedesignColors } from './redesign-ui';
+import { TouchPressable } from './touch-feedback';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
@@ -42,7 +45,7 @@ export function CreateJourneyMarkerButton({ sessionId }: { sessionId: string }) 
   </Pressable>;
 }
 
-export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeof InteractiveRouteMap> & { journeyId: string }) {
+export function JourneyMarkerRoute({ journeyId, v4Middle, ...props }: ComponentProps<typeof InteractiveRouteMap> & { journeyId: string; v4Middle?: ReactNode }) {
   const styles = useThemedStyles(baseStyles);
   const userId = getCurrentUser().id;
   const [revision, setRevision] = useState(0);
@@ -53,10 +56,12 @@ export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeo
   void revision;
   const markers = V3_MARKERS_PROTOTYPE_ENABLED ? listJourneyMarkers(userId, journeyId) : [];
   const chargeMarkers = listTessieChargeMarkers(userId, journeyId);
+  const v4 = props.layout === 'v4';
   return <>
     <InteractiveRouteMap {...props} markers={markers} onSelectMarker={setSelected}
       chargeMarkers={chargeMarkers} onSelectCharge={setSelectedCharge} />
-    {chargeMarkers.length > 0 && <View style={styles.section} testID="tessie-charge-stops">
+    {v4 ? <V4MarkerSections middle={v4Middle} markers={markers} chargeMarkers={chargeMarkers} onMarker={setSelected} onCharge={setSelectedCharge} /> : null}
+    {!v4 && chargeMarkers.length > 0 && <View style={styles.section} testID="tessie-charge-stops">
       <Text style={styles.title}>Supercharger stops · {chargeMarkers.length}</Text>
       {chargeMarkers.map(charge => <Pressable key={charge.id} accessibilityRole="button" onPress={() => setSelectedCharge(charge)} style={styles.card}>
         <Text style={styles.title}>{charge.location}</Text>
@@ -64,7 +69,7 @@ export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeo
         <Text style={styles.body}>{charge.arrivalBatteryPercent ?? '—'}% arrival → {charge.departureBatteryPercent ?? '—'}% departure · {charge.energyAddedKwh === null ? 'Energy unknown' : `${charge.energyAddedKwh.toFixed(1)} kWh added`}</Text>
       </Pressable>)}
     </View>}
-    {V3_MARKERS_PROTOTYPE_ENABLED && <View style={styles.section}>
+    {!v4 && V3_MARKERS_PROTOTYPE_ENABLED && <View style={styles.section}>
       <Text style={styles.title}>Moments · {markers.length}</Text>
       {!markers.length && <Text style={styles.body}>{MARKER_OTA_COMPAT ? 'Tap Create a marker while recording. Your saved moments appear here. Siri capture requires the next app build.' : 'While recording, say “Siri, create a marker in JourneyDeck.” Your saved moments appear here.'}</Text>}
       {markers.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.momentStrip}>{markers.map((marker, index) => <Pressable key={marker.id} accessibilityRole="button" style={styles.momentCard} onPress={() => setSelected(marker)}>
@@ -81,6 +86,51 @@ export function JourneyMarkerRoute({ journeyId, ...props }: ComponentProps<typeo
       <Text style={styles.body}>Time stopped: {Math.max(0, Math.round((Date.parse(selectedCharge.endedAt) - Date.parse(selectedCharge.startedAt)) / 60_000))} minutes</Text>
     </NativeSheet>}
   </>;
+}
+
+const minutesStopped = (charge: LocalTessieChargeMarker) => Math.max(0, Math.round((Date.parse(charge.endedAt) - Date.parse(charge.startedAt)) / 60_000));
+
+/** V4 layout of the sections under the journey map: caller content, charge stops, then Moments. */
+function V4MarkerSections({ middle, markers, chargeMarkers, onMarker, onCharge }: {
+  middle?: ReactNode; markers: JourneyMarker[]; chargeMarkers: LocalTessieChargeMarker[];
+  onMarker: (marker: JourneyMarker) => void; onCharge: (charge: LocalTessieChargeMarker) => void;
+}) {
+  const colors = useRedesignColors();
+  return <View style={v4Styles.column}>
+    {middle}
+    {chargeMarkers.length > 0 ? <View testID="tessie-charge-stops" style={v4Styles.section}>
+      <SectionHeader title="Supercharger stops" detail={`${chargeMarkers.length} on this drive`} />
+      <Surface style={v4Styles.list}>
+        {chargeMarkers.map((charge, index) => <TouchPressable key={charge.id} accessibilityRole="button" accessibilityLabel={`${charge.location}, ${minutesStopped(charge)} minutes stopped`} onPress={() => onCharge(charge)}
+          style={({ pressed }) => [v4Styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator }, pressed && redesignStyles.pressed]}>
+          <View style={[v4Styles.icon, { backgroundColor: colors.accentSoft }]}><SymbolView name="bolt.fill" tintColor={colors.accent} size={16} /></View>
+          <View style={redesignStyles.flex}>
+            <Text numberOfLines={1} style={[v4Styles.rowTitle, { color: colors.text }]}>{charge.location}</Text>
+            <Text numberOfLines={1} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{minutesStopped(charge)} min · {charge.arrivalBatteryPercent ?? '—'}% → {charge.departureBatteryPercent ?? '—'}%</Text>
+          </View>
+          <SymbolView name="chevron.right" tintColor={colors.textTertiary} size={13} weight="semibold" />
+        </TouchPressable>)}
+      </Surface>
+    </View> : null}
+    {V3_MARKERS_PROTOTYPE_ENABLED ? <View style={v4Styles.section}>
+      <SectionHeader title="Moments" detail={markers.length ? `${markers.length} saved on this drive` : undefined} />
+      {markers.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} style={v4Styles.railBleed} contentContainerStyle={v4Styles.rail}>
+        {markers.map((marker, index) => <TouchPressable key={marker.id} accessibilityRole="button" accessibilityLabel={`Moment ${index + 1}`} onPress={() => onMarker(marker)} style={({ pressed }) => pressed && redesignStyles.pressed}>
+          <Surface radius={20} style={v4Styles.moment}>
+            <Text style={[v4Styles.momentTime, { color: colors.accent }]}>{new Date(marker.capturedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</Text>
+            <Text style={[v4Styles.rowTitle, { color: colors.text }]}>Moment {index + 1}</Text>
+            <Text numberOfLines={2} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{marker.notes || 'Add notes or photos'}</Text>
+          </Surface>
+        </TouchPressable>)}
+      </ScrollView> : <Surface style={v4Styles.empty}>
+        <View style={[v4Styles.emptyIcon, { backgroundColor: colors.accentSoft }]}><SymbolView name="mappin.and.ellipse" tintColor={colors.accent} size={18} /></View>
+        <View style={redesignStyles.flex}>
+          <Text style={[v4Styles.rowTitle, { color: colors.text }]}>No moments on this drive</Text>
+          <Text style={[redesignStyles.caption, v4Styles.emptyBody, { color: colors.textSecondary }]}>{MARKER_OTA_COMPAT ? 'Tap Create a marker while recording. Your saved moments appear here.' : 'While recording, say “Siri, create a marker in JourneyDeck.” Your saved moments appear here and on the map.'}</Text>
+        </View>
+      </Surface>}
+    </View> : null}
+  </View>;
 }
 
 function MarkerEditor({ userId, marker, onClose }: { userId: string; marker: JourneyMarker; onClose: () => void }) {
@@ -138,4 +188,20 @@ const baseStyles = StyleSheet.create({
   photo: { width: '100%', height: 240, borderRadius: 12 },
   action: { minHeight: 44, justifyContent: 'center', paddingVertical: 8 },
   saveButton: { minHeight: 58, borderRadius: 18, padding: 16, alignItems: 'center', justifyContent: 'center' },
+});
+
+const v4Styles = StyleSheet.create({
+  column: { paddingHorizontal: 20, paddingTop: 22, gap: 22 },
+  section: { gap: 12 },
+  list: { paddingHorizontal: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  icon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  rowTitle: { fontSize: 15, lineHeight: 20, fontWeight: '700' },
+  railBleed: { marginHorizontal: -20 },
+  rail: { gap: 10, paddingHorizontal: 20 },
+  moment: { width: 176, minHeight: 96, padding: 14, gap: 4 },
+  momentTime: { fontSize: 11, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  empty: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, padding: 16 },
+  emptyIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  emptyBody: { marginTop: 3 },
 });

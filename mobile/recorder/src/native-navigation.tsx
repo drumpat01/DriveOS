@@ -32,6 +32,7 @@ function JourneyDeckStackContent() {
     <Stack.Screen name="memory/[id]" options={{ title: 'Memory', headerShown: false, animation: flip?.activeToken ? 'none' : 'default' }} />
     <Stack.Screen name="atlas" options={{ headerShown: false }} />
     <Stack.Screen name="tools" options={{ headerShown: false }} />
+    <Stack.Screen name="preferences" options={{ title: 'Settings', headerShown: false }} />
     <Stack.Screen name="fifty-states" options={{ headerShown: false, statusBarStyle: 'light' }} />
     <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'fullScreenModal', headerShown: false }} />
     <Stack.Screen name="siri-testing" options={{ title: 'Siri AI testing', headerShown: true }} />
@@ -39,7 +40,7 @@ function JourneyDeckStackContent() {
 }
 export function JourneyDeckNativeTabs() {
   const theme = useAppTheme();
-  const { tabBarHidden } = useJourneyDeckNavigation();
+  const { tabBarHidden, redesign, accessory } = useJourneyDeckNavigation();
   const tablet = isIpad();
   // Standard iPhone tabs let UIKit own Duo's trailing-edge vertical bar in the
   // outer display and open landscape. sidebarAdaptable is iPad-only because it
@@ -53,6 +54,18 @@ export function JourneyDeckNativeTabs() {
   // Reserve orange for Home rather than applying it to the whole iPad host.
   const selected = theme.isCustom ? theme.palette.accent : tablet ? neutral : theme.isLight ? '#ad492e' : '#ff9470';
   const homeLabelStyle = theme.isCustom ? { color: selected } : tablet ? { color: '#ff8956' } : undefined;
+  if (redesign && !tablet) {
+    // V4 iPhone: Today first, Settings behind the profile button, Search as its own
+    // system item, and the recorder in the iOS 26 bottom accessory.
+    return <NativeTabs backgroundColor={theme.id === 'midnight-canopy' ? theme.palette.inset : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
+      {accessory ? <NativeTabs.BottomAccessory>{accessory}</NativeTabs.BottomAccessory> : null}
+      <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="sun.horizon.fill" /><NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="journeys" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="photo.stack" /><NativeTabs.Trigger.Label>Memories</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="music" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="music.note" /><NativeTabs.Trigger.Label>Soundtrack</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="statistics" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Icon sf="map" /><NativeTabs.Trigger.Label>Atlas</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+      <NativeTabs.Trigger name="search" role="search" disablePopToTop disableScrollToTop disableAutomaticContentInsets><NativeTabs.Trigger.Label>Search</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+    </NativeTabs>;
+  }
   const homeTrigger = <NativeTabs.Trigger name="index" disablePopToTop disableScrollToTop disableAutomaticContentInsets>{theme.isCustom ? <NativeTabs.Trigger.Icon sf="house.fill" /> : <NativeTabs.Trigger.Icon src={require('../assets/home-tab-orange.png')} renderingMode="original" />}<NativeTabs.Trigger.Label selectedStyle={homeLabelStyle}>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>;
   return <NativeTabs backgroundColor={theme.id === 'midnight-canopy' ? theme.palette.inset : undefined} sidebarAdaptable={tablet ? true : undefined} hidden={tabBarHidden} minimizeBehavior="never" disableTransparentOnScrollEdge={!tablet} tintColor={selected} iconColor={{ default: inactive, selected }} labelStyle={{ default: { color: inactive }, selected: { color: selected } }}>
     {isIpad() && homeTrigger}

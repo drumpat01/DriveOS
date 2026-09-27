@@ -17,7 +17,17 @@ import { HOME_SUMMARY_WIDGETS, selectHomePresentation, type HomeWidgetId } from 
 import { journeyDeckElevation, journeyDeckRadius, journeyDeckSemanticColors, journeyDeckSpacing, journeyDeckTypography } from './journeydeck-design-tokens';
 import { FiftyStatesHomeWidget } from './fifty-states-ui';
 import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
-import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+import { MemoriesLibraryScreen } from './memories-library';
+import { TodayScreen } from './today-screen';
+import { AtlasTabV4 } from './atlas-tab-v4';
+import { SearchTabScreen } from './search-tab';
+import { supportsTabAccessory } from './recorder-accessory-model';
+import { MemoryDetailV4 } from './memory-detail-v4';
+import { JourneyDetailV4, JourneyDetailV4Placeholder } from './journey-detail-v4';
+
+/** The V4 iPhone redesign; iPad keeps its sidebar layouts. */
+const REDESIGN_PHONE = V4_REDESIGN_ENABLED && !isIpad();
 import { IpadHomeScreen } from './ipad-home';
 import { IpadStatisticsScreen } from './ipad-statistics-screen';
 import { PhoneTabTitle } from './phone-tab-title';
@@ -31,7 +41,7 @@ import { AchievementsOverview } from './achievements-overview';
 import { JourneyImage } from './journey-image';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, Pressable,
+  AccessibilityInfo, ActivityIndicator, Alert, Animated, AppState, Image, ImageBackground, Keyboard, Linking, Modal, Platform, Pressable,
   SafeAreaView, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions,
 } from 'react-native';
 import { useUpdateRestart } from './use-update-restart';
@@ -147,7 +157,7 @@ import {
   AtlasScreen, MoreScreen, type MoreDestination, type PrimaryDataState,
 } from './primary-sections';
 
-type Tab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings';
+type Tab = 'music' | 'journeys' | 'home' | 'statistics' | 'settings' | 'search';
 type LoadState<T> = { status: 'loading' | 'ready' | 'error'; data: T; message?: string };
 type PrivateCloudUiState = { status: 'unavailable' | 'idle' | 'syncing' | 'synced' | 'needs_icloud' | 'error'; detail: string };
 
@@ -312,7 +322,7 @@ function blankDashboard(): AppDashboard {
 
 type RecorderComponent = ComponentType<{
   onClose: () => void;
-  presentation?: 'screen' | 'home' | 'ipad-home';
+  presentation?: 'screen' | 'home' | 'ipad-home' | 'accessory' | 'accessory-inline';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
@@ -870,7 +880,10 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
   const openMemory = (id: string) => router.navigate({ pathname: '/memory/[id]', params: { id } });
   const openFiftyStates = () => { router.push('/fifty-states'); void haptics.selection(); };
   const openTab = (next: Tab) => {
-    if (navigationReady) router.navigate(tabPaths[next]);
+    if (!navigationReady) return;
+    // The V4 iPhone bar has no Settings tab; Settings is pushed from Today instead.
+    if (REDESIGN_PHONE && next === 'settings') { router.push('/preferences'); return; }
+    router.navigate(tabPaths[next]);
   };
 
   const openMore = (destination: MoreDestination) => {
@@ -963,23 +976,43 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     onEditorActiveChange={setSettingsEditorActive}
   />;
 
+  // V4 iPhone: one recorder instance, in the tab bar accessory on iOS 26+ and on Today before that.
+  const accessoryRecorder = REDESIGN_PHONE && supportsTabAccessory(Platform.OS, Platform.Version);
+  const redesignRecorder = REDESIGN_PHONE ? <Recorder presentation={accessoryRecorder ? 'accessory' : 'accessory-inline'} showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} /> : null;
+  const loadTodayProfile = useCallback(() => {
+    const appearance = loadProfileAppearance(currentUser);
+    return { initials: profileInitialsFor(appearance.displayName), avatarUri: appearance.avatarDataUri ?? null };
+  }, [currentUser]);
+
   const navigationContent = {
     tabs: adaptiveLayout.isRegular ? {
       music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
       statistics: <IpadStatisticsScreen key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
+      search: <SearchTabScreen state={primarySections} onJourney={openJourney} onMemory={openMemory} />,
       home: <IpadHomeScreen userId={currentUser.id} memories={membershipMemories.data.memories} journeys={(primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt))} music={musicDashboard.data}
         journeyProgress={homeJourneyProgress} vehicles={primarySections.data?.vehicle.vehicles ?? []} vehicleLoading={primarySections.status === 'loading' && !primarySections.data} vehicleError={primarySections.status === 'error'}
         onMemory={openMemory} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined}
         loading={primarySections.status === 'loading' || musicDashboard.status === 'loading'} error={primarySections.status === 'error' ? 'Your saved library is temporarily unavailable.' : undefined}
         recorder={<Recorder presentation="ipad-home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
     } : {
-      music: <MusicScreen state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
+      music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => membershipCanAccessDate(membership, journey.startedAt)) }} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      home: <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
-      statistics: <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
+      home: REDESIGN_PHONE ? <TodayScreen userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
+        onAsk={V3_ASK_JOURNEYDECK_ENABLED ? () => router.push('/ask-journeydeck') : undefined}
+        extraCards={{
+          fiftyStates: V3_FIFTY_STATES_ENABLED ? <FiftyStatesHomeWidget userId={currentUser.id} onPress={openFiftyStates} dense /> : undefined,
+          yourCar: TESSIE_INTEGRATION_ENABLED ? <YourCarWidget vehicles={primarySections.data?.vehicle.vehicles ?? []} loading={primarySections.status === 'loading' && !primarySections.data} failed={primarySections.status === 'error'} /> : undefined,
+        }}
+        loadProfile={loadTodayProfile} onJourney={openJourney} onMemory={openMemory} onMemories={() => openTab('journeys')} onWeek={() => openTab('statistics')}
+        onProfile={() => { router.push('/preferences'); }} onRefresh={() => refreshPrimarySections(true)} />
+        : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
+      statistics: REDESIGN_PHONE
+        ? <AtlasTabV4 key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />
+        : <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
+      search: <SearchTabScreen state={primarySections} onJourney={openJourney} onMemory={openMemory} />,
     },
     memory: (id: string, onReady?: () => void) => <MemoriesScreen detailId={id} detailReady={onReady} catalog={membershipMemories} journeys={primarySections.data?.journeys?.length ? { status: 'ready', data: primarySections.data.journeys } : journeys} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
     atlas: membership.atlasAccess ? <AtlasScreen state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onBack={() => router.back()} /> : <InlineNotice message="Unlock Atlas to explore your driving patterns." onRetry={() => setMembershipPaywallVisible(true)} />,
@@ -989,6 +1022,10 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     showUpgrade: () => setMembershipPaywallVisible(true),
     onTabFocus,
     tabBarHidden: settingsEditorActive,
+    redesign: REDESIGN_PHONE,
+    accessory: accessoryRecorder ? redesignRecorder : null,
+    memories: membershipMemories.data.memories,
+    refreshMemories: () => { void refreshMemories(false); },
   };
 
   return (
@@ -2299,7 +2336,16 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
   };
 
   return <View style={styles.safe}>
-    {studio && !detailId && <IpadMemoriesScreen presentation={adaptiveLayout.isRegular ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
+    {REDESIGN_PHONE && !detailId && <MemoriesLibraryScreen memories={catalog.data.memories} journeys={journeys.data} details={details}
+      loading={catalog.status === 'loading' || journeys.status === 'loading'} error={catalog.status === 'error' || journeys.status === 'error' ? catalog.message ?? journeys.message ?? 'Your library could not refresh.' : undefined}
+      historyLimited={historyLimited} onUpgrade={onUpgrade} onCreate={() => editMemory(null)} onMemory={onMemory} onJourney={onJourney}
+      onEdit={memory => { void appDataClient.memories().then(data => {
+        const latest = data.memories.find(item => item.id === memory.id);
+        if (latest) editMemory(latest);
+        else Alert.alert('Memory unavailable', 'This Memory is no longer in your library.');
+      }).catch(() => Alert.alert('Memory unavailable', 'Your library could not be read. Please try again.')); }}
+      onShare={openMemoryShare} onAddToMemory={setAssignJourneyId} onFiftyStates={onFiftyStates} onRefresh={onRefresh} />}
+    {studio && !detailId && !REDESIGN_PHONE && <IpadMemoriesScreen presentation={adaptiveLayout.isRegular ? 'ipad' : 'iphone'} memories={catalog.data.memories} journeys={journeys.data}
       renderArtwork={memory => <MemoryArtwork artworkKey={memory.artworkKey} photo={memory.photos.find(photo => photo.id === memory.coverPhotoId) ?? null} />}
       onCreate={ids => { editMemory(null); setMemoryDraft(draft => draft ? { ...draft, journeyIds: [...new Set(ids)] } : draft); }}
       onAdd={async (id, ids) => { await appDataClient.addJourneysToMemory(id, ids); onRefresh(); }}
@@ -2384,8 +2430,10 @@ function MemoriesScreen({ catalog, journeys, details, historyLimited, onUpgrade,
     </ScrollView>}
 
     {detailId && !memoryOverview && <View onLayout={detailReady}><InlineNotice message={catalog.status === 'loading' ? 'Loading Memory…' : 'This Memory is no longer available.'} onRetry={onRefresh} /></View>}
+    {REDESIGN_PHONE && memoryOverview ? <MemoryDetailV4 memory={memoryOverview} journeys={overviewJourneys} details={details}
+      onClose={() => router.back()} onOpenJourney={onJourney} onShare={() => openMemoryShare(memoryOverview)} onEdit={() => editMemory(memoryOverview)} onReady={detailReady} /> : null}
     <MemoryDetailScreen
-      visible={Boolean(memoryOverview)}
+      visible={Boolean(memoryOverview) && !REDESIGN_PHONE}
       memory={memoryOverview}
       cover={memoryCover}
       journeys={overviewJourneys}
@@ -2634,18 +2682,18 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
 export function NativeJourneyScreen() {
   useCardDetailDismissal();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { membership, refreshArchive, showUpgrade } = useJourneyDeckNavigation();
+  const { membership, refreshArchive, showUpgrade, memories = [], refreshMemories } = useJourneyDeckNavigation();
   const { state, refresh } = useJourneyDetail(id);
   if (state.data && !membershipCanAccessDate(membership, state.data.startedAt)) {
     return <DetailScreenFrame title="Journey" onBack={() => router.back()}><InlineNotice message="Unlock complete history to open this Journey." onRetry={showUpgrade} /></DetailScreenFrame>;
   }
-  return <JourneyDetailScreen visible state={state} onClose={() => router.back()} onRetry={refresh} onLocationsSaved={async () => {
+  return <JourneyDetailScreen visible state={state} onClose={() => router.back()} onRetry={refresh} memories={memories} onMemoriesChanged={() => refreshMemories?.()} onLocationsSaved={async () => {
     await refreshArchive();
     refresh();
   }} />;
 }
 
-function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void> }) {
+function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved, memories = [], onMemoriesChanged }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void>; memories?: JourneyMemory[]; onMemoriesChanged?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const adaptiveLayout = useAdaptiveLayout();
@@ -2668,6 +2716,19 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
   const [showAllTracks, setShowAllTracks] = useState(false);
   const [journeyCityLabel, setJourneyCityLabel] = useState<string | null>(null);
+  const [assigningMemory, setAssigningMemory] = useState(false);
+  const [savingMembership, setSavingMembership] = useState(false);
+  const toggleMembership = async (memory: JourneyMemory) => {
+    if (!journey || savingMembership) return;
+    setSavingMembership(true);
+    try {
+      const journeyIds = memory.journeyIds.includes(journey.id) ? memory.journeyIds.filter(id => id !== journey.id) : [...memory.journeyIds, journey.id];
+      await appDataClient.saveMemory({ id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, journeyIds, previousJourneyIds: memory.journeyIds });
+      void haptics.selection();
+      onMemoriesChanged?.();
+    } catch (error) { Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setSavingMembership(false); }
+  };
   const songMoments = useMemo(() => journey ? buildSongRouteMoments(
     journey.soundtrack,
     journey.route?.coordinates ?? [],
@@ -2761,8 +2822,16 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
     }
   };
 
+  const openTrim = () => { if (journey) router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } }); };
+  const routeFallback = journey ? <RouteSketch expanded coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} /> : null;
   return <>
-    <DetailScreenFrame title="Journey" onBack={onClose} actions={journey ? <NativeActionMenu compact label="Journey actions" actions={[
+    {REDESIGN_PHONE ? state.status === 'loading' || state.status === 'error' || !journey
+      ? <JourneyDetailV4Placeholder loading={state.status === 'loading'} message={state.message} onBack={onClose} onRetry={onRetry} />
+      : <JourneyDetailV4 journey={journey} title={displayTitle} songMoments={songMoments} replayPhotos={replayPhotos}
+        selectedSongIndex={selectedSongIndex} onSelectSong={setSelectedSongIndex} showAllTracks={showAllTracks} onToggleTracks={() => setShowAllTracks(value => !value)}
+        memories={memories} onMemory={id => router.push({ pathname: '/memory/[id]', params: { id } })} onAddToMemory={() => setAssigningMemory(true)}
+        onBack={onClose} onShare={openJourneyShare} onEditLocations={openLocationEditor} onTrim={openTrim} fallback={routeFallback} />
+    : <DetailScreenFrame title="Journey" onBack={onClose} actions={journey ? <NativeActionMenu compact label="Journey actions" actions={[
       { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: openJourneyShare },
       { id: 'locations', title: 'Edit locations', image: 'mappin.and.ellipse', onSelect: openLocationEditor },
       { id: 'trim', title: 'Trim & split', image: 'scissors', onSelect: () => router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } }) },
@@ -2805,7 +2874,12 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
           </View>
           </>}
     </ScrollView>
-    </DetailScreenFrame>
+    </DetailScreenFrame>}
+    {REDESIGN_PHONE && <NativeSheet visible={assigningMemory} busy={savingMembership} kicker="MEMORIES" title="Add to a Memory" onClose={() => setAssigningMemory(false)}>
+      <Text style={styles.overviewBodyMuted}>{memories.length ? 'A drive can be in more than one Memory.' : 'You have no Memories yet. Create one in the Memories tab, then add this drive.'}</Text>
+      {memories.map(memory => <MembershipRow key={memory.id} title={memory.name} detail={`${memory.journeyIds.length} ${memory.journeyIds.length === 1 ? 'drive' : 'drives'}`}
+        selected={Boolean(journey && memory.journeyIds.includes(journey.id))} onPress={() => void toggleMembership(memory)} />)}
+    </NativeSheet>}
     <NativeSheet visible={editingLocations} kicker="JOURNEY PLACES" title="Edit locations" dirty={locationsDirty} busy={savingLocations} onClose={() => setEditingLocations(false)}>
             <View style={styles.locationEditor}>
               <Text style={styles.locationEditorKicker}>NAME THE PLACES IN THIS JOURNEY</Text>

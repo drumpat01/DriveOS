@@ -158,8 +158,8 @@ function RouteComparisonRow({ route, vehicleName, openJourney }: { route: Tessie
   </View>;
 }
 
-export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, onAtlas, onYearOnRoad, historyDays, compact = false }: {
-  state: PrimaryDataState; onRefresh: () => void | Promise<void>; onJourney: (id: string) => void; onUpgrade: () => void; onAtlas?: () => void; onYearOnRoad?: () => void; historyDays: number | null; compact?: boolean;
+export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, onAtlas, onYearOnRoad, historyDays, compact = false, title = 'Statistics' }: {
+  state: PrimaryDataState; onRefresh: () => void | Promise<void>; onJourney: (id: string) => void; onUpgrade: () => void; onAtlas?: () => void; onYearOnRoad?: () => void; historyDays: number | null; compact?: boolean; title?: string;
 }) {
   const theme = useAppTheme();
   const motion = useCoreMotion();
@@ -293,7 +293,7 @@ export function IpadStatisticsScreen({ state, onRefresh, onJourney, onUpgrade, o
     <ScrollView testID="ipad-statistics" contentInsetAdjustmentBehavior={compact ? 'never' : 'automatic'} contentContainerStyle={{ padding: compact ? 16 : 24, paddingTop: 18, paddingBottom: insets.bottom + (compact ? 112 : 28) }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.accent} />}>
       <View testID="ipad-statistics-canvas" onLayout={event => setWidth(event.nativeEvent.layout.width)} style={styles.canvas}>
-        <IpadPageHeader compact={compact} title="Statistics" width={width} artwork={compact ? undefined : require('../assets/cinematic-statistics-photo-v1.jpg')} subtitle={compact ? undefined : 'Every mile. Every journey. Your numbers.'} split={compact ? undefined : headerFoldColumns}>{compact ? undefined : rangeSelector}</IpadPageHeader>
+        <IpadPageHeader compact={compact} title={title} width={width} artwork={compact ? undefined : require('../assets/cinematic-statistics-photo-v1.jpg')} subtitle={compact ? undefined : 'Every mile. Every journey. Your numbers.'} split={compact ? undefined : headerFoldColumns}>{compact ? undefined : rangeSelector}</IpadPageHeader>
         {compact ? rangeSelector : null}
         {compact ? compactSectionSelector : atlasCard}
         {state.status === 'error' ? <View accessibilityRole="alert"><Text style={{ color: c.muted }}>{state.message || 'Statistics could not refresh. Saved data remains available.'}</Text><Button label="Try again" onPress={onRefresh} /></View> : null}

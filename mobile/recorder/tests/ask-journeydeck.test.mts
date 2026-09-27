@@ -431,6 +431,11 @@ test('V3 native intent metadata is added once to the app target and excluded fro
   assert.equal(project.writeSync(), once);
   assert.match(once, /AskJourneyDeckIntent.swift in Sources/);
   assert.match(once, /AppIntents.framework/);
+  const intent = readFileSync(resolve(root, 'intents/AskJourneyDeckIntent.swift'), 'utf8');
+  assert.equal((intent.match(/guard await hasJourneyDeckPlus\(\)/g) ?? []).length, 2, 'Siri and its snippet both require Plus');
+  assert.match(intent, /StoreKit\.Transaction\.currentEntitlements/);
+  const membership = readFileSync(resolve(root, 'modules/journeydeck-membership/ios/JourneyDeckMembershipModule.swift'), 'utf8');
+  for (const id of intent.match(/"com\.journeydeck\.recorder\.pro\.[a-z]+"/g) ?? []) assert.ok(membership.includes(id), `${id} matches the membership module`);
   const configSource = readFileSync(resolve(root, 'app.config.js'), 'utf8');
   for (const variant of ['v3-preview', 'v3-store', 'v2-preview', 'production']) {
     const module = { exports: {} as any };

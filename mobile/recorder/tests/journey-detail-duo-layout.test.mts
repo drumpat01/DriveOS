@@ -36,6 +36,7 @@ vm.runInNewContext(code, {
   loadCityLabelForCoordinate: async () => null, useJourneyCardAction() {}, appDataClient: {},
   formatFullDate: () => '', formatMiles: () => '', formatDuration: () => '', privacySafeRealShareRoute: () => ({}),
   requestSheetClose() {}, Alert: { alert() {} }, router: { push() {} },
+  REDESIGN_PHONE: false, JourneyDetailV4: host('v4'), JourneyDetailV4Placeholder: host('v4-placeholder'), MembershipRow: host('membership'), haptics: { selection() {} },
 });
 
 test('Journey detail retains its selected song while map and story move into Duo panes', async () => {

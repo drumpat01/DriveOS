@@ -53,7 +53,7 @@ const links: string[] = [], journeysOpened: string[] = [];
 const music = load('music-screen.tsx', {
   './album-carousel': carousel,
   './journey-image': { JourneyImage: ({ imageIdentity, ...props }: any) => React.createElement('Image', { ...props, recyclingKey: imageIdentity }) },
-  './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './ipad-music-data': dataHelpers,
+  './app-theme': theme, './device-layout': { isIpad: () => true }, './ipad-music-screen': ui, './soundtrack-screen': { SoundtrackScreen: () => null }, './ipad-music-data': dataHelpers,
   './adaptive-layout': { useAdaptiveLayout: () => ({ isRegular: true, fold: adaptiveFold }) },
   './list-motion': listMotion, './list-skeleton': listSkeleton,
   'expo-symbols': { SymbolView: host('Symbol') },

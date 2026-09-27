@@ -7,7 +7,7 @@ import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
 import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Platform, Pressable,
+  ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 import * as Location from 'expo-location';
@@ -72,6 +72,10 @@ import { acceptRecorderStatusEvent, recorderEventStopTime, recorderRefreshMayPub
 import { waitForRecorderResponse } from './src/recorder-response';
 import { DatabaseStartupGate } from './src/database-startup-gate';
 import { haptics } from './src/haptics';
+import { RecorderAccessoryBar } from './src/recorder-accessory';
+import { recorderAccessoryState } from './src/recorder-accessory-model';
+import { recorderSheetState } from './src/recorder-sheet-model';
+import { RecorderSheetV4 } from './src/recorder-sheet-v4';
 import { MOTION_SPRINGS, motionDuration, useMotionPreferences } from './src/motion';
 import { RouteTraceMoment } from './src/delight-ui';
 import {
@@ -145,7 +149,7 @@ function completionMomentFromSnapshot(snapshot: LiveRecorderSnapshot, fallback: 
 
 function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton = false, onJourneyChange, onActivityChange, onProgressChange }: {
   onClose: () => void;
-  presentation?: 'screen' | 'home' | 'ipad-home';
+  presentation?: 'screen' | 'home' | 'ipad-home' | 'accessory' | 'accessory-inline';
   showManualSongButton?: boolean;
   onJourneyChange?: () => void;
   onActivityChange?: (active: boolean) => void;
@@ -183,6 +187,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [notice, setNotice] = useState('');
   const [completionMoment, setCompletionMoment] = useState<JourneyCompletionMoment | null>(null);
   const [clockNow, setClock] = useState(Date.now);
+  const [recorderSheetOpen, setRecorderSheetOpen] = useState(false);
 
   const runExclusive = useCallback(async (work: () => Promise<void>) => {
     const next = operation.current.then(work, work);
@@ -700,7 +705,7 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       {summary?.status === 'recording' && <CreateJourneyMarkerButton sessionId={summary.id} />}</View>;
   }
 
-  if (presentation === 'home') {
+  const renderHomeRecorder = () => {
     const glassCard = glassCardStyle;
     const recording = summary?.status === 'recording';
     const paused = summary?.status === 'paused';
@@ -757,6 +762,34 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
         <HiddenJourneyNotice enabled={!active && !startupPending && !busy} notice={notice} />
       </View>
     );
+  };
+  if (presentation === 'home') return renderHomeRecorder();
+
+  if (presentation === 'accessory' || presentation === 'accessory-inline') {
+    const liveStatus = summary && summary.status !== 'completed' ? summary.status : null;
+    const accessoryState = recorderAccessoryState({
+      startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking,
+      automaticMode, automaticDetectionActive, justSaved: Boolean(completionMoment), elapsed: elapsedLabel, miles: distanceMiles,
+    });
+    const runAction = () => {
+      if (accessoryState.action === 'start') void start();
+      else if (accessoryState.action === 'enable') void enablePermissions();
+      else if (accessoryState.action === 'end') finish();
+      else if (accessoryState.action === 'resume') void resume();
+    };
+    const sheetState = recorderSheetState({ startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking, automaticMode, automaticDetectionActive });
+    return <>
+      <RecorderAccessoryBar state={accessoryState} busy={busy} framed={presentation === 'accessory-inline'} onAction={runAction} onOpen={() => setRecorderSheetOpen(true)} />
+      <Modal visible={recorderSheetOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setRecorderSheetOpen(false)}>
+        <RecorderSheetV4 state={sheetState} sessionId={liveStatus ? summary?.id ?? null : null} startedAt={liveStatus ? summary?.startedAt ?? null : null}
+          elapsed={elapsedLabel} miles={distanceMiles} points={summary?.pointCount ?? 0} busy={busy} showIdentify={showManualSongButton}
+          notice={<HiddenJourneyNotice enabled={!liveStatus && !busy} notice={notice} />}
+          onClose={() => setRecorderSheetOpen(false)} onStart={() => void start()} onEnable={() => void enablePermissions()}
+          onPause={() => void pause()} onResume={() => void resume()} onEnd={finish} onIdentify={() => void identifySong()}>
+          {completionMoment && !liveStatus ? <JourneySavedMoment moment={completionMoment} active={isAppActive} reduceMotion={reduceMotion} onDismiss={() => setCompletionMoment(null)} /> : null}
+        </RecorderSheetV4>
+      </Modal>
+    </>;
   }
 
   return (
