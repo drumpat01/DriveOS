@@ -1,21 +1,20 @@
-# Current Handoff State — JourneyDeck V3
+# Current Handoff State — V3 Complete, V4 Ready
 
-## Scope and release (September 26, 2026)
+## Release and scope (September 26, 2026)
 
-- The user declared V3 feature complete. Only emergency bug fixes are in scope. This policy is recorded in `GEMINI.md` and `mobile/recorder/AGENTS.md`. V2 remains frozen separately.
-- V3 TestFlight Build 40 is version 3.0.0, runtime `3.0.0-preview.8`, on the live `com.journeydeck.recorder` app. EAS build `068e68d0-d786-48fe-8cb1-e54ce42e2e33` finished; exact-build submission `fc6d968c-86d6-49ce-91d1-23f1e0c24331` finished. Apple reports `VALID` and `IN_BETA_TESTING`. No App Review submission occurred.
-- Build 40 used the dirty source in `C:\Users\patri\.codex\worktrees\4338\JourneyDeckv3-current` at base commit `5faaac7`; EAS's Git commit hash alone does not identify its full contents. The source changes are captured on `codex/ask-chat-viewport` under the user's Git integration authorization. Do not infer on-device acceptance from the successful native build.
+- The user declared JourneyDeck V3 feature complete. Only emergency bug fixes are in scope. `GEMINI.md` and `mobile/recorder/AGENTS.md` record this policy. V2 remains frozen separately.
+- V3 TestFlight Build 40 is version 3.0.0, runtime `3.0.0-preview.8`, on the live `com.journeydeck.recorder` app. EAS build `068e68d0-d786-48fe-8cb1-e54ce42e2e33` and exact-build submission `fc6d968c-86d6-49ce-91d1-23f1e0c24331` finished. Apple reports `VALID` and `IN_BETA_TESTING`. No App Review submission occurred.
+- Main contains the Build 39 update source, Build 40 Ask/Siri/full-screen chat source, and the private iCloud sync backoff fix. Build 40's source was captured from its EAS worktree in PR #179; the EAS Git commit hash alone does not identify the dirty source that was uploaded.
+- Production CloudKit has `JourneyMarker` and `MarkerPhoto` record types. Physical-device marker/photo upload, download, deletion, and two-device restore remain unverified. Ask/Siri answer accuracy, supporting details, chat layout, and theme icons also need device acceptance.
 
-## Build 40 source and verification
+## Git and environment
 
-- Build 40 includes a shared Siri/in-app Ask plan resolver and executor, longest-journey distance and duration handling, distinct clarification/failure reasons, themed chat avatars, a full-screen Ask conversation and stable reply scrolling. It bundles prior Build 39 Siri supporting-details SQLite mitigation and context corrections.
-- The V3 `JourneyMarker` and `MarkerPhoto` record types were deployed to the production CloudKit schema with separate user approval. Actual marker/photo upload, download, deletion, and two-device restore are still unverified on physical devices.
-- Prior to the EAS archive: V3 gate, 940 mobile tests (one skipped), typecheck, focused Ask/AI tests, iOS export, and `git diff --check` passed. EAS compiled and signed the Swift app. During this integration, typecheck and 65 focused Ask/AI/navigation tests passed, and `git diff --check` found no whitespace errors.
-- Build 40 was uploaded from a dirty worktree. The first EAS attempt failed Swift compilation and the corrected replacement build succeeded. Runtime `.8` must remain separate from older `.7` updates.
+- PR #179 merged into `main` at `e427b83`; its GitHub validation passed. The separate local `main` worktree at `C:\Users\patri\.codex\worktrees\journeydeck-grand-touring-homepage` was fast-forwarded and clean. Recheck the remote head before V4 work.
+- Draft PRs #161 (1Password ad hoc signing) and #177 (Cloud Agent environment) were closed without merging and their remote branches deleted. Duplicate PR #176 was closed because its exact iCloud patch is already on main as `e84ed57`. There were no other open PRs before this handoff update.
+- Old V3 preview, Build 38, temporary TestFlight, Build 39, Build 40, and Ask OTA worktrees were removed. The old Build 38 source and Last.fm/onboarding edits were preserved only in local Git stashes `b12476987a1e8b6a36bdb36e8a444843007aab72` and `ff70535eefa80dba77e2648ce8db6e248a934640`, respectively. They were not merged or pushed.
+- One empty directory remains at `C:\Users\patri\.codex\worktrees\4338\JourneyDeckv3-current`: Git deregistered that worktree, but Windows held the directory open and direct removal was blocked. It contains no files.
 
-## Git and next steps
+## Next steps
 
-- The Build 40 source worktree is on `codex/ask-chat-viewport` from merged PR #178 (`5faaac7`). Recheck `git status`, recent history, and the remote merge state before further changes.
-- PR #176 (`codex/icloud-sync-backoff`) remains open but its exact patch is already on `main` as `e84ed57`; `git cherry origin/main codex/icloud-sync-backoff` marks it equivalent. Do not duplicate it.
-- `C:\Users\patri\JourneyDeckv3` is an older September 16 V3 preview checkout with superseded prototype changes, including a Time Capsule prototype removed from the current release. Keep that checkout untouched; it is not a Build 40 source.
-- Physical-device checks remain for Ask/Siri answers and supporting-details links, chat reopen/keyboard/scroll behavior, theme icons, and marker/photo private iCloud sync and restore. No OTA, new native build, deployment, or App Review action is authorized by this Git integration.
+- Start any V4 work from the latest `origin/main` in a new branch or worktree. Keep V3 TestFlight and native runtime boundaries separate from V4.
+- Do not infer on-device success from source tests or EAS compilation. No new OTA, native build, deployment, or App Review submission occurred during this cleanup.
