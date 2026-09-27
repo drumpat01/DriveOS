@@ -8,11 +8,12 @@ import { appDataClient, type JourneyDetail, type JourneyMemory, type JourneyPhot
 import { compactArtistCredit } from './artist-credit';
 import { useDetailViewportInsets } from './detail-screen-frame';
 import { haptics } from './haptics';
+import { MemoryRouteMap } from './memory-route-map';
 import { useMotionPreferences } from './motion';
 import { NativeActionMenu } from './native-action-menu';
 import { driveTitle, formatMilesShort, formatMinutesShort, memoryStats, routeLabel } from './redesign-model';
 import {
-  Artwork, Kicker, MemoryCoverImage, RouteSketch, StatGrid, Surface, redesignStyles, SERIF, useRedesignColors,
+  Artwork, Kicker, MemoryCoverImage, StatGrid, Surface, redesignStyles, SERIF, useRedesignColors,
 } from './redesign-ui';
 import { TouchPressable } from './touch-feedback';
 
@@ -32,8 +33,9 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
   const stats = useMemo(() => memoryStats(memory, journeys, details), [memory, journeys, details]);
   const routes = useMemo(() => {
     const byId = new Map(details.map(detail => [detail.id, detail.route?.coordinates ?? []]));
-    return stats.journeys.map(journey => byId.get(journey.id) ?? []).filter(route => route.length > 1);
-  }, [stats.journeys, details]);
+    return stats.journeys.map((journey, index) => ({ journey, coordinates: byId.get(journey.id) ?? [], color: colors.routes[index % colors.routes.length] }))
+      .filter(route => route.coordinates.length > 1);
+  }, [stats.journeys, details, colors.routes]);
   const otherPhotos = memory.photos.filter(photo => photo.id !== (memory.coverPhotoId ?? memory.photos[0]?.id));
   const findPhotos = () => router.push({ pathname: '/memory-photos/[id]', params: { id: memory.id } });
   const heroScale = reduceMotion ? undefined : { transform: [{ scale: scrollY.interpolate({ inputRange: [-200, 0], outputRange: [1.4, 1], extrapolate: 'clamp' }) }, { translateY: scrollY.interpolate({ inputRange: [-200, 0, 200], outputRange: [-100, 0, 40], extrapolate: 'clamp' }) }] };
@@ -48,10 +50,6 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
       <Animated.View style={[styles.hero, heroScale]}>
         <View style={[styles.heroMain, { backgroundColor: colors.surfaceStrong }]}><MemoryCoverImage memory={memory} onReady={onReady} /></View>
         <View style={[styles.heroSide, { width: tileWidth }]}>
-          <View style={[styles.heroTile, { backgroundColor: colors.surfaceStrong }]}>
-            {routes.length ? <RouteSketch routes={routes} width={tileWidth} height={HERO_HEIGHT / 2 - 2} inks={colors.routes} strokeWidth={2.6} padding={14} />
-              : <SymbolView name="map" tintColor={colors.textSecondary} size={24} style={styles.centerIcon} />}
-          </View>
           <TouchPressable accessibilityRole="button" accessibilityLabel={otherPhotos.length ? `${memory.photos.length} photos` : 'Find photos from these drives'} onPress={otherPhotos.length ? onEdit : findPhotos}
             style={[styles.heroTile, { backgroundColor: colors.surfaceStrong }]}>
             {otherPhotos[0] ? <PhotoTile photo={otherPhotos[0]} /> : <SymbolView name="photo.badge.magnifyingglass" tintColor={colors.accent} size={26} style={styles.centerIcon} />}
@@ -87,12 +85,12 @@ export function MemoryDetailV4({ memory, journeys, details, onClose, onOpenJourn
         </View>
         {memory.notes ? <Text style={[redesignStyles.body, { color: colors.text }]}>{memory.notes}</Text> : null}
 
-        {routes.length ? <Surface>
-          <RouteSketch routes={routes} width={mapWidth} height={200} inks={colors.routes} strokeWidth={3.6} padding={22} />
+        {routes.length ? <Surface style={styles.mapCard}>
+          <MemoryRouteMap routes={routes.map(route => ({ id: route.journey.id, coordinates: route.coordinates, color: route.color }))} width={mapWidth} />
           <View style={[styles.legend, { borderTopColor: colors.separator }]}>
-            {stats.journeys.slice(0, 4).map((journey, index) => <View key={journey.id} style={styles.legendItem}>
-              <View style={[styles.legendInk, { backgroundColor: colors.routes[index % 4] }]} />
-              <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{new Date(journey.startedAt).toLocaleDateString(undefined, { weekday: 'short' })}</Text>
+            {routes.map(route => <View key={route.journey.id} style={styles.legendItem}>
+              <View style={[styles.legendInk, { backgroundColor: route.color }]} />
+              <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{new Date(route.journey.startedAt).toLocaleDateString(undefined, { weekday: 'short' })}</Text>
             </View>)}
           </View>
         </Surface> : null}
@@ -203,6 +201,7 @@ const styles = StyleSheet.create({
   action: { flex: 1, minHeight: 50, borderRadius: 25, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionText: { fontSize: 16, fontWeight: '700' },
   disabled: { opacity: 0.45 },
+  mapCard: { overflow: 'hidden' },
   legend: { flexDirection: 'row', gap: 16, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: StyleSheet.hairlineWidth },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendInk: { width: 12, height: 4, borderRadius: 2 },

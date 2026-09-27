@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import type { JourneyDetail, JourneyMemory, JourneySummary } from './app-data';
 import { CardDetailLink } from './card-detail-link';
@@ -98,7 +98,7 @@ function MemoryCard({ item, large = false, onMemory, onEdit, onShare }: { item: 
     { id: 'edit', title: 'Edit Memory', icon: 'pencil', onPress: () => onEdit(item.memory) },
     { id: 'share', title: 'Create share card', icon: 'square.and.arrow.up', onPress: () => onShare(item.memory) },
   ]}>
-    <TouchPressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}, ${detail}`} onPress={() => onMemory(item.memory.id)}
+    <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}, ${detail}`} onPress={() => onMemory(item.memory.id)}
       style={({ pressed }) => [large ? styles.largeCard : styles.card, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
       <MemoryCoverImage memory={item.memory} />
       <PhotoScrim />
@@ -106,7 +106,7 @@ function MemoryCard({ item, large = false, onMemory, onEdit, onShare }: { item: 
         <Kicker color={colors.textSecondary}>{detail}</Kicker>
         <Text numberOfLines={2} style={[large ? styles.largeTitle : styles.cardTitle, { color: colors.text }]}>{item.memory.name}</Text>
       </View>
-    </TouchPressable>
+    </Pressable>
   </CardDetailLink>;
 }
 

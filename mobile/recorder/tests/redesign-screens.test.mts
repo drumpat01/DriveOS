@@ -20,7 +20,7 @@ const native = {
   StyleSheet: { create: (styles: any) => styles, absoluteFill: {}, hairlineWidth: 0.5 },
   useWindowDimensions: () => ({ width: 393, height: 852, fontScale: 1 }),
   Animated: { Value: AnimatedValue, View: host('AnimatedView'), ScrollView: host('AnimatedScrollView'), event: () => () => {} },
-  ...Object.fromEntries(['View', 'Text', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])),
+  ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])),
 };
 const shared: Record<string, unknown> = {
   react: React,
@@ -38,11 +38,12 @@ const shared: Record<string, unknown> = {
   './haptics': { haptics: { selection() {}, primaryAction() {} } },
   './journey-image': { JourneyImage: host('JourneyImage') },
   './touch-feedback': { TouchPressable: host('Pressable') },
-  './card-detail-link': { CardDetailLink: ({ children }: any) => children },
+  './card-detail-link': { CardDetailLink: host('CardDetailLink') },
   './artist-credit': { compactArtistCredit: (value: string) => value },
   './detail-screen-frame': { useDetailViewportInsets: () => ({ top: 59, bottom: 34, left: 0, right: 0 }) },
   './motion': { useMotionPreferences: () => ({ reduceMotion: false }) },
   './native-action-menu': { NativeActionMenu: host('Menu') },
+  './memory-route-map': { MemoryRouteMap: host('MemoryRouteMap') },
   './primary-sections-data': { searchPrimarySections: (records: any[], query: string) => query.trim() ? records.filter(record => record.title.toLowerCase().includes(query.trim().toLowerCase())) : records.slice(0, 18) },
   './redesign-model': require('../src/redesign-model.ts'),
   './redesign-palette': require('../src/redesign-palette.ts'),
@@ -111,6 +112,7 @@ test('Today renders the last drive, the week, On this day and recent memories in
     assert.match(copy, /On this day · 1 year ago/i, id);
     assert.doesNotMatch(copy, /1 songs|1 drives/);
     assert.match(copy, /Recent memories/);
+    assert.ok(tree.root.findAllByType('CardDetailLink').some((node: any) => node.props.kind === 'memory' && node.props.id === 'm1'), 'Today memory opens through Atlas Flip link');
     assert.equal(tree.root.findAllByProps({ testID: 'today-last-drive' }).length > 0, true);
     await press(tree, 'Profile and settings');
     assert.deepEqual(calls, ['profile']);
@@ -156,6 +158,7 @@ test('Memories library groups by year and offers Drives and Map views', async ()
       onAddToMemory: (value: string) => calls.push(`add:${value}`), onRefresh() {} })); });
     assert.match(texts(tree), new RegExp(`${now.getFullYear()}`));
     assert.match(texts(tree), /Open road weekend/);
+    assert.ok(tree.root.findAllByType('CardDetailLink').some((node: any) => node.props.kind === 'memory' && node.props.id === 'm1'), 'library card uses Atlas Flip link');
     await press(tree, 'New memory');
     const drives = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && [node.props.children].flat().some((child: any) => child?.props?.children === 'Drives'));
     await act(async () => drives.props.onPress());
@@ -180,6 +183,10 @@ test('Memory detail tells the trip: stats, drives timeline, soundtrack and photo
     assert.match(copy, /The drives/);
     assert.match(copy, /Soundtrack/);
     assert.match(copy, /Fog lifted at Bixby/);
+    const maps = tree.root.findAllByType('MemoryRouteMap');
+    assert.equal(maps.length, 1, 'one combined map and route card');
+    assert.equal(maps[0].props.routes.length, 1, 'only drives with a recorded route are mapped');
+    assert.equal(tree.root.findAllByType('Svg').length, 0, 'the hero has no duplicate route sketch');
     await press(tree, 'Relive the first drive');
     assert.deepEqual(opened, ['j2'], 'the earliest drive opens first');
     await act(async () => tree.unmount());
@@ -192,6 +199,7 @@ test('Search groups results and opens memories and drives', async () => {
   let tree: any;
   await act(async () => { tree = create(React.createElement(SearchTabScreen, { state: primary, onJourney: (value: string) => calls.push(`journey:${value}`), onMemory: (value: string) => calls.push(`memory:${value}`) })); });
   assert.match(texts(tree), /Memories/);
+  assert.ok(tree.root.findAllByType('CardDetailLink').some((node: any) => node.props.kind === 'memory' && node.props.id === 'm1'), 'Search memory result uses Atlas Flip link');
   await press(tree, 'Open road weekend. 2 journeys');
   await press(tree, 'Midnight Odyssey. Neon Dreams');
   assert.deepEqual(calls, ['memory:m1', 'journey:j1']);

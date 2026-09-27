@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import type { JourneyMemory } from './app-data';
@@ -67,7 +67,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
       <SectionHeader title="Recent memories" actionLabel="See all" onAction={onMemories} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.railBleed} contentContainerStyle={styles.rail}>
         {recent.map(item => <CardDetailLink key={item.memory.id} kind="memory" id={item.memory.id}>
-          <TouchPressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}`} onPress={() => onMemory(item.memory.id)}
+          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}`} onPress={() => onMemory(item.memory.id)}
             style={({ pressed }) => [styles.memoryCard, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
             <MemoryCoverImage memory={item.memory} />
             <PhotoScrim />
@@ -75,7 +75,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
               <Text numberOfLines={2} style={[styles.memoryCardTitle, { color: colors.text }]}>{item.memory.name}</Text>
               <Text numberOfLines={1} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{item.drives} {item.drives === 1 ? 'drive' : 'drives'} · {new Date(item.startedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
             </View>
-          </TouchPressable>
+          </Pressable>
         </CardDetailLink>)}
       </ScrollView>
     </View> : null}
@@ -191,7 +191,7 @@ function OnThisDayCard({ memory, yearsAgo, journeys, onPress }: { memory: Journe
   const songs = members.reduce((sum, journey) => sum + journey.songCount, 0);
   const when = yearsAgo === 1 ? '1 year ago' : `${yearsAgo} years ago`;
   return <CardDetailLink kind="memory" id={memory.id}>
-    <TouchPressable testID="today-on-this-day" accessibilityRole="button" accessibilityLabel={`On this day, ${when}: ${memory.name}`} onPress={onPress} style={({ pressed }) => pressed && redesignStyles.pressed}>
+    <Pressable testID="today-on-this-day" accessibilityRole="button" accessibilityLabel={`On this day, ${when}: ${memory.name}`} onPress={onPress} style={({ pressed }) => pressed && redesignStyles.pressed}>
       <Surface style={styles.onThisDay}>
         <View style={[styles.onThisDayPhoto, { backgroundColor: colors.surfaceStrong }]}><MemoryCoverImage memory={memory} /></View>
         <View style={[redesignStyles.flex, styles.onThisDayCopy]}>
@@ -201,7 +201,7 @@ function OnThisDayCard({ memory, yearsAgo, journeys, onPress }: { memory: Journe
         </View>
         <SymbolView name="chevron.right" tintColor={colors.textSecondary} size={15} weight="semibold" />
       </Surface>
-    </TouchPressable>
+    </Pressable>
   </CardDetailLink>;
 }
 

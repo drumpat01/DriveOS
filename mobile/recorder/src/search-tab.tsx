@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { searchPrimarySections, type SearchRecord } from './primary-sections-data';
+import { CardDetailLink } from './card-detail-link';
 import type { PrimaryDataState } from './primary-sections';
 import { memoryIdFromSearch, searchSections } from './redesign-model';
 import { Artwork, LargeTitle, RedesignPage, Surface, redesignStyles, useRedesignColors } from './redesign-ui';
@@ -38,8 +39,10 @@ export function SearchTabScreen({ state, onJourney, onMemory }: { state: Primary
       <Text accessibilityRole="header" style={[styles.sectionTitle, { color: colors.text }]}>{section.title}</Text>
       <Surface style={styles.list}>
         {section.records.map((record, index) => {
-          const actionable = Boolean(memoryIdFromSearch(record) || record.journeyId);
-          return <TouchPressable key={record.id} disabled={!actionable} accessibilityRole={actionable ? 'button' : undefined}
+          const memoryId = memoryIdFromSearch(record);
+          const actionable = Boolean(memoryId || record.journeyId);
+          const Row = memoryId ? Pressable : TouchPressable;
+          const row = <Row disabled={!actionable} accessibilityRole={actionable ? 'button' : undefined}
             accessibilityLabel={`${record.title}. ${record.subtitle}`} onPress={() => open(record)}
             style={({ pressed }) => [styles.row, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator }, pressed && redesignStyles.pressed]}>
             {record.artworkUrl ? <Artwork uri={record.artworkUrl} size={42} round={record.kind === 'artist'} />
@@ -49,7 +52,8 @@ export function SearchTabScreen({ state, onJourney, onMemory }: { state: Primary
               <Text numberOfLines={1} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{record.subtitle}</Text>
             </View>
             {actionable ? <SymbolView name="chevron.right" tintColor={colors.textTertiary} size={14} weight="semibold" /> : null}
-          </TouchPressable>;
+          </Row>;
+          return memoryId ? <CardDetailLink key={record.id} kind="memory" id={memoryId}>{row}</CardDetailLink> : <View key={record.id}>{row}</View>;
         })}
       </Surface>
     </View>) : <Surface style={styles.empty}>
