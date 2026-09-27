@@ -20,7 +20,7 @@ function fixture(compat = false) {
   const state = { notes: 'Original', captures: 0, imports: 0, failCapture: false, failSave: false, attachments: 0, done: 0, alerts: [] as string[], deleted: [] as string[], recording: false };
   const deps: Record<string, any> = {
     'react': React, 'react/jsx-runtime': require('react/jsx-runtime'),
-    'react-native': { View: host('View'), Pressable: host('Pressable'), Text: host('Text'), TextInput: host('TextInput'), StyleSheet: { create: (s: any) => s },
+    'react-native': { View: host('View'), Pressable: host('Pressable'), Text: host('Text'), TextInput: host('TextInput'), ScrollView: host('ScrollView'), StyleSheet: { create: (s: any) => s, hairlineWidth: 1 },
       Alert: { alert: (title: string) => state.alerts.push(title) } },
     'expo-image': { Image: host('Image') },
     'expo-image-picker': { launchImageLibraryAsync: async () => ({ canceled: true }) },
@@ -35,6 +35,8 @@ function fixture(compat = false) {
     './interactive-route-map': { InteractiveRouteMap: host('Map') }, './storage': { activeSession: () => state.recording ? { id: 'session' } : null },
     './release-features': { V3_MARKERS_PROTOTYPE_ENABLED: true },
     './local-store': { listTessieChargeMarkers: () => [] },
+    'expo-symbols': { SymbolView: host('Symbol') }, './touch-feedback': { TouchPressable: host('Pressable') },
+    './redesign-ui': { redesignStyles: {}, SectionHeader: host('SectionHeader'), Surface: host('Surface'), useRedesignColors: () => ({}) },
     './journey-marker-store': {
       listMarkerMedia: () => [], listJourneyMarkers: () => [marker],
       saveMarkerNotes: (_owner: string, _id: string, notes: string) => { if (state.failSave) throw Error('Disk full'); state.notes = notes; },

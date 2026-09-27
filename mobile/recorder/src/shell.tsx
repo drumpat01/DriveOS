@@ -23,6 +23,7 @@ import { TodayScreen } from './today-screen';
 import { SearchTabScreen } from './search-tab';
 import { supportsTabAccessory } from './recorder-accessory-model';
 import { MemoryDetailV4 } from './memory-detail-v4';
+import { JourneyDetailV4, JourneyDetailV4Placeholder } from './journey-detail-v4';
 
 /** The V4 iPhone redesign; iPad keeps its sidebar layouts. */
 const REDESIGN_PHONE = V4_REDESIGN_ENABLED && !isIpad();
@@ -1015,6 +1016,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     tabBarHidden: settingsEditorActive,
     redesign: REDESIGN_PHONE,
     accessory: accessoryRecorder ? redesignRecorder : null,
+    memories: membershipMemories.data.memories,
+    refreshMemories: () => { void refreshMemories(false); },
   };
 
   return (
@@ -2671,18 +2674,18 @@ function privacySafeRealShareRoute(journey: JourneyDetail) {
 export function NativeJourneyScreen() {
   useCardDetailDismissal();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { membership, refreshArchive, showUpgrade } = useJourneyDeckNavigation();
+  const { membership, refreshArchive, showUpgrade, memories = [], refreshMemories } = useJourneyDeckNavigation();
   const { state, refresh } = useJourneyDetail(id);
   if (state.data && !membershipCanAccessDate(membership, state.data.startedAt)) {
     return <DetailScreenFrame title="Journey" onBack={() => router.back()}><InlineNotice message="Unlock complete history to open this Journey." onRetry={showUpgrade} /></DetailScreenFrame>;
   }
-  return <JourneyDetailScreen visible state={state} onClose={() => router.back()} onRetry={refresh} onLocationsSaved={async () => {
+  return <JourneyDetailScreen visible state={state} onClose={() => router.back()} onRetry={refresh} memories={memories} onMemoriesChanged={() => refreshMemories?.()} onLocationsSaved={async () => {
     await refreshArchive();
     refresh();
   }} />;
 }
 
-function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void> }) {
+function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSaved, memories = [], onMemoriesChanged }: { visible: boolean; state: LoadState<JourneyDetail | null>; onClose: () => void; onRetry: () => void; onLocationsSaved: () => Promise<void>; memories?: JourneyMemory[]; onMemoriesChanged?: () => void }) {
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const adaptiveLayout = useAdaptiveLayout();
@@ -2705,6 +2708,19 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
   const [selectedSongIndex, setSelectedSongIndex] = useState<number | null>(null);
   const [showAllTracks, setShowAllTracks] = useState(false);
   const [journeyCityLabel, setJourneyCityLabel] = useState<string | null>(null);
+  const [assigningMemory, setAssigningMemory] = useState(false);
+  const [savingMembership, setSavingMembership] = useState(false);
+  const toggleMembership = async (memory: JourneyMemory) => {
+    if (!journey || savingMembership) return;
+    setSavingMembership(true);
+    try {
+      const journeyIds = memory.journeyIds.includes(journey.id) ? memory.journeyIds.filter(id => id !== journey.id) : [...memory.journeyIds, journey.id];
+      await appDataClient.saveMemory({ id: memory.id, name: memory.name, notes: memory.notes, artworkKey: memory.artworkKey, coverPhotoId: memory.coverPhotoId, journeyIds, previousJourneyIds: memory.journeyIds });
+      void haptics.selection();
+      onMemoriesChanged?.();
+    } catch (error) { Alert.alert('Memory not updated', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { setSavingMembership(false); }
+  };
   const songMoments = useMemo(() => journey ? buildSongRouteMoments(
     journey.soundtrack,
     journey.route?.coordinates ?? [],
@@ -2798,8 +2814,16 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
     }
   };
 
+  const openTrim = () => { if (journey) router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } }); };
+  const routeFallback = journey ? <RouteSketch expanded coordinates={journey.route?.coordinates ?? []} soundtrack={journey.soundtrack} startedAt={journey.startedAt} endedAt={journey.endedAt} startLabel={journey.startingLocation} endLabel={journey.endingLocation} /> : null;
   return <>
-    <DetailScreenFrame title="Journey" onBack={onClose} actions={journey ? <NativeActionMenu compact label="Journey actions" actions={[
+    {REDESIGN_PHONE ? state.status === 'loading' || state.status === 'error' || !journey
+      ? <JourneyDetailV4Placeholder loading={state.status === 'loading'} message={state.message} onBack={onClose} onRetry={onRetry} />
+      : <JourneyDetailV4 journey={journey} title={displayTitle} songMoments={songMoments} replayPhotos={replayPhotos}
+        selectedSongIndex={selectedSongIndex} onSelectSong={setSelectedSongIndex} showAllTracks={showAllTracks} onToggleTracks={() => setShowAllTracks(value => !value)}
+        memories={memories} onMemory={id => router.push({ pathname: '/memory/[id]', params: { id } })} onAddToMemory={() => setAssigningMemory(true)}
+        onBack={onClose} onShare={openJourneyShare} onEditLocations={openLocationEditor} onTrim={openTrim} fallback={routeFallback} />
+    : <DetailScreenFrame title="Journey" onBack={onClose} actions={journey ? <NativeActionMenu compact label="Journey actions" actions={[
       { id: 'share', title: 'Create share card', image: 'square.and.arrow.up', onSelect: openJourneyShare },
       { id: 'locations', title: 'Edit locations', image: 'mappin.and.ellipse', onSelect: openLocationEditor },
       { id: 'trim', title: 'Trim & split', image: 'scissors', onSelect: () => router.push({ pathname: '/journey-editor/[id]', params: { id: journey.id } }) },
@@ -2842,7 +2866,12 @@ function JourneyDetailScreen({ visible, state, onClose, onRetry, onLocationsSave
           </View>
           </>}
     </ScrollView>
-    </DetailScreenFrame>
+    </DetailScreenFrame>}
+    {REDESIGN_PHONE && <NativeSheet visible={assigningMemory} busy={savingMembership} kicker="MEMORIES" title="Add to a Memory" onClose={() => setAssigningMemory(false)}>
+      <Text style={styles.overviewBodyMuted}>{memories.length ? 'A drive can be in more than one Memory.' : 'You have no Memories yet. Create one in the Memories tab, then add this drive.'}</Text>
+      {memories.map(memory => <MembershipRow key={memory.id} title={memory.name} detail={`${memory.journeyIds.length} ${memory.journeyIds.length === 1 ? 'drive' : 'drives'}`}
+        selected={Boolean(journey && memory.journeyIds.includes(journey.id))} onPress={() => void toggleMembership(memory)} />)}
+    </NativeSheet>}
     <NativeSheet visible={editingLocations} kicker="JOURNEY PLACES" title="Edit locations" dirty={locationsDirty} busy={savingLocations} onClose={() => setEditingLocations(false)}>
             <View style={styles.locationEditor}>
               <Text style={styles.locationEditorKicker}>NAME THE PLACES IN THIS JOURNEY</Text>

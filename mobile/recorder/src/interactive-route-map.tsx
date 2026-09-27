@@ -24,6 +24,9 @@ import {
 import { useSettleWhenAppInactive } from './motion';
 import { AdaptiveGlassSurface } from './delight-ui';
 import { useCoreMotion } from './use-core-motion';
+import { LinearGradient } from 'expo-linear-gradient';
+import { JourneyReplayCardV4 } from './journey-replay-card-v4';
+import { useRedesignColors } from './redesign-ui';
 
 type InteractiveRouteMapProps = {
   markers?: JourneyMarker[];
@@ -44,6 +47,12 @@ type InteractiveRouteMapProps = {
   selectedSongIndex?: number | null;
   onSelectSong?: (index: number | null) => void;
   fallback: ReactNode;
+  /** V4 iPhone redesign: full-bleed map, a header slot under it, and the V4 replay card. */
+  layout?: 'classic' | 'v4';
+  /** V4 only: content between the map and the replay card (title, stats). */
+  v4Header?: ReactNode;
+  /** V4 only: distance from the top of the map to clear floating toolbar buttons. */
+  v4TopInset?: number;
 };
 
 const EMPTY_PHOTOS: ReplayPhoto[] = [];
@@ -69,7 +78,12 @@ export function InteractiveRouteMap({
   selectedSongIndex = null,
   onSelectSong,
   fallback,
+  layout = 'classic',
+  v4Header,
+  v4TopInset = 12,
 }: InteractiveRouteMapProps) {
+  const v4 = layout === 'v4';
+  const v4Colors = useRedesignColors();
   const theme = useAppTheme();
   const styles = useThemedStyles(darkStyles);
   const mapPalette = journeyDeckMapPalette(theme.id);
@@ -91,7 +105,7 @@ export function InteractiveRouteMap({
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [failedPhotos, setFailedPhotos] = useState<string[]>([]);
   const [replayEngaged, setReplayEngaged] = useState(false);
-  const [replayRate, setReplayRate] = useState<(typeof replayRates)[number] | 'story'>(4);
+  const [replayRate, setReplayRate] = useState<(typeof replayRates)[number] | 'story'>(() => layout === 'v4' ? 'story' : 4);
   const [replayCameraMode, setReplayCameraMode] = useState<'chase' | 'overview'>('chase');
   const [stageHeight, setStageHeight] = useState(250);
   const [scrubberWidth, setScrubberWidth] = useState(1);
@@ -264,7 +278,7 @@ export function InteractiveRouteMap({
     setReplayRate('story'); setReplayTimestamp(firstReplayTime); setReplayEngaged(true); setReplayPlaying(true);
     setReplayCameraMode('chase'); setQueryCoordinate(null); setTerminalSelection(null); onSelectSong?.(null);
   };
-  if (!route) return <>{fallback}</>;
+  if (!route) return v4 ? <>{fallback}<View style={styles.v4Column}>{v4Header}</View></> : <>{fallback}</>;
 
   const locatedCount = songMoments.length;
   const replayProgress = replaySnapshot?.progress ?? 0;
@@ -275,8 +289,16 @@ export function InteractiveRouteMap({
   const journeyEndColor = theme.color('#ff5f67', 'accent');
   const popupSong = selectedSong;
 
+  const nearbyPanel = queryCoordinate && <View style={styles.nearbyPanel}>
+      <View style={styles.nearbyHeader}><View><Text style={styles.panelKicker}>NEARBY MUSIC</Text><Text style={styles.panelTitle}>{nearbySongs.length ? `${nearbySongs.length} soundtrack moment${nearbySongs.length === 1 ? '' : 's'}` : 'No songs in this radius'}</Text></View><Pressable onPress={() => setQueryCoordinate(null)}><Text style={styles.closeText}>×</Text></Pressable></View>
+      <View style={styles.radiusRow}>{nearbyRadii.map(radius => <Pressable key={radius} onPress={() => setNearbyRadius(radius)} style={[styles.radiusChip, radius === nearbyRadius && styles.radiusChipActive]}><Text style={[styles.radiusText, radius === nearbyRadius && styles.radiusTextActive]}>{radius} mi</Text></Pressable>)}</View>
+      {nearbySongs.slice(0, 8).map(moment => <Pressable key={`${moment.index}-${moment.playedAt}`} onPress={() => onSelectSong?.(moment.index)} style={styles.nearbySong}>
+        <View style={styles.nearbyNumber}><Text style={styles.nearbyNumberText}>{moment.index}</Text></View><View style={styles.flex}><Text style={styles.nearbyTrack} numberOfLines={1}>{moment.track}</Text><Text style={styles.nearbyArtist} numberOfLines={1}>{moment.artist}</Text></View><Text style={styles.nearbyDistance}>{moment.distanceMiles < 0.1 ? '<0.1' : moment.distanceMiles.toFixed(1)} mi</Text>
+      </Pressable>)}
+    </View>;
+
   return <View style={styles.experience}>
-    <View style={[styles.mapFrame, replayEngaged && { height: Math.max(580, stageHeight + 320) }]} accessibilityLabel="Interactive journey map">
+    <View style={[styles.mapFrame, v4 && [styles.mapFrameV4, { backgroundColor: v4Colors.surfaceStrong }], replayEngaged && { height: Math.max(580, stageHeight + 320) }]} accessibilityLabel="Interactive journey map">
       {mapFailed ? fallback : <Map
         ref={mapRef}
         mapStyle={(mapStyle ?? (theme.isLight ? OPEN_FREE_MAP_LIGHT_STYLE : OPEN_FREE_MAP_DARK_STYLE)) as never}
@@ -364,8 +386,9 @@ export function InteractiveRouteMap({
         {replaySnapshot && <JourneyReplayMarker points={replayRoute} timestamp={replayTimestamp} playing={replayPlaying} animate={motion.animate}><ReplayPosition heading={(replaySnapshot.headingDegrees ?? 0) - (replayCameraMode === 'chase' && replayPlaying && motion.animate ? replaySnapshot.headingDegrees ?? 0 : 0)} playing={replayPlaying} animate={motion.animate} /></JourneyReplayMarker>}
       </Map>}
       {!mapFailed && <View pointerEvents="none" style={styles.mapTint} />}
-      <View pointerEvents="none" style={styles.mapStatus}><Text style={styles.mapStatusText}>{coordinates.length} route points · {locatedCount}/{totalSongCount} songs located</Text></View>
-      {!mapFailed && <AdaptiveGlassSurface reduceTransparency={motion.reduceTransparency} style={styles.mapControls}>
+      {v4 && !replayEngaged ? <LinearGradient pointerEvents="none" colors={[v4Colors.photoScrim[0], v4Colors.page]} style={styles.v4MapFade} /> : null}
+      {!v4 && <View pointerEvents="none" style={styles.mapStatus}><Text style={styles.mapStatusText}>{coordinates.length} route points · {locatedCount}/{totalSongCount} songs located</Text></View>}
+      {!mapFailed && <AdaptiveGlassSurface reduceTransparency={motion.reduceTransparency} style={[styles.mapControls, v4 && { top: v4TopInset }]}>
         <Pressable accessibilityLabel="Zoom in" onPress={() => void zoomBy(1)} style={styles.mapControl}><Text style={styles.mapControlText}>＋</Text></Pressable>
         <Pressable accessibilityLabel="Zoom out" onPress={() => void zoomBy(-1)} style={styles.mapControl}><Text style={styles.mapControlText}>−</Text></Pressable>
         <Pressable accessibilityLabel={replayCameraMode === 'chase' ? 'Show the full route' : 'Follow journey replay'} onPress={replayCameraMode === 'chase' ? fitRoute : followReplay} style={styles.mapControl}><Text style={styles.mapControlArrow}>{replayCameraMode === 'chase' ? '⌖' : '▲'}</Text></Pressable>
@@ -382,7 +405,7 @@ export function InteractiveRouteMap({
             <Text style={styles.popupDetail}>{formatClock(terminalSelection === 'start' ? startedAt : endedAt)}</Text>
           </View>}
         </View>}
-        {replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={[styles.replayStoryButton, { backgroundColor: theme.palette.accent }]}><Text style={[styles.replayStoryButtonText, { color: theme.palette.onAccent }]}>▶  Relive this journey</Text></Pressable>}
+        {!v4 && replaySnapshot && canReplay && <Pressable accessibilityRole="button" accessibilityLabel="Watch journey story" onPress={watchStory} style={[styles.replayStoryButton, { backgroundColor: theme.palette.accent }]}><Text style={[styles.replayStoryButtonText, { color: theme.palette.onAccent }]}>▶  Relive this journey</Text></Pressable>}
       </View>}
       {replayEngaged && replaySnapshot && <View onLayout={event => setStageHeight(event.nativeEvent.layout.height)} style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
         <JourneyReplayStage playing={replayPlaying} complete={replayTimestamp >= lastReplayTime} animate={motion.animate} timestamp={replayTimestamp}
@@ -393,13 +416,21 @@ export function InteractiveRouteMap({
       </View>}
     </View>
 
-    {queryCoordinate && <View style={styles.nearbyPanel}>
-      <View style={styles.nearbyHeader}><View><Text style={styles.panelKicker}>NEARBY MUSIC</Text><Text style={styles.panelTitle}>{nearbySongs.length ? `${nearbySongs.length} soundtrack moment${nearbySongs.length === 1 ? '' : 's'}` : 'No songs in this radius'}</Text></View><Pressable onPress={() => setQueryCoordinate(null)}><Text style={styles.closeText}>×</Text></Pressable></View>
-      <View style={styles.radiusRow}>{nearbyRadii.map(radius => <Pressable key={radius} onPress={() => setNearbyRadius(radius)} style={[styles.radiusChip, radius === nearbyRadius && styles.radiusChipActive]}><Text style={[styles.radiusText, radius === nearbyRadius && styles.radiusTextActive]}>{radius} mi</Text></Pressable>)}</View>
-      {nearbySongs.slice(0, 8).map(moment => <Pressable key={`${moment.index}-${moment.playedAt}`} onPress={() => onSelectSong?.(moment.index)} style={styles.nearbySong}>
-        <View style={styles.nearbyNumber}><Text style={styles.nearbyNumberText}>{moment.index}</Text></View><View style={styles.flex}><Text style={styles.nearbyTrack} numberOfLines={1}>{moment.track}</Text><Text style={styles.nearbyArtist} numberOfLines={1}>{moment.artist}</Text></View><Text style={styles.nearbyDistance}>{moment.distanceMiles < 0.1 ? '<0.1' : moment.distanceMiles.toFixed(1)} mi</Text>
-      </Pressable>)}
-    </View>}
+    {v4 ? <View style={styles.v4Column}>
+      {v4Header}
+      {nearbyPanel}
+      {replaySnapshot ? <JourneyReplayCardV4 canReplay={canReplay} playing={replayPlaying} engaged={replayEngaged} progress={replayProgress}
+        speedMph={replaySnapshot.speedMph ?? null} songTitle={replaySong?.track ?? null} rate={replayRate}
+        songTicks={canReplay ? songMoments.map(moment => (Date.parse(moment.playedAt) - firstReplayTime) / (lastReplayTime - firstReplayTime)).filter(Number.isFinite) : []}
+        startClock={formatClock(startedAt)} endClock={formatClock(endedAt)} startLabel={startLabel} endLabel={endLabel}
+        estimated={!routeSamples || routeSamples.length < 2}
+        scrubberHandlers={scrubberResponder.panHandlers} onScrubberLayout={event => setScrubberWidth(Math.max(1, event.nativeEvent.layout.width))}
+        onAdjust={delta => selectReplayProgress(replayProgress + delta)} onToggle={toggleReplay}
+        onRestart={() => { setReplayEngaged(true); setReplayPlaying(false); setReplayTimestamp(firstReplayTime); }}
+        onRate={setReplayRate} /> : null}
+      <Text style={[styles.v4Hint, { color: v4Colors.textSecondary }]}>Tap the map for music played nearby · pinch to zoom</Text>
+    </View> : <>
+    {nearbyPanel}
 
     {replaySnapshot && <AdaptiveGlassSurface reduceTransparency={motion.reduceTransparency} style={styles.replayPanel}>
       <View style={styles.telemetryRow}>
@@ -453,6 +484,7 @@ export function InteractiveRouteMap({
     <View style={styles.attributionRow}>
       <AttributionLink label="MapLibre" url="https://maplibre.org/" /><Text style={styles.attribution}> · </Text><AttributionLink label="OpenFreeMap" url="https://openfreemap.org/" /><Text style={styles.attribution}> · © </Text><AttributionLink label="OpenStreetMap" url="https://www.openstreetmap.org/copyright" />
     </View>
+    </>}
   </View>;
 }
 
@@ -515,6 +547,10 @@ function buildTravelledRouteData(coordinates: RouteCoordinate[]): Feature<LineSt
 const darkStyles = StyleSheet.create({
   experience: { gap: 12 },
   mapFrame: { height: 430, borderRadius: 18, overflow: 'hidden', backgroundColor: '#010104', borderWidth: 1, borderColor: '#40204d' },
+  mapFrameV4: { height: 440, borderRadius: 0, borderWidth: 0 },
+  v4MapFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 120 },
+  v4Column: { paddingHorizontal: 20, gap: 22 },
+  v4Hint: { fontSize: 12, lineHeight: 16, marginTop: -10 },
   mapTint: { position: 'absolute', inset: 0, backgroundColor: 'rgba(15, 2, 18, 0.08)' },
   mapStatus: { position: 'absolute', left: 12, top: 12, maxWidth: '72%', borderRadius: 999, backgroundColor: '#08050de8', borderWidth: 1, borderColor: '#6d387d', paddingHorizontal: 10, paddingVertical: 6 },
   mapStatusText: { color: '#b9a8c2', fontSize: 9, fontWeight: '800', letterSpacing: 0.25 },

@@ -5,8 +5,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from './app-theme';
 import { getCurrentUser } from './auth';
-import { ASK_CANNOT_COMPUTE, askJourneyDeck, askJourneyDeckModelAvailability, isAskJourneyDeckAvailable, resolveJourneyDeckAnswer, type AskAnswer, type AskEvidence } from './ask-journeydeck';
-import { V3_ASK_JOURNEYDECK_ENABLED } from './release-features';
+import { ASK_CANNOT_COMPUTE, ASK_EXAMPLES, askJourneyDeck, askJourneyDeckModelAvailability, isAskJourneyDeckAvailable, resolveJourneyDeckAnswer, type AskAnswer, type AskEvidence } from './ask-journeydeck';
+import { V3_ASK_JOURNEYDECK_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+import { isIpad } from './device-layout';
+import { useRedesignColors } from './redesign-ui';
+import { AskComposerV4, AskHeaderV4, AssistantBubbleV4, BubbleText, DayLabel, EvidenceCardsV4, SuggestionChipsV4, TypingBubbleV4, UserBubbleV4 } from './ask-journeydeck-v4';
+
+/** The V4 iPhone redesign draws Ask with the V4 chat components. */
+const ASK_V4 = V4_REDESIGN_ENABLED && !isIpad();
 import { canShowSiriTesting } from './siri-testing';
 import type { ThemeId } from './theme-catalog';
 
@@ -49,6 +55,7 @@ const notifySession = (session: ChatSession) => { for (const listener of session
 
 export function AskJourneyDeckScreen() {
   const theme = useAppTheme(), c = theme.palette, userID = getCurrentUser().id, insets = useSafeAreaInsets();
+  const v4c = useRedesignColors();
   const { ticket } = useLocalSearchParams<{ ticket?: string }>();
   const session = sessionFor(userID);
   const [question, setQuestion] = useState('');
@@ -173,6 +180,55 @@ export function AskJourneyDeckScreen() {
   };
 
   const canSend = !busy && foreground && isAskJourneyDeckAvailable;
+  const close = () => { router.canGoBack() ? router.back() : router.replace('/'); };
+  const newConversation = () => {
+    const saved = sessionFor(userID);
+    if (saved.busy) return;
+    request.current++;
+    saved.messages = []; saved.context = undefined; context.current = undefined;
+    notifySession(saved); setError(null); setQuestion('');
+  };
+  if (ASK_V4) {
+    const avatar = botAvatars[theme.id];
+    return <KeyboardAvoidingView testID="ask-v4" behavior="padding" style={[styles.screen, { backgroundColor: v4c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
+      <AskHeaderV4 avatar={avatar} status={shortModelStatus(modelAvailability)} onClose={close} actions={[
+        { id: 'new', title: 'New conversation', image: 'square.and.pencil', attributes: busy || !messages.length ? { disabled: true } : undefined, onSelect: newConversation },
+        ...(canShowSiriTesting ? [{ id: 'siri', title: 'Siri AI testing', image: 'waveform' as const, onSelect: () => router.push('/siri-testing') }] : []),
+      ]} />
+      {!V3_ASK_JOURNEYDECK_ENABLED
+        ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: v4c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
+        : <View style={styles.chat}>
+          <ScrollView ref={scroll} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
+            automaticallyAdjustKeyboardInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
+            removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
+            style={styles.scroll} contentContainerStyle={styles.v4Conversation}
+            onLayout={event => { scrollSize.current.viewport = event.nativeEvent.layout.height; revealNewMessage(); }}
+            onContentSizeChange={(_width, height) => { scrollSize.current.content = height; revealNewMessage(); }}>
+            <DayLabel>Today</DayLabel>
+            <AssistantBubbleV4 avatar={avatar}>
+              <BubbleText>Hi! Ask me about your drives, music, Memories, markers and places.</BubbleText>
+              <BubbleText secondary>I answer from this profile’s history, saved on this iPhone.</BubbleText>
+            </AssistantBubbleV4>
+            {!messages.length && !busy ? <SuggestionChipsV4 suggestions={ASK_EXAMPLES} disabled={!canSend} onPick={submitValue} /> : null}
+            {messages.map(message => <View key={message.id} testID={`ask-message-${message.id}`}
+              onLayout={event => { const { y, height } = event.nativeEvent.layout; measureMessage(message.id, y, height); }}>
+              {message.role === 'user' ? <UserBubbleV4 text={message.text} />
+                : <AssistantBubbleV4 avatar={avatar} live>
+                  <BubbleText>{message.answer.text}</BubbleText>
+                  <EvidenceCardsV4 items={message.answer.evidence} disabled={busy} onOpen={item => void openEvidence(message.id, message.answer, item)} />
+                </AssistantBubbleV4>}
+            </View>)}
+            {busy ? <TypingBubbleV4 avatar={avatar} /> : null}
+            {visibleError ? <View accessibilityRole="alert" style={[styles.errorBubble, { backgroundColor: v4c.surfaceStrong, borderColor: v4c.border }]}>
+              <SymbolView name="exclamationmark.circle.fill" tintColor={v4c.accent} size={17} />
+              <Text selectable style={[styles.errorText, { color: v4c.text }]}>{visibleError}</Text>
+            </View> : null}
+            {!isAskJourneyDeckAvailable ? <Text selectable style={[styles.availability, { color: v4c.textSecondary }]}>This installed version needs the V3 native question engine.</Text> : null}
+          </ScrollView>
+          <AskComposerV4 value={visibleQuestion} onChange={setQuestion} onSubmit={submit} canSend={canSend} busy={busy} error={Boolean(visibleError)} bottomInset={insets.bottom} />
+        </View>}
+    </KeyboardAvoidingView>;
+  }
   return <KeyboardAvoidingView behavior="padding" style={[styles.screen, { backgroundColor: c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <View style={styles.header}>
       <View style={styles.closeButton} />
@@ -255,6 +311,18 @@ function AssistantMessage({ message, themeID, colors: c, busy, onEvidence }: { m
   </View>;
 }
 
+/** Short status for the V4 header; the on-device promise stays visible. */
+function shortModelStatus(status: string): string {
+  switch (status) {
+  case 'available': return 'On this iPhone · Ready';
+  case 'appleIntelligenceNotEnabled': return 'Turn on Apple Intelligence';
+  case 'modelNotReady': return 'Preparing the on-device model';
+  case 'deviceNotEligible': return 'Needs a supported iPhone';
+  case 'unsupportedOS': return 'Needs iOS 26 or later';
+  default: return 'On this iPhone';
+  }
+}
+
 function modelStatusLabel(status: string): string {
   switch (status) {
   case 'available': return 'Apple Intelligence ready on this iPhone';
@@ -267,7 +335,7 @@ function modelStatusLabel(status: string): string {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 }, chat: { flex: 1, minHeight: 0, width: '100%', maxWidth: 860, alignSelf: 'center' },
+  screen: { flex: 1 }, v4Conversation: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 24, gap: 10 }, chat: { flex: 1, minHeight: 0, width: '100%', maxWidth: 860, alignSelf: 'center' },
   header: { minHeight: 52, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center' }, headerTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '600' },
   scroll: { flex: 1, minHeight: 0 }, conversation: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, gap: 18 },
   closeButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, unavailable: { flex: 1, padding: 24 }, body: { fontSize: 17, lineHeight: 24 },

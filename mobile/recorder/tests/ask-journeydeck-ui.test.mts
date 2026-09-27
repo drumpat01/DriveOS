@@ -17,7 +17,9 @@ function load(name: string, mocks: Record<string, unknown>) {
   const code = ts.transpileModule(readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id.endsWith('.png') ? id : require(id) });
+  // The V4 redesign is off in these classic-layout tests; its modules are stubbed.
+  const v4Stubs: Record<string, unknown> = { './redesign-ui': { useRedesignColors: () => ({}) }, './device-layout': { isIpad: () => false }, './ask-journeydeck-v4': {} };
+  vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id in v4Stubs ? v4Stubs[id] : id.endsWith('.png') ? id : require(id) });
   return module.exports;
 }
 function deferred() {

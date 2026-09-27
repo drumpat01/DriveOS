@@ -27,6 +27,13 @@
 - **Committed and published (September 27, 2026).** Commit `848374e` on `claude/v4-redesign`, branched from and up to date with `main` (`c59bd62`, includes the AI-assistant picker/connector work). Owner authorized both the commit and the OTA push.
 - Published to xprem branch `v4-testflight` (runtime `4.0.0-preview.1`, matches Build 41): update id `17905286869241`, publish group `3ecf9ea0-0a6d-41cc-88ce-dda6c6874d19`, deployed `2026-09-27T17:04:50Z`. Manifest verified afterward (200, `expo-manifest-filters: branch="v4-testflight"`). `EOO_TOKEN` was read inline from the ignored local file (see OTA_RUNBOOK.md's xprem section) for that one command only; never printed or committed. Ran `npx expo export --clear --platform ios` first to reset Metro's cache before publishing.
 - Follow-up committed as `e12f605` and published to `v4-testflight` on 2026-09-27T18:16:25Z (update `17905329827381`, group `22045379-5388-43d3-a97c-7af4fc7f7ac2`, manifest 200). It fixes the memory-card Atlas Flip capture (plain `Pressable`), adds the flip to Search memory results, and draws all Memory routes on one themed MapLibre map (`memory-route-map.tsx`), falling back to the sketch while loading or offline. The duplicate route tile is gone from the hero. 987 tests: 986 pass, 1 skipped. Device review is still needed for map tiles and the flip handoff.
+- **Journey detail and Ask JourneyDeck V4 (approved 2026-09-27; built, uncommitted).**
+  - Mockups are on the same canvas.
+  - Journey detail: `journey-detail-v4.tsx`. `InteractiveRouteMap` gains `layout="v4"` (full-bleed map, header slot, `journey-replay-card-v4.tsx`); the replay engine is unchanged. `JourneyMarkerRoute` gets V4 Moments/Supercharger sections and a middle slot.
+  - The detail page adds a Memory membership row and an Add-to-Memory sheet (`memories`/`refreshMemories` come through navigation context).
+  - Ask: `ask-journeydeck-v4.tsx` components plus an `ASK_V4` branch in `ask-journeydeck-screen.tsx`. It reuses the existing session, scrolling and evidence re-check, suggests the engine's `ASK_EXAMPLES`, and adds New conversation.
+  - Not built from the GPL-3.0 Appllama liquid-glass-chat-ui repo; only general chat patterns were used.
+  - 990 tests: 989 pass, 1 skipped. Typecheck clean.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Next: owner opens the app on their V4 TestFlight install and confirms the update landed and looks right, then open a PR against `main` when asked.
 

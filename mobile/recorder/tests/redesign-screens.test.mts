@@ -20,7 +20,9 @@ const native = {
   StyleSheet: { create: (styles: any) => styles, absoluteFill: {}, hairlineWidth: 0.5 },
   useWindowDimensions: () => ({ width: 393, height: 852, fontScale: 1 }),
   Animated: { Value: AnimatedValue, View: host('AnimatedView'), ScrollView: host('AnimatedScrollView'), event: () => () => {} },
-  ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl'].map(name => [name, host(name)])),
+  ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl', 'Image', 'KeyboardAvoidingView'].map(name => [name, host(name)])),
+  AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+  Keyboard: { dismiss() {} },
 };
 const shared: Record<string, unknown> = {
   react: React,
@@ -218,6 +220,97 @@ test('the recorder bar offers the one action its state allows', async () => {
     await press(tree, 'End journey');
     await press(tree, 'Recording · 4.0 mi · 12:00. Tap for markers and song ID');
     assert.deepEqual(calls, ['action', 'open']);
+    await act(async () => tree.unmount());
+  }
+});
+
+test('Journey detail V4 puts the title and stats under the map and keeps every action', async () => {
+  const routeProps: any[] = [];
+  const route = ({ v4Header, v4Middle, ...props }: any) => { routeProps.push(props); return React.createElement('route', null, v4Header, v4Middle); };
+  const { JourneyDetailV4 } = load('journey-detail-v4.tsx', { './journey-markers': { JourneyMarkerRoute: route } });
+  const drive = { ...details[0], averageSpeedMph: 36.4, vehicleName: null, startingBatteryPercent: null, energyUsedKwh: null,
+    soundtrack: [song('Coastline', daysAgo(0, 8)), song('Midnight Odyssey', daysAgo(0, 8), 'https://example.com/a.jpg')] };
+  for (const id of THEMES) {
+    themeId = id;
+    const calls: string[] = [];
+    let tree: any;
+    await act(async () => { tree = create(React.createElement(JourneyDetailV4, { journey: drive, title: 'Friday evening drive', songMoments: [], replayPhotos: [],
+      selectedSongIndex: null, onSelectSong: (index: number | null) => calls.push(`song:${index}`), showAllTracks: false, onToggleTracks() {},
+      memories, onMemory: (value: string) => calls.push(`memory:${value}`), onAddToMemory: () => calls.push('add'),
+      onBack: () => calls.push('back'), onShare: () => calls.push('share'), onEditLocations() {}, onTrim() {}, fallback: null })); });
+    const copy = texts(tree);
+    assert.match(copy, /Friday evening drive/);
+    assert.match(copy, /Pacifica → Half Moon Bay/);
+    assert.match(copy, /mph avg/);
+    assert.match(copy, /Soundtrack/);
+    assert.doesNotMatch(copy, /Vehicle/, 'the vehicle card only shows for connected cars');
+    assert.equal(routeProps.at(-1).layout, 'v4');
+    assert.ok(routeProps.at(-1).v4TopInset > 59, 'map controls clear the floating toolbar');
+    await press(tree, 'Open Memory Open road weekend');
+    await press(tree, 'Add this drive to a Memory');
+    await press(tree, 'Song 2, Midnight Odyssey by Neon Dreams. Show on the map');
+    await press(tree, 'Create share card');
+    await press(tree, 'Back');
+    assert.deepEqual(calls, ['memory:m1', 'add', 'song:2', 'share', 'back']);
+    await act(async () => tree.unmount());
+  }
+});
+
+test('the V4 replay card shows live speed only while replaying and marks every song', async () => {
+  const { JourneyReplayCardV4 } = load('journey-replay-card-v4.tsx');
+  const base = { canReplay: true, playing: false, engaged: false, progress: 0, speedMph: 42, songTitle: 'Coastline', rate: 'story', songTicks: [0.1, 0.5, 0.8],
+    startClock: '6:42 PM', endClock: '7:29 PM', startLabel: 'Pacifica', endLabel: 'Half Moon Bay', estimated: false, scrubberHandlers: {}, onScrubberLayout() {}, onAdjust() {} };
+  for (const id of THEMES) {
+    themeId = id;
+    const calls: string[] = [];
+    let tree: any;
+    await act(async () => { tree = create(React.createElement(JourneyReplayCardV4, { ...base, onToggle: () => calls.push('toggle'), onRestart: () => calls.push('restart'), onRate: (rate: unknown) => calls.push(`rate:${rate}`) })); });
+    assert.match(texts(tree), /Relive this drive/);
+    assert.doesNotMatch(texts(tree), /mph/, 'no live readout at rest');
+    assert.equal(tree.root.findAll((node: any) => node.type === 'View' && [node.props.style].flat(Infinity).some((style: any) => style?.marginLeft === -4)).length, 3, 'one tick per song');
+    await press(tree, 'Relive this drive');
+    await press(tree, 'Restart replay');
+    const twelve = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'tab' && [node.props.children].flat().some((child: any) => child?.props?.children === '12×'));
+    await act(async () => twelve.props.onPress());
+    assert.deepEqual(calls, ['toggle', 'restart', 'rate:12']);
+    await act(async () => tree.update(React.createElement(JourneyReplayCardV4, { ...base, engaged: true, playing: true, progress: 0.42, onToggle() {}, onRestart() {}, onRate() {} })));
+    assert.match(texts(tree), /Coastline/);
+    assert.match(texts(tree), /42 mph · 42% of the drive/);
+    await act(async () => tree.unmount());
+  }
+});
+
+test('Ask V4 suggests questions, shows records as cards, and starts a new conversation', async () => {
+  const v4 = load('ask-journeydeck-v4.tsx');
+  const asked: any[] = [];
+  const answer = { status: 'answered', text: 'You drove 42.6 miles this week.', ticket: 't', contextToken: 't', evidence: [{ kind: 'memory', id: 'm1', label: 'Open road weekend' }] };
+  const make = () => load('ask-journeydeck-screen.tsx', {
+    './ask-journeydeck-v4': v4, './device-layout': { isIpad: () => false },
+    './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true, V4_REDESIGN_ENABLED: true },
+    './siri-testing': { canShowSiriTesting: false }, './auth': { getCurrentUser: () => ({ id: `ask-${themeId}` }) },
+    'expo-router': { router: { push: (value: unknown) => pushes.push(value), back() {}, canGoBack: () => true, replace() {} }, useLocalSearchParams: () => ({}) },
+    './ask-journeydeck': {
+      ASK_EXAMPLES: ['How many miles did I drive this week?', 'When was my last journey?'], ASK_CANNOT_COMPUTE: 'x', isAskJourneyDeckAvailable: true,
+      askJourneyDeckModelAvailability: async () => 'available',
+      askJourneyDeck: async (...args: any[]) => { asked.push(args); return answer; },
+      resolveJourneyDeckAnswer: async () => answer,
+    },
+  }).AskJourneyDeckScreen;
+  for (const id of THEMES) {
+    themeId = id;
+    const Screen = make();
+    let tree: any;
+    await act(async () => { tree = create(React.createElement(Screen)); });
+    assert.equal(tree.root.findAllByProps({ testID: 'ask-v4' }).length > 0, true);
+    assert.match(texts(tree), /On this iPhone · Ready/);
+    await press(tree, 'Ask: How many miles did I drive this week?');
+    assert.equal(asked.at(-1)[1], 'How many miles did I drive this week?');
+    assert.match(texts(tree), /42\.6 miles/);
+    assert.match(texts(tree), /FROM YOUR LIBRARY/);
+    assert.ok(tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Open Memory Open road weekend').length > 0);
+    const fresh = tree.root.findByType('Menu').props.actions.find((action: any) => action.id === 'new');
+    await act(async () => fresh.onSelect());
+    assert.doesNotMatch(texts(tree), /42\.6 miles/, 'New conversation clears the thread');
     await act(async () => tree.unmount());
   }
 });
