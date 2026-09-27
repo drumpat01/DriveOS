@@ -12,12 +12,13 @@ Current owner intent (September 26, 2026): Claude should be able to finish V4 an
 
 ## GitHub Actions entry point
 
-`.github/workflows/ios-v4-testflight.yml` is a manual workflow. Its default `validate` operation installs mobile dependencies, checks V4 identity, typechecks, and runs mobile tests. `testflight` is restricted to `main`, requires the literal confirmation `V4_TESTFLIGHT`, and uses the `v4-release` GitHub environment. The environment allows deployments from `main` only. It requires `EXPO_TOKEN` as an environment secret. A successful dispatch queues an EAS iOS store build with the `v4-testflight` profile and auto-submits that build to the matching EAS submit profile. Read the EAS build and submission IDs/status afterward; a green Actions job means the request was queued, not that Apple finished processing it.
+`.github/workflows/ios-v4-testflight.yml` is a manual workflow. Its default `validate` operation installs mobile dependencies, checks V4 identity, typechecks, and runs mobile tests. `verify-credentials` (main only, `v4-release` environment) exercises `EXPO_TOKEN` with read-only `eas whoami`, `eas project:info`, and `eas build:list`; it never builds, submits, or publishes. `testflight` is restricted to `main`, requires the literal confirmation `V4_TESTFLIGHT`, and uses the `v4-release` GitHub environment. The environment allows deployments from `main` only. It requires `EXPO_TOKEN` as an environment secret. A successful dispatch queues an EAS iOS store build with the `v4-testflight` profile and auto-submits that build to the matching EAS submit profile. Read the EAS build and submission IDs/status afterward; a green Actions job means the request was queued, not that Apple finished processing it.
 
 From a GitHub-authorized local shell, after the V4 work is merged to `main`:
 
 ```powershell
 gh workflow run ios-v4-testflight.yml --ref main -f operation=validate
+gh workflow run ios-v4-testflight.yml --ref main -f operation=verify-credentials
 gh workflow run ios-v4-testflight.yml --ref main -f operation=testflight -f confirm_target=V4_TESTFLIGHT
 gh run list --workflow ios-v4-testflight.yml --limit 5
 ```

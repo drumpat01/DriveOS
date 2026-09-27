@@ -4,10 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Validate only, or build V4 and upload it to the existing TestFlight listing
+        description: Validate only, verify release credentials without building, or build V4 and upload it to the existing TestFlight listing
         type: choice
         options:
           - validate
+          - verify-credentials
           - testflight
         default: validate
         required: true
@@ -25,6 +26,7 @@ concurrency:
 
 jobs:
   validate:
+    if: ${{ inputs.operation != 'verify-credentials' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     env:
@@ -49,6 +51,43 @@ jobs:
         run: npm run typecheck
       - name: Test mobile app
         run: npm test
+
+  # Exercises the v4-release EXPO_TOKEN against the Expo project with read-only
+  # EAS commands. It never starts a build, submission, or update.
+  verify-credentials:
+    if: ${{ inputs.operation == 'verify-credentials' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: v4-release
+    defaults:
+      run:
+        working-directory: mobile/recorder
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      APP_VARIANT: v4-store
+      EAS_BUILD_PROFILE: v4-testflight
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/recorder/package-lock.json
+      - name: Require Expo release credential
+        run: test -n "$EXPO_TOKEN"
+      - name: Install mobile dependencies
+        run: npm ci
+      - name: Confirm V4 target
+        run: node scripts/v4-release-preflight.mjs
+      - name: Expo token identity
+        run: npx --yes eas-cli@23.2.0 whoami
+      - name: Expo project access
+        run: npx --yes eas-cli@23.2.0 project:info
+      - name: EAS iOS build history access
+        # Print identifiers only; artifact download URLs stay out of the log.
+        run: npx --yes eas-cli@23.2.0 build:list --platform ios --limit 1 --non-interactive --json | jq '.[0] | {id, status, buildProfile, appBuildVersion}'
 
   testflight:
     if: ${{ inputs.operation == 'testflight' && inputs.confirm_target == 'V4_TESTFLIGHT' && github.ref == 'refs/heads/main' }}
