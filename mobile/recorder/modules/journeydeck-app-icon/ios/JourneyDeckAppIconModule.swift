@@ -43,7 +43,7 @@ public final class JourneyDeckAppIconModule: Module {
         userInfo: [NSLocalizedDescriptionKey: "This device does not support alternate app icons."]
       )
     }
-    if let iconName, !["JourneyDeckWarmIvory", "JourneyDeckRosewater", "JourneyDeckGrandTouring", "JourneyDeckCinematic", "JourneyDeckMidnightCanopy"].contains(iconName) {
+    if let iconName, !Self.bundledAlternateIconNames().contains(iconName) {
       throw NSError(domain: "JourneyDeckAppIcon", code: 2,
         userInfo: [NSLocalizedDescriptionKey: "Unknown JourneyDeck app icon."])
     }
@@ -58,5 +58,18 @@ public final class JourneyDeckAppIconModule: Module {
       }
     }
     return status()
+  }
+
+  /// Alternate icons compiled into this binary. The asset catalog compiler writes them into
+  /// Info.plist from ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES (plugins/with-alternate-app-icons.js),
+  /// so this always matches the icons the build actually contains.
+  private static func bundledAlternateIconNames() -> Set<String> {
+    var names = Set<String>()
+    for key in ["CFBundleIcons", "CFBundleIcons~ipad"] {
+      guard let icons = Bundle.main.object(forInfoDictionaryKey: key) as? [String: Any],
+            let alternates = icons["CFBundleAlternateIcons"] as? [String: Any] else { continue }
+      names.formUnion(alternates.keys)
+    }
+    return names
   }
 }

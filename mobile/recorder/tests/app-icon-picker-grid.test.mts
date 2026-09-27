@@ -26,7 +26,7 @@ function loadPicker(state: {
   const module = { exports: {} as any };
   const source = readFileSync(new URL('../src/app-icon-picker.tsx', import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const assets = Object.fromEntries(['icon-cinematic-dark-v2.png', 'icon-warm-ivory-v2.png', 'icon-rosewater-v2.png', 'icon-grand-touring-v2.png', 'icon-midnight-canopy-v1.png', 'icon-cinematic-dark-appearance-v1.png', 'icon-warm-ivory-dark-v1.png', 'icon-rosewater-dark-v1.png', 'icon-grand-touring-dark-v1.png', 'icon-midnight-canopy-dark-v1.png']
+  const assets = Object.fromEntries(['icon-cinematic-dark-v2.png', 'icon-warm-ivory-v2.png', 'icon-rosewater-v2.png', 'icon-grand-touring-v2.png', 'icon-midnight-canopy-v1.png', 'icon-cinematic-dark-appearance-v1.png', 'icon-warm-ivory-dark-v1.png', 'icon-rosewater-dark-v1.png', 'icon-grand-touring-dark-v1.png', 'icon-midnight-canopy-dark-v1.png', 'icon-aurora-glass-v1.png', 'icon-aurora-glass-dark-v1.png']
     .map((name, index) => [`../assets/${name}`, index + 1]));
   vm.runInNewContext(code, {
     module,
@@ -35,7 +35,7 @@ function loadPicker(state: {
       ...assets,
       './app-theme': { useAppTheme: () => ({ ...themeCatalog.redline, id: 'redline' }) },
       './app-icon-catalog': icons,
-      './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: false },
+      './release-features': { V3_MIDNIGHT_CANOPY_ENABLED: false, V4_AURORA_GLASS_ENABLED: false },
       './app-icon-preference': { useAppIconChoice: () => ({
         appIconId: state.appIconId,
         availability: state.availability,

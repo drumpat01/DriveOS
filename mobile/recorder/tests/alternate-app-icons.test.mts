@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import test from 'node:test';
-import { APP_ICON_GRID_ORDER, FREE_APP_ICON_IDS, PLUS_APP_ICON_IDS, appIconCatalog, appIconIdForNativeName, appIconRequiresPlus, parseAppIconId } from '../src/app-icon-catalog.ts';
+import { APP_ICON_GRID_ORDER, FREE_APP_ICON_IDS, PLUS_APP_ICON_IDS, V4_PLUS_APP_ICON_IDS, appIconCatalog, appIconIdForNativeName, appIconRequiresPlus, parseAppIconId } from '../src/app-icon-catalog.ts';
 
 const require = createRequire(import.meta.url);
 const xcode = require('xcode');
@@ -26,7 +26,10 @@ test('app icon choices keep stable persisted IDs and distinct native names', () 
   assert.equal(appIconIdForNativeName('JourneyDeckGrandTouring'), 'grand-touring');
   assert.equal(appIconIdForNativeName('JourneyDeckMidnightCanopy'), 'midnight-canopy');
   assert.equal(appIconCatalog['midnight-canopy'].name, 'Autumn Drive');
-  assert.equal(new Set(Object.values(appIconCatalog).map(icon => icon.nativeName)).size, 5);
+  assert.equal(appIconIdForNativeName('JourneyDeckAuroraGlass'), 'aurora-glass');
+  assert.equal(new Set(Object.values(appIconCatalog).map(icon => icon.nativeName)).size, 6);
+  assert.deepEqual(V4_PLUS_APP_ICON_IDS, ['aurora-glass']);
+  assert.equal(appIconRequiresPlus('aurora-glass'), true);
   assert.deepEqual(FREE_APP_ICON_IDS, ['grand-touring', 'warm-ivory']);
   assert.deepEqual(PLUS_APP_ICON_IDS, ['original', 'rosewater']);
   assert.deepEqual(APP_ICON_GRID_ORDER, ['grand-touring', 'warm-ivory', 'original', 'rosewater']);
@@ -45,7 +48,7 @@ test('iOS host target declares every alternate app icon set', () => {
   const list = project.pbxXCConfigurationList()[host.buildConfigurationList];
   for (const { value } of list.buildConfigurations) {
     const settings = project.pbxXCBuildConfigurationSection()[value].buildSettings;
-    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring JourneyDeckCinematic JourneyDeckMidnightCanopy"');
+    assert.equal(settings.ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES, '"JourneyDeckWarmIvory JourneyDeckRosewater JourneyDeckGrandTouring JourneyDeckCinematic JourneyDeckMidnightCanopy JourneyDeckAuroraGlass"');
     assert.equal(settings.ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS, 'YES');
   }
 });
@@ -76,6 +79,7 @@ test('alternate icon assets are build-ready 1024px opaque iOS app icon sets', as
     }
     await plugin.writeAlternateIconAssets(root, directory, plugin.iconsForConfig({ extra: { features: { midnightCanopy: false } } }));
     assert.equal(existsSync(join(directory, 'JourneyDeckMidnightCanopy.appiconset')), false, 'a reused non-V3 prebuild removes the V3-only icon set');
+    assert.equal(existsSync(join(directory, 'JourneyDeckAuroraGlass.appiconset')), false, 'a non-V4 prebuild removes the V4-only icon set');
   } finally {
     const resolved = resolve(directory);
     assert.ok(resolved.startsWith(resolve(tmpdir()) + require('node:path').sep));
@@ -89,4 +93,18 @@ test('icon preference is stored separately from appearance', () => {
   assert.match(icons, /journeydeck\.app-icon\.v1/);
   assert.match(themes, /journeydeck\.appearance\.v2/);
   assert.doesNotMatch(icons, /setTheme|useThemeChoice/);
+});
+
+test('only V4 compiles Aurora Glass, and every build compiles Autumn Drive when its theme ships', () => {
+  const names = (features: Record<string, boolean>) => plugin.iconsForConfig({ extra: { features } }).map((icon: { name: string }) => icon.name);
+  assert.ok(names({ midnightCanopy: true, auroraGlass: true }).includes('JourneyDeckAuroraGlass'));
+  assert.ok(!names({ midnightCanopy: true, auroraGlass: false }).includes('JourneyDeckAuroraGlass'));
+  assert.ok(names({ midnightCanopy: true, auroraGlass: false }).includes('JourneyDeckMidnightCanopy'));
+});
+
+test('the native module accepts exactly the alternate icons compiled into the binary', () => {
+  const swift = readFileSync(join(root, 'modules/journeydeck-app-icon/ios/JourneyDeckAppIconModule.swift'), 'utf8');
+  assert.match(swift, /bundledAlternateIconNames\(\)\.contains\(iconName\)/);
+  assert.match(swift, /CFBundleAlternateIcons/);
+  assert.doesNotMatch(swift, /\["JourneyDeckWarmIvory"/, 'no hand-kept allowlist that can miss a new icon (Build 41 rejected Autumn Drive)');
 });

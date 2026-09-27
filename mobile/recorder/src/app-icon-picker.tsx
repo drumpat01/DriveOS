@@ -6,12 +6,13 @@ import { useAppTheme } from './app-theme';
 import {
   FREE_APP_ICON_IDS,
   PLUS_APP_ICON_IDS,
+  V4_PLUS_APP_ICON_IDS,
   appIconCatalog,
   appIconRequiresPlus,
   type AppIconId,
 } from './app-icon-catalog';
 import { useAppIconChoice } from './app-icon-preference';
-import { V3_MIDNIGHT_CANOPY_ENABLED } from './release-features';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED } from './release-features';
 
 const previews: Record<AppIconId, number> = {
   original: require('../assets/icon-cinematic-dark-v2.png'),
@@ -19,6 +20,7 @@ const previews: Record<AppIconId, number> = {
   rosewater: require('../assets/icon-rosewater-v2.png'),
   'grand-touring': require('../assets/icon-grand-touring-v2.png'),
   'midnight-canopy': require('../assets/icon-midnight-canopy-v1.png'),
+  'aurora-glass': require('../assets/icon-aurora-glass-v1.png'),
 };
 
 const darkPreviews: Record<AppIconId, number> = {
@@ -27,11 +29,14 @@ const darkPreviews: Record<AppIconId, number> = {
   rosewater: require('../assets/icon-rosewater-dark-v1.png'),
   'grand-touring': require('../assets/icon-grand-touring-dark-v1.png'),
   'midnight-canopy': require('../assets/icon-midnight-canopy-dark-v1.png'),
+  'aurora-glass': require('../assets/icon-aurora-glass-dark-v1.png'),
 };
 
-const visiblePlusAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
-  ? [...PLUS_APP_ICON_IDS, 'midnight-canopy']
-  : PLUS_APP_ICON_IDS;
+const visiblePlusAppIconIds: readonly AppIconId[] = [
+  ...PLUS_APP_ICON_IDS,
+  ...(V3_MIDNIGHT_CANOPY_ENABLED ? ['midnight-canopy' as const] : []),
+  ...(V4_AURORA_GLASS_ENABLED ? V4_PLUS_APP_ICON_IDS : []),
+];
 const visibleAppIconIds: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...visiblePlusAppIconIds];
 
 type AppIconPickerProps = {

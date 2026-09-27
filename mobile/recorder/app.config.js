@@ -31,7 +31,8 @@ module.exports = ({ config }) => {
     name: v3Preview ? 'JourneyDeck V3' : preview ? 'JourneyDeck V2' : config.name,
     version: v4Store ? '4.0.0' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
-    // V4 and V3 Build 40 have separate native and OTA compatibility boundaries.
+    // V4 and V3 Build 40 have separate native and OTA compatibility boundaries. V4 preview.2 (Build 42)
+    // adds the Aurora Glass icon and bundle-derived icon names; its OTAs must not reach Build 41.
     runtimeVersion: v4Store ? '4.0.0-preview.2' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
