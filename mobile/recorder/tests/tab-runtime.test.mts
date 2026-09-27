@@ -22,6 +22,7 @@ const memoryEditMotion = await readFile(new URL('memory-edit-motion.tsx', source
 const primarySections = await readFile(new URL('primary-sections.tsx', sourceRoot), 'utf8');
 const primaryData = await readFile(new URL('primary-sections-data.ts', sourceRoot), 'utf8');
 const statisticsScreen = await readFile(new URL('ipad-statistics-screen.tsx', sourceRoot), 'utf8');
+const atlasTab = await readFile(new URL('atlas-tab-v4.tsx', sourceRoot), 'utf8');
 const memoriesScreen = await readFile(new URL('ipad-memories-screen.tsx', sourceRoot), 'utf8');
 const ipadPageHeader = await readFile(new URL('ipad-page-header.tsx', sourceRoot), 'utf8');
 const phoneTabTitle = await readFile(new URL('phone-tab-title.tsx', sourceRoot), 'utf8');
@@ -70,13 +71,15 @@ test('the local-first model still builds Live, Atlas, the merged Statistics time
   assert.match(storage, /including points already uploaded/);
 });
 
-test('iPhone and iPad share the data-rich Statistics dashboard and retain paid Atlas access', () => {
+test('V4 iPhone uses its Atlas design while iPad retains Statistics and paid Atlas access', () => {
   assert.match(nativeNavigation, /name="statistics"/);
-  assert.equal(shell.match(/statistics: <IpadStatisticsScreen/g)?.length, 2);
+  assert.equal(shell.match(/<IpadStatisticsScreen/g)?.length, 2);
+  assert.equal(shell.match(/<AtlasTabV4/g)?.length, 1);
   assert.equal(shell.match(/<IpadStatisticsScreen key=\{currentUser\.id\} compact/g)?.length, 1, 'only the compact branch requests compact safe-area spacing');
   assert.match(shell, /onAtlas=\{membership\.atlasAccess \? openAtlas : undefined\}/);
   assert.match(shell, /atlas: membership\.atlasAccess \? <AtlasScreen/);
   assert.match(statisticsScreen, /buildIpadStatistics\(state\.data\?\.journeys/);
+  assert.match(atlasTab, /buildIpadStatistics\(state\.data\?\.journeys/);
   assert.match(statisticsScreen, /statistics-bottom-widgets/);
   assert.match(statisticsScreen, /Journey averages/);
   assert.match(statisticsScreen, /Record book/);

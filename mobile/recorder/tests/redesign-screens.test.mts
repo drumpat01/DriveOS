@@ -12,6 +12,7 @@ const require = createRequire(import.meta.url);
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const THEMES = ['redline', 'light', 'sakura', 'dark', 'midnight-canopy', 'aurora-glass'];
 let themeId = 'redline';
+let viewportWidth = 393, viewportFontScale = 1;
 const pushes: unknown[] = [];
 const secureStore = new Map<string, string>();
 
@@ -19,7 +20,7 @@ const host = (name: string) => React.forwardRef(({ children, ...props }: any, re
 class AnimatedValue { value: number; constructor(value: number) { this.value = value; } interpolate() { return this; } }
 const native = {
   StyleSheet: { create: (styles: any) => styles, absoluteFill: {}, hairlineWidth: 0.5 },
-  useWindowDimensions: () => ({ width: 393, height: 852, fontScale: 1 }),
+  useWindowDimensions: () => ({ width: viewportWidth, height: 852, fontScale: viewportFontScale }),
   Animated: { Value: AnimatedValue, View: host('AnimatedView'), ScrollView: host('AnimatedScrollView'), event: () => () => {} },
   ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl', 'Image', 'KeyboardAvoidingView', 'Switch'].map(name => [name, host(name)])),
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
@@ -32,7 +33,7 @@ const shared: Record<string, unknown> = {
   'expo-image': { Image: host('Image') },
   'expo-linear-gradient': { LinearGradient: host('LinearGradient') },
   'expo-symbols': { SymbolView: host('Symbol') },
-  'react-native-svg': { __esModule: true, default: host('Svg'), Circle: host('Circle'), Path: host('Path') },
+  'react-native-svg': { __esModule: true, default: host('Svg'), Circle: host('Circle'), Line: host('Line'), Path: host('Path') },
   'expo-router': { useFocusEffect: (effect: () => void) => React.useEffect(effect, []), router: { push: (value: unknown) => pushes.push(value), back() {} } },
   './app-theme': { useAppTheme: () => testTheme(themeId), useSurfacePreferences: () => ({ reduceTransparency: false, increaseContrast: false }) },
   './app-data': { appDataClient: { photoDataUrl: async () => 'data:image/jpeg;base64,AA' } },
@@ -342,5 +343,61 @@ test('Ask V4 suggests questions, shows records as cards, and starts a new conver
     await act(async () => fresh.onSelect());
     assert.doesNotMatch(texts(tree), /42\.6 miles/, 'New conversation clears the thread');
     await act(async () => tree.unmount());
+  }
+});
+
+test('Atlas V4 keeps every filter visible and its data usable across six themes', async () => {
+  const atlasModel = require('../src/ipad-statistics-model.ts');
+  const vehicle = {
+    drivingEfficiency: { whPerMile: 241, measuredJourneys: 1, journeys: 1, energyUsedKwh: 8.2 },
+    chargingOnRoad: { sessions: 0, energyAddedKwh: null, durationMinutes: 0, charges: [] },
+    energyByJourney: [], repeatedRoutes: [],
+  };
+  const make = (tessie: boolean) => load('atlas-tab-v4.tsx', {
+    './ipad-statistics-model': atlasModel,
+    './journey-title': { journeyDisplayTitle: (item: any) => `${item.startingLocation} to ${item.endingLocation}` },
+    './auth': { getCurrentUser: () => ({ id: 'atlas-test' }) },
+    './app-data': { localAtlasClient: { tessieStatistics: () => vehicle } },
+    './release-features': { TESSIE_INTEGRATION_ENABLED: tessie },
+    './tessie-direct': { tessieDirectStatus: async () => 'connected' },
+  }).AtlasTabV4;
+  const styleOf = (node: any) => Object.assign({}, ...[typeof node.props.style === 'function' ? node.props.style({ pressed: false }) : node.props.style].flat(Infinity).filter(Boolean));
+  for (const id of THEMES) {
+    themeId = id;
+    const Screen = make(false);
+    let upgrades = 0, atlasOpens = 0, tree: any;
+    const props = { state: primary, historyDays: 45, onRefresh() {}, onJourney() {}, onUpgrade: () => upgrades++, onAtlas: () => atlasOpens++ };
+    await act(async () => { tree = create(React.createElement(Screen, props)); });
+    assert.ok(tree.root.findByProps({ testID: 'atlas-overview-hero' }));
+    assert.ok(tree.root.findByProps({ testID: 'atlas-metric-grid' }));
+    const sections = tree.root.findByProps({ testID: 'atlas-section-filters' }).findAllByType('Pressable');
+    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Days', 'Insights']);
+    assert.ok(sections.every((node: any) => styleOf(node).flexBasis === '30%'), 'three sections fit in one row');
+    await press(tree, '90D, JourneyDeck Plus');
+    assert.equal(upgrades, 1, 'locked range opens Plus without changing the selected range');
+    assert.equal(tree.root.findByProps({ testID: 'atlas-range-filters' }).findAllByType('Pressable')[1].props.accessibilityState.selected, true);
+    await press(tree, 'Days');
+    assert.ok(tree.root.findByProps({ testID: 'atlas-calendar' }));
+    await press(tree, 'Insights');
+    assert.match(texts(tree), /Distance breakdown|DISTANCE BREAKDOWN/);
+    await press(tree, 'Overview');
+    await press(tree, 'Explore your Atlas map');
+    assert.equal(atlasOpens, 1);
+    await act(async () => tree.unmount());
+  }
+  themeId = 'redline'; viewportWidth = 320; viewportFontScale = 1.5;
+  const Screen = make(true);
+  let tree: any;
+  try {
+    await act(async () => { tree = create(React.createElement(Screen, { state: primary, historyDays: null, onRefresh() {}, onJourney() {}, onUpgrade() {} })); });
+    const sections = tree.root.findByProps({ testID: 'atlas-section-filters' }).findAllByType('Pressable');
+    assert.deepEqual(sections.map((node: any) => node.props.accessibilityLabel), ['Overview', 'Days', 'Insights', 'Tessie']);
+    assert.ok(sections.every((node: any) => styleOf(node).flexBasis === '47%'), 'four sections use two complete rows at narrow widths');
+    await press(tree, 'Tessie');
+    assert.match(texts(tree), /Vehicle insights/);
+    assert.match(texts(tree), /241 Wh\/mi/);
+  } finally {
+    viewportWidth = 393; viewportFontScale = 1;
+    await act(async () => tree?.unmount());
   }
 });

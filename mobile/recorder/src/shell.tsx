@@ -20,6 +20,7 @@ import { AskJourneyDeckWidget } from './ask-journeydeck-widget';
 import { TESSIE_INTEGRATION_ENABLED, V3_ASK_JOURNEYDECK_ENABLED, V4_CONNECTOR_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
 import { MemoriesLibraryScreen } from './memories-library';
 import { TodayScreen } from './today-screen';
+import { AtlasTabV4 } from './atlas-tab-v4';
 import { SearchTabScreen } from './search-tab';
 import { supportsTabAccessory } from './recorder-accessory-model';
 import { MemoryDetailV4 } from './memory-detail-v4';
@@ -1007,7 +1008,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
         loadProfile={loadTodayProfile} onJourney={openJourney} onMemory={openMemory} onMemories={() => openTab('journeys')} onWeek={() => openTab('statistics')}
         onProfile={() => { router.push('/preferences'); }} onRefresh={() => refreshPrimarySections(true)} />
         : <HomeScreen userId={currentUser.id} recorderActive={homeRecorderActive} primary={primarySections} journeyProgress={homeJourneyProgress} onSoundtracks={() => openTab('music')} onStatistics={() => openTab('statistics')} onJourney={openJourney} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} recorder={<Recorder presentation="home" showManualSongButton={showManualSongButton} onClose={() => undefined} onActivityChange={setHomeRecorderActive} onProgressChange={setHomeJourneyProgress} onJourneyChange={() => { void refreshDashboard(); void refreshPrimarySections(false); }} />} />,
-      statistics: <IpadStatisticsScreen key={currentUser.id} compact title={REDESIGN_PHONE ? 'Atlas' : undefined} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
+      statistics: REDESIGN_PHONE
+        ? <AtlasTabV4 key={currentUser.id} state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />
+        : <IpadStatisticsScreen key={currentUser.id} compact state={primarySections} onRefresh={() => refreshPrimarySections(true)} onJourney={openJourney} onUpgrade={() => setMembershipPaywallVisible(true)} onAtlas={membership.atlasAccess ? openAtlas : undefined} onYearOnRoad={() => router.push('/year-on-road')} historyDays={membership.timelineHistoryDays} />,
       settings: settingsPage(),
       search: <SearchTabScreen state={primarySections} onJourney={openJourney} onMemory={openMemory} />,
     },

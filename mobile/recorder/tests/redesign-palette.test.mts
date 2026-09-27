@@ -62,7 +62,7 @@ test('light themes use their own card surfaces while dark themes use translucent
 
 test('redesigned screens take every color from the theme, never a literal', async () => {
   const { readFileSync } = await import('node:fs');
-  const files = ['today-screen', 'soundtrack-screen', 'memories-library', 'memory-detail-v4', 'search-tab', 'recorder-accessory', 'redesign-ui', 'preferences-screen', 'memory-route-map', 'journey-detail-v4', 'journey-replay-card-v4', 'ask-journeydeck-v4', 'ask-chat-motion', 'glass-avatar'];
+  const files = ['today-screen', 'soundtrack-screen', 'memories-library', 'memory-detail-v4', 'search-tab', 'recorder-accessory', 'redesign-ui', 'preferences-screen', 'memory-route-map', 'journey-detail-v4', 'journey-replay-card-v4', 'ask-journeydeck-v4', 'ask-chat-motion', 'glass-avatar', 'atlas-tab-v4'];
   for (const name of files) {
     const source = readFileSync(new URL(`../src/${name}.tsx`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|'(white|black)'/i, `${name}.tsx must use theme colors`);
