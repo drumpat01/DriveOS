@@ -35,8 +35,9 @@
   - Not built from the GPL-3.0 Appllama liquid-glass-chat-ui repo; only general chat patterns were used.
   - 990 tests: 989 pass, 1 skipped. Typecheck clean.
 - **Today Ask bar + Edit Today (2026-09-27):** commit `3f950e9`, OTA `17905385531161` at 19:49:17Z. They restore the Ask entry point and Home editing that the first redesign dropped. The layout is saved per profile in SecureStore (`today-layout.ts`). 993 tests: 992 pass, 1 skipped.
+- **Ask polish release in progress (2026-09-27):** The owner authorized the `v4-testflight` OTA in chat. The `claude/v4-redesign` working tree adds `ask-chat-motion.tsx`, `glass-avatar.tsx`, `THIRD_PARTY_NOTICES.md`, and Ask V4/test changes for the keyboard composer, message and typing motion, and glass avatar. The Appllama MIT notice was checked against its pinned source commit. Reduce Motion also disables the send-button animation. V4 identity preflight, typecheck, 32 focused tests, the full mobile suite (993 tests: 992 pass, 1 skipped), `git diff --check`, and `APP_VARIANT=v4-store` iOS export with a cleared Metro cache pass. Next: commit the reviewed files, publish through `xprem:publish`, verify the manifest, and record the update ID.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
-- Next: owner opens the app on their V4 TestFlight install and confirms the update landed and looks right, then open a PR against `main` when asked.
+- Device review is still needed after the next authorized OTA. Open a PR against `main` when asked.
 
 ## Production handoff and access
 

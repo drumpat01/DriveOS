@@ -34,7 +34,7 @@ const shared: Record<string, unknown> = {
   'expo-symbols': { SymbolView: host('Symbol') },
   'react-native-svg': { __esModule: true, default: host('Svg'), Circle: host('Circle'), Path: host('Path') },
   'expo-router': { useFocusEffect: (effect: () => void) => React.useEffect(effect, []), router: { push: (value: unknown) => pushes.push(value), back() {} } },
-  './app-theme': { useAppTheme: () => testTheme(themeId) },
+  './app-theme': { useAppTheme: () => testTheme(themeId), useSurfacePreferences: () => ({ reduceTransparency: false, increaseContrast: false }) },
   './app-data': { appDataClient: { photoDataUrl: async () => 'data:image/jpeg;base64,AA' } },
   './glass-material': { GlassBackdrop: () => null, useGlassCardStyle: () => null },
   './header-image-sources': { headerImageSource: (source: unknown) => source },
@@ -50,6 +50,19 @@ const shared: Record<string, unknown> = {
   './primary-sections-data': { searchPrimarySections: (records: any[], query: string) => query.trim() ? records.filter(record => record.title.toLowerCase().includes(query.trim().toLowerCase())) : records.slice(0, 18) },
   './redesign-model': require('../src/redesign-model.ts'),
   './today-layout': require('../src/today-layout.ts'),
+  'react-native-keyboard-controller': {
+    KeyboardProvider: ({ children }: any) => children, KeyboardStickyView: host('KeyboardStickyView'),
+    KeyboardChatScrollView: React.forwardRef(({ children, ...props }: any, ref: any) => { React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('ChatScroll', props, children); }),
+  },
+  'react-native-reanimated': (() => {
+    const chain: any = { duration: () => chain, easing: () => chain };
+    return { __esModule: true, default: { View: host('AnimatedView') }, Easing: { bezier: () => (value: number) => value },
+      FadeIn: chain, FadeInDown: chain, FadeOut: chain, cancelAnimation() {}, withDelay: (_: number, value: unknown) => value, withRepeat: (value: unknown) => value,
+      withSequence: (...values: unknown[]) => values[0], withSpring: (value: unknown) => value, withTiming: (value: unknown) => value,
+      useSharedValue: (value: number) => { const ref = React.useRef({ value, get() { return this.value; }, set(next: number) { this.value = next; } }); return ref.current; },
+      useAnimatedStyle: (fn: () => unknown) => fn() };
+  })(),
+  '@shopify/react-native-skia': { Skia: { RuntimeEffect: { Make: () => null } }, useImage: () => null, Canvas: host('Canvas'), Fill: host('Fill'), Shader: host('Shader'), ImageShader: host('ImageShader') },
   './home-widget-grid': { HomeLayoutEditorSheet: host('EditorSheet') },
   'expo-secure-store': { getItem: (key: string) => secureStore.get(key) ?? null, setItem: (key: string, value: string) => { secureStore.set(key, value); } },
   './redesign-palette': require('../src/redesign-palette.ts'),
@@ -297,11 +310,12 @@ test('the V4 replay card shows live speed only while replaying and marks every s
 });
 
 test('Ask V4 suggests questions, shows records as cards, and starts a new conversation', async () => {
-  const v4 = load('ask-journeydeck-v4.tsx');
+  const motion = load('ask-chat-motion.tsx');
+  const v4 = load('ask-journeydeck-v4.tsx', { './ask-chat-motion': motion, './glass-avatar': load('glass-avatar.tsx') });
   const asked: any[] = [];
   const answer = { status: 'answered', text: 'You drove 42.6 miles this week.', ticket: 't', contextToken: 't', evidence: [{ kind: 'memory', id: 'm1', label: 'Open road weekend' }] };
   const make = () => load('ask-journeydeck-screen.tsx', {
-    './ask-journeydeck-v4': v4, './device-layout': { isIpad: () => false },
+    './ask-journeydeck-v4': v4, './ask-chat-motion': motion, './device-layout': { isIpad: () => false },
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true, V4_REDESIGN_ENABLED: true },
     './siri-testing': { canShowSiriTesting: false }, './auth': { getCurrentUser: () => ({ id: `ask-${themeId}` }) },
     'expo-router': { router: { push: (value: unknown) => pushes.push(value), back() {}, canGoBack: () => true, replace() {} }, useLocalSearchParams: () => ({}) },

@@ -9,7 +9,10 @@ import { ASK_CANNOT_COMPUTE, ASK_EXAMPLES, askJourneyDeck, askJourneyDeckModelAv
 import { V3_ASK_JOURNEYDECK_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
 import { isIpad } from './device-layout';
 import { useRedesignColors } from './redesign-ui';
-import { AskComposerV4, AskHeaderV4, AssistantBubbleV4, BubbleText, DayLabel, EvidenceCardsV4, SuggestionChipsV4, TypingBubbleV4, UserBubbleV4 } from './ask-journeydeck-v4';
+import { ChatComposer, MessageEntrance } from './ask-chat-motion';
+import { KeyboardChatScrollView, KeyboardProvider } from 'react-native-keyboard-controller';
+import { useMotionPreferences } from './motion';
+import { AskHeaderV4, AssistantBubbleV4, BubbleText, DayLabel, EvidenceCardsV4, SuggestionChipsV4, TypingBubbleV4, UserBubbleV4 } from './ask-journeydeck-v4';
 
 /** The V4 iPhone redesign draws Ask with the V4 chat components. */
 const ASK_V4 = V4_REDESIGN_ENABLED && !isIpad();
@@ -56,6 +59,9 @@ const notifySession = (session: ChatSession) => { for (const listener of session
 export function AskJourneyDeckScreen() {
   const theme = useAppTheme(), c = theme.palette, userID = getCurrentUser().id, insets = useSafeAreaInsets();
   const v4c = useRedesignColors();
+  const { reduceMotion } = useMotionPreferences();
+  const [composerHeight, setComposerHeight] = useState(0);
+  const [openedWith] = useState(() => new Set(sessionFor(userID).messages.map(message => message.id)));
   const { ticket } = useLocalSearchParams<{ ticket?: string }>();
   const session = sessionFor(userID);
   const [question, setQuestion] = useState('');
@@ -190,7 +196,7 @@ export function AskJourneyDeckScreen() {
   };
   if (ASK_V4) {
     const avatar = botAvatars[theme.id];
-    return <KeyboardAvoidingView testID="ask-v4" behavior="padding" style={[styles.screen, { backgroundColor: v4c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
+    return <KeyboardProvider><View testID="ask-v4" style={[styles.screen, { backgroundColor: v4c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <AskHeaderV4 avatar={avatar} status={shortModelStatus(modelAvailability)} onClose={close} actions={[
         { id: 'new', title: 'New conversation', image: 'square.and.pencil', attributes: busy || !messages.length ? { disabled: true } : undefined, onSelect: newConversation },
         ...(canShowSiriTesting ? [{ id: 'siri', title: 'Siri AI testing', image: 'waveform' as const, onSelect: () => router.push('/siri-testing') }] : []),
@@ -198,10 +204,11 @@ export function AskJourneyDeckScreen() {
       {!V3_ASK_JOURNEYDECK_ENABLED
         ? <View style={styles.unavailable}><Text selectable style={[styles.body, { color: v4c.text }]}>Ask JourneyDeck is available in V3.</Text></View>
         : <View style={styles.chat}>
-          <ScrollView ref={scroll} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
+          <KeyboardChatScrollView ref={scroll as never} offset={insets.bottom} keyboardLiftBehavior="always"
+            contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false}
             automaticallyAdjustKeyboardInsets={false} automaticallyAdjustsScrollIndicatorInsets={false}
-            removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-            style={styles.scroll} contentContainerStyle={styles.v4Conversation}
+            removeClippedSubviews={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive"
+            style={styles.scroll} contentContainerStyle={[styles.v4Conversation, { paddingBottom: composerHeight + 12 }]}
             onLayout={event => { scrollSize.current.viewport = event.nativeEvent.layout.height; revealNewMessage(); }}
             onContentSizeChange={(_width, height) => { scrollSize.current.content = height; revealNewMessage(); }}>
             <DayLabel>Today</DayLabel>
@@ -212,22 +219,24 @@ export function AskJourneyDeckScreen() {
             {!messages.length && !busy ? <SuggestionChipsV4 suggestions={ASK_EXAMPLES} disabled={!canSend} onPick={submitValue} /> : null}
             {messages.map(message => <View key={message.id} testID={`ask-message-${message.id}`}
               onLayout={event => { const { y, height } = event.nativeEvent.layout; measureMessage(message.id, y, height); }}>
-              {message.role === 'user' ? <UserBubbleV4 text={message.text} />
-                : <AssistantBubbleV4 avatar={avatar} live>
-                  <BubbleText>{message.answer.text}</BubbleText>
-                  <EvidenceCardsV4 items={message.answer.evidence} disabled={busy} onOpen={item => void openEvidence(message.id, message.answer, item)} />
-                </AssistantBubbleV4>}
+              <MessageEntrance mine={message.role === 'user'} animate={!openedWith.has(message.id)} reduceMotion={reduceMotion}>
+                {message.role === 'user' ? <UserBubbleV4 text={message.text} />
+                  : <AssistantBubbleV4 avatar={avatar} live>
+                    <BubbleText>{message.answer.text}</BubbleText>
+                    <EvidenceCardsV4 items={message.answer.evidence} disabled={busy} onOpen={item => void openEvidence(message.id, message.answer, item)} />
+                  </AssistantBubbleV4>}
+              </MessageEntrance>
             </View>)}
-            {busy ? <TypingBubbleV4 avatar={avatar} /> : null}
+            {busy ? <TypingBubbleV4 avatar={avatar} reduceMotion={reduceMotion} /> : null}
             {visibleError ? <View accessibilityRole="alert" style={[styles.errorBubble, { backgroundColor: v4c.surfaceStrong, borderColor: v4c.border }]}>
               <SymbolView name="exclamationmark.circle.fill" tintColor={v4c.accent} size={17} />
               <Text selectable style={[styles.errorText, { color: v4c.text }]}>{visibleError}</Text>
             </View> : null}
             {!isAskJourneyDeckAvailable ? <Text selectable style={[styles.availability, { color: v4c.textSecondary }]}>This installed version needs the V3 native question engine.</Text> : null}
-          </ScrollView>
-          <AskComposerV4 value={visibleQuestion} onChange={setQuestion} onSubmit={submit} canSend={canSend} busy={busy} error={Boolean(visibleError)} bottomInset={insets.bottom} />
+          </KeyboardChatScrollView>
+          <ChatComposer value={visibleQuestion} onChange={setQuestion} onSubmit={submit} canSend={canSend} busy={busy} error={Boolean(visibleError)} reduceMotion={reduceMotion} bottomInset={insets.bottom} onHeight={setComposerHeight} />
         </View>}
-    </KeyboardAvoidingView>;
+    </View></KeyboardProvider>;
   }
   return <KeyboardAvoidingView behavior="padding" style={[styles.screen, { backgroundColor: c.page, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
     <View style={styles.header}>

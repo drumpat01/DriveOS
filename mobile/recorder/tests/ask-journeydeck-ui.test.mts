@@ -18,7 +18,7 @@ function load(name: string, mocks: Record<string, unknown>) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   // The V4 redesign is off in these classic-layout tests; its modules are stubbed.
-  const v4Stubs: Record<string, unknown> = { './redesign-ui': { useRedesignColors: () => ({}) }, './device-layout': { isIpad: () => false }, './ask-journeydeck-v4': {} };
+  const v4Stubs: Record<string, unknown> = { './redesign-ui': { useRedesignColors: () => ({}) }, './device-layout': { isIpad: () => false }, './ask-journeydeck-v4': {}, './ask-chat-motion': {}, 'react-native-keyboard-controller': {}, './motion': { useMotionPreferences: () => ({ reduceMotion: false }) } };
   vm.runInNewContext(code, { module, exports: module.exports, require: (id: string) => id in mocks ? mocks[id] : id in v4Stubs ? v4Stubs[id] : id.endsWith('.png') ? id : require(id) });
   return module.exports;
 }

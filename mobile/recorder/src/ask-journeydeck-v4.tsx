@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
+import { useSurfacePreferences } from './app-theme';
+import { TypingDots } from './ask-chat-motion';
+import { GlassAvatar } from './glass-avatar';
 import { SymbolView } from 'expo-symbols';
 import type { AskEvidence } from './ask-journeydeck';
 import { NativeActionMenu, type NativeMenuAction } from './native-action-menu';
@@ -13,13 +16,14 @@ import { TouchPressable } from './touch-feedback';
  */
 export function AskHeaderV4({ avatar, status, onClose, actions }: { avatar: ImageSourcePropType; status: string; onClose: () => void; actions: NativeMenuAction[] }) {
   const colors = useRedesignColors();
+  const plain = useSurfacePreferences().reduceTransparency;
   return <View style={styles.header}>
     <TouchPressable accessibilityRole="button" accessibilityLabel="Close Ask JourneyDeck" onPress={onClose}
       style={({ pressed }) => [styles.circle, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, pressed && redesignStyles.pressed]}>
       <SymbolView name="xmark" tintColor={colors.text} size={15} weight="semibold" />
     </TouchPressable>
     <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={`JourneyDeck. ${status}`}>
-      <Image source={avatar} style={[styles.headerAvatar, { borderColor: colors.border }]} />
+      <GlassAvatar source={avatar} size={46} plain={plain} />
       <Text style={[styles.name, { color: colors.text }]}>JourneyDeck</Text>
       <View style={styles.statusRow}>
         <SymbolView name="lock.fill" tintColor={colors.accent} size={9} />
@@ -40,8 +44,9 @@ export function DayLabel({ children }: { children: string }) {
 /** An assistant bubble. The avatar sits beside the last bubble of a group. */
 export function AssistantBubbleV4({ avatar, showAvatar = true, live = false, children }: { avatar: ImageSourcePropType; showAvatar?: boolean; live?: boolean; children: ReactNode }) {
   const colors = useRedesignColors();
+  const plain = useSurfacePreferences().reduceTransparency;
   return <View style={styles.assistantRow}>
-    {showAvatar ? <Image accessibilityIgnoresInvertColors source={avatar} style={styles.bubbleAvatar} /> : <View style={styles.bubbleAvatar} />}
+    {showAvatar ? <GlassAvatar source={avatar} size={28} plain={plain} /> : <View style={styles.bubbleAvatar} />}
     <View accessibilityLiveRegion={live ? 'polite' : undefined} style={[styles.assistantBubble, { backgroundColor: colors.surface, borderColor: colors.border }]}>{children}</View>
   </View>;
 }
@@ -77,12 +82,13 @@ export function EvidenceCardsV4({ items, disabled, onOpen }: { items: AskEvidenc
   </View>;
 }
 
-export function TypingBubbleV4({ avatar }: { avatar: ImageSourcePropType }) {
+export function TypingBubbleV4({ avatar, reduceMotion = false }: { avatar: ImageSourcePropType; reduceMotion?: boolean }) {
   const colors = useRedesignColors();
+  const plain = useSurfacePreferences().reduceTransparency;
   return <View accessible accessibilityRole="progressbar" accessibilityLabel="Reading your road history" style={styles.assistantRow}>
-    <Image source={avatar} style={styles.bubbleAvatar} />
+    <GlassAvatar source={avatar} size={28} plain={plain} />
     <View style={[styles.typing, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <ActivityIndicator size="small" color={colors.accent} />
+      <TypingDots color={colors.accent} reduceMotion={reduceMotion} />
       <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>Reading your road history…</Text>
     </View>
   </View>;
@@ -98,30 +104,10 @@ export function SuggestionChipsV4({ suggestions, disabled, onPick }: { suggestio
   </View>;
 }
 
-export function AskComposerV4({ value, onChange, onSubmit, canSend, busy, error, bottomInset }: {
-  value: string; onChange: (value: string) => void; onSubmit: () => void; canSend: boolean; busy: boolean; error: boolean; bottomInset: number;
-}) {
-  const colors = useRedesignColors();
-  const ready = canSend && value.trim().length > 0;
-  return <View style={[styles.dock, { paddingBottom: Math.max(bottomInset, 12) }]}>
-    <Text style={[styles.privacy, { color: colors.textTertiary }]}>Questions stay on this iPhone and aren’t saved.</Text>
-    <View style={[styles.composer, { backgroundColor: colors.surfaceStrong, borderColor: error ? colors.accent : colors.border, boxShadow: `0 12px 30px ${colors.shadow}` }]}>
-      <TextInput testID="ask-question" value={value} onChangeText={onChange} placeholder="Ask about your road history" placeholderTextColor={colors.textTertiary}
-        selectionColor={colors.accent} maxLength={500} editable={canSend} returnKeyType="send" onSubmitEditing={onSubmit}
-        accessibilityLabel="Ask about your road history" style={[styles.input, { color: colors.text }]} />
-      <TouchPressable testID="ask-submit" accessibilityRole="button" accessibilityLabel={busy ? 'Reading your local history' : 'Send question'} onPress={onSubmit} disabled={!canSend}
-        style={({ pressed }) => [styles.send, { backgroundColor: ready ? colors.accent : colors.track }, pressed && redesignStyles.pressed]}>
-        {busy ? <ActivityIndicator color={colors.textSecondary} size="small" /> : <SymbolView name="arrow.up" tintColor={ready ? colors.onAccent : colors.textTertiary} size={17} weight="bold" />}
-      </TouchPressable>
-    </View>
-  </View>;
-}
-
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6 },
   circle: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   identity: { flex: 1, alignItems: 'center', gap: 2 },
-  headerAvatar: { width: 44, height: 44, borderRadius: 22, borderWidth: 2 },
   name: { fontSize: 15, lineHeight: 19, fontWeight: '700' },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 4, maxWidth: '100%' },
   status: { fontSize: 11, lineHeight: 14, flexShrink: 1 },
@@ -142,9 +128,4 @@ const styles = StyleSheet.create({
   suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingLeft: 36 },
   suggestion: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, minHeight: 34, justifyContent: 'center' },
   suggestionText: { fontSize: 13, fontWeight: '600' },
-  dock: { paddingHorizontal: 16, paddingTop: 6, gap: 8 },
-  privacy: { fontSize: 11, textAlign: 'center' },
-  composer: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 58, paddingLeft: 20, paddingRight: 7, borderRadius: 29, borderWidth: StyleSheet.hairlineWidth },
-  input: { flex: 1, fontSize: 16, paddingVertical: 12 },
-  send: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });
