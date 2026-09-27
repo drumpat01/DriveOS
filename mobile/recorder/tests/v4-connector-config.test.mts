@@ -24,6 +24,7 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     assert.equal(config.extra.features.auroraGlass, true, 'V4 offers the Aurora Glass Plus theme');
     assert.equal(config.extra.features.testflightPlusUnlocked, true, 'V4 TestFlight unlocks all Plus features');
     assert.equal(config.extra.features.connector, true, 'V4 offers Connect to Claude');
+    assert.equal(config.extra.features.redesign, true, 'V4 ships the iPhone redesign');
     assert.equal(config.extra.connector.url, 'https://mcp-staging.journeydeck.me/mcp');
     assert.equal(eas.build['v4-testflight'].env.APP_VARIANT, 'v4-store');
     assert.equal(eas.submit['v4-testflight'].ios.ascAppId, '6806502526');
@@ -32,6 +33,7 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     process.env.EAS_BUILD_PROFILE = 'v3-testflight';
     assert.equal(configure({ config: base }).extra.features.auroraGlass, false, 'V3 never offers Aurora Glass');
     assert.equal(configure({ config: base }).extra.features.connector, false, 'V3 never offers Connect to Claude');
+    assert.equal(configure({ config: base }).extra.features.redesign, false, 'V3 keeps its approved layout');
     assert.equal(configure({ config: base }).extra.connector, undefined);
   } finally {
     if (previousVariant === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = previousVariant;

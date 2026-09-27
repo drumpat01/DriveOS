@@ -41,8 +41,11 @@ const moreScreen = primarySections.slice(primarySections.indexOf('export functio
 
 test('all five tabs use the native iOS host and keep one stable screen per route', () => {
   assert.match(nativeNavigation, /expo-router\/unstable-native-tabs/);
-  assert.equal(nativeNavigation.match(/<NativeTabs.Trigger name=/g)?.length, 5);
-  assert.equal(nativeNavigation.match(/disablePopToTop disableScrollToTop disableAutomaticContentInsets/g)?.length, 5);
+  // Five legacy routes plus the five V4 iPhone redesign routes (Today, Memories, Soundtrack, Atlas, Search).
+  assert.equal(nativeNavigation.match(/<NativeTabs.Trigger name=/g)?.length, 10);
+  assert.equal(nativeNavigation.match(/disablePopToTop disableScrollToTop disableAutomaticContentInsets/g)?.length, 10);
+  const redesignBar = nativeNavigation.slice(nativeNavigation.indexOf('if (redesign && !tablet)'), nativeNavigation.indexOf('const homeTrigger'));
+  assert.deepEqual([...redesignBar.matchAll(/<NativeTabs.Trigger name="([a-z]+)"/g)].map(match => match[1]), ['index', 'journeys', 'music', 'statistics', 'search']);
   assert.doesNotMatch(shell, /<PagerView|CinematicTabPage|<BottomNavigation|<IntegratedNavigationChrome/);
   assert.equal(shell.match(/<ConnectionsScreen\b/g)?.length, 1);
   assert.equal(shell.match(/<Recorder presentation="home"/g)?.length, 1);
@@ -160,7 +163,8 @@ test('Atlas uses the selected premium command-center layout without changing the
 });
 
 test('shared Statistics keeps its title, raw metrics, calendar and responsive phone layout', () => {
-  assert.match(statisticsScreen, /<IpadPageHeader compact=\{compact\} title="Statistics" width=\{width\} artwork=\{compact \? undefined : require\('\.\.\/assets\/cinematic-statistics-photo-v1\.jpg'\)\}/);
+  assert.match(statisticsScreen, /compact = false, title = 'Statistics' \}/);
+  assert.match(statisticsScreen, /<IpadPageHeader compact=\{compact\} title=\{title\} width=\{width\} artwork=\{compact \? undefined : require\('\.\.\/assets\/cinematic-statistics-photo-v1\.jpg'\)\}/);
   assert.match(statisticsScreen, /subtitle=\{compact \? undefined : 'Every mile\. Every journey\. Your numbers\.'\}/);
   assert.match(statisticsScreen, /Total miles/);
   assert.match(statisticsScreen, /Total journeys/);

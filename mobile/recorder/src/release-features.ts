@@ -48,3 +48,6 @@ export const V4_CONNECTOR_ENABLED: boolean = Constants.expoConfig?.extra?.featur
 
 /** The public JourneyDeck connector's MCP address, shown for pasting into an assistant. */
 export const CONNECTOR_MCP_URL: string | null = typeof Constants.expoConfig?.extra?.connector?.url === 'string' ? Constants.expoConfig.extra.connector.url : null;
+
+/** V4 iPhone redesign: Today, Memories, Soundtrack and Atlas tabs, Search, and the recorder accessory. */
+export const V4_REDESIGN_ENABLED: boolean = Constants.expoConfig?.extra?.features?.redesign === true;

@@ -26,7 +26,7 @@ let adaptive = { isRegular: false, orientation: 'portrait' };
 let memoryParams: any = { id: 'memory-a' };
 let memoryFlip: any = null;
 const host = (name: string) => ({ children, ...props }: any) => React.createElement(name, props, children);
-const Tabs = Object.assign(host('tabs'), { Trigger: Object.assign(host('trigger'), { Icon: host('icon'), Label: host('label') }) });
+const Tabs = Object.assign(host('tabs'), { Trigger: Object.assign(host('trigger'), { Icon: host('icon'), Label: host('label') }), BottomAccessory: host('accessory') });
 const Stack = Object.assign(host('stack'), { Screen: host('route') });
 const navigation = load('native-navigation.tsx', {
   'react-native': { View: host('view'), useWindowDimensions: () => { throw new Error('Tab labels must not depend on global rotation metrics'); } },
@@ -315,4 +315,29 @@ test('preview navigation runtime stays isolated from V1 and the installed previe
     assert.equal(publicRelease.ios.bundleIdentifier, app.ios.bundleIdentifier);
     assert.equal(publicRelease.ios.entitlements['com.apple.developer.icloud-container-identifiers'][0], 'iCloud.com.journeydeck.recorder');
   } finally { if (previous === undefined) delete process.env.APP_VARIANT; else process.env.APP_VARIANT = previous; }
+});
+
+test('V4 iPhone redesign puts Today first, Search on its own, and the recorder in the accessory', async () => {
+  let tree: any;
+  const recorder = React.createElement('recorder-bar');
+  const render = (value: Record<string, unknown>) => React.createElement(navigationContext.NativeNavigationContext.Provider, { value: { tabBarHidden: false, ...value } }, React.createElement(navigation.JourneyDeckNativeTabs));
+  try {
+    for (const id of ['redline', 'light', 'sakura', 'dark', 'midnight-canopy', 'aurora-glass']) {
+      light = id as never;
+      await act(() => { if (tree) tree.update(render({ redesign: true, accessory: recorder })); else tree = create(render({ redesign: true, accessory: recorder })); });
+      const triggers = tree.root.findAllByType('trigger');
+      assert.deepEqual(triggers.map((item: any) => item.props.name), ['index', 'journeys', 'music', 'statistics', 'search'], id);
+      assert.deepEqual(triggers.map((item: any) => item.findByType('label').props.children), ['Today', 'Memories', 'Soundtrack', 'Atlas', 'Search']);
+      assert.equal(triggers[4].props.role, 'search');
+      for (const item of triggers) assert.equal(item.props.hidden, undefined);
+      assert.equal(tree.root.findByType('accessory').findByType('recorder-bar').type, 'recorder-bar');
+      const tabs = tree.root.findByType('tabs');
+      assert.equal(tabs.props.tintColor, tabs.props.labelStyle.selected.color, `${id} keeps one selection ink`);
+    }
+    await act(() => tree.update(render({ redesign: true, accessory: null })));
+    assert.equal(tree.root.findAllByType('accessory').length, 0, 'before iOS 26 the recorder lives on Today instead');
+    ipad = true;
+    await act(() => tree.update(render({ redesign: true, accessory: recorder })));
+    assert.deepEqual(tree.root.findAllByType('trigger').map((item: any) => item.props.name), ['index', 'music', 'journeys', 'statistics', 'settings'], 'iPad keeps its sidebar layout');
+  } finally { ipad = false; light = false; await act(() => tree?.unmount()); }
 });

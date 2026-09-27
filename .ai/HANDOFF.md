@@ -16,6 +16,17 @@
 - The connector (`drumpat01/journeydeck-data-mcp` `main`, PRs #1–#3) enforces `connector.privacy.v1` and is deployed to `mcp-staging.journeydeck.me` (version `36a5b05d`). Claude, ChatGPT and Grok were all connected and verified against it on September 27, 2026. The owner currently shares Home and Work, by choice. The owner's ChatGPT and Grok accounts still have the JourneyDeck test connectors.
 - `v4-testflight` in `mobile/recorder/eas.json` targets the existing live bundle, iCloud container, and App Store Connect app. `mobile/recorder/docs/mockups/mcp-pro-onboarding.png` is a concept only; MCP entitlement enforcement and purchase-flow wiring remain unimplemented.
 
+## V4 iPhone redesign (September 27, 2026, branch `claude/v4-redesign`, uncommitted)
+
+- The owner approved the Today / Memories / Memory detail / Soundtrack redesign (mockups: https://claude.ai/artifact/8jxK2jKSC2926iDs5vFiB4). Owner rule: every screen takes its colors from the active theme, across all six themes. Mockup hexes are role names, not values.
+- The redesign is gated by `V4_REDESIGN_ENABLED` (`features.redesign: v4Store` in `app.config.js`) and only applies to iPhone (`REDESIGN_PHONE` in `src/shell.tsx`). V3 and iPad layouts are unchanged.
+- iPhone tabs: Today, Memories, Soundtrack, Atlas (the Statistics screen retitled), and Search (`role="search"`, new route `app/(tabs)/search.tsx`). Settings moved to the stack route `app/preferences.tsx`, opened from Today's profile button; `openTab('settings')` redirects there.
+- A single recorder instance renders as `presentation="accessory"` in `NativeTabs.BottomAccessory` on iOS 26+, or as `accessory-inline` on Today for iOS 17–25. Tapping the bar opens the existing Home recorder controls in a page sheet (`RecorderSheet` in `App.tsx`). Start/finish/resume logic is unchanged.
+- New modules: `redesign-palette.ts` (theme color roles), `redesign-model.ts` (pure derivations), `redesign-ui.tsx`, `today-screen.tsx`, `memories-library.tsx`, `memory-detail-v4.tsx`, `soundtrack-screen.tsx`, `search-tab.tsx`, `recorder-accessory(-model).tsx|ts`, `preferences-screen.tsx`. `MemoriesScreen` and `MusicScreen` swap in the new bodies and keep their editor, share and assign sheets.
+- Verification: `npm run typecheck` is clean. `npm test`: 986 tests, 985 pass, 0 fail, 1 skipped. New suites: `redesign-model`, `redesign-palette` (includes a no-literal-color guard and contrast checks), `redesign-screens` (render tests across all six themes), `recorder-accessory`.
+- Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
+- Next: owner review on device via a V4 build or OTA (both need authorization), then commit and PR when asked.
+
 ## Production handoff and access
 
 - Read `mobile/recorder/docs/v4-production-handoff.md` for exact GitHub Actions commands, Expo identity, credential locations, CloudKit work, OTA boundary, and release checks. `.github/workflows/ios-v4-testflight.yml` provides manual validation, a main-only read-only credential check, and a main-only TestFlight build/upload path; `mobile/recorder/scripts/v4-release-preflight.mjs` checks the V4 target.
