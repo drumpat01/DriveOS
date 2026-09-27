@@ -34,6 +34,7 @@
   - Ask: `ask-journeydeck-v4.tsx` components plus an `ASK_V4` branch in `ask-journeydeck-screen.tsx`. It reuses the existing session, scrolling and evidence re-check, suggests the engine's `ASK_EXAMPLES`, and adds New conversation.
   - Not built from the GPL-3.0 Appllama liquid-glass-chat-ui repo; only general chat patterns were used.
   - 990 tests: 989 pass, 1 skipped. Typecheck clean.
+- **Today Ask bar + Edit Today (2026-09-27):** commit `3f950e9`, OTA `17905385531161` at 19:49:17Z. They restore the Ask entry point and Home editing that the first redesign dropped. The layout is saved per profile in SecureStore (`today-layout.ts`). 993 tests: 992 pass, 1 skipped.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Next: owner opens the app on their V4 TestFlight install and confirms the update landed and looks right, then open a PR against `main` when asked.
 
