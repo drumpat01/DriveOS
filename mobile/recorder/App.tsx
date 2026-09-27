@@ -74,6 +74,8 @@ import { DatabaseStartupGate } from './src/database-startup-gate';
 import { haptics } from './src/haptics';
 import { RecorderAccessoryBar } from './src/recorder-accessory';
 import { recorderAccessoryState } from './src/recorder-accessory-model';
+import { recorderSheetState } from './src/recorder-sheet-model';
+import { RecorderSheetV4 } from './src/recorder-sheet-v4';
 import { MOTION_SPRINGS, motionDuration, useMotionPreferences } from './src/motion';
 import { RouteTraceMoment } from './src/delight-ui';
 import {
@@ -775,10 +777,17 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       else if (accessoryState.action === 'end') finish();
       else if (accessoryState.action === 'resume') void resume();
     };
+    const sheetState = recorderSheetState({ startupPending: !deviceId || !recorderInitialized, permissionsReady, status: liveStatus, clockTracking, automaticMode, automaticDetectionActive });
     return <>
       <RecorderAccessoryBar state={accessoryState} busy={busy} framed={presentation === 'accessory-inline'} onAction={runAction} onOpen={() => setRecorderSheetOpen(true)} />
       <Modal visible={recorderSheetOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setRecorderSheetOpen(false)}>
-        <RecorderSheet onClose={() => setRecorderSheetOpen(false)}>{renderHomeRecorder()}</RecorderSheet>
+        <RecorderSheetV4 state={sheetState} sessionId={liveStatus ? summary?.id ?? null : null} startedAt={liveStatus ? summary?.startedAt ?? null : null}
+          elapsed={elapsedLabel} miles={distanceMiles} points={summary?.pointCount ?? 0} busy={busy} showIdentify={showManualSongButton}
+          notice={<HiddenJourneyNotice enabled={!liveStatus && !busy} notice={notice} />}
+          onClose={() => setRecorderSheetOpen(false)} onStart={() => void start()} onEnable={() => void enablePermissions()}
+          onPause={() => void pause()} onResume={() => void resume()} onEnd={finish} onIdentify={() => void identifySong()}>
+          {completionMoment && !liveStatus ? <JourneySavedMoment moment={completionMoment} active={isAppActive} reduceMotion={reduceMotion} onDismiss={() => setCompletionMoment(null)} /> : null}
+        </RecorderSheetV4>
       </Modal>
     </>;
   }
@@ -835,20 +844,6 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       </KeyboardAvoidingView>
     </View>
   );
-}
-
-/** The V4 recorder's full controls, opened from the tab bar accessory. */
-function RecorderSheet({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  const theme = useAppTheme();
-  return <View style={{ flex: 1, backgroundColor: theme.palette.page }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 }}>
-      <Text accessibilityRole="header" style={{ flex: 1, fontSize: 20, fontWeight: '800', color: theme.palette.text }}>Recorder</Text>
-      <Pressable accessibilityRole="button" onPress={onClose} hitSlop={10} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>
-        <Text style={{ fontSize: 17, fontWeight: '600', color: journeyDeckSemanticColors(theme.id, theme.palette).accent }}>Done</Text>
-      </Pressable>
-    </View>
-    <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 48 }} keyboardShouldPersistTaps="handled">{children}</ScrollView>
-  </View>;
 }
 
 function RecorderAtmosphere() {

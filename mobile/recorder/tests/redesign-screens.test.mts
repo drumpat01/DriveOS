@@ -73,7 +73,7 @@ function load(name: string, extra: Record<string, unknown> = {}) {
   const source = readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   const resolve = (id: string) => id in extra ? extra[id] : id in shared ? shared[id] : id.startsWith('../assets/') ? 7 : require(id);
-  vm.runInNewContext(code, { module, exports: module.exports, require: resolve, console, setTimeout, clearTimeout }, { filename: name });
+  vm.runInNewContext(code, { module, exports: module.exports, require: resolve, console, setTimeout, clearTimeout, setInterval, clearInterval }, { filename: name });
   return module.exports;
 }
 const ui = load('redesign-ui.tsx');
@@ -399,5 +399,42 @@ test('Atlas V4 keeps every filter visible and its data usable across six themes'
   } finally {
     viewportWidth = 393; viewportFontScale = 1;
     await act(async () => tree?.unmount());
+  }
+});
+
+test('the V4 recorder sheet shows the live drive and routes each control in every theme', async () => {
+  const sheetModel = require('../src/recorder-sheet-model.ts');
+  const route = [[-122.49, 37.61], [-122.47, 37.55], [-122.43, 37.46]].map(([longitude, latitude], sequence) => ({ sequence, recordedAt: daysAgo(0), latitude, longitude, accuracyMeters: 5, altitudeMeters: null, headingDegrees: null, speedMps: null }));
+  const { RecorderSheetV4 } = load('recorder-sheet-v4.tsx', {
+    './redesign-ui': ui,
+    './storage': { getLiveRecorderSnapshot: () => ({ session: { id: 's1' }, route, music: [song('Midnight Odyssey', daysAgo(0))], lastPoint: null }) },
+    './journey-marker-capture': { captureJourneyMarker: async () => undefined },
+    './native-recorder-inbox': { syncNativeRecorderInbox: async () => undefined },
+    './release-features': { V3_MARKERS_PROTOTYPE_ENABLED: true },
+  });
+  for (const id of THEMES) {
+    themeId = id;
+    const calls: string[] = [];
+    const handlers = Object.fromEntries(['onClose', 'onStart', 'onEnable', 'onPause', 'onResume', 'onEnd', 'onIdentify'].map(name => [name, () => calls.push(name)]));
+    const render = async (status: string | null) => {
+      let tree: any;
+      const state = sheetModel.recorderSheetState({ startupPending: false, permissionsReady: true, status, clockTracking: true, automaticMode: false, automaticDetectionActive: false });
+      await act(async () => { tree = create(React.createElement(RecorderSheetV4, { state, sessionId: status ? 's1' : null, startedAt: daysAgo(0), elapsed: '24:18', miles: 14.62, points: 1284, busy: false, showIdentify: true, ...handlers })); });
+      return tree;
+    };
+    let tree = await render('recording');
+    const text = texts(tree);
+    for (const expected of ['Your drive is being remembered.', '24:18', '14.6', 'Midnight Odyssey', 'Add marker', 'Identify song', 'End journey']) assert.ok(text.includes(expected), `${id}: ${expected}`);
+    assert.ok(tree.root.findAll((node: any) => node.props.accessibilityLabel === 'Route so far').length, `${id} draws the route`);
+    await press(tree, 'Pause journey'); await press(tree, 'End journey'); await press(tree, 'Identify song'); await press(tree, 'Close recorder');
+    act(() => tree.unmount());
+    tree = await render('paused');
+    await press(tree, 'Resume journey');
+    assert.ok(!texts(tree).includes('Add marker'), `${id}: no in-drive tools while paused`);
+    act(() => tree.unmount());
+    tree = await render(null);
+    await press(tree, 'Start journey');
+    assert.deepEqual(calls, ['onPause', 'onEnd', 'onIdentify', 'onClose', 'onResume', 'onStart'], id);
+    act(() => tree.unmount());
   }
 });
