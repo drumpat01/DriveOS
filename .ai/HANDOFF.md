@@ -24,8 +24,10 @@
 - A single recorder instance renders as `presentation="accessory"` in `NativeTabs.BottomAccessory` on iOS 26+, or as `accessory-inline` on Today for iOS 17–25. Tapping the bar opens the existing Home recorder controls in a page sheet (`RecorderSheet` in `App.tsx`). Start/finish/resume logic is unchanged.
 - New modules: `redesign-palette.ts` (theme color roles), `redesign-model.ts` (pure derivations), `redesign-ui.tsx`, `today-screen.tsx`, `memories-library.tsx`, `memory-detail-v4.tsx`, `soundtrack-screen.tsx`, `search-tab.tsx`, `recorder-accessory(-model).tsx|ts`, `preferences-screen.tsx`. `MemoriesScreen` and `MusicScreen` swap in the new bodies and keep their editor, share and assign sheets.
 - Verification: `npm run typecheck` is clean. `npm test`: 986 tests, 985 pass, 0 fail, 1 skipped. New suites: `redesign-model`, `redesign-palette` (includes a no-literal-color guard and contrast checks), `redesign-screens` (render tests across all six themes), `recorder-accessory`.
+- **Committed and published (September 27, 2026).** Commit `848374e` on `claude/v4-redesign`, branched from and up to date with `main` (`c59bd62`, includes the AI-assistant picker/connector work). Owner authorized both the commit and the OTA push.
+- Published to xprem branch `v4-testflight` (runtime `4.0.0-preview.1`, matches Build 41): update id `17905286869241`, publish group `3ecf9ea0-0a6d-41cc-88ce-dda6c6874d19`, deployed `2026-09-27T17:04:50Z`. Manifest verified afterward (200, `expo-manifest-filters: branch="v4-testflight"`). `EOO_TOKEN` was read inline from the ignored local file (see OTA_RUNBOOK.md's xprem section) for that one command only; never printed or committed. Ran `npx expo export --clear --platform ios` first to reset Metro's cache before publishing.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
-- Next: owner review on device via a V4 build or OTA (both need authorization), then commit and PR when asked.
+- Next: owner opens the app on their V4 TestFlight install and confirms the update landed and looks right, then open a PR against `main` when asked.
 
 ## Production handoff and access
 
