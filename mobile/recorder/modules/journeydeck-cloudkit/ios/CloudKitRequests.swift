@@ -38,6 +38,19 @@ final class CloudKitRequests {
     }
   }
 
+  static func userRecordID(_ container: CKContainer) async throws -> CKRecord.ID {
+    try await withCheckedThrowingContinuation { continuation in
+      let reply = CloudReply<CKRecord.ID>(continuation)
+      let deadline = DispatchWorkItem { reply.finish(.failure(timeout)) }
+      DispatchQueue.global().asyncAfter(deadline: .now() + 30, execute: deadline)
+      container.fetchUserRecordID { recordID, error in
+        deadline.cancel()
+        if let recordID { reply.finish(.success(recordID)) }
+        else { reply.finish(.failure(error ?? timeout)) }
+      }
+    }
+  }
+
   private func run<T>(_ operation: CKDatabaseOperation,
                       install: (@escaping (Result<T, Error>) -> Void) -> Void) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in
@@ -64,6 +77,26 @@ final class CloudKitRequests {
         // Per-item failures are handled by the caller; transport failures aren't.
         if case .failure(let error) = result, values.isEmpty { done(.failure(error)) }
         else { done(.success(values)) }
+      }
+    }
+  }
+
+  // Zone discovery feeds account deletion, so a partial list is a failure.
+  func allZones() async throws -> [CKRecordZone] {
+    let operation = CKFetchRecordZonesOperation.fetchAllRecordZonesOperation()
+    var zones: [CKRecordZone] = []
+    var zoneError: Error?
+    operation.perRecordZoneResultBlock = { _, result in
+      switch result {
+      case .success(let zone): zones.append(zone)
+      case .failure(let error): zoneError = error
+      }
+    }
+    return try await run(operation) { done in
+      operation.fetchRecordZonesResultBlock = { result in
+        if case .failure(let error) = result { done(.failure(error)) }
+        else if let zoneError { done(.failure(zoneError)) }
+        else { done(.success(zones)) }
       }
     }
   }

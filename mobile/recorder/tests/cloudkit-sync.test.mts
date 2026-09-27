@@ -96,6 +96,9 @@ assert.match(nativeModule, /CKRecordZone/, 'isolates each profile in a custom re
 assert.match(nativeRequests, /CKFetchRecordZoneChangesOperation/, 'downloads incremental zone changes');
 assert.match(nativeRequests, /CKModifyRecordsOperation/, 'uploads records through CloudKit');
 assert.match(nativeRequests, /savePolicy = \.ifServerRecordUnchanged/, 'prevents a fetch-to-save race from overwriting a newer device update');
+assert.match(nativeRequests, /fetchAllRecordZonesOperation\(\)/, 'enumerates zones through a deadline-bounded operation');
+assert.match(nativeRequests, /fetchUserRecordID \{/, 'reads the iCloud user record with a deadline');
+assert.doesNotMatch(nativeModule, /(?:database|container)\.(?:allRecordZones|userRecordID)\(\)/, 'zone discovery never awaits an unbounded CloudKit call while holding the native transport gate');
 assert.match(nativeModule, /changeTokenExpired/, 'recovers from expired CloudKit tokens');
 assert.match(nativeModule, /allowedRecordTypes/, 'restricts native record types');
 const deployedTypes = [...developmentSchema.matchAll(/RECORD TYPE (\w+)/g)].map(match => match[1]).filter(type => type !== 'Users').sort();

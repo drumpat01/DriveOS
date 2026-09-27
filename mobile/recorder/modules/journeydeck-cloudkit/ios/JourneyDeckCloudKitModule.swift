@@ -46,11 +46,12 @@ private final class PrivateCloudKitTransport {
   }
 
   func zoneScopes() async throws -> [String: Any] {
-    let userRecordID = try await container.userRecordID()
+    // Both lookups hold CloudTransportGate, so they use the bounded request paths.
+    let userRecordID = try await CloudKitRequests.userRecordID(container)
     let seed = "journeydeck-icloud-v1:\(userRecordID.recordName)"
     let digest = SHA256.hash(data: Data(seed.utf8)).map { String(format: "%02x", $0) }.joined()
     let canonicalScope = String(digest.prefix(48))
-    let zones = try await retrying { try await self.database.allRecordZones() }
+    let zones = try await retrying { try await self.requests.allZones() }
     let scopes = zones.compactMap { zone -> String? in
       let name = zone.zoneID.zoneName
       guard name.hasPrefix("JourneyDeck-") else { return nil }
