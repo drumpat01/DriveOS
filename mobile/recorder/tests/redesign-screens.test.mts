@@ -319,6 +319,7 @@ test('Ask V4 suggests questions, shows records as cards, and starts a new conver
     './ask-journeydeck-v4': v4, './ask-chat-motion': motion, './device-layout': { isIpad: () => false },
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: true, V4_REDESIGN_ENABLED: true },
     './siri-testing': { canShowSiriTesting: false }, './auth': { getCurrentUser: () => ({ id: `ask-${themeId}` }) },
+    './native-navigation-context': { useJourneyDeckNavigation: () => ({ membership: { tier: 'paid' }, showUpgrade() {} }) },
     'expo-router': { router: { push: (value: unknown) => pushes.push(value), back() {}, canGoBack: () => true, replace() {} }, useLocalSearchParams: () => ({}) },
     './ask-journeydeck': {
       ASK_EXAMPLES: ['How many miles did I drive this week?', 'When was my last journey?'], ASK_CANNOT_COMPUTE: 'x', isAskJourneyDeckAvailable: true,

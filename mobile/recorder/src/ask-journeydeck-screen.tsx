@@ -17,6 +17,7 @@ import { AskHeaderV4, AssistantBubbleV4, BubbleText, DayLabel, EvidenceCardsV4, 
 /** The V4 iPhone redesign draws Ask with the V4 chat components. */
 const ASK_V4 = V4_REDESIGN_ENABLED && !isIpad();
 import { canShowSiriTesting } from './siri-testing';
+import { useJourneyDeckNavigation } from './native-navigation-context';
 import type { ThemeId } from './theme-catalog';
 
 const botAvatars: Record<ThemeId, ImageSourcePropType> = {
@@ -56,7 +57,31 @@ const sessionFor = (userID: string) => {
 };
 const notifySession = (session: ChatSession) => { for (const listener of session.listeners) listener(); };
 
+/** Ask JourneyDeck is a Plus feature. Free members see an upgrade prompt instead of the chat. */
 export function AskJourneyDeckScreen() {
+  const nav = useJourneyDeckNavigation();
+  return nav.membership.tier === 'paid' ? <AskJourneyDeckChat /> : <AskJourneyDeckUpgrade onUpgrade={nav.showUpgrade} />;
+}
+
+function AskJourneyDeckUpgrade({ onUpgrade }: { onUpgrade: () => void }) {
+  const theme = useAppTheme(), c = theme.palette, insets = useSafeAreaInsets();
+  const close = () => { if (router.canGoBack()) router.back(); else router.replace('/'); };
+  return <View testID="ask-upgrade" style={[styles.screen, { backgroundColor: c.page, paddingTop: insets.top + 12, paddingLeft: insets.left + 24, paddingRight: insets.right + 24 }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={close} hitSlop={12} style={{ alignSelf: 'flex-start', paddingVertical: 8 }}>
+      <Text style={{ color: c.accent, fontSize: 17, fontWeight: '600' }}>Close</Text>
+    </Pressable>
+    <View style={{ flex: 1, justifyContent: 'center', gap: 16 }}>
+      <BotAvatar themeID={theme.id} size={72} />
+      <Text accessibilityRole="header" style={{ color: c.text, fontSize: 30, fontWeight: '700' }}>Ask anything about your drives.</Text>
+      <Text style={{ color: c.muted, fontSize: 16, lineHeight: 22 }}>Miles, music, places and Memories, answered privately on this iPhone and with Siri. Included with JourneyDeck Plus.</Text>
+      <Pressable accessibilityRole="button" testID="ask-upgrade-button" onPress={onUpgrade} style={{ padding: 18, backgroundColor: c.accent, borderRadius: 18, alignItems: 'center' }}>
+        <Text style={{ color: c.onAccent, fontWeight: '800', fontSize: 16 }}>Explore Plus</Text>
+      </Pressable>
+    </View>
+  </View>;
+}
+
+function AskJourneyDeckChat() {
   const theme = useAppTheme(), c = theme.palette, userID = getCurrentUser().id, insets = useSafeAreaInsets();
   const v4c = useRedesignColors();
   const { reduceMotion } = useMotionPreferences();

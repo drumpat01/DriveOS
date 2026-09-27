@@ -18,6 +18,8 @@ module.exports = config => {
     const scheme = Array.isArray(config.scheme) ? config.scheme[0] : config.scheme;
     if (typeof scheme !== 'string' || !/^[a-z][a-z0-9+.-]*$/i.test(scheme)) throw new Error('Ask JourneyDeck requires the app URL scheme.');
     mod.modResults.JourneyDeckAskURLScheme = scheme;
+    // Siri checks StoreKit itself; TestFlight builds that unlock Plus in the app unlock it for Siri too.
+    mod.modResults.JourneyDeckPlusUnlocked = config.extra?.features?.testflightPlusUnlocked === true;
     mod.modResults.JourneyDeckSiriTestingEnabled = process.env.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING === '1';
     return mod;
   });

@@ -29,7 +29,8 @@ function deferred() {
 }
 const ticket = 'b78cba9f-e125-4fb9-a76b-e1cd44583c75';
 const result = (text = '19.8 miles across 2 journeys') => ({ status: 'answered', text, ticket, contextToken: ticket, profileId: 'a', evidence: [{ kind: 'journey', id: 'journey-a', label: 'Journey on Sep 15, 2026' }] });
-async function screen(options: { available?: boolean; enabled?: boolean; ticket?: string; theme?: string; model?: string } = {}) {
+async function screen(options: { available?: boolean; enabled?: boolean; ticket?: string; theme?: string; model?: string; tier?: 'free' | 'paid' } = {}) {
+  let upgrades = 0;
   let userID = 'a', listener: (state: string) => void = () => {};
   let ask: (...args: any[]) => Promise<any> = async () => result();
   let resolve: (...args: any[]) => Promise<any> = async () => result();
@@ -49,6 +50,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
     },
     './app-theme': { useAppTheme: () => testTheme(options.theme ?? 'redline') },
     './siri-testing': { canShowSiriTesting: false },
+    './native-navigation-context': { useJourneyDeckNavigation: () => ({ membership: { tier: options.tier ?? 'paid' }, showUpgrade: () => { upgrades++; } }) },
     './auth': { getCurrentUser: () => ({ id: userID }) },
     './release-features': { V3_ASK_JOURNEYDECK_ENABLED: options.enabled !== false },
     './ask-journeydeck': {
@@ -63,7 +65,7 @@ async function screen(options: { available?: boolean; enabled?: boolean; ticket?
   let tree: any;
   await act(async () => { tree = create(React.createElement(component)); await Promise.resolve(); });
   return {
-    tree, calls, resolutions, pushes, scrolls,
+    tree, calls, resolutions, pushes, scrolls, upgrades: () => upgrades,
     text: () => tree.root.findAllByType('Text').map((node: any) => node.children.join('')).join('|'),
     input: () => tree.root.findByType('TextInput'),
     button: () => tree.root.findByProps({ testID: 'ask-submit' }),
@@ -363,4 +365,14 @@ test('chat sends the original wording to the shared native engine and preserves 
   assert.match(bridge.presentAskAnswer(queries.planFailure('modelUnavailable')).text, /Apple Intelligence/);
   // Unknown native failures must not expose raw error details or credentials.
   assert.doesNotMatch(bridge.presentAskAnswer({ status: 'unavailable', reason: 'unknown', text: 'SECRET' }).text, /SECRET/);
+});
+
+test('Ask JourneyDeck shows the Plus upgrade prompt to free members and never asks the archive', async () => {
+  const view = await screen({ tier: 'free' });
+  assert.match(view.text(), /Included with JourneyDeck Plus/);
+  assert.equal(view.tree.root.findAllByType('TextInput').length, 0);
+  await act(() => view.tree.root.findByProps({ testID: 'ask-upgrade-button' }).props.onPress());
+  assert.equal(view.upgrades(), 1);
+  assert.equal(view.calls.length, 0);
+  await view.close();
 });
