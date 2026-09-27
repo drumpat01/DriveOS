@@ -40,8 +40,8 @@ test('manual toggles and filters have deterministic checklist behavior', () => {
   assert.equal(model.filterUSStates(selected, 'remaining').length, 48);
 });
 
-test('V3-only feature uses user-scoped local preferences and no capture stack', () => {
-  assert.match(config, /fiftyStates: v3/);
+test('V3 and V4 feature uses user-scoped local preferences and no capture stack', () => {
+  assert.match(config, /fiftyStates: modern/);
   assert.match(releaseFeatures, /V3_FIFTY_STATES_ENABLED/);
   assert.match(screen, /if \(!V3_FIFTY_STATES_ENABLED\)/);
   assert.match(store, /getPrivatePreference<StoredChecklist>\(userId/);
