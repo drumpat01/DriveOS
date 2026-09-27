@@ -22,6 +22,7 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     assert.equal(config.ios.infoPlist.JourneyDeckCloudKitContainer, 'iCloud.com.journeydeck.recorder');
     assert.equal(config.extra.features.markerPrototype, true);
     assert.equal(config.extra.features.auroraGlass, true, 'V4 offers the Aurora Glass Plus theme');
+    assert.equal(config.extra.features.testflightPlusUnlocked, true, 'V4 TestFlight unlocks all Plus features');
     assert.equal(eas.build['v4-testflight'].env.APP_VARIANT, 'v4-store');
     assert.equal(eas.submit['v4-testflight'].ios.ascAppId, '6806502526');
     assert.equal(eas.build['v3-testflight'].env.APP_VARIANT, 'v3-store');

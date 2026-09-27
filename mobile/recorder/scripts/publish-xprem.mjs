@@ -13,6 +13,7 @@ const appId = '45dbc2f7-fa8a-4761-8db8-8fac41a4c624';
 const targets = {
   'v3-preview': { branch: 'v3-preview', variant: 'v3-preview', internalTesting: '1' },
   'v3-testflight': { branch: 'production', variant: 'v3-store', internalTesting: '0' },
+  'v4-testflight': { branch: 'v4-testflight', variant: 'v4-store', internalTesting: '0' },
 };
 
 function fail(message) {
@@ -22,7 +23,7 @@ function fail(message) {
 
 const args = process.argv.slice(2);
 if (args.includes('--help') || args.includes('-h')) {
-  console.log('Usage: npm run xprem:publish -- --target <v3-preview|v3-testflight> --message "..." [--execute]');
+  console.log('Usage: npm run xprem:publish -- --target <v3-preview|v3-testflight|v4-testflight> --message "..." [--execute]');
   console.log('Defaults to dry-run. --execute requires explicit authorization for this target.');
   process.exit(0);
 }
@@ -39,7 +40,7 @@ for (let i = 0; i < args.length; i += 1) {
 }
 
 const target = targets[parsed.target];
-if (!target) fail('Select --target v3-preview or --target v3-testflight.');
+if (!target) fail('Select --target v3-preview, v3-testflight, or v4-testflight.');
 if (!parsed.message || parsed.message.trim().length < 8) fail('--message must describe the change.');
 if (!/^[A-Za-z0-9][A-Za-z0-9 .,_()-]{7,119}$/.test(parsed.message.trim())) {
   fail('--message must use plain text without shell control characters.');
@@ -63,7 +64,7 @@ if (config.updates?.url !== serverUrl || config.updates?.requestHeaders?.['expo-
     config.updates?.requestHeaders?.['xprem-branch'] !== target.branch ||
     !config.updates?.codeSigningCertificate ||
     !existsSync(resolve(mobileRoot, config.updates.codeSigningCertificate))) {
-  fail('The selected V3 app config does not match the local xprem server, channel, or certificate.');
+  fail('The selected app config does not match the local xprem server, channel, or certificate.');
 }
 
 const git = spawnSync('git', ['status', '--porcelain'], { cwd: repoRoot, encoding: 'utf8' });
