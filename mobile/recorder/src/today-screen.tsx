@@ -1,6 +1,9 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
+import { HomeLayoutEditorSheet } from './home-widget-grid';
+import { defaultTodayLayout, moveTodayCard, normalizeTodayLayout, toggleTodayCard, TODAY_CARD_LABELS, type TodayCard, type TodayCardId } from './today-layout';
 import { Image as ExpoImage } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import type { JourneyMemory } from './app-data';
@@ -22,8 +25,32 @@ const WEEKDAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'lo
 
 export type TodayProfile = { initials: string; avatarUri: string | null };
 
-export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh }: {
+const LAYOUT_KEY = (userId: string) => `journeydeck.today.layout.v1.${userId.replace(/[^A-Za-z0-9._-]/g, '_')}`;
+
+/** Today's card order and visibility, saved per profile on this iPhone. */
+function useTodayLayout(userId: string, available: TodayCardId[]) {
+  const key = `${userId}|${available.join(',')}`;
+  const read = () => {
+    try { const raw = SecureStore.getItem(LAYOUT_KEY(userId)); return normalizeTodayLayout(raw ? JSON.parse(raw) : [], available); }
+    catch { return defaultTodayLayout(available); }
+  };
+  const [state, setState] = useState(() => ({ key, layout: read() }));
+  const layout = state.key === key ? state.layout : read();
+  if (state.key !== key) setState({ key, layout });
+  const save = (next: TodayCard[]) => {
+    setState({ key, layout: next });
+    try { SecureStore.setItem(LAYOUT_KEY(userId), JSON.stringify(next)); } catch { /* keeps working for this session */ }
+  };
+  return { layout, save, reset: () => save(defaultTodayLayout(available)) };
+}
+
+export function TodayScreen({ primary, memories, recorder, loadProfile, onJourney, onMemory, onMemories, onWeek, onProfile, onRefresh, userId = 'default', onAsk, extraCards = {} }: {
   primary: PrimaryDataState;
+  userId?: string;
+  /** Opens Ask JourneyDeck; omitted when Ask is unavailable. */
+  onAsk?: () => void;
+  /** Optional cards the user can add from Edit Today. */
+  extraCards?: Partial<Record<'fiftyStates' | 'yourCar' | 'journeyInProgress', ReactNode>>;
   memories: JourneyMemory[];
   /** Inline recorder, only when the tab bar accessory is unavailable (before iOS 26). */
   recorder?: ReactNode;
@@ -48,38 +75,83 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
   const week = useMemo(() => weekSummary(journeys, now), [journeys, now]);
   const resurfaced = useMemo(() => onThisDay(memories, journeys, now), [memories, journeys, now]);
   const recent = useMemo(() => memoryYearGroups(memories, journeys).flatMap(group => group.items).slice(0, 6), [memories, journeys]);
+  const available = useMemo(() => (['ask', 'lastDrive', 'week', 'onThisDay', 'memories', 'fiftyStates', 'yourCar', 'journeyInProgress'] as TodayCardId[])
+    .filter(id => id === 'ask' ? Boolean(onAsk) : id === 'fiftyStates' || id === 'yourCar' || id === 'journeyInProgress' ? Boolean(extraCards[id]) : true),
+  [Boolean(onAsk), Boolean(extraCards.fiftyStates), Boolean(extraCards.yourCar), Boolean(extraCards.journeyInProgress)]);
+  const { layout, save, reset } = useTodayLayout(userId, available);
+  const [editing, setEditing] = useState(false);
   const refresh = async () => {
     setRefreshing(true);
     try { await onRefresh(); } finally { setRefreshing(false); }
   };
 
+  const renderCard = (id: TodayCardId): ReactNode => {
+    switch (id) {
+      case 'ask': return onAsk ? <AskBar onPress={onAsk} /> : null;
+      case 'lastDrive': return primary.status === 'loading' && !primary.data
+        ? <Surface style={styles.loading}><ActivityIndicator color={colors.accent} /><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>Opening your library…</Text></Surface>
+        : latest ? <LastDriveCard journey={latest} detail={latestDetail} now={now} onOpen={() => onJourney(latest.id)} /> : <FirstDriveCard />;
+      case 'week': return journeys.length ? <WeekCard week={week} onPress={onWeek} /> : null;
+      case 'onThisDay': return resurfaced ? <OnThisDayCard memory={resurfaced.memory} yearsAgo={resurfaced.yearsAgo} journeys={journeys} onPress={() => onMemory(resurfaced.memory.id)} /> : null;
+      case 'memories': return recent.length ? <View style={styles.section}>
+        <SectionHeader title="Recent memories" actionLabel="See all" onAction={onMemories} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.railBleed} contentContainerStyle={styles.rail}>
+          {recent.map(item => <CardDetailLink key={item.memory.id} kind="memory" id={item.memory.id}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}`} onPress={() => onMemory(item.memory.id)}
+              style={({ pressed }) => [styles.memoryCard, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
+              <MemoryCoverImage memory={item.memory} />
+              <PhotoScrim />
+              <View style={styles.memoryCardCopy}>
+                <Text numberOfLines={2} style={[styles.memoryCardTitle, { color: colors.text }]}>{item.memory.name}</Text>
+                <Text numberOfLines={1} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{item.drives} {item.drives === 1 ? 'drive' : 'drives'} · {new Date(item.startedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
+              </View>
+            </Pressable>
+          </CardDetailLink>)}
+        </ScrollView>
+      </View> : null;
+      default: return extraCards[id] ?? null;
+    }
+  };
+
   return <RedesignPage testID="today-screen" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.accent} />}>
     <LargeTitle kicker={new Date(now).toLocaleDateString(undefined, WEEKDAY_FORMAT)} title="Today"
-      trailing={<ProfileButton profile={profile} onPress={onProfile} />} />
+      trailing={<View style={styles.headerButtons}>
+        <TouchPressable accessibilityRole="button" accessibilityLabel="Edit Today" onPress={() => { void haptics.selection(); setEditing(true); }}
+          style={({ pressed }) => [styles.avatar, { backgroundColor: colors.surfaceStrong, borderColor: colors.border }, pressed && redesignStyles.pressed]}>
+          <SymbolView name="slider.horizontal.3" tintColor={colors.text} size={18} weight="semibold" />
+        </TouchPressable>
+        <ProfileButton profile={profile} onPress={onProfile} />
+      </View>} />
     {recorder ? <View testID="today-inline-recorder">{recorder}</View> : null}
     {primary.status === 'error' && !primary.data ? <Surface style={styles.notice}><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{primary.message ?? 'Your library could not load. Pull down to try again.'}</Text></Surface> : null}
-    {primary.status === 'loading' && !primary.data ? <Surface style={styles.loading}><ActivityIndicator color={colors.accent} /><Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>Opening your library…</Text></Surface>
-      : latest ? <LastDriveCard journey={latest} detail={latestDetail} now={now} onOpen={() => onJourney(latest.id)} />
-      : <FirstDriveCard />}
-    {journeys.length ? <WeekCard week={week} onPress={onWeek} /> : null}
-    {resurfaced ? <OnThisDayCard memory={resurfaced.memory} yearsAgo={resurfaced.yearsAgo} journeys={journeys} onPress={() => onMemory(resurfaced.memory.id)} /> : null}
-    {recent.length ? <View style={styles.section}>
-      <SectionHeader title="Recent memories" actionLabel="See all" onAction={onMemories} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.railBleed} contentContainerStyle={styles.rail}>
-        {recent.map(item => <CardDetailLink key={item.memory.id} kind="memory" id={item.memory.id}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.memory.name}`} onPress={() => onMemory(item.memory.id)}
-            style={({ pressed }) => [styles.memoryCard, { borderColor: colors.border, backgroundColor: colors.surfaceStrong }, pressed && redesignStyles.pressed]}>
-            <MemoryCoverImage memory={item.memory} />
-            <PhotoScrim />
-            <View style={styles.memoryCardCopy}>
-              <Text numberOfLines={2} style={[styles.memoryCardTitle, { color: colors.text }]}>{item.memory.name}</Text>
-              <Text numberOfLines={1} style={[redesignStyles.caption, { color: colors.textSecondary }]}>{item.drives} {item.drives === 1 ? 'drive' : 'drives'} · {new Date(item.startedAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
-            </View>
-          </Pressable>
-        </CardDetailLink>)}
-      </ScrollView>
-    </View> : null}
+    {layout.filter(card => card.visible).map(card => <View key={card.id}>{renderCard(card.id)}</View>)}
+    <HomeLayoutEditorSheet visible={editing} onClose={() => setEditing(false)} onReset={reset} noteIcon="slider.horizontal.3" note="Choose what Today shows and in what order. Changes save on this iPhone.">
+      <View testID="today-layout-editor" style={styles.editor}>
+        {layout.map((card, index) => <View key={card.id} style={[styles.editorRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.editorLabel, { color: colors.text }]}>{TODAY_CARD_LABELS[card.id]}</Text>
+          <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${TODAY_CARD_LABELS[card.id]} up`} disabled={index === 0} hitSlop={6} onPress={() => save(moveTodayCard(layout, card.id, -1))} style={styles.editorArrow}>
+            <SymbolView name="chevron.up" tintColor={index === 0 ? colors.textTertiary : colors.accent} size={15} weight="semibold" />
+          </TouchPressable>
+          <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${TODAY_CARD_LABELS[card.id]} down`} disabled={index === layout.length - 1} hitSlop={6} onPress={() => save(moveTodayCard(layout, card.id, 1))} style={styles.editorArrow}>
+            <SymbolView name="chevron.down" tintColor={index === layout.length - 1 ? colors.textTertiary : colors.accent} size={15} weight="semibold" />
+          </TouchPressable>
+          <Switch accessibilityLabel={`Show ${TODAY_CARD_LABELS[card.id]} on Today`} value={card.visible} onValueChange={() => save(toggleTodayCard(layout, card.id))} trackColor={{ false: colors.track, true: colors.accent }} />
+        </View>)}
+      </View>
+    </HomeLayoutEditorSheet>
   </RedesignPage>;
+}
+
+function AskBar({ onPress }: { onPress: () => void }) {
+  const colors = useRedesignColors();
+  return <TouchPressable testID="today-ask" accessibilityRole="button" accessibilityLabel="Ask JourneyDeck about your drives" onPress={() => { void haptics.selection(); onPress(); }}
+    style={({ pressed }) => pressed && redesignStyles.pressed}>
+    <Surface radius={26} style={styles.askBar}>
+      <View style={[styles.askIcon, { backgroundColor: colors.accentSoft }]}><SymbolView name="sparkles" tintColor={colors.accent} size={17} /></View>
+      <Text numberOfLines={1} style={[styles.askText, { color: colors.textSecondary }]}>Ask about your drives</Text>
+      <SymbolView name="arrow.up.circle.fill" tintColor={colors.accent} size={24} />
+    </Surface>
+  </TouchPressable>;
 }
 
 function ProfileButton({ profile, onPress }: { profile: TodayProfile; onPress: () => void }) {
@@ -207,6 +279,14 @@ function OnThisDayCard({ memory, yearsAgo, journeys, onPress }: { memory: Journe
 
 const styles = StyleSheet.create({
   section: { gap: 12 },
+  headerButtons: { flexDirection: 'row', gap: 10 },
+  askBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingLeft: 10, paddingRight: 14 },
+  askIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  askText: { flex: 1, fontSize: 16 },
+  editor: { gap: 8 },
+  editorRow: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 54, paddingLeft: 14, paddingRight: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  editorLabel: { flex: 1, fontSize: 15, fontWeight: '600' },
+  editorArrow: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   notice: { padding: 16 },
   loading: { padding: 24, alignItems: 'center', gap: 10 },
   avatar: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },

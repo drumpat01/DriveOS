@@ -13,6 +13,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const THEMES = ['redline', 'light', 'sakura', 'dark', 'midnight-canopy', 'aurora-glass'];
 let themeId = 'redline';
 const pushes: unknown[] = [];
+const secureStore = new Map<string, string>();
 
 const host = (name: string) => React.forwardRef(({ children, ...props }: any, ref: any) => React.createElement(name, { ...props, ref }, children));
 class AnimatedValue { value: number; constructor(value: number) { this.value = value; } interpolate() { return this; } }
@@ -20,7 +21,7 @@ const native = {
   StyleSheet: { create: (styles: any) => styles, absoluteFill: {}, hairlineWidth: 0.5 },
   useWindowDimensions: () => ({ width: 393, height: 852, fontScale: 1 }),
   Animated: { Value: AnimatedValue, View: host('AnimatedView'), ScrollView: host('AnimatedScrollView'), event: () => () => {} },
-  ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl', 'Image', 'KeyboardAvoidingView'].map(name => [name, host(name)])),
+  ...Object.fromEntries(['View', 'Text', 'Pressable', 'ScrollView', 'TextInput', 'ActivityIndicator', 'RefreshControl', 'Image', 'KeyboardAvoidingView', 'Switch'].map(name => [name, host(name)])),
   AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
   Keyboard: { dismiss() {} },
 };
@@ -48,6 +49,9 @@ const shared: Record<string, unknown> = {
   './memory-route-map': { MemoryRouteMap: host('MemoryRouteMap') },
   './primary-sections-data': { searchPrimarySections: (records: any[], query: string) => query.trim() ? records.filter(record => record.title.toLowerCase().includes(query.trim().toLowerCase())) : records.slice(0, 18) },
   './redesign-model': require('../src/redesign-model.ts'),
+  './today-layout': require('../src/today-layout.ts'),
+  './home-widget-grid': { HomeLayoutEditorSheet: host('EditorSheet') },
+  'expo-secure-store': { getItem: (key: string) => secureStore.get(key) ?? null, setItem: (key: string, value: string) => { secureStore.set(key, value); } },
   './redesign-palette': require('../src/redesign-palette.ts'),
 };
 function load(name: string, extra: Record<string, unknown> = {}) {
@@ -118,6 +122,18 @@ test('Today renders the last drive, the week, On this day and recent memories in
     assert.equal(tree.root.findAllByProps({ testID: 'today-last-drive' }).length > 0, true);
     await press(tree, 'Profile and settings');
     assert.deepEqual(calls, ['profile']);
+    assert.equal(tree.root.findAllByProps({ testID: 'today-ask' }).length, 0, 'no Ask bar without Ask');
+    await act(async () => tree.unmount());
+    await act(async () => { tree = create(React.createElement(TodayScreen, { userId: `user-${id}`, primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }),
+      onAsk: () => calls.push('ask'), onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
+    await press(tree, 'Ask JourneyDeck about your drives');
+    assert.equal(calls.at(-1), 'ask');
+    await press(tree, 'Edit Today');
+    assert.equal(tree.root.findByType('EditorSheet').props.visible, true);
+    const hideWeek = tree.root.find((node: any) => node.type === 'Switch' && node.props.accessibilityLabel === 'Show This week on Today');
+    await act(async () => hideWeek.props.onValueChange());
+    assert.equal(tree.root.findAllByProps({ testID: 'today-week' }).length, 0, 'the week card is hidden');
+    assert.ok(secureStore.get(`journeydeck.today.layout.v1.user-${id}`)?.includes('"week","visible":false'), 'the choice is saved for this profile');
     await act(async () => tree.unmount());
   }
   let empty: any;
