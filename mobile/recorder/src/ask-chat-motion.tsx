@@ -1,11 +1,13 @@
 // Composer, bubble entrance and typing motion adapted from
 // Appllama/liquid-glass-chat-ui (Fable thread components),
-// Copyright (c) 2026 Appllama, MIT License. See THIRD_PARTY_NOTICES.md.
+// Copyright (c) 2026 Appllama, MIT License. ShimmerText adapted from
+// panel-ui/PanelUI (Shimmer), Copyright (c) 2026 Khalid Abdi, MIT License.
+// See THIRD_PARTY_NOTICES.md.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, View, type LayoutChangeEvent } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, {
-  cancelAnimation, Easing, FadeIn, FadeInDown, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withRepeat,
+  cancelAnimation, Easing, FadeIn, FadeInDown, FadeOut, interpolateColor, useAnimatedStyle, useSharedValue, withDelay, withRepeat,
   withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
 import { SymbolView } from 'expo-symbols';
@@ -54,6 +56,37 @@ export function TypingDots({ color, reduceMotion }: { color: string; reduceMotio
   </Animated.View>;
 }
 
+const SHIMMER_SPREAD = 0.35;
+
+function ShimmerGlyph({ char, at, t, base, highlight }: { char: string; at: number; t: { get(): number }; base: string; highlight: string }) {
+  const style = useAnimatedStyle(() => {
+    const center = -SHIMMER_SPREAD + t.get() * (1 + 2 * SHIMMER_SPREAD);
+    const lit = Math.max(0, 1 - Math.abs(at - center) / SHIMMER_SPREAD);
+    return { color: interpolateColor(lit, [0, 1], [base, highlight]) };
+  });
+  return <Animated.Text style={[styles.shimmerText, style]}>{char}</Animated.Text>;
+}
+
+/**
+ * A highlight that travels through the letters, the "thinking" treatment
+ * adapted from PanelUI's Shimmer. PanelUI masks a gradient with the text;
+ * that needs a native module this build lacks, so each glyph is tinted from
+ * its distance to a moving band instead. Plain text under Reduce Motion.
+ */
+export function ShimmerText({ children, base, highlight, reduceMotion }: { children: string; base: string; highlight: string; reduceMotion: boolean }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (reduceMotion) return;
+    t.set(withRepeat(withTiming(1, { duration: 1800, easing: Easing.linear }), -1));
+    return () => cancelAnimation(t);
+  }, [reduceMotion, t]);
+  if (reduceMotion) return <Text style={[styles.shimmerText, { color: base }]}>{children}</Text>;
+  const glyphs = Array.from(children);
+  return <View accessible accessibilityLabel={children} style={styles.shimmer}>
+    {glyphs.map((char, index) => <ShimmerGlyph key={index} char={char} at={(index + 0.5) / glyphs.length} t={t} base={base} highlight={highlight} />)}
+  </View>;
+}
+
 /**
  * The floating composer. It rides the keyboard, including interactive
  * drag-to-dismiss, grows with multi-line questions, and the send button
@@ -95,6 +128,8 @@ export function ChatComposer({ value, onChange, onSubmit, canSend, busy, error, 
 const styles = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 5, alignItems: 'center', height: 20 },
   dot: { width: 7, height: 7, borderRadius: 3.5 },
+  shimmer: { flexDirection: 'row', flexWrap: 'wrap', flexShrink: 1 },
+  shimmerText: { fontSize: 13, lineHeight: 18 },
   sticky: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   dock: { paddingHorizontal: 16, paddingTop: 8, gap: 8 },
   privacy: { fontSize: 11, textAlign: 'center' },

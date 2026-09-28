@@ -248,7 +248,7 @@ function AskJourneyDeckChat() {
                 {message.role === 'user' ? <UserBubbleV4 text={message.text} />
                   : <AssistantBubbleV4 avatar={avatar} live>
                     <BubbleText>{message.answer.text}</BubbleText>
-                    <EvidenceCardsV4 items={message.answer.evidence} disabled={busy} onOpen={item => void openEvidence(message.id, message.answer, item)} />
+                    <EvidenceCardsV4 items={message.answer.evidence} disabled={busy} reduceMotion={reduceMotion} onOpen={item => void openEvidence(message.id, message.answer, item)} />
                   </AssistantBubbleV4>}
               </MessageEntrance>
             </View>)}
