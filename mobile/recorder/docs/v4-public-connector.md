@@ -55,3 +55,11 @@ CloudKit also supplies its standard `___` system fields for each type. `deletedA
 4. With an active App Store sandbox or TestFlight Pro subscription, sync and inspect `entitlement_pro` in the canonical zone. Compare `originalTransactionId`, `productId`, `expiresAt` and `environment` with StoreKit/App Store Server API data. Refresh twice without a transaction change and confirm `updatedAt` does not advance. Confirm a renewal changes the expiry; after expiration or revocation, `isActive` becomes `0` and the record remains. A never-subscribed account should have no record.
 
 Swift compilation and device CloudKit behavior remain unverified on this Windows host. The V4 checkout has not built or submitted a TestFlight binary.
+
+## Per-assistant sharing (2026-09-27)
+
+- **Consent page.** After Apple sign-in, `/authorize` shows switches for Music, Routes & locations, Memories & markers, Photos, and Home & Work. The defaults match `DEFAULT_CONNECTOR_PRIVACY`. Choices are saved on that assistant's OAuth grant (`props.sharing`).
+- **App.** Settings → AI Assistants → Connected assistants (`src/connector-connections.tsx`) lists each assistant. Each row shows its host, when it connected, and when it last asked something. Expanding a row shows that assistant's switches and a Disconnect button. Changes are stored per OAuth client in the user's Durable Object and replace the consent-page choices. Reconnecting an assistant clears them.
+- **Rule.** An assistant sees a category only when both the app-wide switch (`connector.privacy.v1`) and its own switch allow it.
+- **Linking the app.** `src/connector-app-link.ts` keeps a random secret in the Keychain on this device. It syncs only `{ id, verifier }`, SHA-256 digests of the secret, as the private preference `connector.app-link.v1`. The connector indexes `id` in KV when it reads the user's records, then checks `verifier` against a fresh iCloud read on every `/app/connections` call. The connector still never writes to iCloud. A newly installed app shows "not linked" until iCloud sync has delivered the link and the connector has read the user's records. Connecting an assistant, or asking one a question, triggers that read.
+- **Network.** All calls go through `requestConnectorJson` in `src/network-request.ts`. It is allowlisted to `mcp(-staging).journeydeck.me/app/connections`.

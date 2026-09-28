@@ -186,3 +186,36 @@ export async function requestAppleCatalogJson<T>(url: string, options: EdgeReque
     clearTimeout(timeout);
   }
 }
+
+/**
+ * The AI connector's app API (connector-connections-api.ts): list, change and disconnect connected assistants.
+ * Allowlisted to JourneyDeck's connector hosts; returns the status with the parsed body so callers can map errors.
+ */
+export async function requestConnectorJson(url: string, secret: string, init: { method?: 'GET' | 'PUT' | 'DELETE'; body?: string } = {}, options: EdgeRequestOptions = {}): Promise<{ status: number; body: unknown }> {
+  if (!/^https:\/\/mcp(?:-staging)?\.journeydeck\.me\/app\/connections(?:\/[A-Za-z0-9%._~-]+)?$/.test(url)) throw new Error('Unapproved connector URL.');
+  const method = init.method ?? 'GET';
+  const uploadBytes = requestUploadBytes(init.body);
+  if (areJourneyDeckRequestsBlocked()) {
+    recordBlockedJourneyDeckRequest({ reason: 'preferences', operation: 'AI assistant connections', method, uploadBytes });
+    throw new JourneyDeckNetworkBlockedError();
+  }
+  const activity = beginNetworkActivity({ category: 'privacy_edge', reason: 'preferences', operation: options.operation ?? 'AI assistant connections', method, uploadBytes });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 20_000);
+  try {
+    const response = await fetch(url, {
+      method, body: init.body, signal: controller.signal,
+      headers: { accept: 'application/json', authorization: `Bearer ${secret}`, ...(init.body ? { 'content-type': 'application/json' } : {}) },
+    });
+    const downloadBytes = reportedDownloadBytes(response);
+    const body = response.status === 204 ? null : await response.json().catch(() => null);
+    activity.finish({ outcome: response.ok ? 'succeeded' : 'failed', statusCode: response.status, downloadBytes });
+    return { status: response.status, body };
+  } catch (error) {
+    activity.finish({ outcome: 'failed' });
+    if (error instanceof Error && error.name === 'AbortError') throw new Error(options.timeoutMessage || 'The connector took too long to respond.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}

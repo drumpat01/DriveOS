@@ -6,6 +6,7 @@ import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 import { CONNECTOR_ASSISTANTS, connectorAssistant, type ConnectorAssistantId } from './connector-assistants';
 import { CONNECTOR_PRIVACY_KEY, CONNECTOR_PRIVACY_OPTIONS, normalizeConnectorPrivacy, type ConnectorPrivacy, type ConnectorPrivacyKey } from './connector-privacy';
 import { CONNECTOR_MCP_URL } from './release-features';
+import { ConnectedAssistants } from './connector-connections';
 
 type CloudStatus = 'unavailable' | 'idle' | 'syncing' | 'synced' | 'needs_icloud' | 'error';
 
@@ -29,7 +30,8 @@ export function readConnectorPrivacy(profileId: string): ConnectorPrivacy {
   return normalizeConnectorPrivacy(getPrivatePreference<unknown>(profileId, CONNECTOR_PRIVACY_KEY));
 }
 
-/** V4 Settings → AI Assistants: pick an assistant, see its setup steps, and choose what every assistant may see. */
+/** V4 Settings → AI Assistants: pick an assistant, see its setup steps, choose what every assistant may see, then
+ * narrow it per connected assistant (connector-connections.tsx). */
 export function ConnectorSettings({ profileId, membershipTier, hasAppleAccount, cloudStatus, onSync, onMembership, onAccount }: Props) {
   const theme = useAppTheme();
   const activeProfile = useRef(profileId);
@@ -96,7 +98,7 @@ export function ConnectorSettings({ profileId, membershipTier, hasAppleAccount, 
 
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[styles.kicker, { color: colors.accent }]}>WHAT ASSISTANTS CAN SEE</Text>
-      <Text style={[styles.body, { color: colors.muted }]}>Journey dates, distances and place names are always shared. Turn off anything else you'd rather keep to yourself. These choices apply to every connected assistant.</Text>
+      <Text style={[styles.body, { color: colors.muted }]}>Journey dates, distances and place names are always shared. Anything you turn off here is hidden from every assistant. To limit just one, use its switches under Connected assistants.</Text>
       {CONNECTOR_PRIVACY_OPTIONS.map((option, index) => <View key={option.key} style={[styles.toggleRow, index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
         <View style={[styles.toggleIcon, { backgroundColor: colors.inset }]}><SymbolView name={option.symbol as SFSymbol} tintColor={colors.accent} size={17} /></View>
         <View style={styles.flex}>
@@ -110,8 +112,10 @@ export function ConnectorSettings({ profileId, membershipTier, hasAppleAccount, 
         style={({ pressed }) => [styles.button, { borderColor: colors.accent }, (pressed || cloudStatus === 'syncing') && styles.pressed]}>
         <Text style={[styles.buttonText, { color: colors.accent }]}>{cloudStatus === 'syncing' ? 'Syncing…' : 'Sync iCloud now'}</Text>
       </Pressable>
-      <Text style={[styles.footnote, { color: colors.muted }]}>Changes reach assistants after JourneyDeck's next iCloud sync. To disconnect, remove JourneyDeck in that assistant's connector settings.</Text>
+      <Text style={[styles.footnote, { color: colors.muted }]}>Changes here reach assistants after JourneyDeck's next iCloud sync.</Text>
     </View>
+
+    <ConnectedAssistants profileId={profileId} appPrivacy={privacy} cloudStatus={cloudStatus} onSync={onSync} colors={colors} />
   </View>;
 }
 
