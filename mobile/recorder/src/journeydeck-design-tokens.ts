@@ -23,7 +23,7 @@ export const journeyDeckRadius = {
 } as const;
 
 export const journeyDeckTypography = {
-  kicker: { fontSize: 11, lineHeight: 14, fontWeight: '800', letterSpacing: 1.1 } satisfies TextStyle,
+  kicker: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 } satisfies TextStyle,
   caption: { fontSize: 12, lineHeight: 17, fontWeight: '500' } satisfies TextStyle,
   body: { fontSize: 15, lineHeight: 21, fontWeight: '400' } satisfies TextStyle,
   label: { fontSize: 15, lineHeight: 20, fontWeight: '700' } satisfies TextStyle,
