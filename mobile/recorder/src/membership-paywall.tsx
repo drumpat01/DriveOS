@@ -190,7 +190,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
           <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
           <BenefitRow icon="bubble.left.and.text.bubble.right" title="Ask JourneyDeck" description="Ask about your drives in the app and with Siri." colors={colors} />
           <BenefitRow icon="music.note" title="Your Year on the Road" description="Relive your year with music and motion." colors={colors} />
-          <BenefitRow icon="infinity" title="Complete History" description="Every journey beyond the latest 45 days." colors={colors} last />
+          <BenefitRow icon="infinity" title="Complete History" description="Every journey, not just today's." colors={colors} last />
         </View>
 
         <View style={styles.planArea}>
@@ -268,7 +268,7 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
       {confirmingClose && <View style={styles.confirmOverlay}>
         <View style={[styles.confirmCard, { backgroundColor: colors.surface, borderColor: alpha(colors.separator, 0.7) }]}>
           <Text style={[styles.confirmTitle, { color: colors.text }]}>Keep exploring free?</Text>
-          <Text style={[styles.confirmBody, { color: colors.textSecondary }]}>You'll always keep your last 45 days of journeys and soundtracks, free.</Text>
+          <Text style={[styles.confirmBody, { color: colors.textSecondary }]}>JourneyDeck keeps recording for free, and today's journeys stay visible.</Text>
           <Pressable accessibilityRole="button" onPress={() => setConfirmingClose(false)} style={({ pressed }) => [styles.confirmPrimary, { backgroundColor: colors.accent }, pressed && styles.pressed]}>
             <Text style={[styles.confirmPrimaryText, { color: colors.onAccent }]}>See plans again</Text>
           </Pressable>

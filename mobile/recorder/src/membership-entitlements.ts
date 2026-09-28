@@ -4,7 +4,10 @@ export type JourneyDeckMembershipEntitlements = {
   tier: JourneyDeckMembershipTier;
   atlasAccess: boolean;
   tessieAccess: boolean;
+  /** Free history ends at local midnight this many days back; 0 means today only. null means no limit. */
   timelineHistoryDays: number | null;
+  /** Set while the free 7-day Plus trial is unlocking Plus; null otherwise. */
+  trialEndsAt: number | null;
 };
 
 export type VerifiedMembershipStatus = {
@@ -12,15 +15,18 @@ export type VerifiedMembershipStatus = {
   tier: JourneyDeckMembershipTier;
 };
 
+/** After the trial, free members keep recording but only see today's journeys. */
+export const FREE_HISTORY_DAYS = 0;
+
 export function entitlementsForMembershipTier(tier: JourneyDeckMembershipTier): JourneyDeckMembershipEntitlements {
   return tier === 'paid'
-    ? { tier, atlasAccess: true, tessieAccess: false, timelineHistoryDays: null }
-    : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: 45 };
+    ? { tier, atlasAccess: true, tessieAccess: false, timelineHistoryDays: null, trialEndsAt: null }
+    : { tier, atlasAccess: false, tessieAccess: false, timelineHistoryDays: FREE_HISTORY_DAYS, trialEndsAt: null };
 }
 
 export function sameMembershipEntitlements(a: JourneyDeckMembershipEntitlements, b: JourneyDeckMembershipEntitlements): boolean {
   return a.tier === b.tier && a.atlasAccess === b.atlasAccess && a.tessieAccess === b.tessieAccess
-    && a.timelineHistoryDays === b.timelineHistoryDays;
+    && a.timelineHistoryDays === b.timelineHistoryDays && a.trialEndsAt === b.trialEndsAt;
 }
 
 export function entitlementsForVerifiedMembership(
@@ -50,10 +56,22 @@ export function withPreviewAtlasAccess(
     : entitlements;
 }
 
+/** A free member inside the Plus trial gets Plus access until trialEndsAt. Paid members are unchanged. */
+export function withPlusTrial(
+  entitlements: JourneyDeckMembershipEntitlements,
+  trialEndsAt: number | null,
+  now = Date.now(),
+): JourneyDeckMembershipEntitlements {
+  if (entitlements.tier === 'paid' || trialEndsAt === null || now >= trialEndsAt) return entitlements;
+  return { ...entitlementsForMembershipTier('paid'), tessieAccess: entitlements.tessieAccess, trialEndsAt };
+}
+
 export function membershipHistoryCutoff(entitlements: JourneyDeckMembershipEntitlements, now = Date.now()): number {
-  return entitlements.timelineHistoryDays === null
-    ? Number.NEGATIVE_INFINITY
-    : now - entitlements.timelineHistoryDays * 86_400_000;
+  if (entitlements.timelineHistoryDays === null) return Number.NEGATIVE_INFINITY;
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  midnight.setDate(midnight.getDate() - entitlements.timelineHistoryDays);
+  return midnight.getTime();
 }
 
 export function membershipCanAccessDate(entitlements: JourneyDeckMembershipEntitlements, value: string, now = Date.now()): boolean {

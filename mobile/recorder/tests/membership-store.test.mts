@@ -34,6 +34,11 @@ async function harness(overrides: Record<string, any> = {}) {
     './membership-entitlements': entitlements,
     './pro-entitlement-sync': { publishProEntitlement: async () => {} },
     './release-features': { PREVIEW_ATLAS_UNLOCKED: false },
+    // Trial expired by default so these tests exercise StoreKit alone.
+    './plus-trial': {
+      loadOrStartPlusTrial: async () => overrides.trialStartedAt ?? 1,
+      plusTrialEndsAt: (startedAt: number, now: number) => now < startedAt ? null : startedAt + 7 * 86_400_000,
+    },
     '../modules/journeydeck-membership': {
       isJourneyDeckMembershipNativeAvailable: true,
       getMembershipStatus: async () => free,
@@ -230,4 +235,25 @@ test('an unchanged StoreKit refresh keeps entitlements identity so dependent rel
     assert.equal(h.control.state.entitlements.tier, 'paid');
     assert.notEqual(h.control.state.entitlements, first, 'a real change still propagates');
   } finally { await h.dispose(); }
+});
+
+test('a free device inside its 7-day trial gets Plus until the trial ends', async () => {
+  const h = await harness({ trialStartedAt: Date.now() - 86_400_000 });
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(h.control.state.entitlements.tier, 'paid');
+  assert.equal(h.control.state.entitlements.atlasAccess, true);
+  assert.equal(h.control.state.entitlements.timelineHistoryDays, null);
+  assert.ok(h.control.state.entitlements.trialEndsAt > Date.now());
+  assert.ok([...h.timers.values()].some(timer => timer.delay > 5 * 86_400_000), 'a timer relocks at the trial end');
+  await h.dispose();
+});
+
+test('a free device after its trial sees only today and has Plus locked', async () => {
+  const h = await harness({ trialStartedAt: Date.now() - 8 * 86_400_000 });
+  await act(async () => { await Promise.resolve(); });
+  assert.equal(h.control.state.entitlements.tier, 'free');
+  assert.equal(h.control.state.entitlements.atlasAccess, false);
+  assert.equal(h.control.state.entitlements.timelineHistoryDays, 0);
+  assert.equal(h.control.state.entitlements.trialEndsAt, null);
+  await h.dispose();
 });

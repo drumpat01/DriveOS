@@ -131,7 +131,7 @@ test('membership sells Atlas intelligence and complete history in one minimal fu
   assert.match(membershipPaywall, /Journey Studio/);
   assert.match(membershipPaywall, /Your Year on the Road/);
   assert.match(membershipPaywall, /Complete History/);
-  assert.match(membershipPaywall, /Every journey beyond the latest 45 days\./);
+  assert.match(membershipPaywall, /Every journey, not just today's\./);
   assert.match(membershipPaywall, /BEST VALUE/);
   assert.match(membershipPaywall, /accessibilityRole="radio"/);
   assert.match(membershipPaywall, /purchaseInFlight/);

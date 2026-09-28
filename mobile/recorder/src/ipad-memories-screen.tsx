@@ -324,7 +324,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
           <SymbolView name="rectangle.stack.badge.plus" tintColor={c.accent} style={styles.icon} /><Text style={{ color: c.accent, fontWeight: '600', flexShrink: 1 }}>Drop here to start a new Memory</Text>
         </Pressable></DropZone></View> : null}
         {visibleMemories.length > memoryLimit && <Pressable accessibilityRole="button" onPress={() => setMemoryLimit(n => n + 20)} style={styles.action}><Text style={{ color: c.accent }}>Show more Memories</Text></Pressable>}
-        {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset, margin: 5 }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock complete history  ›</Text></Pressable>}
+        {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset, margin: 5 }]}><Text style={{ color: c.accent }}>Today only · Unlock complete history  ›</Text></Pressable>}
         {message.startsWith('Journeys added') && <Text accessibilityLiveRegion="polite" style={[styles.phoneNotice, { color: c.accent }]}>{message}</Text>}
       </StudioScroll></View>
       <NativeAnimated.View testID="iphone-journey-tray" style={[styles.phoneTray, { backgroundColor: c.card, borderColor: c.line }, { height: trayHeight }]}>
@@ -370,7 +370,7 @@ export function IpadMemoriesScreen({ memories, journeys, renderArtwork, onCreate
             <Pressable accessibilityRole="button" disabled={loading || disabled} onPress={onRefresh} style={styles.action}><Text style={{ color: c.accent }}>Refresh</Text></Pressable></View>
           {error ? <Text accessibilityRole="alert" style={{ color: c.accent }}>{error}</Text> : null}
           {loading && !memories.length ? <MemoryListSkeleton /> : loading ? <ActivityIndicator accessibilityLabel="Refreshing Memories" color={c.accent} /> : null}
-          {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset }]}><Text style={{ color: c.accent }}>Latest 45 days · Unlock your complete history  ›</Text></Pressable>}
+          {historyLimited && <Pressable accessibilityRole="button" onPress={onUpgrade} style={[styles.history, { backgroundColor: c.inset }]}><Text style={{ color: c.accent }}>Today only · Unlock your complete history  ›</Text></Pressable>}
           <View testID="ipad-memory-studio" style={[styles.workspace, { flexDirection: wide ? 'row' : 'column', gap: verticalFold ? verticalFold.frame.width : 18 }]}>
             <View testID="ipad-memory-gallery-panel" style={[styles.panel, { backgroundColor: c.card, borderColor: c.line, height: panelHeight }, wide && memoryPanelLayout]}>
               <View style={styles.panelHeader}><Text accessibilityRole="header" style={[styles.heading, { color: c.text }]}>Your Memories</Text><Text style={{ color: c.muted }}>{memories.length}</Text></View>

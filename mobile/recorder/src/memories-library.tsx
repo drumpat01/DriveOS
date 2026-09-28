@@ -43,7 +43,7 @@ export function MemoriesLibraryScreen({
     <Segmented label="Library view" options={VIEWS} value={view} onChange={setView} />
     {historyLimited ? <TouchPressable accessibilityRole="button" accessibilityLabel="Unlock every Journey and Memory" onPress={onUpgrade} style={({ pressed }) => pressed && redesignStyles.pressed}>
       <Surface style={styles.gate}>
-        <View style={redesignStyles.flex}><Kicker color={colors.highlight}>Latest 45 days</Kicker><Text style={[styles.gateText, { color: colors.text }]}>Unlock every Journey and Memory</Text></View>
+        <View style={redesignStyles.flex}><Kicker color={colors.highlight}>Today only</Kicker><Text style={[styles.gateText, { color: colors.text }]}>Unlock every Journey and Memory</Text></View>
         <SymbolView name="chevron.right" tintColor={colors.textSecondary} size={15} weight="semibold" />
       </Surface>
     </TouchPressable> : null}
