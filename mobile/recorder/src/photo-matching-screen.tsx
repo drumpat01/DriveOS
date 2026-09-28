@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessibilityInfo, ActivityIndicator, Animated, AppState, FlatList, Image, Linking, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import { useAppTheme } from './app-theme';
+import { useV4Theme, V4_SERIF, v4Styles } from './v4-phone';
 import { photoMatchingLibrary, type MatchedPhotoImport, type PhotoLibraryPreview, type PhotoLibraryStatus } from './photo-matching-library';
 import { PHOTO_MATCH_LIMITS, matchPhotosToJourneys, photoMatchWindows, preparePhotoMatchJourneys, type PhotoMatch, type PhotoMatchJourney } from './photo-matching-model';
 
@@ -19,7 +19,7 @@ export type PhotoMatchingScreenProps = {
 function PhotoSuggestion({ scanId, match, width, selected, imported, disabled, reduceMotion, onToggle }: {
   scanId: string; match: PhotoMatch; width: number; selected: boolean; imported: boolean; disabled: boolean; reduceMotion: boolean; onToggle: () => void;
 }) {
-  const { palette: p } = useAppTheme();
+  const { palette: p } = useV4Theme();
   const [preview, setPreview] = useState<PhotoLibraryPreview | null>(null);
   const [attempt, setAttempt] = useState(0);
   const fade = useRef(new Animated.Value(0)).current;
@@ -63,7 +63,7 @@ export function PhotoMatchingScreen(props: PhotoMatchingScreenProps) {
 }
 
 function PhotoMatchingReview({ reviewKey, memoryName, journeys, onImport, onClose }: PhotoMatchingScreenProps) {
-  const { palette: p } = useAppTheme(), { width } = useWindowDimensions(), insets = useSafeAreaInsets();
+  const { palette: p } = useV4Theme(), { width } = useWindowDimensions(), insets = useSafeAreaInsets();
   const [status, setStatus] = useState<PhotoLibraryStatus | null>(null);
   const [phase, setPhase] = useState<'intro' | 'scanning' | 'review' | 'importing'>('intro');
   const [matches, setMatches] = useState<PhotoMatch[]>([]);
@@ -202,7 +202,7 @@ function PhotoMatchingReview({ reviewKey, memoryName, journeys, onImport, onClos
   </View>;
 }
 
-const s = StyleSheet.create({
+const s = v4Styles(StyleSheet.create({
   screen: { flex: 1 }, top: { paddingHorizontal: 20, minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth },
   topTitle: { fontSize: 18, fontWeight: '700' }, close: { padding: 12 }, content: { alignSelf: 'center', paddingTop: 24 }, introduction: { gap: 16, marginBottom: 20 },
   eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5 }, title: { fontSize: 32, lineHeight: 38, fontWeight: '800', letterSpacing: -0.8 },
@@ -212,4 +212,13 @@ const s = StyleSheet.create({
   tile: { borderWidth: 1, borderRadius: 20, overflow: 'hidden', marginBottom: 14 }, photoButton: { aspectRatio: 1 }, photo: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 },
   placeholder: { alignItems: 'center', justifyContent: 'center', padding: 12 }, placeholderText: { fontSize: 12, textAlign: 'center', lineHeight: 18 }, selection: { position: 'absolute', top: 10, right: 10, width: 30, height: 30, borderRadius: 15, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   tileCopy: { padding: 12, gap: 6 }, tileTitle: { fontSize: 14, fontWeight: '700' }, retry: { paddingVertical: 10, minHeight: 40 }, footer: { borderTopWidth: 1, paddingHorizontal: 20, paddingTop: 12, gap: 10 },
+}), {
+  topTitle: { fontWeight: '700', fontSize: 17 },
+  title: { fontFamily: V4_SERIF, fontWeight: '600', letterSpacing: -0.6 },
+  notice: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  message: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth },
+  primary: { borderRadius: 27 },
+  sectionTitle: { fontFamily: V4_SERIF, fontWeight: '600' },
+  tile: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
+  footer: { borderTopWidth: StyleSheet.hairlineWidth },
 });

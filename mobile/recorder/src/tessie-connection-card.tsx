@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useAppTheme } from './app-theme';
+import { useV4Theme, v4Styles } from './v4-phone';
 import { connectTessieDirect, disconnectTessieDirect, hasTessieCredentials, syncTessieDirect, tessieDirectStatus } from './tessie-direct';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { NativeSheet } from './native-sheet';
@@ -9,7 +9,7 @@ import { loadRecordingModePreferences, saveRecordingModePreferences } from './re
 type Props = { profileId: string; membershipTier: 'free' | 'paid'; onUpgrade: () => void; onChanged: () => void };
 
 export function TessieConnectionCard({ profileId, membershipTier, onUpgrade, onChanged }: Props) {
-  const theme = useAppTheme();
+  const theme = useV4Theme();
   const activeProfile = useRef(profileId);
   activeProfile.current = profileId;
   const [connected, setConnected] = useState(false);
@@ -129,7 +129,7 @@ function Action({ label, onPress, disabled, accent, onAccent, secondary = false 
   </Pressable>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 20, padding: 18, gap: 12 },
   kicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
   title: { fontSize: 21, fontWeight: '800' },
@@ -147,4 +147,8 @@ const styles = StyleSheet.create({
   stepNumberText: { fontSize: 13, fontWeight: '800' },
   stepText: { flex: 1, fontSize: 15, lineHeight: 22, paddingTop: 2 },
   inputLabel: { fontSize: 13, fontWeight: '700', marginTop: 8 },
+}), {
+  card: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  input: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  button: { borderRadius: 22 },
 });

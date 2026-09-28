@@ -68,6 +68,7 @@ function harness() {
   const mocks: Record<string, any> = {
     './photo-matching-model': model, './photo-matching-library': { photoMatchingLibrary: bridge },
     './app-theme': { useAppTheme: () => ({ ...themeCatalog[themeId], id: themeId }) },
+    './v4-phone': { V4_PHONE: false, V4_SERIF: 'ui-serif', v4Styles: (styles: any) => styles, useV4Theme: () => ({ ...themeCatalog[themeId], id: themeId }) },
     'expo-crypto': { randomUUID: () => `scan-${calls.permission}` },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', Image: 'Image', ActivityIndicator: 'ActivityIndicator', Animated,

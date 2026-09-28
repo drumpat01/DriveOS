@@ -64,6 +64,7 @@ const ui = evaluate(viewSource + '\nexports.ConnectionsScreen = ConnectionsScree
   useAppIconChoice: () => ({ appIconId: 'original' }), appIconCatalog: { original: { name: 'Cinematic' } },
   settingsCategories: require('../src/settings-categories.ts').settingsCategories,
   useThemedStyles: () => new Proxy({}, { get: () => ({}) }), darkStyles: {},
+  useSettingsStyles: () => new Proxy({}, { get: () => ({}) }), REDESIGN_PHONE: false, RedesignGlow: host('RedesignGlow'), useRedesignColors: () => ({}), SERIF: 'ui-serif',
   useSafeAreaInsets: () => ({ top: 24, bottom: 20 }), isIpad: () => tablet,
   loadSavedPlaces: () => ({}), loadCustomSavedPlaces: () => [{ id: 'saved-custom-place-v1-gym', label: 'Gym' }], loadProfileAppearance: () => ({ displayName: 'Test driver', avatarDataUri: null }), profileInitialsFor: () => 'TD',
   selectableProviderOptions: () => [{ id: 'apple-music', color: '#ff9478', name: 'Apple Music' }], publicProviderOptions: [], SAVED_PLACE_SLOTS: [{ id: 'home', label: 'Home', symbol: 'house' }, { id: 'work', label: 'Work', symbol: 'briefcase' }, { id: 'school', label: 'School', symbol: 'graduationcap' }],

@@ -28,6 +28,7 @@ function load(themeId: 'dark' | 'light' | 'sakura' | 'redline' | 'midnight-canop
     if (id === 'expo-symbols') return { SymbolView: host('SymbolView') };
     if (id === 'react-native-safe-area-context') return { useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) };
     if (id === './app-theme') return { useAppTheme: () => testTheme(themeId) };
+    if (id === './v4-phone') return { V4_PHONE: false, V4_SERIF: 'ui-serif', v4Styles: (styles: any) => styles, useV4Theme: () => testTheme(themeId) };
     return require(id);
   } });
   return module.exports.FirstRunWelcomeScreen;

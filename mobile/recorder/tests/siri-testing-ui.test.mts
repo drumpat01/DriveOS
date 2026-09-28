@@ -20,6 +20,7 @@ async function screen(available = true) {
     '@expo/ui': Object.fromEntries(['Button', 'Column', 'Host'].map(n => [n, host(n)])),
     'expo-router': { useFocusEffect: (cb: any) => React.useEffect(cb, [cb]) },
     './app-theme': { useAppTheme: () => testTheme('grand-touring') },
+    './v4-phone': { V4_PHONE: false, V4_SERIF: 'ui-serif', v4Styles: (styles: any) => styles, useV4Theme: () => testTheme('grand-touring') },
     './siri-testing': { canShowSiriTesting: true, siriTesting: {
       status: async () => ({ model: available ? 'available' : 'newNativeBuildRequired', testing: available }),
       cases: async () => Array.from({ length: 100 }, (_, i) => ({ id: String(i), question: 'Synthetic ' + i })),

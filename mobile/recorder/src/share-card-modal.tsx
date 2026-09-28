@@ -8,8 +8,17 @@ import { Canvas, ColorMatrix, Image as SkiaImage, useImage } from '@shopify/reac
 import Svg, { Circle, Defs, G, LinearGradient as SvgLinearGradient, Path, Polyline, Stop, Text as SvgText } from 'react-native-svg';
 
 import { appDataClient, type JourneyPhoto } from './app-data';
+import { useAppTheme } from './app-theme';
+import { haptics } from './haptics';
+import { journeyDeckMapPalette } from './journey-map-theme';
+import { redesignColors, withAlpha } from './redesign-palette';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+import { themeCatalog, type ThemeId } from './theme-catalog';
 
 const journeyDeckLogo = require('../assets/icon.png');
+const journeyDeckLightLogo = require('../assets/icon-light-plum-v1.png');
+/** Serif display face (New York on iOS), as in redesign-ui. */
+const SERIF = 'ui-serif';
 
 // Keep exported share maps aligned with journey-map-theme.ts: near-black land,
 // deep-violet roads, and the coral-orange JourneyDeck route treatment.
@@ -39,6 +48,23 @@ const shareMapColorMatrix = [
   0, 0, 0, 1, 0,
 ];
 
+const rgb = (hex: string) => [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16) / 255) as [number, number, number];
+/** Blend two `#rrggbb` colors; `t` is the share of `to`. */
+function mixHex(from: string, to: string, t: number) {
+  const a = rgb(from), b = rgb(to);
+  return `#${a.map((value, index) => Math.round((value + (b[index]! - value) * t) * 255).toString(16).padStart(2, '0')).join('')}`;
+}
+/** Map tiles recolored into a card theme: land becomes the page color, streets and labels its road ink. */
+function themedMapColorMatrix(background: string, road: string) {
+  const bg = rgb(background), detail = rgb(road);
+  return [
+    ...colorizedInvertedLuminanceRow(bg[0], detail[0]),
+    ...colorizedInvertedLuminanceRow(bg[1], detail[1]),
+    ...colorizedInvertedLuminanceRow(bg[2], detail[2]),
+    0, 0, 0, 1, 0,
+  ];
+}
+
 export type ShareCardPayload = {
   kind: 'memory' | 'collection' | 'journey';
   eyebrow: string;
@@ -66,26 +92,70 @@ export type ShareCardPayload = {
   };
 };
 
-type JourneyShareTheme = 'cinematic' | 'electric' | 'sunset';
+type LegacyShareTheme = 'cinematic' | 'electric' | 'sunset';
+/** V4 cards use the app's own themes; earlier variants keep the three legacy card looks. */
+type JourneyShareTheme = LegacyShareTheme | ThemeId;
 type JourneyShareMapStyle = 'street' | 'dim' | 'route';
 type JourneyShareArtwork = 'album' | 'backdrop' | 'none';
 type JourneyShareStat = 'distance' | 'duration' | 'songs' | 'artist';
 
-const journeyThemes: Record<JourneyShareTheme, { accent: string; accent2: string; background: string; panel: string; text: string }> = {
+const journeyThemes: Record<LegacyShareTheme, { accent: string; accent2: string; background: string; panel: string; text: string }> = {
   cinematic: { accent: '#ff725a', accent2: '#ad82ff', background: '#0c0712', panel: '#170d21', text: '#fff8fd' },
   electric: { accent: '#72e9ff', accent2: '#71f0bc', background: '#07131c', panel: '#0d202a', text: '#f4fdff' },
   sunset: { accent: '#ffb274', accent2: '#ff7e81', background: '#241025', panel: '#32152b', text: '#fff8f3' },
 };
 
+type CardPalette = {
+  light: boolean; accent: string; accent2: string; background: string; panel: string; text: string; muted: string; faint: string; border: string;
+  scrim: readonly [string, string]; photoShade: string;
+  mapBackground: string; mapMatrix: number[]; route: string; routeWarm: string; routeEnd: string; routeShadow: string; routeRing: string; songPin: string; songPinText: string; songPinRing: string;
+};
+
+const V4_SHARE = V4_REDESIGN_ENABLED;
+const v4ShareThemeIds: readonly ThemeId[] = [
+  'redline', 'light', ...(V3_MIDNIGHT_CANOPY_ENABLED ? ['midnight-canopy' as const] : []), 'dark', 'sakura', ...(V4_AURORA_GLASS_ENABLED ? ['aurora-glass' as const] : []),
+];
+
+function legacyCardPalette(theme: LegacyShareTheme): CardPalette {
+  const palette = journeyThemes[theme];
+  return {
+    light: false, ...palette, muted: '#d2c8d8', faint: '#a294aa', border: '#ffffff2a',
+    scrim: theme === 'electric' ? ['rgba(5,18,27,0.28)', '#061017ef'] : theme === 'sunset' ? ['rgba(55,13,39,0.2)', '#1d0b1ce8'] : ['rgba(11,5,18,0.12)', '#09050fe8'],
+    photoShade: '#08040aa8',
+    mapBackground: shareMapPalette.background, mapMatrix: shareMapColorMatrix, route: shareMapPalette.route, routeWarm: shareMapPalette.routeWarm, routeEnd: '#ff4f38', routeShadow: '#09020a', routeRing: '#fff3eb',
+    songPin: '#8f45e8', songPinText: '#ffffff', songPinRing: '#f5eaff',
+  };
+}
+
+/** A card drawn entirely from one app theme, so exported images match the V4 look in every theme. */
+function themeCardPalette(id: ThemeId): CardPalette {
+  const entry = themeCatalog[id], colors = redesignColors(id, entry.palette), map = journeyDeckMapPalette(id);
+  const light = entry.mode === 'light', page = colors.page;
+  return {
+    light, accent: colors.accent, accent2: colors.highlight, background: page,
+    panel: mixHex(page, colors.text, light ? 0.05 : 0.08), text: colors.text, muted: colors.textSecondary, faint: mixHex(colors.textSecondary, page, 0.25), border: withAlpha(colors.text, light ? 0.14 : 0.16),
+    scrim: [withAlpha(page, 0.12), withAlpha(page, 0.92)], photoShade: withAlpha(page, light ? 0.62 : 0.66),
+    mapBackground: page, mapMatrix: themedMapColorMatrix(page, mixHex(page, entry.palette.accent, light ? 0.38 : 0.5)),
+    route: map.routeLine, routeWarm: map.routeGlow, routeEnd: map.routeLine, routeShadow: light ? withAlpha(map.routeShadow, 0.55) : map.routeShadow, routeRing: colors.text,
+    songPin: colors.highlight, songPinText: page, songPinRing: colors.text,
+  };
+}
+
+function cardPalette(theme: JourneyShareTheme): CardPalette {
+  return theme === 'cinematic' || theme === 'electric' || theme === 'sunset' ? legacyCardPalette(theme) : themeCardPalette(theme);
+}
+
 export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload | null; onClose: () => void }) {
   const uiStyles = useThemedStyles(styles);
+  const appTheme = useAppTheme();
+  const defaultTheme: JourneyShareTheme = V4_SHARE ? appTheme.id : 'cinematic';
 
   const cardRef = useRef<View>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [journeyArtworkLoading, setJourneyArtworkLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
-  const [journeyTheme, setJourneyTheme] = useState<JourneyShareTheme>('cinematic');
+  const [journeyTheme, setJourneyTheme] = useState<JourneyShareTheme>(defaultTheme);
   const [journeyMapStyle, setJourneyMapStyle] = useState<JourneyShareMapStyle>('street');
   const [journeyArtwork, setJourneyArtwork] = useState<JourneyShareArtwork>('album');
   const [journeyStats, setJourneyStats] = useState<JourneyShareStat[]>(['distance', 'duration', 'songs', 'artist']);
@@ -99,12 +169,12 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
   }, [payload?.photo?.id]);
 
   useEffect(() => {
-    setJourneyTheme('cinematic');
+    setJourneyTheme(defaultTheme);
     setJourneyMapStyle('street');
     setJourneyArtwork('album');
     setJourneyStats(['distance', 'duration', 'songs', 'artist']);
     setJourneyArtworkLoading(Boolean(payload?.journey?.featured?.artworkUrl));
-  }, [payload?.journey?.startedAt]);
+  }, [payload?.journey?.startedAt, payload?.title]);
 
   const share = async () => {
     if (!payload || !cardRef.current) return;
@@ -120,7 +190,43 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
     }
   };
 
-  const accent = payload?.accent ?? '#ff7658';
+  const busy = sharing || photoLoading || journeyArtworkLoading;
+  const card = payload && (payload.journey
+    ? <JourneySharePreview ref={cardRef} journey={payload.journey} theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onArtworkReady={() => setJourneyArtworkLoading(false)} />
+    : <SummaryShareCard ref={cardRef} payload={payload} photoUri={photoUri} theme={journeyTheme} />);
+  const controls = payload?.journey
+    ? <JourneyShareControls theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />
+    : V4_SHARE && payload ? <View style={v4Chrome(appTheme.id).controls}><ShareThemeChooser value={journeyTheme} onSelect={setJourneyTheme} /></View> : null;
+  const privacyCopy = payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.';
+
+  if (V4_SHARE) {
+    const chrome = v4Chrome(appTheme.id);
+    const colors = redesignColors(appTheme.id, appTheme.palette);
+    return <Modal visible={Boolean(payload)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <SafeAreaView style={chrome.modalRoot}>
+        <Pressable accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
+        <View style={chrome.sheet}>
+          <View style={chrome.grabber} />
+          <View style={chrome.header}>
+            <View style={styles.flex}><Text style={chrome.kicker}>PRIVACY-SAFE PREVIEW</Text><Text accessibilityRole="header" style={chrome.title}>Share card</Text></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={({ pressed }) => [chrome.close, pressed && styles.pressed]}><Text style={chrome.closeText}>×</Text></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={chrome.previewWrap} showsVerticalScrollIndicator={false}>
+            <View style={chrome.cardShadow}>{card}</View>
+            {controls}
+            <View style={chrome.privacyNote}>
+              <Text style={chrome.privacyNoteTitle}>Privacy preview · protected route</Text>
+              <Text style={chrome.privacyNoteText}>{privacyCopy}</Text>
+            </View>
+          </ScrollView>
+          <Pressable accessibilityRole="button" onPress={() => { void haptics.selection(); void share(); }} disabled={busy} style={({ pressed }) => [chrome.shareButton, (busy || pressed) && styles.pressed]}>
+            {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={chrome.shareText}>Share image</Text>}
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Modal>;
+  }
+
   return <Modal visible={Boolean(payload)} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
     <SafeAreaView style={uiStyles.modalRoot}>
       <Pressable accessibilityLabel="Close share card" onPress={onClose} style={StyleSheet.absoluteFill} />
@@ -130,28 +236,47 @@ export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload
           <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose} style={uiStyles.closeButton}><Text style={uiStyles.closeText}>×</Text></Pressable>
         </View>
         <ScrollView contentContainerStyle={uiStyles.previewWrap} showsVerticalScrollIndicator={false}>
-          {payload?.journey
-            ? <JourneySharePreview ref={cardRef} journey={payload.journey} theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onArtworkReady={() => setJourneyArtworkLoading(false)} />
-            : payload && <View ref={cardRef} collapsable={false} style={styles.card}>
-              {photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : <View style={[StyleSheet.absoluteFill, { backgroundColor: '#120b21' }]}><View style={[styles.orb, { backgroundColor: accent }]} /><View style={[styles.route, { backgroundColor: accent }]} /><View style={[styles.route, styles.routeTwo]} /></View>}
-              <View style={styles.shade} />
-              <View style={styles.cardTop}><JourneyDeckShareMark /></View>
-              <View style={styles.cardCopy}>
-                <Text style={[styles.cardEyebrow, { color: accent }]}>{payload.eyebrow}</Text>
-                <Text style={styles.cardTitle}>{payload.title}</Text>
-                <Text style={styles.cardSubtitle}>{payload.subtitle}</Text>
-                <View style={styles.metrics}>{payload.metrics.slice(0, 3).map(metric => <View key={metric.label} style={styles.metric}><Text style={styles.metricValue}>{metric.value}</Text><Text style={styles.metricLabel}>{metric.label}</Text></View>)}</View>
-                <View style={styles.privacyLine}><Text style={styles.privacyText}>PRECISE LOCATIONS HIDDEN  •  YOUR DRIVE, REMEMBERED.</Text></View>
-              </View>
-            </View>}
-          {payload?.journey && <JourneyShareControls theme={journeyTheme} mapStyle={journeyMapStyle} artwork={journeyArtwork} stats={journeyStats} onTheme={setJourneyTheme} onMapStyle={setJourneyMapStyle} onArtwork={value => { setJourneyArtwork(value); setJourneyArtworkLoading(value !== 'none' && Boolean(payload.journey?.featured?.artworkUrl)); }} onToggleStat={stat => setJourneyStats(current => current.includes(stat) ? current.filter(item => item !== stat) : [...current, stat])} />}
-          <View style={uiStyles.privacyNote}><Text style={uiStyles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={uiStyles.privacyNoteText}>{payload?.journey ? payload.journey.routeTrimmedStart || payload.journey.routeTrimmedEnd ? 'Home and Work route segments are physically removed to the farther of a one-mile boundary or the outer soundtrack moment. Hidden coordinates and song pins never enter the exported image.' : 'Street addresses and exact private coordinates never enter the exported image.' : 'The image excludes precise routes, street addresses, and private coordinates. Only the summary shown above is exported.'}</Text></View>
+          {card}
+          {controls}
+          <View style={uiStyles.privacyNote}><Text style={uiStyles.privacyNoteTitle}>Privacy preview · protected route</Text><Text style={uiStyles.privacyNoteText}>{privacyCopy}</Text></View>
         </ScrollView>
-        <Pressable accessibilityRole="button" onPress={() => void share()} disabled={sharing || photoLoading || journeyArtworkLoading} style={[uiStyles.shareButton, (sharing || photoLoading || journeyArtworkLoading) && uiStyles.disabled]}>{sharing || photoLoading || journeyArtworkLoading ? <ActivityIndicator color="#1a0907" /> : <Text style={uiStyles.shareText}>Share image</Text>}</Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void share()} disabled={busy} style={[uiStyles.shareButton, busy && uiStyles.disabled]}>{busy ? <ActivityIndicator color="#1a0907" /> : <Text style={uiStyles.shareText}>Share image</Text>}</Pressable>
       </View>
     </SafeAreaView>
   </Modal>;
 }
+
+/** Memory and collection cards: cover photo (or themed backdrop), title, and up to three metrics. */
+const SummaryShareCard = forwardRef<View, { payload: ShareCardPayload; photoUri: string | null; theme: JourneyShareTheme }>(function SummaryShareCard({ payload, photoUri, theme }, ref) {
+  if (!V4_SHARE) {
+    const accent = payload.accent ?? '#ff7658';
+    return <View ref={ref} collapsable={false} style={styles.card}>
+      {photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : <View style={[StyleSheet.absoluteFill, { backgroundColor: '#120b21' }]}><View style={[styles.orb, { backgroundColor: accent }]} /><View style={[styles.route, { backgroundColor: accent }]} /><View style={[styles.route, styles.routeTwo]} /></View>}
+      <View style={styles.shade} />
+      <View style={styles.cardTop}><JourneyDeckShareMark /></View>
+      <View style={styles.cardCopy}>
+        <Text style={[styles.cardEyebrow, { color: accent }]}>{payload.eyebrow}</Text>
+        <Text style={styles.cardTitle}>{payload.title}</Text>
+        <Text style={styles.cardSubtitle}>{payload.subtitle}</Text>
+        <View style={styles.metrics}>{payload.metrics.slice(0, 3).map(metric => <View key={metric.label} style={styles.metric}><Text style={styles.metricValue}>{metric.value}</Text><Text style={styles.metricLabel}>{metric.label}</Text></View>)}</View>
+        <View style={styles.privacyLine}><Text style={styles.privacyText}>PRECISE LOCATIONS HIDDEN  •  YOUR DRIVE, REMEMBERED.</Text></View>
+      </View>
+    </View>;
+  }
+  const palette = cardPalette(theme);
+  return <View ref={ref} collapsable={false} style={[styles.card, { backgroundColor: palette.background, borderColor: palette.border }]}>
+    {photoUri ? <Image source={{ uri: photoUri }} resizeMode="cover" style={StyleSheet.absoluteFill} /> : <View style={StyleSheet.absoluteFill}><View style={[styles.orb, { backgroundColor: palette.accent }]} /><View style={[styles.route, { backgroundColor: palette.accent }]} /><View style={[styles.route, styles.routeTwo, { backgroundColor: palette.accent2 }]} /></View>}
+    <LinearGradient pointerEvents="none" colors={[withAlpha(palette.background, photoUri ? 0.08 : 0), palette.photoShade, withAlpha(palette.background, 0.96)]} locations={[0, 0.45, 1]} style={StyleSheet.absoluteFill} />
+    <View style={styles.cardTop}><JourneyDeckShareMark palette={palette} /></View>
+    <View style={styles.cardCopy}>
+      <Text style={[styles.cardEyebrow, { color: palette.accent }]}>{payload.eyebrow}</Text>
+      <Text style={[styles.cardTitle, styles.v4CardTitle, { color: palette.text }]}>{payload.title}</Text>
+      <Text style={[styles.cardSubtitle, { color: palette.muted }]}>{payload.subtitle}</Text>
+      <View style={[styles.metrics, { borderColor: palette.border, backgroundColor: withAlpha(palette.panel, 0.9) }]}>{payload.metrics.slice(0, 3).map(metric => <View key={metric.label} style={[styles.metric, { borderRightColor: palette.border }]}><Text style={[styles.metricValue, { color: palette.text }]}>{metric.value}</Text><Text style={[styles.metricLabel, { color: palette.muted }]}>{metric.label}</Text></View>)}</View>
+      <View style={styles.privacyLine}><Text style={[styles.privacyText, { color: palette.faint }]}>PRECISE LOCATIONS HIDDEN  •  YOUR DRIVE, REMEMBERED.</Text></View>
+    </View>
+  </View>;
+});
 
 const JourneySharePreview = forwardRef<View, {
   journey: NonNullable<ShareCardPayload['journey']>;
@@ -161,31 +286,32 @@ const JourneySharePreview = forwardRef<View, {
   stats: JourneyShareStat[];
   onArtworkReady: () => void;
 }>(function JourneySharePreview({ journey, theme, mapStyle, artwork, stats, onArtworkReady }, ref) {
-  const palette = journeyThemes[theme], safeRoute = privacySafeJourneyRoute(journey);
+  const palette = cardPalette(theme), safeRoute = privacySafeJourneyRoute(journey);
   const featured = journey.featured, shownStats = selectedJourneyStats(journey, stats);
-  return <View ref={ref} collapsable={false} style={[styles.card, styles.journeyShareCard, { backgroundColor: palette.background }]}>
+  const v4 = V4_SHARE;
+  return <View ref={ref} collapsable={false} style={[styles.card, styles.journeyShareCard, { backgroundColor: palette.background }, v4 && { borderColor: palette.border }]}>
     {featured?.artworkUrl && artwork === 'backdrop' && <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareBackdrop} />}
-    <LinearGradient colors={theme === 'electric' ? ['rgba(5,18,27,0.28)', '#061017ef'] as const : theme === 'sunset' ? ['rgba(55,13,39,0.2)', '#1d0b1ce8'] as const : ['rgba(11,5,18,0.12)', '#09050fe8'] as const} style={StyleSheet.absoluteFill} />
-    <View style={styles.journeyShareTop}><JourneyDeckShareMark context="JOURNEY MEMORY" /></View>
+    <LinearGradient colors={palette.scrim} style={StyleSheet.absoluteFill} />
+    <View style={styles.journeyShareTop}><JourneyDeckShareMark context="JOURNEY MEMORY" palette={v4 ? palette : undefined} /></View>
     <Text style={[styles.journeyShareEyebrow, { color: palette.accent }]}>{formatJourneyShareDate(journey.startedAt).toUpperCase()}</Text>
-    <Text style={[styles.journeyShareTitle, { color: palette.text }]}>{journeyShareTitle(journey.startedAt).toUpperCase()}</Text>
-    <View style={styles.journeyShareStats}>{shownStats.map(stat => <View key={stat.label} style={[styles.journeyShareStat, { borderColor: `${palette.accent}55`, backgroundColor: palette.panel }]}><Text style={[styles.journeyShareStatLabel, { color: palette.accent }]}>{stat.label}</Text><Text style={[styles.journeyShareStatValue, { color: palette.text }]} numberOfLines={1}>{stat.value}</Text></View>)}</View>
-    <ShareRouteSnapshot route={safeRoute.points} songPoints={journey.songPoints} mapStyle={mapStyle} trimmedStart={safeRoute.trimmedStart} trimmedEnd={safeRoute.trimmedEnd} />
-    <View style={styles.journeyShareRouteLabels}><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.startLabel}</Text><Text style={[styles.journeyShareRouteArrow, { color: palette.accent }]}>→</Text><Text style={styles.journeyShareRouteLabel} numberOfLines={1}>{safeRoute.endLabel}</Text></View>
-    <View style={[styles.journeyShareMusic, { borderColor: `${palette.accent2}66`, backgroundColor: palette.panel }]}>
-      {featured?.artworkUrl && artwork === 'album' ? <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareAlbum} /> : <View style={[styles.journeyShareAlbumFallback, { backgroundColor: `${palette.accent2}44` }]}><Text style={[styles.journeyShareAlbumNote, { color: palette.accent2 }]}>♪</Text></View>}
-      <View style={styles.journeyShareMusicCopy}><Text style={[styles.journeyShareMusicLabel, { color: palette.accent }]}>JOURNEY SOUNDTRACK</Text><Text style={[styles.journeyShareTrack, { color: palette.text }]} numberOfLines={1}>{featured?.track ?? 'The road, remembered'}</Text><Text style={[styles.journeyShareArtist, { color: palette.accent2 }]} numberOfLines={1}>{featured?.artist ?? (journey.topArtist || 'JourneyDeck')}</Text></View>
+    <Text style={[styles.journeyShareTitle, v4 && styles.v4JourneyTitle, { color: palette.text }]}>{v4 ? journeyShareTitle(journey.startedAt) : journeyShareTitle(journey.startedAt).toUpperCase()}</Text>
+    <View style={styles.journeyShareStats}>{shownStats.map(stat => <View key={stat.label} style={[styles.journeyShareStat, { borderColor: v4 ? palette.border : `${palette.accent}55`, backgroundColor: palette.panel }]}><Text style={[styles.journeyShareStatLabel, { color: v4 ? palette.muted : palette.accent }]}>{stat.label}</Text><Text style={[styles.journeyShareStatValue, { color: palette.text }]} numberOfLines={1}>{stat.value}</Text></View>)}</View>
+    <ShareRouteSnapshot route={safeRoute.points} songPoints={journey.songPoints} mapStyle={mapStyle} trimmedStart={safeRoute.trimmedStart} trimmedEnd={safeRoute.trimmedEnd} palette={palette} />
+    <View style={styles.journeyShareRouteLabels}><Text style={[styles.journeyShareRouteLabel, v4 && { color: palette.muted }]} numberOfLines={1}>{safeRoute.startLabel}</Text><Text style={[styles.journeyShareRouteArrow, { color: palette.accent }]}>→</Text><Text style={[styles.journeyShareRouteLabel, v4 && { color: palette.muted }]} numberOfLines={1}>{safeRoute.endLabel}</Text></View>
+    <View style={[styles.journeyShareMusic, { borderColor: v4 ? palette.border : `${palette.accent2}66`, backgroundColor: palette.panel }]}>
+      {featured?.artworkUrl && artwork === 'album' ? <Image source={{ uri: featured.artworkUrl }} resizeMode="cover" onLoadEnd={onArtworkReady} onError={onArtworkReady} style={styles.journeyShareAlbum} /> : <View style={[styles.journeyShareAlbumFallback, { backgroundColor: v4 ? withAlpha(palette.accent2, 0.22) : `${palette.accent2}44` }]}><Text style={[styles.journeyShareAlbumNote, { color: palette.accent2 }]}>♪</Text></View>}
+      <View style={styles.journeyShareMusicCopy}><Text style={[styles.journeyShareMusicLabel, { color: v4 ? palette.muted : palette.accent }]}>JOURNEY SOUNDTRACK</Text><Text style={[styles.journeyShareTrack, { color: palette.text }]} numberOfLines={1}>{featured?.track ?? 'The road, remembered'}</Text><Text style={[styles.journeyShareArtist, { color: v4 ? palette.accent : palette.accent2 }]} numberOfLines={1}>{featured?.artist ?? (journey.topArtist || 'JourneyDeck')}</Text></View>
     </View>
-    <Text style={styles.journeySharePrivacy}>{safeRoute.trimmedStart || safeRoute.trimmedEnd ? 'REAL ROUTE · SAVED PLACE SEGMENT TRIMMED · © OPENSTREETMAP' : safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
+    <Text style={[styles.journeySharePrivacy, v4 && { color: palette.faint }]}>{safeRoute.trimmedStart || safeRoute.trimmedEnd ? 'REAL ROUTE · SAVED PLACE SEGMENT TRIMMED · © OPENSTREETMAP' : safeRoute.protected ? 'REAL ROUTE · PRIVATE ZONES MASKED · © OPENSTREETMAP' : 'REAL RECORDED ROUTE · STREET ADDRESSES HIDDEN · © OPENSTREETMAP'}</Text>
   </View>;
 });
 
-function JourneyDeckShareMark({ context }: { context?: string }) {
+function JourneyDeckShareMark({ context, palette }: { context?: string; palette?: CardPalette }) {
   return <View style={styles.shareBrand}>
-    <Image source={journeyDeckLogo} resizeMode="contain" style={styles.shareBrandLogo} />
+    <Image source={palette?.light ? journeyDeckLightLogo : journeyDeckLogo} resizeMode="contain" style={styles.shareBrandLogo} />
     <View style={styles.shareBrandCopy}>
-      <Text style={styles.shareBrandName}>JOURNEYDECK</Text>
-      {context && <Text style={styles.shareBrandContext}>{context}</Text>}
+      <Text style={[styles.shareBrandName, palette && { color: palette.text }]}>JOURNEYDECK</Text>
+      {context && <Text style={[styles.shareBrandContext, palette && { color: palette.accent }]}>{context}</Text>}
     </View>
   </View>;
 }
@@ -195,6 +321,27 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
   onTheme: (value: JourneyShareTheme) => void; onMapStyle: (value: JourneyShareMapStyle) => void; onArtwork: (value: JourneyShareArtwork) => void; onToggleStat: (value: JourneyShareStat) => void;
 }) {
   const uiStyles = useThemedStyles(styles);
+  const appTheme = useAppTheme();
+  const statChoices = [['distance', 'Distance'], ['duration', 'Duration'], ['songs', 'Song count'], ['artist', 'Top artist']] as const;
+
+  if (V4_SHARE) {
+    const chrome = v4Chrome(appTheme.id);
+    const colors = redesignColors(appTheme.id, appTheme.palette);
+    return <View style={chrome.controls}>
+      <Text style={chrome.controlsKicker}>BUILD YOUR CARD</Text>
+      <ShareThemeChooser value={theme} onSelect={onTheme} />
+      <ShareChoiceRow label="MAP" value={mapStyle} choices={[['street', 'Street'], ['dim', 'Dimmed'], ['route', 'Route only']]} onSelect={value => onMapStyle(value as JourneyShareMapStyle)} />
+      <ShareChoiceRow label="ARTWORK" value={artwork} choices={[['album', 'Featured album'], ['backdrop', 'Album backdrop'], ['none', 'No artwork']]} onSelect={value => onArtwork(value as JourneyShareArtwork)} />
+      <Text style={[chrome.controlsKicker, chrome.controlsStatsKicker]}>SHOW ON CARD</Text>
+      <View style={chrome.statToggleGrid}>{statChoices.map(([value, label]) => {
+        const on = stats.includes(value);
+        return <Pressable key={value} accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked: on }} onPress={() => { void haptics.selection(); onToggleStat(value); }} style={({ pressed }) => [chrome.statToggle, on && chrome.statToggleOn, pressed && styles.pressed]}>
+          <View style={[chrome.check, on && { backgroundColor: colors.accent, borderColor: colors.accent }]}>{on && <Text style={[chrome.checkMark, { color: colors.onAccent }]}>✓</Text>}</View>
+          <Text style={chrome.statToggleText}>{label}</Text>
+        </Pressable>;
+      })}</View>
+    </View>;
+  }
 
   return <View style={uiStyles.journeyShareControls}>
     <Text style={uiStyles.controlsKicker}>BUILD YOUR CARD</Text>
@@ -202,17 +349,54 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
     <ShareChoiceRow label="MAP" value={mapStyle} choices={[['street', 'Street'], ['dim', 'Dimmed'], ['route', 'Route only']]} onSelect={value => onMapStyle(value as JourneyShareMapStyle)} />
     <ShareChoiceRow label="ARTWORK" value={artwork} choices={[['album', 'Featured album'], ['backdrop', 'Album backdrop'], ['none', 'No artwork']]} onSelect={value => onArtwork(value as JourneyShareArtwork)} />
     <Text style={[uiStyles.controlsKicker, uiStyles.controlsStatsKicker]}>SHOW ON CARD</Text>
-    <View style={uiStyles.statToggleGrid}>{([['distance', 'Distance'], ['duration', 'Duration'], ['songs', 'Song count'], ['artist', 'Top artist']] as const).map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[uiStyles.statToggle, stats.includes(value) && uiStyles.statToggleOn]}><Text style={uiStyles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={uiStyles.statToggleText}>{label}</Text></Pressable>)}</View>
+    <View style={uiStyles.statToggleGrid}>{statChoices.map(([value, label]) => <Pressable key={value} accessibilityRole="checkbox" accessibilityState={{ checked: stats.includes(value) }} onPress={() => onToggleStat(value)} style={[uiStyles.statToggle, stats.includes(value) && uiStyles.statToggleOn]}><Text style={uiStyles.statToggleMark}>{stats.includes(value) ? '✓' : '+'}</Text><Text style={uiStyles.statToggleText}>{label}</Text></Pressable>)}</View>
+  </View>;
+}
+
+/** Card theme chooser: every app theme, previewed with its own page color, route ink and accent. */
+function ShareThemeChooser({ value, onSelect }: { value: JourneyShareTheme; onSelect: (value: JourneyShareTheme) => void }) {
+  const appTheme = useAppTheme();
+  const chrome = v4Chrome(appTheme.id);
+  return <View style={chrome.choiceRow}>
+    <Text style={chrome.choiceLabel}>THEME</Text>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={chrome.themeRow} accessibilityRole="radiogroup">
+      {v4ShareThemeIds.map(id => {
+        const palette = themeCardPalette(id), selected = value === id;
+        return <Pressable key={id} testID={`share-theme-${id}`} accessibilityRole="radio" accessibilityLabel={`${themeCatalog[id].name} card theme`} accessibilityState={{ checked: selected, selected }}
+          onPress={() => { if (!selected) { void haptics.selection(); onSelect(id); } }}
+          style={({ pressed }) => [chrome.themeChip, selected && chrome.themeChipSelected, pressed && styles.pressed]}>
+          <View style={[chrome.themeSwatch, { backgroundColor: palette.background, borderColor: palette.border }]}>
+            <View style={[chrome.themeSwatchRoute, { backgroundColor: palette.route }]} />
+            <View style={[chrome.themeSwatchDot, { backgroundColor: palette.accent }]} />
+          </View>
+          <Text numberOfLines={1} style={[chrome.themeChipText, selected && chrome.themeChipTextSelected]}>{themeCatalog[id].name}</Text>
+        </Pressable>;
+      })}
+    </ScrollView>
   </View>;
 }
 
 function ShareChoiceRow({ label, value, choices, onSelect }: { label: string; value: string; choices: readonly (readonly [string, string])[]; onSelect: (value: string) => void }) {
   const uiStyles = useThemedStyles(styles);
+  const appTheme = useAppTheme();
+
+  if (V4_SHARE) {
+    const chrome = v4Chrome(appTheme.id);
+    return <View style={chrome.choiceRow}>
+      <Text style={chrome.choiceLabel}>{label}</Text>
+      <View accessibilityRole="tablist" accessibilityLabel={label} style={chrome.segmented}>{choices.map(([choice, title]) => {
+        const selected = value === choice;
+        return <Pressable key={choice} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => { if (!selected) { void haptics.selection(); onSelect(choice); } }} style={[chrome.segment, selected && chrome.segmentSelected]}>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[chrome.segmentText, selected && chrome.segmentTextSelected]}>{title}</Text>
+        </Pressable>;
+      })}</View>
+    </View>;
+  }
 
   return <View style={uiStyles.choiceRow}><Text style={uiStyles.choiceLabel}>{label}</Text><View style={uiStyles.choiceChips}>{choices.map(([choice, title]) => <Pressable key={choice} onPress={() => onSelect(choice)} style={[uiStyles.choiceChip, value === choice && uiStyles.choiceChipActive]}><Text style={[uiStyles.choiceChipText, value === choice && uiStyles.choiceChipTextActive]}>{title}</Text></Pressable>)}</View></View>;
 }
 
-function JourneyDeckMapTile({ uri, left, top, width, height }: { uri: string; left: number; top: number; width: number; height: number }) {
+function JourneyDeckMapTile({ uri, left, top, width, height, matrix, background }: { uri: string; left: number; top: number; width: number; height: number; matrix: number[]; background: string }) {
   const image = useImage(uri);
   const [size, setSize] = useState({ width: 0, height: 0 });
   return <View
@@ -221,19 +405,20 @@ function JourneyDeckMapTile({ uri, left, top, width, height }: { uri: string; le
       const { width, height } = event.nativeEvent.layout;
       setSize(current => current.width === width && current.height === height ? current : { width, height });
     }}
-    style={[styles.shareRouteTile, { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%` }]}
+    style={[styles.shareRouteTile, { left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`, backgroundColor: background }]}
   >
     {image && size.width > 0 && size.height > 0 && <Canvas style={StyleSheet.absoluteFill}>
       <SkiaImage image={image} x={0} y={0} width={size.width} height={size.height} fit="fill">
-        <ColorMatrix matrix={shareMapColorMatrix} />
+        <ColorMatrix matrix={matrix} />
       </SkiaImage>
     </Canvas>}
   </View>;
 }
 
-function ShareRouteSnapshot({ route, songPoints, mapStyle, trimmedStart, trimmedEnd }: { route: [number, number][]; songPoints: { index: number; coordinate: [number, number] }[]; mapStyle: JourneyShareMapStyle; trimmedStart: boolean; trimmedEnd: boolean }) {
+function ShareRouteSnapshot({ route, songPoints, mapStyle, trimmedStart, trimmedEnd, palette }: { route: [number, number][]; songPoints: { index: number; coordinate: [number, number] }[]; mapStyle: JourneyShareMapStyle; trimmedStart: boolean; trimmedEnd: boolean; palette: CardPalette }) {
+  const frame = V4_SHARE ? { backgroundColor: palette.mapBackground, borderColor: palette.border } : null;
   const valid = route.filter(([longitude, latitude]) => Number.isFinite(longitude) && Number.isFinite(latitude));
-  if (valid.length < 2) return <View style={[styles.shareRouteSnapshot, styles.shareRouteFallback]}><Text style={styles.shareRouteFallbackText}>{trimmedStart || trimmedEnd ? 'PRIVATE HOME OR WORK ROUTE HIDDEN' : 'ROUTE PREVIEW UNAVAILABLE'}</Text></View>;
+  if (valid.length < 2) return <View style={[styles.shareRouteSnapshot, styles.shareRouteFallback, frame]}><Text style={[styles.shareRouteFallbackText, V4_SHARE && { color: palette.muted }]}>{trimmedStart || trimmedEnd ? 'PRIVATE HOME OR WORK ROUTE HIDDEN' : 'ROUTE PREVIEW UNAVAILABLE'}</Text></View>;
   const tileSize = 256, snapshotWidth = tileSize * 7, snapshotHeight = tileSize * 3;
   const SHARE_ROUTE_WIDTH_FILL = 0.84, SHARE_ROUTE_HEIGHT_FILL = 0.76;
   const mercatorPoint = ([longitude, latitude]: [number, number], zoom: number) => {
@@ -283,19 +468,22 @@ function ShareRouteSnapshot({ route, songPoints, mapStyle, trimmedStart, trimmed
   const markers = songPoints
     .filter(point => Number.isFinite(point.coordinate[0]) && Number.isFinite(point.coordinate[1]))
     .map(point => ({ ...point, projected: mercatorPoint(point.coordinate, tileZoom) }));
-  return <View style={styles.shareRouteSnapshot}>
-    {mapStyle !== 'route' && tiles.map(tile => <JourneyDeckMapTile key={tile.key} uri={tile.uri} left={tile.left} top={tile.top} width={tile.width} height={tile.height} />)}
-    <View style={[styles.shareRouteTint, { backgroundColor: mapStyle === 'dim' ? 'rgba(5,2,10,0.32)' : mapStyle === 'route' ? shareMapPalette.background : 'rgba(5,2,10,0.02)' }]} />
+  const tint = V4_SHARE
+    ? mapStyle === 'dim' ? withAlpha(palette.mapBackground, 0.32) : mapStyle === 'route' ? palette.mapBackground : withAlpha(palette.mapBackground, 0.02)
+    : mapStyle === 'dim' ? 'rgba(5,2,10,0.32)' : mapStyle === 'route' ? shareMapPalette.background : 'rgba(5,2,10,0.02)';
+  return <View style={[styles.shareRouteSnapshot, frame]}>
+    {mapStyle !== 'route' && tiles.map(tile => <JourneyDeckMapTile key={tile.key} uri={tile.uri} left={tile.left} top={tile.top} width={tile.width} height={tile.height} matrix={palette.mapMatrix} background={palette.mapBackground} />)}
+    <View style={[styles.shareRouteTint, { backgroundColor: tint }]} />
     <Svg width="100%" height="100%" viewBox={`0 0 ${snapshotWidth} ${snapshotHeight}`}>
-      <Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={shareMapPalette.routeWarm} /><Stop offset="0.55" stopColor={shareMapPalette.route} /><Stop offset="1" stopColor="#ff4f38" /></SvgLinearGradient>{trimmedStart && <SvgLinearGradient id="shareStartPrivacyFade" gradientUnits="userSpaceOnUse" x1={first.x} y1={first.y} x2={startFadePoints.at(-1)!.x} y2={startFadePoints.at(-1)!.y}><Stop offset="0" stopColor={shareMapPalette.routeWarm} stopOpacity="0" /><Stop offset="1" stopColor={shareMapPalette.routeWarm} stopOpacity="1" /></SvgLinearGradient>}{trimmedEnd && <SvgLinearGradient id="shareEndPrivacyFade" gradientUnits="userSpaceOnUse" x1={endFadePoints[0]!.x} y1={endFadePoints[0]!.y} x2={last.x} y2={last.y}><Stop offset="0" stopColor={shareMapPalette.route} stopOpacity="1" /><Stop offset="1" stopColor={shareMapPalette.route} stopOpacity="0" /></SvgLinearGradient>}</Defs>
-      {corePolyline && <><Polyline points={corePolyline} fill="none" stroke={shareMapPalette.route} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" opacity="0.22" /><Polyline points={corePolyline} fill="none" stroke="#09020a" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" /><Polyline points={corePolyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
+      <Defs><SvgLinearGradient id="shareRouteGradient" x1="0" y1="0" x2="1" y2="1"><Stop offset="0" stopColor={palette.routeWarm} /><Stop offset="0.55" stopColor={palette.route} /><Stop offset="1" stopColor={palette.routeEnd} /></SvgLinearGradient>{trimmedStart && <SvgLinearGradient id="shareStartPrivacyFade" gradientUnits="userSpaceOnUse" x1={first.x} y1={first.y} x2={startFadePoints.at(-1)!.x} y2={startFadePoints.at(-1)!.y}><Stop offset="0" stopColor={palette.routeWarm} stopOpacity="0" /><Stop offset="1" stopColor={palette.routeWarm} stopOpacity="1" /></SvgLinearGradient>}{trimmedEnd && <SvgLinearGradient id="shareEndPrivacyFade" gradientUnits="userSpaceOnUse" x1={endFadePoints[0]!.x} y1={endFadePoints[0]!.y} x2={last.x} y2={last.y}><Stop offset="0" stopColor={palette.route} stopOpacity="1" /><Stop offset="1" stopColor={palette.route} stopOpacity="0" /></SvgLinearGradient>}</Defs>
+      {corePolyline && <><Polyline points={corePolyline} fill="none" stroke={palette.route} strokeWidth="22" strokeLinecap="round" strokeLinejoin="round" opacity="0.22" /><Polyline points={corePolyline} fill="none" stroke={palette.routeShadow} strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" /><Polyline points={corePolyline} fill="none" stroke="url(#shareRouteGradient)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
       {trimmedStart && <><Polyline points={startFadePolyline} fill="none" stroke="url(#shareStartPrivacyFade)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" opacity="0.2" /><Polyline points={startFadePolyline} fill="none" stroke="url(#shareStartPrivacyFade)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
       {trimmedEnd && <><Polyline points={endFadePolyline} fill="none" stroke="url(#shareEndPrivacyFade)" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" opacity="0.2" /><Polyline points={endFadePolyline} fill="none" stroke="url(#shareEndPrivacyFade)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" /></>}
-      {!trimmedStart && <Circle cx={first.x} cy={first.y} r="9" fill={shareMapPalette.routeWarm} stroke="#fff3eb" strokeWidth="2" />}
-      {!trimmedEnd && <Circle cx={last.x} cy={last.y} r="9" fill={shareMapPalette.route} stroke="#fff3eb" strokeWidth="2" />}
+      {!trimmedStart && <Circle cx={first.x} cy={first.y} r="9" fill={palette.routeWarm} stroke={palette.routeRing} strokeWidth="2" />}
+      {!trimmedEnd && <Circle cx={last.x} cy={last.y} r="9" fill={palette.route} stroke={palette.routeRing} strokeWidth="2" />}
       {trimmedStart && <PrivateRouteCutMarker point={first} neighbor={screenPoints[1]!} />}
       {trimmedEnd && <PrivateRouteCutMarker point={last} neighbor={screenPoints.at(-2)!} />}
-      {markers.map(marker => { const cx = (marker.projected.x - viewLeft) * tileRenderScale, cy = (marker.projected.y - viewTop) * tileRenderScale; return <G key={`share-song-${marker.index}`}><Circle cx={cx} cy={cy} r="18" fill="#8f45e8" stroke="#f5eaff" strokeWidth="3" /><SvgText x={cx} y={cy + 6} fill="#ffffff" fontSize="17" fontWeight="900" textAnchor="middle">{marker.index}</SvgText></G>; })}
+      {markers.map(marker => { const cx = (marker.projected.x - viewLeft) * tileRenderScale, cy = (marker.projected.y - viewTop) * tileRenderScale; return <G key={`share-song-${marker.index}`}><Circle cx={cx} cy={cy} r="18" fill={palette.songPin} stroke={palette.songPinRing} strokeWidth="3" /><SvgText x={cx} y={cy + 6} fill={palette.songPinText} fontSize="17" fontWeight="900" textAnchor="middle">{marker.index}</SvgText></G>; })}
     </Svg>
   </View>;
 }
@@ -332,7 +520,65 @@ function selectedJourneyStats(journey: NonNullable<ShareCardPayload['journey']>,
   return selected.map(item => values[item]).slice(0, 5);
 }
 
+const chromeCache = new Map<ThemeId, ReturnType<typeof createV4Chrome>>();
+/** Sheet chrome for the V4 share card, drawn from the active app theme. */
+function v4Chrome(id: ThemeId) {
+  let chrome = chromeCache.get(id);
+  if (!chrome) { chrome = createV4Chrome(id); chromeCache.set(id, chrome); }
+  return chrome;
+}
+
+function createV4Chrome(id: ThemeId) {
+  const c = redesignColors(id, themeCatalog[id].palette);
+  const light = themeCatalog[id].mode === 'light';
+  return StyleSheet.create({
+    modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: light ? withAlpha(c.text, 0.32) : '#0000009e' },
+    sheet: { maxHeight: '94%', marginHorizontal: 8, marginBottom: 8, overflow: 'hidden', borderRadius: 32, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.page, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 24, shadowOffset: { width: 0, height: -6 } },
+    grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, backgroundColor: c.track },
+    header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12 },
+    kicker: { color: c.textSecondary, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
+    title: { color: c.text, fontFamily: SERIF, fontSize: 28, lineHeight: 34, fontWeight: '600', letterSpacing: -0.4 },
+    close: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surfaceStrong },
+    closeText: { color: c.text, fontSize: 26, lineHeight: 28, fontWeight: '500' },
+    previewWrap: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 18, gap: 16 },
+    cardShadow: { borderRadius: 24, shadowColor: c.shadow, shadowOpacity: 1, shadowRadius: 22, shadowOffset: { width: 0, height: 12 } },
+    controls: { width: '100%', gap: 14, padding: 16, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surface },
+    controlsKicker: { color: c.textSecondary, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
+    controlsStatsKicker: { marginTop: 2 },
+    choiceRow: { gap: 8 },
+    choiceLabel: { color: c.textTertiary, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
+    segmented: { flexDirection: 'row', padding: 3, borderRadius: 12, backgroundColor: c.track },
+    segment: { flex: 1, minHeight: 34, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: 'transparent' },
+    segmentSelected: { backgroundColor: c.surfaceStrong, borderColor: c.border },
+    segmentText: { color: c.textSecondary, fontSize: 13, fontWeight: '600' },
+    segmentTextSelected: { color: c.text, fontWeight: '700' },
+    themeRow: { gap: 8, paddingRight: 4 },
+    themeChip: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 6, paddingRight: 12, borderRadius: 22, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.surfaceStrong },
+    themeChipSelected: { borderColor: c.accent, backgroundColor: c.accentSoft },
+    themeSwatch: { width: 30, height: 30, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+    themeSwatchRoute: { position: 'absolute', width: 40, height: 3, borderRadius: 2, transform: [{ rotate: '-28deg' }] },
+    themeSwatchDot: { width: 9, height: 9, borderRadius: 5 },
+    themeChipText: { color: c.textSecondary, fontSize: 13, fontWeight: '600' },
+    themeChipTextSelected: { color: c.text, fontWeight: '700' },
+    statToggleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    statToggle: { width: '48.5%', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surfaceStrong, paddingHorizontal: 12 },
+    statToggleOn: { borderColor: c.accent, backgroundColor: c.accentSoft },
+    check: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: c.textTertiary, alignItems: 'center', justifyContent: 'center' },
+    checkMark: { fontSize: 12, lineHeight: 14, fontWeight: '800' },
+    statToggleText: { color: c.text, fontSize: 14, fontWeight: '600' },
+    privacyNote: { width: '100%', padding: 14, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surface, gap: 4 },
+    privacyNoteTitle: { color: c.text, fontSize: 14, fontWeight: '700' },
+    privacyNoteText: { color: c.textSecondary, fontSize: 13, lineHeight: 18 },
+    shareButton: { minHeight: 54, marginHorizontal: 20, marginBottom: 16, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: c.accent },
+    shareText: { color: c.onAccent, fontSize: 17, fontWeight: '700' },
+  });
+}
+
 const styles = StyleSheet.create({
+  flex: { flex: 1, minWidth: 0 },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.985 }] },
+  v4CardTitle: { fontFamily: SERIF, fontWeight: '600', letterSpacing: -0.6 },
+  v4JourneyTitle: { fontFamily: SERIF, fontSize: 25, lineHeight: 29, fontWeight: '600', letterSpacing: -0.5 },
   modalRoot: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#030106cc' },
   sheet: { maxHeight: '94%', margin: 8, overflow: 'hidden', borderRadius: 28, borderWidth: 1, borderColor: '#704d8b', backgroundColor: '#0a0710', shadowColor: '#000', shadowOpacity: 0.8, shadowRadius: 28, shadowOffset: { width: 0, height: -8 } },
   sheetHeader: { minHeight: 72, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#3b2946' },
