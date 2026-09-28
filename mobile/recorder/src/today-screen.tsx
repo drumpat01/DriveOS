@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { HomeLayoutEditorSheet } from './home-widget-grid';
 import { defaultTodayLayout, moveTodayCard, normalizeTodayLayout, toggleTodayCard, TODAY_CARD_LABELS, type TodayCard, type TodayCardId } from './today-layout';
@@ -135,7 +135,7 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
           <TouchPressable accessibilityRole="button" accessibilityLabel={`Move ${TODAY_CARD_LABELS[card.id]} down`} disabled={index === layout.length - 1} hitSlop={6} onPress={() => save(moveTodayCard(layout, card.id, 1))} style={styles.editorArrow}>
             <SymbolView name="chevron.down" tintColor={index === layout.length - 1 ? colors.textTertiary : colors.accent} size={15} weight="semibold" />
           </TouchPressable>
-          <Switch accessibilityLabel={`Show ${TODAY_CARD_LABELS[card.id]} on Today`} value={card.visible} onValueChange={() => save(toggleTodayCard(layout, card.id))} trackColor={{ false: colors.track, true: colors.accent }} />
+          <RowToggle label={`Show ${TODAY_CARD_LABELS[card.id]} on Today`} value={card.visible} onChange={() => save(toggleTodayCard(layout, card.id))} />
         </View>)}
       </View>
     </HomeLayoutEditorSheet>
@@ -277,7 +277,22 @@ function OnThisDayCard({ memory, yearsAgo, journeys, onPress }: { memory: Journe
   </CardDetailLink>;
 }
 
+/**
+ * A theme-colored on/off toggle with a fixed size. The iOS 26 native switch draws larger than
+ * the box React Native reserves for it, which pushed it off-center in these rows.
+ */
+function RowToggle({ label, value, onChange }: { label: string; value: boolean; onChange: () => void }) {
+  const colors = useRedesignColors();
+  return <Pressable accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: value }} hitSlop={8}
+    onPress={() => { void haptics.selection(); onChange(); }}
+    style={[styles.toggle, { backgroundColor: value ? colors.accent : colors.track, borderColor: value ? colors.accent : colors.border }]}>
+    <View style={[styles.toggleKnob, { alignSelf: value ? 'flex-end' : 'flex-start', backgroundColor: value ? colors.onAccent : colors.text }]} />
+  </Pressable>;
+}
+
 const styles = StyleSheet.create({
+  toggle: { width: 50, height: 30, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, padding: 2, justifyContent: 'center' },
+  toggleKnob: { width: 25, height: 25, borderRadius: 12.5 },
   section: { gap: 12 },
   headerButtons: { flexDirection: 'row', gap: 10 },
   askBar: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54, paddingLeft: 10, paddingRight: 14 },
