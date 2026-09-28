@@ -46,3 +46,6 @@ __pycache__/
 *.ipa.enc
 .env*
 *.log
+
+# App Store Connect CLI local review artifacts
+.asc/

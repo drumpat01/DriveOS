@@ -27,7 +27,7 @@ export function loadPhotoMatchingMemory(userId: string, memoryId: string) {
   return { name: memory.name, journeys };
 }
 
-/** Full archive queries avoid both the 45-day UI window and the music dashboard's 500-play cap. */
+/** Full archive queries avoid both the free UI window and the music dashboard's 500-play cap. */
 export async function loadYearOnRoadData(userId: string, cancelled: () => boolean): Promise<YearOnRoadData> {
   initializeLocalStore();
   const assertOwner = () => { if (cancelled() || getCurrentUser().id !== userId) throw new Error('The recap was closed or your profile changed.'); };

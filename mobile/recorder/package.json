@@ -107,7 +107,13 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test:native-navigation": "node --experimental-strip-types --test tests/native-navigation.test.mts"
+    "test:native-navigation": "node --experimental-strip-types --test tests/native-navigation.test.mts",
+    "store:validate": "node scripts/asc-store.mjs validate",
+    "store:pull": "node scripts/asc-store.mjs pull",
+    "store:plan": "node scripts/asc-store.mjs plan",
+    "store:keywords": "node scripts/asc-store.mjs keywords",
+    "store:review": "node scripts/asc-store.mjs review",
+    "store:subscriptions": "node scripts/asc-store.mjs subscriptions"
   },
   "private": true,
   "allowScripts": {

@@ -83,7 +83,7 @@ export function IpadSettingsScreen(p: Props) {
     music: p.providerName,
     account: p.cloud.status === 'synced' ? 'iCloud synced' : p.cloud.detail,
     places: `${placeCount} saved`,
-    membership: p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days',
+    membership: p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Today only',
   }), [p.cloud.detail, p.cloud.status, p.membershipTier, p.providerName, p.tessieConnected, placeCount, theme.name]);
 
   const icon = (name: SFSymbol, size = 24) => <View style={[styles.icon, { backgroundColor: theme.id === 'midnight-canopy' ? theme.palette.coral : theme.id === 'redline' ? touringGreen : colors.inset }]}><SymbolView name={name} tintColor={theme.id === 'midnight-canopy' || theme.id === 'redline' ? colors.text : colors.accent} size={size} /></View>;
@@ -139,7 +139,7 @@ export function IpadSettingsScreen(p: Props) {
   </View>;
   const achievements = <AchievementsOverview journeys={p.journeys} memories={p.memories} />;
   const membership = <View testID="ipad-settings-membership" style={styles.detailStack}>
-    <View style={panel}><View style={styles.row}>{icon('crown')}<View style={styles.flex}><Text style={title}>{p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Latest 45 days'}</Text><Text style={body}>{p.membershipTier === 'paid' ? `Atlas and complete history unlocked${p.membershipExpirationDate ? ` through ${new Date(p.membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>{button(p.membershipTier === 'paid' ? 'Manage' : 'Unlock', p.onMembership, { primary: true })}</View></View>
+    <View style={panel}><View style={styles.row}>{icon('crown')}<View style={styles.flex}><Text style={title}>{p.membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free · Today only'}</Text><Text style={body}>{p.membershipTier === 'paid' ? `Atlas and complete history unlocked${p.membershipExpirationDate ? ` through ${new Date(p.membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>{button(p.membershipTier === 'paid' ? 'Manage' : 'Unlock', p.onMembership, { primary: true })}</View></View>
     {p.internalDiagnostics && <>
       <Pressable accessibilityRole="button" accessibilityLabel="Advanced Support" accessibilityState={{ expanded: p.advancedVisible }} onPress={p.onToggleAdvanced} style={({ pressed }) => [panel, styles.placeRow, pressed && styles.dim]}>{icon('wrench.and.screwdriver')}<View style={styles.flex}><Text style={title}>Advanced Support</Text><Text style={body}>Internal diagnostics and test controls.</Text></View><SymbolView name={p.advancedVisible ? 'chevron.up' : 'chevron.down'} tintColor={colors.accent} size={15} /></Pressable>
       <ExpandingSection expanded={p.advancedVisible}><View style={panel}>{button('Open Data Health', p.onDataHealth, { accessibilityLabel: 'Open Data Health' })}</View></ExpandingSection>

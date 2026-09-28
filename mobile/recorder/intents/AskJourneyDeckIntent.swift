@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import AppIntents
 import StoreKit
 import SwiftUI
@@ -20,10 +21,29 @@ private let journeyDeckPlusProductIDs: Set<String> = [
   "com.journeydeck.recorder.pro.annual",
 ]
 
+/// Must match PLUS_TRIAL_* in src/plus-trial.ts (expo-secure-store's Keychain layout).
+private func plusTrialActive(now: Date = Date()) -> Bool {
+  let key = Data("journeydeck.plus-trial.started-at".utf8)
+  for service in ["journeydeck.plus-trial:no-auth", "journeydeck.plus-trial"] {
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+      kSecAttrGeneric as String: key, kSecAttrAccount as String: key,
+      kSecMatchLimit as String: kSecMatchLimitOne, kSecReturnData as String: true,
+    ]
+    var item: CFTypeRef?
+    guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess, let data = item as? Data,
+          let text = String(data: data, encoding: .utf8), let started = Double(text) else { continue }
+    let startedAt = Date(timeIntervalSince1970: started / 1000)
+    return now >= startedAt && now < startedAt.addingTimeInterval(7 * 86_400)
+  }
+  return false
+}
+
 /// Siri runs without the JavaScript app, so it checks StoreKit directly. The
 /// TestFlight Plus unlock is a build-time Info.plist flag, never a user setting.
 private func hasJourneyDeckPlus() async -> Bool {
   if Bundle.main.object(forInfoDictionaryKey: "JourneyDeckPlusUnlocked") as? Bool == true { return true }
+  if plusTrialActive() { return true }
   for await result in StoreKit.Transaction.currentEntitlements {
     if case .verified(let transaction) = result, journeyDeckPlusProductIDs.contains(transaction.productID),
        transaction.revocationDate == nil { return true }

@@ -3,15 +3,16 @@ import test from 'node:test';
 
 import {
   currentMembershipEntitlements, entitlementsForMembershipTier, entitlementsForTestFlightMembership, entitlementsForVerifiedMembership,
-  membershipCanAccessDate, membershipHistoryCutoff,
+  membershipCanAccessDate, membershipHistoryCutoff, withPlusTrial,
 } from '../src/membership-entitlements.ts';
 
-test('free members receive Statistics and a rolling 45-day timeline', () => {
+test('free members receive Statistics and a today-only timeline', () => {
   assert.deepEqual(entitlementsForMembershipTier('free'), {
     tier: 'free',
     atlasAccess: false,
     tessieAccess: false,
-    timelineHistoryDays: 45,
+    timelineHistoryDays: 0,
+    trialEndsAt: null,
   });
 });
 
@@ -21,6 +22,7 @@ test('paid members receive Atlas and their complete timeline', () => {
     atlasAccess: true,
     tessieAccess: false,
     timelineHistoryDays: null,
+    trialEndsAt: null,
   });
 });
 
@@ -45,18 +47,27 @@ test('V3 Tessie needs verified paid membership; V2 and preview Atlas remain clos
 test('Build 36 TestFlight grants Plus and Tessie without a sandbox purchase', () => {
   const free = { nativeModuleAvailable: true, tier: 'free' as const };
   assert.deepEqual(entitlementsForTestFlightMembership(free, true, true), {
-    tier: 'paid', atlasAccess: true, tessieAccess: true, timelineHistoryDays: null,
+    tier: 'paid', atlasAccess: true, tessieAccess: true, timelineHistoryDays: null, trialEndsAt: null,
   });
   assert.equal(entitlementsForTestFlightMembership(free, false, true).tessieAccess, false);
   assert.equal(entitlementsForTestFlightMembership(free, true, false).tessieAccess, false);
 });
 
-test('free history stops at 45 days while paid history has no cutoff', () => {
-  const now = Date.parse('2026-08-31T12:00:00.000Z');
+test('free history starts at local midnight today while paid history has no cutoff', () => {
+  const now = new Date(2026, 8, 27, 15, 30).getTime();
   const free = entitlementsForMembershipTier('free');
   const paid = entitlementsForMembershipTier('paid');
-  assert.equal(membershipHistoryCutoff(free, now), now - 45 * 86_400_000);
-  assert.equal(membershipCanAccessDate(free, '2026-08-01T12:00:00.000Z', now), true);
-  assert.equal(membershipCanAccessDate(free, '2026-06-01T12:00:00.000Z', now), false);
+  assert.equal(membershipHistoryCutoff(free, now), new Date(2026, 8, 27).getTime());
+  assert.equal(membershipCanAccessDate(free, new Date(2026, 8, 27, 7).toISOString(), now), true);
+  assert.equal(membershipCanAccessDate(free, new Date(2026, 8, 26, 23).toISOString(), now), false);
   assert.equal(membershipCanAccessDate(paid, '2020-01-01T00:00:00.000Z', now), true);
+});
+
+test('the Plus trial unlocks a free member until it ends and never changes a paid one', () => {
+  const now = Date.parse('2026-09-27T12:00:00Z'), ends = now + 86_400_000;
+  const free = entitlementsForMembershipTier('free'), paid = entitlementsForMembershipTier('paid');
+  assert.deepEqual(withPlusTrial(free, ends, now), { ...paid, trialEndsAt: ends });
+  assert.equal(withPlusTrial(free, ends, ends), free);
+  assert.equal(withPlusTrial(free, null, now), free);
+  assert.equal(withPlusTrial(paid, ends, now), paid);
 });
