@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { V4_SERIF, v4Styles } from './v4-phone';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView } from 'expo-symbols';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -74,7 +75,7 @@ export function FirstRunWelcomeScreen({ onStart, contentOnly = false }: { onStar
   </View>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   screen: { flex: 1 },
   safeArea: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   scroll: { flex: 1 },
@@ -99,4 +100,9 @@ const styles = StyleSheet.create({
   startPressed: { opacity: 0.82, transform: [{ scale: 0.99 }] },
   startLabel: { fontSize: 17, lineHeight: 24, fontWeight: '800', textAlign: 'center' },
   nextStep: { maxWidth: 360, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 11 },
+}), {
+  headline: { fontFamily: V4_SERIF, fontWeight: '600' },
+  sampleMemoryCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
+  privacyCard: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  startButton: { borderRadius: 30 },
 });

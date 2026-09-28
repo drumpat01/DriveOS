@@ -123,5 +123,5 @@ test('theme switching does not remount the recorder or change exported card styl
   assert.match(share, /const uiStyles = useThemedStyles\(styles\)/);
   const preview = share.slice(share.indexOf('const JourneySharePreview'), share.indexOf('function JourneyShareControls'));
   assert.doesNotMatch(preview, /useThemedStyles|useAppTheme|uiStyles/);
-  assert.match(share, /ref=\{cardRef\} collapsable=\{false\} style=\{styles.card\}/);
+  assert.match(share, /ref=\{ref\} collapsable=\{false\} style=\{styles.card\}/);
 });

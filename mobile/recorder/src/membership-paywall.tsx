@@ -1,4 +1,5 @@
 import { useAppTheme } from './app-theme';
+import { V4_SERIF, v4Styles } from './v4-phone';
 import { headerImageSource } from './header-image-sources';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -293,7 +294,7 @@ function BenefitRow({ icon, title, description, colors, last = false }: { icon: 
   </View>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   safe: { flex: 1 },
   content: { flexGrow: 1, paddingBottom: journeyDeckSpacing[6] },
   hero: { width: '100%', justifyContent: 'flex-end', overflow: 'hidden' },
@@ -345,4 +346,16 @@ const styles = StyleSheet.create({
   confirmPrimaryText: { fontSize: 15, fontWeight: '800' },
   confirmSecondary: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   confirmSecondaryText: { fontSize: 13, fontWeight: '700' },
+}), {
+  close: { width: 44, height: 44, borderWidth: StyleSheet.hairlineWidth },
+  title: { fontFamily: V4_SERIF, fontWeight: '600' },
+  insightCard: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  insightValue: { fontFamily: V4_SERIF, fontWeight: '600' },
+  plan: { borderRadius: 22 },
+  planPrice: { fontFamily: V4_SERIF, fontWeight: '600' },
+  unavailable: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  cta: { borderRadius: 28 },
+  confirmCard: { borderRadius: 28, borderWidth: StyleSheet.hairlineWidth },
+  confirmTitle: { fontFamily: V4_SERIF, fontWeight: '600' },
+  confirmPrimary: { borderRadius: 24 },
 });

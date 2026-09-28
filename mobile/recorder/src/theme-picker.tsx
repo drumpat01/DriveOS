@@ -20,7 +20,10 @@ import {
   themeRequiresPlus,
   type ThemeId,
 } from './theme-catalog';
-import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED } from './release-features';
+import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
+
+/** V4 cards: serif names and hairline borders, matching the redesigned screens. */
+const V4 = V4_REDESIGN_ENABLED;
 
 const previews: Record<ThemeId, number> = {
   dark: require('../assets/cinematic-home-main-photo-v1.jpg'),
@@ -72,7 +75,7 @@ function ThemeCard({ id, selected, locked, isPlus, compact, onSelect, register }
     accessibilityState={{ checked: selected, selected }}
     pressRetentionOffset={16}
     onPress={event => onSelect(id, event)}
-    style={({ pressed }) => [styles.themeCard, compact && styles.compactThemeCard, {
+    style={({ pressed }) => [styles.themeCard, compact && styles.compactThemeCard, V4 && styles.v4ThemeCard, V4 && selected && styles.v4ThemeCardSelected, {
       backgroundColor: palette.card,
       borderColor: selected ? palette.accent : palette.line,
       shadowColor: palette.accent,
@@ -89,7 +92,7 @@ function ThemeCard({ id, selected, locked, isPlus, compact, onSelect, register }
       </View>}
     </View>
     <View style={styles.themeCopy}>
-      <Text style={[styles.themeName, compact && styles.compactThemeName, { color: palette.text }]}>{choice.name}</Text>
+      <Text style={[styles.themeName, compact && styles.compactThemeName, V4 && styles.v4ThemeName, { color: palette.text }]}>{choice.name}</Text>
       <Text style={[styles.appearance, { color: palette.accent }]}>{choice.mode.toUpperCase()}</Text>
       <Text style={[styles.description, { color: palette.muted }]}>{choice.description}</Text>
       <View accessible={false} style={styles.swatches}>{swatches.map((color, index) => <View key={`${color}-${index}`} style={[styles.swatch, { backgroundColor: color, borderColor: `${palette.text}30` }]} />)}</View>
@@ -181,6 +184,9 @@ const styles = StyleSheet.create({
   plusBadge: { position: 'absolute', left: 8, top: 8, fontSize: 8, lineHeight: 12, fontWeight: '900', letterSpacing: 1, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 9, overflow: 'hidden' },
   selectedBadge: { position: 'absolute', right: 8, top: 8, width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   themeCopy: { flexGrow: 1, paddingHorizontal: 11, paddingTop: 10, paddingBottom: 12, gap: 4 },
+  v4ThemeCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, shadowOpacity: 0 },
+  v4ThemeCardSelected: { borderWidth: 2 },
+  v4ThemeName: { fontFamily: 'ui-serif', fontWeight: '600', letterSpacing: -.3 },
   themeName: { fontSize: 17, lineHeight: 21, fontWeight: '800', letterSpacing: -.2 },
   compactThemeName: { fontSize: 18, lineHeight: 23 },
   appearance: { fontSize: 9, lineHeight: 12, fontWeight: '900', letterSpacing: 1.1 },

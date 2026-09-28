@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { v4Styles } from './v4-phone';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { ensureConnectorAppLink } from './connector-app-link';
@@ -158,7 +159,7 @@ export function ConnectedAssistants({ profileId, appPrivacy, cloudStatus, onSync
   </View>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 20, padding: 18, gap: 12 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   kicker: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
@@ -179,4 +180,10 @@ const styles = StyleSheet.create({
   toggleTitle: { fontSize: 15, fontWeight: '600' },
   disconnect: { minHeight: 44, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   pressed: { opacity: 0.6 },
+}), {
+  card: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  button: { borderRadius: 22 },
+  avatar: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  panel: { borderRadius: 18 },
+  disconnect: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
 });

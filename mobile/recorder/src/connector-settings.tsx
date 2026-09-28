@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, Share, StyleSheet, Switch, Text, View } from 'react-native';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
-import { useAppTheme } from './app-theme';
+import { useV4Theme, V4_SERIF, v4Styles } from './v4-phone';
 import { getPrivatePreference, upsertPrivatePreference } from './local-store';
 import { CONNECTOR_ASSISTANTS, connectorAssistant, type ConnectorAssistantId } from './connector-assistants';
 import { CONNECTOR_PRIVACY_KEY, CONNECTOR_PRIVACY_OPTIONS, normalizeConnectorPrivacy, type ConnectorPrivacy, type ConnectorPrivacyKey } from './connector-privacy';
@@ -33,7 +33,7 @@ export function readConnectorPrivacy(profileId: string): ConnectorPrivacy {
 /** V4 Settings → AI Assistants: pick an assistant, see its setup steps, choose what every assistant may see, then
  * narrow it per connected assistant (connector-connections.tsx). */
 export function ConnectorSettings({ profileId, membershipTier, hasAppleAccount, cloudStatus, onSync, onMembership, onAccount }: Props) {
-  const theme = useAppTheme();
+  const theme = useV4Theme();
   const activeProfile = useRef(profileId);
   activeProfile.current = profileId;
   const [privacy, setPrivacy] = useState<ConnectorPrivacy>(() => readConnectorPrivacy(profileId));
@@ -138,7 +138,7 @@ function Step({ number, text, colors }: { number: string; text: string; colors: 
   </View>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   stack: { gap: 16 },
   flex: { flex: 1 },
   card: { borderWidth: 1, borderRadius: 20, padding: 18, gap: 12 },
@@ -173,4 +173,10 @@ const styles = StyleSheet.create({
   buttonText: { fontSize: 13, fontWeight: '800', textAlign: 'center' },
   footnote: { fontSize: 12, lineHeight: 17 },
   pressed: { opacity: 0.6 },
+}), {
+  card: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
+  title: { fontFamily: V4_SERIF, fontWeight: '600', fontSize: 24, lineHeight: 30, letterSpacing: -0.4 },
+  checkAction: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
+  address: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  button: { borderRadius: 22 },
 });

@@ -98,6 +98,8 @@ import {
   type RecordingModePreferences,
 } from './recording-mode';
 import { ShareCardModal, type ShareCardPayload } from './share-card-modal';
+import { SERIF, useRedesignColors } from './redesign-ui';
+import type { RedesignColors } from './redesign-palette';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
@@ -2911,7 +2913,7 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
   children: ReactNode;
 }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
 
   const insets = useSafeAreaInsets();
   const close = () => {
@@ -2931,9 +2933,9 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       >
-        <AtmosphericBackdrop variant="settings" />
+        {REDESIGN_PHONE ? <RedesignGlow /> : <AtmosphericBackdrop variant="settings" />}
         <View style={styles.settingsEditorNavigation}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={({ pressed }) => [styles.settingsEditorBack, { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, (pressed || backDisabled) && styles.pressed]}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Back" accessibilityState={{ disabled: backDisabled }} disabled={backDisabled} onPress={close} style={({ pressed }) => [styles.settingsEditorBack, !REDESIGN_PHONE && { backgroundColor: theme.palette.card, borderColor: theme.palette.line }, (pressed || backDisabled) && styles.pressed]}>
             <SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} />
           </Pressable>
           {primaryAction && <Pressable accessibilityRole="button" accessibilityState={{ disabled: primaryAction.disabled }} disabled={primaryAction.disabled} onPress={primaryAction.onPress} style={[styles.settingsEditorHeaderAction, primaryAction.disabled && styles.pressed]}><Text style={styles.settingsEditorHeaderActionText}>{primaryAction.label}</Text></Pressable>}
@@ -2948,7 +2950,7 @@ function SettingsEditorScaffold({ eyebrow, title, onBack, backDisabled = false, 
 
 function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { currentUser: LocalUser; appearance: ProfileAppearance; onSaved: (appearance: ProfileAppearance) => void; onBack: () => void }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
 
   const [draft, setDraft] = useState(appearance);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -3001,7 +3003,7 @@ function SettingsProfileEditor({ currentUser, appearance, onSaved, onBack }: { c
 
 function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged, onBack }: { currentUser: LocalUser; slot: SavedPlaceSlot; hasSavedPlace: boolean; onChanged: () => void; onBack: () => void }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
 
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3094,7 +3096,7 @@ function SettingsSavedPlaceEditor({ currentUser, slot, hasSavedPlace, onChanged,
 
 function SettingsCustomPlaceEditor({ currentUser, place, onChanged, onBack }: { currentUser: LocalUser; place?: CustomSavedPlace; onChanged: () => void; onBack: () => void }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
   const [name, setName] = useState(place?.label ?? '');
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3193,7 +3195,7 @@ function ConnectionsScreen({
   onEditorActiveChange: (active: boolean) => void;
 }) {
   const theme = useAppTheme();
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
   const adaptiveLayout = useAdaptiveLayout();
 
   const [advancedSupportVisible, setAdvancedSupportVisible] = useState(false);
@@ -3298,7 +3300,7 @@ function ConnectionsScreen({
 
   const profileCard = <>
     <SectionHeading title="Account" />
-    <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#6d4a78', 'border') }, pressed && styles.pressed]}>
+    <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" accessibilityHint="Change your name and profile photo" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.selectedProvider, styles.staticWidgetGlow, !REDESIGN_PHONE && { borderColor: theme.color('#6d4a78', 'border') }, pressed && styles.pressed]}>
       <View style={[styles.connectionIcon, { overflow: 'hidden', backgroundColor: theme.color('#3a2446', 'surface') }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
       <View style={styles.flex}><Text style={styles.connectionKicker}>JOURNEYDECK PROFILE</Text><Text style={styles.connectionName}>{profileAppearance.displayName}</Text><Text style={styles.connectionDetail}>{appleIdentityStatus === 'authorized' ? 'Apple connected' : 'Apple sign-in is optional'}</Text></View>
       <Text style={styles.savedPlaceAction}>Edit</Text>
@@ -3313,7 +3315,7 @@ function ConnectionsScreen({
   </View>;
   const cloudCard = <>
     <SectionHeading title="iCloud Backup" />
-    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color('#4598ff', 'border') }]}>
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, !REDESIGN_PHONE && { borderColor: theme.color('#4598ff', 'border') }]}>
       <View style={styles.icloudMark}><SymbolView name="icloud.fill" tintColor="#1687ff" size={27} /></View>
       <View style={styles.flex}><Text style={styles.connectionKicker}>PRIVATE · YOUR ICLOUD ACCOUNT</Text><Text style={styles.connectionName}>iCloud Backup</Text><Text numberOfLines={privateCloud.status === 'syncing' ? 1 : undefined} ellipsizeMode="tail" style={styles.connectionDetail}>{privateCloud.detail}</Text></View>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Sync iCloud now" onPress={onPrivateCloudSync} disabled={privateCloud.status === 'syncing' || privateCloud.status === 'unavailable'} style={[styles.changeButton, privateCloud.status === 'syncing' && styles.pressed]}><Text style={styles.changeButtonText}>{privateCloud.status === 'syncing' ? 'Syncing…' : privateCloud.status === 'synced' ? 'Synced' : privateCloud.status === 'unavailable' ? 'Update app' : 'Sync'}</Text></TouchPressable>
@@ -3322,7 +3324,7 @@ function ConnectionsScreen({
   </>;
   const membershipCard = <>
     <SectionHeading title="Membership" />
-    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, !REDESIGN_PHONE && { borderColor: theme.color(membershipTier === 'paid' ? '#ff795b' : '#6d4a78', 'border') }]}>
       {membershipTier === 'paid' ? <Image source={theme.isLight ? require('../assets/icon-light-plum-v1.png') : require('../assets/icon.png')} resizeMode="cover" style={styles.membershipSettingsLogo} /> : <LinearGradient colors={theme.gradient(['#4a285d', '#26152f'])} style={styles.membershipSettingsIcon}><Text style={styles.membershipSettingsIconText}>45</Text></LinearGradient>}
       <View style={styles.flex}><Text style={styles.connectionKicker}>{membershipTier === 'paid' ? 'ATLAS + COMPLETE HISTORY' : 'FREE · LATEST 45 DAYS'}</Text><Text style={styles.connectionName}>{membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Your latest roads are ready'}</Text><Text style={styles.connectionDetail}>{membershipTier === 'paid' ? `Atlas and complete history unlocked${membershipExpirationDate ? ` through ${new Date(membershipExpirationDate).toLocaleDateString()}` : ''}.` : 'Unlock Atlas and your complete history.'}</Text></View>
       <TouchPressable accessibilityRole="button" onPress={onMembership} style={styles.changeButton}><Text style={styles.changeButtonText}>{membershipTier === 'paid' ? 'Manage' : 'Unlock'}</Text></TouchPressable>
@@ -3330,7 +3332,7 @@ function ConnectionsScreen({
   </>;
   const providerCard = <>
     <SectionHeading title="Soundtrack capture" />
-    <View style={[styles.selectedProvider, styles.staticWidgetGlow, { borderColor: theme.color(selected.color, 'border') }]}>
+    <View style={[styles.selectedProvider, styles.staticWidgetGlow, !REDESIGN_PHONE && { borderColor: theme.color(selected.color, 'border') }]}>
       <ProviderMark brand={selected.brand} size={50} />
       <View style={styles.flex}><Text style={styles.connectionKicker}>{selected.id === 'apple-music' ? 'AUTOMATIC SOUNDTRACK · RECOMMENDED' : selected.id === 'shazam' ? 'MANUAL PER SONG · NOT AUTOMATIC' : 'SELECTED MUSIC METHOD'}</Text><Text style={styles.connectionName}>{selected.name}</Text><Text style={styles.connectionDetail}>{selected.summary}</Text></View>
       <TouchPressable accessibilityRole="button" accessibilityLabel="Change soundtrack provider" onPress={onChangeProvider} style={styles.changeButton}><Text style={styles.changeButtonText}>Change</Text></TouchPressable>
@@ -3419,8 +3421,10 @@ function ConnectionsScreen({
     <Text style={styles.settingsSectionLabel}>{label}</Text>
     <View style={styles.settingsHubList}>{categoryIds.map((categoryId, index) => renderCategoryRow(categoryId, index > 0))}</View>
   </View>;
-  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 112 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
-    <AtmosphericBackdrop variant="settings" /><PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." />
+  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + (REDESIGN_PHONE ? 62 : 14), paddingBottom: insets.bottom + 112 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+    {REDESIGN_PHONE
+      ? <><RedesignGlow /><View><Text style={styles.settingsEditorEyebrow}>YOUR DATA, YOUR CHOICE</Text><Text accessibilityRole="header" style={styles.settingsV4LargeTitle}>Settings</Text></View></>
+      : <><AtmosphericBackdrop variant="settings" /><PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." /></>}
     <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.settingsHubProfile, pressed && styles.pressed]}>
       <View style={[styles.settingsHubAvatar, { backgroundColor: theme.palette.inset }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>
       <View style={styles.flex}><Text style={styles.settingsHubProfileName}>{profileAppearance.displayName}</Text><Text style={styles.settingsHubProfileDetail}>Primary driver · {membershipTier === 'paid' ? 'JourneyDeck Membership' : 'Free plan'}</Text></View><Text style={styles.settingsHubAction}>Edit</Text>
@@ -3443,6 +3447,117 @@ function ConnectionsScreen({
     </View>}
     {renderCategoryGroup('ACCOUNT & SUPPORT', ['account', 'membership'])}
   </SettingsScrollView>;
+}
+
+/** Soft accent glow at the top of V4 pages, in place of the V3 atmospheric backdrop. */
+function RedesignGlow() {
+  const colors = useRedesignColors();
+  return <LinearGradient pointerEvents="none" colors={[colors.glow, colors.page]} locations={[0, 1]} style={{ position: 'absolute', top: 0, left: -20, right: -20, height: 420 }} />;
+}
+
+const settingsV4Cache = new WeakMap<RedesignColors, Record<string, object>>();
+/** V4 iPhone Settings: theme-role surfaces, hairline borders, and V4 type in place of the V3 glow cards. */
+function settingsV4Overrides(c: RedesignColors): Record<string, object> {
+  const cached = settingsV4Cache.get(c);
+  if (cached) return cached;
+  const surface = { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surface, shadowOpacity: 0, elevation: 0 };
+  const icon = { borderRadius: 12, borderWidth: 0, backgroundColor: c.accentSoft };
+  const title = { color: c.text, fontSize: 16, lineHeight: 21, fontWeight: '600' };
+  const detail = { color: c.textSecondary, fontSize: 13, lineHeight: 18 };
+  const kicker = { color: c.textSecondary, fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 };
+  const chevron = { color: c.textTertiary, fontSize: 22, lineHeight: 24, fontWeight: '400' };
+  const link = { color: c.accent, fontSize: 15, fontWeight: '600' };
+  const overrides: Record<string, object> = {
+    pageContent: { gap: 20 },
+    settingsRootContent: { paddingHorizontal: 20 },
+    settingsV4LargeTitle: { color: c.text, fontSize: 34, lineHeight: 40, fontWeight: '800', letterSpacing: -0.6, marginTop: 2 },
+    settingsEditorScreen: { backgroundColor: c.page },
+    settingsEditorBack: { backgroundColor: c.surfaceStrong, borderColor: c.border },
+    settingsEditorEyebrow: { ...kicker, marginTop: 14 },
+    settingsEditorTitle: { color: c.text, fontFamily: SERIF, fontSize: 32, lineHeight: 38, fontWeight: '600', letterSpacing: -0.5, marginTop: 4 },
+    settingsEditorHeaderAction: { minHeight: 40, borderRadius: 20, borderWidth: 0, backgroundColor: c.accent, paddingHorizontal: 18 },
+    settingsEditorHeaderActionText: { color: c.onAccent, fontSize: 15, fontWeight: '700' },
+    settingsEditorPanel: { ...surface, shadowOpacity: 0 },
+    settingsCategoryStack: { gap: 16, marginTop: 20 },
+    staticWidgetGlow: { borderColor: c.border, shadowOpacity: 0, elevation: 0 },
+    selectedProvider: { ...surface, padding: 16 },
+    connectionIcon: { backgroundColor: c.surfaceStrong },
+    connectionKicker: kicker,
+    connectionName: { ...title, fontSize: 17, marginTop: 2 },
+    connectionDetail: { ...detail, marginTop: 2 },
+    connectionIconText: { color: c.text },
+    changeButton: { minHeight: 36, borderRadius: 18, borderWidth: 0, backgroundColor: c.accentSoft, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+    changeButtonText: { color: c.accent, fontSize: 14, fontWeight: '700' },
+    settingsHubSection: { gap: 8 },
+    settingsSectionLabel: { ...kicker, marginLeft: 4, marginTop: 4 },
+    settingsHubList: surface, settingsCompactList: surface, savedPlacesCard: surface, settingsDangerGroup: surface, settingsInsetNote: { ...surface, borderRadius: 20 },
+    settingsHubProfile: { ...surface, minHeight: 76, paddingHorizontal: 14 },
+    settingsHubAvatar: { borderRadius: 24, width: 48, height: 48 },
+    settingsHubProfileName: { color: c.text, fontFamily: SERIF, fontSize: 20, lineHeight: 25, fontWeight: '600' },
+    settingsHubProfileDetail: detail,
+    settingsHubAction: link,
+    settingsHubRow: { minHeight: 60, paddingHorizontal: 14 },
+    settingsCompactRow: { minHeight: 64, paddingHorizontal: 14 },
+    settingsInfoRow: { paddingHorizontal: 14 },
+    settingsHubRowBorder: { borderTopColor: c.separator },
+    savedPlaceRowBorder: { borderTopColor: c.separator },
+    settingsHubIcon: icon, settingsCompactIcon: icon, savedPlaceIcon: icon,
+    settingsHubTitle: title, settingsCompactTitle: title, savedPlaceName: title,
+    settingsHubSummary: detail, settingsCompactDetail: detail, savedPlaceStatus: detail,
+    settingsHubChevron: chevron, settingsCompactChevron: chevron,
+    settingsCompactValue: { color: c.textSecondary, fontSize: 14, fontWeight: '500' },
+    savedPlaceAction: link,
+    savedPlacesHint: { ...detail, paddingHorizontal: 16 },
+    settingsDetailIntro: { ...detail, fontSize: 15, lineHeight: 21 },
+    settingsDetailFootnote: detail,
+    settingsStatusText: { color: c.accent, fontSize: 14, fontWeight: '700' },
+    privateCloudTitle: kicker, securityTitle: kicker,
+    securityBody: detail,
+    privateCloudLearn: link,
+    accountSecondaryText: { color: c.text, fontSize: 16, fontWeight: '600' },
+    accountDeleteText: { color: c.danger, fontSize: 16, fontWeight: '600' },
+    settingsDataHealth: { ...surface, shadowOpacity: 0 },
+    settingsDataHealthIcon: icon,
+    settingsDataHealthKicker: kicker,
+    settingsDataHealthTitle: { ...title, fontSize: 17 },
+    settingsDataHealthBody: detail,
+    settingsDataHealthArrow: chevron,
+    sectionHeading: { minHeight: 24, marginTop: 6 },
+    sectionAccent: { display: 'none' },
+    sectionTitle: { ...kicker, fontSize: 12 },
+    sectionAction: link,
+    setupCard: { ...surface, shadowOpacity: 0 },
+    setupTitle: kicker,
+    setupBody: detail,
+    setupInput: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surfaceStrong, color: c.text },
+    profileEditorCard: { borderRadius: 24 },
+    profileEditorBody: detail,
+    profileEditorLabel: kicker,
+    profileEditorPhotoAction: link,
+    profileEditorRemovePhoto: { color: c.textSecondary },
+    profileEditorInput: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: c.border, backgroundColor: c.surfaceStrong, color: c.text, fontWeight: '600' },
+  };
+  settingsV4Cache.set(c, overrides);
+  return overrides;
+}
+
+const settingsStyleCache = new WeakMap<object, WeakMap<RedesignColors, typeof darkStyles>>();
+/** Settings styles: V3 themed styles, restyled with V4 roles on the redesigned iPhone. */
+function useSettingsStyles(): typeof darkStyles {
+  const base = useThemedStyles(darkStyles);
+  const colors = useRedesignColors();
+  if (!REDESIGN_PHONE) return base;
+  let byColors = settingsStyleCache.get(base);
+  if (!byColors) { byColors = new WeakMap(); settingsStyleCache.set(base, byColors); }
+  let merged = byColors.get(colors);
+  if (!merged) {
+    const overrides = settingsV4Overrides(colors);
+    const next: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(overrides)) next[key] = { ...(base as Record<string, object>)[key], ...value };
+    merged = next as typeof darkStyles;
+    byColors.set(colors, merged);
+  }
+  return merged;
 }
 
 function JourneyDeckLogo({ size }: { size: number }) {
@@ -3692,7 +3807,7 @@ function JourneyHeroMetric({ value, label }: { value: string; label: string }) {
 }
 
 function SectionHeading({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
-  const styles = useThemedStyles(darkStyles);
+  const styles = useSettingsStyles();
 
   return <View style={styles.sectionHeading}><View style={styles.sectionTitleGroup}><View style={styles.sectionAccent} /><Text style={styles.sectionTitle}>{title}</Text></View>{action && <Pressable onPress={onAction} disabled={!onAction} style={styles.sectionActionButton}><Text style={[styles.sectionAction, !onAction && styles.sectionActionMuted]}>{action}</Text></Pressable>}</View>;
 }
@@ -4179,6 +4294,7 @@ const darkStyles = StyleSheet.create({
   settingsEditorHeaderAction: { minWidth: 68, minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,121,91,0.5)', backgroundColor: 'rgba(255,96,91,0.14)', paddingHorizontal: 14 },
   settingsEditorHeaderActionText: { color: '#ff9278', fontSize: 14, fontWeight: '900' },
   settingsEditorEyebrow: { color: '#ff8f73', fontSize: 9, fontWeight: '900', letterSpacing: 1.7, marginTop: 10 },
+  settingsV4LargeTitle: { color: '#fff8ff', fontSize: 34, lineHeight: 40, fontWeight: '800' },
   settingsEditorTitle: { color: '#fff8ff', fontSize: 28, lineHeight: 33, fontWeight: '900', letterSpacing: -0.65, marginTop: 5 },
   settingsCategoryStack: { gap: 14, marginTop: 18 },
   settingsHubProfile: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, borderWidth: 1, borderColor: '#53355f', backgroundColor: '#15101e', paddingHorizontal: 13, paddingVertical: 10 },

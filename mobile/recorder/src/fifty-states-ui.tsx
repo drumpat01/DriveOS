@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { useAppTheme } from './app-theme';
+import { useV4Theme, V4_SERIF, v4Styles } from './v4-phone';
 import { getCurrentUser } from './auth';
 import { US_STATES_MAP_VIEW_BOX, US_STATES_MAP_ASPECT_RATIO, US_STATE_PATHS } from './fifty-states-map-data';
 import { filterUSStates, US_STATES, type FiftyStatesFilter, type USStateCode } from './fifty-states-model';
@@ -28,7 +29,7 @@ function mapColors(theme: ReturnType<typeof useAppTheme>) {
 }
 
 export function FiftyStatesMap({ seen, compact = false, onToggle }: { seen: readonly USStateCode[]; compact?: boolean; onToggle?: (code: USStateCode) => void }) {
-  const theme = useAppTheme();
+  const theme = useV4Theme();
   const selected = useMemo(() => new Set(seen), [seen]);
   const colors = mapColors(theme);
   return <View accessible={false} importantForAccessibility={compact ? 'no-hide-descendants' : 'auto'} style={[styles.map, compact && styles.mapCompact]}>
@@ -52,7 +53,7 @@ export function FiftyStatesMap({ seen, compact = false, onToggle }: { seen: read
 }
 
 export function FiftyStatesHomeWidget({ userId, onPress, onLongPress, dense = false, disabled = false }: { userId: string; onPress: () => void; onLongPress?: () => void; dense?: boolean; disabled?: boolean }) {
-  const theme = useAppTheme();
+  const theme = useV4Theme();
   const { seen } = useFiftyStates(userId);
   const remaining = 50 - seen.length;
   return <Pressable testID="fifty-states-home-widget" accessibilityRole="button" accessibilityLabel={`50 States, ${seen.length} of 50 states spotted, ${remaining} remaining`} accessibilityHint={onLongPress ? 'Opens the manual state checklist. Long press to edit Home.' : 'Opens the manual state checklist'} disabled={disabled} onPress={onPress} onLongPress={onLongPress} delayLongPress={1000}
@@ -63,7 +64,7 @@ export function FiftyStatesHomeWidget({ userId, onPress, onLongPress, dense = fa
 }
 
 export function FiftyStatesScreen() {
-  const theme = useAppTheme();
+  const theme = useV4Theme();
   const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const userId = getCurrentUser().id;
@@ -96,7 +97,7 @@ export function FiftyStatesScreen() {
   </View>;
 }
 
-const styles = StyleSheet.create({
+const styles = v4Styles(StyleSheet.create({
   awardCard: { borderRadius: 24, borderWidth: 1, padding: 20, gap: 12, alignItems: 'center' },
   awardTitle: { fontFamily: 'Georgia', fontSize: 24, textAlign: 'center' },
   awardCopy: { fontSize: 14, lineHeight: 21, textAlign: 'center', maxWidth: 520 },
@@ -109,4 +110,19 @@ const styles = StyleSheet.create({
   filters: { flexDirection: 'row', padding: 4, borderRadius: 20, borderWidth: 1 }, filter: { flex: 1, minHeight: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }, filterText: { fontSize: 14, fontWeight: '700' },
   stateGrid: { flexDirection: 'row', flexWrap: 'wrap', margin: -5 }, stateCard: { minHeight: 102, borderRadius: 18, borderWidth: 1, padding: 13, justifyContent: 'space-between' }, stateCardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, stateCode: { fontFamily: 'Georgia', fontSize: 24, fontWeight: '700' }, stateName: { fontSize: 12, lineHeight: 16 }, check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' }, safety: { fontSize: 12, lineHeight: 18, paddingHorizontal: 8, paddingTop: 8 },
   homeWidget: { borderRadius: 24, borderWidth: 1, padding: 18, gap: 10, flexGrow: 1 }, homeWidgetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }, homeWidgetTitle: { fontFamily: 'Georgia', fontSize: 25, fontWeight: '700' }, homeWidgetSubtitle: { fontSize: 12, marginTop: 2 }, homeWidgetStats: { flexDirection: 'row', alignItems: 'flex-end', gap: 14 }, homeWidgetCompactBody: { flexDirection: 'row', alignItems: 'center', gap: 12 }, homeWidgetMiniMap: { width: 104, minWidth: 104 }, homeWidgetProgress: { flex: 1, gap: 5 }, homeWidgetLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6 }, homeWidgetValue: { fontFamily: 'Georgia', fontSize: 26, fontWeight: '700' }, remaining: { minWidth: 72, borderLeftWidth: StyleSheet.hairlineWidth, paddingLeft: 14, alignItems: 'center' }, remainingValue: { fontFamily: 'Georgia', fontSize: 28 }, pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
+}), {
+  awardTitle: { fontFamily: V4_SERIF, fontWeight: '600' },
+  title: { fontFamily: V4_SERIF, fontWeight: '600' },
+  statsValue: { fontFamily: V4_SERIF, fontWeight: '600' },
+  statsCount: { fontFamily: V4_SERIF, fontWeight: '600' },
+  stateCode: { fontFamily: V4_SERIF, fontWeight: '600' },
+  homeWidgetTitle: { fontFamily: V4_SERIF, fontWeight: '600' },
+  iconButton: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth },
+  mapCard: { borderWidth: StyleSheet.hairlineWidth },
+  statsCard: { borderWidth: StyleSheet.hairlineWidth },
+  awardCard: { borderWidth: StyleSheet.hairlineWidth },
+  homeWidget: { borderWidth: StyleSheet.hairlineWidth },
+  filters: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
+  filter: { borderRadius: 11 },
+  stateCard: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
 });

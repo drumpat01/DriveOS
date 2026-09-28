@@ -1,4 +1,5 @@
 import { useAppTheme } from './app-theme';
+import { V4_SERIF, v4Styles } from './v4-phone';
 import { useEffect, useState } from 'react';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -335,7 +336,7 @@ export function FirstRunOnboardingScreen(props: Props) {
   </View>;
 }
 
-const recordingStyles = StyleSheet.create({
+const recordingStyles = v4Styles(StyleSheet.create({
   screen: { flex: 1 },
   safeFrame: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   scroll: { flex: 1 },
@@ -377,4 +378,10 @@ const recordingStyles = StyleSheet.create({
   lastFmPrivacy: { fontSize: 12, lineHeight: 18 },
   musicError: { color: '#ff9b91', fontSize: 13, lineHeight: 19, marginTop: 12 },
   musicButton: { marginTop: 24 },
+}), {
+  backButton: { width: 44, height: 44, borderRadius: 22 },
+  title: { fontFamily: V4_SERIF, fontWeight: '600' },
+  button: { borderRadius: 30 },
+  musicOption: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
+  lastFmInput: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth },
 });

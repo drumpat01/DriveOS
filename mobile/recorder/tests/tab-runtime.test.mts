@@ -736,7 +736,8 @@ test('Journey sharing has web-parity controls and never exports raw saved-place 
   assert.doesNotMatch(shareCard, /Efficiency|EFFICIENCY|'efficiency'/);
   assert.match(shareCard, /function ShareRouteSnapshot/);
   assert.match(shareCard, /function JourneyDeckMapTile/);
-  assert.match(shareCard, /ColorMatrix matrix=\{shareMapColorMatrix\}/);
+  assert.match(shareCard, /mapMatrix: shareMapColorMatrix/);
+  assert.match(shareCard, /ColorMatrix matrix=\{matrix\}/);
   assert.match(shareCard, /background: '#05020a'/);
   assert.match(shareCard, /road: '#8a4c9a'/);
   assert.match(shareCard, /route: '#ff684f'/);
