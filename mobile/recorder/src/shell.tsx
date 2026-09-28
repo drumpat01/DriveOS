@@ -1067,7 +1067,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             await chooseProvider('lastfm');
             advanceFirstRun('membership');
           }}
-          onSkipMusic={() => advanceFirstRun('membership')}
+          onSkipMusic={() => {
+            // Skipping keeps the default method without asking for access, so onboarding
+            // does not end on a second, mandatory music picker. Settings can change it later.
+            const next = { provider: preferences?.provider ?? 'apple-music' as MusicProvider, onboardingCompleted: true };
+            void saveMusicPreferences(next).then(() => setPreferences(next)).catch(() => undefined);
+            advanceFirstRun('membership');
+          }}
           tessieProfileId={currentUser.id}
           tessieMembershipTier={membership.tier}
           onTessieUpgrade={() => setMembershipPaywallVisible(true)}
@@ -3262,8 +3268,8 @@ function ConnectionsScreen({
     return <SettingsEditorScaffold eyebrow="APPEARANCE" title={choosingTheme ? 'Choose a theme' : 'Choose an app icon'} onBack={() => setDestination({ kind: 'category', category: 'appearance' })}>
       <View style={styles.settingsCategoryStack}>
         {choosingTheme
-          ? <ThemePicker membershipTier={membershipTier} onUpgrade={onMembership} />
-          : <AppIconPicker membershipTier={membershipTier} onUpgrade={onMembership} />}
+          ? <ThemePicker embedded={REDESIGN_PHONE} membershipTier={membershipTier} onUpgrade={onMembership} />
+          : <AppIconPicker embedded={REDESIGN_PHONE} membershipTier={membershipTier} onUpgrade={onMembership} />}
       </View>
     </SettingsEditorScaffold>;
   }
@@ -3421,9 +3427,9 @@ function ConnectionsScreen({
     <Text style={styles.settingsSectionLabel}>{label}</Text>
     <View style={styles.settingsHubList}>{categoryIds.map((categoryId, index) => renderCategoryRow(categoryId, index > 0))}</View>
   </View>;
-  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + (REDESIGN_PHONE ? 62 : 14), paddingBottom: insets.bottom + 112 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
+  return <SettingsScrollView contentContainerStyle={[styles.pageContent, styles.settingsRootContent, { paddingTop: insets.top + (REDESIGN_PHONE ? 12 : 14), paddingBottom: insets.bottom + 112 }]} contentInsetAdjustmentBehavior="never" automaticallyAdjustContentInsets={false} automaticallyAdjustsScrollIndicatorInsets={false} showsVerticalScrollIndicator={false}>
     {REDESIGN_PHONE
-      ? <><RedesignGlow /><View><Text style={styles.settingsEditorEyebrow}>YOUR DATA, YOUR CHOICE</Text><Text accessibilityRole="header" style={styles.settingsV4LargeTitle}>Settings</Text></View></>
+      ? <><RedesignGlow /><Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} style={({ pressed }) => [styles.settingsEditorBack, pressed && styles.pressed]}><SymbolView name="chevron.left" tintColor={theme.palette.text} size={20} /></Pressable><View><Text style={styles.settingsEditorEyebrow}>YOUR DATA, YOUR CHOICE</Text><Text accessibilityRole="header" style={styles.settingsV4LargeTitle}>Settings</Text></View></>
       : <><AtmosphericBackdrop variant="settings" /><PageHeader variant="settings" eyebrow="YOUR DATA, YOUR CHOICE" title="Settings" body="Music, saved places, backup, and account." /></>}
     <TouchPressable accessibilityRole="button" accessibilityLabel="Edit primary driver profile" onPress={() => { setDestination({ kind: 'profile' }); void haptics.selection(); }} style={({ pressed }) => [styles.settingsHubProfile, pressed && styles.pressed]}>
       <View style={[styles.settingsHubAvatar, { backgroundColor: theme.palette.inset }]}>{profileAppearance.avatarDataUri ? <ExpoImage source={profileAppearance.avatarDataUri} contentFit="cover" transition={180} style={StyleSheet.absoluteFill} /> : <Text style={styles.connectionIconText}>{profileInitialsFor(profileAppearance.displayName)}</Text>}</View>

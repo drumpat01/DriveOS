@@ -315,7 +315,8 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /await requestJourneyLocationAccess\(\);\s+advanceFirstRun\('music'\)/);
   assert.match(shell, /onConnectAppleMusic=\{async \(\) =>/);
   assert.match(shell, /await connectAppleMusic\('apple-music'\);\s+advanceFirstRun\('membership'\)/);
-  assert.match(shell, /onSkipMusic=\{\(\) => advanceFirstRun\('membership'\)\}/);
+  // Skipping music records the default method so onboarding never ends on a mandatory picker.
+  assert.match(shell, /onSkipMusic=\{\(\) => \{[\s\S]*?onboardingCompleted: true[\s\S]*?advanceFirstRun\('membership'\);/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
   assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'instructions' \| 'complete'/);

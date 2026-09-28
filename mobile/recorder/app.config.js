@@ -2,7 +2,7 @@
 // container. V3 store TestFlight (`v3-store` / profile `v3-testflight`)
 // turns V3 product features on while keeping the live App Store identity.
 module.exports = ({ config }) => {
-  if (process.env.EAS_BUILD_PROFILE && !['development-simulator', 'v2-preview', 'v3-preview', 'v3-development-simulator', 'v3-testflight', 'v4-testflight', 'production'].includes(process.env.EAS_BUILD_PROFILE)) {
+  if (process.env.EAS_BUILD_PROFILE && !['development-simulator', 'v2-preview', 'v3-preview', 'v3-development-simulator', 'v3-testflight', 'v4-testflight', 'v4-development-simulator', 'production'].includes(process.env.EAS_BUILD_PROFILE)) {
     throw new Error('Use a declared V2, V3, simulator, or production build profile.');
   }
   // Profile wins: v3-testflight must never inherit .v3 identity from APP_VARIANT=v3-preview.
@@ -36,8 +36,11 @@ module.exports = ({ config }) => {
       ...config.updates,
       ...(modern ? {
         url: 'https://ota.journeydeck.me/manifest',
-        codeSigningCertificate: './certs/xprem-certificate.crt',
-        codeSigningMetadata: { keyid: 'main', alg: 'rsa-v1_5-sha256' },
+        // The cloud-simulator dev client loads unsigned JavaScript from Metro, so it skips update signing.
+        ...(process.env.EAS_BUILD_PROFILE === 'v4-development-simulator' ? {} : {
+          codeSigningCertificate: './certs/xprem-certificate.crt',
+          codeSigningMetadata: { keyid: 'main', alg: 'rsa-v1_5-sha256' },
+        }),
       } : {}),
       requestHeaders: {
         ...(config.updates?.requestHeaders || {}),

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useV4Theme, v4Styles } from './v4-phone';
+import { useAppTheme } from './app-theme';
+import { v4Styles } from './v4-phone';
 import { connectTessieDirect, disconnectTessieDirect, hasTessieCredentials, syncTessieDirect, tessieDirectStatus } from './tessie-direct';
 import { TESSIE_INTEGRATION_ENABLED } from './release-features';
 import { NativeSheet } from './native-sheet';
@@ -9,7 +10,8 @@ import { loadRecordingModePreferences, saveRecordingModePreferences } from './re
 type Props = { profileId: string; membershipTier: 'free' | 'paid'; onUpgrade: () => void; onChanged: () => void };
 
 export function TessieConnectionCard({ profileId, membershipTier, onUpgrade, onChanged }: Props) {
-  const theme = useV4Theme();
+  // Opaque theme colors: this card also sits on onboarding photos, where a see-through surface is unreadable.
+  const theme = useAppTheme();
   const activeProfile = useRef(profileId);
   activeProfile.current = profileId;
   const [connected, setConnected] = useState(false);
@@ -85,7 +87,7 @@ export function TessieConnectionCard({ profileId, membershipTier, onUpgrade, onC
   const colors = { text: theme.palette.text, muted: theme.palette.muted, card: theme.palette.card, border: theme.palette.line, accent: theme.palette.accent, onAccent: theme.palette.onAccent };
   const sheetColors = { text: '#fff6ed', muted: '#b7c2d6', border: '#4b5265' };
   return <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-    <Text style={[styles.kicker, { color: colors.accent }]}>CONNECTED VEHICLE · V3</Text>
+    <Text style={[styles.kicker, { color: colors.accent }]}>CONNECTED VEHICLE</Text>
     <Text style={[styles.title, { color: colors.text }]}>Tessie</Text>
     <Text style={[styles.body, { color: colors.muted }]}>Optional Tesla journey capture and charging history. Your token is stored in this device’s Keychain and sent securely to the privacy edge for Tessie requests. Car GPS routes are saved in your journey archive and can sync to your private iCloud.</Text>
     {checking ? <ActivityIndicator color={colors.accent} /> : membershipTier !== 'paid' ? <>

@@ -1,5 +1,7 @@
 import { useAppTheme } from './app-theme';
-import { V4_SERIF, v4Styles } from './v4-phone';
+import { V4_PHONE, V4_SERIF, v4Styles } from './v4-phone';
+import { V4_REDESIGN_ENABLED } from './release-features';
+import { MembershipPaywallV4 } from './membership-paywall-v4';
 import { headerImageSource } from './header-image-sources';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
@@ -75,7 +77,8 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
   const colors = journeyDeckSemanticColors(theme.id, theme.palette);
   const insets = useSafeAreaInsets();
   const { height: viewportHeight, width: viewportWidth, fontScale } = useWindowDimensions();
-  const heroHeight = Math.max(300, Math.min(420, viewportHeight * 0.44));
+  // V4 iPhone: a shorter hero so the perks, plans and button fit one screen at default text size.
+  const heroHeight = V4_PHONE ? Math.max(200, Math.min(280, viewportHeight * 0.3)) : Math.max(300, Math.min(420, viewportHeight * 0.44));
   const stackedLayout = fontScale >= 1.25 || viewportWidth < 350;
 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -132,6 +135,22 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
     }
   }
 
+  if (V4_PHONE) return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <MembershipPaywallV4
+      hero={headerImageSource(require('../assets/cinematic-membership-photo-v1.jpg'), theme.id)}
+      plans={orderedProducts.map(product => ({ product, name: planName(product), period: periodSuffix(product) || 'App Store price', badge: product.id === ANNUAL_PRODUCT_ID ? 'BEST VALUE' : undefined }))}
+      selectedId={selectedProductId}
+      onSelect={setSelectedProductId}
+      loading={state.productsLoading}
+      pending={state.purchasePending}
+      disabled={purchaseDisabled}
+      message={state.message}
+      onPurchase={() => void purchaseSelectedProduct()}
+      onRestore={() => void onRestore()}
+      onClose={onClose}
+    />
+  </Modal>;
+
   return <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setConfirmingClose(true)}>
     <View style={[styles.safe, { backgroundColor: colors.page }]}>
       <ScrollView bounces={false} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -147,7 +166,15 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
             locations={[0, 0.6, 1]}
             style={StyleSheet.absoluteFill}
           />
-          <Pressable
+          {V4_PHONE ? <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Not now, keep the free plan"
+            hitSlop={8}
+            onPress={onClose}
+            style={({ pressed }) => [styles.skip, { top: insets.top + 10, backgroundColor: alpha(colors.surface, 0.92), borderColor: colors.accent }, pressed && styles.pressed]}
+          >
+            <Text style={[styles.skipText, { color: colors.text }]}>Not now</Text>
+          </Pressable> : <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close membership"
             hitSlop={8}
@@ -155,15 +182,20 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
             style={({ pressed }) => [styles.close, { top: insets.top + 12, backgroundColor: alpha(colors.surface, 0.82), borderColor: alpha(colors.separator, 0.5) }, pressed && styles.pressed]}
           >
             <SymbolView name="xmark" tintColor={colors.text} size={14} weight="bold" />
-          </Pressable>
+          </Pressable>}
           <View style={styles.heroCopy}>
-            <Text style={[styles.eyebrow, { color: colors.accent }]}>JOURNEYDECK MEMBERSHIP</Text>
+            <Text style={[styles.eyebrow, { color: colors.accent }]}>{V4_REDESIGN_ENABLED ? 'JOURNEYDECK PLUS' : 'JOURNEYDECK MEMBERSHIP'}</Text>
             <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>Your driving story, decoded.</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Atlas finds the patterns, places, routes, and music hidden across every journey.</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{V4_REDESIGN_ENABLED ? 'Ask about your drives, make JourneyDeck yours, and keep every journey.' : 'Atlas finds the patterns, places, routes, and music hidden across every journey.'}</Text>
           </View>
         </View>
 
-        {insight && <View style={styles.insightArea}>
+        {insight && V4_PHONE && <View style={styles.insightArea}>
+          <Text numberOfLines={1} style={[styles.insightLine, { color: colors.textSecondary }]}>
+            <Text style={{ color: colors.text, fontWeight: '700' }}>{insight.journeyCount.toLocaleString()} {insight.journeyCount === 1 ? 'journey' : 'journeys'}</Text> · <Text style={{ color: colors.text, fontWeight: '700' }}>{insight.milesLabel}</Text> driven so far
+          </Text>
+        </View>}
+        {insight && !V4_PHONE && <View style={styles.insightArea}>
           <Text style={[styles.insightKicker, { color: colors.accent }]}>ATLAS ALREADY SEES</Text>
           <View style={[styles.insightCard, { backgroundColor: colors.surface, borderColor: alpha(colors.separator, 0.7) }]}>
             <View style={styles.insightRow}>
@@ -186,12 +218,19 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
         </View>}
 
         <View style={styles.benefits}>
-          <BenefitRow icon="chart.line.uptrend.xyaxis" title="Pattern Intelligence" description="See when and where you drive." colors={colors} />
-          <BenefitRow icon="mappin.and.ellipse" title="Favorite Places" description="Find the places that matter most." colors={colors} />
-          <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
-          <BenefitRow icon="bubble.left.and.text.bubble.right" title="Ask JourneyDeck" description="Ask about your drives in the app and with Siri." colors={colors} />
-          <BenefitRow icon="music.note" title="Your Year on the Road" description="Relive your year with music and motion." colors={colors} />
-          <BenefitRow icon="infinity" title="Complete History" description="Every journey, not just today's." colors={colors} last />
+          {V4_REDESIGN_ENABLED ? <>
+            <BenefitRow icon="bubble.left.and.text.bubble.right" title="Ask JourneyDeck" description="Ask about your drives in the app and with Siri." colors={colors} />
+            <BenefitRow icon="paintpalette" title="Themes and icons" description="Every theme and app icon." colors={colors} />
+            <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
+            <BenefitRow icon="infinity" title="Complete History" description="Every journey, not just today's." colors={colors} last />
+          </> : <>
+            <BenefitRow icon="chart.line.uptrend.xyaxis" title="Pattern Intelligence" description="See when and where you drive." colors={colors} />
+            <BenefitRow icon="mappin.and.ellipse" title="Favorite Places" description="Find the places that matter most." colors={colors} />
+            <BenefitRow icon="scissors" title="Journey Studio" description="Trim, split, and restore your drives." colors={colors} />
+            <BenefitRow icon="bubble.left.and.text.bubble.right" title="Ask JourneyDeck" description="Ask about your drives in the app and with Siri." colors={colors} />
+            <BenefitRow icon="music.note" title="Your Year on the Road" description="Relive your year with music and motion." colors={colors} />
+            <BenefitRow icon="infinity" title="Complete History" description="Every journey, not just today's." colors={colors} last />
+          </>}
         </View>
 
         <View style={styles.planArea}>
@@ -237,8 +276,8 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={selectedProduct
-            ? 'Unlock Atlas with ' + planName(selectedProduct) + ' for ' + selectedProduct.displayPrice + (periodSuffix(selectedProduct) ? ' ' + periodSuffix(selectedProduct) : '')
-            : 'Unlock Atlas'}
+            ? (V4_REDESIGN_ENABLED ? 'Unlock JourneyDeck Plus with ' : 'Unlock Atlas with ') + planName(selectedProduct) + ' for ' + selectedProduct.displayPrice + (periodSuffix(selectedProduct) ? ' ' + periodSuffix(selectedProduct) : '')
+            : V4_REDESIGN_ENABLED ? 'Unlock JourneyDeck Plus' : 'Unlock Atlas'}
           accessibilityState={{ disabled: purchaseDisabled }}
           disabled={purchaseDisabled}
           onPress={() => void purchaseSelectedProduct()}
@@ -246,8 +285,12 @@ export function MembershipPaywall({ visible, state, insight, onClose, onLoadProd
         >
           {state.purchasePending
             ? <ActivityIndicator color={colors.onAccent} />
-            : <Text style={[styles.ctaText, { color: colors.onAccent }]}>{selectedProduct ? 'Unlock Atlas · ' + selectedProduct.displayPrice : 'Unlock Atlas'}</Text>}
+            : <Text style={[styles.ctaText, { color: colors.onAccent }]}>{(V4_REDESIGN_ENABLED ? 'Unlock Plus' : 'Unlock Atlas') + (selectedProduct ? ' · ' + selectedProduct.displayPrice : '')}</Text>}
         </Pressable>
+
+        {V4_PHONE && <Pressable accessibilityRole="button" accessibilityLabel="No thanks, keep the free plan" onPress={onClose} style={({ pressed }) => [styles.noThanks, pressed && styles.pressed]}>
+          <Text style={[styles.noThanksText, { color: colors.textSecondary }]}>No thanks, keep the free plan</Text>
+        </Pressable>}
 
         {state.message && orderedProducts.length > 0 && <Text accessibilityLiveRegion="polite" style={[styles.message, { color: colors.danger }]}>{state.message}</Text>}
 
@@ -298,6 +341,11 @@ const styles = v4Styles(StyleSheet.create({
   safe: { flex: 1 },
   content: { flexGrow: 1, paddingBottom: journeyDeckSpacing[6] },
   hero: { width: '100%', justifyContent: 'flex-end', overflow: 'hidden' },
+  skip: { position: 'absolute', right: journeyDeckSpacing[4], minHeight: 40, borderRadius: 20, borderWidth: 1.5, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
+  skipText: { fontSize: 15, fontWeight: '700' },
+  noThanks: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  noThanksText: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
+  insightLine: { fontSize: 14, lineHeight: 19 },
   close: { position: 'absolute', right: journeyDeckSpacing[4], width: 32, height: 32, borderRadius: journeyDeckRadius.full, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   heroCopy: { paddingHorizontal: journeyDeckSpacing[6], paddingBottom: journeyDeckSpacing[5] },
   eyebrow: { ...journeyDeckTypography.kicker, marginBottom: journeyDeckSpacing[2] },
@@ -351,11 +399,20 @@ const styles = v4Styles(StyleSheet.create({
   title: { fontFamily: V4_SERIF, fontWeight: '600' },
   insightCard: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
   insightValue: { fontFamily: V4_SERIF, fontWeight: '600' },
-  plan: { borderRadius: 22 },
   planPrice: { fontFamily: V4_SERIF, fontWeight: '600' },
   unavailable: { borderRadius: 24, borderWidth: StyleSheet.hairlineWidth },
-  cta: { borderRadius: 28 },
   confirmCard: { borderRadius: 28, borderWidth: StyleSheet.hairlineWidth },
   confirmTitle: { fontFamily: V4_SERIF, fontWeight: '600' },
   confirmPrimary: { borderRadius: 24 },
+  // Compact rhythm so the whole offer fits one iPhone screen at default text size.
+  heroCopy: { paddingBottom: 12 },
+  subtitle: { fontSize: 15, lineHeight: 21 },
+  insightArea: { paddingTop: 10 },
+  benefits: { paddingTop: 10 },
+  benefitRow: { paddingVertical: 9 },
+  benefitIcon: { width: 34, height: 34, borderRadius: 17 },
+  planArea: { paddingTop: 14 },
+  plan: { borderRadius: 22, paddingVertical: 12 },
+  cta: { borderRadius: 28, marginTop: 14 },
+  footerRow: { marginTop: 0 },
 });

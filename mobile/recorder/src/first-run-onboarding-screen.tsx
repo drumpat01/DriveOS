@@ -1,5 +1,5 @@
 import { useAppTheme } from './app-theme';
-import { V4_SERIF, v4Styles } from './v4-phone';
+import { V4_PHONE, V4_SERIF, v4Styles } from './v4-phone';
 import { useEffect, useState } from 'react';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -232,23 +232,50 @@ function MembershipStageBackdrop() {
   return <View style={[recordingStyles.screen, { backgroundColor: theme.palette.page }]} />;
 }
 
+/** Optional Tesla step: ask first, and show Tessie setup only to people who drive a Tesla. */
 function TessieIntroScreen({ profileId, membershipTier, onUpgrade, onChanged, onContinue, onBack }: {
   profileId: string; membershipTier: 'free' | 'paid'; onUpgrade: () => void; onChanged: () => void; onContinue: () => void; onBack?: () => void;
 }) {
   const theme = useAppTheme();
   const { palette } = theme;
   const insets = useSafeAreaInsets();
+  const [drivesTesla, setDrivesTesla] = useState(false);
+  const choice = (symbol: SFSymbol, title: string, detail: string, label: string, onPress: () => void) => <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+    style={({ pressed }) => [recordingStyles.musicOption, { backgroundColor: alpha(palette.card, 0.72), borderColor: alpha(palette.line, 0.7), opacity: pressed ? 0.78 : 1 }]}>
+    <View style={[recordingStyles.tessieChoiceIcon, { backgroundColor: alpha(palette.accent, 0.16) }]}><SymbolView name={symbol} tintColor={palette.accent} size={20} /></View>
+    <View style={recordingStyles.musicOptionCopy}>
+      <Text style={[recordingStyles.musicOptionTitle, { color: palette.text }]}>{title}</Text>
+      <Text style={[recordingStyles.musicOptionDetail, { color: palette.muted }]}>{detail}</Text>
+    </View>
+    <SymbolView name="chevron.right" tintColor={palette.muted} size={14} />
+  </Pressable>;
   return <View style={recordingStyles.screen}>
     <View style={[recordingStyles.safeFrame, { paddingTop: insets.top + 10, paddingBottom: Math.max(insets.bottom, 16) }]}>
       <ScrollView style={recordingStyles.scroll} contentContainerStyle={recordingStyles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <OnboardingHeader step={STEP_NUMBER.tessie!} onBack={onBack} onSkip={onContinue} />
-        <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Bring your car along.</Text>
-        <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Connect Tessie to add Tesla drives, charging, and vehicle insights. You can set this up later in Settings.</Text>
-        <TessieConnectionCard profileId={profileId} membershipTier={membershipTier} onUpgrade={onUpgrade} onChanged={onChanged} />
-        <Pressable accessibilityRole="button" accessibilityLabel="Continue" onPress={onContinue}
-          style={({ pressed }) => [recordingStyles.button, { backgroundColor: palette.accent, opacity: pressed ? 0.78 : 1 }]}>
-          <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Continue</Text>
-        </Pressable>
+        <OnboardingHeader step={STEP_NUMBER.tessie!} onBack={drivesTesla ? () => setDrivesTesla(false) : onBack} onSkip={onContinue} />
+        {!drivesTesla ? <>
+          <Text style={[recordingStyles.tessieOptional, { color: palette.accent }]}>OPTIONAL</Text>
+          <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Do you drive a Tesla?</Text>
+          <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>JourneyDeck can add Tesla drives and charging history through Tessie. Everything else works without it.</Text>
+          <View style={recordingStyles.musicOptions}>
+            {choice('car.fill', 'Yes, I drive a Tesla', 'See how to connect Tessie', 'Yes, I drive a Tesla', () => setDrivesTesla(true))}
+            {choice('arrow.right', 'No, skip this step', 'You can connect a car later in Settings', 'No, skip this step', onContinue)}
+          </View>
+        </> : <>
+          <Text style={[recordingStyles.tessieOptional, { color: palette.accent }]}>OPTIONAL</Text>
+          <Text accessibilityRole="header" style={[recordingStyles.title, { color: palette.text }]}>Connect your Tesla.</Text>
+          <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Tessie adds Tesla drives, charging, and vehicle insights. You can skip this and set it up later in Settings.</Text>
+          <TessieConnectionCard profileId={profileId} membershipTier={membershipTier} onUpgrade={onUpgrade} onChanged={onChanged} />
+          <View style={recordingStyles.tessieActions}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Continue" onPress={onContinue}
+              style={({ pressed }) => [recordingStyles.button, { backgroundColor: palette.accent, opacity: pressed ? 0.78 : 1 }]}>
+              <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Continue</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={onContinue} style={({ pressed }) => [recordingStyles.tessieNotNow, pressed && { opacity: 0.6 }]}>
+              <Text style={[recordingStyles.tessieNotNowText, { color: palette.text }]}>Not now</Text>
+            </Pressable>
+          </View>
+        </>}
       </ScrollView>
     </View>
   </View>;
@@ -319,8 +346,9 @@ export function FirstRunOnboardingScreen(props: Props) {
 
   return <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.page, overflow: 'hidden' }]}>
     <ExpoImage source={FIRST_RUN_ARTWORK[theme.id]} contentFit="cover" accessible={false} style={StyleSheet.absoluteFill} />
-    <LinearGradient pointerEvents="none" colors={theme.id === 'redline' ? [`${palette.page}00`, `${palette.page}08`, `${palette.page}99`, palette.page] : [`${palette.page}33`, `${palette.page}55`, `${palette.page}f5`, palette.page]}
-      locations={theme.id === 'redline' ? [0, 0.48, 0.80, 1] : [0, 0.25, 0.65, 1]} style={StyleSheet.absoluteFill} />
+    <LinearGradient pointerEvents="none" colors={V4_PHONE ? [alpha(palette.page, 0.35), alpha(palette.page, 0.62), alpha(palette.page, 0.9), palette.page] : theme.id === 'redline' ? [`${palette.page}00`, `${palette.page}08`, `${palette.page}99`, palette.page] : [`${palette.page}33`, `${palette.page}55`, `${palette.page}f5`, palette.page]}
+      // V4: a steady scrim so body text stays readable over bright skies in every theme.
+      locations={V4_PHONE ? [0, 0.3, 0.62, 1] : theme.id === 'redline' ? [0, 0.48, 0.80, 1] : [0, 0.25, 0.65, 1]} style={StyleSheet.absoluteFill} />
     <Animated.View style={[recordingStyles.screen, contentStyle]} pointerEvents={transitioning || visibleStage !== props.stage ? 'none' : 'auto'}
       accessibilityElementsHidden={transitioning} importantForAccessibility={transitioning ? 'no-hide-descendants' : 'auto'}>
       {visibleStage === 'welcome' && <FirstRunWelcomeScreen onStart={props.onWelcomeComplete} contentOnly />}
@@ -337,6 +365,11 @@ export function FirstRunOnboardingScreen(props: Props) {
 }
 
 const recordingStyles = v4Styles(StyleSheet.create({
+  tessieOptional: { fontSize: 12, fontWeight: '800', letterSpacing: 1.4, marginBottom: 10 },
+  tessieChoiceIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  tessieActions: { gap: 6, marginTop: 28 },
+  tessieNotNow: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  tessieNotNowText: { fontSize: 16, fontWeight: '600' },
   screen: { flex: 1 },
   safeFrame: { flex: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   scroll: { flex: 1 },
