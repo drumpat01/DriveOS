@@ -58,6 +58,21 @@ $env:JOURNEYDECK_APP_STORE_SUPPORT_URL = 'https://journeydeck.me/support'
 npm run preflight:public-release
 ```
 
+### App Store Connect checks (`asc` CLI)
+
+`scripts/asc-store.mjs` wraps the [App Store Connect CLI](https://github.com/rorkai/App-Store-Connect-CLI) (`winget install --id Rorkai.ASC -e`). It authenticates with env vars pointing at the "JourneyDeck EAS Submit" key in `~/.asc/` (override with `ASC_PRIVATE_KEY_PATH`), because asc 5.7's Windows keychain profiles disappear after one use. All commands are read-only:
+
+```powershell
+npm run store:validate -- <version>   # submission readiness report
+npm run store:keywords -- <version>   # keyword audit
+npm run store:plan -- <version>       # diff store/metadata against the live listing
+npm run store:pull -- <version>       # refresh store/metadata from App Store Connect
+npm run store:subscriptions           # Plus products and approval state
+npm run store:review                  # latest App Review state
+```
+
+`store/metadata/` is the listing kept in Git. Applying it to the live listing (`asc metadata apply ... --confirm`) is a public change and needs owner approval each time.
+
 The production archive and upload are intentional external actions and are not performed by this repository checklist:
 
 ```powershell

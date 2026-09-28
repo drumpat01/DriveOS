@@ -42,6 +42,11 @@
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Device review is still needed for the latest OTA. Open a PR against `main` when asked.
 
+## App Store Connect CLI (2026-09-27, uncommitted)
+
+- `asc` 5.7.0 installed via winget. Keys moved to `C:\Users\patri\.asc\`. Keychain profiles vanish after one call on Windows, so `mobile/recorder/scripts/asc-store.mjs` uses env auth. New `store:*` npm scripts, `store/metadata/` (listing pulled from 2.0; plan shows no diff), `.asc/` gitignored, docs in `APP_STORE_RELEASE.md`.
+- First validate of 2.0: only blocker is that 2.0 is already live (not editable). Warnings: no subscription promo images; keywords repeat subtitle terms `driving`/`journal`, 31 chars unused. Plus product IDs match code. Nothing was pushed to Apple.
+
 ## Production handoff and access
 
 - Read `mobile/recorder/docs/v4-production-handoff.md` for exact GitHub Actions commands, Expo identity, credential locations, CloudKit work, OTA boundary, and release checks. `.github/workflows/ios-v4-testflight.yml` provides manual validation, a main-only read-only credential check, and a main-only TestFlight build/upload path; `mobile/recorder/scripts/v4-release-preflight.mjs` checks the V4 target.
