@@ -145,8 +145,9 @@ test('Today renders the last drive, the week, On this day and recent memories in
     assert.equal(calls.at(-1), 'ask');
     await press(tree, 'Edit Today');
     assert.equal(tree.root.findByType('EditorSheet').props.visible, true);
-    const hideWeek = tree.root.find((node: any) => node.type === 'Switch' && node.props.accessibilityLabel === 'Show This week on Today');
-    await act(async () => hideWeek.props.onValueChange());
+    const hideWeek = tree.root.find((node: any) => node.type === 'Pressable' && node.props.accessibilityRole === 'switch' && node.props.accessibilityLabel === 'Show This week on Today');
+    assert.equal(hideWeek.props.accessibilityState.checked, true);
+    await act(async () => hideWeek.props.onPress());
     assert.equal(tree.root.findAllByProps({ testID: 'today-week' }).length, 0, 'the week card is hidden');
     assert.ok(secureStore.get(`journeydeck.today.layout.v1.user-${id}`)?.includes('"week","visible":false'), 'the choice is saved for this profile');
     await act(async () => tree.unmount());
