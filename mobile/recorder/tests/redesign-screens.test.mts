@@ -57,7 +57,8 @@ const shared: Record<string, unknown> = {
   },
   'react-native-reanimated': (() => {
     const chain: any = { duration: () => chain, easing: () => chain };
-    return { __esModule: true, default: { View: host('AnimatedView') }, Easing: { bezier: () => (value: number) => value },
+    return { __esModule: true, default: { View: host('AnimatedView'), Text: host('AnimatedText') }, Easing: { bezier: () => (value: number) => value, linear: (value: number) => value },
+      interpolateColor: (_: number, __: number[], colors: string[]) => colors[0],
       FadeIn: chain, FadeInDown: chain, FadeOut: chain, cancelAnimation() {}, withDelay: (_: number, value: unknown) => value, withRepeat: (value: unknown) => value,
       withSequence: (...values: unknown[]) => values[0], withSpring: (value: unknown) => value, withTiming: (value: unknown) => value,
       useSharedValue: (value: number) => { const ref = React.useRef({ value, get() { return this.value; }, set(next: number) { this.value = next; } }); return ref.current; },
@@ -339,11 +340,35 @@ test('Ask V4 suggests questions, shows records as cards, and starts a new conver
     assert.equal(asked.at(-1)[1], 'How many miles did I drive this week?');
     assert.match(texts(tree), /42\.6 miles/);
     assert.match(texts(tree), /FROM YOUR LIBRARY/);
-    assert.ok(tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Open Memory Open road weekend').length > 0);
+    assert.match(texts(tree), /1 record/);
+    assert.ok(tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.accessibilityLabel === 'Open Memory Open road weekend').length > 0, 'a short record list starts open');
     const fresh = tree.root.findByType('Menu').props.actions.find((action: any) => action.id === 'new');
     await act(async () => fresh.onSelect());
     assert.doesNotMatch(texts(tree), /42\.6 miles/, 'New conversation clears the thread');
     await act(async () => tree.unmount());
+  }
+});
+
+test('Ask V4 folds long record lists and shimmers while reading', async () => {
+  const motion = load('ask-chat-motion.tsx');
+  const { EvidenceCardsV4, TypingBubbleV4 } = load('ask-journeydeck-v4.tsx', { './ask-chat-motion': motion, './glass-avatar': load('glass-avatar.tsx') });
+  const items = ['a', 'b', 'c', 'd'].map(id => ({ kind: 'journey', id, label: `Drive ${id}` }));
+  const cards = (tree: any) => tree.root.findAll((node: any) => node.type === 'Pressable' && /^Open drive/.test(node.props.accessibilityLabel ?? '')).length;
+  for (const id of THEMES) {
+    themeId = id;
+    let tree: any;
+    await act(async () => { tree = create(React.createElement(EvidenceCardsV4, { items, disabled: false, onOpen() {} })); });
+    assert.match(texts(tree), /4 records/);
+    assert.equal(cards(tree), 0, 'more than two records start folded');
+    await press(tree, 'From your library, 4 records');
+    assert.equal(cards(tree), 4);
+    await act(async () => tree.unmount());
+    for (const reduceMotion of [false, true]) {
+      await act(async () => { tree = create(React.createElement(TypingBubbleV4, { avatar: 7, reduceMotion })); });
+      assert.ok(tree.root.findAll((node: any) => node.props.accessibilityLabel === 'Reading your road history…' || node.props.children === 'Reading your road history…').length > 0);
+      assert.equal(tree.root.findAll((node: any) => node.type === 'AnimatedText').length > 0, !reduceMotion, 'glyphs animate only with motion on');
+      await act(async () => tree.unmount());
+    }
   }
 });
 

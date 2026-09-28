@@ -1,7 +1,8 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { useSurfacePreferences } from './app-theme';
-import { TypingDots } from './ask-chat-motion';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { EASE_OUT, ShimmerText } from './ask-chat-motion';
 import { GlassAvatar } from './glass-avatar';
 import { SymbolView } from 'expo-symbols';
 import type { AskEvidence } from './ask-journeydeck';
@@ -63,22 +64,42 @@ export function UserBubbleV4({ text }: { text: string }) {
   </View>;
 }
 
-export function EvidenceCardsV4({ items, disabled, onOpen }: { items: AskEvidence[]; disabled: boolean; onOpen: (item: AskEvidence) => void }) {
+/**
+ * Records behind an answer, folded under a count once there are more than two
+ * (the Sources pattern from PanelUI): a short answer keeps its cards in view,
+ * a long list stays one line until the reader goes to check it.
+ */
+export function EvidenceCardsV4({ items, disabled, onOpen, reduceMotion = false }: { items: AskEvidence[]; disabled: boolean; onOpen: (item: AskEvidence) => void; reduceMotion?: boolean }) {
   const colors = useRedesignColors();
-  if (!items.length) return null;
+  const shown = items.slice(0, 5);
+  const [open, setOpen] = useState(shown.length <= 2);
+  const turn = useSharedValue(open ? 1 : 0);
+  useEffect(() => {
+    turn.set(reduceMotion ? (open ? 1 : 0) : withTiming(open ? 1 : 0, { duration: 180, easing: EASE_OUT }));
+  }, [open, reduceMotion, turn]);
+  const chevron = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.get() * 180}deg` }] }));
+  if (!shown.length) return null;
+  const count = `${shown.length} ${shown.length === 1 ? 'record' : 'records'}`;
   return <View style={[styles.evidence, { borderTopColor: colors.separator }]}>
-    <Text style={[styles.kicker, { color: colors.textSecondary }]}>FROM YOUR LIBRARY</Text>
-    {items.slice(0, 5).map(item => <TouchPressable key={`${item.kind}:${item.id}`} accessibilityRole="button" accessibilityLabel={`Open ${item.kind === 'journey' ? 'drive' : 'Memory'} ${item.label}`}
-      disabled={disabled} onPress={() => onOpen(item)} style={({ pressed }) => [styles.card, { backgroundColor: colors.surfaceStrong }, disabled && styles.disabled, pressed && redesignStyles.pressed]}>
-      <View style={[styles.cardIcon, { backgroundColor: colors.accentSoft }]}>
-        <SymbolView name={item.kind === 'journey' ? 'road.lanes' : 'photo.stack'} tintColor={colors.accent} size={17} />
-      </View>
-      <View style={redesignStyles.flex}>
-        <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.text }]}>{item.label}</Text>
-        <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{item.kind === 'journey' ? 'Drive' : 'Memory'}</Text>
-      </View>
-      <SymbolView name="chevron.right" tintColor={colors.textTertiary} size={12} weight="semibold" />
-    </TouchPressable>)}
+    <TouchPressable accessibilityRole="button" accessibilityLabel={`From your library, ${count}`} accessibilityState={{ expanded: open }}
+      onPress={() => setOpen(value => !value)} style={({ pressed }) => [styles.evidenceTrigger, pressed && redesignStyles.pressed]}>
+      <Text style={[styles.kicker, { color: colors.textSecondary }]}>FROM YOUR LIBRARY</Text>
+      <Text style={[styles.count, { color: colors.textTertiary }]}>{count}</Text>
+      <Animated.View style={chevron}><SymbolView name="chevron.down" tintColor={colors.textTertiary} size={11} weight="semibold" /></Animated.View>
+    </TouchPressable>
+    {open ? <Animated.View entering={reduceMotion ? undefined : FadeIn.duration(200)} exiting={reduceMotion ? undefined : FadeOut.duration(120)} style={styles.evidenceList}>
+      {shown.map(item => <TouchPressable key={`${item.kind}:${item.id}`} accessibilityRole="button" accessibilityLabel={`Open ${item.kind === 'journey' ? 'drive' : 'Memory'} ${item.label}`}
+        disabled={disabled} onPress={() => onOpen(item)} style={({ pressed }) => [styles.card, { backgroundColor: colors.surfaceStrong }, disabled && styles.disabled, pressed && redesignStyles.pressed]}>
+        <View style={[styles.cardIcon, { backgroundColor: colors.accentSoft }]}>
+          <SymbolView name={item.kind === 'journey' ? 'road.lanes' : 'photo.stack'} tintColor={colors.accent} size={17} />
+        </View>
+        <View style={redesignStyles.flex}>
+          <Text numberOfLines={2} style={[styles.cardTitle, { color: colors.text }]}>{item.label}</Text>
+          <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>{item.kind === 'journey' ? 'Drive' : 'Memory'}</Text>
+        </View>
+        <SymbolView name="chevron.right" tintColor={colors.textTertiary} size={12} weight="semibold" />
+      </TouchPressable>)}
+    </Animated.View> : null}
   </View>;
 }
 
@@ -88,8 +109,7 @@ export function TypingBubbleV4({ avatar, reduceMotion = false }: { avatar: Image
   return <View accessible accessibilityRole="progressbar" accessibilityLabel="Reading your road history" style={styles.assistantRow}>
     <GlassAvatar source={avatar} size={28} plain={plain} />
     <View style={[styles.typing, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <TypingDots color={colors.accent} reduceMotion={reduceMotion} />
-      <Text style={[redesignStyles.caption, { color: colors.textSecondary }]}>Reading your road history…</Text>
+      <ShimmerText base={colors.textSecondary} highlight={colors.accent} reduceMotion={reduceMotion}>Reading your road history…</ShimmerText>
     </View>
   </View>;
 }
@@ -119,6 +139,9 @@ const styles = StyleSheet.create({
   userRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingLeft: 56 },
   userBubble: { paddingHorizontal: 15, paddingVertical: 12, borderRadius: 20, borderBottomRightRadius: 6 },
   evidence: { gap: 8, paddingTop: 10, marginTop: 2, borderTopWidth: StyleSheet.hairlineWidth },
+  evidenceTrigger: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 28 },
+  evidenceList: { gap: 8 },
+  count: { flex: 1, fontSize: 11, lineHeight: 14, fontWeight: '600' },
   kicker: { fontSize: 11, lineHeight: 14, fontWeight: '700', letterSpacing: 1 },
   card: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 14 },
   cardIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
