@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { V4_SERIF, v4Styles } from './v4-phone';
+import { V4_PHONE, V4_SERIF, v4Styles } from './v4-phone';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView } from 'expo-symbols';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -30,8 +30,8 @@ export function FirstRunWelcomeScreen({ onStart, contentOnly = false }: { onStar
     {!contentOnly && <><Image testID="welcome-road-artwork" source={FIRST_RUN_ARTWORK[theme.id]} contentFit="cover" accessible={false}
       style={StyleSheet.absoluteFill} />
     <LinearGradient pointerEvents="none"
-      colors={theme.id === 'redline' ? [`${palette.page}00`, `${palette.page}08`, `${palette.page}99`, palette.page] : [alpha(palette.page, 0.2), alpha(palette.page, theme.isLight ? 0.35 : 0.1), alpha(palette.page, 0.94), palette.page]}
-      locations={theme.id === 'redline' ? [0, 0.48, 0.80, 1] : [0, 0.32, 0.65, 1]} style={StyleSheet.absoluteFill} /></>}
+      colors={V4_PHONE ? [alpha(palette.page, 0.35), alpha(palette.page, 0.62), alpha(palette.page, 0.9), palette.page] : theme.id === 'redline' ? [`${palette.page}00`, `${palette.page}08`, `${palette.page}99`, palette.page] : [alpha(palette.page, 0.2), alpha(palette.page, theme.isLight ? 0.35 : 0.1), alpha(palette.page, 0.94), palette.page]}
+      locations={V4_PHONE ? [0, 0.3, 0.62, 1] : theme.id === 'redline' ? [0, 0.48, 0.80, 1] : [0, 0.32, 0.65, 1]} style={StyleSheet.absoluteFill} /></>}
     <View style={[styles.safeArea, { paddingTop: insets.top + 20, paddingBottom: Math.max(insets.bottom, 16) }]}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.scenerySpace} />
