@@ -34,6 +34,7 @@ function JourneyDeckStackContent() {
     <Stack.Screen name="tools" options={{ headerShown: false }} />
     <Stack.Screen name="preferences" options={{ title: 'Settings', headerShown: false }} />
     <Stack.Screen name="fifty-states" options={{ headerShown: false, statusBarStyle: 'light' }} />
+    <Stack.Screen name="roads-so-far" options={{ headerShown: false }} />
     <Stack.Screen name="ask-journeydeck" options={{ title: 'Ask JourneyDeck', presentation: 'fullScreenModal', headerShown: false }} />
     <Stack.Screen name="siri-testing" options={{ title: 'Siri AI testing', headerShown: true }} />
   </Stack></ThemeProvider>;

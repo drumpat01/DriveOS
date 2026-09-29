@@ -141,6 +141,7 @@ import { lastPromptedShareJourneyId, markShareJourneyPrompted } from './share-pr
 import { membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from './membership-entitlements';
 import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
+import { ROADS_STEP_ENABLED } from './roads-so-far-scan';
 import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress, type FirstRunStage } from './first-run-onboarding';
 import { FirstRunOnboardingScreen } from './first-run-onboarding-screen';
 
@@ -151,7 +152,8 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
     case 'music': return 'location';
     case 'membership': return 'music';
     case 'tessie': return 'membership';
-    case 'instructions': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
+    case 'photos': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
+    case 'instructions': return ROADS_STEP_ENABLED ? 'photos' : TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
   }
 }
 import { V3_FIFTY_STATES_ENABLED } from './release-features';
@@ -1078,7 +1080,8 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           tessieMembershipTier={membership.tier}
           onTessieUpgrade={() => setMembershipPaywallVisible(true)}
           onTessieChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
-          onTessieContinue={() => advanceFirstRun('instructions')}
+          onTessieContinue={() => advanceFirstRun(ROADS_STEP_ENABLED ? 'photos' : 'instructions')}
+          onPhotosContinue={() => { advanceFirstRun('instructions'); void refreshMemories(false); }}
           onFinish={() => {
             setFirstRunProgress(completeFirstRun(firstRunRecordingMode));
             openTab('home');
@@ -1121,13 +1124,13 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
             : null,
         } : null}
         onClose={() => {
-          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'instructions'); return; }
+          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         }}
         onLoadProducts={membershipStore.loadProducts}
         onPurchase={async productId => membershipStore.purchase(productId).then(outcome => {
           if (outcome !== 'purchased') return;
-          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'instructions'); return; }
+          if (firstRunStage === 'membership') { advanceFirstRun(TESSIE_INTEGRATION_ENABLED ? 'tessie' : ROADS_STEP_ENABLED ? 'photos' : 'instructions'); return; }
           setMembershipPaywallVisible(false);
         })}
         onRestore={membershipStore.restore}
@@ -3440,6 +3443,9 @@ function ConnectionsScreen({
       <View style={styles.settingsHubList}>
         {renderCategoryRow('achievements', false)}
         {renderCategoryRow('places', true)}
+        {REDESIGN_PHONE && ROADS_STEP_ENABLED && <TouchPressable accessibilityRole="button" accessibilityLabel="See where you've been" onPress={() => { void haptics.selection(); router.push('/roads-so-far'); }} style={({ pressed }) => [styles.settingsHubRow, styles.settingsHubRowBorder, pressed && styles.pressed]}>
+          <View style={styles.settingsHubIcon}><SymbolView name="photo.on.rectangle.angled" tintColor={theme.palette.accent} size={19} /></View><View style={styles.flex}><Text style={styles.settingsHubTitle}>See where you've been</Text><Text numberOfLines={1} style={styles.settingsHubSummary}>Map past road trips from your photos</Text></View><Text style={styles.settingsHubChevron}>›</Text>
+        </TouchPressable>}
       </View>
     </View>
     {renderCategoryGroup('PREFERENCES', ['appearance', 'music', 'recording'])}

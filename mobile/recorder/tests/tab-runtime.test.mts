@@ -92,7 +92,7 @@ test('V4 iPhone uses its Atlas design while iPad retains Statistics and paid Atl
   assert.match(shell, /membershipTier === 'paid'[\s\S]*?assets\/icon\.png/);
   assert.match(shell, /<MembershipPaywall/);
   assert.match(shell, /visible=\{membershipPaywallVisible \|\| firstRunStage === 'membership'\}/);
-  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\(TESSIE_INTEGRATION_ENABLED \? 'tessie' : 'instructions'\); return; \}/);
+  assert.match(shell, /if \(firstRunStage === 'membership'\) \{ advanceFirstRun\(TESSIE_INTEGRATION_ENABLED \? 'tessie' : ROADS_STEP_ENABLED \? 'photos' : 'instructions'\); return; \}/);
   assert.match(shell, /insight=\{dashboard\.data\.summary\.allTime\.journeyCount > 0 \? \{/);
   assert.match(shell, /primarySections\.data\?\.music\.recentSelections\[0\]/);
   assert.match(membershipPaywall, /ATLAS ALREADY SEES/);
@@ -319,8 +319,8 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /onSkipMusic=\{\(\) => \{[\s\S]*?onboardingCompleted: true[\s\S]*?advanceFirstRun\('membership'\);/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'instructions' \| 'complete'/);
-  assert.match(firstRunScreen, /const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED \? 7 : 6/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'photos' \| 'instructions' \| 'complete'/);
+  assert.match(firstRunScreen, /const TOTAL_STEPS = 6 \+ \(TESSIE_INTEGRATION_ENABLED \? 1 : 0\) \+ \(ROADS_STEP_ENABLED \? 1 : 0\)/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
   assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);

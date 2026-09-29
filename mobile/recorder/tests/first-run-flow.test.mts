@@ -50,6 +50,8 @@ test('content exits before the next step enters while artwork stays mounted; Red
       'react-native': native,
       './release-features': { V3_LASTFM_ENABLED: false, TESSIE_INTEGRATION_ENABLED: false },
       './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
+      './roads-so-far-screen': { RoadsSoFarStep: host('RoadsSoFarStep') },
+      './roads-so-far-scan': { ROADS_STEP_ENABLED: false },
       './app-theme': { useAppTheme: () => testTheme('redline') },
       './v4-phone': { V4_PHONE: false, V4_SERIF: 'ui-serif', v4Styles: (styles: any) => styles, useV4Theme: () => testTheme('redline') },
       './motion': { useMotionPreferences: () => ({ reduceMotion: reduced, isAppActive: true }) },
@@ -90,6 +92,8 @@ test('music picker requires a Last.fm username and saves only the selected provi
   const Screen = load('first-run-onboarding-screen.tsx', {
     './release-features': { V3_LASTFM_ENABLED: true, TESSIE_INTEGRATION_ENABLED: false },
     './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
+    './roads-so-far-screen': { RoadsSoFarStep: host('RoadsSoFarStep') },
+    './roads-so-far-scan': { ROADS_STEP_ENABLED: false },
     'react-native': { View: host('View'), Text: host('Text'), ScrollView: host('ScrollView'), Pressable: host('Pressable'), TextInput: host('TextInput'),
       Linking: { openURL: async () => {} }, useWindowDimensions: () => ({ width: 390, height: 844 }), StyleSheet: { create: (s: any) => s, absoluteFill: {} } },
     './app-theme': { useAppTheme: () => testTheme('redline') },

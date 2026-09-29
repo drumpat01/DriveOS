@@ -6,6 +6,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { useMotionPreferences } from './motion';
 import { TESSIE_INTEGRATION_ENABLED, V3_LASTFM_ENABLED } from './release-features';
 import { TessieConnectionCard } from './tessie-connection-card';
+import { RoadsSoFarStep } from './roads-so-far-screen';
+import { ROADS_STEP_ENABLED } from './roads-so-far-scan';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
@@ -19,9 +21,9 @@ import { FirstRunWelcomeScreen, FIRST_RUN_ARTWORK } from './first-run-welcome-sc
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
 const SPOTIFY_ICON = require('../assets/spotify-icon-white.png');
 
-const TOTAL_STEPS = TESSIE_INTEGRATION_ENABLED ? 7 : 6;
+const TOTAL_STEPS = 6 + (TESSIE_INTEGRATION_ENABLED ? 1 : 0) + (ROADS_STEP_ENABLED ? 1 : 0);
 const STEP_NUMBER: Partial<Record<FirstRunStage, number>> = {
-  recording: 2, location: 3, music: 4, membership: 5, tessie: 6, instructions: TOTAL_STEPS,
+  recording: 2, location: 3, music: 4, membership: 5, tessie: 6, photos: TOTAL_STEPS - 1, instructions: TOTAL_STEPS,
 };
 
 function alpha(hex: string, opacity: number) {
@@ -43,6 +45,7 @@ type Props = {
   onTessieUpgrade: () => void;
   onTessieChanged: () => void;
   onTessieContinue: () => void;
+  onPhotosContinue: () => void;
   onFinish: () => void;
   onBack?: () => void;
 };
@@ -359,6 +362,7 @@ export function FirstRunOnboardingScreen(props: Props) {
         : <AppleMusicScreen onBack={props.onBack} onConnect={props.onConnectAppleMusic} onSkip={props.onSkipMusic} />)}
       {visibleStage === 'membership' && <MembershipStageBackdrop />}
       {visibleStage === 'tessie' && <TessieIntroScreen profileId={props.tessieProfileId} membershipTier={props.tessieMembershipTier} onUpgrade={props.onTessieUpgrade} onChanged={props.onTessieChanged} onContinue={props.onTessieContinue} onBack={props.onBack} />}
+      {visibleStage === 'photos' && <RoadsSoFarStep header={<OnboardingHeader step={STEP_NUMBER.photos!} onBack={props.onBack} onSkip={props.onPhotosContinue} />} onDone={props.onPhotosContinue} />}
       {visibleStage === 'instructions' && <FinishScreen onBack={props.onBack} onFinish={props.onFinish} />}
     </Animated.View>
   </View>;

@@ -27,6 +27,16 @@ export type TodayProfile = { initials: string; avatarUri: string | null };
 
 const LAYOUT_KEY = (userId: string) => `journeydeck.today.layout.v1.${userId.replace(/[^A-Za-z0-9._-]/g, '_')}`;
 
+/** Turns one Today card on for a profile, keeping the rest of its saved layout. */
+export function showTodayCard(userId: string, id: TodayCardId) {
+  try {
+    const raw = SecureStore.getItem(LAYOUT_KEY(userId));
+    const all = Object.keys(TODAY_CARD_LABELS) as TodayCardId[];
+    const layout = normalizeTodayLayout(raw ? JSON.parse(raw) : [], all).map(card => card.id === id ? { ...card, visible: true } : card);
+    SecureStore.setItem(LAYOUT_KEY(userId), JSON.stringify(layout));
+  } catch { /* Today keeps its current layout. */ }
+}
+
 /** Today's card order and visibility, saved per profile on this iPhone. */
 function useTodayLayout(userId: string, available: TodayCardId[]) {
   const key = `${userId}|${available.join(',')}`;
