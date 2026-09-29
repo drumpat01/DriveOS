@@ -69,7 +69,7 @@
     - The false Always warning now trusts native `authorization`.
     - Autumn Drive icon allowlist and Ask Siri Plus check.
   - Verified on the EAS cloud simulator: the widget renders, and one tap started recording on a fresh install.
-  - The TestFlight build needs the App Group on both the app and widget signing profiles.
+  - **V4 Build 44 uploaded to TestFlight (2026-09-29):** EAS build `112332a0-7daa-4590-bbf2-e7df7b5dd661` from main `eedd835` (runtime `4.0.0-preview.2`, paywall on), submission `1f7a39a0-c3ce-4f4c-ae2d-3d5814608a48` finished. The owner set up widget signing (`com.journeydeck.recorder.widgets`, App Group) with `eas credentials`. Build 43 was used up by a failed credentials attempt, and a Build 42 from 2026-09-28 (commit `ebcb693`) exists on EAS. It is internal TestFlight only: no External group, no App Review.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Device review is still needed for the latest OTA. Open a PR against `main` when asked.
 
