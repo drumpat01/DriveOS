@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type ReactNode, useEffect } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { HomeLayoutEditorSheet } from './home-widget-grid';
+import { setStartWidgetLastDrive } from '../modules/journeydeck-app-icon';
 import { defaultTodayLayout, moveTodayCard, normalizeTodayLayout, toggleTodayCard, TODAY_CARD_LABELS, type TodayCard, type TodayCardId } from './today-layout';
 import { Image as ExpoImage } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
@@ -81,6 +82,11 @@ export function TodayScreen({ primary, memories, recorder, loadProfile, onJourne
   const journeys = primary.data?.journeys ?? [];
   const details = primary.data?.details ?? [];
   const latest = useMemo(() => newestJourney(journeys), [journeys]);
+  // Keep the Start a Journey widget's "Last drive" current.
+  useEffect(() => {
+    if (primary.status === 'loading' && !primary.data) return;
+    void setStartWidgetLastDrive(latest ? { miles: latest.miles, minutes: latest.durationMinutes, startedAt: latest.startedAt } : null);
+  }, [latest?.id, latest?.miles, latest?.durationMinutes, primary.status]);
   const latestDetail = latest ? details.find(detail => detail.id === latest.id) ?? null : null;
   const week = useMemo(() => weekSummary(journeys, now), [journeys, now]);
   const resurfaced = useMemo(() => onThisDay(memories, journeys, now), [memories, journeys, now]);

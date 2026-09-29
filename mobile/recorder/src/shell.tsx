@@ -142,6 +142,7 @@ import { membershipCanAccessDate, type JourneyDeckMembershipEntitlements } from 
 import { useJourneyDeckMembership } from './membership-store';
 import { MembershipPaywall } from './membership-paywall';
 import { ROADS_STEP_ENABLED } from './roads-so-far-scan';
+import { PLACES_STEP_ENABLED } from './first-run-onboarding-screen';
 import { completeFirstRun, loadFirstRunProgress, saveFirstRunProgress, type FirstRunProgress, type FirstRunStage } from './first-run-onboarding';
 import { FirstRunOnboardingScreen } from './first-run-onboarding-screen';
 
@@ -149,7 +150,8 @@ function previousFirstRunStage(stage: Exclude<FirstRunStage, 'welcome' | 'comple
   switch (stage) {
     case 'recording': return 'welcome';
     case 'location': return 'recording';
-    case 'music': return 'location';
+    case 'places': return 'location';
+    case 'music': return PLACES_STEP_ENABLED ? 'places' : 'location';
     case 'membership': return 'music';
     case 'tessie': return 'membership';
     case 'photos': return TESSIE_INTEGRATION_ENABLED ? 'tessie' : 'membership';
@@ -1050,7 +1052,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           onLocationContinue={async () => {
             try {
               await requestJourneyLocationAccess();
-              advanceFirstRun('music');
+              advanceFirstRun(PLACES_STEP_ENABLED ? 'places' : 'music');
             } catch {
               Alert.alert('Location access unavailable', 'Please try again. You can also set location access in device Settings.');
             }
@@ -1081,6 +1083,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
           onTessieUpgrade={() => setMembershipPaywallVisible(true)}
           onTessieChanged={() => { void refreshConnectionCapabilities(); void refreshPrimarySections(false); }}
           onTessieContinue={() => advanceFirstRun(ROADS_STEP_ENABLED ? 'photos' : 'instructions')}
+          onPlacesContinue={() => advanceFirstRun('music')}
           onPhotosContinue={() => { advanceFirstRun('instructions'); void refreshMemories(false); }}
           onFinish={() => {
             setFirstRunProgress(completeFirstRun(firstRunRecordingMode));

@@ -13,7 +13,7 @@ function load(file: string, mocks: Record<string, any>) {
   const module = { exports: {} as any };
   const source = readFileSync(new URL(`../src/${file}`, import.meta.url), 'utf8');
   vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { module, exports: module.exports, require: (name: string) => name in mocks ? mocks[name] : name.startsWith('../assets/') ? name : require(name) });
+    { module, exports: module.exports, setTimeout: (done: () => void) => { done(); return 0; }, require: (name: string) => name in mocks ? mocks[name] : name.startsWith('../assets/') ? name : require(name) });
   return module.exports;
 }
 test('location access requests foreground before background and handles denial without starting recording', async () => {
@@ -23,8 +23,11 @@ test('location access requests foreground before background and handles denial w
       'expo-location': {
         requestForegroundPermissionsAsync: async () => { calls.push('foreground'); return { status: denial === 'foreground' || denial === 'blocked' ? 'denied' : 'granted', canAskAgain: denial !== 'blocked' }; },
         requestBackgroundPermissionsAsync: async () => { calls.push('background'); return { status: denial === 'background' ? 'denied' : 'granted', canAskAgain: true }; },
+        // Rechecks after a denial (Always upgrades can land late) never count as new prompts.
+        getBackgroundPermissionsAsync: async () => ({ status: denial === 'background' ? 'denied' : 'granted', canAskAgain: true }),
       },
       'react-native': { Alert: { alert: () => calls.push('alert') }, Linking: { openSettings: () => {} } },
+      '../modules/journeydeck-recorder': { getNativeAutomaticRecorderStatus: async () => ({ authorization: denial === 'background' ? 'when_in_use' : 'always' }) },
     });
     assert.equal(await requestJourneyLocationAccess(), denial === 'none');
     assert.deepEqual(calls, denial === 'none' ? ['foreground', 'background'] : denial === 'background' ? ['foreground', 'background', 'alert'] : ['foreground', 'alert']);
@@ -51,6 +54,8 @@ test('content exits before the next step enters while artwork stays mounted; Red
       './release-features': { V3_LASTFM_ENABLED: false, TESSIE_INTEGRATION_ENABLED: false },
       './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
       './roads-so-far-screen': { RoadsSoFarStep: host('RoadsSoFarStep') },
+      './first-run-places': { FirstRunPlacesStep: host('FirstRunPlacesStep') },
+      'expo-constants': { __esModule: true, default: { expoConfig: { runtimeVersion: '4.0.0-preview.1' } } },
       './roads-so-far-scan': { ROADS_STEP_ENABLED: false },
       './app-theme': { useAppTheme: () => testTheme('redline') },
       './v4-phone': { V4_PHONE: false, V4_SERIF: 'ui-serif', v4Styles: (styles: any) => styles, useV4Theme: () => testTheme('redline') },
@@ -93,6 +98,8 @@ test('music picker requires a Last.fm username and saves only the selected provi
     './release-features': { V3_LASTFM_ENABLED: true, TESSIE_INTEGRATION_ENABLED: false },
     './tessie-connection-card': { TessieConnectionCard: host('TessieConnectionCard') },
     './roads-so-far-screen': { RoadsSoFarStep: host('RoadsSoFarStep') },
+    './first-run-places': { FirstRunPlacesStep: host('FirstRunPlacesStep') },
+    'expo-constants': { __esModule: true, default: { expoConfig: { runtimeVersion: '4.0.0-preview.1' } } },
     './roads-so-far-scan': { ROADS_STEP_ENABLED: false },
     'react-native': { View: host('View'), Text: host('Text'), ScrollView: host('ScrollView'), Pressable: host('Pressable'), TextInput: host('TextInput'),
       Linking: { openURL: async () => {} }, useWindowDimensions: () => ({ width: 390, height: 844 }), StyleSheet: { create: (s: any) => s, absoluteFill: {} } },

@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import UIKit
+import WidgetKit
 
 public final class JourneyDeckAppIconModule: Module {
   public func definition() -> ModuleDefinition {
@@ -11,6 +12,16 @@ public final class JourneyDeckAppIconModule: Module {
 
     AsyncFunction("setIconAsync") { (iconName: String?) async throws -> [String: Any?] in
       try await self.setIcon(iconName)
+    }
+
+    // The Start a Journey widget reads the last drive from the shared App Group.
+    // Only a small JSON summary crosses: distance, minutes and the start time.
+    AsyncFunction("setWidgetSnapshotAsync") { (json: String?) -> Bool in
+      guard let group = Bundle.main.object(forInfoDictionaryKey: "JourneyDeckAppGroup") as? String,
+            let shared = UserDefaults(suiteName: group) else { return false }
+      if let json { shared.set(json, forKey: "startWidgetLastDrive") } else { shared.removeObject(forKey: "startWidgetLastDrive") }
+      WidgetCenter.shared.reloadTimelines(ofKind: "StartJourney")
+      return true
     }
   }
 

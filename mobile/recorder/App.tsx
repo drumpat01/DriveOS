@@ -6,6 +6,7 @@ import { GlassBackdrop, useGlassCardStyle } from './src/glass-material';
 import { journeyDeckSemanticColors } from './src/journeydeck-design-tokens';
 import { AppIconProvider } from './src/app-icon-preference';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { hasStartJourneyRequest, subscribeStartJourneyRequests, takeStartJourneyRequest } from './src/start-journey-link';
 import {
   ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Linking, Modal, Platform, Pressable,
   ScrollView, StyleSheet, Text, View,
@@ -84,7 +85,17 @@ import {
 
 configureJourneyDeckObservability();
 
-const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something unexpected happened.';
+/** Native recorder codes, in words a driver can act on. */
+const RECORDER_CODE_MESSAGES: Record<string, string> = {
+  open_iphone_required: 'JourneyDeck is still getting the recorder ready. Close this and tap Start again.',
+  always_location_required: 'Recording needs Always location access. Open Settings → JourneyDeck → Location and choose Always.',
+  refresh_required: 'JourneyDeck is still getting the recorder ready. Close this and tap Start again.',
+  invalid_request: 'That journey could not start. Tap Start again.',
+};
+const messageOf = (error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Something unexpected happened.';
+  return RECORDER_CODE_MESSAGES[message.trim()] ?? message;
+};
 
 function enrichCompletedJourney(connection: Connection | null, sessionId: string) {
   void processPendingCompletionJobs({ connection, sessionId }).then(() => {
@@ -188,6 +199,8 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
   const [completionMoment, setCompletionMoment] = useState<JourneyCompletionMoment | null>(null);
   const [clockNow, setClock] = useState(Date.now);
   const [recorderSheetOpen, setRecorderSheetOpen] = useState(false);
+  const [startRequestTick, setStartRequestTick] = useState(0);
+  useEffect(() => subscribeStartJourneyRequests(() => setStartRequestTick(tick => tick + 1)), []);
 
   const runExclusive = useCallback(async (work: () => Promise<void>) => {
     const next = operation.current.then(work, work);
@@ -553,9 +566,22 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
       await syncNativeRecorderInbox();
       const current = activeSession();
       if (current) throw new Error('A journey is already active.');
-      await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
-      await configureNativeManualRecorder(true, getCurrentUser().id, false);
-      const status = await startNativeManualJourney(randomUUID());
+      const prepare = async () => {
+        await configureNativeAutomaticRecorder(false, getCurrentUser().id, deviceId);
+        await configureNativeManualRecorder(true, getCurrentUser().id, false);
+      };
+      await prepare();
+      // A refresh can clear the recorder's readiness between setup and start (seen on a fresh
+      // install). Redo the setup and try once more before reporting a problem.
+      const notReady = (code: unknown) => code === 'open_iphone_required' || code === 'refresh_required';
+      let status: Awaited<ReturnType<typeof startNativeManualJourney>>;
+      try { status = await startNativeManualJourney(randomUUID()); }
+      catch (error) {
+        if (!notReady(error instanceof Error ? error.message.trim() : null)) throw error;
+        await prepare();
+        status = await startNativeManualJourney(randomUUID());
+      }
+      if (!status.recording && notReady(status.lastErrorCode)) { await prepare(); status = await startNativeManualJourney(randomUUID()); }
       if (!status.recording) throw new Error('Recording could not start. Check Always location access on this iPhone.');
       await syncNativeRecorderInbox();
       await startLocationTracking().catch(() => false);
@@ -571,6 +597,16 @@ function RecorderScreen({ onClose, presentation = 'screen', showManualSongButton
     setNotice('Recording started and is being saved on this iPhone.');
     void haptics.primaryAction();
   }, 'Starting background recording…');
+
+  // Home Screen widget: start once the recorder is ready. Only the V4 accessory recorder answers.
+  useEffect(() => {
+    if (presentation !== 'accessory' && presentation !== 'accessory-inline') return;
+    if (!hasStartJourneyRequest() || !deviceId || !recorderInitialized || busy) return;
+    const live = summary && summary.status !== 'completed';
+    takeStartJourneyRequest();
+    setRecorderSheetOpen(true);
+    if (!live && permissionsReady) void start();
+  }, [startRequestTick, presentation, deviceId, recorderInitialized, busy, permissionsReady, summary]);
 
   const pause = () => withBusy(async () => {
     if (!summary) return;
