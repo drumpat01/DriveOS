@@ -16,13 +16,14 @@ test('V4 TestFlight has its own runtime and update branch while using the existi
     process.env.EAS_BUILD_PROFILE = 'v4-testflight';
     const config = configure({ config: base });
     assert.equal(config.version, '4.0.0');
-    assert.equal(config.runtimeVersion, '4.0.0-preview.1');
+    assert.equal(config.runtimeVersion, '4.0.0-preview.2');
     assert.equal(config.updates.requestHeaders['xprem-branch'], 'v4-testflight');
     assert.equal(config.ios.bundleIdentifier, 'com.journeydeck.recorder');
     assert.equal(config.ios.infoPlist.JourneyDeckCloudKitContainer, 'iCloud.com.journeydeck.recorder');
     assert.equal(config.extra.features.markerPrototype, true);
     assert.equal(config.extra.features.auroraGlass, true, 'V4 offers the Aurora Glass Plus theme');
-    assert.equal(config.extra.features.testflightPlusUnlocked, true, 'V4 TestFlight unlocks all Plus features');
+    assert.equal(config.extra.features.testflightPlusUnlocked, false, 'V4 enforces the Plus paywall');
+    assert.equal(config.extra.features.atlasUnlocked, false, 'V4 enforces the Plus paywall for Atlas');
     assert.equal(config.extra.features.connector, true, 'V4 offers Connect to Claude');
     assert.equal(config.extra.features.redesign, true, 'V4 ships the iPhone redesign');
     assert.equal(config.extra.connector.url, 'https://mcp-staging.journeydeck.me/mcp');

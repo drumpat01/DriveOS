@@ -13,7 +13,10 @@ import { haptics } from './haptics';
 import { journeyDeckMapPalette } from './journey-map-theme';
 import { redesignColors, withAlpha } from './redesign-palette';
 import { V3_MIDNIGHT_CANOPY_ENABLED, V4_AURORA_GLASS_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
-import { themeCatalog, type ThemeId } from './theme-catalog';
+import { themeCatalog, themeRequiresPlus, type ThemeId } from './theme-catalog';
+import { useContext } from 'react';
+import { SymbolView } from 'expo-symbols';
+import { NativeNavigationContext } from './native-navigation-context';
 
 const journeyDeckLogo = require('../assets/icon.png');
 const journeyDeckLightLogo = require('../assets/icon-light-plum-v1.png');
@@ -148,7 +151,9 @@ function cardPalette(theme: JourneyShareTheme): CardPalette {
 export function ShareCardModal({ payload, onClose }: { payload: ShareCardPayload | null; onClose: () => void }) {
   const uiStyles = useThemedStyles(styles);
   const appTheme = useAppTheme();
-  const defaultTheme: JourneyShareTheme = V4_SHARE ? appTheme.id : 'cinematic';
+  const navigation = useContext(NativeNavigationContext);
+  const plusMember = navigation ? navigation.membership.tier === 'paid' : true;
+  const defaultTheme: JourneyShareTheme = V4_SHARE ? (plusMember || !themeRequiresPlus(appTheme.id) ? appTheme.id : 'redline') : 'cinematic';
 
   const cardRef = useRef<View>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
@@ -357,19 +362,23 @@ function JourneyShareControls({ theme, mapStyle, artwork, stats, onTheme, onMapS
 function ShareThemeChooser({ value, onSelect }: { value: JourneyShareTheme; onSelect: (value: JourneyShareTheme) => void }) {
   const appTheme = useAppTheme();
   const chrome = v4Chrome(appTheme.id);
+  // Plus themes are Plus on cards too; a locked theme opens the paywall.
+  const navigation = useContext(NativeNavigationContext);
+  const plus = navigation ? navigation.membership.tier === 'paid' : true;
   return <View style={chrome.choiceRow}>
     <Text style={chrome.choiceLabel}>THEME</Text>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={chrome.themeRow} accessibilityRole="radiogroup">
       {v4ShareThemeIds.map(id => {
-        const palette = themeCardPalette(id), selected = value === id;
-        return <Pressable key={id} testID={`share-theme-${id}`} accessibilityRole="radio" accessibilityLabel={`${themeCatalog[id].name} card theme`} accessibilityState={{ checked: selected, selected }}
-          onPress={() => { if (!selected) { void haptics.selection(); onSelect(id); } }}
+        const palette = themeCardPalette(id), selected = value === id, locked = !plus && themeRequiresPlus(id);
+        return <Pressable key={id} testID={`share-theme-${id}`} accessibilityRole="radio" accessibilityLabel={`${themeCatalog[id].name} card theme${locked ? ', JourneyDeck Plus' : ''}`} accessibilityState={{ checked: selected, selected }}
+          onPress={() => { if (locked) { navigation?.showUpgrade(); return; } if (!selected) { void haptics.selection(); onSelect(id); } }}
           style={({ pressed }) => [chrome.themeChip, selected && chrome.themeChipSelected, pressed && styles.pressed]}>
           <View style={[chrome.themeSwatch, { backgroundColor: palette.background, borderColor: palette.border }]}>
             <View style={[chrome.themeSwatchRoute, { backgroundColor: palette.route }]} />
             <View style={[chrome.themeSwatchDot, { backgroundColor: palette.accent }]} />
           </View>
           <Text numberOfLines={1} style={[chrome.themeChipText, selected && chrome.themeChipTextSelected]}>{themeCatalog[id].name}</Text>
+          {locked ? <SymbolView name="lock.fill" size={12} tintColor={redesignColors(appTheme.id, appTheme.palette).textSecondary} /> : null}
         </Pressable>;
       })}
     </ScrollView>

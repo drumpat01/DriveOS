@@ -4,9 +4,17 @@ import { useEffect, useState } from 'react';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useMotionPreferences } from './motion';
-import { TESSIE_INTEGRATION_ENABLED, V3_LASTFM_ENABLED } from './release-features';
+import { TESSIE_INTEGRATION_ENABLED, V3_LASTFM_ENABLED, V4_REDESIGN_ENABLED } from './release-features';
 import { TessieConnectionCard } from './tessie-connection-card';
 import { RoadsSoFarStep } from './roads-so-far-screen';
+import Constants from 'expo-constants';
+
+/**
+ * Build 41 (runtime 4.0.0-preview.1) predates the Start a Journey widget. The next native
+ * build carries a new runtime version, so offer the widget only outside that runtime.
+ */
+const WIDGET_IN_BUILD = V4_REDESIGN_ENABLED && (__DEV__ || Constants.expoConfig?.runtimeVersion !== '4.0.0-preview.1');
+import { FirstRunPlacesStep } from './first-run-places';
 import { ROADS_STEP_ENABLED } from './roads-so-far-scan';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
@@ -21,10 +29,12 @@ import { FirstRunWelcomeScreen, FIRST_RUN_ARTWORK } from './first-run-welcome-sc
 const APPLE_MUSIC_ICON = require('../assets/apple-music-icon.png');
 const SPOTIFY_ICON = require('../assets/spotify-icon-white.png');
 
-const TOTAL_STEPS = 6 + (TESSIE_INTEGRATION_ENABLED ? 1 : 0) + (ROADS_STEP_ENABLED ? 1 : 0);
-const STEP_NUMBER: Partial<Record<FirstRunStage, number>> = {
-  recording: 2, location: 3, music: 4, membership: 5, tessie: 6, photos: TOTAL_STEPS - 1, instructions: TOTAL_STEPS,
-};
+/** V4 asks for Home and Work right after location access. */
+export const PLACES_STEP_ENABLED = V4_REDESIGN_ENABLED;
+const STEP_ORDER: FirstRunStage[] = ['welcome', 'recording', 'location', ...(PLACES_STEP_ENABLED ? ['places' as const] : []), 'music', 'membership',
+  ...(TESSIE_INTEGRATION_ENABLED ? ['tessie' as const] : []), ...(ROADS_STEP_ENABLED ? ['photos' as const] : []), 'instructions'];
+const TOTAL_STEPS = 6 + (TESSIE_INTEGRATION_ENABLED ? 1 : 0) + (ROADS_STEP_ENABLED ? 1 : 0) + (PLACES_STEP_ENABLED ? 1 : 0);
+const STEP_NUMBER: Partial<Record<FirstRunStage, number>> = Object.fromEntries(STEP_ORDER.map((stage, index) => [stage, index + 1]));
 
 function alpha(hex: string, opacity: number) {
   const value = Math.max(0, Math.min(255, Math.round(opacity * 255))).toString(16).padStart(2, '0');
@@ -46,6 +56,7 @@ type Props = {
   onTessieChanged: () => void;
   onTessieContinue: () => void;
   onPhotosContinue: () => void;
+  onPlacesContinue: () => void;
   onFinish: () => void;
   onBack?: () => void;
 };
@@ -295,8 +306,15 @@ function FinishScreen({ onBack, onFinish }: { onBack?: () => void; onFinish: () 
         <OnboardingHeader step={STEP_NUMBER.instructions!} onBack={onBack} />
         <View style={recordingStyles.scenerySpace} />
         <StepIcon name="flag.checkered" />
-        <Text accessibilityRole="header" style={[recordingStyles.title, recordingStyles.musicHeadline, { color: palette.text, textShadowColor: palette.page }]}>The road is yours.</Text>
-        <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>Tap Start on Home before you set off. Tap Finish when you arrive.</Text>
+        <Text accessibilityRole="header" style={[recordingStyles.title, recordingStyles.musicHeadline, { color: palette.text, textShadowColor: palette.page }]}>{V4_REDESIGN_ENABLED ? 'Your first drive is one tap away.' : 'The road is yours.'}</Text>
+        <Text style={[recordingStyles.musicDescription, { color: palette.muted }]}>{V4_REDESIGN_ENABLED ? 'When you get in the car, open JourneyDeck and tap Start. Tap Finish when you arrive. Your route and music are saved for you.' : 'Tap Start on Home before you set off. Tap Finish when you arrive.'}</Text>
+        {WIDGET_IN_BUILD && <View style={[recordingStyles.widgetTip, { backgroundColor: alpha(palette.card, 0.72), borderColor: alpha(palette.line, 0.7) }]}>
+          <View style={[recordingStyles.widgetTipIcon, { backgroundColor: palette.accent }]}><SymbolView name="car.fill" tintColor={palette.onAccent} size={18} /></View>
+          <View style={recordingStyles.musicOptionCopy}>
+            <Text style={[recordingStyles.musicOptionTitle, { color: palette.text }]}>Start with one tap</Text>
+            <Text style={[recordingStyles.musicOptionDetail, { color: palette.muted }]}>Add the Start a Journey widget: touch and hold your Home Screen, tap Edit, then Add Widget and choose JourneyDeck.</Text>
+          </View>
+        </View>}
         <Pressable accessibilityRole="button" accessibilityLabel="Let the Journey Begin" onPress={onFinish}
           style={({ pressed }) => [recordingStyles.button, { backgroundColor: palette.accent, opacity: pressed ? 0.78 : 1 }]}>
           <Text style={[recordingStyles.buttonLabel, { color: palette.onAccent }]}>Let the Journey Begin</Text>
@@ -362,6 +380,7 @@ export function FirstRunOnboardingScreen(props: Props) {
         : <AppleMusicScreen onBack={props.onBack} onConnect={props.onConnectAppleMusic} onSkip={props.onSkipMusic} />)}
       {visibleStage === 'membership' && <MembershipStageBackdrop />}
       {visibleStage === 'tessie' && <TessieIntroScreen profileId={props.tessieProfileId} membershipTier={props.tessieMembershipTier} onUpgrade={props.onTessieUpgrade} onChanged={props.onTessieChanged} onContinue={props.onTessieContinue} onBack={props.onBack} />}
+      {visibleStage === 'places' && <FirstRunPlacesStep header={<OnboardingHeader step={STEP_NUMBER.places!} onBack={props.onBack} onSkip={props.onPlacesContinue} />} onDone={props.onPlacesContinue} />}
       {visibleStage === 'photos' && <RoadsSoFarStep header={<OnboardingHeader step={STEP_NUMBER.photos!} onBack={props.onBack} onSkip={props.onPhotosContinue} />} onDone={props.onPhotosContinue} />}
       {visibleStage === 'instructions' && <FinishScreen onBack={props.onBack} onFinish={props.onFinish} />}
     </Animated.View>
@@ -369,6 +388,8 @@ export function FirstRunOnboardingScreen(props: Props) {
 }
 
 const recordingStyles = v4Styles(StyleSheet.create({
+  widgetTip: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, marginBottom: 16 },
+  widgetTipIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   tessieOptional: { fontSize: 12, fontWeight: '800', letterSpacing: 1.4, marginBottom: 10 },
   tessieChoiceIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   tessieActions: { gap: 6, marginTop: 28 },

@@ -312,15 +312,15 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(shell, /<FirstRunOnboardingScreen/);
   assert.match(shell, /onRecordingContinue=\{async mode/);
   assert.match(shell, /advanceFirstRun\('location', mode\)/);
-  assert.match(shell, /await requestJourneyLocationAccess\(\);\s+advanceFirstRun\('music'\)/);
+  assert.match(shell, /await requestJourneyLocationAccess\(\);\s+advanceFirstRun\(PLACES_STEP_ENABLED \? 'places' : 'music'\)/);
   assert.match(shell, /onConnectAppleMusic=\{async \(\) =>/);
   assert.match(shell, /await connectAppleMusic\('apple-music'\);\s+advanceFirstRun\('membership'\)/);
   // Skipping music records the default method so onboarding never ends on a mandatory picker.
   assert.match(shell, /onSkipMusic=\{\(\) => \{[\s\S]*?onboardingCompleted: true[\s\S]*?advanceFirstRun\('membership'\);/);
   assert.match(shell, /completeFirstRun\(firstRunRecordingMode\)/);
   assert.match(firstRun, /onboarding\.first-run-v2/);
-  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'music' \| 'membership' \| 'tessie' \| 'photos' \| 'instructions' \| 'complete'/);
-  assert.match(firstRunScreen, /const TOTAL_STEPS = 6 \+ \(TESSIE_INTEGRATION_ENABLED \? 1 : 0\) \+ \(ROADS_STEP_ENABLED \? 1 : 0\)/);
+  assert.match(firstRun, /'welcome' \| 'recording' \| 'location' \| 'places' \| 'music' \| 'membership' \| 'tessie' \| 'photos' \| 'instructions' \| 'complete'/);
+  assert.match(firstRunScreen, /const TOTAL_STEPS = 6 \+ \(TESSIE_INTEGRATION_ENABLED \? 1 : 0\) \+ \(ROADS_STEP_ENABLED \? 1 : 0\) \+ \(PLACES_STEP_ENABLED \? 1 : 0\)/);
   assert.match(firstRunScreen, /FirstRunWelcomeScreen onStart=\{props\.onWelcomeComplete\}/);
   assert.doesNotMatch(firstRunScreen, /JourneyOpening|WelcomeAnimation|WELCOME_ANIMATION|autoplay=/);
   assert.match(firstRunScreen, /FIRST_RUN_ARTWORK\[theme.id\]/);
@@ -338,7 +338,9 @@ test('first run uses the static theme-aware welcome and manual-only version-1 re
   assert.match(firstRunScreen, /accessibilityLabel="Connect Apple Music"/);
   assert.match(firstRunScreen, /accessibilityLabel="Let the Journey Begin" onPress=\{onFinish\}/);
   assert.match(firstRunScreen, /`Step \$\{step\} of \$\{TOTAL_STEPS\}`/);
-  assert.match(firstRunScreen, /instructions: TOTAL_STEPS/);
+  // Step numbers come from the stage order, so the finish screen is always the last dot.
+  assert.match(firstRunScreen, /STEP_ORDER\.map\(\(stage, index\) => \[stage, index \+ 1\]\)/);
+  assert.match(firstRunScreen, /\.\.\.\(ROADS_STEP_ENABLED \? \['photos' as const\] : \[\]\), 'instructions'\]/);
   assert.doesNotMatch(firstRunScreen, /04A \/ 04|04B \/ 04/);
   assert.match(welcomeIntro, /onboarding\.welcome-intro/);
 });

@@ -11,8 +11,9 @@ module.exports = ({ config }) => {
   const v3Preview = !v4Store && !v3Store && (process.env.APP_VARIANT === 'v3-preview' || ['v3-preview', 'v3-development-simulator'].includes(process.env.EAS_BUILD_PROFILE));
   const v3 = v3Preview || v3Store;
   const modern = v3 || v4Store;
-  // Development builds unlock every Plus feature. Set JOURNEYDECK_PAYWALL=live for the App Store submission build.
-  const paywallLive = process.env.JOURNEYDECK_PAYWALL === 'live';
+  // V4 builds and updates enforce the paywall (owner decision, 2026-09-29); JOURNEYDECK_PAYWALL=open
+  // restores the testing unlock. Earlier variants keep Plus unlocked unless JOURNEYDECK_PAYWALL=live.
+  const paywallLive = process.env.JOURNEYDECK_PAYWALL === 'live' || (v4Store && process.env.JOURNEYDECK_PAYWALL !== 'open');
   const preview = process.env.APP_VARIANT === 'v2-preview' || process.env.EAS_BUILD_PROFILE === 'v2-preview';
   const markerOtaCompat = process.env.EXPO_PUBLIC_JOURNEYDECK_MARKER_OTA_COMPAT === '1';
   const channel = v4Store ? 'v4-testflight' : v3Preview ? 'v3-preview' : preview ? 'v2-preview' : 'production';
@@ -31,7 +32,7 @@ module.exports = ({ config }) => {
     version: v4Store ? '4.0.0' : v3 ? '3.0.0' : '2.0.0',
     icon: './assets/icon-grand-touring-v2.png',
     // V4 and V3 Build 40 have separate native and OTA compatibility boundaries.
-    runtimeVersion: v4Store ? '4.0.0-preview.1' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
+    runtimeVersion: v4Store ? '4.0.0-preview.2' : v3 ? '3.0.0-preview.8' : preview ? '2.0.0-preview.14' : '2.0.0-watch.9',
     updates: {
       ...config.updates,
       ...(modern ? {
@@ -56,7 +57,7 @@ module.exports = ({ config }) => {
     }]] : []), ['expo-audio', {
       microphonePermission,
       recordAudioAndroid: false, enableBackgroundRecording: false, enableBackgroundPlayback: false,
-    }], './plugins/with-even-native-tabs', './plugins/with-alternate-app-icons', './plugins/with-journeydeck-watch', './plugins/with-journeydeck-siri', ...(modern ? ['./plugins/with-ask-journeydeck'] : [])],
+    }], './plugins/with-even-native-tabs', './plugins/with-alternate-app-icons', './plugins/with-journeydeck-watch', './plugins/with-journeydeck-siri', ...(v4Store ? ['./plugins/with-journeydeck-widgets'] : []), ...(modern ? ['./plugins/with-ask-journeydeck'] : [])],
     scheme: v3Preview ? 'journeydeck-v3' : preview ? 'journeydeck-v2' : config.scheme,
     userInterfaceStyle: 'automatic',
     ios: {
@@ -80,8 +81,10 @@ module.exports = ({ config }) => {
       entitlements: {
         ...config.ios.entitlements,
         'com.apple.developer.icloud-container-identifiers': [container],
+        // V4 shares the last drive with the Start a Journey widget.
+        ...(v4Store ? { 'com.apple.security.application-groups': [`group.${config.ios.bundleIdentifier}`] } : {}),
       },
-      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, JourneyDeckMarkerEnabled: modern, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
+      infoPlist: { ...config.ios.infoPlist, NSMicrophoneUsageDescription: microphonePermission, NSPhotoLibraryUsageDescription: photoPermission, JourneyDeckCloudKitContainer: container, ...(v4Store ? { JourneyDeckAppGroup: `group.${config.ios.bundleIdentifier}` } : {}), JourneyDeckMarkerEnabled: modern, UIViewControllerBasedStatusBarAppearance: true, 'UISupportedInterfaceOrientations~ipad': ['UIInterfaceOrientationPortrait', 'UIInterfaceOrientationPortraitUpsideDown', 'UIInterfaceOrientationLandscapeLeft', 'UIInterfaceOrientationLandscapeRight'] },
     },
     extra: {
       ...config.extra,

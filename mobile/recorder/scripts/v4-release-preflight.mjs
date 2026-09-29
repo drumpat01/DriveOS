@@ -31,7 +31,7 @@ assert.equal(build.env?.EXPO_PUBLIC_JOURNEYDECK_INTERNAL_TESTING, '0');
 assert.equal(config.ios.bundleIdentifier, 'com.journeydeck.recorder');
 assert.deepEqual(config.ios.entitlements['com.apple.developer.icloud-container-identifiers'], ['iCloud.com.journeydeck.recorder']);
 assert.equal(config.version, '4.0.0');
-assert.equal(config.runtimeVersion, '4.0.0-preview.1');
+assert.equal(config.runtimeVersion, '4.0.0-preview.2');
 assert.equal(config.updates.requestHeaders['xprem-branch'], 'v4-testflight');
 assert.equal(config.extra.features.auroraGlass, true);
 assert.equal(eas.submit['v4-testflight']?.ios?.ascAppId, '6806502526');

@@ -59,6 +59,17 @@
   - `roads-so-far-model.ts` places photo coordinates into the 50 States shapes using the d3 geoAlbersUsa math (scale 1300) and groups away-from-home days into trips. It is tested in `roads-so-far.test.mts`.
   - `roads-so-far-scan.ts` reads the newest 6,000 photos' dates and locations through `expo-media-library/legacy`, which is already in Build 41 (OTA-safe). Found states merge into 50 States and turn on Today's 50 States card. Chosen trips become Memories with up to 6 photos each via the Photo Matching import path.
   - Not yet run on a device.
+- **Build 42 prep (2026-09-29):**
+  - V4 runtime is now `4.0.0-preview.2`, so Build 41 receives no further OTAs.
+  - The V4 paywall is on by default (`JOURNEYDECK_PAYWALL=open` restores the testing unlock). Share-card Plus themes are locked for free members.
+  - New in this build:
+    - Onboarding Home/Work stage `places` and a new finish screen.
+    - Start a Journey widget: `widgets/JourneyDeckWidgets.swift` and `plugins/with-journeydeck-widgets.js`, bundle `.widgets`, App Group `group.com.journeydeck.recorder`, last drive handed over via `setStartWidgetLastDrive`.
+    - `start-journey` link and a recorder start retry for `open_iphone_required`.
+    - The false Always warning now trusts native `authorization`.
+    - Autumn Drive icon allowlist and Ask Siri Plus check.
+  - Verified on the EAS cloud simulator: the widget renders, and one tap started recording on a fresh install.
+  - The TestFlight build needs the App Group on both the app and widget signing profiles.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Device review is still needed for the latest OTA. Open a PR against `main` when asked.
 

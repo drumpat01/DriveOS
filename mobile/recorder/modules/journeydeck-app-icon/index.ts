@@ -18,3 +18,10 @@ export async function setNativeAppIcon(iconName: string | null): Promise<Journey
   }
   return JourneyDeckAppIconModule.setIconAsync(iconName);
 }
+
+export type StartWidgetLastDrive = { miles: number; minutes: number; startedAt: string };
+
+/** Hands the Start a Journey widget the latest drive. Builds without the widget ignore it. */
+export async function setStartWidgetLastDrive(drive: StartWidgetLastDrive | null): Promise<void> {
+  await JourneyDeckAppIconModule?.setWidgetSnapshotAsync?.(drive ? JSON.stringify(drive) : null).catch(() => false);
+}

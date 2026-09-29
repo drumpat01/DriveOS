@@ -66,6 +66,7 @@ const shared: Record<string, unknown> = {
   })(),
   '@shopify/react-native-skia': { Skia: { RuntimeEffect: { Make: () => null } }, useImage: () => null, Canvas: host('Canvas'), Fill: host('Fill'), Shader: host('Shader'), ImageShader: host('ImageShader') },
   './home-widget-grid': { HomeLayoutEditorSheet: host('EditorSheet') },
+  '../modules/journeydeck-app-icon': { setStartWidgetLastDrive: async () => {} },
   'expo-secure-store': { getItem: (key: string) => secureStore.get(key) ?? null, setItem: (key: string, value: string) => { secureStore.set(key, value); } },
   './redesign-palette': require('../src/redesign-palette.ts'),
 };
