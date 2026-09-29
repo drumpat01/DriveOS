@@ -32,6 +32,8 @@ test('app icon choices keep stable persisted IDs and distinct native names', () 
   assert.deepEqual(APP_ICON_GRID_ORDER, ['grand-touring', 'warm-ivory', 'original', 'rosewater']);
   assert.equal(appIconRequiresPlus('rosewater'), true);
   assert.equal(appIconRequiresPlus('grand-touring'), false);
+  assert.equal(appIconRequiresPlus('midnight-canopy'), true, 'Autumn Drive icon is Plus');
+  assert.equal(appIconRequiresPlus('warm-ivory'), false);
 });
 
 test('iOS host target declares every alternate app icon set', () => {

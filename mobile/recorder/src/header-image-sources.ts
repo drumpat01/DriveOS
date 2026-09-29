@@ -27,7 +27,8 @@ export function glassSoftSceneSource(mode: ThemeId): ImageSourcePropType | null 
 /** Theme app-owned artwork; unknown sources and dark mode remain untouched. */
 export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): ImageSourcePropType {
   if (typeof source === 'number' && customArtwork.has(source)) {
-    // Aurora Glass: full scenery on Home only; every other app-owned image uses the calm blurred scene.
+    // Aurora Glass: full scenery on Home, a real aurora photo on Journeys, the calm blurred scene elsewhere.
+    if (mode === 'aurora-glass' && source === require('../assets/cinematic-journey-photo-v1.jpg')) return require('../assets/theme-aurora-glass-journey-v1.jpg');
     if (mode === 'aurora-glass') return source === require('../assets/cinematic-home-main-photo-v1.jpg')
       ? require('../assets/theme-aurora-glass-scene-v1.jpg')
       : require('../assets/theme-aurora-glass-scene-soft-v1.jpg');
@@ -46,7 +47,7 @@ export function headerImageSource(source: ImageSourcePropType, mode: ThemeId): I
     }
     if (journeyArtwork.has(source)) {
       if (mode === 'sakura') return require('../assets/theme-rosewater-journey-v1.png');
-      if (mode === 'redline') return require('../assets/theme-carbon-blue-journey-v1.png');
+      if (mode === 'redline') return require('../assets/theme-grand-touring-home-v2.png');
     }
     if (mode === 'sakura') return require('../assets/theme-rosewater-road-v1.png');
     if (mode === 'redline') return require('../assets/theme-carbon-blue-road-v1.png');

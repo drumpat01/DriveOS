@@ -121,6 +121,7 @@ test('premium palettes keep text and supporting metric colors readable on their 
   assert.equal(catalog.themeRequiresPlus('sakura'), true);
   assert.equal(catalog.themeRequiresPlus('redline'), false);
   assert.equal(catalog.themeRequiresPlus('light'), false);
+  assert.equal(catalog.themeRequiresPlus('midnight-canopy'), true, 'Autumn Drive is Plus');
   for (const invalid of [null, 'expired-theme', '__proto__', 7]) assert.equal(catalog.parseThemeId(invalid), 'redline');
 });
 
@@ -299,7 +300,7 @@ test('theme artwork switches only registered decorative images, preserving user 
     assert.equal(png.readUInt32BE(20), 1024, `${file} keeps the theme artwork height`);
   }
   assert.equal(resolve(asset('../assets/cinematic-memory-polaroids-photo-v1.jpg'), 'redline'), asset('../assets/theme-grand-touring-memories-v1.png'));
-  assert.equal(resolve(asset('../assets/cinematic-journey-photo-v1.jpg'), 'redline'), asset('../assets/theme-carbon-blue-journey-v1.png'));
+  assert.equal(resolve(asset('../assets/cinematic-journey-photo-v1.jpg'), 'redline'), asset('../assets/theme-grand-touring-home-v2.png'));
 
   for (const id of ['sakura', 'redline']) { assert.equal(resolve(photo, id), photo); assert.equal(resolve(99999, id), 99999); }
   const statistics = asset('../assets/cinematic-statistics-photo-v1.jpg');
@@ -357,9 +358,10 @@ test('Aurora artwork: full scene on Home, calm blurred scene elsewhere, user pho
   const scene = asset('../assets/theme-aurora-glass-scene-v1.jpg');
   const soft = asset('../assets/theme-aurora-glass-scene-soft-v1.jpg');
   assert.equal(resolve(asset('../assets/cinematic-home-main-photo-v1.jpg'), 'aurora-glass'), scene);
-  for (const file of ['cinematic-settings-photo-v1.jpg', 'cinematic-memories-polaroids-photo-v1.jpg', 'cinematic-memory-polaroids-photo-v1.jpg', 'cinematic-soundtracks-photo-v1.jpg', 'cinematic-statistics-photo-v1.jpg', 'cinematic-journey-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) {
+  for (const file of ['cinematic-settings-photo-v1.jpg', 'cinematic-memories-polaroids-photo-v1.jpg', 'cinematic-memory-polaroids-photo-v1.jpg', 'cinematic-soundtracks-photo-v1.jpg', 'cinematic-statistics-photo-v1.jpg', 'cinematic-home-night-photo-v1.jpg']) {
     assert.equal(resolve(asset(`../assets/${file}`), 'aurora-glass'), soft, `${file} uses the blurred scene`);
   }
+  assert.equal(resolve(asset('../assets/cinematic-journey-photo-v1.jpg'), 'aurora-glass'), asset('../assets/theme-aurora-glass-journey-v1.jpg'), 'Journeys use the aurora road photo');
   const photo = { uri: 'file:///private/photo.jpg' };
   assert.equal(resolve(photo, 'aurora-glass'), photo);
   assert.equal(resolve(99999, 'aurora-glass'), 99999);
