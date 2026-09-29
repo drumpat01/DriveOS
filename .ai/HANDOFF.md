@@ -54,6 +54,11 @@
   - Fixes from the simulator review: V4 onboarding scrim, opaque Tessie card, paywall Plus copy with "No thanks", embedded pickers.
   - Fixed: skipping music now saves the default method, so no mandatory V3 picker appears. The V4 iPhone paywall is redesigned in `membership-paywall-v4.tsx` and checked on the simulator (Grand Touring only).
 - **Design system + kicker (2026-09-28):** The Design System artifact https://claude.ai/artifact/WUUHDGKFisG72f6Vq8LqWM (private) was built from `theme-catalog.ts`, `journeydeck-design-tokens.ts`, `redesign-palette.ts`, and `redesign-ui.tsx`. It has 36 colour roles across six themes, type, spacing, radius, elevation, per-theme app icons, and static previews of Button, Card, StatTile, Chip, and ListRow. The owner chose the shared `Kicker` (weight 700, tracking 1, `textSecondary`). Commit `b767b59` makes `journeyDeckTypography.kicker` match; it affects the paywall eyebrow and insight kicker and the Home road-summary kicker/label. Typecheck is clean; the commit is pushed to `origin/claude/v4-redesign`, not in an OTA, and not seen on a device.
+- **"See where you've been" (2026-09-28, uncommitted):** approved mockup at https://claude.ai/artifact/RosfuHKmjsp7dDMSvXzoWy.
+  - Adds the optional V4 onboarding stage `photos` (before `instructions`) and a Settings → Your Journey entry (route `/roads-so-far`).
+  - `roads-so-far-model.ts` places photo coordinates into the 50 States shapes using the d3 geoAlbersUsa math (scale 1300) and groups away-from-home days into trips. It is tested in `roads-so-far.test.mts`.
+  - `roads-so-far-scan.ts` reads the newest 6,000 photos' dates and locations through `expo-media-library/legacy`, which is already in Build 41 (OTA-safe). Found states merge into 50 States and turn on Today's 50 States card. Chosen trips become Memories with up to 6 photos each via the Photo Matching import path.
+  - Not yet run on a device.
 - Not yet seen on a device. Check: the accessory bar and recorder sheet on iOS 26/27, the pre-26 inline fallback, the Search role item, the hidden Settings route, memory flip into `MemoryDetailV4`, Dynamic Type, and light themes (Warm Ivory, Rosewater).
 - Device review is still needed for the latest OTA. Open a PR against `main` when asked.
 
