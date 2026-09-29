@@ -4,7 +4,6 @@ import { SymbolView } from 'expo-symbols';
 
 import { useAppTheme } from './app-theme';
 import {
-  APP_ICON_GRID_ORDER,
   FREE_APP_ICON_IDS,
   PLUS_APP_ICON_IDS,
   appIconCatalog,
@@ -30,9 +29,10 @@ const darkPreviews: Record<AppIconId, number> = {
   'midnight-canopy': require('../assets/icon-midnight-canopy-dark-v1.png'),
 };
 
-const visibleAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
-  ? [...APP_ICON_GRID_ORDER, 'midnight-canopy']
-  : APP_ICON_GRID_ORDER;
+const visiblePlusAppIconIds: readonly AppIconId[] = V3_MIDNIGHT_CANOPY_ENABLED
+  ? [...PLUS_APP_ICON_IDS, 'midnight-canopy']
+  : PLUS_APP_ICON_IDS;
+const visibleAppIconIds: readonly AppIconId[] = [...FREE_APP_ICON_IDS, ...visiblePlusAppIconIds];
 
 type AppIconPickerProps = {
   embedded?: boolean;
@@ -63,7 +63,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
     ));
   };
 
-  const renderRow = (label: string, ids: readonly AppIconId[], isPlus: boolean, group: 'free' | 'plus' | 'preview') => <View testID={`app-icon-row-${group}`} style={styles.tierGroup}>
+  const renderRow = (label: string, ids: readonly AppIconId[], isPlus: boolean, group: 'free' | 'plus') => <View testID={`app-icon-row-${group}`} style={styles.tierGroup}>
     <View style={styles.tierHeading}>
       <Text style={[styles.tierLabel, { color: isPlus ? colors.accent : colors.muted }]}>{label}</Text>
       {isPlus && <SymbolView name="crown.fill" tintColor={colors.accent} size={13} />}
@@ -111,8 +111,7 @@ export function AppIconPicker({ embedded = false, compact = false, membershipTie
     <Text accessibilityLiveRegion="polite" style={[styles.detail, { color: colors.muted }]}>{detail}</Text>
     <View accessibilityRole="radiogroup" style={styles.grid}>
       {renderRow('FREE', FREE_APP_ICON_IDS, false, 'free')}
-      {renderRow('JOURNEYDECK PLUS', PLUS_APP_ICON_IDS, true, 'plus')}
-      {V3_MIDNIGHT_CANOPY_ENABLED && renderRow('V3 PREVIEW', ['midnight-canopy'], false, 'preview')}
+      {renderRow('JOURNEYDECK PLUS', visiblePlusAppIconIds, true, 'plus')}
     </View>
   </View>;
 }

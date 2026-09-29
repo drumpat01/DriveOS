@@ -35,12 +35,12 @@ const previews: Record<ThemeId, number> = {
   'aurora-glass': V4_AURORA_GLASS_ENABLED ? require('../assets/theme-aurora-glass-scene-v1.jpg') : 0,
 };
 
-const visibleFreeThemeIds: readonly ThemeId[] = V3_MIDNIGHT_CANOPY_ENABLED
-  ? [...FREE_THEME_IDS, 'midnight-canopy']
-  : FREE_THEME_IDS;
-const visiblePlusThemeIds: readonly ThemeId[] = V4_AURORA_GLASS_ENABLED
-  ? [...PLUS_THEME_IDS, ...V4_PLUS_THEME_IDS]
-  : PLUS_THEME_IDS;
+const visibleFreeThemeIds: readonly ThemeId[] = FREE_THEME_IDS;
+const visiblePlusThemeIds: readonly ThemeId[] = [
+  ...PLUS_THEME_IDS,
+  ...(V3_MIDNIGHT_CANOPY_ENABLED ? ['midnight-canopy' as const] : []),
+  ...(V4_AURORA_GLASS_ENABLED ? V4_PLUS_THEME_IDS : []),
+];
 const visibleThemeIds: readonly ThemeId[] = [...visibleFreeThemeIds, ...visiblePlusThemeIds];
 
 type ThemePickerProps = {

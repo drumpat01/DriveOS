@@ -43,7 +43,8 @@ export function appIconChoices(includeAutumnDrive: boolean): readonly AppIconId[
 }
 
 export function appIconRequiresPlus(id: AppIconId) {
-  return PLUS_APP_ICON_IDS.includes(id);
+  // Only Grand Touring and Warm Ivory are free; Autumn Drive is Plus wherever it is offered.
+  return !FREE_APP_ICON_IDS.includes(id);
 }
 
 export function parseAppIconId(value: unknown): AppIconId {

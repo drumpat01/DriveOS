@@ -68,7 +68,8 @@ export function themeChoices(includeAutumnDrive: boolean): readonly ThemeId[] {
 }
 
 export function themeRequiresPlus(id: ThemeId) {
-  return PLUS_THEME_IDS.includes(id) || V4_PLUS_THEME_IDS.includes(id);
+  // Only Grand Touring and Warm Ivory are free; Autumn Drive is Plus wherever it is offered.
+  return !FREE_THEME_IDS.includes(id);
 }
 
 /** Aurora has no dedicated medallion/avatar set; it borrows Grand Touring's midnight-navy artwork. */

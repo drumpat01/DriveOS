@@ -34,7 +34,7 @@ These app-ready derivatives preserve the licensed source photographs while apply
 | `theme-grand-touring-memories-v1.png` | Grand Touring Memories header and Memory fallback | “Close-up of a Vintage Green Car's Headlight” — Edoardo Giudici Saraval | [Unsplash NCVtwT6Lc7Q](https://unsplash.com/photos/close-up-of-a-vintage-green-cars-headlight-NCVtwT6Lc7Q) |
 | `theme-grand-touring-statistics-v1.png` | Grand Touring Statistics artwork | “Blue and White Sports Cars Riding on Empty Road at Night” — Inline Media | [Pexels #5229623](https://www.pexels.com/photo/blue-and-white-sports-car-riding-on-empty-road-at-night-5229623/) |
 | `theme-grand-touring-settings-v1.png` | Grand Touring Settings header | “Close up of Engine in Black and White” — Jean Marc Bonnel | [Pexels #19227069](https://www.pexels.com/photo/close-up-of-engine-in-black-and-white-19227069/) |
-| `theme-carbon-blue-journey-v1.png` | Grand Touring Journey detail and time-of-day fallback | “Blue Car Driving on Road in Late Evening” — Erik Mclean | [Pexels #5158107](https://www.pexels.com/photo/blue-car-driving-on-road-in-late-evening-5158107/) |
+| `theme-carbon-blue-journey-v1.png` | Grand Touring time-of-day fallback | “Blue Car Driving on Road in Late Evening” — Erik Mclean | [Pexels #5158107](https://www.pexels.com/photo/blue-car-driving-on-road-in-late-evening-5158107/) |
 | `theme-carbon-blue-road-v1.png` | Grand Touring shared road/header fallback | “A Blue Sedan Car on the Road” — Erik Mclean | [Pexels #9827743](https://www.pexels.com/photo/a-blue-sedan-car-on-the-road-9827743/) |
 
 ## Aurora Glass theme (V4)
@@ -45,3 +45,4 @@ These images contain no photography or third-party material. `scripts/generate-a
 | --- | --- | --- |
 | `theme-aurora-glass-scene-v1.jpg` | Aurora Glass Home background, theme preview and first-run artwork | Procedural (original) |
 | `theme-aurora-glass-scene-soft-v1.jpg` | Aurora Glass blurred background for Memories, Settings, headers and fallbacks | Procedural (original), blurred and dimmed |
+| `theme-aurora-glass-journey-v1.jpg` | Aurora Glass Journey detail header | “Green aurora lights over the road” — Nikola Johnny Mirkovic | [Unsplash dbCR-j6Cd_s](https://unsplash.com/photos/green-aurora-lights-over-the-road-dbCR-j6Cd_s) (Unsplash License; added September 29, 2026) |
