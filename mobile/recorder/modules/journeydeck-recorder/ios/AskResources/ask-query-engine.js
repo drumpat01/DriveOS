@@ -295,7 +295,7 @@
         + '. Difference: ' + (numeric >= compared ? '+' : '') + format(numeric - compared) + ' ' + unit + '.';
     } else if (p.operation === 'average') {
       numeric = rows.length ? numeric / rows.length : null;
-      text = numeric === null ? 'No matching records ' + scope + '.' : 'Average: ' + format(numeric) + ' ' + unit + ' across ' + rows.length + ' records ' + scope + '.';
+      text = numeric === null ? 'No matching records ' + scope + '.' : 'Average: ' + format(numeric) + ' ' + unit + ' across ' + rows.length + (rows.length === 1 ? ' record ' : ' records ') + scope + '.';
     } else if (p.operation === 'rank') {
       // A general supporting-record sample is not evidence for a winning group.
       evidence.length = 0;
@@ -328,11 +328,12 @@
       text = selectedRows.length ? selectedRows.map(row => {
         const name = p.domain === 'music' ? safeText(row.track, input, 'Private song') + ' by ' + safeText(row.artist, input, 'Private artist') : { journeys: 'journey', memories: 'memory', markers: 'marker', places: 'recorded arrival' }[p.domain];
         return name + ' on ' + date(Date.parse(row.at)) + (p.metric !== 'count' ? ': ' + format(value(row)) + ' ' + unit : '');
-      }).join('; ') + '. ' + rows.length + ' matching records ' + scope + '.' : 'No matching records ' + scope + '.';
-    } else text = format(numeric) + ' ' + unit + ' across ' + rows.length + ' matching records ' + scope + '.';
+      }).join('; ') + '. ' + rows.length + (rows.length === 1 ? ' matching record ' : ' matching records ') + scope + '.' : 'No matching records ' + scope + '.';
+    } else text = format(numeric) + ' ' + unit + ' across ' + rows.length + (rows.length === 1 ? ' matching record ' : ' matching records ') + scope + '.';
     if (p.domain === 'journeys' && p.operation === 'largest' && ['miles', 'minutes'].includes(p.metric)) {
       text = (p.metric === 'miles' ? 'Longest by distance: ' : 'Longest by driving time: ') + text;
     }
+    text = text.charAt(0).toUpperCase() + text.slice(1);
     text += ' Saved on this device only.';
     if (p.timeOfDay !== 'all') text += ' Night starts are before 6 AM or from 6 PM, using this device’s time zone.';
     const journeyIds = !isSelection ? [] : [...new Set(selectedRows.flatMap(row => p.domain === 'memories'

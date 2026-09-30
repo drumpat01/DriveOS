@@ -584,3 +584,16 @@ test('The trial banner shows on Today normally and is hidden while the sample li
   assert.match(texts(tree), /viewing sample data/i);
   await act(async () => { tree.unmount(); });
 });
+
+test('The sample bar on Today can be dismissed for the visit', async () => {
+  themeId = 'redline';
+  let tree: any;
+  await act(async () => { tree = create(React.createElement(TodayScreen, { primary, memories, loadProfile: () => ({ initials: 'PS', avatarUri: null }), sampleActive: true, onExitSample() {},
+    onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
+  const bar = () => tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.testID === 'today-sample-bar');
+  assert.equal(bar().length, 1);
+  await act(async () => { tree.root.findAll((node: any) => node.type === 'Pressable' && node.props.testID === 'today-sample-dismiss')[0].props.onPress(); });
+  assert.equal(bar().length, 0);
+  assert.doesNotMatch(texts(tree), /viewing sample data/i);
+  await act(async () => { tree.unmount(); });
+});
