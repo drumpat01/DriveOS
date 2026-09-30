@@ -40,6 +40,7 @@ const shared: Record<string, unknown> = {
   './glass-material': { GlassBackdrop: () => null, useGlassCardStyle: () => null },
   './header-image-sources': { headerImageSource: (source: unknown) => source },
   './album-artwork': { highQualityAlbumArtwork: (uri: string | null) => uri },
+  './plus-trial-banner': { PlusTrialBanner: (props: any) => props.trialEndsAt ? React.createElement('PlusTrialBanner', props) : null },
   './local-archive-events': { subscribeLocalArchiveChanges: () => () => {}, notifyLocalArchiveChanged() {} },
   './haptics': { haptics: { selection() {}, primaryAction() {} } },
   './journey-image': { JourneyImage: host('JourneyImage') },
@@ -160,7 +161,14 @@ test('Today renders the last drive, the week, On this day and recent memories in
     onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
   assert.match(texts(empty), /The road remembers/);
   assert.equal(empty.root.findAllByType('inline-recorder').length, 1, 'before iOS 26 the recorder sits on Today');
+  assert.equal(empty.root.findAllByType('PlusTrialBanner').length, 0, 'no banner without a running trial');
   await act(async () => empty.unmount());
+  let trial: any;
+  const endsAt = Date.now() + 2.5 * 86_400_000;
+  await act(async () => { trial = create(React.createElement(TodayScreen, { primary: { status: 'ready', data: { journeys: [], details: [], search: [] } }, memories: [], loadProfile: () => ({ initials: 'PS', avatarUri: null }),
+    trialEndsAt: endsAt, onPlus() {}, onJourney() {}, onMemory() {}, onMemories() {}, onWeek() {}, onProfile() {}, onRefresh: async () => {} })); });
+  assert.equal(trial.root.findByType('PlusTrialBanner').props.trialEndsAt, endsAt, 'the trial banner sits on Today while Plus is free');
+  await act(async () => trial.unmount());
 });
 
 test('Soundtrack names the anthem, switches ranges and stays usable without music', async () => {

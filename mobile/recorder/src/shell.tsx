@@ -103,7 +103,8 @@ import type { RedesignColors } from './redesign-palette';
 import { MusicScreen, type MusicDashboardState } from './music-screen';
 import { createIsolationTestProfile, getAppleIdentityStatus, getCurrentUser, isIsolationTestProfile, listLocalUsers, signInWithApple, switchActiveUser, type AppleIdentityStatus } from './auth';
 import { deleteCurrentJourneyDeckAccount, finishProfileSwitch, prepareForProfileSwitch, signOutOfJourneyDeck } from './account-lifecycle';
-import { getSensitivePlaces, type LocalPlace, type LocalUser } from './local-store';
+import { getSensitivePlaces, upsertPrivatePreference, type LocalPlace, type LocalUser } from './local-store';
+import { FirstRunV4, nextV4Stage, previousV4Stage, v4Stage } from './first-run-v4';
 import { PlaceDataCredits } from './place-data-credits';
 import {
   loadCustomSavedPlaces, loadSavedPlaces, removeCustomSavedPlace, removeSavedPlace, saveCustomSavedPlace, saveSavedPlace,
@@ -770,8 +771,9 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     void refreshDashboard(true);
   }, [refreshDashboard]);
 
-  const chooseRecordingMode = useCallback(async (_mode: RecordingMode) => {
-    const next = saveRecordingModePreferences({ mode: 'manual', onboardingCompleted: true });
+  const chooseRecordingMode = useCallback(async (mode: RecordingMode) => {
+    // V4 onboarding asks how drives are recorded; earlier builds always record manually.
+    const next = saveRecordingModePreferences({ mode: REDESIGN_PHONE ? mode : 'manual', onboardingCompleted: true });
     setRecordingPreferences(next);
     setEditingRecordingMode(false);
   }, []);
@@ -967,6 +969,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     onDataHealth={() => openMore('health')}
     onMembership={() => membership.atlasAccess ? void Linking.openURL('https://apps.apple.com/account/subscriptions') : setMembershipPaywallVisible(true)}
     onRestoreMembership={membershipStore.restore}
+    onReplayOnboarding={REDESIGN_PHONE ? () => { setFirstRunProgress(saveFirstRunProgress({ stage: 'welcome', recordingMode: firstRunRecordingMode })); } : undefined}
     onSpotifyOwnerConnect={() => void connectSpotifyOwner()}
     onSpotifyOwnerSync={() => void syncSpotifyOwner()}
     onAppleSignIn={() => void connectAppleIdentity()}
@@ -1006,7 +1009,7 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
     } : {
       music: <MusicScreen redesign={REDESIGN_PHONE} state={musicDashboard} provider={preferences?.provider ?? 'apple-music'} journeys={primarySections.data?.journeys ?? journeys.data} details={primarySections.data?.details ?? []} onJourney={openJourney} onRefresh={() => refreshMusicDashboard(true, primarySections.data?.details ?? [])} />,
       journeys: <MemoriesScreen studio catalog={membershipMemories} journeys={{ ...journeys, data: (primarySections.data?.journeys ?? journeys.data).filter(journey => REDESIGN_PHONE || membershipCanAccessDate(membership, journey.startedAt)) }} isLocked={REDESIGN_PHONE ? startedAt => !membershipCanAccessDate(membership, startedAt) : undefined} details={primarySections.data?.details ?? []} historyLimited={membership.timelineHistoryDays !== null} onUpgrade={() => setMembershipPaywallVisible(true)} onJourney={openJourney} onMemory={openMemory} onFiftyStates={V3_FIFTY_STATES_ENABLED ? openFiftyStates : undefined} onRefresh={() => { void refreshMemories(false); void refreshPrimarySections(false); }} />,
-      home: REDESIGN_PHONE ? <TodayScreen userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
+      home: REDESIGN_PHONE ? <TodayScreen trialEndsAt={membershipStore.state.status.tier === 'paid' ? null : membership.trialEndsAt} onPlus={() => setMembershipPaywallVisible(true)} userId={currentUser.id} primary={primarySections} memories={membershipMemories.data.memories} recorder={accessoryRecorder ? undefined : redesignRecorder}
         onAsk={V3_ASK_JOURNEYDECK_ENABLED ? () => router.push('/ask-journeydeck') : undefined}
         extraCards={{
           fiftyStates: V3_FIFTY_STATES_ENABLED ? <FiftyStatesHomeWidget userId={currentUser.id} onPress={openFiftyStates} dense /> : undefined,
@@ -1040,7 +1043,43 @@ function JourneyDeckShellContent({ recorder: Recorder, onProfileChanged, childre
       {appVisible && primarySections.status !== 'loading' && <ObserveInteractiveMarker params={{ dataState: primarySections.status }} />}
       <View style={styles.screenBody}>
         {(!preferences || !recordingPreferences) && <AppLoading />}
-        {firstRunStage && <FirstRunOnboardingScreen
+        {firstRunStage && REDESIGN_PHONE && (() => {
+          const stage = v4Stage(firstRunStage as Exclude<FirstRunStage, 'complete'>);
+          const finish = () => { setFirstRunProgress(completeFirstRun(firstRunRecordingMode)); openTab('home'); void refreshMemories(false); };
+          const advance = () => {
+            if (stage === 'welcome') completeWelcomeIntro();
+            const next = nextV4Stage(stage);
+            if (next === 'complete') finish(); else advanceFirstRun(next);
+          };
+          return <FirstRunV4 stage={stage} recordingMode={recordingPreferences?.onboardingCompleted ? recordingPreferences.mode : null} onAdvance={advance} onFinish={finish}
+            onBack={() => { const previous = previousV4Stage(stage); if (previous) advanceFirstRun(previous); }}
+            onHaveAccount={() => { completeWelcomeIntro(); finish(); }}
+            onLocationContinue={async (mode, drivesTesla) => {
+              await chooseRecordingMode(mode);
+              if (drivesTesla !== null) upsertPrivatePreference(currentUser.id, 'vehicle.drives-tesla.v1', { drivesTesla });
+              try {
+                await requestJourneyLocationAccess();
+                advanceFirstRun('music', mode);
+              } catch {
+                Alert.alert('Location access unavailable', 'Please try again. You can also set location access in device Settings.');
+              }
+            }}
+            onConnectAppleMusic={async () => { await chooseProvider('apple-music'); await connectAppleMusic('apple-music'); }}
+            lastFmUsername={lastFmUsername}
+            onConnectLastFm={async username => {
+              await saveLastFmUsername(username);
+              setLastFmUsername(username);
+              setLastFmDraft(username);
+              setLastFmConnected(await isLastFmConnected(username));
+              await chooseProvider('lastfm');
+            }}
+            onSkipMusic={() => {
+              const next = { provider: preferences?.provider ?? 'apple-music' as MusicProvider, onboardingCompleted: true };
+              void saveMusicPreferences(next).then(() => setPreferences(next)).catch(() => undefined);
+              advanceFirstRun('photos');
+            }} />;
+        })()}
+        {firstRunStage && !REDESIGN_PHONE && <FirstRunOnboardingScreen
           stage={firstRunStage}
           onWelcomeComplete={() => {
             completeWelcomeIntro();
@@ -3173,7 +3212,7 @@ function ConnectionsScreen({
   savingLastFm, syncingLastFm, onLastFmDraft, onEditLastFm, onCancelLastFm, onSaveLastFm, onSyncLastFm, onChangeProvider,
   currentUser, appleIdentityStatus, signingInWithApple, privateCloud, membershipTier, membershipExpirationDate, journeys, memories, onMembership,
   onAppleSignIn, onPrivateCloudSync, accountActionPending, onSignOut, onDeleteAccount, ownerSpotifyEligible,
-  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged, onRestoreMembership,
+  spotifyOwnerState, onSpotifyOwnerConnect, onSpotifyOwnerSync, onDataHealth, onEditorActiveChange, onTessieChanged, onRestoreMembership, onReplayOnboarding,
 }: {
   provider: MusicProvider;
   connectionCapabilities: ConnectionCapabilities;
@@ -3186,6 +3225,8 @@ function ConnectionsScreen({
   membershipExpirationDate: string | null;
   /** App Store Restore Purchases, reachable from Settings as well as the paywall. */
   onRestoreMembership?: () => Promise<void>;
+  /** Shows the V4 welcome tour again from the start; data and permissions stay as they are. */
+  onReplayOnboarding?: () => void;
   journeys: JourneySummary[];
   memories: JourneyMemory[];
   lastFmUsername: string;
@@ -3418,7 +3459,7 @@ function ConnectionsScreen({
       music: <>{providerCard}{tessieContent}{lastFmControls}{internalMusicControls}<View style={styles.settingsInsetNote}><Text style={styles.securityTitle}>PRIVATE BY DESIGN</Text><Text style={styles.securityBody}>Music and vehicle connections are optional. A connection or iCloud problem never blocks starting, finishing, or saving a journey.</Text></View></>,
       account: <>{profileCard}{cloudCard}<View style={styles.settingsCompactList}>{compactActionRow({ label: 'Read Privacy Policy', detail: 'How JourneyDeck protects your data', symbol: 'hand.raised.fill', accessibilityLabel: 'Privacy Policy', onPress: () => void Linking.openURL('https://journeydeck.me/privacy') })}</View><Text style={styles.settingsSectionLabel}>ACCOUNT ACTIONS</Text>{accountActions}</>,
       places: <><Text style={styles.settingsDetailIntro}>Name familiar places automatically and protect their exact locations when sharing.</Text>{placesCard}</>,
-      membership: <>{membershipCard}{onRestoreMembership ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Restore Purchases', detail: 'Already subscribed? Restore JourneyDeck Plus', symbol: 'arrow.clockwise', accessibilityLabel: 'Restore Purchases', onPress: () => { void onRestoreMembership().then(() => Alert.alert('Restore Purchases', 'JourneyDeck checked the App Store for your purchases.')).catch(error => Alert.alert('Restore Purchases', error instanceof Error ? error.message : 'The App Store could not restore purchases.')); } })}</View> : null}{supportCard}</>,
+      membership: <>{membershipCard}{onRestoreMembership ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Restore Purchases', detail: 'Already subscribed? Restore JourneyDeck Plus', symbol: 'arrow.clockwise', accessibilityLabel: 'Restore Purchases', onPress: () => { void onRestoreMembership().then(() => Alert.alert('Restore Purchases', 'JourneyDeck checked the App Store for your purchases.')).catch(error => Alert.alert('Restore Purchases', error instanceof Error ? error.message : 'The App Store could not restore purchases.')); } })}</View> : null}{onReplayOnboarding ? <View style={styles.settingsCompactList}>{compactActionRow({ label: 'Replay onboarding', detail: 'See the welcome tour again. Your data stays as it is.', symbol: 'play.circle', accessibilityLabel: 'Replay onboarding', onPress: onReplayOnboarding })}</View> : null}{supportCard}</>,
     };
     return <SettingsEditorScaffold eyebrow="SETTINGS" title={category.title} onBack={closeEditor}><View style={styles.settingsCategoryStack}>{categoryContent[destination.category]}</View></SettingsEditorScaffold>;
   }
